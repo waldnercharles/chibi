@@ -350,13 +350,14 @@ belongs in `tools/graph/engine/Targets.chibi` too.
 #### Linux native graph
 
 Linux uses the same default graph for native products and the full
-tooling/language test drivers. `chibi build` builds the Release `chibi-build-host` and `chibi-compiler-host` in `build-release` first and generates the asset compiler with them, because Debug hosts exceed the compiler deadline from a cold tree; `--asset-generator-hosts DIR` names other hosts. For a fast Debug O1 build with Release generators:
+tooling/language test drivers. The native compiler builds the asset compiler
+companion.
+For a Debug O1 build of the C tooling and language drivers:
 
 ```sh
-chibi build --release --target chibi --target chibi-build-host --target chibi-compiler-host
+chibi build --release --target chibi --target chibi-asset-compiler
 chibi build --debug --debug-optimization 1 \
-  --debug-frame-pointers on --host "$PWD/build-release/sdk/chibi-build-host" \
-  --asset-generator-hosts build-release/sdk \
+  --debug-frame-pointers on \
   --target chibi --target chibi-compile --target test_tools --target test_language
 ```
 

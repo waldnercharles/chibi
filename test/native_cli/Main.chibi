@@ -25,6 +25,9 @@ Main :: () -> int {
     Write(source, text);
     ran := os.Capture([chibi, "run", "-O0", "--llvm", llvm, source, "--", "first", "a b", "--watch"]);
     assert(ran.status == 7 && ran.stdout == "native run\n", "run selects Main and passes arguments and exit status");
+    Write(source, "package sample\nimport os \"core:os\"\nMain :: () { os.WriteOutput(\"void entry\\n\"); return; }\n");
+    void_run := os.Capture([chibi, "run", "-O0", "--llvm", llvm, source]);
+    assert(void_run.status == 0 && void_run.stdout == "void entry\n", "a void Main runs and exits successfully");
     ScopedRuns(chibi, llvm, scratch);
     invalid := os.Capture([chibi, "run", "--llvm"]);
     assert(invalid.status == 2 && strings.Contains(invalid.stderr, "--llvm needs a nonempty value"), "missing option value is diagnosed");
@@ -92,7 +95,7 @@ ScopedRuns :: (chibi: string, llvm: string, scratch: string) {
     Write(strings.Concatenate([collection_root, "/facts/Facts.chibi"]), "package external_facts\npub Value :: () -> int { return 22; }\n");
     source := strings.Concatenate([scratch, "/ScopedEntry.chibi"]);
     Write(source, "package scoped\nimport facts \"project:facts\"\nimport extra \"extra:facts\"\nimport os \"core:os\"\nMain :: () -> int { return 99; }\nRun :: () -> int { args := os.Arguments(); assert(length(args) == 1 && args[0] == \"a b\", \"scoped argument\"); return facts.Value() + extra.Value(); }\n");
-    command := [chibi, "run", "-O0", "--llvm", llvm, "--entry", "Run", "--root", root,
+    command := [chibi, "run", "-O0", "--llvm", llvm, "--core", os.Getenv("CHIBI_CORE"), "--entry", "Run", "--root", root,
                 "--collection", strings.Concatenate(["extra=", collection_root]), source, "--", "a b"];
     ran := os.Capture(command);
     if (ran.status != 42) { os.Print(ran.stderr); }
@@ -106,6 +109,10 @@ ScopedRuns :: (chibi: string, llvm: string, scratch: string) {
     assert(directory.status == 42, "directory entry stays in its package under the chosen project root");
     duplicate := os.Capture([chibi, "run", "--llvm", llvm, "--collection", strings.Concatenate(["core=", collection_root]), source]);
     assert(duplicate.status == 2 && strings.Contains(duplicate.stderr, "unique name"), "duplicate collection is rejected");
+    missing_core := os.Capture([chibi, "run", "--core"]);
+    assert(missing_core.status == 2 && strings.Contains(missing_core.stderr, "--core needs a nonempty value"), "missing core is diagnosed");
+    bad_core := os.Capture([chibi, "run", "--llvm", llvm, "--core", strings.Concatenate([scratch, "/absent core"]), source]);
+    assert(bad_core.status == 2 && strings.Contains(bad_core.stderr, "cannot find core directory"), "an invalid explicit core cannot use the environment instead");
     missing := os.Capture([chibi, "run", "--entry"]);
     assert(missing.status == 2 && strings.Contains(missing.stderr, "--entry needs a nonempty value"), "missing named entry is diagnosed");
 }

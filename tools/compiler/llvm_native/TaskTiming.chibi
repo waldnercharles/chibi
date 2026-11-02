@@ -1,0 +1,90 @@
+package llvm_native
+
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Timed task modules sample once per scheduler update and use one linear
+// expiration pass before resuming work. Untimed modules emit none of this code.
+// Hosts can supply simulation time; standalone programs use monotonic time.
+TaskTiming :: (target: abi.Target, existing: string) -> string {
+    clock := "";
+    declarations: string[] = [];
+    if (abi.Same(target, abi.WindowsX64())) {
+        declarations = ["declare i32 @QueryPerformanceCounter(ptr)\n", "declare i32 @QueryPerformanceFrequency(ptr)\n", "declare void @Sleep(i32)\n"];
+        clock = strings.Join([
+        "; chibi-import system:kernel32 QueryPerformanceCounter\n; chibi-import system:kernel32 QueryPerformanceFrequency\n@chibi_tasks.frequency = internal global double 0.000000e+00\ndefine internal double @chibi_tasks.clock() #0 {\nentry:\n  %sample = alloca i64\n",
+        "  %frequency = load double, ptr @chibi_tasks.frequency\n  %known = fcmp ogt double %frequency, 0.000000e+00\n  br i1 %known, label %sample.counter, label %frequency.read\nfrequency.read:\n  %read = call i32 @QueryPerformanceFrequency(ptr %sample)\n  %ticks = load i64, ptr %sample\n",
+        "  %positive = icmp sgt i64 %ticks, 0\n  %read.ok = icmp ne i32 %read, 0\n  %valid = and i1 %positive, %read.ok\n  br i1 %valid, label %frequency.save, label %trap\nfrequency.save:\n  %fresh = sitofp i64 %ticks to double\n",
+        "  store double %fresh, ptr @chibi_tasks.frequency\n  br label %sample.counter\nsample.counter:\n  %scale = phi double [ %frequency, %entry ], [ %fresh, %frequency.save ]\n  %status = call i32 @QueryPerformanceCounter(ptr %sample)\n  %ok = icmp ne i32 %status, 0\n",
+        "  br i1 %ok, label %result, label %trap\nresult:\n  %counter = load i64, ptr %sample\n  %count = sitofp i64 %counter to double\n  %now = fdiv double %count, %scale\n  ret double %now\n",
+        "trap:\n  call void @llvm.trap()\n  unreachable\n}\n; chibi-import system:kernel32 Sleep\ndefine internal void @chibi_tasks.sleep(double %duration) #0 {\n",
+        "entry:\n  %short = fcmp olt double %duration, 1.000000e+00\n  %bounded = select i1 %short, double %duration, double 1.000000e+00\n  %scaled = fmul double %bounded, 1.000000e+03\n  %millis = fptoui double %scaled to i32\n  %rounded = add i32 %millis, 1\n",
+        "  call void @Sleep(i32 %rounded)\n  ret void\n}\n"
+        ], "");
+    } else if (abi.Same(target, abi.MacOSArm64())) {
+        declarations = ["declare i32 @clock_gettime(i32, ptr)\n", "declare i32 @nanosleep(ptr, ptr)\n"];
+        clock = strings.Join([
+        "\ndefine internal double @chibi_tasks.clock() #0 {\nentry:\n  %stamp = alloca { i64, i64 }\n  %status = call i32 @clock_gettime(i32 6, ptr %stamp)\n  %ok = icmp eq i32 %status, 0\n",
+        "  br i1 %ok, label %read, label %trap\nread:\n  %sec = load i64, ptr %stamp\n  %ns.at = getelementptr { i64, i64 }, ptr %stamp, i32 0, i32 1\n  %ns = load i64, ptr %ns.at\n  %seconds = sitofp i64 %sec to double\n",
+        "  %nanos = sitofp i64 %ns to double\n  %fraction = fmul double %nanos, 1.000000e-09\n  %now = fadd double %seconds, %fraction\n  ret double %now\ntrap:\n  call void @llvm.trap()\n",
+        "  unreachable\n}\ndefine internal void @chibi_tasks.sleep(double %duration) #0 {\nentry:\n  %request = alloca { i64, i64 }\n  %short = fcmp olt double %duration, 1.000000e+00\n",
+        "  %bounded = select i1 %short, double %duration, double 1.000000e+00\n  %seconds = fptosi double %bounded to i64\n  %whole = sitofp i64 %seconds to double\n  %fraction = fsub double %bounded, %whole\n  %scaled = fmul double %fraction, 1.000000e+09\n  %nanos = fptosi double %scaled to i64\n",
+        "  store i64 %seconds, ptr %request\n  %ns.at = getelementptr { i64, i64 }, ptr %request, i32 0, i32 1\n  store i64 %nanos, ptr %ns.at\n  %status = call i32 @nanosleep(ptr %request, ptr null)\n  ret void\n}\n"
+        ], "");
+    } else {
+        declarations = [];
+        clock = strings.Join([
+        "define internal double @chibi_tasks.clock() #0 {\nentry:\n  %stamp = alloca { i64, i64 }\n  %status = call i64 asm sideeffect \"syscall\", \"={rax},{rax},{rdi},{rsi},~{rcx},~{r11},~{memory}\"(i64 228, i64 1, ptr %stamp)\n  %ok = icmp eq i64 %status, 0\n  br i1 %ok, label %read, label %trap\n",
+        "read:\n  %sec = load i64, ptr %stamp\n  %ns.at = getelementptr { i64, i64 }, ptr %stamp, i32 0, i32 1\n  %ns = load i64, ptr %ns.at\n  %seconds = sitofp i64 %sec to double\n  %nanos = sitofp i64 %ns to double\n",
+        "  %fraction = fmul double %nanos, 1.000000e-09\n  %now = fadd double %seconds, %fraction\n  ret double %now\ntrap:\n  call void @llvm.trap()\n  unreachable\n",
+        "}\ndefine internal void @chibi_tasks.sleep(double %duration) #0 {\nentry:\n  %request = alloca { i64, i64 }\n  %short = fcmp olt double %duration, 1.000000e+00\n  %bounded = select i1 %short, double %duration, double 1.000000e+00\n",
+        "  %seconds = fptosi double %bounded to i64\n  %whole = sitofp i64 %seconds to double\n  %fraction = fsub double %bounded, %whole\n  %scaled = fmul double %fraction, 1.000000e+09\n  %nanos = fptosi double %scaled to i64\n  store i64 %seconds, ptr %request\n",
+        "  %ns.at = getelementptr { i64, i64 }, ptr %request, i32 0, i32 1\n  store i64 %nanos, ptr %ns.at\n  %status = call i64 asm sideeffect \"syscall\", \"={rax},{rax},{rdi},{rsi},~{rcx},~{r11},~{memory}\"(i64 35, ptr %request, ptr null)\n  ret void\n}\n"
+        ], "");
+    }
+    needed: string[] = [];
+    for (declaration in declarations) {
+        if (!strings.Contains(existing, declaration)) { needed.append(declaration); }
+    }
+    return strings.Join([strings.Join(needed, ""), clock,
+        "@chibi_tasks.pending_time = internal global double 0xFFF0000000000000\n@chibi_tasks.now = internal global double 0.000000e+00\n@chibi_tasks.explicit_time = internal global i1 false\n\n; A host sets program time before starting work and at each update. Existing\n; no-argument polling and standalone entries use the platform monotonic clock.\n",
+        "define i32 @chibi_host_tasks_set_time(double %now) #0 {\nentry:\n  %below = fcmp olt double %now, 0x7FF0000000000000\n  %above = fcmp ogt double %now, 0xFFF0000000000000\n  %finite = and i1 %below, %above\n  br i1 %finite, label %set, label %invalid\n",
+        "set:\n  store double %now, ptr @chibi_tasks.now\n  store i1 true, ptr @chibi_tasks.explicit_time\n  ret i32 0\ninvalid:\n  ret i32 1\n",
+        "}\ndefine i32 @chibi_host_tasks_poll_at(double %now) #0 {\nentry:\n  %status = call i32 @chibi_host_tasks_set_time(double %now)\n  %valid = icmp eq i32 %status, 0\n  br i1 %valid, label %update, label %invalid\n",
+        "update:\n  call void @chibi_tasks.update()\n  ret i32 0\ninvalid:\n  ret i32 1\n}\n",
+        "define internal void @chibi_tasks.sample_time() #0 {\nentry:\n  %explicit = load i1, ptr @chibi_tasks.explicit_time\n  %current = load i64, ptr @chibi_tasks.current\n  %inside = icmp ne i64 %current, 0\n  %fixed = or i1 %explicit, %inside\n",
+        "  br i1 %fixed, label %done, label %sample\nsample:\n  %now = call double @chibi_tasks.clock()\n  store double %now, ptr @chibi_tasks.now\n  br label %done\ndone:\n",
+        "  ret void\n}\n; Like the existing command runtime, negative and NaN durations mean zero.\n; A later request cannot extend the task's existing deadline.\ndefine internal void @chibi_tasks.cancel_after(i64 %handle, double %duration) #0 {\nentry:\n",
+        "  %done = call i1 @chibi_tasks.finished(i64 %handle)\n  br i1 %done, label %exit, label %set\nset:\n  %row = call ptr @chibi_tasks.row(i64 %handle)\n  %positive = fcmp oge double %duration, 0.000000e+00\n  %bounded = select i1 %positive, double %duration, double 0.000000e+00\n",
+        "  %started.at = getelementptr inbounds %chibi.task, ptr %row, i32 0, i32 11\n  %started = load double, ptr %started.at\n  %deadline = fadd double %started, %bounded\n  %deadline.at = getelementptr inbounds %chibi.task, ptr %row, i32 0, i32 12\n  %before = load double, ptr %deadline.at\n  %earlier = fcmp olt double %deadline, %before\n",
+        "  %chosen = select i1 %earlier, double %deadline, double %before\n  store double %chosen, ptr %deadline.at\n  %now = load double, ptr @chibi_tasks.now\n  %due = fcmp ole double %chosen, %now\n  br i1 %due, label %cancel, label %exit\ncancel:\n",
+        "  call void @chibi_tasks.cancel(i64 %handle)\n  br label %exit\nexit:\n  ret void\n}\n; Expire all due subtrees before any continuation runs in this update, even\n",
+        "; when a child's first suspension precedes its parent's queue position.\ndefine internal void @chibi_tasks.expire() #0 {\nentry:\n  %now = load double, ptr @chibi_tasks.now\n  %count = load i64, ptr @chibi_tasks.ready_count\n  %ready = load ptr, ptr @chibi_tasks.ready\n",
+        "  br label %loop\nloop:\n  %i = phi i64 [ 0, %entry ], [ %next, %advance ]\n  %more = icmp ult i64 %i, %count\n  br i1 %more, label %read, label %exit\nread:\n",
+        "  %at = getelementptr inbounds i64, ptr %ready, i64 %i\n  %handle = load i64, ptr %at\n  %done = call i1 @chibi_tasks.finished(i64 %handle)\n  br i1 %done, label %advance, label %check\ncheck:\n  %row = call ptr @chibi_tasks.row(i64 %handle)\n",
+        "  %deadline.at = getelementptr inbounds %chibi.task, ptr %row, i32 0, i32 12\n  %deadline = load double, ptr %deadline.at\n  %due = fcmp ole double %deadline, %now\n  br i1 %due, label %cancel, label %advance\ncancel:\n  call void @chibi_tasks.cancel(i64 %handle)\n",
+        "  br label %advance\nadvance:\n  %next = add i64 %i, 1\n  br label %loop\nexit:\n  ret void\n",
+        "}\n; Standalone entries sleep only when every live task is waiting. External\n; hosts own their polling cadence and never block in poll_at.\ndefine internal void @chibi_tasks.idle() #0 {\nentry:\n  %explicit = load i1, ptr @chibi_tasks.explicit_time\n",
+        "  br i1 %explicit, label %exit, label %start\nstart:\n  %now = call double @chibi_tasks.clock()\n  store double %now, ptr @chibi_tasks.now\n  %count = load i64, ptr @chibi_tasks.ready_count\n  %ready = load ptr, ptr @chibi_tasks.ready\n",
+        "  br label %loop\nloop:\n  %i = phi i64 [ 0, %start ], [ %next, %advance ]\n  %earliest = phi double [ 0x7FF0000000000000, %start ], [ %chosen, %advance ]\n  %more = icmp ult i64 %i, %count\n  br i1 %more, label %read, label %sleep.check\n",
+        "read:\n  %at = getelementptr inbounds i64, ptr %ready, i64 %i\n  %handle = load i64, ptr %at\n  %done = call i1 @chibi_tasks.finished(i64 %handle)\n  br i1 %done, label %advance, label %check\ncheck:\n",
+        "  %row = call ptr @chibi_tasks.row(i64 %handle)\n  %deadline.at = getelementptr inbounds %chibi.task, ptr %row, i32 0, i32 12\n  %deadline = load double, ptr %deadline.at\n  %wake.at = getelementptr inbounds %chibi.task, ptr %row, i32 0, i32 1\n  %wake = load i64, ptr %wake.at\n  %over = call i1 @chibi_tasks.finished(i64 %wake)\n",
+        "  %time.at = getelementptr inbounds %chibi.task, ptr %row, i32 0, i32 13\n  %time = load double, ptr %time.at\n  %awake = select i1 %over, double %time, double 0x7FF0000000000000\n  %first = fcmp olt double %deadline, %awake\n  %when = select i1 %first, double %deadline, double %awake\n  %sooner = fcmp olt double %when, %earliest\n",
+        "  %candidate = select i1 %sooner, double %when, double %earliest\n  %runnable = fcmp ole double %candidate, %now\n  br i1 %runnable, label %exit, label %advance\nadvance:\n  %chosen = phi double [ %earliest, %read ], [ %candidate, %check ]\n  %next = add i64 %i, 1\n",
+        "  br label %loop\nsleep.check:\n  %pending = icmp ugt i64 %count, 0\n  br i1 %pending, label %sleep, label %exit\nsleep:\n  %remaining = fsub double %earliest, %now\n",
+        "  call void @chibi_tasks.sleep(double %remaining)\n  br label %exit\nexit:\n  ret void\n}\n"
+    ], "");
+}
+
+// A delay keeps its deadline in the coroutine frame and rechecks program time
+// after each suspension. Zero, negative and NaN durations complete immediately.
+DelayInstruction :: (item: Instruction, pc: int) -> string {
+    out := format_text("p{}:\n", pc);
+    out = format_text("{}{}", out, Load(format_text("duration{}", pc), abi.DoubleStorage, "s", item.left));
+    out = format_text("{}  %positive{} = fcmp ogt double %duration{}, 0.000000e+00\n  br i1 %positive{}, label %p{}.begin, label %p{}\np{}.begin:\n", out, pc, pc, pc, pc, pc + 1, pc);
+    out = format_text("{}  %started{} = load double, ptr @chibi_tasks.now\n  %deadline{} = fadd double %started{}, %duration{}\n  br label %p{}.wait\np{}.wait:\n", out, pc, pc, pc, pc, pc, pc);
+    out = format_text("{}  store double %deadline{}, ptr @chibi_tasks.pending_time\n", out, pc);
+    out = format_text("{}  %suspend{} = call i8 @llvm.coro.suspend(token none, i1 false)\n  switch i8 %suspend{}, label %coro.suspend [ i8 0, label %p{}.check\n    i8 1, label %coro.cleanup ]\np{}.check:\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %now{} = load double, ptr @chibi_tasks.now\n  %ready{} = fcmp oge double %now{}, %deadline{}\n  br i1 %ready{}, label %p{}, label %p{}.wait\n", out, pc, pc, pc, pc, pc, pc + 1, pc);
+    return out;
+}

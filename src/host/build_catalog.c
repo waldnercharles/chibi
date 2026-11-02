@@ -121,6 +121,15 @@ static const char *build_reserve_directory(void *service, const pin_value *argum
     results[0].b = build_io_reserve_directory(host->root, strings[0]);
     return NULL;
 }
+static const char *build_temporary_directory(void *service, const pin_value *arguments, pin_value *results)
+{
+    READY_HOST();
+    STRING_ARGUMENTS(1);
+    char *path = build_io_temporary_directory(host->root, strings[0]);
+    const char *error = string_result(host, results, path ? path : "");
+    free(path);
+    return error;
+}
 static const char *build_publish_directory(void *service, const pin_value *arguments, pin_value *results)
 {
     READY_HOST();
@@ -456,7 +465,8 @@ static const script_catalog_parameter array_result = {
     X(940, "build.publish_directory", move_parameters, 2, bool_result, build_publish_directory) \
     X(941, "build.wait_for", wait_parameters, 2, int_result, build_host_wait_for)               \
     X(942, "build.kill", &handle_parameter, 1, int_result, build_host_kill)                     \
-    X(943, "build.spawn", &array_parameter, 1, int_result, build_host_spawn)
+    X(943, "build.spawn", &array_parameter, 1, int_result, build_host_spawn)                    \
+    X(944, "build.temporary_directory", &path_parameter, 1, text_result, build_temporary_directory)
 #define CAPABILITY(ID, NAME, PARAMETERS, COUNT, RESULT, FUNCTION)              \
     { .id = ID,                                                                \
       .name = NAME,                                                            \

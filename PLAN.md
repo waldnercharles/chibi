@@ -89,21 +89,167 @@ runtime validation.
 
 ## Gates before deleting the hosts or VM
 
-- Install the native CLI/compiler as the product and replace the packaged SDK
-  asset compiler. The engine graph and installed SDK still build/use C hosts.
+- Verify the combined installed native CLI/compiler, SDK companion and Studio
+  packaging on supported platforms. The desktop product graph and asset compiler
+  have been replaced; remaining legacy consumers still need removal.
 - Complete native typed failure reporting and `core:testing.ExpectFailure`;
   preserve the existing failure categories and imported-test behavior.
-- Complete maps: authored iteration, equality, compound writes, inferred
-  literals, and nested/record values. Unsupported forms must reject.
-- Complete tasks: handle result unions, deadlines/delays, managed suspended
+- Complete maps: managed/nested values and expression alias lifetimes. Authored
+  iteration is implemented; numeric record values await combined integration.
+  Equality, compound writes and inferred map literals also reject in the
+  ordinary compiler, so they are not native parity gates.
+- Complete tasks: handle result unions, managed suspended
   values, component dependencies and complete failure behavior.
 - Complete retained-state parity for managed records, arrays, unions and task
   handles, and validate reload/watch beyond Linux x64.
-- Complete Windows asynchronous process operations, a verified native Windows
-  seed, content-safe invalidation for its build-runner/graph consumers, and
+- Publish a verified native Windows seed, validate parallel object compilation
+  and the new redirected streams on Windows, and complete
   remaining SDK/Studio platform coverage. Compiler execution and self-reproduction
   on Windows now have CI proof.
 
 Do not remove the VM, host sources or recovery assets while those consumers
 still depend on them. This branch removes the build-entry fallback; it does
 not claim that the full retirement is complete.
+
+## Parallel performance work
+
+The performance chat `01a19cba-8db8-7041-9a3e-cb5293f1603b` owns
+`test/native_aot/native_build/BuildTests.chibi` and measured iteration-cost
+changes. Its frozen native baseline is `13e01f9055e555caf207642df8ab477f721c38c2`,
+tree `0455761e0b537dba872c7078b80def510ddd3edc`, whose combined CI is green.
+The proposed CI-consolidation parent is
+`2fb44239a425e18b231fc44d0da0392ea31fac74`, tree
+`e62a39c31d25c85ea9a8b41fd0affeb81955d715`. I agree to combining these frozen
+parents before performance changes, preserving the verified native seed,
+native build cache, driver and graph parity, package test isolation and LLVM 22.
+The performance chat owns that merge and must record its resolved commit/tree
+before using it as a measured baseline. A dry merge found workflow
+modify/delete conflicts plus `ci.yml` and `tools/toolchain/Driver.chibi`
+conflicts; its conflict-marked tree is not an executable baseline.
+
+Current migration lanes own installed CLI/SDK graph construction and native
+driver resource discovery, asset compilation, native failures/quotas,
+maps/retained ownership, Windows process operations and native test selectors.
+The performance chat should coordinate before editing those files. No held
+fixtures or additional access restrictions apply; unrelated worktrees remain
+untouched. This integration has committed task timing work beyond the frozen
+baseline, so performance work must not copy the live working tree.
+
+The combined performance baseline must retain both driver and graph VM/native comparisons. Ordinary CI passes --compare-vm together with --skip-vm-comparison; the latter skips only the historical vm-hosted-self-build block. Full CI passes --compare-vm without that skip. Native LLVM setup uses .github/native-llvm.sh and CHIBI_LLVM_BIN, independent of C/libclang18 setup.
+
+The performance chat reports its resolved frozen merge as
+`9934af8db17daf554993bba0bd5dbc6ef37c28ca`, tree
+`48534e78286e0442e4b2d54f0d86603c78b1b676`, with both parents above. Its
+graph-driver check passed in 23.89 s after repairing the comparison fixture.
+This is the performance baseline, separate from ongoing migration commits.
+
+Quiet Mac measurement window: 2026-11-02 15:34:00–16:04:00 UTC, including one
+ten-minute extension for controlled CLI samples and compiler profiling.
+At 15:33:30 UTC every migration lane reported its heavy jobs drained and new
+heavy launches held. No `/tmp/chibi-heavy-slot*` owner remained. A process
+snapshot showed one existing `chibi` process, PID 44888, at 0.0% CPU; no active
+`opt`, `llc`, `clang` or `chibi-compile` process appeared. Source edits/reviews
+and remote CI continued. The performance chat released the machine at 16:04 UTC,
+and every migration lane resumed heavy checks through the shared slot wrapper.
+
+## Continued implementation after the first CI checkpoint
+
+The first combined checkpoint, `13e01f905`, passed all required CI, including
+Linux/Windows compiler reproduction, no-C-compiler recovery, graph SDK
+relocation and the default build. This is evidence for that revision only.
+The following local changes extend it; combined validation remains required.
+
+- `83ada23b1`: authored native asset compiler service. Prepared output and first
+  diagnostics match the existing compiler. Relocation with an unusable C
+  compiler passes. Desktop engine and Studio consumers are being migrated.
+- `68672f1b3`: native named entries, roots and collections use the verified
+  program cache. CLI and cache checks passed in 4.52 s and 6.00 s.
+- `c23667760`: typed expected assertion/index failures are scoped to generated
+  test roots. O0/O2 source differentials match the existing compiler.
+- `93a1d70e7`: task delays and deadlines use program time, preserve cancellation
+  ancestry and support explicit host time. Standalone programs sleep when all
+  tasks wait. The final O0/O2 allocation-checked suite passed in 11.07 s;
+  Windows cross-linking passed. Full platform runtime checks remain required.
+- `e3d8d76b0`: authored map iteration preserves insertion order and snapshots
+  when mutation/addressing requires it. O0/O2 poison and allocation checks pass.
+- `6ca0cf900`: retained string records and native aggregate ownership passed
+  Linux reload/watch and compiler reproduction. The expression alias lifetime
+  regression is fixed by `b979ddc4f` below. Existing mixed array-backed records
+  still retain six allocations;
+  generic copy-on-write backing ownership is in progress before VM retirement.
+- `67efc3a3e`, `e029cb4ef`, `f3d70e879`, `636ed0928`: Windows asynchronous
+  processes, content fingerprints and verified reuse of pinned cross-build
+  artifacts. Real Windows run `41472306534`, source `61bf5fffc`, passed cache,
+  async, graph-content and object tests. Stages three and four took 339 s and
+  334 s and produced the same SHA-256:
+  `fd4a9dc245aef01df5aa8c243f4ecee7e744ff14fcf5f12ccc14530a032c4432`.
+
+The performance baseline's direct native compiler test invocation passed 380
+tests, with 28 tests absent because `math_constants/tests` and
+`unit_algebra/tests` failed native compilation. The older 408-test result above
+used the authored compiler's existing test route; it does not establish direct
+native coverage for this inventory. Both rejection sites are assigned to the
+producer lane; comparison acceptance requires all 408 tests. The scalar square
+root fix below restores the 23 math-constant tests; five unit-algebra tests
+remain blocked by array payload handling.
+
+Further integrated changes and evidence:
+
+- `3171ea32b`, `2cc8f7d89`: shared native quota scopes and numeric-record maps.
+  Combined task and map suites passed in 11.22 s and 16.28 s.
+- `673de5755`: scalar f32 square root. Real O0/O2 rounding, signed-zero, NaN,
+  infinity, subnormal and name-shadowing cases passed in 1.85 s and fail before
+  the change. The direct compiler inventory now passes 403 tests (18.75 s).
+- `51d6c6438`: native formatter preserves the existing scalar grammar, raw NUL
+  bytes, numeric widths/modifiers and float formatting. The original 192 string
+  tests pass. Combined O0/O2 formatter regression passed in 1.73 s.
+- `b979ddc4f`: managed record expression lifetimes now survive a later argument
+  replacing their source record. The old binary fails the regression; combined
+  O0/O2 ownership checks pass with zero outstanding allocations in 1.38 s.
+- `116ecabe6`, `52c39f4ad`, `f422a8bb2`: installed native products, portable SDK
+  paths and native test-selector dispatch. The combined product compiler built
+  in 47.88 s, the actual product graph in 144.26 s, and SDK installation and
+  relocation checks passed in 15.34 s. These are ambient-load elapsed times.
+  The separate product lane also passed the full install command with CC/CXX
+  disabled and no legacy hosts (95.16 s), then its installed SDK test selector
+  (19.03 s). The combined compiler's next fixed-point check remains pending.
+- `962e420bd`, `baf6c3450`: private temporary directories use native OS APIs,
+  and Windows now uses the shared parallel LLVM object pipeline. Real Windows
+  execution of these additions remains pending.
+- `87ad35942`: desktop C consumers use the native asset companion with quota,
+  cancellation, cache and relocated-path behavior. The standalone C consumer
+  regression passed in 4.924 s without compiler-host or VM objects. Studio
+  companion packaging is committed separately as `94379f6`; its actual CMake
+  copy/install/relocation check passed in 1.905 s.
+- `3378845ca`, `d7d288047`: shared quota failures match the ordinary runner's
+  exact category, and native test selection reads argv without core imports.
+- `8b3be1d9d`: void entries use the existing zero-status ABI adapter. CLI,
+  waiting void Main at O0/O2, selected void tests and a Linux shared generation
+  execute successfully. Attribute checks passed in 1.63 s.
+
+Remaining runtime consumers include `application.*`, `program.open/update/call`
+and browser compilation/execution. The current WebAssembly JIT still delegates
+some operations to VM stepping. These need working replacements before their
+VM support, APIs or recovery assets can be deleted.
+
+At the next checkpoint, `975dbd72d`, the optional-value fix and scoped map-alias
+fix are integrated. Its compiler source reproduced identical macOS arm64
+executables: SHA-256
+`efd11e1e9fd61aa03f5c02ce711c1202ba73500dc23721cd68d238bfe94369bd`.
+The two builds took 78.23 s and 61.52 s under ambient load. Subsequent local
+commits through `3520eaef0` changed graph/docs/CI and asset test fixtures, not
+the compiler inputs used for that proof.
+
+CI at `975dbd72d` found the native asset product was still compiled by the old
+pinned seed, which cannot emit the new quota-scope helpers. Local graph proofs
+had supplied a current compiler and therefore missed this dependency. The
+graph lane is fixing the product ordering and compiler receipt so the current
+native compiler builds the asset service. This remains a default-build gate.
+
+The second quiet performance window ran from 17:00:40 to 17:05:14 UTC. All
+migration lanes drained before it and resumed afterward. Four balanced pairs
+measured removal of `StatementStep` type-table snapshots: mean wall time fell
+from 35.02 s to 31.49 s and mean CPU time from 63.93 s to 60.69 s; all eight
+outputs matched the frozen compiler. The focused commit is `7d798d802` in
+PR #1333, pending composition with the task type-compatibility fix. These are
+compiler measurements, not complete installed-toolchain equivalence results.

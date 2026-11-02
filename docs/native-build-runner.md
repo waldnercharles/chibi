@@ -8,17 +8,18 @@ its SHA-256 before use. A cached seed is verified again on every invocation.
 LLVM/LLD 22 or newer is required. The tools come from `--llvm DIR`,
 `CHIBI_LLVM_BIN`, or the directory containing `opt` on `PATH`. The directory must contain `opt`, `llc` and the platform's linker:
 `ld.lld` on Linux, `ld64.lld` on macOS. The supported native default platforms
-are Linux x64 and macOS arm64. Windows filesystem and cache operations now
-use kernel32 and have cross-link checks, but still need a Windows execution
-result. Windows also needs a verified seed and asynchronous process operations
-before this entry can select it.
+are Linux x64 and macOS arm64. Windows filesystem, cache and asynchronous process
+operations use kernel32 and have Windows execution checks. Selecting Windows
+through this entry still requires a verified seed and the authored runner's
+Windows path, temporary-directory, cleanup and receipt integration.
 
 Windows metadata stamps can stay equal across rapid same-size rewrites. The
 native compiler's output cache and the shell entry hash source and tool bytes.
-The authored runner still uses metadata stamps for source and tool identity,
-and the C graph/evidence checks use them too. Those consumers need content
-verification before enabling the Windows build runner. The source watcher is
-currently Linux-only; its Windows port must also account for this limit.
+The C graph and evidence checks use content fingerprints and sorted directory
+inventories on Windows. The authored runner still uses metadata stamps for
+source and tool identity; it needs the same content verification before Windows
+can use it. The source watcher is currently Linux-only; its Windows port must
+also account for this limit.
 
 ```
 CHIBI_LLVM_BIN=/path/to/llvm/bin sh tools/build.sh build --release
@@ -30,7 +31,7 @@ sh tools/build.sh test --llvm /path/to/llvm/bin --list
 The shell entry compiles `tools/toolchain/Driver.chibi` with entry `Main`, then
 runs it with the build arguments. It caches the executable under
 `.chibi/build-entry/KEY/driver`. The full SHA-256 key covers the driver source,
-core sources, native compiler, LLVM tools, target and tool paths. A failed
+core and graph sources, native compiler, LLVM tools, target and tool paths. A failed
 compile publishes no executable and stops the command.
 
 The authored driver compiles `Build.chibi`, `Graph.chibi`, `SDK.chibi` and the
@@ -45,23 +46,21 @@ The programs call `core:os`. Its native implementation uses `core:sys/posix` or
 natives. `Driver.chibi` no longer fetches a build host just to run these programs,
 and selecting a target no longer adds `chibi-build-host` as an extra target.
 
-## What still needs C hosts
+## Products and remaining compatibility tools
 
-Native execution of the build programs does not make every product native:
+The default graph products are the authored native compiler/CLI and asset
+compiler service. Building or installing them does not discover a C compiler or
+start a VM host. The installed CLI finds core and graph packages relative to its
+own prefix. A project's `Build.chibi` is compiled through the native content cache
+and its `Main` runs with the build arguments.
 
-- `tools/graph/engine/Engine.chibi` still builds C products and uses the packaged
-  compiler generator. That generator needs the build and compiler hosts.
-- A non-release build still prepares release hosts for that generator unless
-  `--asset-generator-hosts` is supplied.
-- The installed SDK and C test drivers still name these products.
-- The explicit old bytecode bootstrap route still uses the compiler host.
-  Native recovery and the vendor-sample route use the native compiler.
+The pinned seed builds the current compiler first. That compiler builds the
+asset service, whose runtime helpers may be newer than the seed. Selecting the
+asset service or a target that uses it also selects the current compiler.
 
-The native CLI, native driver parity, and retained-state host replace these
-callers. Delete the packaged compiler generator and its targets with that
-cutover. Then remove `chibi-build-host`, `src/host/build*.c`, `process.c`, the
-`build.*` catalog, and the host/bytecode pins. Deleting them before their
-remaining consumers move would break the build.
+Explicit legacy C test and bootstrap targets remain while their consumers move.
+The old bytecode bootstrap comparison is requested only with `--compare-vm`.
+Native recovery and vendor samples use the native compiler.
 
 ## Verification
 

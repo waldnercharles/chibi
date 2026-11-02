@@ -18,6 +18,7 @@ foreign import libc "system:c"
 foreign libc {
     access :: (path: cstring, mode: i32) -> i32
     mkdir :: (path: cstring, mode: u32) -> i32
+    mkdtemp :: (template: u8[]) -> rawptr
     unlink :: (path: cstring) -> i32
     rmdir :: (path: cstring) -> i32
     rename :: (source: cstring, destination: cstring) -> i32
@@ -623,6 +624,20 @@ pub Copy :: (source: string, destination: string) -> bool {
         return false;
     }
     return true;
+}
+
+// mkdtemp atomically reserves a private directory on the parent's filesystem.
+pub TemporaryDirectory :: (parent: string) -> string {
+    pattern := format_text("{}/work.XXXXXX", parent);
+    template := Block(text_byte_length(pattern) + 1);
+    for index in 0..<text_byte_length(pattern) {
+        template[index] = u8(text_byte_at(pattern, index));
+    }
+    made := mkdtemp(template);
+    if made == 0 {
+        return "";
+    }
+    return Terminated(template);
 }
 
 // Whether the path is a regular file the program may run; a link is followed.

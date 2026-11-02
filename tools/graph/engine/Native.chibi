@@ -1,0 +1,158 @@
+package engine
+
+import c "graph:c"
+import files "graph:files"
+import os "core:os"
+import strings "core:strings"
+
+// Native products share the graph's target names and output directory. Their
+// compiler commands never enter the C toolchain discovery or link path.
+pub NativeArguments :: (target: string) -> string[] {
+    if (target == "chibi") {
+        return ["--package", "native_driver"];
+    }
+    if (target == "chibi-asset-compiler") {
+        return ["--source", "tools/compiler/asset_driver/Main.chibi"];
+    }
+    return [];
+}
+
+pub NativeProducts :: () -> string[] {
+    products: string[] = [];
+    for (target in Targets()) {
+        if (length(NativeArguments(target)) != 0) {
+            products.append(target);
+        }
+    }
+    return products;
+}
+
+NativeTriple :: () -> string {
+    if (os.Platform() == "Darwin") { return "aarch64-apple-darwin"; }
+    if (os.Platform() == "Windows") { return "x86_64-pc-windows-msvc"; }
+    return "x86_64-unknown-linux-gnu";
+}
+
+pub NativeCommand :: (driver: string, llvm: string, root: string, build_dir: string, target: string, jobs: int) -> string[] {
+    arguments := NativeArguments(target);
+    if (length(arguments) == 0) { return []; }
+    if (arguments[0] == "--source") {
+        arguments[1] = Join([root, "/", arguments[1]]);
+    }
+    compiler := driver;
+    // Companions use runtime helpers emitted by the current compiler. The
+    // pinned bootstrap seed builds that compiler, not the companions directly.
+    if (target != "chibi") { compiler = Executable(build_dir, "chibi"); }
+    command := [compiler, "--compiler", Join([root, "/tools/compiler"]), "--core", Join([root, "/packages/core"]),
+                 "--entry", "Main", "--output", Executable(build_dir, target), "--llvm", llvm,
+                 "--target", NativeTriple(), "--jobs", format_text("{}", jobs)];
+    command.extend(arguments);
+    return command;
+}
+
+// Include directory stamps so additions, as well as changed or deleted files,
+// invalidate the graph's existing command/input receipt.
+NativeInputs :: (directory: string) -> string[] {
+    inputs: string[] = [directory];
+    for (name in files.Names(directory)) {
+        path := Join([directory, "/", name]);
+        if (os.IsDirectory(path)) {
+            inputs.extend(NativeInputs(path));
+        } else if (strings.HasSuffix(name, ".chibi")) {
+            inputs.append(path);
+        }
+    }
+    return inputs;
+}
+
+// A native compiler distribution needs authored sources, never the legacy
+// bootstrap bytecode. Mirror the authored tree and remove obsolete inputs.
+pub NativeSources :: (source: string, destination: string) -> bool {
+    listed := os.List(source);
+    if (listed.error || os.Kind(source) != os.KindDirectory || os.Kind(destination) == os.KindLink) { return false; }
+    if (os.MakeDirectory(destination)) { return false; }
+    for (name in listed.names) {
+        from := Join([source, "/", name]);
+        to := Join([destination, "/", name]);
+        if (os.Kind(to) == os.KindLink) { return false; }
+        if (os.Kind(from) == os.KindDirectory) {
+            if (!NativeSources(from, to)) { return false; }
+        } else if (strings.HasSuffix(name, ".chibi") && !CopyChanged(from, to)) {
+            return false;
+        }
+    }
+    for (name in files.Names(destination)) {
+        from := Join([source, "/", name]);
+        to := Join([destination, "/", name]);
+        if (!os.Exists(from) || (!os.IsDirectory(from) && !strings.HasSuffix(name, ".chibi"))) {
+            if (!RemoveTree(to)) { return false; }
+        }
+    }
+    return true;
+}
+
+pub NativeCommands :: (driver: string, llvm: string, root: string, build_dir: string, targets: string[], jobs: int) -> string {
+    commands: string[] = [];
+    for (target in targets) {
+        commands.append(c.LinkEntry(NativeCommand(driver, llvm, root, build_dir, target, jobs), Executable(build_dir, target)));
+    }
+    return Join(["[\n", strings.Join(commands, ",\n"), "\n]\n"]);
+}
+
+pub BuildNative :: (driver: string, llvm: string, root: string, build_dir: string, targets: string[], jobs: int) -> int {
+    if (driver == "" || llvm == "" || !os.IsFile(driver) || jobs < 1) {
+        os.Print("graph: native products require --native-driver FILE, --llvm DIR and positive --jobs");
+        return -1;
+    }
+    inputs := NativeInputs(Join([root, "/tools/compiler"]));
+    inputs.extend(NativeInputs(Join([root, "/packages/core"])));
+    linker := "ld.lld";
+    if (os.Platform() == "Darwin") { linker = "ld64.lld"; }
+    if (os.Platform() == "Windows") { linker = "lld-link"; }
+    for (tool in ["opt", "llc", linker]) {
+        path := Join([llvm, "/", tool]);
+        if (os.Platform() == "Windows") { path = Join([path, ".exe"]); }
+        resolved := os.RealPath(path);
+        if (resolved == "" || !os.IsFile(resolved)) {
+            os.Print(Join(["graph: missing native LLVM tool ", path]));
+            return -1;
+        }
+        inputs.append(resolved);
+    }
+    built := 0;
+    third_party := "";
+    for (target in targets) {
+        for (resource in Resources(target)) {
+            if (third_party == "" && strings.HasPrefix(strings.Partition(resource, "=").tail, "third-party/")) {
+                third_party = ThirdParty(root, "", "");
+            }
+        }
+    }
+    if (!WriteNativeIdentity(root, build_dir)) {
+        os.Print("graph: cannot write the native build identity");
+        return -1;
+    }
+    for (target in targets) {
+        for (resource in Resources(target)) {
+            from := Resolve(root, build_dir, third_party, strings.Partition(resource, "=").tail);
+            to := Resolve(root, build_dir, third_party, strings.Partition(resource, "=").head);
+            copied := true;
+            if (strings.Partition(resource, "=").tail == "tools/compiler") {
+                copied = NativeSources(from, to);
+            } else {
+                copied = CopyChanged(from, to);
+            }
+            if (!copied) {
+                os.Print(Join(["graph: cannot stage native resource ", from]));
+                return -1;
+            }
+        }
+        command := NativeCommand(driver, llvm, root, build_dir, target, jobs);
+        compiled_inputs := inputs;
+        compiled_inputs.append(command[0]);
+        status := c.Step(command, compiled_inputs, Executable(build_dir, target));
+        if (status < 0) { return -1; }
+        built += status;
+    }
+    return built;
+}

@@ -1,7 +1,9 @@
 # Toolchain
 
 Run `chibi` from an installed SDK or use `build/sdk/chibi` in an engine checkout.
-The command finds the compiler and engine resources beside itself.
+The command finds core and engine resources beside itself. Programs compile
+with LLVM/LLD 22 or newer. Pass `--llvm DIR` or set `CHIBI_LLVM_BIN` to the
+directory containing `opt`, `llc` and the platform linker.
 
 ## Run a program
 
@@ -27,28 +29,27 @@ The program prints `Hello, world!` and exits. The runner calls `Main` once.
 It must take no arguments and return either nothing or an `int` exit status
 from 0 to 255. Returning nothing means success, exit status 0.
 
-Read command-line arguments with `application.arguments()`. The returned
-`string[]` includes the resolved source file or package directory at index 0,
-followed by the arguments passed to the program. A function can take them as a
-parameter and print the first one:
+Read command-line arguments with `core:os`. Its `Arguments()` result contains
+exactly the arguments passed after `--`, with the first at index 0:
 
 ```chibi
 package hello
 
-Greet :: (arguments: string[]) {
-    if length(arguments) > 1 {
-        print_string(arguments[1])
+import os "core:os"
+
+Main :: () {
+    arguments := os.Arguments()
+    if length(arguments) > 0 {
+        print_string(arguments[0])
     }
 }
 ```
 
-Call `Greet(application.arguments())` from `Main`, then run `chibi Hello.chibi -- Ada`
-to print `Ada`. `Main` still takes no parameters; `--` separates program
-arguments from command options.
+Run `chibi Hello.chibi -- Ada` to print `Ada`. `Main` takes no parameters;
+`--` separates program arguments from command options.
 
-Every source file must start with `package NAME`. Running a file compiles only
-the selected file and the core library, so unrelated sibling files do not
-affect it. It can import SDK packages with `core:NAME`.
+Every source file must start with `package NAME`. Running a file compiles the selected file and the packages it imports, so
+unrelated sibling files do not affect it. It can import SDK packages with `core:NAME`.
 
 When a program spans several files, run its package directory:
 
@@ -60,38 +61,38 @@ This includes the package's sibling source files and supports local package
 imports with `project:NAME`, alongside `core:NAME` imports. A directory with
 `project.kdl` is a game project; see [Game projects](#game-projects).
 
-With no path, `chibi run` looks for the nearest `project.kdl` in or above the
-working directory. If there is none, it runs the package in the working
-directory.
+With no path, `chibi run` runs the package in the working directory.
 
 ## Reload a program
 
-Add `--watch` to keep the process open after `Main` returns:
+On Linux x86-64, add `--watch` to reload a program between calls to `Frame`:
 
 ```sh
-chibi --watch Hello.chibi
-chibi run --watch Hello.chibi
-chibi Hello.chibi --watch
+chibi --watch Reload.chibi
+chibi run --watch Reload.chibi
+chibi Reload.chibi --watch
 ```
 
-`Main` runs once. To keep a program running, give it a `Frame` function that
-the runner calls about 60 times a second until you press Ctrl-C. `Frame` returns
-nothing to continue, or a nonzero `int` exit status to stop. Use `retain` for a
-value that should survive edits and calls:
+`Main` runs once. Native watched programs provide zero-argument `Main` and
+`Frame` functions returning `int`. The host calls `Frame` about 60 times a
+second. Return 0 to continue, or a nonzero exit status to stop. Use `retain`
+for a value that should survive edits and calls. Save this as `Reload.chibi`:
 
 ```chibi
 package reload
 
-Main :: () {
+Main :: () -> int {
     print_string("started")
+    return 0
 }
 
-Frame :: () {
+Frame :: () -> int {
     ticks: retain int = 0
     ticks += 1
     if ticks % 60 == 0 {
         print_string(format_text("tick {}", ticks))
     }
+    return 0
 }
 ```
 
@@ -102,16 +103,16 @@ call. Change `"tick {}"` to `"tock {}"` and save to see it. See
 [Edit and Continue](../edit-and-continue.md) for what is patched when.
 
 A syntax or type error prints its diagnostic and keeps the last valid code
-running; the next valid save applies. A runtime failure pauses the program, and
-the next valid save resumes it. File targets watch the selected source and the core
+running; the next valid save applies. A runtime failure ends the program with
+a failure status. File targets watch the selected source and the core
 library. Directory targets also watch sibling files and local package sources. Use
 `chibi --watch .` for a program that spans several files.
 
-`Main` and `Frame` must finish synchronously; they cannot suspend or start tasks.
+`Main` and `Frame` must finish synchronously. They can start tasks; task
+continuations keep the generation whose code they run until they finish.
 An edit applies between calls, so it cannot interrupt a busy `Main`, and a loop
-written inside `Main` is not patched; put per-frame work in `Frame`. Without a
-`Frame`, `--watch` keeps polling but has nothing to re-run. Press Ctrl-C to
-stop. `--watch` applies to standalone programs, not game projects.
+written inside `Main` is not patched; put per-frame work in `Frame`. Press
+Ctrl-C to stop. `--watch` applies to standalone programs, not game projects.
 
 ## Game projects
 
@@ -131,62 +132,31 @@ The folder contains package files, rather than game behaviors or libraries.
 Tests import local packages with `project:NAME` and SDK packages with `core:NAME`.
 See [Testing](testing.md) for a complete example.
 
-## The CLI is a Chibi program
+## The native CLI
 
-[apps/chibi/Main.chibi](../../apps/chibi/Main.chibi) is an ordinary package
-entry point. The native [launcher](../../src/host/chibi_main.c) locates its
-installed source and the SDK's core library, then starts it through the same
-application host used by other programs. Argument parsing, command selection,
-output, build freshness and watch policy live in the authored package.
+The compiler and CLI are authored in
+[tools/compiler/native_driver](../../tools/compiler/native_driver). The installed
+`chibi` executable compiles programs directly and invokes LLVM's tools. Build,
+run and test use native executables; no VM host or bytecode fallback is involved.
 
-From the engine checkout, run or test that package directly:
+The engine's runtime APIs and browser path still use VM execution. See the
+[native ledger](../native-llvm-ledger.md) for supported native source forms and
+remaining runtime coverage.
 
-```sh
-chibi apps/chibi -- version
-chibi test apps/chibi
-```
-
-The nested CLI receives its own argument vector through
-`application.arguments()`. `chibi test` runs the tests through
-`chibi-compile --test`, on the authored compiler with the standalone native
-catalog. The CLI and other applications use the same program API.
-
-The [program service](../../src/authoring/program_service.h) has these operations:
-
-| Operation | Result |
-| --- | --- |
-| `program.open(path, entry, arguments)` | An owned program handle with a copied argument vector. `entry` may be empty to require none. Source errors are reported by `update`. |
-| `program.update(handle)` | `1` when a changed generation is accepted, `0` when unchanged, or `-1` for a new failure. |
-| `program.call(handle)` | Calls the entry named at `open`. Separate `status` and `result` values. Status 0 means execution succeeded; result is the authored integer return, or 0 for no return value. |
-| `program.call_entry(handle, name)` | The same, for a named zero-argument function of the accepted generation, such as `Main` or `Frame`. A missing name fails with a diagnostic. |
-| `program.has(handle, name)` | Whether the accepted generation has a runnable function of that name. |
-| `program.diagnostic(handle)` | The current source or runtime diagnostic. |
-| `program.close(handle)` | Releases the session and its generations; a closed handle cannot name another program. |
-
-An invalid update preserves the accepted program and retained state. A valid
-update uses the runtime's existing replacement and migration rules before the
-next call. Call failures and an authored nonzero return are separate results;
-hosts can report a diagnostic without confusing it with the program's exit
-value.
-
-Nested calls share the caller's remaining instruction budget and cancellation
-checks; repeated calls spend that same budget.
-
-Native hosts can use the exported [authoring/program.h](../../src/authoring/program.h)
-session API directly. It accepts package snapshots built from source buffers,
-an explicit native catalog and service bindings, and reports source-range
-diagnostics. A Studio integration can supply editor buffers through this
-boundary and consume its diagnostics without launching a command process.
+A project can provide an ordinary `Build.chibi` with a zero-argument `Main`
+returning nothing or an `int` exit status. `chibi build` finds the nearest
+`Build.chibi` in the working directory or its parents, compiles it through the
+native content cache, and passes the build arguments through `core:os.Arguments`.
+An engine checkout uses its authored toolchain driver instead.
 
 ## Build native programs
 
 ```sh
-chibi build --native --llvm /usr/lib/llvm-18/bin /path/to/program
+chibi build --native --llvm /usr/lib/llvm-22/bin /path/to/program
 ```
 
-`build --native` compiles a folder holding one `.chibi` source to a native
-program with LLVM, without a C compiler. Its first function is the program's
-entry and returns the exit status:
+`build --native` compiles a source file or package folder to a native program
+with LLVM. Its `Main` is the entry and returns the exit status:
 
 ```chibi
 package program
@@ -213,8 +183,8 @@ with no SDK of the other. On macOS, LLVM's tools come from Homebrew's `llvm`
 and `lld`; link them into one folder for `--llvm`. The macOS program links
 against a stub of `libSystem` that the build writes, as Zig's do, listing the C
 functions the program calls, and is signed ad hoc. The Windows program,
-`program.exe`, imports only `ExitProcess` from `kernel32.dll` through an
-import library the build writes, as rustc's `raw-dylib` does. Each target gets
+`program.exe`, uses import libraries the build writes for its declared system
+imports. Each target gets
 its own folder. Line tables are Linux x86-64 only, so `-g` with
 another target fails.
 The program and its receipt go to `build/native/O2-HASH` or `O0-HASH`, named
@@ -223,9 +193,8 @@ program's path. An unchanged build reuses its folder once its receipt still
 names the tools and the program's bytes and the program is executable;
 otherwise the command fails and asks you to remove the folder. A changed build
 never replaces an earlier program. A source that native code cannot compile yet
-fails with the position of its first unsupported form. Native code supports numbers, `bool`, records
-and unions of them, control flow and calls between the source's own functions
-so far. The engine repository's `docs/native-llvm-ledger.md` tracks the rest.
+fails with the position of its first unsupported form. The engine repository's
+`docs/native-llvm-ledger.md` tracks native language support.
 
 An interrupted build leaves its `.work` or `.partial` folder beside the
 output. The next build refuses to start until you remove it, so it never

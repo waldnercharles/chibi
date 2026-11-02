@@ -150,7 +150,7 @@ Type :: (type: int) -> string {
         return "double";
     }
     if (type >= facts.ArrayType) {
-        return "{ i32, i32, ptr }";
+        return "{ i32, i32, ptr, ptr }";
     }
     if (type >= facts.RecordType) {
         return format_text("%record{}", type - facts.RecordType);

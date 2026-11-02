@@ -16,7 +16,7 @@ ScalarMapType :: (types: TypeDecl[], record: int) -> int {
     value := ScalarTypeOf(declared.value_storage);
     if (declared.value_storage == StructStorage) { value = ScalarRecordType(types, declared.value_record); }
     if ((facts.Bits(key) == 0 && key != facts.BoolType && key != facts.StringType) ||
-        value == 0 || declared.value_container != 0 ||
+        value == 0 || declared.value_storage == TaskStorage || declared.value_container != 0 ||
         (declared.value_record >= 0 && declared.value_storage != StructStorage)) {
         return 0;
     }

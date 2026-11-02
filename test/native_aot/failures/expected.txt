@@ -4,6 +4,7 @@ FAIL facts.Wrong
 FAIL facts.WrongBounds
 PASS facts.Assertion
 PASS facts.Bounds
+PASS facts.Budget
 PASS facts.Imported
 PASS facts.Overwrite
 PASS facts.Plain

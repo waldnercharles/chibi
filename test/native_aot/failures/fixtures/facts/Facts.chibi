@@ -19,3 +19,5 @@ WrongBounds :: () { testing.ExpectFailure(testing.Failure.AssertionFailed); item
 Imported :: () { helper.Arm(); assert(false, "imported arm"); }
 @test
 Overwrite :: () { testing.ExpectFailure(testing.Failure.IndexOutOfRange); helper.Arm(); assert(false, "last arm wins"); }
+@test
+Budget :: () { testing.ExpectFailure(testing.Failure.BudgetExhausted); while (true) {} }

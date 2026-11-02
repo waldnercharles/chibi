@@ -26,7 +26,7 @@ entry:
   %cell.bytes = ptrtoint ptr getelementptr (%chibi.managed.cell, ptr null, i32 1) to i64
   %root.bytes = ptrtoint ptr getelementptr (%chibi.managed.root, ptr null, i32 1) to i64
   %pointer.bytes = ptrtoint ptr getelementptr ({ ptr, i64, i64 }, ptr null, i32 1) to i64
-  %heap.sized = icmp eq i64 %heap.bytes, 48
+  %heap.sized = icmp eq i64 %heap.bytes, 56
   %cell.sized = icmp eq i64 %cell.bytes, 64
   %root.sized = icmp eq i64 %root.bytes, 24
   %pointer.sized = icmp eq i64 %pointer.bytes, 24
@@ -161,4 +161,70 @@ entry:
   store i64 -1, ptr %epoch
   call void @chibi_managed.collect(ptr %ctx, ptr %heap)
   ret i32 0
+}
+
+; Non-LIFO frame cancellation must not disturb other suspended roots, and a
+; spawning function restoring its stack boundary must leave those roots live.
+define internal i32 @managed_runtime.persistent(ptr %ctx) {
+entry:
+  %heap = call ptr @chibi_managed.owner(ptr %ctx)
+  %node.bytes = ptrtoint ptr getelementptr (%chibi.managed.persistent, ptr null, i32 1) to i64
+  %node.sized = icmp eq i64 %node.bytes, 32
+  br i1 %node.sized, label %initialize, label %bad
+initialize:
+  %first = call { ptr, i64, i64 } @managed_runtime.new(ptr %ctx)
+  %second = call { ptr, i64, i64 } @managed_runtime.new(ptr %ctx)
+  %third = call { ptr, i64, i64 } @managed_runtime.new(ptr %ctx)
+  %a = alloca { ptr, i64, i64 }
+  %b = alloca { ptr, i64, i64 }
+  %c = alloca { ptr, i64, i64 }
+  store { ptr, i64, i64 } %first, ptr %a
+  store { ptr, i64, i64 } %second, ptr %b
+  store { ptr, i64, i64 } %third, ptr %c
+  %ra = alloca %chibi.managed.persistent
+  %rb = alloca %chibi.managed.persistent
+  %rc = alloca %chibi.managed.persistent
+  store %chibi.managed.persistent zeroinitializer, ptr %ra
+  store %chibi.managed.persistent zeroinitializer, ptr %rb
+  store %chibi.managed.persistent zeroinitializer, ptr %rc
+  %stack = alloca %chibi.managed.root
+  %stack.head = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 1
+  %previous = load ptr, ptr %stack.head
+  call void @chibi_managed.push(ptr %heap, ptr %stack, ptr %b, ptr @chibi_managed.trace.pointer)
+  call void @chibi_managed.hold(ptr %heap, ptr %ra, ptr %a, ptr @chibi_managed.trace.pointer)
+  call void @chibi_managed.hold(ptr %heap, ptr %rb, ptr %b, ptr @chibi_managed.trace.pointer)
+  call void @chibi_managed.hold(ptr %heap, ptr %rc, ptr %c, ptr @chibi_managed.trace.pointer)
+  store ptr %previous, ptr %stack.head
+  call void @chibi_managed.collect(ptr %ctx, ptr %heap)
+  %used.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 3
+  %all.bytes = load i64, ptr %used.at
+  %all.live = icmp eq i64 %all.bytes, 204
+  br i1 %all.live, label %middle, label %bad
+middle:
+  call void @chibi_managed.unhold(ptr %rb)
+  call void @chibi_managed.collect(ptr %ctx, ptr %heap)
+  %pair.bytes = load i64, ptr %used.at
+  %pair.live = icmp eq i64 %pair.bytes, 136
+  br i1 %pair.live, label %tail, label %bad
+tail:
+  call void @chibi_managed.unhold(ptr %ra)
+  call void @chibi_managed.collect(ptr %ctx, ptr %heap)
+  %last.bytes = load i64, ptr %used.at
+  %last.live = icmp eq i64 %last.bytes, 68
+  %address = call ptr @chibi_managed.address(ptr %heap, { ptr, i64, i64 } %third, i64 -123, i64 4, i32 6)
+  %value = load i32, ptr %address
+  %correct = icmp eq i32 %value, 7
+  %survived = and i1 %last.live, %correct
+  br i1 %survived, label %head, label %bad
+head:
+  call void @chibi_managed.unhold(ptr %rc)
+  call void @chibi_managed.unhold(ptr %rc)
+  call void @chibi_managed.collect(ptr %ctx, ptr %heap)
+  %empty.bytes = load i64, ptr %used.at
+  %empty = icmp eq i64 %empty.bytes, 0
+  br i1 %empty, label %done, label %bad
+done:
+  ret i32 0
+bad:
+  ret i32 98
 }

@@ -27,6 +27,10 @@ allocations and a fixed peak bound, both at the normal collection threshold
 and with collection forced before every cell allocation. Native probes cover
 descriptor rejection, shared tracing once per backing/epoch, borrowed array
 imports, cross-heap rejection before epoch shortcuts and malformed pin CFGs.
+Persistent roots also survive a spawning function's stack-boundary restore.
+Real collection after middle, tail and head removal checks non-LIFO cleanup
+and the surviving value at O0/O2. The heap is 56 bytes; persistent nodes are
+32 bytes and unlink in constant time. Stack roots retain their 24-byte ABI.
 
 Raw native IR clients must pin each live pointer-array owning place or fresh
 descriptor around collecting calls and cell construction; borrowed Read slots

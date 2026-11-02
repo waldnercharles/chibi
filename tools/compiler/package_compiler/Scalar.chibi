@@ -3861,26 +3861,9 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
                 return ScalarOperands.Failed(Diagnose(forest, attributes.fault, 0, attributes.message));
             }
         }
-        rejected := ScalarSignature(forest, records, params, callable);
-        if (rejected >= 0) {
-            return ScalarOperands.Failed(Diagnose(forest, rejected, 0, ScalarSignatureMessage(params, callable, rejected, forest)));
-        }
     }
     if (length(seen) == 0) {
         return ScalarOperands.Failed(ScalarStart("scalar proof requires a concrete function"));
-    }
-    // A library has no entry.
-    first := seen[0];
-    if (!is_library && first.count != 0) {
-        return ScalarOperands.Failed(Diagnose(forest, Field(forest, first.node, syntax.FieldParameters), 0,
-                                              "scalar proof requires its first function to take no parameters"));
-    }
-    if (!is_library && (first.result != IntStorage || first.result_container != 0)) {
-        at := Field(forest, first.node, syntax.FieldResults);
-        if (at < 0) {
-            at = first.node;
-        }
-        return ScalarOperands.Failed(Diagnose(forest, at, 0, "scalar proof requires its first function to return int or nothing"));
     }
     solid := SolidOffsets(text);
     // A scoped parameter's `p^` is `p`, as every body sees it.
@@ -3912,6 +3895,28 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
                                ScalarRetainedNames(scoped, text, checked, callables[function]), summary, &assertions);
         if (emitted.message != "") { return ScalarOperands.Failed(emitted); }
         assertion_offsets.append(length(assertions));
+    }
+    // Source diagnostics precede restrictions of the native representation or
+    // process entry ABI. In particular, an invalid math expression must keep
+    // the ordinary checker's diagnostic even when its signature uses vectors.
+    for (callable in seen) {
+        rejected := ScalarSignature(forest, records, params, callable);
+        if (rejected >= 0) {
+            return ScalarOperands.Failed(Diagnose(forest, rejected, 0, ScalarSignatureMessage(params, callable, rejected, forest)));
+        }
+    }
+    // A library has no entry.
+    first := seen[0];
+    if (!is_library && first.count != 0) {
+        return ScalarOperands.Failed(Diagnose(forest, Field(forest, first.node, syntax.FieldParameters), 0,
+                                              "scalar proof requires its first function to take no parameters"));
+    }
+    if (!is_library && (first.result != IntStorage || first.result_container != 0)) {
+        at := Field(forest, first.node, syntax.FieldResults);
+        if (at < 0) {
+            at = first.node;
+        }
+        return ScalarOperands.Failed(Diagnose(forest, at, 0, "scalar proof requires its first function to return int or nothing"));
     }
     switch ScalarResults(callables, params, checked, members, body_optionals) {
         case .Viewed(viewed_callables, viewed_types, viewed_members):

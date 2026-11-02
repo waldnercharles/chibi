@@ -273,45 +273,85 @@ TEST_CASE(every_module_runs_as_on_linux)
     return true;
 }
 
-/* Runs each program in the bundle's programs.txt, a line `program NAME
+/* Runs each program in the two producer-owned lists, a line `program NAME
  * STATUS` each, with the tab-separated UTF-8 arguments that may follow the
  * status, and checks its exit status. */
 TEST_CASE(every_program_exits_as_listed)
 {
     char list[PATH_BYTES];
     snprintf(directory, sizeof directory, "%s/%s", bundle, TARGET);
-    snprintf(list, sizeof list, "%s/programs.txt", directory);
-    FILE *file = fopen(list, "r");
-    REQUIRE(file);
-    char line[512];
+    static const struct
+    {
+        const char *name;
+        int count;
+    } lists[] = {
+#ifdef _WIN32
+        { "native-build-programs.txt", 6 },
+#else
+        { "native-build-programs.txt", 3 },
+#endif
+        { "native-link-programs.txt", 2 },
+    };
     int programs = 0;
     bool exited = true;
-    while (exited && fgets(line, sizeof line, file)) {
-        char name[256], program[PATH_BYTES];
-        int expected, used = 0;
-        REQUIRE(sscanf(line, "program %255s %d%n", name, &expected, &used) == 2);
-        const char *arguments[MAX_PROGRAM_ARGUMENTS + 2] = { program };
-        int given = 1;
-        line[strcspn(line, "\r\n")] = 0;
-        for (char *tab = strchr(line + used, '\t'); tab; tab = strchr(tab + 1, '\t')) {
-            REQUIRE(given <= MAX_PROGRAM_ARGUMENTS);
-            *tab = 0;
-            arguments[given++] = tab + 1;
-        }
-        arguments[given] = NULL;
-        snprintf(program, sizeof program, "%s/programs/%s", directory, name);
+    for (size_t i = 0; exited && i < sizeof lists / sizeof *lists; i++) {
+        snprintf(list, sizeof list, "%s/%s", directory, lists[i].name);
+        FILE *file = fopen(list, "r");
+        REQUIRE(file);
+        char line[512];
+        int listed = 0;
+        while (exited && fgets(line, sizeof line, file)) {
+            char name[256], program[PATH_BYTES];
+            int expected, used = 0;
+            REQUIRE(sscanf(line, "program %255s %d%n", name, &expected, &used) == 2);
+            const char *arguments[MAX_PROGRAM_ARGUMENTS + 2] = { program };
+            int given = 1;
+            line[strcspn(line, "\r\n")] = 0;
+            for (char *tab = strchr(line + used, '\t'); tab;
+                 tab = strchr(tab + 1, '\t')) {
+                REQUIRE(given <= MAX_PROGRAM_ARGUMENTS);
+                *tab = 0;
+                arguments[given++] = tab + 1;
+            }
+            arguments[given] = NULL;
+            if (i == 1) {
+                /* Both argument-shim checks must reach the target. */
+                REQUIRE(
+                    (listed == 0 && given == 1) ||
+                    (listed == 1 && given == 3 && !strcmp(arguments[1], "a b") &&
+                     !strcmp(arguments[2], "héllo €"))
+                );
+            } else {
+                REQUIRE(given == 1);
+            }
+            snprintf(program, sizeof program, "%s/programs/%s", directory, name);
 #ifndef _WIN32
-        /* Artifacts keep no file modes. */
-        REQUIRE(!chmod(program, 0755));
+            /* Artifacts keep no file modes. */
+            REQUIRE(!chmod(program, 0755));
 #endif
-        int status = run(arguments);
-        if (status != expected) {
-            fprintf(stderr, "%s: %s exited with %d, expected %d\n", TARGET, name, status, expected);
+            int status = run(arguments);
+            if (status != expected) {
+                fprintf(stderr, "%s: %s exited with %d, expected %d\n", TARGET, name, status, expected);
+            }
+            exited = status == expected;
+            programs++;
+            listed++;
         }
-        exited = status == expected;
-        programs++;
+        bool read_ok = !ferror(file);
+        fclose(file);
+        REQUIRE(read_ok);
+        if (exited && listed != lists[i].count) {
+            fprintf(
+                stderr,
+                "%s: %s listed %d programs, expected %d\n",
+                TARGET,
+                lists[i].name,
+                listed,
+                lists[i].count
+            );
+        }
+        REQUIRE(!exited || listed == lists[i].count);
     }
-    fclose(file);
     printf("%s: %d programs ran\n", TARGET, programs);
     REQUIRE(exited && programs);
     return true;

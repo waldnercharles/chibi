@@ -69,9 +69,25 @@ Main :: () -> int {
     expected := os.Capture([chibi, "test", "-O0", "--llvm", llvm, tests]);
     assert(expected.status == 0 && strings.Contains(expected.stdout, "PASS project.compile_error"), "compile-error tests compare native source coordinates");
 
-    Write(source, "package broken\nMain :: () -> int { return missing; }\n");
+    Write(test_source, "package checks\n@test\nMissingTest :: () { Missing(); }\n");
+    bad_test := os.Capture([chibi, "test", "-O0", "--llvm", llvm, tests]);
+    assert(bad_test.status == 1 && strings.Contains(bad_test.stderr,
+        strings.Concatenate([os.RealPath(test_source), ":3:21: Unknown function 'Missing'"])), "test compile failures name the physical source and column");
+
+    Write(source, "package broken\nMain :: () -> int { return Missing(); }\n");
     rejected := os.Capture([chibi, "run", "--llvm", llvm, source]);
     assert(rejected.status == 1 && rejected.stdout == "" && strings.Contains(rejected.stderr, "native: rejected"), "rejected source cannot execute a stale program");
+    assert(strings.Contains(rejected.stderr, strings.Concatenate([os.RealPath(source), ":2:28: Unknown function 'Missing'"])),
+        "a standalone compile failure names its physical source and column");
+    if (os.Platform() != "Windows") {
+        output := strings.Concatenate([scratch, "/relative-rejection"]);
+        Write(output, "original output");
+        relative := InFolder(scratch, [chibi, "--compiler", ".", "--core", os.Getenv("CHIBI_CORE"),
+            "--source", "main with spaces.chibi", "--entry", "Main", "--emit-llvm", "--output", output]);
+        assert(relative.status == 1 && strings.Contains(relative.stderr,
+            strings.Concatenate([os.RealPath(source), ":2:28: Unknown function 'Missing'"])), "relative low-level source paths report their physical origin");
+        assert(os.ReadText(output).text == "original output", "relative source rejection preserves the output");
+    }
     os.Print("native CLI: run, build cache, arguments, assertions and rejections passed");
     return 0;
 }
@@ -79,6 +95,12 @@ Main :: () -> int {
 Write :: (path: string, text: string) {
     written := os.WriteText(path, text);
     assert(written == nil, "write fixture source");
+}
+
+InFolder :: (folder: string, command: string[]) -> os.Result {
+    arguments := ["/bin/sh", "-c", "cd \"$1\" && shift && exec \"$@\"", "chibi-cli-directory", folder];
+    arguments.extend(command);
+    return os.Capture(arguments);
 }
 
 // Graph tools need a named entry, checkout project imports and independent
@@ -115,4 +137,33 @@ ScopedRuns :: (chibi: string, llvm: string, scratch: string) {
     assert(bad_core.status == 2 && strings.Contains(bad_core.stderr, "cannot find core directory"), "an invalid explicit core cannot use the environment instead");
     missing := os.Capture([chibi, "run", "--entry"]);
     assert(missing.status == 2 && strings.Contains(missing.stderr, "--entry needs a nonempty value"), "missing named entry is diagnosed");
+    imported := strings.Concatenate([collection_root, "/facts/Facts.chibi"]);
+    Write(imported, "package external_facts\npub Value :: () -> int { return Missing(); }\n");
+    bad_import := os.Capture(command);
+    assert(bad_import.status == 1 && strings.Contains(bad_import.stderr,
+        strings.Concatenate([os.RealPath(imported), ":2:33: Unknown function 'Missing'"])), "an imported compile failure names its physical collection path");
+    Write(imported, "package external_facts\npub Value :: () -> int { return 22; }\n");
+    local := strings.Concatenate([root, "/facts/Facts.chibi"]);
+    Write(local, "package facts\npub Value :: () -> int { return Missing(); }\n");
+    bad_local := os.Capture(command);
+    assert(bad_local.status == 1 && strings.Contains(bad_local.stderr,
+        strings.Concatenate([os.RealPath(local), ":2:33: Unknown function 'Missing'"])), "project imports use the project root rather than the external entry folder");
+    output := strings.Concatenate([scratch, "/rejected-package"]);
+    Write(output, "original output");
+    bad_package := os.Capture([chibi, "--compiler", os.RealPath(root), "--core", os.Getenv("CHIBI_CORE"),
+        "--package", "facts", "--entry", "Value", "--output", output, "--llvm", llvm]);
+    assert(bad_package.status == 1 && strings.Contains(bad_package.stderr,
+        strings.Concatenate([os.RealPath(local), ":2:33: Unknown function 'Missing'"])), "a package diagnostic does not repeat its package directory");
+    assert(os.ReadText(output).text == "original output", "a rejected package preserves the existing output");
+    if (os.Platform() != "Windows") {
+        relative := InFolder(root, [chibi, "--compiler", ".", "--core", os.Getenv("CHIBI_CORE"),
+            "--package", "facts", "--entry", "Value", "--output", output, "--llvm", llvm]);
+        assert(relative.status == 1 && strings.Contains(relative.stderr,
+            strings.Concatenate([os.RealPath(local), ":2:33: Unknown function 'Missing'"])), "relative low-level package roots report physical paths");
+        assert(os.ReadText(output).text == "original output", "relative package rejection preserves the output");
+    }
+    Write(source, "package scoped\nHelper :: () -> int { return 42; }\n");
+    absent := os.Capture([chibi, "run", "--llvm", llvm, "--entry", "Run", source]);
+    assert(absent.status == 1 && strings.Contains(absent.stderr, "native: rejected Run:"),
+        "a missing entry diagnostic names the requested entry");
 }

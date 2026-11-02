@@ -128,8 +128,16 @@ Build :: (arguments: string[]) -> int {
     if (root != "") {
         folder = root;
     }
+    diagnostic_project := os.RealPath(project);
+    if (diagnostic_project == "") { diagnostic_project = project; }
+    diagnostic_source := "";
+    if (source != "") {
+        diagnostic_source = os.RealPath(source);
+        if (diagnostic_source == "") { diagnostic_source = source; }
+    }
     options: DriverOptions = {level: level, lines: lines, static_link: Flag(arguments, "--static"),
-                               shared: shared, folder: folder, keep_module: root != "", emit_llvm: emit_llvm};
+                               shared: shared, folder: folder, project: diagnostic_project, source: diagnostic_source,
+                               keep_module: root != "", emit_llvm: emit_llvm};
     if (root != "") {
         return CachedBuild(root, collections, directories, gathered, triple, chosen, llvm, Jobs(arguments), options, source);
     }
@@ -145,6 +153,9 @@ DriverOptions :: struct {
     static_link: bool;
     shared: bool;
     folder: string;
+    // Source identity is independent of the entry folder used for archives.
+    project: string;
+    source: string;
     keep_module: bool;
     // Emits the ordinary program module bundle for an external target linker.
     // Each `; chibi-piece` boundary begins an independent LLVM module.
@@ -164,7 +175,7 @@ HostTarget :: (triple: string) -> bool {
 Emit :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
          chosen: string, llvm: string, output: string, jobs: int) -> int {
     return EmitOptions(collections, directories, paths, sources, triple, chosen, llvm, output, jobs,
-                       {level: "2", lines: false, static_link: false, shared: false, folder: ".", keep_module: false, emit_llvm: false});
+                       {level: "2", lines: false, static_link: false, shared: false, folder: ".", project: ".", source: "", keep_module: false, emit_llvm: false});
 }
 
 // Emits into the caller's work directory; only a successful link replaces
@@ -212,9 +223,10 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     for (directory in directories) {
         visible.append(route.Visible(directory));
     }
+    origins: DiagnosticOrigins = {root: options.project, source: options.source, directories: directories, entry: chosen};
     compiled: Output = Output.Rejected("");
     if (length(rows) > 0) {
-        compiled = CollectedModule(collections, visible, paths, sources, triple, rows, directory);
+        compiled = CollectedModule(collections, visible, paths, sources, triple, rows, directory, origins);
     } else if (shared) {
         if (chosen != "") {
             os.Print("native: a shared generation takes no --entry");
@@ -225,12 +237,12 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
                 os.Print("native: a library declaration takes one source");
                 return 1;
             }
-            compiled = LibraryModule(paths[0], sources[0], triple);
+            compiled = LibraryModule(paths[0], sources[0], triple, origins);
         } else {
-            compiled = ModuleShared(collections, visible, paths, sources, triple, "", directory);
+            compiled = ModuleWith(collections, visible, paths, sources, triple, "", directory, true, origins);
         }
     } else {
-        compiled = Module(collections, visible, paths, sources, triple, chosen, directory);
+        compiled = ModuleWith(collections, visible, paths, sources, triple, chosen, directory, false, origins);
     }
     pieces: string[] = [];
     switch compiled {

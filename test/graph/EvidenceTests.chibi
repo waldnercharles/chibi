@@ -1,6 +1,7 @@
 package graph_evidence_tests
 
 import evidence "graph:evidence"
+import files "graph:files"
 import os "core:os"
 import strings "core:strings"
 
@@ -114,7 +115,7 @@ Record :: (output: string, command: string[], stamped: string[]) {
     text := strings.Join(command, "\n");
     text = format_text("{}\n\n", text);
     for (path in stamped) {
-        text = format_text("{}{}\n{}\n", text, path, os.Stamp(path));
+        text = format_text("{}{}\n{}\n", text, path, files.Fingerprint(path));
     }
     Write(format_text("{}.chibi-record", output), text);
 }

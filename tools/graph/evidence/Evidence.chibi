@@ -219,7 +219,8 @@ pub ReadRecord :: (output: string) -> string {
     }
     for (index in 0..<length(footer) / 2) {
         path := footer[index * 2];
-        if (path == "" || os.Stamp(path) != footer[index * 2 + 1]) {
+        fingerprint := files.Fingerprint(path);
+        if (path == "" || fingerprint == "" || fingerprint != footer[index * 2 + 1]) {
             return format_text("{}: stale input/output {}", output, path);
         }
     }
@@ -360,11 +361,11 @@ Verify :: (root: string, build: string, output: string, nm: string, selected: Se
             return {problem: format_text("{}: {}", path, problem), checked: checked};
         }
         before := os.Stamp(path);
+        digest := files.Digest(path);
         problem = ReadRecord(path);
         if (problem != "") {
             return {problem: problem, checked: checked};
         }
-        digest := files.Digest(path);
         listed := os.Capture([nm, "-g", path]);
         if (listed.status != 0 || digest == "") {
             return {problem: format_text("cannot read the symbols of {}", path), checked: checked};
@@ -382,7 +383,7 @@ Verify :: (root: string, build: string, output: string, nm: string, selected: Se
         if (problem != "") {
             return {problem: format_text("{}: {}", path, problem), checked: checked};
         }
-        if (os.Stamp(path) != before) {
+        if (os.Stamp(path) != before || (os.Platform() == "Windows" && files.Digest(path) != digest)) {
             return {problem: format_text("output changed during capture: {}", path), checked: checked};
         }
         names: string[] = [];

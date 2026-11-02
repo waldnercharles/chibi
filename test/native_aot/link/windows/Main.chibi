@@ -1,6 +1,8 @@
 package windows_objects
 
 import host "project:native_link_host"
+import c "graph:c"
+import evidence "graph:evidence"
 import os "core:os"
 import strings "core:strings"
 import windows "core:sys/windows"
@@ -24,6 +26,7 @@ Main :: () -> int {
     work := arguments[1];
     Files(llvm, work);
     Processes(work);
+    GraphCache(work);
     module := strings.Concatenate([work, "/sample.ll"]);
     object := strings.Concatenate([work, "/sample.o"]);
     bitcode := strings.Concatenate([object, ".bc"]);
@@ -63,6 +66,13 @@ Child :: (arguments: string[]) -> int {
     }
     if mode == "child-exit5" {
         return 5;
+    }
+    if mode == "child-cache" {
+        source := os.ReadText(arguments[2]);
+        assert(source.error == nil, "read the graph step's input");
+        written := os.WriteText(arguments[4], source.text);
+        assert(written == nil, "write the graph step's output");
+        return 0;
     }
     if mode == "child-arguments" {
         assert(length(arguments) == 6 && arguments[1] == "" && arguments[2] == "a b" &&
@@ -182,6 +192,71 @@ Processes :: (work: string) {
     }
     assert(Handles() == before, "all process, job, thread and file handles were closed");
     os.Print("PASS native Windows asynchronous processes");
+}
+
+// Reproduce a coarse-clock collision without depending on this runner's clock:
+// retain the recorded content hash, but give it the rewritten file's metadata.
+// A stamp-only record consequently appears current to the old implementation.
+CollideMetadata :: (record: string, path: string) {
+    read := os.ReadText(record);
+    assert(read.error == nil, "read the graph record");
+    lines := strings.SplitLines(read.text);
+    at := -1;
+    for index in 0..<length(lines) {
+        if lines[index] == "" {
+            at = index + 1;
+            break;
+        }
+    }
+    assert(at >= 0, "the graph record has a metadata footer");
+    while at + 1 < length(lines) {
+        if lines[at] == path {
+            fingerprint := strings.Partition(lines[at + 1], "\t");
+            lines[at + 1] = os.Stamp(path);
+            if fingerprint.tail != "" {
+                lines[at + 1] = strings.Concatenate([lines[at + 1], "\t", fingerprint.tail]);
+            }
+        }
+        at += 2;
+    }
+    written := os.WriteText(record, strings.Concatenate([strings.Join(lines, "\n"), "\n"]));
+    assert(written == nil, "write a colliding metadata record");
+}
+
+GraphCache :: (work: string) {
+    source := strings.Concatenate([work, "/graph cache input ü"]);
+    output := strings.Concatenate([work, "/graph cache output ü"]);
+    record := strings.Concatenate([output, ".chibi-record"]);
+    command := [os.ProgramPath(), "child-cache", "-c", source, "-o", output];
+    written := os.WriteText(source, "before");
+    assert(written == nil, "write a graph input");
+    stepped := c.Step(command, [source], output);
+    assert(stepped == 1, "the cold graph step runs");
+    stepped = c.Step(command, [source], output);
+    assert(stepped == 0 && evidence.ReadRecord(output) == "",
+           "an unchanged graph step and its evidence are current");
+    written = os.WriteText(source, "after!");
+    assert(written == nil, "rewrite a graph input without changing its size");
+    CollideMetadata(record, source);
+    assert(strings.Contains(evidence.ReadRecord(output), "stale input/output"),
+           "evidence refuses changed content even when its metadata matches");
+    stepped = c.Step(command, [source], output);
+    assert(stepped == 1 && os.ReadText(output).text == "after!",
+           "changed content rebuilds even when its metadata matches");
+    assert(evidence.ReadRecord(output) == "", "the rebuilt record proves the current bytes");
+    written = os.WriteText(output, "broken");
+    assert(written == nil, "rewrite a graph output without changing its size");
+    CollideMetadata(record, output);
+    assert(strings.Contains(evidence.ReadRecord(output), "stale input/output"),
+           "evidence refuses an output with changed content");
+    stepped = c.Step(command, [source], output);
+    assert(stepped == 1 && os.ReadText(output).text == "after!",
+           "a modified output is rebuilt too");
+    for path in [source, output, record] {
+        removed := os.Remove(path);
+        assert(removed == nil, "remove the graph cache fixture");
+    }
+    os.Print("PASS native Windows graph content invalidation");
 }
 
 // The native cache uses exclusive directory reservation/publication, canonical

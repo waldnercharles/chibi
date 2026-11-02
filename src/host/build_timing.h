@@ -78,9 +78,6 @@ static inline const char *build_timing_category(char *const *argv, bool reported
         }
         if (!strcmp(argv[i], "--source") && argv[i + 1]) {
             const char *source = build_timing_name(argv[i + 1]);
-            if (!strcmp(source, "AssetCompiler.chibi")) {
-                return "generator";
-            }
             if (!strcmp(source, "Graph.chibi")) {
                 return "graph-child";
             }

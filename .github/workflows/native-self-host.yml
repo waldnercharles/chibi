@@ -392,6 +392,23 @@ jobs:
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |
           & ./test/bootstrap/native-runner.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
+      - name: Build native Windows checkout products without host tools
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
+        run: |
+          & ./test/bootstrap/native-checkout.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
+      - name: Check native Windows DLL isolation and private runtimes
+        id: windows-dll-proof
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
+        run: ./test/native_aot/loader/RunWindows.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
+      - name: Preserve failed Windows DLL evidence
+        if: ${{ failure() && steps.windows-dll-proof.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-dll-evidence
+          path: ${{ runner.temp }}/chibi-dll-loader-*/**
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
       - name: Check native Windows formatting, task timing, math and SDK paths
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |

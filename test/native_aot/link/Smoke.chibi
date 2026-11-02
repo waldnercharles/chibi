@@ -8,7 +8,7 @@ import strings "core:strings"
 // Links a real program on this machine with only LLVM's tools: a module that
 // calls `add` from a vendored-style archive, built with llc and llvm-ar. It
 // runs from `chibi build test native-link` (tools/tests.tsv, through run.sh,
-// which gives the build host the two packages as collections) with
+// which gives the native compiler the two packages as collections) with
 // CHIBI_LLVM_BIN naming the folder of llc, llvm-ar and the lld tools; an empty
 // PATH is enough. Without CHIBI_LLVM_BIN it reports that it did not run. The
 // program must exit with status 42.
@@ -274,9 +274,11 @@ Run :: () -> int {
     }
     bundle := os.Getenv("CHIBI_NATIVE_BUNDLE");
     if (bundle != "") {
-        for (other in [["macos-arm64", "arm64-apple-macosx11.0.0"], ["windows-x64", "x86_64-pc-windows-msvc"]]) {
-            if (other[1] != triple) {
-                built := Bundle(llvm, work, bundle, other[1], other[0]);
+        for (other in ["arm64-apple-macosx11.0.0", "x86_64-pc-windows-msvc"]) {
+            directory := "macos-arm64";
+            if (link.TargetOf(other) == link.WindowsX64) { directory = "windows-x64"; }
+            if (other != triple) {
+                built := Bundle(llvm, work, bundle, other, directory);
                 if (built != 0) {
                     return built;
                 }

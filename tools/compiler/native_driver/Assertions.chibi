@@ -1,0 +1,53 @@
+package native_driver
+
+import compiler "project:package_compiler"
+import facts "project:scalar_facts"
+import abi "project:native_abi"
+import strings "core:strings"
+
+// One document boundary, 32 bytes on 64-bit targets. Body rows already carry
+// joined line/column positions; retain only their per-document prefix here.
+AssertionDocument :: struct { path: string; start: int; line: int; }
+
+// Prefix the already-decoded messages once at compile time. Source bytes are
+// scanned once for document line counts; each assertion resolves its document
+// by binary search. The runtime writes immutable bytes without reading source.
+AssertionLocations :: (collections: string[], directories: string[], paths: string[], sources: string[],
+                       rows: facts.Row[], target: abi.Target, os: int, arch: int, origins: DiagnosticOrigins) -> facts.Row[] {
+    present := false;
+    for (row in rows) { present = present || row.kind == facts.AssertRow; }
+    if (!present) { return rows; }
+    documents: AssertionDocument[] = [];
+    offset := 0;
+    line := 1;
+    for (index in 0..<length(paths)) {
+        source := sources[index];
+        if (compiler.TargetPackagePath(collections, directories, paths[index])) {
+            source = compiler.TargetPackageText(os, arch, target.pointer_bits, 1);
+        }
+        document: AssertionDocument = {path: PhysicalSource(origins, paths[index], index), start: offset, line: line};
+        documents.append(document);
+        offset += strings.ByteLength(source);
+        line += strings.Count(source, "\n");
+        if (!strings.HasSuffix(source, "\n")) { offset += 1; line += 1; }
+    }
+    annotated := rows;
+    for (row, index in rows) {
+        if (row.kind != facts.AssertRow || row.text == "") { continue; }
+        first := 0;
+        last := length(documents);
+        while (first < last) {
+            middle := first + (last - first) / 2;
+            if (documents[middle].start <= row.start) { first = middle + 1; }
+            else { last = middle; }
+        }
+        // Malformed externally supplied rows still reach the ordinary facts
+        // validator; annotation must not turn a bad range into an index fault.
+        if (first == 0) { continue; }
+        document := documents[first - 1];
+        located := row;
+        located.text = format_text("{}:{}:{}: {}\n", document.path, row.line - document.line + 1, row.column, row.text);
+        annotated[index] = located;
+    }
+    return annotated;
+}

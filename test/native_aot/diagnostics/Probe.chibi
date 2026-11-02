@@ -7,6 +7,7 @@ import abi "project:native_abi"
 import strings "core:strings"
 import syntax "project:syntax_diagnostics"
 import os "core:os"
+import route "project:driver_paths"
 
 // run.sh appends the driver's actual catalog, not a second maintained copy.
 Main :: () -> int {

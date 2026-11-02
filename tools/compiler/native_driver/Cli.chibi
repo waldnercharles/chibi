@@ -390,8 +390,7 @@ Subject :: struct {
     problem: string;
 }
 
-// The program PATH names, a .chibi file or a folder with a Main.chibi, or with
-// exactly one .chibi file.
+// The program PATH names: one source file, or every source in a package folder.
 Resolve :: (requested: string) -> Subject {
     path := os.RealPath(requested);
     if (path == "") {
@@ -412,18 +411,12 @@ Resolve :: (requested: string) -> Subject {
     if (os.IsFile(strings.Concatenate([path, "/Main.chibi"]))) {
         return {project: path, source: "", package: ".", problem: ""};
     }
-    only := "";
-    count := 0;
     for (name in os.List(path).names) {
         if (strings.HasSuffix(name, ".chibi") && os.IsFile(strings.Concatenate([path, "/", name]))) {
-            only = name;
-            count += 1;
+            return {project: path, source: "", package: ".", problem: ""};
         }
     }
-    if (count == 1) {
-        return {project: path, source: strings.Concatenate([path, "/", only]), package: ".", problem: ""};
-    }
-    return {project: "", source: "", package: ".", problem: format_text("{}: holds no Main.chibi and not exactly one .chibi source", requested)};
+    return {project: "", source: "", package: ".", problem: format_text("{}: holds no .chibi source", requested)};
 }
 
 // Makes `path` and the folders above it that are missing.
@@ -483,7 +476,8 @@ CompileProgram :: (subject: Subject, core: string, llvm: string, triple: string,
     folder := subject.project;
     if (scoped.source != "") { folder = Directory(scoped.source); }
     options: DriverOptions = {level: invocation.mode, lines: invocation.debug, static_link: false, shared: invocation.shared,
-                             folder: folder, keep_module: output == "", emit_llvm: false};
+                             folder: folder, project: scoped.project, source: scoped.source, keep_module: output == "", emit_llvm: false,
+                             cli_errors: invocation.command == "run" && !invocation.shared};
     chosen := invocation.entry;
     if (invocation.shared) { chosen = ""; }
     if (output == "") {
@@ -615,10 +609,47 @@ BuildCommand :: (arguments: string[]) -> int {
     }
     command: string[] = [];
     if (checkout) {
-        command = ["sh", strings.Concatenate([root, "/tools/build.sh"]), "build"];
-        command.extend(Tail(arguments, 1));
-        command.extend(["--native-driver", os.ProgramPath(), "--llvm", llvm]);
-        return ExitStatus(os.Run(command));
+        last := arguments[length(arguments) - 1];
+        if (last == "--llvm" || last == "--native-driver") {
+            Complain(strings.Concatenate(["build: ", last, " needs a value"]));
+            return 2;
+        }
+        // The build driver resolves its relative inputs against the checkout,
+        // while the CLI must return with its caller's working directory intact.
+        previous := os.Root();
+        self := os.RealPath(os.ProgramPath());
+        if (previous == "") {
+            Complain("build: cannot read the current working directory");
+            return 2;
+        }
+        if (self == "") {
+            Complain("build: cannot resolve the native compiler path");
+            return 2;
+        }
+        if (os.ChangeDirectory(root) != nil) {
+            Complain(strings.Concatenate(["build: cannot enter checkout ", root]));
+            return 2;
+        }
+        invocation := NewInvocation("run");
+        invocation.collections.append(strings.Concatenate(["graph=", root, "/tools/graph"]));
+        subject: Subject = {project: root, source: strings.Concatenate([root, "/tools/toolchain/Driver.chibi"]), package: ".", problem: ""};
+        compiled := CompileProgram(subject, strings.Concatenate([root, "/packages/core"]), llvm, HostTriple(), "", invocation);
+        status := compiled.status;
+        if (status == 0) {
+            command = [compiled.path, "build"];
+            forwarded := Tail(arguments, 1);
+            for (index in 0..<length(forwarded) - 1) {
+                if (forwarded[index] == "--llvm") { forwarded[index + 1] = llvm; }
+            }
+            command.extend(forwarded);
+            command.extend(["--native-driver", self, "--llvm", llvm]);
+            status = ExitStatus(os.Run(command));
+        }
+        if (os.ChangeDirectory(previous) != nil) {
+            Complain(strings.Concatenate(["build: cannot restore working directory ", previous]));
+            return 2;
+        }
+        return status;
     }
     core := CoreFolder();
     if (core == "") { Complain("build: cannot find share/chibi/core; set CHIBI_CORE"); return 2; }

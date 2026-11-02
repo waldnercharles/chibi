@@ -114,7 +114,7 @@ StartModulesKeepTheProcessArguments :: () {
     windows := link.Start("x86_64-pc-windows-msvc", true, false);
     assert(strings.Contains(windows, "define void @mainCRTStartup()"), "windows entry");
     assert(strings.Contains(windows, "store ptr %line, ptr @chibi_command_line"), "command line");
-    assert(strings.Contains(windows, "call void @ExitProcess(i32 %status)"), "exit");
+    assert(strings.Contains(windows, "call void @ExitProcess(i32 %checked)"), "exit");
     context := link.Start("x86_64-pc-windows-msvc", true, true);
     assert(strings.Contains(context, "store ptr %line, ptr @chibi_command_line"), "context command line");
     assert(strings.Contains(context, "@HeapAlloc"), "context heap");
@@ -235,6 +235,26 @@ MacSharedLibrariesHaveNoProcessEntry :: () {
 }
 
 @test
+WindowsSharedLibrariesHaveNoProcessEntry :: () {
+    plan := Plan3("x86_64-pc-windows-msvc", [], [], true);
+    plan.shared = true;
+    command := link.Command(plan, "/w/generation.dll");
+    for (flag in ["/dll", "/noentry", "/noimplib", "/nodefaultlib"]) {
+        assert(command.contains(flag), "a DLL has no process entry or unused import library");
+    }
+    assert(!command.contains("/entry:mainCRTStartup"), "the executable entry is omitted");
+    for (context in [false, true]) {
+        module := link.SharedContext(plan.triple, context);
+        assert(strings.Contains(module, "define dllexport i32 @chibi_host_set_process("), "the host initializer is exported");
+        assert(strings.Contains(module, "store ptr %line, ptr @chibi_command_line"), "each DLL initializes its argument parser");
+        assert(!strings.Contains(module, "define void @mainCRTStartup()"), "a shared image has no process entry");
+        if (context) {
+            assert(strings.Contains(module, "@chibi_context = hidden global"), "the runtime belongs to its generation");
+        }
+    }
+}
+
+@test
 EveryStartModuleExportsTheArgumentFunctions :: () {
     for (triple in ["x86_64-unknown-linux-gnu", "arm64-apple-macosx11.0.0", "x86_64-pc-windows-msvc"]) {
         module := link.Start(triple, false, false);
@@ -303,7 +323,26 @@ LibraryLinesNameArchives :: () {
 // Source-only entry for the native formatting regression's import consumer.
 pub Run :: () -> int {
     MacSharedLibrariesHaveNoProcessEntry();
+    WindowsSharedLibrariesHaveNoProcessEntry();
     WindowsLibrariesExportWhatTheStartModulesImport();
     StartModulesKeepTheProcessArguments();
+    ProgramFormattingControlsWindowsRuntimeImports();
     return 0;
+}
+
+@test
+ProgramFormattingControlsWindowsRuntimeImports :: () {
+    for (public_run in [false, true]) {
+        unformatted := link.ProgramStart("x86_64-pc-windows-msvc", true, true, false);
+        formatted := link.ProgramStart("x86_64-pc-windows-msvc", true, true, true);
+        if (public_run) {
+            unformatted = link.RunStart("x86_64-pc-windows-msvc", true, true, false);
+            formatted = link.RunStart("x86_64-pc-windows-msvc", true, true, true);
+        }
+        assert(length(link.SystemImports(strings.SplitLines(unformatted))) == 0, "an allocation-only program needs kernel32");
+        assert(!strings.Contains(unformatted, "@chibi_format_text"), "an unused formatter is absent");
+        imported := link.SystemImports(strings.SplitLines(formatted));
+        assert(length(imported) == 1 && imported[0].name == "ucrtbase", "formatting imports the UCRT");
+        Same(imported[0].symbols, ["__stdio_common_vsprintf"]);
+    }
 }

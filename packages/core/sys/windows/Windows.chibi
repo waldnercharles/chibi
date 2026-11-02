@@ -36,6 +36,7 @@ foreign kernel32 {
     GetFileInformationByHandleEx :: (handle: u64, kind: i32, information: u8[], size: u32) -> i32
     GetFinalPathNameByHandleW :: (handle: u64, path: u16[], size: u32, flags: u32) -> u32
     GetCurrentDirectoryW :: (size: u32, path: u16[]) -> u32
+    SetCurrentDirectoryW :: (path: u16[]) -> i32
     GetCurrentProcessId :: () -> u32
     GetCurrentProcess :: () -> u64
     GetProcessId :: (handle: u64) -> u32
@@ -890,6 +891,11 @@ pub RealPath :: (path: string) -> string {
         return strings.Concatenate(["//", strings.TrimPrefix(normalized, "//?/UNC/")]);
     }
     return strings.TrimPrefix(normalized, "//?/");
+}
+
+pub ChangeDirectory :: (path: string) -> bool {
+    converted := Wide(path);
+    return length(converted) > 0 && SetCurrentDirectoryW(converted) != 0;
 }
 
 pub Root :: () -> string {

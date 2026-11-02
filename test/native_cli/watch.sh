@@ -134,3 +134,84 @@ pub Tick :: () -> int { return 7; }
 SOURCE
 finish 7
 printf 'native watch: empty PATH, restored import and newly created import passed\n'
+
+# Source entries are independently optional. Main runs once without a Frame;
+# edits can introduce/remove either entry without restarting that first Main.
+mkdir "$work/optional"
+cat >"$work/optional/Main.chibi" <<'SOURCE'
+package optional_entries
+Main :: () { print_string("optional-main-once"); }
+SOURCE
+log=$work/optional.log
+"$driver" run --watch -O0 --llvm "$llvm" "$work/optional" >"$log" 2>&1 &
+process=$!
+wait_log 'optional-main-once'
+printf 'package optional_entries\nMain :: () { invalid }\n' >"$work/optional/Main.chibi"
+wait_log 'native: rejected'
+cat >"$work/optional/Main.chibi" <<'SOURCE'
+package optional_entries
+Frame :: () {
+    count: retain int = 0;
+    count += 1;
+    if count == 2 { print_string("optional-frame-ready"); }
+}
+SOURCE
+wait_log 'optional-frame-ready'
+cat >"$work/optional/Main.chibi" <<'SOURCE'
+package optional_entries
+Main :: () { print_string("optional-main-restarted"); }
+Frame :: () -> int {
+    count: retain int = 0;
+    count += 1;
+    assert(count >= 3, "Frame-only state migrated");
+    return 42;
+}
+SOURCE
+finish 42
+[ "$(grep -c '^optional-main-once$' "$log")" -eq 1 ] || fail 'a Main-only entry did not run exactly once'
+if grep -F 'optional-main-restarted' "$log" >/dev/null; then fail 'an edit restarted Main'; fi
+printf 'native watch: Main-only and Frame-only edits preserve Main-once and retained state\n'
+
+# Imported names never become root host entries. Their retained keys use the
+# stable package identity, rather than package order in a changing closure.
+mkdir -p "$work/scoped/dep" "$work/scoped/other"
+cat >"$work/scoped/Main.chibi" <<'SOURCE'
+package scoped_entries
+import dep "project:dep"
+Helper :: (value: int) -> int { return value; }
+Frame :: () -> int {
+    value := Helper(dep.Frame(dep.Main()));
+    if value == 2 { print_string("scoped-frame-ready"); }
+    return 0;
+}
+SOURCE
+cat >"$work/scoped/dep/Dep.chibi" <<'SOURCE'
+package dep
+pub Main :: () -> int {
+    count: retain int = 0;
+    count += 1;
+    return count;
+}
+pub Frame :: (value: int) -> int { return value; }
+SOURCE
+cat >"$work/scoped/other/Other.chibi" <<'SOURCE'
+package other
+pub Main :: () -> int { return 123; }
+SOURCE
+log=$work/scoped.log
+"$driver" run --watch -O0 --llvm "$llvm" "$work/scoped" >"$log" 2>&1 &
+process=$!
+wait_log 'scoped-frame-ready'
+cat >"$work/scoped/Main.chibi" <<'SOURCE'
+package scoped_entries
+import other "project:other"
+import dep "project:dep"
+Helper :: (value: int) -> int { return value; }
+Frame :: () -> int {
+    value := Helper(dep.Frame(dep.Main()));
+    assert(value >= 3, "imported state survives an earlier package in the closure");
+    return 42;
+}
+SOURCE
+finish 42
+printf 'native watch: root entries and imported retained identities survive import reordering\n'

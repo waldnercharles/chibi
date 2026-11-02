@@ -108,7 +108,9 @@ a failure status. File targets watch the selected source and the core
 library. Directory targets also watch sibling files and local package sources. Use
 `chibi --watch .` for a program that spans several files.
 
-`Main` and `Frame` must finish synchronously. They can start tasks; task
+Either `Main` or `Frame` may be absent. A missing entry does no work, and a watch
+program needs at least one. Adding or removing either entry during an edit does
+not restart `Main`. Both entries must finish synchronously. They can start tasks; task
 continuations keep the generation whose code they run until they finish.
 An edit applies between calls, so it cannot interrupt a busy `Main`, and a loop
 written inside `Main` is not patched; put per-frame work in `Frame`. Press

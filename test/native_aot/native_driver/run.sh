@@ -161,6 +161,8 @@ Frame :: () -> int { return 0; }
 SOURCE
 build "$source/Generation.chibi" "$work/probe.so" --shared
 (cd "$work" && runs 42 "$work/load")
+build "$source/Scalar.chibi" "$work/probe.so" --shared
+(cd "$work" && runs 42 "$work/load")
 printf 'native driver options: package generation loaded and called\n'
 
 rejects 2 'usage:' "$source/Scalar.chibi" --level 3
@@ -168,7 +170,11 @@ rejects 2 'Linux x86-64 only' "$source/Scalar.chibi" --lines --target aarch64-ap
 rejects 2 'no line tables or static link' "$source/Library.chibi" --shared --lines
 rejects 2 'no line tables or static link' "$source/Library.chibi" --shared --static
 rejects 2 'omit --static' "$source/Allocates.chibi" --static
-rejects 1 'native package generations require Main and Frame' "$source/Scalar.chibi" --shared
+cat >"$source/NoEntry.chibi" <<'SOURCE'
+package no_entry
+Helper :: () -> int { return 0; }
+SOURCE
+rejects 1 'native package generations require Main or Frame' "$source/NoEntry.chibi" --shared
 rejects 1 'takes no --entry' "$source/Library.chibi" --shared --entry Main
 sed 's/"libprobe.a"/"missing.a"/' "$source/Archive.chibi" >"$source/Missing.chibi"
 rejects 2 'is not a file' "$source/Missing.chibi"

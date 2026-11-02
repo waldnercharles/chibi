@@ -2012,8 +2012,8 @@ ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
                 frame = frame || declaration.name == "Frame";
             }
         }
-        if (!main || !frame) {
-            return "native package generations require Main and Frame";
+        if (!main && !frame) {
+            return "native package generations require Main or Frame";
         }
     }
     return "";
@@ -3839,6 +3839,22 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         shape.code = length(body);
         code.extend(body);
         functions.append(shape);
+    }
+    if (generation) {
+        // The host always calls the same C ABI. An absent source entry does
+        // nothing, so adding/removing Frame never restarts Main on an edit.
+        for (name in ["Main", "Frame"]) {
+            if (names.contains(name)) { continue; }
+            shape: native.Function = {result: abi.IntStorage, first_parameter: length(parameters), parameters: 0,
+                                      first_slot: length(slots), slots: 1, first_local: length(locals), locals: 0,
+                                      first_code: length(code), code: 4, first_argument: length(arguments), arguments: 0};
+            ids.append(i64(length(functions)));
+            names.append(name);
+            slots.append(abi.IntStorage);
+            code.extend([Op(native.Check, 0, 0, 0, 0, 0), Op(native.Constant, abi.IntStorage, 0, 0, 0, 0),
+                         Op(native.Publish, abi.IntStorage, 0, 0, 0, 0), Op(native.Return, 0, 0, 0, 0, 0)]);
+            functions.append(shape);
+        }
     }
     source: native.Source = {file: "", directory: ""};
     if (debug) {

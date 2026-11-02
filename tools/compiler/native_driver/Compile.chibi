@@ -140,8 +140,14 @@ ModuleWith :: (collections: string[], directories: string[], paths: string[], so
     target := Target(triple);
     if (!abi.Supported(target)) { return Output.Rejected("unsupported native target"); }
     platform := PlatformFor(target);
-    rows := compiler.CollectScalarProgram("/project", collections, directories, paths, sources, PointerFacts(target), Names(),
-                                          Natives(), Ports(), Identities(), platform.os, platform.arch, chosen);
+    rows: facts.Row[] = [];
+    if (shared) {
+        rows = compiler.CollectScalarGeneration("/project", collections, directories, paths, sources, PointerFacts(target), Names(),
+                                               Natives(), Ports(), Identities(), platform.os, platform.arch);
+    } else {
+        rows = compiler.CollectScalarProgram("/project", collections, directories, paths, sources, PointerFacts(target), Names(),
+                                            Natives(), Ports(), Identities(), platform.os, platform.arch, chosen);
+    }
     return EmitRows(collections, directories, paths, sources, platform.os, platform.arch, rows, target, directory, shared, origins);
 }
 

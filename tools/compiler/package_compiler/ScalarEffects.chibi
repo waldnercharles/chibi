@@ -84,7 +84,7 @@ pub CollectScalarProgramWithEffects :: (project: string, collection_names: strin
                                         chosen: string) -> ScalarCollection {
     summary: ScalarEffectSummary = {wanted: true, natives: [], direct: [], waiting: [], calls: []};
     rows := ScalarCollectWithEffects(project, collection_names, collection_paths, paths, sources, target, names,
-                                    natives, ports, identities, true, os, arch, chosen, &summary);
+                                    natives, ports, identities, true, os, arch, chosen, false, &summary);
     effects: int[] = [];
     waiting: bool[] = [];
     if (length(rows) > 1 && rows[1].kind != facts.RejectionRow) {

@@ -5,8 +5,8 @@ Box :: struct { bytes: u8[]; }
 Main :: () -> int {
     value: Box = {bytes: [u8(65)]};
     Fill(value);
-    // This becomes an accepted ownership regression once array-backed
-    // ordinary records hold independent references at every value boundary.
+    // Keep this acceptance assertion while the foreign boundary rejects
+    // record fields pending writable-place and descriptor-writeback proof.
     assert(value.bytes[0] == 65);
     return 0;
 }

@@ -6,15 +6,15 @@ import strings "core:strings"
 // A native backing has one reference count before its aligned elements.
 // A null owner is borrowed storage. Importing it makes an owned allocation;
 // releasing it never returns the external pointer to the context.
-ArrayAllocate :: (type: int) -> string {
+ArrayAllocate :: (type: int, prefix: int) -> string {
     array := abi.ArrayType();
     out := [format_text("define internal {} @chibi_array.{}.allocate(ptr %ctx, i32 %length, i32 %capacity) {{\nentry:\n", array, type)];
     out.append("  %empty = icmp eq i32 %capacity, 0\n  br i1 %empty, label %none, label %make\nnone:\n");
     out.append(format_text("  ret {} zeroinitializer\nmake:\n", array));
     out.append(Sized("width", type - ArrayType));
-    out.append("  %count = zext i32 %capacity to i64\n  %bytes = mul i64 %count, %width\n  %total = add i64 %bytes, 8\n");
+    out.append(format_text("  %count = zext i32 %capacity to i64\n  %bytes = mul i64 %count, %width\n  %total = add i64 %bytes, {}\n", prefix));
     out.append(Allocated("owner", "%total"));
-    out.append("  store i64 1, ptr %owner\n  %data = getelementptr inbounds i8, ptr %owner, i64 8\n");
+    out.append(format_text("  store i64 1, ptr %owner\n  %data = getelementptr inbounds i8, ptr %owner, i64 {}\n", prefix));
     out.append(format_text("  %sized = insertvalue {} zeroinitializer, i32 %length, 0\n", array));
     out.append(format_text("  %capped = insertvalue {} %sized, i32 %capacity, 1\n", array));
     out.append(format_text("  %pointed = insertvalue {} %capped, ptr %data, 2\n", array));
@@ -33,7 +33,8 @@ ArrayClone :: (type: int, owners: bool[]) -> string {
     out.append(format_text("  ret {} %result\n}}\n", array));
     return strings.Join(out, "");
 }
-ArrayDropHelper :: (type: int, owners: bool[]) -> string {
+ArrayDropHelper :: (type: int, owners: bool[], backed: bool[]) -> string {
+    if (ArrayBacked(type, backed)) { return ArrayQueuedDrop(type); }
     array := abi.ArrayType();
     out := [format_text("define internal void @chibi_array.{}.drop(ptr %ctx, {} %value) {{\nentry:\n", type, array)];
     out.append(format_text("  %owner = extractvalue {} %value, 3\n", array));
@@ -95,7 +96,7 @@ ArraySharing: int : 8;
 ArrayMutation: int : 16;
 // The native array domain has 1024 possible element storage IDs. One scan
 // records which operations each used type needs; unused helpers are not emitted.
-ArrayModule :: (code: Instruction[], owners: bool[]) -> string {
+ArrayUses :: (code: Instruction[]) -> int[] {
     used := resize([int(0)], MapType - ArrayType);
     for (item in code) {
         type := item.type;
@@ -118,16 +119,50 @@ ArrayModule :: (code: Instruction[], owners: bool[]) -> string {
         if (item.op == ArraySlice || item.op == ArrayResize || item.op == ArrayBytes) { flags = ArrayAllocation; }
         used[type - ArrayType] |= flags;
     }
+    return used;
+}
+ArrayModule :: (used: int[], owners: bool[], backed: bool[]) -> string {
     out: string[] = [];
     for (index in 0..<length(used)) {
         flags := used[index];
         if (flags == 0) { continue; }
         type := ArrayType + index;
-        if ((flags & ArrayAllocation) != 0) { out.append(ArrayAllocate(type)); }
+        prefix := 8;
+        if (ArrayBacked(type, backed)) { prefix = 32; }
+        if ((flags & ArrayAllocation) != 0) { out.append(ArrayAllocate(type, prefix)); }
         if ((flags & ArrayCloning) != 0) { out.append(ArrayClone(type, owners)); }
-        if ((flags & ArrayDropping) != 0) { out.append(ArrayDropHelper(type, owners)); }
+        if ((flags & ArrayDropping) != 0) { out.append(ArrayDropHelper(type, owners, backed)); }
         if ((flags & ArraySharing) != 0) { out.append(ArrayShare(type)); }
         if ((flags & ArrayMutation) != 0) { out.append(ArrayUnique(type)); }
     }
     return strings.Join(out, "");
+}
+
+// A recursive element release only enqueues children. Its caller drains one
+// stack-owned queue, so runtime nesting does not become native call depth.
+ArrayQueuedDrop :: (type: int) -> string {
+    array := abi.ArrayType();
+    element := type - ArrayType;
+    return strings.Concatenate([
+        format_text("define internal void @chibi_array.{}.release_owned(ptr %ctx, ptr %owner, i32 %length, ptr %pending) {{\nentry:\n", type),
+        "  %data = getelementptr inbounds i8, ptr %owner, i64 32\n",
+        format_text("  call void @chibi_value.{}.drop_range_into(ptr %ctx, ptr %data, i32 %length, ptr %pending)\n", element),
+        ContextCall("give", 4),
+        "  call void %give(ptr %ctx, ptr %owner)\n  ret void\n}\n",
+        format_text("define internal void @chibi_array.{}.drop_into(ptr %ctx, {} %value, ptr %pending) {{\nentry:\n", type, array),
+        format_text("  %owner = extractvalue {} %value, 3\n", array),
+        "  %owned = icmp ne ptr %owner, null\n  br i1 %owned, label %count, label %done\ncount:\n",
+        "  %before = atomicrmw sub ptr %owner, i64 1 acq_rel\n  %last = icmp eq i64 %before, 1\n  br i1 %last, label %enqueue, label %done\nenqueue:\n",
+        format_text("  %length = extractvalue {} %value, 0\n", array),
+        "  %next = load ptr, ptr %pending\n  store ptr %next, ptr %owner\n",
+        "  %ctx.at = getelementptr inbounds i8, ptr %owner, i64 8\n  store ptr %ctx, ptr %ctx.at\n",
+        "  %release.at = getelementptr inbounds i8, ptr %owner, i64 16\n",
+        format_text("  store ptr @chibi_array.{}.release_owned, ptr %release.at\n", type),
+        "  %length.at = getelementptr inbounds i8, ptr %owner, i64 24\n  store i32 %length, ptr %length.at\n",
+        "  store ptr %owner, ptr %pending\n  br label %done\ndone:\n  ret void\n}\n",
+        format_text("define internal void @chibi_array.{}.drop(ptr %ctx, {} %value) {{\nentry:\n", type, array),
+        ValuePending(),
+        format_text("  call void @chibi_array.{}.drop_into(ptr %ctx, {} %value, ptr %pending)\n", type, array),
+        "  call void @chibi_value.drain(ptr %pending)\n  ret void\n}\n"
+    ]);
 }

@@ -1,0 +1,40 @@
+package map_values
+
+Main :: () -> int {
+    values: [int: int] = [1: 10, 2: 20, 1: 12];
+    before := values;
+    values[1] = 15;
+    delete values[2];
+    values.delete(99);
+    assert(values[1] == 15 && values[2] == 0);
+    assert(before[1] == 12 && before[2] == 20);
+    assert(1 in values && 2 not in values && !values.has(99));
+    assert(Drop(before) == 20 && before[1] == 12);
+    copied := Copy(before);
+    copied[2] = 25;
+    assert(before[2] == 20 && copied[2] == 25);
+    replaced: [int: int] = [7: 70];
+    previous := replaced;
+    assert(Forward(replaced) == 80 && replaced[7] == 70 && replaced[8] == 0);
+    Reset(&replaced);
+    assert(replaced[7] == 0 && replaced[8] == 80 && previous[7] == 70);
+    growing: [int: int] = [:];
+    for (index in 0..<300) { growing[index] = index * 2; }
+    for (index in 0..<300) { assert(growing[index] == index * 2); }
+    for (index in 0..<300) { delete growing[index]; }
+    assert(growing[2] == 0 && !growing.has(299));
+    return 0;
+}
+Drop :: (values: [int: int]) -> int {
+    delete values[1];
+    return values[1] + values[2];
+}
+Copy :: (values: [int: int]) -> [int: int] {
+    return values;
+}
+Reset :: (values: ^([int: int])) { values^ = [8: 80]; }
+
+Forward :: (values: [int: int]) -> int {
+    Reset(&values);
+    return values[8];
+}

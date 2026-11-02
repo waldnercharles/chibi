@@ -8,6 +8,9 @@ on:
       - tools/compiler/**
       - test/native_aot/diagnostics/**
       - test/native_aot/test_attributes/**
+      - test/native_aot/tasks/**
+      - test/native_aot/maps/**
+      - test/native_aot/map_programs/**
       - test/bootstrap/**
       - test/native_cli/**
       - tools/build.sh
@@ -90,6 +93,10 @@ jobs:
         run: |
           sh test/bootstrap/native-entry.sh
           sh test/bootstrap/native-runner.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+      - name: Check native task lifetimes
+        run: sh test/native_aot/tasks/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+      - name: Check native maps
+        run: sh test/native_aot/maps/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native CLI programs
         run: sh test/native_cli/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Summarize the proof

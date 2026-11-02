@@ -4,9 +4,12 @@ Run `sh test/native_aot/tasks/run.sh NATIVE_COMPILER LLVM_BIN` with a native
 compiler built from this branch and LLVM 22 or later. The suite uses LLVM and
 LLD directly on macOS arm64 or Linux x64. Its LLVM allocator audit checks that
 every program releases its coroutine frames and scheduler storage at shutdown.
+The sequential reuse and result fixtures also cap the peak at 32 allocations
+and 64 KiB, so retaining completed frames or failing to reuse rows cannot pass.
 
 The programs cover first-suspension order, `yield`, direct `await Function()` results,
-statement-only `await handle`, cancellation of inline awaited frames,
+statement-only `await handle`, numeric and void `T | Cancelled` results,
+repeated joins, aliases and self-assignment, cancellation of inline awaited frames,
 cancellation of a parent and its descendants,
 children surviving a completed parent, 1,024 concurrent tasks, 8,192 sequential
 task lifetimes, stale handles after row reuse, and a nonwaiting program entry.
@@ -18,8 +21,12 @@ parent-child expiration, inline awaited delays, and negative/NaN durations.
 The clock fixture supplies simulation time, including a negative time domain;
 the foreign-call fixture composes delays with ordinary platform clock calls.
 
-Task handles contain a generation and row index. Finished rows return to a free
-list. The ready list preserves first-suspension order independently of row reuse; each
+Task handles contain a generation and row index. Values own observers while
+the program independently owns active execution. Dropping every observer does
+not cancel active work. A completed promise remains only while observed; its
+last observer destroys the frame and returns its row to the generation free list.
+A cancelled observed row keeps its cancelled state without a coroutine frame.
+The ready list preserves first-suspension order independently of row reuse; each
 update resumes its original ready tasks at most once and then compacts the
 list. Parent and sibling links make subtree cancellation linear in the number
 of cancelled tasks without recursive scheduler calls. Rows and the ready list
@@ -49,8 +56,13 @@ NaN or infinity returns 1 and leaves time and tasks unchanged. Without explicit
 host time, the scheduler uses the platform monotonic clock. These optional
 exports preserve the existing no-argument polling ABI.
 
-This is a tested subset, not the VM deletion gate. Awaiting a handle's
-`T | Cancelled` result, managed coroutine values,
-component dependencies, and full task failure propagation still need native
-implementations. The rejection cases keep unsupported frame/result forms
-from compiling as successful programs. LLVM versions before 22 are unsupported.
+This is a tested subset, not the VM deletion gate. Managed coroutine values,
+task-valued parameters, component dependencies, and full task failure propagation
+still need native implementations. Task parameters remain closed until cancelling
+an active ancestor can unwind every live call safely. The runtime
+stores the canonical success type, with void distinct from its internal int
+result. Running-handle conditions and assignment across different producers
+remain separate source-producer gaps. The rejection
+cases keep cross-type assignments and unsupported task parameters/managed frames
+from compiling as successful programs. LLVM versions
+before 22 are unsupported.

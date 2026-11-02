@@ -46,8 +46,8 @@ Scalar :: (type: int) -> bool {
 // Whether a record field or union payload may have `type`: a scalar or a
 // string.
 Stored :: (records: int[], type: int) -> bool {
-    // Nested maps need recursive ownership before record/union admission.
-    return type < facts.MapType && Valued(records, type);
+    // Nested maps and task observers need recursive ownership before admission.
+    return type != facts.TaskType && type < facts.MapType && Valued(records, type);
 }
 // Whether the record or union of type RecordType + `from` holds the one of
 // type RecordType + `wanted` by value, directly or through others it holds by
@@ -85,14 +85,15 @@ Valued :: (records: int[], type: int) -> bool {
     if (type >= facts.ArrayType) {
         return Element(records, type) != 0;
     }
-    return Scalar(type) || type == facts.StringType ||
+    return Scalar(type) || type == facts.StringType || type == facts.TaskType ||
            (type >= facts.RecordType && type - facts.RecordType < length(records));
 }
 // The element type of array type `type`, or 0 when it is no array of a
 // scalar, a string, or a record or union of the module.
 Element :: (records: int[], type: int) -> int {
     element := type - facts.ArrayType;
-    if (type >= facts.MapType || element < facts.IntType || element >= facts.ArrayType || !Valued(records, element)) {
+    if (type >= facts.MapType || element < facts.IntType || element >= facts.ArrayType ||
+        element == facts.TaskType || !Valued(records, element)) {
         return 0;
     }
     return element;
@@ -180,6 +181,7 @@ Converts :: (from: int, to: int) -> bool {
 // i8, u8, i16, u16, u32, i64, u64, number, f64 and string in facts type
 // order. Record r is the backend's record r.
 NativeType :: (type: int) -> int {
+    if (type == facts.TaskType) { return native.TaskType; }
     if (type >= facts.MapType) {
         return native.MapOf(NativeType((type - facts.MapType) % 16), NativeType((type - facts.MapType) / 16));
     }
@@ -525,7 +527,7 @@ ArrayTyped :: (type: int) -> bool {
 // than one a variable or a lent argument holds.
 FreshArray :: (operand: facts.Row) -> bool {
     if (operand.kind == facts.CallRow) {
-        return ArrayTyped(operand.type) || operand.type == facts.StringType;
+        return ArrayTyped(operand.type) || operand.type == facts.StringType || operand.type == facts.TaskType;
     }
     if (operand.kind == facts.TextRow) {
         return operand.value == facts.TextFormat;
@@ -544,10 +546,11 @@ FreshArray :: (operand: facts.Row) -> bool {
 }
 // Whether the native `type` is owned by whoever holds it: an array, or a string.
 Owning :: (type: int) -> bool {
-    return ArrayTyped(type) || type == abi.TextStorage;
+    return ArrayTyped(type) || type == abi.TextStorage || type == native.TaskType;
 }
 // The instruction that gives back a reference to a `type` that is Owning.
 Giving :: (type: int, slot: int) -> native.Instruction {
+    if (type == native.TaskType) { return Op(native.TaskDrop, type, 0, slot, 0, 0); }
     if (type == abi.TextStorage) {
         return Op(native.TextRelease, type, 0, slot, 0, 0);
     }
@@ -944,6 +947,12 @@ DropAll :: (rows: facts.Row[], records: int[], managed: bool[], vars: int[], typ
                 found.code.extend([Op(native.Local, types[at], next, places[vars[at]], 0, 0), Giving(types[at], next)]);
                 found.slot_types.append(types[at]);
                 next += 1;
+                if (types[at] == native.TaskType) {
+                    found.slot_types.append(native.TaskType);
+                    found.code.extend([Op(native.Constant, native.TaskType, next, 0, 0, 0),
+                                       Op(native.Save, native.TaskType, 0, next, 0, places[vars[at]])]);
+                    next += 1;
+                }
             }
         }
         at -= 1;
@@ -1221,7 +1230,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                   operand.kind == facts.ForeignRow;
         if ((!texted && operand.text != "") || !Valued(records, operand.type) || !Located(operand, starts, size) ||
             !Within(operand, scope) ||
-            (operand.kind != facts.LiteralRow && operand.kind != facts.RefRow && operand.kind != facts.MapRow && operand.kind != facts.CallRow && operand.literal != 0) ||
+            (operand.kind != facts.LiteralRow && operand.kind != facts.RefRow && operand.kind != facts.MapRow && operand.kind != facts.CallRow && operand.kind != facts.AwaitResultRow && operand.literal != 0) ||
             (operand.kind == facts.CallRow && (operand.literal < 0 || operand.literal > i64(facts.CallSpawned)))) {
             return "invalid scalar operand row";
         }
@@ -1241,7 +1250,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             if (operand.literal != 0 && Holds(visible, operand.value)) {
                 field = RecordMemberType(rows, records, variables[operand.value], operand.literal - 1);
             }
-            if (operand.name != "" || operand.count != 0 || !Holds(visible, operand.value) ||
+            if (operand.name != "" || operand.count != 0 || operand.type == facts.TaskType || !Holds(visible, operand.value) ||
                 (operand.literal == 0 && variables[operand.value] != operand.type) ||
                 (operand.literal != 0 && (field < 0 || field != operand.type || (!Number(field) && field != facts.BoolType)))) {
                 return "scalar reference differs from its variable";
@@ -1325,15 +1334,40 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 stack[base + count - 1] != facts.DoubleType || operand.type != facts.IntType) {
                 return "scalar timed task operation differs from its operands";
             }
-            if (count == 2 && stack[base] != facts.WordType) {
+            if (count == 2 && stack[base] != facts.TaskType) {
                 return "scalar timed cancellation needs a task handle";
             }
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.AwaitRow || operand.kind == facts.CancelRow) {
             base := length(stack) - 1;
             if (operand.name != "" || operand.count != 1 || operand.value != 0 || base < floor ||
-                stack[base] != facts.WordType || operand.type != facts.IntType) {
+                stack[base] != facts.TaskType || operand.type != facts.IntType) {
                 return "scalar task operation differs from its operands";
+            }
+            stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.TaskRunningRow) {
+            base := length(stack) - 1;
+            if (operand.name != "" || operand.count != 1 || operand.value != 0 || base < floor ||
+                stack[base] != facts.TaskType || operand.type != facts.BoolType) {
+                return "scalar running test needs a task observer";
+            }
+            stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.AwaitResultRow) {
+            base := length(stack) - 1;
+            if (operand.name != "" || operand.count != 1 || base < floor || stack[base] != facts.TaskType ||
+                operand.value < 0 || operand.value >= length(heads) || operand.literal < 0 || operand.literal > 1 ||
+                UnionHead(rows, records, operand.type) < 0) {
+                return "scalar task result differs from its task and union";
+            }
+            callee := rows[heads[operand.value]];
+            union_at := UnionHead(rows, records, operand.type);
+            success := VariantOf(rows, union_at, int(operand.literal));
+            cancelled := VariantOf(rows, union_at, 1 - int(operand.literal));
+            wanted := 1;
+            if (callee.value == facts.FunctionVoid) { wanted = 0; }
+            if (rows[union_at].count != 2 || success < 0 || cancelled < 0 || rows[success].count != wanted ||
+                rows[cancelled].count != 0 || (wanted == 1 && PayloadType(rows, records, operand.type, 0) != callee.type)) {
+                return "scalar task result success type differs from its waiting function";
             }
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.CallRow) {
@@ -1344,7 +1378,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             base := length(stack) - operand.count;
             wanted_type := callee.type;
             if (operand.literal == i64(facts.CallSpawned)) {
-                wanted_type = facts.WordType;
+                wanted_type = facts.TaskType;
             }
             if (operand.name != callee.name || operand.type != wanted_type || operand.count != callee.count ||
                 base < floor) {
@@ -1520,7 +1554,8 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
                   is_library: bool, identified: bool) -> string {
     head := heads[function];
     declaration := rows[head];
-    if (declaration.name == "" || declaration.text != "" || !Valued(records, declaration.type) || declaration.value != 0 ||
+    if (declaration.name == "" || declaration.text != "" || !Valued(records, declaration.type) ||
+        (declaration.value != 0 && (declaration.value != facts.FunctionVoid || declaration.type != facts.IntType)) ||
         (declaration.literal != 0) != identified || !Located(declaration, starts, size)) {
         return "invalid scalar function row";
     }
@@ -1528,6 +1563,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
     visible: int[] = [];
     for (index in 0..<declaration.count) {
         param := rows[head + 1 + index];
+        if (param.type == facts.TaskType) { return "scalar task parameters require cancellation unwind support"; }
         if (param.kind != facts.ParameterRow || param.name == "" || param.text != "" || !Valued(records, param.type) ||
             param.value != index || param.count != 0 || (param.literal != 0 && param.literal != 1 && param.literal != 2) ||
             (param.literal == 1 && (identified || function == 0)) ||
@@ -1896,9 +1932,15 @@ ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
         head := heads[function];
         for (at in head + rows[head].count + 1..<Last(rows, heads, function)) {
             row := rows[at];
-            waits = waits || row.kind == facts.YieldRow || row.kind == facts.AwaitRow || row.kind == facts.DelayRow ||
+            waits = waits || row.kind == facts.YieldRow || row.kind == facts.AwaitRow || row.kind == facts.AwaitResultRow || row.kind == facts.DelayRow ||
                     (row.kind == facts.CallRow && row.literal == i64(facts.CallAwaited));
             task_calls = task_calls || (row.kind == facts.CallRow && row.literal == i64(facts.CallSpawned));
+        }
+        if (waits && !Scalar(rows[head].type)) {
+            return "scalar waiting results require numeric or bool values yet";
+        }
+        if (rows[head].value == facts.FunctionVoid && !waits) {
+            return "scalar void task metadata names a function that does not wait";
         }
         waiting[function] = waits;
         task_calls = task_calls || waits;
@@ -1909,6 +1951,9 @@ ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
         for (row in rows) {
             if (row.kind == facts.FunctionAddressRow && waiting[row.value]) {
                 return "scalar function address cannot name a waiting function";
+            }
+            if (row.kind == facts.AwaitResultRow && !waiting[row.value]) {
+                return "scalar task result names a function that does not wait";
             }
             if (row.kind == facts.CallRow) {
                 if (row.literal == i64(facts.CallPlain) && waiting[row.value]) {
@@ -2648,9 +2693,22 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                     body.append(Op(task_op, 0, 0, stack[base], 0, 0));
                     stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.TaskRunningRow || operand.kind == facts.AwaitResultRow) {
+                    base := length(stack) - 1;
+                    item = Op(native.TaskRunning, type, slot, stack[base], 0, 0);
+                    if (operand.kind == facts.AwaitResultRow) {
+                        callee := rows[heads[operand.value]];
+                        success := NativeType(callee.type);
+                        if (callee.value == facts.FunctionVoid) { success = 0; }
+                        item = Op(native.AwaitResult, type, slot, stack[base], success, int(operand.literal));
+                    }
+                    stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.CallRow) {
                     item = Op(native.Call, type, slot, operand.value, shape.arguments, operand.count);
                     item.literal = operand.literal;
+                    if (operand.literal == i64(facts.CallSpawned) && rows[heads[operand.value]].value == facts.FunctionVoid) {
+                        item.literal = i64(native.CallSpawnedVoid);
+                    }
                     base := length(stack) - operand.count;
                     for (argument in 0..<operand.count) {
                         arguments.append(stack[base + argument]);
@@ -3135,7 +3193,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             // string left over, a temporary, is released here, after the
             // statement's rows have read it and before it branches or stores.
             keeps := false;
-            if (slots[shape.first_slot + value] == abi.TextStorage &&
+            if ((slots[shape.first_slot + value] == abi.TextStorage || slots[shape.first_slot + value] == native.TaskType) &&
                 (row.kind == facts.LocalRow || row.kind == facts.AssignRow || row.kind == facts.ReturnRow)) {
                 held_by := -1;
                 for (at_read in 0..<length(reads)) {
@@ -3152,15 +3210,20 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     fresh = Without(fresh, value);
                     keeps = true;
                 } else {
-                    body.append(Op(native.TextRetain, abi.TextStorage, 0, value, 0, 0));
+                    if (slots[shape.first_slot + value] == native.TaskType) {
+                        slots.append(native.TaskType);
+                        body.append(Op(native.TaskCopy, native.TaskType, slot, value, 0, 0));
+                        value = slot;
+                        slot += 1;
+                    } else { body.append(Op(native.TextRetain, abi.TextStorage, 0, value, 0, 0)); }
                     keeps = true;
                 }
             }
             if (keeps && row.kind == facts.AssignRow && !Referenced(rows, head, row.value) &&
                 Holds(owned_vars, row.value)) {
-                slots.append(abi.TextStorage);
-                body.extend([Op(native.Local, abi.TextStorage, slot, places[row.value], 0, 0),
-                             Op(native.TextRelease, abi.TextStorage, 0, slot, 0, 0)]);
+                held_type := slots[shape.first_slot + value];
+                slots.append(held_type);
+                body.extend([Op(native.Local, held_type, slot, places[row.value], 0, 0), Giving(held_type, slot)]);
                 slot += 1;
             }
             record_keeps := TrackedRecord(managed, slots[shape.first_slot + value]) &&
@@ -3194,8 +3257,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             }
             leftover: int[] = [];
             for (temporary in fresh) {
-                if (slots[shape.first_slot + temporary] == abi.TextStorage) {
-                    body.append(Op(native.TextRelease, abi.TextStorage, 0, temporary, 0, 0));
+                if (slots[shape.first_slot + temporary] == abi.TextStorage || slots[shape.first_slot + temporary] == native.TaskType) {
+                    body.append(Giving(slots[shape.first_slot + temporary], temporary));
                 } else if (TrackedRecord(managed, slots[shape.first_slot + temporary])) {
                     dropped := RecordRefs(rows, declared, slots[shape.first_slot + temporary], temporary, slot, false);
                     slots.extend(dropped.slot_types);
@@ -3418,7 +3481,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 decl_rows.append(at);
                 locals.append(type);
                 places.append(local);
-                body.append(Op(native.Save, type, 0, value, 0, local));
+                if (type == native.TaskType && row.name == "_") {
+                    slots.append(type);
+                    body.extend([Op(native.Constant, type, slot, 0, 0, 0), Op(native.Save, type, 0, slot, 0, local)]);
+                    slot += 1;
+                } else { body.append(Op(native.Save, type, 0, value, 0, local)); }
                 // A variable holding a fresh array owns it; a discarded call
                 // result is dropped at once; any other array is borrowed.
                 if (ArrayTyped(type) && Holds(fresh, value)) {

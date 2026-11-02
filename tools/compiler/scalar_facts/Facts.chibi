@@ -304,6 +304,12 @@ pub CancelRow: int : 43;
 // f64 duration and suspends until it expires. Both give int 0.
 pub CancelAfterRow: int : 46;
 pub DelayRow: int : 47;
+// A handle await gives its structural T | Cancelled union. `value` names
+// the waiting function and `literal` its success variant ordinal.
+pub AwaitResultRow: int : 49;
+pub TaskRunningRow: int : 51;
+// A source void waiting function has no success payload despite its internal int.
+pub FunctionVoid: int : 1;
 pub CallPlain: int : 0;
 pub CallAwaited: int : 1;
 pub CallSpawned: int : 2;
@@ -343,6 +349,8 @@ pub FloatType: int : 10;
 pub DoubleType: int : 11;
 // An immutable string of bytes.
 pub StringType: int : 12;
+// An owning observer of program-owned execution, never an integer value.
+pub TaskType: int : 13;
 // The d-th record or union of the module is type RecordType + d.
 pub RecordType: int : 32;
 // An array of type T is ArrayType + T.
@@ -484,6 +492,7 @@ pub Floating :: (type: int) -> bool {
 // integer type, any bits for a word or double, 32 bits for a float and 0 for
 // a string, whose value is its text.
 pub Fits :: (literal: i64, type: int) -> bool {
+    if (type == TaskType) { return literal == 0; }
     if (type == StringType) {
         return literal == 0;
     }

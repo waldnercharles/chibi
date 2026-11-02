@@ -40,6 +40,7 @@ static const char LLVM_NATIVE_SOURCE[] = { @CHIBI_LLVM_NATIVE_BYTES@ 0 };
 static const char LLVM_NATIVE_TASKS_SOURCE[] = { @CHIBI_LLVM_NATIVE_TASKS_BYTES@ 0 };
 static const char LLVM_NATIVE_TASK_TIMING_SOURCE[] = { @CHIBI_LLVM_NATIVE_TASK_TIMING_BYTES@ 0 };
 static const char LLVM_NATIVE_VALUES_SOURCE[] = { @CHIBI_LLVM_NATIVE_VALUES_BYTES@ 0 };
+static const char LLVM_NATIVE_TASK_RESULTS_SOURCE[] = { @CHIBI_LLVM_NATIVE_TASK_RESULTS_BYTES@ 0 };
 static const char NATIVE_ABI_SOURCE[] = { @CHIBI_NATIVE_ABI_BYTES@ 0 };
 static const char SCALAR_CASES_SOURCE[] = { @CHIBI_SCALAR_CASES_BYTES@ 0 };
 
@@ -95,6 +96,7 @@ static const char SCALAR_CASES_SOURCE[] = { @CHIBI_SCALAR_CASES_BYTES@ 0 };
     PACKAGE_COMPILER_SOURCE("llvm_native/Tasks.chibi", LLVM_NATIVE_TASKS_SOURCE), \
     PACKAGE_COMPILER_SOURCE("llvm_native/TaskTiming.chibi", LLVM_NATIVE_TASK_TIMING_SOURCE), \
     PACKAGE_COMPILER_SOURCE("llvm_native/Values.chibi", LLVM_NATIVE_VALUES_SOURCE), \
+    PACKAGE_COMPILER_SOURCE("llvm_native/TaskResults.chibi", LLVM_NATIVE_TASK_RESULTS_SOURCE), \
     PACKAGE_COMPILER_SOURCE("native_abi/Abi.chibi", NATIVE_ABI_SOURCE)
 /* The authored scalar corpus: each case's source and expected result. */
 #define SCALAR_CASES_SOURCE_INPUTS \

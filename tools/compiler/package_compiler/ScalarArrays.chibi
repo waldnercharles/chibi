@@ -19,20 +19,21 @@ import syntax "project:syntax_diagnostics"
 // The facts type of the elements `shape` describes, a number, bool, string,
 // or a record or union the source declares; 0 for any other.
 ScalarElementType :: (types: TypeDecl[], shape: ValueType) -> int {
+    if (shape.storage == TaskStorage) { return 0; }
     return ScalarValueType(types, shape.storage, 0, shape.record);
 }
 // The facts type of an array whose elements are of `storage` and `record`, or
 // 0 when they are of no such type.
 ScalarArrayType :: (types: TypeDecl[], storage: int, record: int) -> int {
     element := ScalarValueType(types, storage, 0, record);
-    if (element == 0) {
+    if (element == 0 || storage == TaskStorage) {
         return 0;
     }
     return facts.ArrayType + element;
 }
 // Whether elements of `storage` can be in a scalar module's array.
 ScalarArrayElement :: (storage: int) -> bool {
-    return ScalarTypeOf(storage) != 0 || storage == StructStorage || storage == UnionStorage;
+    return storage != TaskStorage && (ScalarTypeOf(storage) != 0 || storage == StructStorage || storage == UnionStorage);
 }
 // The array the literal `node` is, from its first element when that names its
 // own storage: a string, a bool, a number conversion such as `u8(0)`, a call of
@@ -56,6 +57,7 @@ ScalarLiteralShape :: (forest: snapshot.SnapshotNode[], text: string, callables:
         if (callee >= 0 && callables[callee].result_container == 0) {
             storage = callables[callee].result;
             record = callables[callee].result_record;
+            if (callables[callee].waits && !ImmediatelyAwaited(forest, first)) { storage = TaskStorage; }
         } else if (callee < 0) {
             storage = NumberConversionType(forest, text, first);
         }
@@ -333,6 +335,7 @@ ScalarArrayHeld :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
 // The facts type of member `field` of a record or union: a number, bool,
 // string, array, or record or union the source declares; 0 for any other.
 ScalarMemberType :: (types: TypeDecl[], members: TypeMember[], field: int) -> int {
+    if (members[field].storage == TaskStorage) { return 0; }
     return ScalarValueType(types, members[field].storage, members[field].container, members[field].record);
 }
 // The shape of member `field`: its storage, container and record.

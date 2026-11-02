@@ -44,6 +44,8 @@ pub Record :: struct {
     count: int;
 }
 pub RecordType: int : 32;
+// An owning generational task observer, spelled i64 but never a numeric scalar.
+pub TaskType: int : 15;
 // The source file of a module's line tables and its directory. An empty file
 // emits no debug information, and the module is the same text as without it.
 pub Source :: struct {
@@ -296,14 +298,26 @@ pub CancelAfter: int : 85;
 pub Delay: int : 86;
 // output = sqrt(left), preserving the scalar f32 math contract.
 pub Sqrt: int : 87;
-pub InstructionCount: int : 88;
+// output owns a new observer of the left slot's task; TaskType only.
+pub TaskCopy: int : 88;
+// Consume and clear the left task slot. Active execution remains program-owned.
+pub TaskDrop: int : 89;
+// output is bool: true only while the left task is running.
+pub TaskRunning: int : 90;
+// Await left, then output a result union: tag field 0, optional payload field 1.
+// right is its canonical native success type (0 for void); target is its
+// success tag ordinal (0 or 1). A cancelled result never reads the promise.
+pub AwaitResult: int : 91;
+pub InstructionCount: int : 92;
 // A Call's `literal`: an ordinary call, an awaited call (the callee is a waiting
 // function, run inline in the waiting caller, giving its result), or a spawn (the
-// callee is a waiting function, started as a task of its own, giving its handle, a
-// word).
+// callee is a waiting function, started as a task of its own, giving an owning
+// TaskType observer).
 pub CallPlain: int : 0;
 pub CallAwaited: int : 1;
 pub CallSpawned: int : 2;
+// Source void has no success payload, despite the ramp's internal int result.
+pub CallSpawnedVoid: int : 6;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -312,7 +326,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
     return Index(slot, length(slots)) && slots[slot] == type;
 }
 Produces :: (op: int) -> bool {
-    return op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
+    return op == TaskCopy || op == TaskRunning || op == AwaitResult || op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
            op == ForeignCall || op == StateLoad || op == FunctionAddress || op == Sqrt || op == ValueCopy || (op >= MapLength && op <= MapLiveAt && op != MapDrop);
 }
 Comparison :: (op: int) -> bool {
@@ -325,7 +339,7 @@ ReadsLeft :: (op: int) -> bool {
     return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
            (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText || op == ArrayDrop || op == TextRetain ||
            op == TextRelease || op == StateStore || op == Deref || op == Poke || op == ValueCopy || op == ValueDrop || op == AwaitHandle || op == Cancel ||
-           op == CancelAfter || op == Delay || op == Sqrt || (op >= MapLength && op <= MapLiveAt);
+           op == CancelAfter || op == Delay || op == Sqrt || (op >= TaskCopy && op <= AwaitResult) || (op >= MapLength && op <= MapLiveAt);
 }
 Integer :: (type: int) -> bool {
     return abi.IntegerBits(type) > 0;
@@ -383,7 +397,7 @@ ReadsArguments :: (op: int) -> bool {
 // scalar, a string or one of the module's records.
 ElementType :: (records: Record[], type: int) -> int {
     element := type - ArrayType;
-    if (element <= 0 || element >= ArrayType || !Valued(records, element)) {
+    if (element <= 0 || element >= ArrayType || element == TaskType || !Valued(records, element)) {
         return 0;
     }
     return element;
@@ -392,13 +406,14 @@ ElementType :: (records: Record[], type: int) -> int {
 // one.
 Held :: (records: Record[], type: int) -> bool {
     if (type >= RefType) {
-        return Valued(records, type - RefType);
+        return type - RefType != TaskType && Valued(records, type - RefType);
     }
     return Valued(records, type);
 }
 // Whether `type` is a scalar, a string, one of the module's records or an
 // array of one of them.
 Valued :: (records: Record[], type: int) -> bool {
+    if (type == TaskType) { return true; }
     if (type >= MapType) {
         return MapShaped(records, type);
     }
@@ -409,6 +424,7 @@ Valued :: (records: Record[], type: int) -> bool {
 }
 // The LLVM type of a scalar, string, record or array type the module holds.
 TypeName :: (type: int) -> string {
+    if (type == TaskType) { return "i64"; }
     if (type >= RefType) {
         return "ptr";
     }
@@ -452,7 +468,7 @@ RecordLayout :: (records: Record[], fields: int[]) -> bool {
         return false;
     }
     for (type in fields) {
-        if (!Valued(records, type)) {
+        if (type == TaskType || !Valued(records, type)) {
             return false;
         }
     }
@@ -815,7 +831,7 @@ WaitingFunctions :: (functions: Function[], code: Instruction[]) -> bool[] {
     for (shape in functions) {
         found := false;
         for (item in Codes(code, shape.first_code, shape.code)) {
-            if (item.op == Suspend || item.op == AwaitHandle || item.op == Delay || (item.op == Call && item.literal == i64(CallAwaited))) {
+            if (item.op == Suspend || item.op == AwaitHandle || item.op == AwaitResult || item.op == Delay || (item.op == Call && item.literal == i64(CallAwaited))) {
                 found = true;
             }
         }
@@ -826,7 +842,7 @@ WaitingFunctions :: (functions: Function[], code: Instruction[]) -> bool[] {
 // Whether any function waits or starts a task.
 Tasks :: (code: Instruction[]) -> bool {
     for (item in code) {
-        if (item.op == Suspend || item.op == AwaitHandle || item.op == Cancel || item.op == CancelAfter || item.op == Delay ||
+        if (item.op == TaskCopy || item.op == TaskDrop || item.op == TaskRunning || item.op == AwaitResult || item.op == Suspend || item.op == AwaitHandle || item.op == Cancel || item.op == CancelAfter || item.op == Delay ||
             (item.op == Call && item.literal != i64(CallPlain))) {
             return true;
         }
@@ -834,15 +850,16 @@ Tasks :: (code: Instruction[]) -> bool {
     return false;
 }
 // A call names another function of the module, with its result type and one
-// argument slot of each parameter's type. A spawn gives a task handle, a word.
+// argument slot of each parameter's type. A spawn gives an owning task observer.
 CallValid :: (functions: Function[], parameters: int[], slots: int[], arguments: int[], item: Instruction) -> bool {
     if (!Index(item.left, length(functions))) {
         return false;
     }
     callee := functions[item.left];
     wanted := callee.result;
-    if (item.literal == i64(CallSpawned)) {
-        wanted = abi.WordStorage;
+    if (item.literal == i64(CallSpawnedVoid) && callee.result != abi.IntStorage) { return false; }
+    if (item.literal == i64(CallSpawned) || item.literal == i64(CallSpawnedVoid)) {
+        wanted = TaskType;
     }
     if (item.type != wanted || item.target != callee.parameters || item.right < 0 ||
         item.right > length(arguments) - item.target) {
@@ -873,7 +890,10 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         return Result.Rejected(-1, "unsupported native scalar signature or table size");
     }
     for (type in parameters) {
-        if (waiting[function] && abi.ScalarType(type) == "") {
+        if (type == TaskType || type == RefType + TaskType) {
+            return Result.Rejected(-1, "native task parameters require cancellation unwind support");
+        }
+        if (waiting[function] && !TaskFrameValue(records, fields, type, false)) {
             return Result.Rejected(-1, "native waiting parameters need scalar values; managed values and dependencies are not supported yet");
         }
         if (!Held(records, type) || (exported && abi.ScalarType(type) == "")) {
@@ -881,7 +901,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
     }
     for (type in slots) {
-        if (waiting[function] && abi.ScalarType(type) == "") {
+        if (waiting[function] && !TaskFrameValue(records, fields, type, true)) {
             return Result.Rejected(-1, "native waiting frames cannot own managed values or pointers yet");
         }
         if (!Held(records, type)) {
@@ -889,9 +909,15 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
     }
     for (type in locals) {
+        if (waiting[function] && !TaskFrameValue(records, fields, type, true)) {
+            return Result.Rejected(-1, "native waiting frames cannot own managed values or pointers yet");
+        }
         if (!Held(records, type)) {
             return Result.Rejected(-1, "native scalar local cannot hold a managed value or pointer");
         }
+    }
+    if (waiting[function] && abi.ScalarType(result) == "") {
+        return Result.Rejected(-1, "native waiting results require numeric or bool values yet");
     }
     definitions: int[] = [];
     for (slot in slots) {
@@ -918,7 +944,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         // A record's only constant is its zero, and a string's is a text of
         // the table.
         if (item.op == Constant && ((abi.ScalarType(item.type) != "" && !Fits(item.literal, item.type)) ||
-                                    (item.type >= RecordType && item.literal != 0) ||
+                                    ((item.type >= RecordType || item.type == TaskType) && item.literal != 0) ||
                                     (item.type == abi.TextStorage &&
                                      (item.literal < 0 || item.literal >= i64(length(texts)))))) {
             return Result.Rejected(base + pc, "native constant is outside its type");
@@ -1021,15 +1047,22 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (item.op == Call && !CallValid(functions, module_parameters, slots, arguments, item)) {
             return Result.Rejected(base + pc, "native call differs from its callee's signature");
         }
-        if (item.op == Call && (item.literal < i64(CallPlain) || item.literal > i64(CallSpawned) ||
+        if (item.op == Call && ((item.literal != i64(CallPlain) && item.literal != i64(CallAwaited) &&
+                                 item.literal != i64(CallSpawned) && item.literal != i64(CallSpawnedVoid)) ||
                                 (item.literal != i64(CallPlain) && !waiting[item.left]))) {
             return Result.Rejected(base + pc, "native awaited call or spawn names a function that does not wait");
         }
         if (item.op == Call && item.literal == i64(CallPlain) && waiting[item.left]) {
             return Result.Rejected(base + pc, "native plain call cannot name a waiting function");
         }
-        if ((item.op == AwaitHandle || item.op == Cancel || item.op == CancelAfter) && !Typed(slots, item.left, abi.WordStorage)) {
+        if ((item.op == AwaitHandle || item.op == Cancel || item.op == CancelAfter || item.op == TaskCopy ||
+             item.op == TaskDrop || item.op == TaskRunning) && !Typed(slots, item.left, TaskType)) {
             return Result.Rejected(base + pc, "native task operation requires a task handle");
+        }
+        if (((item.op == TaskCopy || item.op == TaskDrop) && item.type != TaskType) ||
+            (item.op == TaskRunning && item.type != abi.BoolStorage) ||
+            (item.op == AwaitResult && !TaskResultValid(records, fields, slots, item))) {
+            return Result.Rejected(base + pc, "native task observer or result differs from its type");
         }
         if ((item.op == CancelAfter && !Typed(slots, item.right, abi.DoubleStorage)) ||
             (item.op == Delay && !Typed(slots, item.left, abi.DoubleStorage))) {
@@ -1372,9 +1405,11 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
     } else if (item.op == Save) {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
         out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "l", item.target));
+        if (item.type == TaskType) { out = format_text("{}{}", out, Store("0", TaskType, "s", item.left)); }
     } else if (item.op == Publish) {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
         out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "result", 0));
+        if (item.type == TaskType) { out = format_text("{}{}", out, Store("0", TaskType, "s", item.left)); }
     } else if ((item.op == Return || item.op == End) && coroutine) {
         // The result is in the promise; the coroutine finishes at its final suspension.
         return format_text("{}  br label %coro.final\n", out);
@@ -2344,7 +2379,7 @@ CoroutineEntryFunction :: (result: int, waiting: bool, timed: bool) -> string {
     if (!waiting) {
         return format_text("{}  %result = call {} @chibi_scalar.ramp(ptr %ctx)\n  %cancelled = call i32 @chibi_host_tasks_cancel_all()\n  ret {} %result\n}}\n", out, type, type);
     }
-    out = format_text("{}  %handle = call i64 @chibi_tasks.begin(ptr %ctx, i1 true)\n  %frame = call ptr @chibi_scalar.ramp(ptr %ctx)\n  call void @chibi_tasks.attach(i64 %handle, ptr %frame)\n  store i64 0, ptr @chibi_tasks.current\n", out);
+    out = format_text("{}  %handle = call i64 @chibi_tasks.begin(ptr %ctx, i32 {})\n  %frame = call ptr @chibi_scalar.ramp(ptr %ctx)\n  call void @chibi_tasks.attach(i64 %handle, ptr %frame)\n  store i64 0, ptr @chibi_tasks.current\n", out, result);
     out = format_text("{}  br label %loop\nloop:\n  %done = call i1 @llvm.coro.done(ptr %frame)\n", out);
     idle := "";
     if (timed) { idle = "  call void @chibi_tasks.idle()\n"; }
@@ -2367,10 +2402,11 @@ CoroutinePrologue :: () -> string {
 }
 // A coroutine's end: the final suspension keeps the frame, and so the promise,
 // for whoever reads the result; destroying it comes here to release the frame.
-CoroutineEpilogue :: () -> string {
-    out := "coro.final:\n  %coro.last = call i8 @llvm.coro.suspend(token none, i1 true)\n";
+CoroutineEpilogue :: (final_cleanup: string, cancel_cleanup: string) -> string {
+    out := format_text("coro.final:\n{}", final_cleanup);
+    out = format_text("{}  %coro.last = call i8 @llvm.coro.suspend(token none, i1 true)\n", out);
     out = format_text("{}  switch i8 %coro.last, label %coro.suspend [ i8 0, label %trap\n                                     i8 1, label %coro.cleanup ]\n", out);
-    out = format_text("{}coro.cleanup:\n  %coro.free = call ptr @llvm.coro.free(token %coro.id, ptr %coro.hdl)\n", out);
+    out = format_text("{}coro.cleanup:\n{}  %coro.free = call ptr @llvm.coro.free(token %coro.id, ptr %coro.hdl)\n", out, cancel_cleanup);
     out = format_text("{}  %coro.owned = icmp ne ptr %coro.free, null\n", out);
     out = format_text("{}  br i1 %coro.owned, label %coro.release, label %coro.suspend\ncoro.release:\n", out);
     out = format_text("{}{}", out, ContextCall("coro.release.call", 4));
@@ -2390,7 +2426,9 @@ RampCall :: (functions: Function[], parameters: int[], arguments: int[], item: I
     callee := functions[item.left];
     out := format_text("p{}:\n", pc);
     if (spawned) {
-        out = format_text("{}  %parent{} = load i64, ptr @chibi_tasks.current\n  %task{} = call i64 @chibi_tasks.begin(ptr %ctx, i1 false)\n", out, pc, pc);
+        kind := callee.result;
+        if (item.literal == i64(CallSpawnedVoid)) { kind = 0; }
+        out = format_text("{}  %parent{} = load i64, ptr @chibi_tasks.current\n  %task{} = call i64 @chibi_tasks.begin(ptr %ctx, i32 {})\n", out, pc, pc, kind);
     }
     listed: string[] = ["ptr %ctx"];
     for (index in 0..<item.target) {
@@ -2434,7 +2472,7 @@ SpawnedCallInstruction :: (functions: Function[], parameters: int[], arguments: 
 // task has finished or been cancelled.
 AwaitHandleInstruction :: (item: Instruction, pc: int) -> string {
     out := format_text("p{}:\n", pc);
-    out = format_text("{}{}", out, Load(format_text("h{}", pc), abi.WordStorage, "s", item.left));
+    out = format_text("{}{}", out, Load(format_text("h{}", pc), TaskType, "s", item.left));
     out = format_text("{}  %finished{} = call i1 @chibi_tasks.finished(i64 %h{})\n", out, pc, pc);
     out = format_text("{}  br i1 %finished{}, label %p{}, label %p{}.wait\np{}.wait:\n", out, pc, pc + 1, pc, pc);
     out = format_text("{}  call void @chibi_tasks.wait(i64 %h{})\n", out, pc);
@@ -2476,6 +2514,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     out.append(format_text("  %budget0 = alloca i32\n  store i32 {}, ptr %budget0\n", step_budget));
     for (index in 0..<shape.slots) {
         out.append(format_text("  %s{} = alloca {}\n", index, TypeName(slots[shape.first_slot + index])));
+        if (slots[shape.first_slot + index] == TaskType) { out.append(Store("0", TaskType, "s", index)); }
     }
     for (index in 0..<shape.locals) {
         type := locals[shape.first_local + index];
@@ -2519,19 +2558,35 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         item := code[shape.first_code + pc];
         if (item.op == Call && item.literal == i64(CallAwaited)) {
             out.append(AwaitedCallInstruction(functions, parameters, own, item, pc, mode));
-        } else if (item.op == Call && item.literal == i64(CallSpawned)) {
+        } else if (item.op == Call && (item.literal == i64(CallSpawned) || item.literal == i64(CallSpawnedVoid))) {
             out.append(SpawnedCallInstruction(functions, parameters, own, item, pc, mode));
         } else if (item.op == Suspend) {
             out.append(SuspendInstruction(pc));
+        } else if (item.op == AwaitResult) {
+            out.append(TaskResultInstruction(item, pc));
+        } else if (item.op == TaskCopy || item.op == TaskDrop || item.op == TaskRunning) {
+            out.append(format_text("p{}:\n", pc));
+            out.append(Load(format_text("h{}", pc), TaskType, "s", item.left));
+            if (item.op == TaskCopy) {
+                out.append(format_text("  call void @chibi_tasks.retain(i64 %h{})\n", pc));
+                out.append(Store(format_text("%h{}", pc), TaskType, "s", item.output));
+            } else if (item.op == TaskDrop) {
+                out.append(Store("0", TaskType, "s", item.left));
+                out.append(format_text("  call void @chibi_tasks.release(i64 %h{})\n", pc));
+            } else {
+                out.append(format_text("  %done{} = call i1 @chibi_tasks.finished(i64 %h{})\n  %running{} = xor i1 %done{}, true\n", pc, pc, pc, pc));
+                out.append(Store(format_text("%running{}", pc), abi.BoolStorage, "s", item.output));
+            }
+            out.append(format_text("  br label %p{}\n", pc + 1));
         } else if (item.op == AwaitHandle) {
             out.append(AwaitHandleInstruction(item, pc));
         } else if (item.op == Cancel) {
             out.append(format_text("p{}:\n", pc));
-            out.append(Load(format_text("h{}", pc), abi.WordStorage, "s", item.left));
+            out.append(Load(format_text("h{}", pc), TaskType, "s", item.left));
             out.append(format_text("  call void @chibi_tasks.cancel(i64 %h{})\n  br label %p{}\n", pc, pc + 1));
         } else if (item.op == CancelAfter) {
             out.append(format_text("p{}:\n", pc));
-            out.append(Load(format_text("h{}", pc), abi.WordStorage, "s", item.left));
+            out.append(Load(format_text("h{}", pc), TaskType, "s", item.left));
             out.append(Load(format_text("duration{}", pc), abi.DoubleStorage, "s", item.right));
             out.append(format_text("  call void @chibi_tasks.cancel_after(i64 %h{}, double %duration{})\n  br label %p{}\n", pc, pc, pc + 1));
         } else if (item.op == Delay) {
@@ -2561,7 +2616,8 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         out.append(format_text("failed:\n  ret {} {}\n", TypeName(result), Zero(result)));
     }
     if (coroutine) {
-        out.append(CoroutineEpilogue());
+        out.append(CoroutineEpilogue(TaskFrameCleanup(shape, locals, code, "final"),
+                                     TaskFrameCleanup(shape, locals, code, "cancel")));
     }
     out.append("trap:\n  call void @llvm.trap()\n  unreachable\n}\n");
     return strings.Join(out, "");

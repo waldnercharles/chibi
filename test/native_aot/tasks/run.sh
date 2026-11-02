@@ -33,7 +33,7 @@ for source do
             fi
             if grep -q 'define i32 @chibi_scalar(ptr %ctx)' "$source"; then
                 sed 's/define i32 @chibi_scalar(ptr %ctx)/define i32 @chibi_task_test_entry(ptr %ctx)/' "$source" > "$source.audit"
-                cat "$CHIBI_TASK_AUDIT" >> "$source.audit"
+                sed "s/@chibi_task_test_limit = internal constant i64 0/@chibi_task_test_limit = internal constant i64 $CHIBI_TASK_LIMIT/" "$CHIBI_TASK_AUDIT" >> "$source.audit"
                 mv "$source.audit" "$source"
             fi ;;
     esac
@@ -65,11 +65,22 @@ chmod +x "$work/llvm/opt" "$work/llvm/llc"
 ln -s "$llvm/$linker" "$work/llvm/$linker"
 export CHIBI_TASK_REAL_LLVM="$llvm" CHIBI_TASK_AUDIT="$root/test/native_aot/tasks/audit.ll"
 export CHIBI_TASK_CLOCK="$root/test/native_aot/tasks/clock.ll"
+# Exercise the facts consumer independently of the source producer, including
+# malformed result contracts and the native running-test instruction.
+"$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_aot/tasks/Validate.chibi" --entry Main \
+    --output "$work/validate" --llvm "$llvm" --target "$target" --jobs 2
+"$work/validate" "$work/facts.ll"
+"$llvm/opt" -passes=verify -disable-output "$work/facts.ll"
+printf 'PASS native task facts validation and LLVM verification\n'
 for level in 0 2; do
     export CHIBI_TASK_LEVEL=$level
     for folder in "$root"/test/native_aot/tasks/cases/*; do
         name=$(basename "$folder")
         program=$work/$name-O$level
+        CHIBI_TASK_LIMIT=0
+        case "$name" in results|reuse) CHIBI_TASK_LIMIT=32 ;; esac
+        export CHIBI_TASK_LIMIT
         "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$folder/Main.chibi" --entry Main --output "$program" \
             --llvm "$work/llvm" --target "$target" --jobs 1
@@ -79,6 +90,9 @@ for level in 0 2; do
     for folder in "$root"/test/native_aot/tasks/failures/*; do
         name=$(basename "$folder")
         program=$work/$name-O$level
+        CHIBI_TASK_LIMIT=0
+        case "$name" in results|reuse) CHIBI_TASK_LIMIT=32 ;; esac
+        export CHIBI_TASK_LIMIT
         "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$folder/Main.chibi" --entry Main --output "$program" \
             --llvm "$work/llvm" --target "$target" --jobs 1
@@ -98,7 +112,12 @@ for folder in "$root"/test/native_aot/tasks/rejected/*; do
         exit 1
     fi
     case "$name" in
-        await_result) grep -q 'awaits a call of a waiting function, or a task as a statement' "$work/rejection" ;;
+        record_result) grep -q 'waiting results require numeric or bool values yet' "$work/rejection" ;;
+        task_array) grep -q "array item differs from the array's type" "$work/rejection" ;;
+        task_array_parameter) grep -Eq 'scalar proof|native task parameters require cancellation unwind support' "$work/rejection" ;;
+        numeric_handle) grep -q 'conversion needs a number' "$work/rejection" ;;
+        task_parameter) grep -Eq 'scalar proof|native task parameters require cancellation unwind support' "$work/rejection" ;;
+        different_result_producers|void_result) grep -q 'assigned value differs from its local' "$work/rejection" ;;
         dependency) grep -q 'waiting frames cannot own managed values or pointers yet' "$work/rejection" ;;
         managed_frame) grep -q 'waiting frames cannot own managed values or pointers yet' "$work/rejection" ;;
     esac

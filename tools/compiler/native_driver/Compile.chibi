@@ -118,6 +118,20 @@ ModuleWith :: (collections: string[], directories: string[], paths: string[], so
     return EmitRows(collections, directories, paths, sources, os, arch, rows, target, directory, shared);
 }
 
+// Program rows already checked by the collector, with the same diagnostics,
+// target substitutions and LLVM validator as the ordinary program boundary.
+CollectedModule :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
+                    rows: facts.Row[], directory: string) -> Output {
+    target := Target(triple);
+    if (!abi.Supported(target)) { return Output.Rejected("unsupported native target"); }
+    os := 1;
+    arch := 1;
+    if (abi.Same(target, abi.MacOSArm64())) { os = 2; arch = 2; }
+    else if (abi.Same(target, abi.WindowsX64())) { os = 3; }
+    else if (abi.Same(target, abi.WebAssembly32())) { os = 4; arch = 3; }
+    return EmitRows(collections, directories, paths, sources, os, arch, rows, target, directory, false);
+}
+
 // The parser distinguishes library declarations from package generations,
 // including comments and nonstandard whitespace before the declaration.
 LibrarySource :: (source: string) -> bool {

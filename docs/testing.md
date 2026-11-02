@@ -24,7 +24,7 @@ Nothing is prepared with stage zero.
 ### Authored package tests
 
 `chibi test DIR` runs every `@test` in the packages below `DIR`. The end-user
-command runs eligible tests on the bounded runtime thread pool;
+command runs eligible tests on a bounded worker pool, with separate native processes;
 `CHIBI_TEST_WORKERS=1` keeps it serial (see the
 [package testing guide](guide/testing.md#parallel-execution)). The `chibi-test-*`
 rows of `tools/tests.tsv` run it over the compiler (`tools/compiler`), `core`

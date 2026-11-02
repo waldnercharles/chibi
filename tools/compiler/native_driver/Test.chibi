@@ -389,7 +389,7 @@ TestScratch :: (base: string) -> string {
 
 // Compiles and runs the tests of one package, printing each outcome and adding to `tally`.
 TestPackage :: (root: string, relative: string, project: string, core: string, llvm: string, triple: string, scratch_base: string,
-                invocation: CliInvocation, tally: Tally) -> Tally {
+                invocation: CliInvocation, workers: int, tally: Tally) -> Tally {
     result := tally;
     folder := root;
     if (relative != ".") {
@@ -486,8 +486,21 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
     }
     program := strings.Concatenate([scratch, "/program"]);
     options: DriverOptions = {level: invocation.mode, lines: invocation.debug, static_link: false, shared: false,
-                             folder: root, keep_module: false, emit_llvm: false};
-    built := EmitOptions(collections, directories, gathered.paths, gathered.sources, triple, main_name, llvm, program, Jobs([]), options);
+                             folder: project, keep_module: false, emit_llvm: false};
+    os := 1;
+    arch := 1;
+    if (strings.HasPrefix(triple, "aarch64-apple")) { os = 2; arch = 2; }
+    else if (strings.HasPrefix(triple, "x86_64-pc-windows")) { os = 3; }
+    visible: string[] = [];
+    for (directory in directories) { visible.append(route.Visible(directory)); }
+    collected := compiler.CollectScalarProgramWithEffects("/project", collections, visible, gathered.paths, gathered.sources,
+        TargetFacts(), Names(), Natives(), Ports(), Identities(), os, arch, main_name);
+    prepared: TestProgram = {rows: collected.rows, effects: []};
+    if (length(collected.effects) > 0) {
+        prepared = TestProgramRows(collected, gathered.paths, gathered.sources, names, main_name, dispatcher);
+    }
+    built := EmitCollected(collections, directories, gathered.paths, gathered.sources, triple, main_name, llvm, program,
+                           Jobs([]), options, prepared.rows);
     if (built != 0) {
         Complain(strings.Concatenate(["test: cannot compile ", label]));
         CacheDiscard(scratch);
@@ -495,18 +508,7 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
         return result;
     }
     diagnostic_paths := TestDiagnosticPaths(gathered.paths, project, core);
-    for (index in 0..<length(names)) {
-        ran := os.Capture([program, format_text("{}", index)]);
-        if (ran.stdout != "") { os.WriteOutput(ran.stdout); }
-        result.total += 1;
-        if (ran.status == 0) {
-            Say(format_text("PASS {}.{}", label, names[index]));
-            continue;
-        }
-        result.failed += 1;
-        Say(format_text("FAIL {}.{}", label, names[index]));
-        Say(strings.Concatenate(["  ", AssertionFailure(ran.stderr, diagnostic_paths, gathered.sources)]));
-    }
+    result = TestRuns(label, names, prepared.effects, program, scratch, workers, diagnostic_paths, gathered.sources, result);
     CacheDiscard(scratch);
     return result;
 }
@@ -514,25 +516,31 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
 // The same strict setting as the shared test operation. Presence matters:
 // an unset value chooses the normal worker count; an empty value is invalid.
 TestWorkers :: () -> int {
-    if (!os.HasEnv("CHIBI_TEST_WORKERS")) {
-        workers := Jobs([]);
-        if (workers > 32) { return 32; }
-        return workers;
+    requested := 0;
+    if (os.HasEnv("CHIBI_TEST_WORKERS")) {
+        value := os.Getenv("CHIBI_TEST_WORKERS");
+        if (value == "") { return 0; }
+        for (byte in strings.Bytes(value)) {
+            if (byte < 48 || byte > 57) { return 0; }
+            requested = requested * 10 + byte - 48;
+            if (requested > 32) { return 0; }
+        }
+        if (requested == 0) { return 0; }
     }
-    value := os.Getenv("CHIBI_TEST_WORKERS");
-    if (value == "") { return 0; }
-    workers := 0;
-    for (byte in strings.Bytes(value)) {
-        if (byte < 48 || byte > 57) { return 0; }
-        workers = workers * 10 + byte - 48;
-        if (workers > 32) { return 0; }
+    available := Jobs([]);
+    if (requested != 0) {
+        if (requested > available) { return available; }
+        return requested;
     }
-    return workers;
+    preferred := TestPreferredWorkers(available);
+    if (preferred > 8) { return 8; }
+    return preferred;
 }
 
 // `chibi test [ROOT]`.
 TestCommand :: (invocation: CliInvocation) -> int {
-    if (TestWorkers() == 0) {
+    workers := TestWorkers();
+    if (workers == 0) {
         Complain("CHIBI_TEST_WORKERS must be an integer from 1 to 32");
         return 1;
     }
@@ -567,7 +575,7 @@ TestCommand :: (invocation: CliInvocation) -> int {
     for (relative in TestFolders(root, ".")) {
         scratch := strings.Concatenate([root, "/build/native/test/", format_text("{}", number)]);
         number += 1;
-        tally = TestPackage(root, relative, project, core, llvm, triple, scratch, invocation, tally);
+        tally = TestPackage(root, relative, project, core, llvm, triple, scratch, invocation, workers, tally);
     }
     if (!tally.compiled) {
         return 1;

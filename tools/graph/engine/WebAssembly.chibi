@@ -83,7 +83,8 @@ pub BuildWebAssembly :: (driver: string, native_llvm: string, emcc: string, wasm
         if (os.WriteText(configuration, toolchain.configuration) != nil) { return -1; }
     }
     inputs.append(configuration);
-    for (path in ["authoring/asset_compiler_wasm.c", "authoring/asset_compiler_wasm.h",
+    inputs.append(Join([root, "/tools/graph/asset_wasm_runtime/Runtime.ll"]));
+    for (path in ["authoring/asset_compiler_wasm.h",
                   "authoring/asset_compiler_host.c", "authoring/asset_compiler_host.h",
                   "support/binary_cache.c", "support/binary_cache.h", "support/file_io.c", "support/file_io.h",
                   "support/sha256.c", "support/sha256.h", "support/xalloc.c", "support/xalloc.h"]) {

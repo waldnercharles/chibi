@@ -1,0 +1,59 @@
+package optional_bool_parentheses
+
+Flag :: (value: bool, absent: bool) -> (data: int, error: bool?) {
+    if absent { return (7, nil); }
+    return (7, value);
+}
+
+Take :: (value: bool) -> int {
+    if value { return 99; }
+    return 17;
+}
+
+MemberOr :: (value: bool, absent: bool) -> int {
+    result := Flag(value, absent);
+    if result.error {
+        if false || (result.error) { return 99; }
+        return 17;
+    }
+    return 0;
+}
+
+MemberArgument :: (value: bool, absent: bool) -> int {
+    result := Flag(value, absent);
+    if result.error != nil {
+        return Take((result.error));
+    }
+    return 0;
+}
+
+MemberNegated :: (value: bool, absent: bool) -> int {
+    result := Flag(value, absent);
+    if result.error {
+        if !(result.error) { return 17; }
+        return 99;
+    }
+    return 0;
+}
+
+Check :: (value: bool, absent: bool, expected: int) {
+    actual := MemberOr(value, absent);
+    assert(actual == expected, "parenthesized optional member in ||");
+    actual = MemberArgument(value, absent);
+    assert(actual == expected, "parenthesized optional argument");
+    actual = MemberNegated(value, absent);
+    assert(actual == expected, "parenthesized optional under !");
+}
+
+@test
+Calls :: () {
+    Check(false, false, 17);
+    Check(true, false, 99);
+    Check(false, true, 0);
+    Check(true, true, 0);
+}
+
+Main :: () -> int {
+    Calls();
+    return 0;
+}

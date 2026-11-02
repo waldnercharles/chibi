@@ -12,6 +12,17 @@ Calls :: () {
     r3: bool = Mixed();
     e3: bool = true;
     assert(r3 == e3, "Mixed call 3");
+    assert(ReverseMixed(), "reversed mixed literals");
+    assert(!FalseMixed(), "mixed literals preserve false");
+    assert(RoundedMixed(), "integer promotion rounds at the spelled f32 width");
+    assert(NegativeMixed(), "signed mixed literals");
+    assert(Product(), "untyped constant product");
+    assert(ReverseProduct(), "reversed untyped constant product");
+    assert(NestedProduct(), "nested constant product");
+    assert(!FalseProduct(), "constant comparison preserves false");
+    assert(WideSum(), "constant sum preserves spelled i64 width");
+    assert(MixedSum(), "mixed constant sum");
+    assert(ShiftedProduct(), "shift and product compare");
     r4: bool = Negative();
     e4: bool = true;
     assert(r4 == e4, "Negative call 4");

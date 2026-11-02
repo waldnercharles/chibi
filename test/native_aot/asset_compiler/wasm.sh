@@ -77,11 +77,17 @@ compile_wasm() {
     "$emcc" -O2 -std=c11 -Wall -Wextra -Werror -DCHIBI_ASSET_COMPILER_WASM_TEST -I"$root/src" \
         -sSUPPORT_LONGJMP=wasm -sSTACK_OVERFLOW_CHECK=2 -sALLOW_MEMORY_GROWTH=1 \
         -sSTACK_SIZE=8388608 -sMAXIMUM_MEMORY=2147483648 -sENVIRONMENT=node -sNODERAWFS=1 \
-        "$root/src/authoring/asset_compiler_wasm.c" "$root/test/native_aot/asset_compiler/Wasm.c" \
+        "$work/runtime.o" "$root/test/native_aot/asset_compiler/Wasm.c" \
         "$wasm_work"/piece-*.ll.o -o "$wasm_work/compiler.js"
 }
 target=x86_64-unknown-linux-gnu
 if [ "$(uname -s)" = Darwin ]; then target=aarch64-apple-darwin; fi
+"$driver" --compiler "$root" --core "$root/packages/core" \
+    --source "$root/test/native_aot/asset_compiler/WasmRuntime.chibi" --collection "graph=$root/tools/graph" \
+    --entry Main --target "$target" --llvm "$llvm" --level 0 --output "$work/runtime"
+"$work/runtime" "$root" "$emcc" "$work" "$work/runtime.ll"
+"$wasm_llvm/opt" -passes=verify "$work/runtime.ll" -o "$work/runtime.bc"
+"$emcc" -O2 -sSUPPORT_LONGJMP=wasm -c "$work/runtime.bc" -o "$work/runtime.o"
 compile_wasm "$root/test/native_aot/asset_compiler/WasmFormat.chibi" "$work/format"
 printf '[]' > "$work/empty.json"
 "$node" "$work/format/compiler.js" "$work/empty.json" "$work/format.bin" "$work/format.diagnostic"

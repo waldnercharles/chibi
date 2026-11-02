@@ -1,6 +1,21 @@
 package native_link
 
+import abi "project:native_abi"
 import strings "core:strings"
+
+// Only programs marked by the managed emitter use the extended context.
+// The heap remains stable for this program; library/C-bundle contexts retain
+// their existing prefix and reject managed values before emitting code.
+pub ManagedProgramContext :: (module: string) -> string {
+    prefix := strings.Concatenate(["@chibi_context = global ", abi.ContextType(), " "]);
+    allocation := ", ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release }";
+    assert(strings.Contains(module, prefix) && strings.Contains(module, allocation));
+    extended := strings.Concatenate(["@chibi_managed_owner = internal global ", abi.ManagedHeapType(),
+        " zeroinitializer\n@chibi_context = global ", abi.ManagedContextType(), " "]);
+    result := strings.ReplaceAll(module, prefix, extended);
+    return strings.ReplaceAll(result, allocation,
+        ", ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release, ptr @chibi_managed_owner }");
+}
 
 // The start modules: the LLVM IR of the shim that starts a native program,
 // calls its entry `chibi_scalar() -> i32` (`chibi_scalar(ptr)` with a runtime
@@ -158,7 +173,7 @@ WindowsContextStart :: (rich_assertions: bool, formatting: bool, numeric_formatt
         "  ret void\n",
         "}\n",
         "define internal void @chibi_index_failed(ptr %ctx, i32 %index, i32 %length) {\n",
-        "  call void @chibi_native_failure(i32 1)\n",
+        "  call void @chibi_native_index_failed(i32 %index, i32 %length)\n",
         "  unreachable\n",
         "}\n",
         "define internal void @chibi_write(ptr %bytes, i32 %count) {\n",
@@ -279,7 +294,7 @@ DynamicStart :: (triple: string, context: bool, rich_assertions: bool, formattin
         "  ret void\n",
         "}\n",
         "define internal void @chibi_index_failed(ptr %ctx, i32 %index, i32 %length) {\n",
-        "  call void @chibi_native_failure(i32 1)\n",
+        "  call void @chibi_native_index_failed(i32 %index, i32 %length)\n",
         "  unreachable\n",
         "}\n",
         "@chibi_context = global { ptr, ptr, ptr, ptr, ptr } ",

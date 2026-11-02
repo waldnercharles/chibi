@@ -1,0 +1,41 @@
+package result_copy_values
+
+@error
+Failure :: struct { code: int; }
+
+Read :: (flag: bool) -> (small: i8, wide: u64, bit: bool, real: f64, error: Failure?) {
+    return (i8(-7), u64(18446744073709551615), flag, f64(1.25), {code: 3});
+}
+
+Check :: (flag: bool) {
+    original := Read(flag);
+    copy := original;
+    if copy.error {}
+    copy.small = i8(9);
+    copy.wide -= u64(1);
+    copy.bit = !copy.bit;
+    copy.real = f64(2.5);
+    assert(original.small == i8(-7));
+    assert(copy.small == i8(9));
+    assert(original.wide == u64(18446744073709551615));
+    assert(copy.wide == u64(18446744073709551614));
+    assert(original.bit == flag && copy.bit == !flag);
+    assert(original.real == f64(1.25) && copy.real == f64(2.5));
+    if flag {
+        copy := Read(false);
+        if copy.error {}
+        assert(!copy.bit && copy.small == i8(-7));
+    }
+    assert(copy.bit == !flag && copy.small == i8(9));
+}
+
+@test
+CopiesKeepTheirValues :: () {
+    Check(false);
+    Check(true);
+}
+
+Main :: () -> int {
+    CopiesKeepTheirValues();
+    return 0;
+}

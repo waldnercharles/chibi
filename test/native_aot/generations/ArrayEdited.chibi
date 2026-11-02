@@ -1,0 +1,81 @@
+package retained_arrays
+
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fclose :: (stream: rawptr) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+}
+Snapshot :: struct { score: int; bonus: int; values: int[]; }
+Inner :: struct { values: int[]; }
+Outer :: struct { inner: Inner; }
+Boot :: (start: bool) -> int {
+    count: retain int = 0;
+    if start { count += 1; }
+    return count;
+}
+Main :: () -> int { return 99; }
+Shared :: (start: bool) -> int {
+    values: retain int[] = [];
+    if start { values.append(99); }
+    return length(values);
+}
+TaskDone :: () -> bool { return access("array-task-done", 0) == 0; }
+ReleaseTask :: () {
+    stream := fopen("array-task-release", "wb");
+    assert(stream != 0);
+    closed := fclose(stream);
+    assert(closed == 0);
+}
+Grow :: (values: ^(int[])) { values.append(100); }
+Reset :: (values: ^(int[])) -> int { values^ = [40]; return 7; }
+Frame :: () -> int {
+    count: retain int = 0;
+    snapshot: retain Snapshot = {score: 99, bonus: 100, values: []};
+    character: retain char = char(90);
+    nested: retain Outer = {inner: {values: []}};
+    precise: retain f64[] = [];
+    bytes: retain u8[] = [];
+    flags: retain bool[] = [];
+    values: retain int[] = [];
+    new_values: retain int[] = [];
+    phase: retain int = 0;
+    if phase == 1 {
+        if !TaskDone() { return 0; }
+        assert(Shared(false) == 1, "the old task cannot mutate the incoming array snapshot");
+        assert(length(values) == 2 && values[0] == 40 && values[1] == 7 && !flags[0]);
+        assert(length(new_values) == 1 && new_values[0] == 100, "scoped writes persist to the next Frame");
+        assert(length(snapshot.values) == 2 && snapshot.values[1] == 8);
+        assert(length(nested.inner.values) == 2 && nested.inner.values[1] == 32);
+        return 7;
+    }
+    assert(phase == 0);
+    assert(Shared(false) == 1);
+    assert(character == char(67), "char values retain their nominal schema");
+    assert(Boot(false) == 1 && count == 3, "Main stays initialized");
+    assert(length(values) == 2 && values[0] == 13 && values[1] == 20);
+    assert(length(flags) == 1 && flags[0]);
+    assert(length(precise) == 1 && precise[0] == 1.25);
+    assert(length(bytes) == 1 && bytes[0] == 9);
+    assert(snapshot.score == 17 && snapshot.bonus == 100 && snapshot.values[0] == 7);
+    assert(length(nested.inner.values) == 1 && nested.inner.values[0] == 31);
+    assert(length(new_values) == 0);
+    Grow(&new_values);
+    assert(length(new_values) == 1 && new_values[0] == 100);
+    copied := values;
+    values[0] = 99;
+    assert(copied[0] == 13 && values[0] == 99);
+    values.append(Reset(&values));
+    assert(length(values) == 2 && values[0] == 40 && values[1] == 7, "mutations resolve the current retained place");
+    copied_flags := flags;
+    flags[0] = false;
+    assert(copied_flags[0] && !flags[0]);
+    snapshot.values.append(8);
+    changed := nested.inner;
+    changed.values.append(32);
+    nested.inner = changed;
+    assert(length(snapshot.values) == 2 && snapshot.values[0] == 7);
+    phase = 1;
+    ReleaseTask();
+    return 0;
+}

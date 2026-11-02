@@ -1,0 +1,2 @@
+package rejected_retained_cell
+Main :: () -> int { value: retain int = 1; pointer := &value; return pointer^; }

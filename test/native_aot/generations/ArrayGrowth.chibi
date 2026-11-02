@@ -1,0 +1,26 @@
+package retained_array_growth
+
+foreign { chibi_value_test_allocations :: () -> u64 }
+Buffer :: struct { values: int[]; }
+Main :: () -> int {
+    local_count := LocalGrowth();
+    record_count := RecordGrowth();
+    assert(local_count <= 16 && record_count <= 16, "retained array growth reuses unique capacity");
+    return 0;
+}
+LocalGrowth :: () -> u64 {
+    values: retain int[] = [];
+    initial := chibi_value_test_allocations();
+    for i in 0..<4096 { values.append(i); }
+    final := chibi_value_test_allocations();
+    assert(length(values) == 4096 && values[4095] == 4095);
+    return final - initial;
+}
+RecordGrowth :: () -> u64 {
+    buffer: retain Buffer = {values: []};
+    initial := chibi_value_test_allocations();
+    for i in 0..<4096 { buffer.values.append(i); }
+    final := chibi_value_test_allocations();
+    assert(length(buffer.values) == 4096 && buffer.values[4095] == 4095);
+    return final - initial;
+}

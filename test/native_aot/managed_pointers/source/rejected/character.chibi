@@ -1,0 +1,2 @@
+package rejected_character
+Main :: () -> int { value := char(65); pointer := &value; return int(pointer^); }

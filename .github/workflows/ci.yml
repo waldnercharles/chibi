@@ -114,6 +114,17 @@ jobs:
       run: |-
         deadline=$(($(date +%s) + 5400))
         node .github/ci/budget.js "$deadline" bash .github/ci/native-proof.sh
+    - name: Preserve Linux native seed candidates
+      if: always() && steps.fixedpoint.outcome != 'skipped'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: native-stages-linux
+        path: |-
+          build-native-self-host/stage3/chibi
+          build-native-self-host/stage4/chibi
+          ${{ runner.temp }}/native-self-host.log
+        if-no-files-found: error
+        retention-days: 7
     - name: Keep stage two for Windows
       if: always() && steps.fixedpoint.outcome != 'skipped' && inputs.windows_bootstrap_run == ''
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -492,6 +503,7 @@ jobs:
           if ($LASTEXITCODE) { throw 'the Windows object regression failed' }
           & ./test/native_aot/link/Memory.ps1 -Compiler "$work/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
           if ($LASTEXITCODE) { throw 'the Windows compiler memory runtime probe failed' }
+          & ./test/native_aot/math_builtin/Select.ps1 -Compiler "$work/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
       - name: Check the native Windows build runner
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |

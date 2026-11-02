@@ -22,6 +22,24 @@ retained strings surviving the old mapping. Library and sibling-import cases
 exercise both shared compilation routes. Runtime cases cover arrays, formatted
 strings, assertions, recursive retained writes, and process arguments.
 
+Numeric/bool retained arrays migrate as complete leaves with a strict element
+schema, including array fields of plain records. Their initializers must be
+empty. The suite rejects an incompatible array edit while the original keeps
+running, then applies a compatible edit. Foreign writes and scoped mutations
+must reach the next Frame. `ArrayProbe.chibi` checks independent snapshot
+backing and balanced repeated state release with poisoned frees at O0/O2. The
+allocation counter bounds 4,096 appends to at most 16 allocations for a retained
+array and a direct record array field. Nested record array leaves are copied,
+edited and assigned back; direct nested array mutation remains rejected.
+Retained chars preserve their identity across an edit;
+int/char changes reject the candidate before any state is copied. The native
+setter also rejects invalid Unicode scalar values without changing prior state.
+Source record char fields remain rejected by the ordinary checker; malformed
+facts tests check nominal member metadata independently.
+The old generation's yielded task mutates its original retained array after the
+swap; the incoming snapshot must stay independent. Managed and nominal scalar
+arrays, including `char[]`, remain rejected.
+
 Invalid Main or Frame signatures and waiting entry functions must produce
 specific diagnostics while preserving the prior shared object byte for byte.
 An incompatible retained schema must leave the original generation running.

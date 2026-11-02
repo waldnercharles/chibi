@@ -6,18 +6,19 @@ import strings "core:strings"
 // A nonmoving heap whose zero value is empty. Its owner supplies all live
 // roots and calls collection only with execution quiescent or roots spilled.
 // Cells retain typed payload trace/drop callbacks; callbacks must outlive them.
-// At 64-bit targets the heap is 40 bytes, each cell header 56 and root node 24.
+// At 64-bit targets the heap is 48 bytes, each cell header 64 and root node 24.
 // Mark/sweep is O(roots + cells + edges), with no per-edge allocation/recursion.
-// This runtime is not yet source admission or a public native-boundary ABI.
+// This raw collector is a backend contract. Source admission additionally
+// validates typed descriptors and supplies roots around each safe point.
 pub ManagedRuntime :: () -> string {
     return strings.Join([
-        "%chibi.managed.heap = type { ptr, ptr, ptr, i64, i64 }\n",
-        "%chibi.managed.cell = type { ptr, ptr, ptr, ptr, i64, i1, ptr }\n",
+        format_text("%chibi.managed.heap = type {}\n", abi.ManagedHeapType()),
+        "%chibi.managed.cell = type { ptr, ptr, ptr, ptr, i64, i1, ptr, i32 }\n",
         "%chibi.managed.root = type { ptr, ptr, ptr }\n",
         "\n",
         "; A heap's cells never move. Trace and drop callbacks receive payload storage.\n",
         "; Tracing only queues managed cells; dropping only releases external owners.\n",
-        "define internal ptr @chibi_managed.new(ptr %ctx, ptr %heap, i64 %bytes, ptr %trace, ptr %drop) {\n",
+        "define internal ptr @chibi_managed.new(ptr %ctx, ptr %heap, i64 %bytes, ptr %trace, ptr %drop, i32 %storage) {\n",
         "entry:\n",
         "  %header = ptrtoint ptr getelementptr (%chibi.managed.cell, ptr null, i32 1) to i64\n",
         "  %room = sub i64 -1, %header\n",
@@ -44,6 +45,8 @@ pub ManagedRuntime :: () -> string {
         "  store i64 %total, ptr %size.at\n",
         "  %owner.at = getelementptr %chibi.managed.cell, ptr %cell, i32 0, i32 6\n",
         "  store ptr %heap, ptr %owner.at\n",
+        "  %storage.at = getelementptr %chibi.managed.cell, ptr %cell, i32 0, i32 7\n",
+        "  store i32 %storage, ptr %storage.at\n",
         "  %payload = getelementptr %chibi.managed.cell, ptr %cell, i32 1\n",
         "  call void @llvm.memset.p0.i64(ptr %payload, i8 0, i64 %bytes, i1 false)\n",
         "  store ptr %cell, ptr %heap\n",
@@ -119,11 +122,18 @@ pub ManagedRuntime :: () -> string {
         "; Callbacks never allocate or collect and drop never follows managed edges.\n",
         "define internal void @chibi_managed.collect(ptr %ctx, ptr %heap) {\n",
         "entry:\n",
+        "  %epoch.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 5\n",
+        "  %old.epoch = load i64, ptr %epoch.at\n",
+        "  %epoch = add i64 %old.epoch, 1\n",
+        "  %wrapped = icmp eq i64 %epoch, 0\n",
+        "  br i1 %wrapped, label %trap, label %start\n",
+        "start:\n",
+        "  store i64 %epoch, ptr %epoch.at\n",
         "  %roots.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 1\n",
         "  %first.root = load ptr, ptr %roots.at\n",
         "  br label %roots\n",
         "roots:\n",
-        "  %root = phi ptr [ %first.root, %entry ], [ %next.root, %trace.root ]\n",
+        "  %root = phi ptr [ %first.root, %start ], [ %next.root, %trace.root ]\n",
         "  %roots.done = icmp eq ptr %root, null\n",
         "  br i1 %roots.done, label %work, label %trace.root\n",
         "trace.root:\n",
@@ -200,6 +210,9 @@ pub ManagedRuntime :: () -> string {
         "  %threshold.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 4\n",
         "  store i64 %threshold, ptr %threshold.at\n",
         "  ret void\n",
+        "trap:\n",
+        "  call void @llvm.trap()\n",
+        "  unreachable\n",
         "}\n",
         "define internal void @chibi_managed.safepoint(ptr %ctx, ptr %heap) {\n",
         "entry:\n",
@@ -218,4 +231,273 @@ pub ManagedRuntime :: () -> string {
         "  ret void\n",
         "}\n"
     ], "");
+}
+
+// Only standalone ProgramMode emits these helpers. The legacy five-field
+// context does not supply a collector owner, so generic bundles reject them.
+ManagedPointerRuntime :: () -> string {
+    text := strings.Join([
+        "define internal ptr @chibi_managed.owner(ptr %ctx) {\n",
+        "entry:\n",
+        "  %at = getelementptr $C, ptr %ctx, i32 0, i32 $F\n",
+        "  %heap = load ptr, ptr %at\n",
+        "  %valid = icmp ne ptr %heap, null\n",
+        "  br i1 %valid, label %exit, label %trap\n",
+        "exit:\n",
+        "  ret ptr %heap\n",
+        "trap:\n",
+        "  call void @llvm.trap()\n",
+        "  unreachable\n",
+        "}\n",
+        "; The descriptor's stable semantic tag is checked before touching its value.\n",
+        "; Offset/size checks also make the eventual field projection use this path.\n",
+        "define internal ptr @chibi_managed.address(ptr %heap, $P %value, i64 %wanted, i64 %bytes, i32 %storage) {\n",
+        "entry:\n",
+        "  %cell = extractvalue $P %value, 0\n",
+        "  %offset = extractvalue $P %value, 1\n",
+        "  %identity = extractvalue $P %value, 2\n",
+        "  %absent = icmp eq ptr %cell, null\n",
+        "  br i1 %absent, label %bad, label %validate\n",
+        "validate:\n",
+        "  %owner.at = getelementptr %chibi.managed.cell, ptr %cell, i32 0, i32 6\n",
+        "  %owner = load ptr, ptr %owner.at\n",
+        "  %owned = icmp eq ptr %owner, %heap\n",
+        "  %typed = icmp eq i64 %identity, %wanted\n",
+        "  %valid.identity = icmp ne i64 %identity, 0\n",
+        "  %storage.at = getelementptr %chibi.managed.cell, ptr %cell, i32 0, i32 7\n",
+        "  %actual.storage = load i32, ptr %storage.at\n",
+        "  %storage.ok = icmp eq i32 %actual.storage, %storage\n",
+        "  %size.at = getelementptr %chibi.managed.cell, ptr %cell, i32 0, i32 4\n",
+        "  %allocation = load i64, ptr %size.at\n",
+        "  %header = ptrtoint ptr getelementptr (%chibi.managed.cell, ptr null, i32 1) to i64\n",
+        "  %size = sub i64 %allocation, %header\n",
+        "  %fits = icmp ule i64 %bytes, %size\n",
+        "  %available = sub i64 %size, %bytes\n",
+        "  %inside = icmp ule i64 %offset, %available\n",
+        "  %range = and i1 %fits, %inside\n",
+        "  %identity.ok = and i1 %typed, %valid.identity\n",
+        "  %typed.owner = and i1 %owned, %identity.ok\n",
+        "  %pointer.ok = and i1 %typed.owner, %storage.ok\n",
+        "  %valid = and i1 %pointer.ok, %range\n",
+        "  br i1 %valid, label %resolve, label %bad\n",
+        "resolve:\n",
+        "  %payload = getelementptr %chibi.managed.cell, ptr %cell, i32 1\n",
+        "  %address = getelementptr i8, ptr %payload, i64 %offset\n",
+        "  ret ptr %address\n",
+        "bad:\n",
+        "  call void @chibi_native_failure(i32 0)\n",
+        "  unreachable\n",
+        "}\n"
+    ], "");
+    text = strings.ReplaceAll(text, "$C", abi.ManagedContextType());
+    text = strings.ReplaceAll(text, "$F", format_text("{}", abi.ManagedOwnerField));
+    text = strings.ReplaceAll(text, "$P", abi.ManagedPointerType());
+    return strings.Concatenate([text, ManagedTraceRuntime()]);
+}
+
+ManagedStorage :: (type: int) -> bool {
+    return type == PointerType || type == ArrayType + PointerType;
+}
+ManagedTypes :: (types: int[]) -> bool {
+    for (type in types) {
+        if (ManagedStorage(type) || (type >= RefType && ManagedStorage(type - RefType))) { return true; }
+    }
+    return false;
+}
+// All roots refer to initialized stable stack slots. Plain functions pay
+// nothing. Pointer-bearing suspended frames remain rejected by validation.
+ManagedRoots :: (shape: Function, slots: int[], locals: int[]) -> string {
+    output: string[] = ["  %managed.heap = call ptr @chibi_managed.owner(ptr %ctx)\n",
+        "  %managed.head = getelementptr %chibi.managed.heap, ptr %managed.heap, i32 0, i32 1\n",
+        "  %managed.previous = load ptr, ptr %managed.head\n"];
+    for (part in [int(0), 1]) {
+        first := shape.first_slot;
+        count := shape.slots;
+        prefix := "s";
+        types := slots;
+        if (part == 1) { first = shape.first_local; count = shape.locals; prefix = "l"; types = locals; }
+        for (index in 0..<count) {
+            type := types[first + index];
+            // Only GC releases cells, so scalar pointer snapshots are safe
+            // roots. Array reads may borrow freed backing; explicit pins
+            // instead cover actual owning places across collecting calls.
+            if (type != PointerType) { continue; }
+            output.append(Store(Zero(type), type, prefix, index));
+            output.append(format_text("  %managed.{}{} = alloca %chibi.managed.root\n", prefix, index));
+            output.append(format_text("  call void @chibi_managed.push(ptr %managed.heap, ptr %managed.{}{}, ptr %{}{}, ptr @chibi_managed.trace.{})\n",
+                                      prefix, index, prefix, index, "pointer"));
+        }
+    }
+    return strings.Join(output, "");
+}
+ManagedUnroots :: (is_entry: bool) -> string {
+    // Restoring the frame boundary also removes transient pins when a failed
+    // call bypassed its normal unpin instructions.
+    output := "  store ptr %managed.previous, ptr %managed.head\n";
+    if (is_entry) { output = strings.Concatenate([output, "  call void @chibi_managed.collect(ptr %ctx, ptr %managed.heap)\n"]); }
+    return output;
+}
+ManagedInstruction :: (item: Instruction, pc: int) -> string {
+    out := format_text("p{}:\n", pc);
+    if (item.op == ManagedNew) {
+        out = format_text("{}  call void @chibi_managed.safepoint(ptr %ctx, ptr %managed.heap)\n", out);
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), item.right, "s", item.left));
+        out = format_text("{}{}", out, Sized(format_text("bytes{}", pc), item.right));
+        out = format_text("{}  %cell{} = call ptr @chibi_managed.new(ptr %ctx, ptr %managed.heap, i64 %bytes{}, ptr null, ptr null, i32 {})\n", out, pc, pc, item.right);
+        out = format_text("{}  %payload{} = getelementptr %chibi.managed.cell, ptr %cell{}, i32 1\n", out, pc, pc);
+        out = format_text("{}  store {} %a{}, ptr %payload{}\n", out, TypeName(item.right), pc, pc);
+        pointer := abi.ManagedPointerType();
+        out = format_text("{}  %root{} = insertvalue {} zeroinitializer, ptr %cell{}, 0\n", out, pc, pointer, pc);
+        out = format_text("{}  %value{} = insertvalue {} %root{}, i64 {}, 2\n", out, pc, pointer, pc, item.literal);
+        out = format_text("{}{}", out, Store(format_text("%value{}", pc), PointerType, "s", item.output));
+    } else if (item.op == ManagedAddress) {
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), PointerType, "s", item.left));
+        out = format_text("{}{}", out, Sized(format_text("bytes{}", pc), item.type - RefType));
+        out = format_text("{}  %address{} = call ptr @chibi_managed.address(ptr %managed.heap, {} %a{}, i64 {}, i64 %bytes{}, i32 {})\n",
+                          out, pc, abi.ManagedPointerType(), pc, item.literal, pc, item.type - RefType);
+        out = format_text("{}{}", out, Store(format_text("%address{}", pc), item.type, "s", item.output));
+    } else if (item.op == ManagedPin) {
+        address := format_text("%s{}", item.left);
+        if (item.target == 1) {
+            out = format_text("{}{}", out, Load(format_text("pin{}", pc), item.type, "s", item.left));
+            address = format_text("%pin{}", pc);
+        }
+        out = format_text("{}  call void @chibi_managed.push(ptr %managed.heap, ptr %managed.pin{}, ptr {}, ptr @chibi_managed.trace.array)\n",
+                          out, item.right, address);
+    } else {
+        out = format_text("{}  call void @chibi_managed.pop(ptr %managed.heap, ptr %managed.pin{})\n", out, item.right);
+    }
+    return format_text("{}  br label %p{}\n", out, pc + 1);
+}
+
+ManagedTraceRuntime :: () -> string {
+    text := strings.Join([
+        "define internal void @chibi_managed.trace.pointer(ptr %heap, ptr %slot) {\n",
+        "entry:\n",
+        "  %value = load $P, ptr %slot\n",
+        "  %cell = extractvalue $P %value, 0\n",
+        "  call void @chibi_managed.mark(ptr %heap, ptr %cell)\n",
+        "  ret void\n",
+        "}\n",
+        "define internal void @chibi_managed.array.owner(ptr %ctx, ptr %owner) {\n",
+        "entry:\n",
+        "  %absent = icmp eq ptr %owner, null\n",
+        "  br i1 %absent, label %exit, label %validate\n",
+        "validate:\n",
+        "  %owner.at = getelementptr i8, ptr %owner, i64 $O\n",
+        "  %actual = load ptr, ptr %owner.at\n",
+        "  %heap = call ptr @chibi_managed.owner(ptr %ctx)\n",
+        "  %same = icmp eq ptr %actual, %heap\n",
+        "  br i1 %same, label %exit, label %bad\n",
+        "bad:\n",
+        "  call void @chibi_native_failure(i32 0)\n",
+        "  unreachable\n",
+        "exit:\n",
+        "  ret void\n",
+        "}\n",
+        "define internal void @chibi_managed.trace.array(ptr %heap, ptr %slot) {\n",
+        "entry:\n",
+        "  %value = load $A, ptr %slot\n",
+        "  %data = extractvalue $A %value, 2\n",
+        "  %count = extractvalue $A %value, 0\n",
+        "  %owner = extractvalue $A %value, 3\n",
+        "  %borrowed = icmp eq ptr %owner, null\n",
+        "  br i1 %borrowed, label %scan, label %validate\n",
+        "validate:\n",
+        "  %owner.at = getelementptr i8, ptr %owner, i64 $O\n",
+        "  %actual = load ptr, ptr %owner.at\n",
+        "  %same = icmp eq ptr %actual, %heap\n",
+        "  br i1 %same, label %epoch, label %bad\n",
+        "epoch:\n",
+        "  %epoch.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 5\n",
+        "  %current = load i64, ptr %epoch.at\n",
+        "  %previous.at = getelementptr i8, ptr %owner, i64 $E\n",
+        "  %previous = load i64, ptr %previous.at\n",
+        "  %traced = icmp eq i64 %previous, %current\n",
+        "  br i1 %traced, label %exit, label %remember\n",
+        "remember:\n",
+        "  store i64 %current, ptr %previous.at\n",
+        "  br label %scan\n",
+        "scan:\n",
+        "  br label %items\n",
+        "items:\n",
+        "  %index = phi i32 [ 0, %scan ], [ %next, %trace ]\n",
+        "  %done = icmp eq i32 %index, %count\n",
+        "  br i1 %done, label %exit, label %trace\n",
+        "trace:\n",
+        "  %wide = zext i32 %index to i64\n",
+        "  %at = getelementptr $P, ptr %data, i64 %wide\n",
+        "  call void @chibi_managed.trace.pointer(ptr %heap, ptr %at)\n",
+        "  %next = add i32 %index, 1\n",
+        "  br label %items\n",
+        "bad:\n",
+        "  call void @chibi_native_failure(i32 0)\n",
+        "  unreachable\n",
+        "exit:\n",
+        "  ret void\n",
+        "}\n"
+    ], "");
+    text = strings.ReplaceAll(text, "$A", abi.ArrayType());
+    text = strings.ReplaceAll(text, "$P", abi.ManagedPointerType());
+    text = strings.ReplaceAll(text, "$O", format_text("{}", abi.ManagedArrayOwnerOffset));
+    return strings.ReplaceAll(text, "$E", format_text("{}", abi.ManagedArrayEpochOffset));
+}
+
+ManagedPinsValid :: (code: Instruction[], slots: int[]) -> string {
+    seen := resize([false], length(code));
+    interior := resize([false], length(code));
+    active: int[] = [];
+    called := false;
+    for (pc in 0..<length(code)) {
+        item := code[pc];
+        interior[pc] = length(active) > 0;
+        if (item.op == ManagedPin) {
+            array := ArrayType + PointerType;
+            wanted := array;
+            if (item.target == 1) { wanted += RefType; }
+            if (called || item.type != wanted || !Typed(slots, item.left, wanted) ||
+                item.target < 0 || item.target > 1 || item.output != 0 || item.literal != 0 ||
+                !Index(item.right, length(code)) || seen[item.right]) {
+                return "native collector pin differs from its owning array place";
+            }
+            seen[item.right] = true;
+            active.append(item.right);
+        } else if (item.op == ManagedUnpin) {
+            if (!called || length(active) == 0 || active[length(active) - 1] != item.right ||
+                item.type != 0 || item.output != 0 || item.left != 0 || item.target != 0 || item.literal != 0) {
+                return "native collector pins must close in reverse order";
+            }
+            active = slice(active, 0, length(active) - 1);
+            if (length(active) == 0) { called = false; }
+        } else if (length(active) > 0) {
+            if (called || (item.op != Call && item.op != ForeignCall && item.op != ManagedNew)) {
+                return "native collector pins must bracket one collecting call";
+            }
+            called = true;
+        }
+    }
+    if (length(active) > 0) { return "native collector pins must close before control flow leaves"; }
+    for (item in code) {
+        if ((item.op == Jump || item.op == Branch) && interior[item.target]) {
+            return "native control flow cannot enter a collector pin region";
+        }
+    }
+    return "";
+}
+
+ManagedComparison :: (item: Instruction, pc: int) -> string {
+    out := Load(format_text("a{}", pc), PointerType, "s", item.left);
+    out = format_text("{}{}", out, Load(format_text("b{}", pc), PointerType, "s", item.right));
+    type := abi.ManagedPointerType();
+    out = format_text("{}  %ar{} = extractvalue {} %a{}, 0\n  %br{} = extractvalue {} %b{}, 0\n", out, pc, type, pc, pc, type, pc);
+    out = format_text("{}  %ao{} = extractvalue {} %a{}, 1\n  %bo{} = extractvalue {} %b{}, 1\n", out, pc, type, pc, pc, type, pc);
+    out = format_text("{}  %same.root{} = icmp eq ptr %ar{}, %br{}\n", out, pc, pc, pc);
+    out = format_text("{}  %same.offset{} = icmp eq i64 %ao{}, %bo{}\n", out, pc, pc, pc);
+    out = format_text("{}  %same{} = and i1 %same.root{}, %same.offset{}\n", out, pc, pc, pc);
+    value := format_text("%same{}", pc);
+    if (item.op == Ne) {
+        out = format_text("{}  %different{} = xor i1 %same{}, true\n", out, pc, pc);
+        value = format_text("%different{}", pc);
+    }
+    return strings.Concatenate([out, Store(value, abi.BoolStorage, "s", item.output)]);
 }

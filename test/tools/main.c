@@ -40,13 +40,7 @@ int main(int argc, char **argv)
     return pu_test_failed() ? 1 : 0;
 }
 #else
-void test_tool_chibi_cli(const char *binary, const char *self);
-void test_tool_chibi_cli_process(const char *binary, const char *self);
-void test_tool_chibi_cli_build(const char *binary);
-void test_tool_chibi_cli_doctor(const char *binary);
-void test_tool_chibi_cli_installed(const char *binary, const char *self);
 void test_native_workload_benchmark(const char *binary);
-void test_tool_chibi_cli_export(const char *binary);
 #ifdef CHIBI_TEST_COMPILER_ARTIFACT
 void test_tool_compiler_bootstrap(const char *host);
 void test_tool_bootstrap_recovery(const char *host, const char *artifact);
@@ -128,14 +122,9 @@ static bool run_document_suites(int argc, char **argv)
 
 void test_tool_case_timings(const char *self);
 int tool_case_timing_probe(const char *mode);
-int tool_tty_echo_child(bool terminal);
 
 int main(int argc, char **argv)
 {
-    if ((argc == 2 || (argc == 3 && !strcmp(argv[2], "--tty"))) &&
-        !strcmp(argv[1], "--tty-echo-child")) {
-        return tool_tty_echo_child(argc == 3);
-    }
     if (argc == 3 && !strcmp(argv[1], "--case-timing-probe")) {
         return tool_case_timing_probe(argv[2]);
     }
@@ -212,50 +201,10 @@ int main(int argc, char **argv)
         return 2;
 #endif
     }
-    if (argc == 3 && !strcmp(argv[1], "--chibi-cli")) {
-        tool_init();
-        pu_display_time(true);
-        test_tool_chibi_cli(argv[2], argv[0]);
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-    }
-    if (argc == 3 && (!strcmp(argv[1], "--chibi-cli-build") ||
-                      !strcmp(argv[1], "--chibi-cli-doctor"))) {
-        tool_init();
-        pu_display_time(true);
-        if (!strcmp(argv[1], "--chibi-cli-build")) {
-            test_tool_chibi_cli_build(argv[2]);
-        } else {
-            test_tool_chibi_cli_doctor(argv[2]);
-        }
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-    }
-    if (argc == 3 && !strcmp(argv[1], "--chibi-cli-process")) {
-        tool_init();
-        pu_display_time(true);
-        test_tool_chibi_cli_process(argv[2], argv[0]);
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-    }
-    if (argc == 3 && !strcmp(argv[1], "--chibi-cli-export")) {
-        tool_init();
-        pu_display_time(true);
-        test_tool_chibi_cli_export(argv[2]);
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-    }
     if (argc == 3 && !strcmp(argv[1], "--native-workload-benchmark")) {
         tool_init();
         pu_display_time(true);
         test_native_workload_benchmark(argv[2]);
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-    }
-    if (argc == 3 && !strcmp(argv[1], "--chibi-cli-installed")) {
-        tool_init();
-        pu_display_time(true);
-        test_tool_chibi_cli_installed(argv[2], argv[0]);
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

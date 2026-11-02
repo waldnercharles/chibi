@@ -1,0 +1,60 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+SelectCode :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, abi.BoolStorage, 0, 0, 0, 0, 1),
+            Code(native.Constant, abi.IntStorage, 1, 0, 0, 0, 42),
+            Code(native.Constant, abi.IntStorage, 2, 0, 0, 0, 7),
+            Code(native.Select, abi.IntStorage, 3, 0, 1, 2, 0),
+            Code(native.Publish, abi.IntStorage, 0, 3, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+
+SelectModule :: (code: native.Instruction[], slots: int[]) -> native.Result {
+    return Emit([Function(abi.IntStorage, 0, 0, length(slots), 0, length(code), 0, 0)], [], slots, code, []);
+}
+
+@test
+SelectionPreservesItsThreeTypedOperands :: () {
+    text := Emitted(SelectModule(SelectCode(), [abi.BoolStorage, abi.IntStorage, abi.IntStorage, abi.IntStorage]));
+    assert(strings.Contains(text, "select i1 %c4, i32 %a4, i32 %b4"));
+}
+
+@test
+SelectionRejectsWrongAndMissingOperands :: () {
+    mismatch := "native selection differs from its condition or values";
+    slots := [abi.BoolStorage, abi.IntStorage, abi.IntStorage, abi.IntStorage];
+    for (bad in [Code(native.Select, abi.IntStorage, 3, 1, 1, 2, 0),
+                 Code(native.Select, abi.IntStorage, 3, 0, 0, 2, 0),
+                 Code(native.Select, abi.IntStorage, 3, 0, 1, 0, 0),
+                 Code(native.Select, abi.IntStorage, 3, 0, 1, 9, 0),
+                 Code(native.Select, abi.IntStorage, 3, 0, 1, 2, 1)]) {
+        code := SelectCode();
+        code[4] = bad;
+        Rejects(SelectModule(code, slots), mismatch);
+    }
+}
+
+@test
+SelectionRequiresEveryValueToBeDefined :: () {
+    code := SelectCode();
+    code[3] = Code(native.Select, abi.IntStorage, 3, 0, 1, 2, 0);
+    code[4] = Code(native.Constant, abi.IntStorage, 2, 0, 0, 0, 7);
+    Rejects(SelectModule(code, [abi.BoolStorage, abi.IntStorage, abi.IntStorage, abi.IntStorage]),
+            "native scalar operand is not defined on every path");
+}
+
+@test
+SelectionRejectsManagedResults :: () {
+    kinds := [abi.TextStorage, native.ArrayType + abi.IntStorage];
+    for (type in kinds) {
+        code := SelectCode();
+        code[4] = Code(native.Select, type, 3, 0, 1, 2, 0);
+        Rejects(SelectModule(code, [abi.BoolStorage, abi.IntStorage, abi.IntStorage, type]),
+                "native selection differs from its condition or values");
+    }
+}

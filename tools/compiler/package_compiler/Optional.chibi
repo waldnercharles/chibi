@@ -898,6 +898,30 @@ OptionalPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name
     }
     return false;
 }
+
+// Use the same lexical root and mutation-aware presence proof for ordinary
+// narrowing and native scalar projection. Repeated calls have no stable root.
+OptionalValuePresent :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], expression: int,
+                         value: ValueType) -> bool {
+    if !Is(forest, expression, syntax.Identifier) && !Is(forest, expression, syntax.MemberExpression) {
+        return false;
+    }
+    name := Text(forest, text, expression);
+    found := Lookup(names, name);
+    binding: Name = {owned: false, name: name, place: ReferencePlace, index: 0, storage: value.storage,
+                     container: value.container, record: value.record, writable: false, node: -1};
+    if found >= 0 {
+        binding = names[found];
+    } else {
+        root := RootOf(forest, expression);
+        if !Is(forest, root, syntax.Identifier) { return false; }
+        source := Lookup(names, Text(forest, text, root));
+        if source < 0 || Alias(names[source].place) { return false; }
+        binding.node = names[source].node;
+    }
+    return OptionalPresent(forest, text, binding, expression);
+}
+
 // Presence proves only the optional payload, not the other values returned
 // beside an error. The existing mutation-aware guard proof is shared here.
 OptionalNarrowStep :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], expression: int,
@@ -920,29 +944,8 @@ OptionalNarrowStep :: (forest: snapshot.SnapshotNode[], text: string, types: Typ
             if !IsBoxedOptional(types, {storage: value.storage, container: value.container, record: value.record}) {
                 return step;
             }
-            name := Text(forest, text, expression);
-            found := Lookup(names, name);
-            // Member paths conservatively lose their proof at any write.
-            binding: Name = {owned: false, name: name, place: ReferencePlace, index: 0, storage: value.storage,
-                             container: value.container, record: value.record, writable: false, node: -1};
-            if found >= 0 {
-                binding = names[found];
-            } else {
-                // The path must refer to the same lexical root as its guard.
-                // Repeated calls have no stable root whose proof can be reused.
-                root := RootOf(forest, expression);
-                if !Is(forest, root, syntax.Identifier) {
-                    return step;
-                }
-                source := Lookup(names, Text(forest, text, root));
-                if source < 0 || Alias(names[source].place) {
-                    return step;
-                }
-                binding.node = names[source].node;
-            }
-            if !OptionalPresent(forest, text, binding, expression) {
-                return step;
-            }
+            shape: ValueType = {storage: value.storage, container: value.container, record: value.record};
+            if !OptionalValuePresent(forest, text, names, expression, shape) { return step; }
             rewritten := code;
             if ops.debug {
                 // Native narrowing has an unwrap expression around the

@@ -61,7 +61,10 @@ Calls :: () {
     assert(hashed.error == nil && hashed.digest == "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03", "os: file hash")
     assert(os.HashText("hello\n") == hashed.digest, "os: text hash")
     assert(os.HashFile("os_probe/none").error != nil, "os: missing file hash")
-    assert(os.Copy("os_probe/a/f.txt", "os_probe/a/g.txt") == nil && os.ReadText("os_probe/a/g.txt").text == "hello\n", "os: copy")
+    copied := os.Copy("os_probe/a/f.txt", "os_probe/a/g.txt")
+    assert(copied == nil, "os: copy succeeds")
+    copied_text := os.ReadText("os_probe/a/g.txt")
+    assert(copied_text.error == nil && copied_text.text == "hello\n", "os: copy")
     assert(os.Stamp("os_probe/a/f.txt") != "" && os.Stamp("os_probe/none") == "", "os: stamp")
     assert(os.Reserve("os_probe/r") == nil && os.Reserve("os_probe/r") != nil, "os: reserve")
     assert(os.Publish("os_probe/r", "os_probe/p") == nil && os.Publish("os_probe/p", "os_probe/a") != nil, "os: publish")
@@ -76,8 +79,8 @@ Calls :: () {
     prefixed := os.MakeDirectory("os_probe/order") == nil && os.WriteText("os_probe/order/ab", "x") == nil &&
                 os.WriteText("os_probe/order/a", "x") == nil && os.WriteText("os_probe/order/b", "x") == nil
     assert(prefixed, "os: order files")
-    order := os.List("os_probe/order").names
-    assert(length(order) == 3 && order[0] == "a" && order[1] == "ab" && order[2] == "b", "os: a prefix sorts first")
+    order := os.List("os_probe/order")
+    assert(order.error == nil && length(order.names) == 3 && order.names[0] == "a" && order.names[1] == "ab" && order.names[2] == "b", "os: a prefix sorts first")
     for name in ["a", "ab", "b"] {
         assert(os.Remove(format_text("os_probe/order/{}", name)) == nil, "os: order cleanup")
     }
@@ -85,8 +88,8 @@ Calls :: () {
     assert(os.Reserve("os_probe/empty") == nil && os.Publish("os_probe/a", "os_probe/empty") != nil, "os: publish keeps an empty destination")
     assert(os.Remove("os_probe/empty") == nil, "os: empty cleanup")
     assert(os.HashFile("os_probe").error != nil, "os: a directory has no file hash")
-    sorted := os.List("os_probe").names
-    assert(length(sorted) == 2 && sorted[0] == "a" && sorted[1] == "p", "os: names are sorted")
+    sorted := os.List("os_probe")
+    assert(sorted.error == nil && length(sorted.names) == 2 && sorted.names[0] == "a" && sorted.names[1] == "p", "os: names are sorted")
     piped := os.Start(["sh", "-c", "echo piped; exit 4"], os.Piped)
     assert(piped > 0 && os.Wait(piped, -1) == 4, "os: piped program and its status")
     slow := os.Start(["sh", "-c", "sleep 30"], os.Inherited)

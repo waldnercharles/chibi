@@ -2,14 +2,10 @@ package native_build_tests
 
 import bytes "core:bytes"
 import os "core:os"
+import posix "core:sys/posix"
 import strings "core:strings"
 import link "project:native_link"
 import host "project:native_link_host"
-
-foreign import clock "system:c"
-foreign clock {
-    clock_gettime :: (kind: int, stamp: i64[]) -> int
-}
 
 // `chibi build --native` through a relocated SDK and the build tree's own
 // launcher, on Linux and macOS. Controlled LLVM stand-ins cover the process
@@ -1148,16 +1144,20 @@ WorkerTimeout: int : -1000;
 WorkerClockFailed: int : -1001;
 WorkerLimit: i64 : 1200000;
 
-WorkerNow :: (kind: int, stamp: ^(i64[])) -> i64 {
-    status := clock_gettime(kind, stamp^);
-    if (status != 0) { return -1; }
-    return stamp^[0] * 1000 + stamp^[1] / 1000000;
+// Pointer forwarding is scoped within a package. Move the reusable backing
+// into a local for the POSIX call, then publish it back without a COW clone.
+WorkerNow :: (stamp: ^(u8[])) -> i64 {
+    scratch := stamp^;
+    stamp^ = [];
+    now := posix.MonotonicMilliseconds(&scratch);
+    stamp^ = scratch;
+    return now;
 }
 
-WorkerStatus :: (process: int, deadline: i64, kind: int, stamp: ^(i64[])) -> int {
+WorkerStatus :: (process: int, deadline: i64, stamp: ^(u8[])) -> int {
     status := os.Wait(process, 50);
     if (status != os.StillRunning) { return status; }
-    now := WorkerNow(kind, stamp);
+    now := WorkerNow(stamp);
     if (now >= 0 && now < deadline) { return os.StillRunning; }
     stopped := os.Kill(process);
     if (now < 0) { return WorkerClockFailed; }
@@ -1166,28 +1166,28 @@ WorkerStatus :: (process: int, deadline: i64, kind: int, stamp: ^(i64[])) -> int
 
 // A short deadline uses the same poll/kill path as the case pool. The blocked
 // shell and its delayed child share the worker's cancellation group.
-WorkerDeadlineProbe :: (folder: string, kind: int, stamp: ^(i64[])) {
+WorkerDeadlineProbe :: (folder: string, stamp: ^(u8[])) {
     ready := Path([folder, "/deadline-ready"]);
     late := Path([folder, "/deadline-late"]);
     child := os.Start(["/bin/sh", "-c",
         "(/bin/sleep 0.5; printf late > \"$1\") & printf ready > \"$2\"; wait",
         "deadline-probe", late, ready], os.Inherited);
     assert(child > 0, "the deadline probe starts");
-    now := WorkerNow(kind, stamp);
+    now := WorkerNow(stamp);
     assert(now >= 0, "the host monotonic clock is available");
     ready_deadline := now + 2000;
     while (!Exists(ready) && now >= 0 && now < ready_deadline) {
         status := os.Wait(child, 5);
         assert(status == os.StillRunning, "the deadline probe blocks after readiness");
-        now = WorkerNow(kind, stamp);
+        now = WorkerNow(stamp);
     }
     if (!Exists(ready) || now < 0) {
         stopped := os.Kill(child);
         assert(false, "the deadline probe becomes ready");
     }
-    status := WorkerStatus(child, now + 25, kind, stamp);
+    status := WorkerStatus(child, now + 25, &stamp^);
     while (status == os.StillRunning) {
-        status = WorkerStatus(child, now + 25, kind, stamp);
+        status = WorkerStatus(child, now + 25, &stamp^);
     }
     assert(status == WorkerTimeout, "the per-case deadline stops a blocked worker");
     waited := os.Run(["/bin/sleep", "0.6"]);
@@ -1202,10 +1202,8 @@ pub DeadlineProof :: () -> int {
     reserved := os.TemporaryDirectory(os.Root());
     assert(reserved.error == nil, "the deadline probe reserves its own directory");
     folder := reserved.path;
-    kind := 1;
-    if (os.Platform() == "Darwin") { kind = 6; }
-    stamp: i64[] = [0, 0];
-    WorkerDeadlineProbe(folder, kind, &stamp);
+    stamp := resize([u8(0)], 16);
+    WorkerDeadlineProbe(folder, &stamp);
     removed := os.Remove(folder);
     assert(removed == nil, "the deadline probe directory is removed");
     return 0;
@@ -1226,15 +1224,13 @@ pub Run :: () -> int {
     assert(os.Run(["/bin/rm", "-rf", folder]) == 0, "the old scratch removed");
     Make(folder);
     folder = os.RealPath(folder);
-    kind := 1;
-    if (platform == "Darwin") { kind = 6; }
-    stamp: i64[] = [0, 0];
-    now := WorkerNow(kind, &stamp);
+    stamp := resize([u8(0)], 16);
+    now := posix.MonotonicMilliseconds(&stamp);
     if (now < 0) {
         os.Print("native build: cannot read the host monotonic clock");
         return 2;
     }
-    WorkerDeadlineProbe(folder, kind, &stamp);
+    WorkerDeadlineProbe(folder, &stamp);
     built := os.RealPath(arguments[1]);
     suite := NewSuite(folder, built, Relocate(folder, built));
     PrepareBundle(suite);
@@ -1264,7 +1260,7 @@ pub Run :: () -> int {
     next := 0;
     while (next < length(names) || length(running) > 0) {
         while (next < length(names) && length(running) < 4) {
-            now = WorkerNow(kind, &stamp);
+            now = posix.MonotonicMilliseconds(&stamp);
             if (now < 0) {
                 // Stop every active worker before returning an environment error.
                 for (process in running) { stopped := os.Kill(process); }
@@ -1285,7 +1281,7 @@ pub Run :: () -> int {
         kept: int[] = [];
         kept_deadlines: i64[] = [];
         for (index in 0..<length(running)) {
-            status := WorkerStatus(running[index], deadlines[index], kind, &stamp);
+            status := WorkerStatus(running[index], deadlines[index], &stamp);
             if (status == os.StillRunning) {
                 still.append(running[index]);
                 kept.append(owners[index]);

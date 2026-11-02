@@ -1,0 +1,380 @@
+; Synchronous Wasm32 compiler ABI. Call-owned temporaries are drained after
+; normal return or SDK longjmp; only the published allocation escapes.
+; The SDK header probe substitutes @JUMP_BYTES@ before verification.
+target datalayout = "e-m:e-p:32:32-p10:8:8-p20:8:8-i64:64-i128:128-f128:64-n32:64-S128-ni:1:10:20"
+target triple = "wasm32-unknown-emscripten"
+
+%context = type { ptr, ptr, ptr, ptr, ptr }
+%options = type { ptr, i64, ptr, ptr }
+; Zero-length i128 fields align opaque SDK storage and allocation payloads to 16 bytes.
+%call = type { %context, [0 x i128], [@JUMP_BYTES@ x i8], ptr, ptr, i32, ptr, ptr, i64, i1, ptr, i32 }
+%allocation = type { ptr, ptr, [0 x i128], [0 x i8] }
+@chibi_wasm_active = internal thread_local global ptr null, align 4
+@chibi_wasm_live = internal thread_local global i32 0, align 4
+
+@chibi_wasm_message.budget = private constant [45 x i8] c"The package compile exceeded its step budget\00"
+@chibi_wasm_message.failed = private constant [35 x i8] c"The native package compiler failed\00"
+@chibi_wasm_message.cancelled = private constant [34 x i8] c"The package compile was cancelled\00"
+@chibi_wasm_message.output = private constant [51 x i8] c"The package compiler output exceeds its byte limit\00"
+@chibi_wasm_message.request = private constant [52 x i8] c"The package compiler request exceeds its byte limit\00"
+@chibi_wasm_message.missing = private constant [40 x i8] c"The package compiler request is missing\00"
+@chibi_wasm_message.busy = private constant [55 x i8] c"The package compiler is already running on this thread\00"
+@chibi_wasm_message.rejected = private constant [42 x i8] c"The package compiler rejected its request\00"
+
+declare ptr @calloc(i32, i32)
+declare ptr @malloc(i32)
+declare void @free(ptr)
+declare void @abort() noreturn
+declare i32 @strnlen(ptr, i32)
+declare i32 @setjmp(ptr) returns_twice
+declare void @longjmp(ptr, i32) noreturn #0
+declare void @llvm.trap() cold noreturn nounwind
+declare void @llvm.memcpy.p0.p0.i32(ptr, ptr, i32, i1 immarg)
+declare void @llvm.memset.p0.i32(ptr, i8, i32, i1 immarg)
+declare i32 @chibi_scalar(ptr)
+declare void @chibi_format_text(ptr, ptr, i32, ptr)
+
+define internal void @chibi_wasm_require(i1 %valid) {
+entry:
+  br i1 %valid, label %done, label %broken
+broken:
+  call void @llvm.trap()
+  unreachable
+done:
+  ret void
+}
+
+define internal ptr @chibi_wasm_call() {
+  %call = load ptr, ptr @chibi_wasm_active
+  %present = icmp ne ptr %call, null
+  call void @chibi_wasm_require(i1 %present)
+  ret ptr %call
+}
+
+define internal void @chibi_wasm_fail(ptr %diagnostic, ptr %message) {
+  %count = call i32 @strnlen(ptr %message, i32 255)
+  %destination = getelementptr i8, ptr %diagnostic, i32 20
+  call void @llvm.memcpy.p0.p0.i32(ptr %destination, ptr %message, i32 %count, i1 false)
+  %end = getelementptr i8, ptr %destination, i32 %count
+  store i8 0, ptr %end
+  ret void
+}
+
+; Keep SDK longjmp sites out of authored functions without EH target features.
+define void @chibi_native_failure(i32 %kind) noinline noreturn #0 {
+  %call = call ptr @chibi_wasm_call()
+  %diagnostic.at = getelementptr %call, ptr %call, i32 0, i32 7
+  %diagnostic = load ptr, ptr %diagnostic.at
+  %budget = icmp eq i32 %kind, 5
+  %message = select i1 %budget, ptr @chibi_wasm_message.budget, ptr @chibi_wasm_message.failed
+  call void @chibi_wasm_fail(ptr %diagnostic, ptr %message)
+  %status = select i1 %budget, i32 125, i32 134
+  %stopped = getelementptr %call, ptr %call, i32 0, i32 2
+  call void @longjmp(ptr %stopped, i32 %status)
+  unreachable
+}
+
+define void @chibi_native_step() noinline #0 {
+entry:
+  %call = call ptr @chibi_wasm_call()
+  %options.at = getelementptr %call, ptr %call, i32 0, i32 6
+  %options = load ptr, ptr %options.at
+  %has.options = icmp ne ptr %options, null
+  br i1 %has.options, label %callback, label %quota
+callback:
+  %cancel.at = getelementptr %options, ptr %options, i32 0, i32 2
+  %cancel = load ptr, ptr %cancel.at
+  %has.cancel = icmp ne ptr %cancel, null
+  br i1 %has.cancel, label %check, label %quota
+check:
+  %user.at = getelementptr %options, ptr %options, i32 0, i32 3
+  %user = load ptr, ptr %user.at
+  %cancelled = call zeroext i1 %cancel(ptr %user)
+  br i1 %cancelled, label %stop, label %quota
+stop:
+  %diagnostic.at = getelementptr %call, ptr %call, i32 0, i32 7
+  %diagnostic = load ptr, ptr %diagnostic.at
+  call void @chibi_wasm_fail(ptr %diagnostic, ptr @chibi_wasm_message.cancelled)
+  %stopped = getelementptr %call, ptr %call, i32 0, i32 2
+  call void @longjmp(ptr %stopped, i32 126)
+  unreachable
+quota:
+  %bounded.at = getelementptr %call, ptr %call, i32 0, i32 9
+  %bounded = load i1, ptr %bounded.at
+  br i1 %bounded, label %remaining, label %done
+remaining:
+  %remaining.at = getelementptr %call, ptr %call, i32 0, i32 8
+  %value = load i64, ptr %remaining.at
+  %empty = icmp eq i64 %value, 0
+  br i1 %empty, label %exhausted, label %decrement
+exhausted:
+  call void @chibi_native_failure(i32 5)
+  unreachable
+decrement:
+  %next = sub i64 %value, 1
+  store i64 %next, ptr %remaining.at
+  br label %done
+done:
+  ret void
+}
+
+define i32 @chibi_native_scope_begin(i64 %steps) {
+  %call = call ptr @chibi_wasm_call()
+  %remaining = getelementptr %call, ptr %call, i32 0, i32 8
+  store i64 %steps, ptr %remaining
+  %bounded = getelementptr %call, ptr %call, i32 0, i32 9
+  store i1 true, ptr %bounded
+  ret i32 0
+}
+define i32 @chibi_native_scope_end() {
+  %call = call ptr @chibi_wasm_call()
+  %bounded = getelementptr %call, ptr %call, i32 0, i32 9
+  store i1 false, ptr %bounded
+  ret i32 0
+}
+
+define ptr @chibi_allocate(ptr %call, i64 %size) {
+entry:
+  %fits = icmp ule i64 %size, 4294967279
+  br i1 %fits, label %allocate, label %oom
+allocate:
+  %narrow = trunc i64 %size to i32
+  %total = add i32 %narrow, 16
+  %item = call ptr @calloc(i32 1, i32 %total)
+  %present = icmp ne ptr %item, null
+  br i1 %present, label %link, label %oom
+oom:
+  call void @abort()
+  unreachable
+link:
+  %head.at = getelementptr %call, ptr %call, i32 0, i32 3
+  %head = load ptr, ptr %head.at
+  %next.at = getelementptr %allocation, ptr %item, i32 0, i32 1
+  store ptr %head, ptr %next.at
+  %has.head = icmp ne ptr %head, null
+  br i1 %has.head, label %previous, label %finish
+previous:
+  store ptr %item, ptr %head
+  br label %finish
+finish:
+  store ptr %item, ptr %head.at
+  ; @COUNT_ALLOCATE@
+  %bytes = getelementptr %allocation, ptr %item, i32 0, i32 3
+  ret ptr %bytes
+}
+
+define internal void @chibi_wasm_release(ptr %call, ptr %bytes) {
+entry:
+  %empty = icmp eq ptr %bytes, null
+  br i1 %empty, label %done, label %unlink
+unlink:
+  %item = getelementptr i8, ptr %bytes, i32 -16
+  %previous = load ptr, ptr %item
+  %next.at = getelementptr %allocation, ptr %item, i32 0, i32 1
+  %next = load ptr, ptr %next.at
+  %has.previous = icmp ne ptr %previous, null
+  br i1 %has.previous, label %middle, label %first
+middle:
+  %previous.next = getelementptr %allocation, ptr %previous, i32 0, i32 1
+  store ptr %next, ptr %previous.next
+  br label %following
+first:
+  %head = getelementptr %call, ptr %call, i32 0, i32 3
+  store ptr %next, ptr %head
+  br label %following
+following:
+  %has.next = icmp ne ptr %next, null
+  br i1 %has.next, label %back, label %finish
+back:
+  store ptr %previous, ptr %next
+  br label %finish
+finish:
+  ; @COUNT_RELEASE@
+  call void @free(ptr %item)
+  br label %done
+done:
+  ret void
+}
+
+define internal void @chibi_wasm_index_failed(ptr %call, i32 %index, i32 %length) noreturn #0 {
+  call void @chibi_native_failure(i32 1)
+  unreachable
+}
+
+define i32 @chibi_asset_request_length() {
+  %call = call ptr @chibi_wasm_call()
+  %length.at = getelementptr %call, ptr %call, i32 0, i32 5
+  %length = load i32, ptr %length.at
+  ret i32 %length
+}
+define i32 @chibi_asset_request_copy(ptr %buffer, i32 %count) {
+  %call = call ptr @chibi_wasm_call()
+  %length.at = getelementptr %call, ptr %call, i32 0, i32 5
+  %length = load i32, ptr %length.at
+  %same = icmp eq i32 %length, %count
+  call void @chibi_wasm_require(i1 %same)
+  %request.at = getelementptr %call, ptr %call, i32 0, i32 4
+  %request = load ptr, ptr %request.at
+  call void @llvm.memcpy.p0.p0.i32(ptr %buffer, ptr %request, i32 %count, i1 false)
+  ret i32 0
+}
+define i64 @chibi_asset_budget() {
+entry:
+  %call = call ptr @chibi_wasm_call()
+  %options.at = getelementptr %call, ptr %call, i32 0, i32 6
+  %options = load ptr, ptr %options.at
+  %present = icmp ne ptr %options, null
+  br i1 %present, label %read, label %default
+read:
+  %budget.at = getelementptr %options, ptr %options, i32 0, i32 1
+  %budget = load i64, ptr %budget.at
+  %set = icmp ne i64 %budget, 0
+  %effective = select i1 %set, i64 %budget, i64 4000000000
+  ret i64 %effective
+default:
+  ret i64 4000000000
+}
+
+define i32 @chibi_asset_publish(ptr %bytes, i32 %count) {
+entry:
+  %call = call ptr @chibi_wasm_call()
+  %output.at = getelementptr %call, ptr %call, i32 0, i32 10
+  %existing = load ptr, ptr %output.at
+  %empty = icmp eq ptr %existing, null
+  %positive = icmp sge i32 %count, 0
+  %valid = and i1 %empty, %positive
+  call void @chibi_wasm_require(i1 %valid)
+  %bounded = icmp ule i32 %count, 16777216
+  br i1 %bounded, label %allocate, label %large
+large:
+  %diagnostic.at = getelementptr %call, ptr %call, i32 0, i32 7
+  %diagnostic = load ptr, ptr %diagnostic.at
+  call void @chibi_wasm_fail(ptr %diagnostic, ptr @chibi_wasm_message.output)
+  ret i32 2
+allocate:
+  %nonempty = icmp ne i32 %count, 0
+  %size = select i1 %nonempty, i32 %count, i32 1
+  %output = call ptr @malloc(i32 %size)
+  %present = icmp ne ptr %output, null
+  br i1 %present, label %publish, label %oom
+oom:
+  call void @abort()
+  unreachable
+publish:
+  call void @llvm.memcpy.p0.p0.i32(ptr %output, ptr %bytes, i32 %count, i1 false)
+  store ptr %output, ptr %output.at
+  %length.at = getelementptr %call, ptr %call, i32 0, i32 11
+  store i32 %count, ptr %length.at
+  ret i32 0
+}
+define i32 @chibi_asset_rejected(i32 %document, i32 %line, i32 %column, ptr %message) {
+  %call = call ptr @chibi_wasm_call()
+  %diagnostic.at = getelementptr %call, ptr %call, i32 0, i32 7
+  %diagnostic = load ptr, ptr %diagnostic.at
+  store i32 %document, ptr %diagnostic
+  %line.at = getelementptr i8, ptr %diagnostic, i32 12
+  store i32 %line, ptr %line.at
+  %column.at = getelementptr i8, ptr %diagnostic, i32 16
+  store i32 %column, ptr %column.at
+  call void @chibi_wasm_fail(ptr %diagnostic, ptr %message)
+  ret i32 0
+}
+
+define ptr @asset_compiler_wasm_compile(ptr %request, i32 %request_length, ptr %length, ptr %options, ptr %diagnostic) #0 {
+entry:
+  store i32 0, ptr %length
+  call void @llvm.memset.p0.i32(ptr %diagnostic, i8 0, i32 792, i1 false)
+  store i32 -1, ptr %diagnostic
+  %missing = icmp eq ptr %request, null
+  %large = icmp ugt i32 %request_length, 67108864
+  %invalid = or i1 %missing, %large
+  br i1 %invalid, label %bad, label %available
+bad:
+  %bad.message = select i1 %missing, ptr @chibi_wasm_message.missing, ptr @chibi_wasm_message.request
+  call void @chibi_wasm_fail(ptr %diagnostic, ptr %bad.message)
+  ret ptr null
+available:
+  %active = load ptr, ptr @chibi_wasm_active
+  %busy = icmp ne ptr %active, null
+  br i1 %busy, label %occupied, label %allocate
+occupied:
+  call void @chibi_wasm_fail(ptr %diagnostic, ptr @chibi_wasm_message.busy)
+  ret ptr null
+allocate:
+  %end = getelementptr %call, ptr null, i32 1
+  %size = ptrtoint ptr %end to i32
+  %call = call ptr @calloc(i32 1, i32 %size)
+  %allocated = icmp ne ptr %call, null
+  br i1 %allocated, label %initialize, label %oom
+oom:
+  call void @abort()
+  unreachable
+initialize:
+  store ptr @chibi_format_text, ptr %call
+  %allocator = getelementptr %context, ptr %call, i32 0, i32 2
+  store ptr @chibi_allocate, ptr %allocator
+  %index = getelementptr %context, ptr %call, i32 0, i32 3
+  store ptr @chibi_wasm_index_failed, ptr %index
+  %release = getelementptr %context, ptr %call, i32 0, i32 4
+  store ptr @chibi_wasm_release, ptr %release
+  %request.at = getelementptr %call, ptr %call, i32 0, i32 4
+  store ptr %request, ptr %request.at
+  %request_length.at = getelementptr %call, ptr %call, i32 0, i32 5
+  store i32 %request_length, ptr %request_length.at
+  %options.at = getelementptr %call, ptr %call, i32 0, i32 6
+  store ptr %options, ptr %options.at
+  %diagnostic.at = getelementptr %call, ptr %call, i32 0, i32 7
+  store ptr %diagnostic, ptr %diagnostic.at
+  store ptr %call, ptr @chibi_wasm_active
+  %stopped = getelementptr %call, ptr %call, i32 0, i32 2
+  %jumped = call i32 @setjmp(ptr %stopped) returns_twice
+  %normal = icmp eq i32 %jumped, 0
+  br i1 %normal, label %compile, label %drain
+compile:
+  call void @chibi_native_step()
+  %result = call i32 @chibi_scalar(ptr %call)
+  %failure.at = getelementptr %context, ptr %call, i32 0, i32 1
+  %reported = load ptr, ptr %failure.at
+  %failed = icmp ne ptr %reported, null
+  %compiled = select i1 %failed, i32 134, i32 %result
+  br label %drain
+drain:
+  %status = phi i32 [ %jumped, %initialize ], [ %compiled, %compile ]
+  br label %next
+next:
+  %head.at = getelementptr %call, ptr %call, i32 0, i32 3
+  %head = load ptr, ptr %head.at
+  %has.head = icmp ne ptr %head, null
+  br i1 %has.head, label %drop, label %output
+drop:
+  %bytes = getelementptr %allocation, ptr %head, i32 0, i32 3
+  call void @chibi_wasm_release(ptr %call, ptr %bytes)
+  br label %next
+output:
+  %output.at = getelementptr %call, ptr %call, i32 0, i32 10
+  %published = load ptr, ptr %output.at
+  %succeeded = icmp eq i32 %status, 0
+  br i1 %succeeded, label %success, label %failure
+success:
+  %output_length.at = getelementptr %call, ptr %call, i32 0, i32 11
+  %output_length = load i32, ptr %output_length.at
+  store i32 %output_length, ptr %length
+  br label %finish
+failure:
+  call void @free(ptr %published)
+  %message = getelementptr i8, ptr %diagnostic, i32 20
+  %first = load i8, ptr %message
+  %has.message = icmp ne i8 %first, 0
+  br i1 %has.message, label %finish, label %explain
+explain:
+  call void @chibi_wasm_fail(ptr %diagnostic, ptr @chibi_wasm_message.rejected)
+  br label %finish
+finish:
+  %escaped = phi ptr [ %published, %success ], [ null, %failure ], [ null, %explain ]
+  store ptr null, ptr @chibi_wasm_active
+  call void @free(ptr %call)
+  ret ptr %escaped
+}
+
+; The target feature must remain on longjmp-containing functions through LTO.
+attributes #0 = { "target-features"="+exception-handling" }

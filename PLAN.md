@@ -9,20 +9,72 @@ independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
 ## Current checkpoint, 2 November
 
-CI run `41531103929` reproduces Linux stages three and four byte for byte
-(`1cff2a7d8d021daa4639df9537ba6fb136323f0317dd6a89976885c132e70b36`).
-It then fails the Windows cross-link on LLVM-generated `memset`; the Windows
-lane owns that fix. The core build separately finds a deleted helper still
-called by one retained Linux C test. `4db6b2eb4` restores the exact producer
-call, checked with Linux clang. This is partial platform evidence, not a green
-combined run.
+CI run `41539102677` at `c5c0a1ac2` reproduces Linux stages three and four
+byte for byte (`1d1d289a2429fe2ee2a75a71a959bf21590a02ff3ebf7cd8af1037a11bf1268e`).
+Its Windows cross-build and actual Windows stages three and four also match
+(`b069704224c389f793136e2e5a1190a5c7e83c9d1a4bbede7c91e97f4ea2b9c2`).
+Downloaded Linux and Windows archives match GitHub's artifact digests and the
+compiler bytes match their producer logs. This is compiler reproduction evidence,
+not a green combined run: the older source fails a deleted C helper, Graph's
+VM environment allowlist, Windows SDK-relative asset-service discovery and an
+untyped arithmetic comparison. The helper and Graph fixes are integrated;
+`0fe312983` fixes the comparison, including the original checkout smoke program.
+The desktop facade replacement owns Windows service discovery.
 
-The next batch includes POSIX process-group and terminal supervision, its watch
+The batch includes POSIX process-group and terminal supervision, its watch
 adapter, waiting scalar foreign calls, native core/portable selectors, source
 inventory receipts and the Windows PowerShell 5.1 bootstrap. The original
 fallible-result checker now also runs on native source; its stricter coverage
-found unchecked cleanup errors in the native driver. The driver lane is fixing
-those callers before the next self-host acceptance.
+found unchecked cleanup errors in the native driver. The callers now consume
+those errors, and a missing test-output file can no longer produce a false
+PASS. `3736ee5b5` preserves false optional-bool payloads after a presence guard;
+the seven original cases and parenthesized variants pass at O0/O2.
+
+The compiler/core snapshot at `9306b2fe0` builds through the `776ead2f1`-derived
+intermediate compiler in 110.63 seconds. Stages two, three and four are byte-identical,
+SHA-256 `40d00b84123ae44eb8bf5453747276666338b3f298a717f42c3b1acba5c1db58`.
+The original `60901f2fa` pin rejects the newer combined source, so advancing the
+verified seed is required before the next normal checkout build. The existing
+`60901f2fa` → `776ead2f1` proof below is intermediate upgrade evidence; the exact
+`c5c0a1ac2` source now also reproduces on macOS: stages three and four match
+`0a19d74d70c5f406bb08768a9167ab099e3cb6b034c7454d225f6142149b3cfc`.
+Its 429 compiler tests pass on Linux (40.58 seconds in Docker) and macOS
+(13.25 seconds). These compilers and their exact source are being prepared
+for the seed upgrade.
+Local Linux self-build attempts were killed by Docker's memory limit, including
+one worker (`OOMKilled=true`); other running services were left untouched.
+No seed publication or pin change has occurred.
+
+All seventeen CLI survivor cases pass through the public native compiler,
+together with four parent-signal and six terminal cases (43.02 seconds).
+Their obsolete C harness is deleted in `a501e0467`. The six backend survivors
+pass on macOS (36.01 seconds) and Linux (151.40 seconds), including exact bounds
+diagnostics and child-process cleanup. `d2359070d` deletes their C harness and
+sole stack-overflow handler and switches the existing selector to the native suite.
+The merged selector's dry run resolves the new command.
+
+Fresh SDK installation/relocation and its rejection checks pass in 18.70 seconds.
+`05bb540e1` compares authored compiler/core files without requiring source-free
+build-directory shapes and rejects directory/symlink substitutions for excluded
+files. This corrects an earlier false stale-resource rejection; the authored
+files in that fixture were identical. `034988efb` shares one correctly typed
+POSIX clock binding; all 25 build cases pass in 21.91 seconds and O0/O2 ownership
+checks pass in 17.63 seconds, including 1,025 clock samples without allocation.
+
+`0c0c9bb0d` and `0fe312983` preserve floating literal promotion and infer the
+spelled type of deferred constant-expression comparison operands. The expanded
+fixture passes O0/O2 and the installed-CLI arithmetic smoke compiles and runs.
+All 432 compiler tests pass in 12.98 seconds. The full types category retains
+four known admission gaps (payload patterns, set_array_elem, nullable pointers
+and optional descriptor growth); its arithmetic/shift/range diagnostics pass.
+
+`c50650f50` integrates scoped-reference alias preservation, native scalar managed
+cells and pointer arrays. Its source/runtime proof passes in 26.66 seconds:
+normal and forced collection, poisoned frees, bounded peak allocation, zero
+final live allocations, malformed descriptors, cross-owner rejection and shared
+array tracing once per collection epoch. Nullable/aggregate pointers, suspended
+frames and retained/Wasm owners remain implementation work. The combined root
+compiler still needs reproduction and platform acceptance after this batch.
 
 Remaining ownership is explicit:
 
@@ -33,9 +85,9 @@ Remaining ownership is explicit:
 - Producer and collector lanes: source pointers and precise ownership roots;
   reload lane: retained arrays and nominal retained schemas.
 - Driver lane: remaining authored language samples and error-result handling.
-- Tasks lane: the six remaining C native-backend cases, preserving their live
-  behaviors before deleting the C harness.
-- Cutover lane: all seventeen CLI survivors and signal/terminal counterparts.
+- Tasks lane: browser compile-only facade and generated identity, preserving
+  request isolation, quota/cancellation and published output ownership.
+- Cutover lane: final host/VM consumer inventory and proven obsolete target deletion.
 - Root: graph fixtures that depend on retired C targets, final host/VM deletion,
   recovery-command and CI retirement, combined review and platform acceptance.
 - Windows lane: optimized memory helpers, real Windows execution, and verified
@@ -104,8 +156,8 @@ named revisions, not the latest integration. Remaining deletion gates are:
 
 - Finish native language and ownership parity, including live pointer forms,
   array-backed records/maps and managed suspended/retained values.
-- Complete the 17 authored CLI survivor cases and three live Edit-and-Continue
-  behaviors from `docs/c-test-verdicts.md`; port surviving scalar/C test cases.
+- Integrate the reviewed CLI and backend harness deletions after their passing
+  survivor proofs; retain the native cases in the canonical selectors.
 - Finish remaining live graph/CLI consumers; native build/link and producer tests are migrated.
 - Validate the combined installed compiler, CLI, asset companion and optional
   browser SDK on each supported platform, including Windows execution.

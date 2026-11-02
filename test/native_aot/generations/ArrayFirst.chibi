@@ -1,0 +1,81 @@
+package retained_arrays
+
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fclose :: (stream: rawptr) -> i32
+    memset :: (data: u8[], value: i32, count: u64) -> rawptr
+    access :: (path: cstring, mode: i32) -> i32
+}
+Snapshot :: struct { values: int[]; score: int; }
+Inner :: struct { values: int[]; }
+Outer :: struct { inner: Inner; }
+Boot :: (start: bool) -> int {
+    count: retain int = 0;
+    if start { count += 1; }
+    return count;
+}
+Main :: () -> int {
+    assert(Boot(true) == 1 && Shared(true) == 1);
+    Worker();
+    return 0;
+}
+Shared :: (start: bool) -> int {
+    values: retain int[] = [];
+    if start { values.append(7); }
+    return length(values);
+}
+Worker :: () -> int {
+    while !TaskReleased() { yield }
+    return TaskFinished();
+}
+TaskReleased :: () -> bool { return access("array-task-release", 0) == 0; }
+TaskFinished :: () -> int {
+    assert(Shared(true) == 2, "old code retains its original array state");
+    stream := fopen("array-task-done", "wb");
+    assert(stream != 0);
+    closed := fclose(stream);
+    assert(closed == 0);
+    return 0;
+}
+Frame :: () -> int {
+    values: retain int[] = [];
+    flags: retain bool[] = [];
+    precise: retain f64[] = [];
+    bytes: retain u8[] = [];
+    snapshot: retain Snapshot = {values: [], score: 17};
+    character: retain char = char(65);
+    nested: retain Outer = {inner: {values: []}};
+    count: retain int = 0;
+    if count == 0 {
+        values.append(10);
+        values.append(20);
+        flags.append(true);
+        precise.append(1.25);
+        bytes = [u8(65)];
+        written := memset(bytes, 9, 1);
+        snapshot.values.append(7);
+        character = char(67);
+        changed := nested.inner;
+        changed.values.append(31);
+        nested.inner = changed;
+    } else {
+        assert(character == char(67));
+        assert(bytes[0] == 9, "foreign writes reach retained backing");
+        assert(nested.inner.values[0] == 31, "nested array fields survive the next Frame");
+    }
+    if count < 3 {
+        count += 1;
+        values[0] += 1;
+    }
+    if count == 3 {
+        Ready();
+    }
+    return 0;
+}
+Ready :: () {
+    stream := fopen("array-ready", "wb");
+    assert(stream != 0, "create the array readiness marker");
+    closed := fclose(stream);
+    assert(closed == 0, "close the array readiness marker");
+}

@@ -138,8 +138,8 @@ CompilerTools :: () -> int {
     third_party := Option(arguments, "--third-party");
     llvm := Option(arguments, "--llvm");
     if (llvm == "") { llvm = os.Getenv("CHIBI_LLVM_BIN"); }
-    if (!strings.HasPrefix(build_dir, "/") || !strings.HasPrefix(output, "/") ||
-        ((os.Platform() == "Darwin" || os.Platform() == "Linux") && !strings.HasPrefix(third_party, "/")) ||
+    if (!files.IsAbsolute(build_dir) || !files.IsAbsolute(output) ||
+        ((os.Platform() == "Darwin" || os.Platform() == "Linux") && !files.IsAbsolute(third_party)) ||
         !os.IsDirectory(llvm) || strings.HasSuffix(output, "/") ||
         strings.HasSuffix(output, "/.") || strings.HasSuffix(output, "/..")) {
         os.Print("sdk: --build, --output and --third-party must be absolute paths; --llvm must name LLVM tools; output must name a fresh prefix");
@@ -148,6 +148,9 @@ CompilerTools :: () -> int {
     if (os.Kind(output) != os.KindNone) { os.Print("sdk: output already exists"); return 2; }
     root := Option(arguments, "--source-root");
     if (root == "") { root = os.Root(); }
+    if (!files.IsAbsolute(root) || !os.IsDirectory(root)) {
+        os.Print("sdk: --source-root must name an absolute source directory"); return 2;
+    }
     output = files.CanonicalPath(output);
     if (output == "") { os.Print("sdk: output has an invalid directory ancestor"); return 2; }
     stage := files.CanonicalPath(Join([output, ".chibi-stage"]));
@@ -190,7 +193,7 @@ Install :: () -> int {
     arguments := os.Arguments();
     build_dir := Option(arguments, "--build");
     prefix := Option(arguments, "--prefix");
-    if (!strings.HasPrefix(build_dir, "/") || !strings.HasPrefix(prefix, "/")) {
+    if (!files.IsAbsolute(build_dir) || !files.IsAbsolute(prefix)) {
         os.Print("sdk: --build and --prefix must be absolute paths"); return 2;
     }
     third_party := "";

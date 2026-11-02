@@ -2,6 +2,7 @@ package toolchain
 
 import c "graph:c"
 import engine "graph:engine"
+import paths "graph:install"
 import os "core:os"
 import strings "core:strings"
 
@@ -100,7 +101,7 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
     if (length(native_products) != 0) {
         driver := Option(arguments, "--native-driver", "");
         llvm := Option(arguments, "--llvm", "");
-        if (!strings.HasPrefix(build_dir, "/") || driver == "" || llvm == "" || jobs < 1) {
+        if (!paths.IsAbsolute(build_dir) || driver == "" || llvm == "" || jobs < 1) {
             os.Print("graph: native products require absolute --build, --native-driver FILE, --llvm DIR and positive --jobs");
             return 2;
         }

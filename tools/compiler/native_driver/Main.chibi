@@ -7,12 +7,14 @@ import os "core:os"
 import strings "core:strings"
 
 // The native compiler's driver: `STAGE --compiler DIR --core DIR --output FILE
-// --llvm DIR [--package NAME | --source FILE | --root DIR] [--entry NAME] [--collection NAME=DIR]...
+// [--emit-llvm | --llvm DIR] [--package NAME | --source FILE | --root DIR] [--entry NAME] [--collection NAME=DIR]...
 // [--target TRIPLE] [--level 0|2] [--lines] [--static | --shared] [--jobs N]`
 // compiles package NAME of the project at DIR (default native_driver), or the
 // one program FILE, and the core and collection packages it imports to the
 // native program FILE. --level is opt's and llc's (default 2). --lines adds
 // line tables (Linux x86-64). Linux links libc dynamically by default.
+// --emit-llvm publishes the program's module bundle for an external linker;
+// each `; chibi-piece` boundary starts an independent module. No tools run.
 // --static refuses a program that needs libc,
 // which a program that allocates does; --shared links a library source as a
 // Linux shared object, as the Edit and Continue player loads one. A
@@ -51,9 +53,10 @@ Build :: (arguments: string[]) -> int {
     level := Option(arguments, "--level", "2");
     lines := Flag(arguments, "--lines");
     shared := Flag(arguments, "--shared");
+    emit_llvm := Flag(arguments, "--emit-llvm");
     linux := triple == "x86_64-unknown-linux-gnu";
-    if (project == "" || core == "" || (output == "" && root == "") || llvm == "" || (level != "0" && level != "2")) {
-        os.Print("usage: --compiler DIR --core DIR --output FILE --llvm DIR [--package NAME | --source FILE | --root DIR] [--entry NAME] [--collection NAME=DIR]... [--target TRIPLE] [--level 0|2] [--lines] [--static | --shared] [--jobs N]");
+    if (project == "" || core == "" || (output == "" && root == "") || (!emit_llvm && llvm == "") || (level != "0" && level != "2")) {
+        os.Print("usage: --compiler DIR --core DIR --output FILE [--emit-llvm | --llvm DIR] [--package NAME | --source FILE | --root DIR] [--entry NAME] [--collection NAME=DIR]... [--target TRIPLE] [--level 0|2] [--lines] [--static | --shared] [--jobs N]");
         return 2;
     }
     if ((lines || shared) && !linux) {
@@ -62,6 +65,10 @@ Build :: (arguments: string[]) -> int {
     }
     if (shared && (lines || Flag(arguments, "--static"))) {
         os.Print("native: a shared library has no line tables or static link yet");
+        return 2;
+    }
+    if (emit_llvm && (root != "" || shared || Flag(arguments, "--static"))) {
+        os.Print("native: --emit-llvm takes --output and no --root, --shared or --static");
         return 2;
     }
     if (root != "") {
@@ -117,7 +124,7 @@ Build :: (arguments: string[]) -> int {
         folder = root;
     }
     options: DriverOptions = {level: level, lines: lines, static_link: Flag(arguments, "--static"),
-                               shared: shared, folder: folder, keep_module: root != ""};
+                               shared: shared, folder: folder, keep_module: root != "", emit_llvm: emit_llvm};
     if (root != "") {
         return CachedBuild(root, collections, directories, gathered, triple, chosen, llvm, Jobs(arguments), options, source);
     }
@@ -134,12 +141,15 @@ DriverOptions :: struct {
     shared: bool;
     folder: string;
     keep_module: bool;
+    // Emits the ordinary program module bundle for an external target linker.
+    // Each `; chibi-piece` boundary begins an independent LLVM module.
+    emit_llvm: bool;
 }
 
 Emit :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
          chosen: string, llvm: string, output: string, jobs: int) -> int {
     return EmitOptions(collections, directories, paths, sources, triple, chosen, llvm, output, jobs,
-                       {level: "2", lines: false, static_link: false, shared: false, folder: ".", keep_module: false});
+                       {level: "2", lines: false, static_link: false, shared: false, folder: ".", keep_module: false, emit_llvm: false});
 }
 
 // Emits into the caller's work directory; only a successful link replaces
@@ -149,6 +159,10 @@ EmitOptions :: (collections: string[], directories: string[], paths: string[], s
     linux := triple == "x86_64-unknown-linux-gnu";
     windows := strings.HasPrefix(triple, "x86_64-pc-windows");
     shared := options.shared;
+    if (triple == "wasm32-unknown-emscripten" && !options.emit_llvm) {
+        os.Print("native: WebAssembly requires --emit-llvm and an external Wasm linker");
+        return 2;
+    }
     if ((options.lines || shared) && !linux) {
         os.Print("native: line tables and shared libraries are Linux x86-64 only so far");
         return 2;
@@ -157,10 +171,12 @@ EmitOptions :: (collections: string[], directories: string[], paths: string[], s
         os.Print("native: a shared library has no line tables or static link yet; --level is 0 or 2");
         return 2;
     }
-    tool_problem := LlvmProblem(llvm, triple);
-    if (tool_problem != "") {
-        os.Print(strings.Concatenate(["native: ", tool_problem]));
-        return 2;
+    if (!options.emit_llvm) {
+        tool_problem := LlvmProblem(llvm, triple);
+        if (tool_problem != "") {
+            os.Print(strings.Concatenate(["native: ", tool_problem]));
+            return 2;
+        }
     }
     directory := "";
     if (options.lines) {
@@ -195,6 +211,19 @@ EmitOptions :: (collections: string[], directories: string[], paths: string[], s
             return 1;
         case .Emitted(text):
             pieces = Pieces(text);
+    }
+    if (options.emit_llvm) {
+        text := strings.Join(pieces, "\n; chibi-piece\n");
+        if (triple == "wasm32-unknown-emscripten") {
+            text = strings.Concatenate([text, "\n; chibi-piece\n", link.WebAssemblyContext()]);
+        }
+        partial := strings.Concatenate([output, ".partial"]);
+        if (os.WriteText(partial, text) != nil || os.Rename(partial, output) != nil) {
+            removed := os.Remove(partial);
+            os.Print("native: cannot publish the LLVM module bundle");
+            return 2;
+        }
+        return 0;
     }
     // The `; chibi-library` and `; chibi-import` lines, which any piece may
     // hold: a vendored archive links after the objects, and only a Windows

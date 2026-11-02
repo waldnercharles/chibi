@@ -230,7 +230,24 @@ pub TextRelease: int : 59;
 // field's type; type is that reference type. The field is a number or a bool,
 // and the reference lives as long as the local does.
 pub FieldAddress: int : 60;
-pub InstructionCount: int : 61;
+// A waiting function is a coroutine: its body holds a Suspend, an AwaitHandle or an
+// awaited Call. Suspend gives up the function's turn; it resumes at the next
+// instruction on the scheduler's next update (`yield`).
+pub Suspend: int : 80;
+// Waits for the task whose handle (a word) is `left` to finish or be cancelled. It
+// gives nothing: the task's result, `T | Cancelled`, needs a union the native
+// lane does not have for it yet.
+pub AwaitHandle: int : 81;
+// Cancels the task whose handle (a word) is `left`: its coroutine is destroyed.
+pub Cancel: int : 82;
+pub InstructionCount: int : 83;
+// A Call's `literal`: an ordinary call, an awaited call (the callee is a waiting
+// function, run inline in the waiting caller, giving its result), or a spawn (the
+// callee is a waiting function, started as a task of its own, giving its handle, a
+// word).
+pub CallPlain: int : 0;
+pub CallAwaited: int : 1;
+pub CallSpawned: int : 2;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -251,7 +268,7 @@ Unary :: (op: int) -> bool {
 ReadsLeft :: (op: int) -> bool {
     return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
            (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText || op == ArrayDrop || op == TextRetain ||
-           op == TextRelease || op == StateStore || op == Deref || op == Poke;
+           op == TextRelease || op == StateStore || op == Deref || op == Poke || op == AwaitHandle || op == Cancel;
 }
 Integer :: (type: int) -> bool {
     return abi.IntegerBits(type) > 0;
@@ -726,14 +743,41 @@ CallbackAdapters :: (functions: Function[], parameters: int[], code: Instruction
     }
     return strings.Join(out, "");
 }
+// Whether each function is a coroutine: it suspends, awaits a task, or awaits a call.
+WaitingFunctions :: (functions: Function[], code: Instruction[]) -> bool[] {
+    waiting: bool[] = [];
+    for (shape in functions) {
+        found := false;
+        for (item in Codes(code, shape.first_code, shape.code)) {
+            if (item.op == Suspend || item.op == AwaitHandle || (item.op == Call && item.literal == i64(CallAwaited))) {
+                found = true;
+            }
+        }
+        waiting.append(found);
+    }
+    return waiting;
+}
+// Whether any function waits or starts a task.
+Tasks :: (code: Instruction[]) -> bool {
+    for (item in code) {
+        if (item.op == Suspend || item.op == AwaitHandle || item.op == Cancel || (item.op == Call && item.literal != i64(CallPlain))) {
+            return true;
+        }
+    }
+    return false;
+}
 // A call names another function of the module, with its result type and one
-// argument slot of each parameter's type.
+// argument slot of each parameter's type. A spawn gives a task handle, a word.
 CallValid :: (functions: Function[], parameters: int[], slots: int[], arguments: int[], item: Instruction) -> bool {
     if (!Index(item.left, length(functions))) {
         return false;
     }
     callee := functions[item.left];
-    if (item.type != callee.result || item.target != callee.parameters || item.right < 0 ||
+    wanted := callee.result;
+    if (item.literal == i64(CallSpawned)) {
+        wanted = abi.WordStorage;
+    }
+    if (item.type != wanted || item.target != callee.parameters || item.right < 0 ||
         item.right > length(arguments) - item.target) {
         return false;
     }
@@ -746,7 +790,7 @@ CallValid :: (functions: Function[], parameters: int[], slots: int[], arguments:
 }
 Validate :: (functions: Function[], function: int, module_parameters: int[], module_slots: int[],
              module_locals: int[], module_code: Instruction[], module_arguments: int[], records: Record[],
-             fields: int[], texts: string[], mode: int) -> Result {
+             fields: int[], texts: string[], mode: int, waiting: bool[]) -> Result {
     shape := functions[function];
     parameters := Part(module_parameters, shape.first_parameter, shape.parameters);
     slots := Part(module_slots, shape.first_slot, shape.slots);
@@ -762,11 +806,17 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         return Result.Rejected(-1, "unsupported native scalar signature or table size");
     }
     for (type in parameters) {
+        if (waiting[function] && abi.ScalarType(type) == "") {
+            return Result.Rejected(-1, "native waiting parameters need scalar values; managed values and dependencies are not supported yet");
+        }
         if (!Held(records, type) || (exported && abi.ScalarType(type) == "")) {
             return Result.Rejected(-1, "unsupported native scalar parameter");
         }
     }
     for (type in slots) {
+        if (waiting[function] && abi.ScalarType(type) == "") {
+            return Result.Rejected(-1, "native waiting frames cannot own managed values or pointers yet");
+        }
         if (!Held(records, type)) {
             return Result.Rejected(-1, "native scalar slot cannot hold a managed value or pointer");
         }
@@ -784,7 +834,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     pc: int = 0;
     while (pc < length(code)) {
         item := code[pc];
-        if (item.op < Constant || item.op >= InstructionCount) {
+        if (item.op < Constant || item.op >= InstructionCount || (item.op > FieldAddress && item.op < Suspend)) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {
@@ -887,6 +937,16 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if (item.op == Call && !CallValid(functions, module_parameters, slots, arguments, item)) {
             return Result.Rejected(base + pc, "native call differs from its callee's signature");
+        }
+        if (item.op == Call && (item.literal < i64(CallPlain) || item.literal > i64(CallSpawned) ||
+                                (item.literal != i64(CallPlain) && !waiting[item.left]))) {
+            return Result.Rejected(base + pc, "native awaited call or spawn names a function that does not wait");
+        }
+        if ((item.op == AwaitHandle || item.op == Cancel) && !Typed(slots, item.left, abi.WordStorage)) {
+            return Result.Rejected(base + pc, "native task operation requires a task handle");
+        }
+        if (waiting[function] && (item.op == Fail || item.op == Format || item.op == ForeignCall)) {
+            return Result.Rejected(base + pc, "native waiting function cannot fail, format or call foreign code yet");
         }
         if (item.op == Fail && (item.left < 0 || item.right < item.left)) {
             return Result.Rejected(base + pc, "native failure names no source range");
@@ -1196,7 +1256,8 @@ Spelled :: (literal: i64, type: int) -> i64 {
     }
     return literal - (i64(1) << u32(bits));
 }
-EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], fields: int[], texts: string[]) -> string {
+EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], fields: int[], texts: string[],
+                    coroutine: bool) -> string {
     out := format_text("p{}:\n", pc);
     type := TypeName(item.type);
     if (item.op == Constant && item.type == abi.TextStorage) {
@@ -1221,6 +1282,9 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
     } else if (item.op == Publish) {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
         out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "result", 0));
+    } else if ((item.op == Return || item.op == End) && coroutine) {
+        // The result is in the promise; the coroutine finishes at its final suspension.
+        return format_text("{}  br label %coro.final\n", out);
     } else if (item.op == Return || item.op == End) {
         out = format_text("{}{}", out, Load(format_text("return{}", pc), result, "result", 0));
         return format_text("{}{}", out, format_text("  ret {} %return{}\n", TypeName(result), pc));
@@ -1830,6 +1894,9 @@ TextRead :: (item: Instruction, pc: int) -> string {
 ScalarEntry: int : 0;
 MainEntry: int : 1;
 NoEntry: int : 2;
+// A scalar entry that is a coroutine: its ramp is internal and chibi_scalar is a
+// function that runs it and the tasks until it finishes.
+CoroutineEntry: int : 3;
 // The entry's symbol, or an internal function's.
 Symbol :: (function: int, mode: int) -> string {
     if (function == 0 && mode == MainEntry) {
@@ -1837,6 +1904,9 @@ Symbol :: (function: int, mode: int) -> string {
     }
     if (function == 0 && mode == ScalarEntry) {
         return "chibi_scalar";
+    }
+    if (function == 0 && mode == CoroutineEntry) {
+        return "chibi_scalar.ramp";
     }
     return format_text("chibi_scalar.{}", function);
 }
@@ -2050,15 +2120,134 @@ FailInstruction :: (function: int, pc: int) -> string {
 FailureSymbol :: (function: int, pc: int) -> string {
     return format_text("chibi_scalar.failure.{}.{}", function, pc);
 }
+// The coroutine intrinsics require LLVM 22 or later.
+CoroutineDeclarations :: () -> string {
+    return strings.Join(["declare token @llvm.coro.id(i32, ptr, ptr, ptr)\n",
+                         "declare i1 @llvm.coro.alloc(token)\n",
+                         "declare i64 @llvm.coro.size.i64()\n",
+                         "declare ptr @llvm.coro.begin(token, ptr)\n",
+                         "declare i8 @llvm.coro.suspend(token, i1)\n",
+                         "declare ptr @llvm.coro.free(token, ptr)\n",
+                         "declare void @llvm.coro.end(ptr, i1, token)\n",
+                         "declare void @llvm.coro.resume(ptr)\n",
+                         "declare void @llvm.coro.destroy(ptr)\n",
+                         "declare i1 @llvm.coro.done(ptr)\n",
+                         "declare ptr @llvm.coro.promise(ptr, i32, i1)\n"], "");
+}
+// chibi_scalar when the entry waits: it starts the entry as a task and updates the
+// tasks until the entry has finished, then gives its result.
+CoroutineEntryFunction :: (result: int, waiting: bool) -> string {
+    type := TypeName(result);
+    out := format_text("define {} @chibi_scalar(ptr %ctx) #0 {{\nentry:\n", type);
+    if (!waiting) {
+        return format_text("{}  %result = call {} @chibi_scalar.ramp(ptr %ctx)\n  %cancelled = call i32 @chibi_host_tasks_cancel_all()\n  ret {} %result\n}}\n", out, type, type);
+    }
+    out = format_text("{}  %handle = call i64 @chibi_tasks.begin(ptr %ctx, i1 true)\n  %frame = call ptr @chibi_scalar.ramp(ptr %ctx)\n  call void @chibi_tasks.attach(i64 %handle, ptr %frame)\n  store i64 0, ptr @chibi_tasks.current\n", out);
+    out = format_text("{}  br label %loop\nloop:\n  %done = call i1 @llvm.coro.done(ptr %frame)\n", out);
+    out = format_text("{}  br i1 %done, label %finished, label %tick\ntick:\n  call void @chibi_tasks.update()\n  br label %loop\n", out);
+    out = format_text("{}finished:\n  %promise = call ptr @llvm.coro.promise(ptr %frame, i32 8, i1 false)\n", out);
+    return format_text("{}  %result = load {}, ptr %promise\n  %cancelled = call i32 @chibi_host_tasks_cancel_all()\n  ret {} %result\n}}\n", out, type, type);
+}
+// A coroutine's start, in the entry block: the promise is the result's slot, the
+// frame comes from the context's allocate and goes back to its release.
+CoroutinePrologue :: () -> string {
+    out := "  %coro.id = call token @llvm.coro.id(i32 8, ptr %result0, ptr null, ptr null)\n";
+    out = format_text("{}  %coro.need = call i1 @llvm.coro.alloc(token %coro.id)\n", out);
+    out = format_text("{}  br i1 %coro.need, label %coro.alloc, label %coro.begin\ncoro.alloc:\n", out);
+    out = format_text("{}  %coro.size = call i64 @llvm.coro.size.i64()\n", out);
+    out = format_text("{}{}", out, Allocated("coro.mem", "%coro.size"));
+    out = format_text("{}  br label %coro.begin\ncoro.begin:\n", out);
+    out = format_text("{}  %coro.frame = phi ptr [ null, %entry ], [ %coro.mem, %coro.alloc ]\n", out);
+    out = format_text("{}  %coro.hdl = call ptr @llvm.coro.begin(token %coro.id, ptr %coro.frame)\n", out);
+    return format_text("{}  br label %p0\n", out);
+}
+// A coroutine's end: the final suspension keeps the frame, and so the promise,
+// for whoever reads the result; destroying it comes here to release the frame.
+CoroutineEpilogue :: () -> string {
+    out := "coro.final:\n  %coro.last = call i8 @llvm.coro.suspend(token none, i1 true)\n";
+    out = format_text("{}  switch i8 %coro.last, label %coro.suspend [ i8 0, label %trap\n                                     i8 1, label %coro.cleanup ]\n", out);
+    out = format_text("{}coro.cleanup:\n  %coro.free = call ptr @llvm.coro.free(token %coro.id, ptr %coro.hdl)\n", out);
+    out = format_text("{}  %coro.owned = icmp ne ptr %coro.free, null\n", out);
+    out = format_text("{}  br i1 %coro.owned, label %coro.release, label %coro.suspend\ncoro.release:\n", out);
+    out = format_text("{}{}", out, ContextCall("coro.release.call", 4));
+    out = format_text("{}  call void %coro.release.call(ptr %ctx, ptr %coro.free)\n", out);
+    out = format_text("{}  br label %coro.suspend\ncoro.suspend:\n", out);
+    return format_text("{}  call void @llvm.coro.end(ptr %coro.hdl, i1 false, token none)\n  ret ptr %coro.hdl\n", out);
+}
+// `yield`: give up the turn, to resume at the next instruction on the next update.
+SuspendInstruction :: (pc: int) -> string {
+    out := format_text("p{}:\n  %suspend{} = call i8 @llvm.coro.suspend(token none, i1 false)\n", pc, pc);
+    return format_text("{}  switch i8 %suspend{}, label %coro.suspend [ i8 0, label %p{}\n                                      i8 1, label %coro.cleanup ]\n",
+                       out, pc, pc + 1);
+}
+// The ramp call of a waiting callee: its frame, as `v{pc}`.
+RampCall :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int, mode: int,
+             spawned: bool) -> string {
+    callee := functions[item.left];
+    out := format_text("p{}:\n", pc);
+    if (spawned) {
+        out = format_text("{}  %parent{} = load i64, ptr @chibi_tasks.current\n  %task{} = call i64 @chibi_tasks.begin(ptr %ctx, i1 false)\n", out, pc, pc);
+    }
+    listed: string[] = ["ptr %ctx"];
+    for (index in 0..<item.target) {
+        type := parameters[callee.first_parameter + index];
+        out = format_text("{}{}", out, Load(format_text("c{}_{}", pc, index), type, "s", arguments[item.right + index]));
+        listed.append(format_text("{} %c{}_{}", TypeName(type), pc, index));
+    }
+    return format_text("{}  %v{} = call ptr @{}({})\n", out, pc, Symbol(item.left, mode), strings.Join(listed, ", "));
+}
+// `await F(arguments)` in a coroutine: F runs to its first suspension, and the
+// caller waits for it, resuming it each time it is resumed itself. Destroying
+// the caller destroys F's frame first.
+AwaitedCallInstruction :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int,
+                           mode: int) -> string {
+    out := RampCall(functions, parameters, arguments, item, pc, mode, false);
+    out = format_text("{}  br label %p{}.test\np{}.test:\n", out, pc, pc);
+    out = format_text("{}  %done{} = call i1 @llvm.coro.done(ptr %v{})\n", out, pc, pc);
+    out = format_text("{}  br i1 %done{}, label %p{}.finished, label %p{}.wait\np{}.wait:\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %suspend{} = call i8 @llvm.coro.suspend(token none, i1 false)\n", out, pc);
+    out = format_text("{}  switch i8 %suspend{}, label %coro.suspend [ i8 0, label %p{}.resume\n                                      i8 1, label %p{}.destroy ]\n",
+                      out, pc, pc, pc);
+    out = format_text("{}p{}.resume:\n  call void @llvm.coro.resume(ptr %v{})\n  br label %p{}.test\n", out, pc, pc, pc);
+    out = format_text("{}p{}.destroy:\n  call void @llvm.coro.destroy(ptr %v{})\n  br label %coro.cleanup\n", out, pc, pc);
+    out = format_text("{}p{}.finished:\n  %promise{} = call ptr @llvm.coro.promise(ptr %v{}, i32 8, i1 false)\n", out, pc, pc, pc);
+    out = format_text("{}  %result{} = load {}, ptr %promise{}\n  call void @llvm.coro.destroy(ptr %v{})\n", out, pc,
+                      TypeName(item.type), pc, pc);
+    out = format_text("{}{}", out, Store(format_text("%result{}", pc), item.type, "s", item.output));
+    return format_text("{}  br label %p{}\n", out, pc + 1);
+}
+// `F(arguments)` of a waiting F, not awaited: F runs to its first suspension and
+// is added to the scheduler; the task's handle is the result.
+SpawnedCallInstruction :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int,
+                           mode: int) -> string {
+    out := RampCall(functions, parameters, arguments, item, pc, mode, true);
+    out = format_text("{}  call void @chibi_tasks.attach(i64 %task{}, ptr %v{})\n  store i64 %parent{}, ptr @chibi_tasks.current\n", out, pc, pc, pc);
+    out = format_text("{}{}", out, Store(format_text("%task{}", pc), item.type, "s", item.output));
+    return format_text("{}  br label %p{}\n", out, pc + 1);
+}
+// `await handle` as a statement: when the task has not finished, the coroutine
+// records that it waits for it and suspends; the scheduler resumes it once the
+// task has finished or been cancelled.
+AwaitHandleInstruction :: (item: Instruction, pc: int) -> string {
+    out := format_text("p{}:\n", pc);
+    out = format_text("{}{}", out, Load(format_text("h{}", pc), abi.WordStorage, "s", item.left));
+    out = format_text("{}  %finished{} = call i1 @chibi_tasks.finished(i64 %h{})\n", out, pc, pc);
+    out = format_text("{}  br i1 %finished{}, label %p{}, label %p{}.wait\np{}.wait:\n", out, pc, pc + 1, pc, pc);
+    out = format_text("{}  call void @chibi_tasks.wait(i64 %h{})\n", out, pc);
+    out = format_text("{}  %suspend{} = call i8 @llvm.coro.suspend(token none, i1 false)\n", out, pc);
+    return format_text("{}  switch i8 %suspend{}, label %coro.suspend [ i8 0, label %p{}\n                                      i8 1, label %coro.cleanup ]\n",
+                       out, pc, pc + 1);
+}
 EmitFunction :: (functions: Function[], function: int, parameters: int[], slots: int[], locals: int[],
                  code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[],
-                 mode: int, step_budget: int, runtime: bool, fallible: bool[], shared: bool) -> string {
+                 mode: int, step_budget: int, runtime: bool, fallible: bool[], shared: bool, waiting: bool[]) -> string {
     shape := functions[function];
+    coroutine := waiting[function];
     result := shape.result;
     // A function another piece of the module calls is a hidden symbol the
     // link joins; the others stay internal to their piece.
     linkage := "";
-    if (function != 0 || mode == NoEntry) {
+    if (function != 0 || mode == NoEntry || mode == CoroutineEntry) {
         linkage = "internal ";
         if (shared) {
             linkage = "hidden ";
@@ -2071,8 +2260,15 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     for (index in 0..<shape.parameters) {
         listed.append(format_text("{} %arg{}", TypeName(parameters[shape.first_parameter + index]), index));
     }
-    out: string[] = [format_text("define {}{} @{}({}) #0 {\nentry:\n", linkage, TypeName(result),
-                                 Symbol(function, mode), strings.Join(listed, ", "))];
+    // A coroutine's ramp returns its frame, a pointer.
+    returns := TypeName(result);
+    attributes := "";
+    if (coroutine) {
+        returns = "ptr";
+        attributes = " presplitcoroutine";
+    }
+    out: string[] = [format_text("define {}{} @{}({}) #0{} {\nentry:\n", linkage, returns,
+                                 Symbol(function, mode), strings.Join(listed, ", "), attributes)];
     out.append(format_text("  %budget0 = alloca i32\n  store i32 {}, ptr %budget0\n", step_budget));
     for (index in 0..<shape.slots) {
         out.append(format_text("  %s{} = alloca {}\n", index, TypeName(slots[shape.first_slot + index])));
@@ -2110,10 +2306,26 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     for (index in 0..<buffers) {
         out.append(format_text("  %cstr{} = alloca [{} x i8]\n", index, CstringCapacity + 1));
     }
-    out.append("  br label %p0\n");
+    if (coroutine) {
+        out.append(CoroutinePrologue());
+    } else {
+        out.append("  br label %p0\n");
+    }
     for (pc in 0..<shape.code) {
         item := code[shape.first_code + pc];
-        if (item.op == Call) {
+        if (item.op == Call && item.literal == i64(CallAwaited)) {
+            out.append(AwaitedCallInstruction(functions, parameters, own, item, pc, mode));
+        } else if (item.op == Call && item.literal == i64(CallSpawned)) {
+            out.append(SpawnedCallInstruction(functions, parameters, own, item, pc, mode));
+        } else if (item.op == Suspend) {
+            out.append(SuspendInstruction(pc));
+        } else if (item.op == AwaitHandle) {
+            out.append(AwaitHandleInstruction(item, pc));
+        } else if (item.op == Cancel) {
+            out.append(format_text("p{}:\n", pc));
+            out.append(Load(format_text("h{}", pc), abi.WordStorage, "s", item.left));
+            out.append(format_text("  call void @chibi_tasks.cancel(i64 %h{})\n  br label %p{}\n", pc, pc + 1));
+        } else if (item.op == Call) {
             out.append(CallInstruction(functions, parameters, own, item, pc, mode, runtime,
                                        fallible[item.left]));
         } else if (item.op == ForeignCall) {
@@ -2127,12 +2339,18 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         } else if (item.op == Format) {
             out.append(FormatInstruction(own_slots, own, item, pc));
         } else {
-            out.append(EmitInstruction(item, pc, result, records, fields, texts));
+            out.append(EmitInstruction(item, pc, result, records, fields, texts, coroutine));
         }
     }
-    // A function fails with its result's zero, which no caller reads.
-    if (fallible[function]) {
+    // A function fails with its result's zero, which no caller reads; a coroutine
+    // that fails finishes.
+    if (fallible[function] && coroutine) {
+        out.append("failed:\n  br label %coro.final\n");
+    } else if (fallible[function]) {
         out.append(format_text("failed:\n  ret {} {}\n", TypeName(result), Zero(result)));
+    }
+    if (coroutine) {
+        out.append(CoroutineEpilogue());
     }
     out.append("trap:\n  call void @llvm.trap()\n  unreachable\n}\n");
     return strings.Join(out, "");
@@ -2175,6 +2393,9 @@ FormatInstruction :: (slots: int[], arguments: int[], item: Instruction, pc: int
 }
 // Whether `code` calls the runtime.
 Runtime :: (code: Instruction[]) -> bool {
+    if (Tasks(code)) {
+        return true;
+    }
     for (item in code) {
         if (item.op == Format || item.op == Fail || ArrayCalls(item.op)) {
             return true;
@@ -2195,7 +2416,7 @@ Fallible :: (functions: Function[], code: Instruction[]) -> bool[] {
         for (function in 0..<length(functions)) {
             shape := functions[function];
             for (item in Codes(code, shape.first_code, shape.code)) {
-                if (!fallible[function] && (item.op == Fail || (item.op == Call && fallible[item.left]))) {
+                if (!fallible[function] && (item.op == Fail || (item.op == Call && item.literal == i64(CallPlain) && fallible[item.left]))) {
                     fallible[function] = true;
                     changed = true;
                 }
@@ -2433,9 +2654,10 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     if (source.file != "" && !Placed(names, lines, columns, length(functions), length(code))) {
         return Result.Rejected(-1, "native line table differs from its module");
     }
+    waiting := WaitingFunctions(functions, code);
     for (function in 0..<length(functions)) {
         switch Validate(functions, function, parameters, slots, locals, code, arguments, records, fields, texts,
-                        mode) {
+                        mode, waiting) {
             case .Rejected(instruction, message):
                 return Result.Rejected(instruction, message);
             case .Emitted(text):
@@ -2450,13 +2672,17 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     if (runtime && mode == MainEntry) {
         return Result.Rejected(-1, "a native program cannot call the runtime yet");
     }
+    // A waiting entry is a coroutine that chibi_scalar runs with the tasks.
+    if (Tasks(code) && mode == ScalarEntry) {
+        mode = CoroutineEntry;
+    }
     debug := source.file != "";
     compares := Compares(code);
     fallible := Fallible(functions, code);
     // A program splits into pieces that opt and llc compile at once; a
     // library's manifests and line tables' metadata name every function, so
     // those stay one piece.
-    bounds := Pieces(functions, mode != NoEntry && !debug);
+    bounds := Pieces(functions, mode != NoEntry && !debug && !Tasks(code));
     pieces := length(bounds) - 1;
     home: int[] = [];
     for (piece in 0..<pieces) {
@@ -2528,15 +2754,24 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         out.append(format_text("{}declare void @llvm.trap()\n{}{}", Failures(functions, code, first, last),
                                Declarations(held),
                                ForeignDeclarations(functions, first, last, slots, code, arguments, texts)));
+        if (Tasks(held)) {
+            out.append(CoroutineDeclarations());
+        }
         out.append(Callees(functions, parameters, held, home, piece, mode, runtime));
         for (function in first..<last) {
             text := EmitFunction(functions, function, parameters, slots, locals, code, arguments, records, fields,
-                                 texts, mode, step_budget, runtime, fallible, shared[function]);
+                                 texts, mode, step_budget, runtime, fallible, shared[function], waiting);
             if (debug) {
                 text = Located(text, Subprogram(function), Location(length(functions), compares,
                                                                     functions[function].first_code));
             }
             out.append(format_text("\n{}", text));
+        }
+        if (Tasks(held)) {
+            out.append(format_text("\n{}", TaskScheduler()));
+            if (mode == CoroutineEntry) {
+                out.append(format_text("\n{}", CoroutineEntryFunction(functions[0].result, waiting[0])));
+            }
         }
         callbacks := CallbackAdapters(functions, parameters, held, mode, runtime);
         if (callbacks != "") {

@@ -22,6 +22,12 @@ CHIBI_CORE=$root/packages/core "$scratch/tests" "$compiler" "$llvm" "$scratch/pr
 "$scratch/processes" "$scratch/processes" "$scratch/programs"
 
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_cli/Directories.chibi" --entry Main --output "$scratch/directories" \
+    --llvm "$llvm" --target "$target"
+mkdir "$scratch/current directory Ω"
+"$scratch/directories" "$scratch/current directory Ω"
+
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$root/test/native_cli/Identities.chibi" --entry Main --output "$scratch/identities" \
     --llvm "$llvm" --target "$target"
 CHIBI_CORE=$root/packages/core "$scratch/identities" "$compiler" "$llvm" "$scratch/programs"

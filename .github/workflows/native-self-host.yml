@@ -38,6 +38,7 @@ on:
       - packages/core/**
       - test/native_aot/link/windows/**
       - test/native_aot/native_driver/**
+      - test/native_aot/text_format/**
       - .github/native-llvm.sh
       - .github/workflows/native-self-host.yml
   push:
@@ -102,6 +103,8 @@ jobs:
           sh test/native_aot/native_driver/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
           sh test/native_aot/native_driver/cache.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
           sh test/native_aot/native_driver/minimum.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+      - name: Check native scalar text formatting
+        run: sh test/native_aot/text_format/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native diagnostic coordinates
         timeout-minutes: 5
         run: sh test/native_aot/diagnostics/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
@@ -289,6 +292,17 @@ jobs:
         with:
           path: ${{ runner.temp }}/clang+llvm-22.1.8-x86_64-pc-windows-msvc/bin
           key: ${{ steps.llvm-cache.outputs.cache-primary-key }}
+      - name: Check native Windows scalar text formatting
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = $PWD.Path.Replace('\', '/')
+          $work = $env:RUNNER_TEMP.Replace('\', '/')
+          foreach ($level in 0, 2) {
+            & "$work/stage2/chibi.exe" --compiler "$root/tools/compiler" --core "$root/packages/core" --source "$root/test/native_aot/text_format/Main.chibi" --output "$work/text-format.exe" --llvm $env:CHIBI_WINDOWS_LLVM --target x86_64-pc-windows-msvc --level $level --jobs 2
+            if ($LASTEXITCODE) { throw 'could not compile the Windows text formatting regression' }
+            & "$work/text-format.exe"
+            if ($LASTEXITCODE) { throw 'the Windows text formatting regression failed' }
+          }
       - name: Exercise the native Windows object pipeline
         run: |
           $ErrorActionPreference = 'Stop'

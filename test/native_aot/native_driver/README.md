@@ -49,3 +49,18 @@ verified cache hits trust the recorded tool bytes and run no version processes.
 ```
 sh test/native_aot/native_driver/minimum.sh /absolute/path/to/chibi /absolute/path/to/llvm/bin
 ```
+
+The native `format_text` scalar contract is exercised through real O0/O2
+executables, including indexed and mixed placeholders, escaped braces,
+invalid-modifier fallbacks, NUL bytes, integer storage widths, float defaults
+and bounded numeric conversions:
+
+```
+sh test/native_aot/text_format/run.sh /absolute/path/to/chibi /absolute/path/to/llvm/bin
+```
+
+Windows numeric rendering uses UCRT's `__stdio_common_vsprintf`, the function
+behind the SDK's inline `vsnprintf`, with standard snprintf and rounding options.
+The [SDK declaration and wrapper](https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/ucrt/stdio.h)
+and [option constants](https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/ucrt/corecrt_stdio_config.h)
+define that boundary. The Win64 argument list points at one 8-byte scalar word.

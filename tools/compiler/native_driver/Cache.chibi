@@ -35,7 +35,10 @@ CacheSnapshot :: (collections: string[], directories: string[], gathered: Inputs
     tools := [executable, host.Tool(llvm, "opt"), host.Tool(llvm, "llc"),
               host.Tool(llvm, link.Linker(link.TargetOf(triple)))];
     facts: string[] = ["native-driver-cache 1\n", "target ", triple, "\nentry ", chosen, "\nmode ", options.level,
-                        format_text("\nlines {}\nstatic {}\nshared {}\n", options.lines, options.static_link, options.shared)];
+                        format_text("\nlines {}\nstatic {}\nshared {}\ncli-errors {}\n", options.lines, options.static_link, options.shared, options.cli_errors)];
+    if (options.cli_errors) {
+        facts.extend(["diagnostic-project ", options.project, "\ndiagnostic-source ", options.source, "\n"]);
+    }
     if (options.lines) {
         facts.extend(["directory ", options.folder, "\n"]);
     }

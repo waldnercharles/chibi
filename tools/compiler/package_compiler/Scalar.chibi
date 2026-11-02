@@ -45,6 +45,40 @@ ScalarOperands :: union {
     Failed(diagnostic: syntax.Diagnostic) | Built(rows: facts.Row[])
 }
 
+// Rare side data, 32 bytes per message-bearing check on 64-bit targets. The ordinary body
+// checker already decoded the message; preserve it rather than parsing source
+// again in a native runtime or its caller.
+ScalarAssertion :: struct { start: int; end: int; message: string; }
+
+ScalarAssertionLater :: (a: ScalarAssertion, b: ScalarAssertion) -> bool {
+    return a.start > b.start || (a.start == b.start && a.end > b.end);
+}
+ScalarAssertionSift :: (items: ^(ScalarAssertion[]), first: int, root: int, count: int) {
+    while (root < count / 2) {
+        child := root * 2 + 1;
+        if (child + 1 < count && ScalarAssertionLater(items^[first + child + 1], items^[first + child])) { child += 1; }
+        if (!ScalarAssertionLater(items^[first + child], items^[first + root])) { break; }
+        held := items^[first + root];
+        items^[first + root] = items^[first + child];
+        items^[first + child] = held;
+        root = child;
+    }
+}
+// Checks of an assert's operands precede the assert in execution order. Sort
+// only the sparse check table by source range, in O(n log n) and no scratch.
+ScalarAssertionsSorted :: (items: ^(ScalarAssertion[]), first: int, last: int) {
+    count := last - first;
+    if (count < 2) { return; }
+    parent := (count - 2) / 2;
+    while (parent >= 0) { ScalarAssertionSift(items, first, parent, count); parent -= 1; }
+    end := count - 1;
+    while (end > 0) {
+        held := items^[first]; items^[first] = items^[first + end]; items^[first + end] = held;
+        ScalarAssertionSift(items, first, 0, end);
+        end -= 1;
+    }
+}
+
 // The foreign function the call `node` names, declared in a foreign block of
 // its own file, or -1.
 ScalarForeignDeclaration :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
@@ -2544,7 +2578,8 @@ ScalarAsserted :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
 // names end with it.
 ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], callables: Callable[],
                    params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], function: int, ops: Ops,
-                   target: Target, aliases: Name[], changed_fields: string[]) -> ScalarOperands {
+                   target: Target, aliases: Name[], changed_fields: string[], assertions: ScalarAssertion[],
+                   first_assertion: int, last_assertion: int) -> ScalarOperands {
     callable := callables[function];
     result := ScalarValueType(types, callable.result, callable.result_container, callable.result_record);
     rows: facts.Row[] = [ScalarAt(forest, callable.node, facts.FunctionRow, result, 0, callable.count, callable.name)];
@@ -3054,6 +3089,18 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
         } else if (Is(forest, statement, syntax.ExpressionStatement)) {
             // As the assert step checks it, with its call's range.
             row = ScalarAt(forest, FirstMember(forest, statement), facts.AssertRow, 0, 0, count, "");
+            first := first_assertion;
+            last := last_assertion;
+            while (first < last) {
+                middle := first + (last - first) / 2;
+                check := assertions[middle];
+                if (check.start < row.start || (check.start == row.start && check.end < row.end)) { first = middle + 1; }
+                else { last = middle; }
+            }
+            assert(first < last_assertion, "the body checker emitted the source assertion");
+            message := assertions[first];
+            assert(message.start == row.start && message.end == row.end, "the source assertion has its checked diagnostic");
+            row.text = message.message;
         } else if (Is(forest, statement, syntax.Assignment)) {
             // The variable itself, or the one whose field is assigned.
             binding := ScalarVariable(names, Text(forest, text, RootOf(forest, Field(forest, statement, syntax.FieldTarget))));
@@ -3339,7 +3386,8 @@ ScalarRetainedNames :: (forest: snapshot.SnapshotNode[], text: string, types: Ty
 ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, callables: Callable[], params: Param[],
                 table: ^(TypeDecl[]), body_optionals: ^(int[]), members: TypeMember[], constants: ConstDecl[], solid: int[], function: int,
                 ops: Ops, target: Target, natives: ResolvedNative[], ports: ResolvedPort[],
-                identities: u64[], aliases: Name[], retained: Name[], summary: ^ScalarEffectSummary) -> syntax.Diagnostic {
+                identities: u64[], aliases: Name[], retained: Name[], summary: ^ScalarEffectSummary,
+                assertions: ^(ScalarAssertion[])) -> syntax.Diagnostic {
     operators: NumericOperator[] = [];
     makes: NativeMake[] = [];
     indices: int[] = [];
@@ -3400,6 +3448,14 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
                 return Diagnose(forest, Field(forest, callables[function].node, syntax.FieldBody), 0,
                                 format_text("scalar proof requires known effect-free scalar execution, not {}", why));
             }
+            first_check := length(assertions^);
+            for (instruction in code) {
+                if (instruction.op == ops.guard && instruction.has_message) {
+                    message: ScalarAssertion = {start: instruction.start, end: instruction.end, message: instruction.message};
+                    assertions.append(message);
+                }
+            }
+            ScalarAssertionsSorted(assertions, first_check, length(assertions^));
             return ScalarPassed();
     }
 }
@@ -3830,6 +3886,8 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
     // their type ordinals. Keep that table for every later function.
     checked := types;
     body_optionals: int[] = [];
+    assertions: ScalarAssertion[] = [];
+    assertion_offsets: int[] = [0];
     for (function in 0..<length(callables)) {
         aliases := ScalarAliases(callables, documents, links, generic_bindings, function);
         used := constants;
@@ -3838,8 +3896,9 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         }
         emitted := ScalarEmits(scoped, text, key, callables, marked, &checked, &body_optionals, members, used, solid, function,
                                ops, target, natives, ports, identities, aliases,
-                               ScalarRetainedNames(scoped, text, checked, callables[function]), summary);
+                               ScalarRetainedNames(scoped, text, checked, callables[function]), summary, &assertions);
         if (emitted.message != "") { return ScalarOperands.Failed(emitted); }
+        assertion_offsets.append(length(assertions));
     }
     switch ScalarResults(callables, params, checked, members, body_optionals) {
         case .Viewed(viewed_callables, viewed_types, viewed_members):
@@ -3892,7 +3951,8 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         }
         lent := ScalarLent(scoped, text, callables, marked, natives, aliases, callables[function]);
         switch ScalarFunction(lent, text, key, solid, seen, marked, records, fields, used,
-                              function, ops, target, aliases, changed_fields) {
+                              function, ops, target, aliases, changed_fields, assertions,
+                              assertion_offsets[function], assertion_offsets[function + 1]) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
             case .Built(function_rows):

@@ -103,7 +103,9 @@ package scalar_facts
 //   it is in, through any switch around it. It has no operands;
 // - a Return row is followed by its `count` operands, the returned value;
 // - an Assert row, with the range of its assert's call, is followed by its
-//   `count` condition operands. When the condition is false, the call from
+//   `count` condition operands. Its optional `text` is the ordinary checker's
+//   decoded diagnostic, which a program driver may prefix with source position.
+//   When the condition is false, the call from
 //   the VM ends with the failure the VM's assert at that range gives, and
 //   every call it is in ends with it.
 // A variable is visible from the end of its declaration to the end of the

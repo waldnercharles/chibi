@@ -72,6 +72,26 @@ DiagnosticOrigins :: struct {
     source: string;
     directories: string[];
     entry: string;
+    runtime_assertions: bool;
+}
+
+// A logical input path as the command read it. The explicit first source can
+// sit outside the project; collection paths can use the Windows-visible spelling.
+PhysicalSource :: (origins: DiagnosticOrigins, path: string, document: int) -> string {
+    if (origins.root == "") { return path; }
+    if (document == 0 && origins.source != "") { return origins.source; }
+    shown := path;
+    for (directory in origins.directories) {
+        prefix := strings.Concatenate([route.Visible(directory), "/"]);
+        if (strings.HasPrefix(shown, prefix)) {
+            return strings.Concatenate([directory, "/", strings.TrimPrefix(shown, prefix)]);
+        }
+    }
+    if (!strings.HasPrefix(shown, "/") &&
+        !(strings.ByteLength(shown) > 2 && strings.ByteAt(shown, 1) == 58)) {
+        shown = strings.Concatenate([origins.root, "/", shown]);
+    }
+    return shown;
 }
 
 // The file and line byte `at` of the joined sources lies in; each source is
@@ -94,19 +114,7 @@ Where :: (collections: string[], directories: string[], paths: string[], sources
             before := strings.Slice(text, 0, at - offset);
             line := strings.Count(before, "\n") + 1;
             if (origins.root == "") { return format_text("{}:{}", paths[index], line); }
-            path := paths[index];
-            if (index == 0 && origins.source != "") { path = origins.source; }
-            for (directory in origins.directories) {
-                prefix := strings.Concatenate([route.Visible(directory), "/"]);
-                if (strings.HasPrefix(path, prefix)) {
-                    path = strings.Concatenate([directory, "/", strings.TrimPrefix(path, prefix)]);
-                    break;
-                }
-            }
-            if (!(index == 0 && origins.source != "") && !strings.HasPrefix(path, "/") &&
-                !(strings.ByteLength(path) > 2 && strings.ByteAt(path, 1) == 58)) {
-                path = strings.Concatenate([origins.root, "/", path]);
-            }
+            path := PhysicalSource(origins, paths[index], index);
             column := at - offset - strings.LastIndex(before, "\n");
             return format_text("{}:{}:{}", path, line, column);
         }
@@ -123,7 +131,7 @@ Where :: (collections: string[], directories: string[], paths: string[], sources
 // message reads `rejected FUNCTION: MESSAGE`.
 pub Module :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
                chosen: string, directory: string) -> Output {
-    return ModuleWith(collections, directories, paths, sources, triple, chosen, directory, false, {root: "", source: "", directories: [], entry: ""});
+    return ModuleWith(collections, directories, paths, sources, triple, chosen, directory, false, {root: "", source: "", directories: [], entry: "", runtime_assertions: false});
 }
 
 // Package generations expose Main/Frame and retained states to the native host.
@@ -132,7 +140,7 @@ pub ModuleShared :: (collections: string[], directories: string[], paths: string
     if (directory != "") {
         return Output.Rejected("shared package generations have no line tables yet");
     }
-    return ModuleWith(collections, directories, paths, sources, triple, chosen, "", true, {root: "", source: "", directories: [], entry: ""});
+    return ModuleWith(collections, directories, paths, sources, triple, chosen, "", true, {root: "", source: "", directories: [], entry: "", runtime_assertions: false});
 }
 
 ModuleWith :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
@@ -198,12 +206,16 @@ EmitRows :: (collections: string[], directories: string[], paths: string[], sour
         return Output.Rejected(format_text("rejected {}: {} ({})", function, rejected.text, place));
     }
     emitted: scalar.Result = scalar.Result.Invalid("");
+    prepared := rows;
+    if (!shared && origins.runtime_assertions) {
+        prepared = AssertionLocations(collections, directories, paths, sources, rows, target, os, arch, origins);
+    }
     if (shared) {
         emitted = scalar.EmitShared(target, rows);
     } else if (directory == "") {
-        emitted = scalar.EmitProgramFor(target, rows, "");
+        emitted = scalar.EmitProgramFor(target, prepared, "");
     } else {
-        emitted = scalar.EmitProgramFor(target, rows, directory);
+        emitted = scalar.EmitProgramFor(target, prepared, directory);
     }
     switch emitted {
         case .Rejected(rejected):

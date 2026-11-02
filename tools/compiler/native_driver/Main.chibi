@@ -137,7 +137,7 @@ Build :: (arguments: string[]) -> int {
     }
     options: DriverOptions = {level: level, lines: lines, static_link: Flag(arguments, "--static"),
                                shared: shared, folder: folder, project: diagnostic_project, source: diagnostic_source,
-                               keep_module: root != "", emit_llvm: emit_llvm};
+                               keep_module: root != "", emit_llvm: emit_llvm, cli_errors: false};
     if (root != "") {
         return CachedBuild(root, collections, directories, gathered, triple, chosen, llvm, Jobs(arguments), options, source);
     }
@@ -160,6 +160,9 @@ DriverOptions :: struct {
     // Emits the ordinary program module bundle for an external target linker.
     // Each `; chibi-piece` boundary begins an independent LLVM module.
     emit_llvm: bool;
+    // Public run commands report a source assertion as command failure 1;
+    // raw native programs retain their typed failure status 134.
+    cli_errors: bool;
 }
 
 SharedTarget :: (triple: string) -> bool {
@@ -175,7 +178,7 @@ HostTarget :: (triple: string) -> bool {
 Emit :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
          chosen: string, llvm: string, output: string, jobs: int) -> int {
     return EmitOptions(collections, directories, paths, sources, triple, chosen, llvm, output, jobs,
-                       {level: "2", lines: false, static_link: false, shared: false, folder: ".", project: ".", source: "", keep_module: false, emit_llvm: false});
+                       {level: "2", lines: false, static_link: false, shared: false, folder: ".", project: ".", source: "", keep_module: false, emit_llvm: false, cli_errors: false});
 }
 
 // Emits into the caller's work directory; only a successful link replaces
@@ -223,7 +226,8 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     for (directory in directories) {
         visible.append(route.Visible(directory));
     }
-    origins: DiagnosticOrigins = {root: options.project, source: options.source, directories: directories, entry: chosen};
+    origins: DiagnosticOrigins = {root: options.project, source: options.source, directories: directories, entry: chosen,
+                                  runtime_assertions: options.cli_errors};
     compiled: Output = Output.Rejected("");
     if (length(rows) > 0) {
         compiled = CollectedModule(collections, visible, paths, sources, triple, rows, directory, origins);
@@ -303,6 +307,8 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     // The entry is the first piece's, defined as `@chibi_scalar(ptr %ctx)`
     // when it takes the context (the other functions are `@chibi_scalar.N`).
     // Definitions start a line; a text constant never does.
+    // A formatter used in any body piece needs the context callback.
+    formatting := Contains(markers, "; chibi-format");
     context := strings.Contains(pieces[0], "\ndefine i32 @chibi_scalar(ptr %ctx)");
     if (shared) {
         context = strings.Contains(pieces[0], "\n@chibi_context = external global ");
@@ -349,8 +355,10 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     start := "";
     if (shared) {
         start = link.SharedContext(triple, context);
+    } else if (options.cli_errors) {
+        start = link.RunStart(triple, static, context, formatting);
     } else {
-        start = link.Start(triple, static, context);
+        start = link.ProgramStart(triple, static, context, formatting);
     }
     if (start != "") {
         if (os.WriteText(strings.Concatenate([output, ".start.ll"]), start) != nil ||

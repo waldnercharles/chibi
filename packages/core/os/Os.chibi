@@ -351,11 +351,14 @@ when target.Native == 1 {
         return sys.Start(command, stdio == Piped);
     }
 
-    // Starts a process with separate caller-owned output files. Their parent
-    // folders exist and the paths are distinct. Wait/Kill leave them in place;
-    // the caller reads and removes them. Failure to start returns -1.
-    pub StartRedirected :: (command: string[], stdout_path: string, stderr_path: string) -> int {
-        return sys.StartRedirected(command, stdout_path, stderr_path);
+    // Starts a process with caller-owned output files, whose parent folders
+    // exist. Empty stdout_path inherits stdout; stderr_path names a file.
+    // Wait/Kill leave files in place for the caller to read and remove.
+    // An attached child shares the parent's cancellation group; Kill stops
+    // that child, while cancelling its parent group also stops descendants.
+    // Failure is -1.
+    pub StartRedirected :: (command: string[], stdout_path: string, stderr_path: string, attached: bool = false) -> int {
+        return sys.StartRedirected(command, stdout_path, stderr_path, attached);
     }
 
     pub Wait :: (process: int, timeout_ms: int) -> int {

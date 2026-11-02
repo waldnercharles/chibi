@@ -29,8 +29,62 @@ when target.Os == target.Windows {
     }
 }
 
+Ready :: (process: int, path: string) -> bool {
+    for (attempt in 0..<400) {
+        if (os.IsFile(path)) { return true; }
+        if (os.Wait(process, 5) != os.StillRunning) { return false; }
+    }
+    return false;
+}
+
+Cancellation :: (program: string, scratch: string) {
+    ready := format_text("{}/attached.ready", scratch);
+    error := format_text("{}/attached.stderr", scratch);
+    removed_ready := os.Remove(ready);
+    assert(removed_ready == nil, "remove an earlier readiness file");
+    process := os.StartRedirected([program, "blocked", ready], "", error, true);
+    child_ready := process > 0 && Ready(process, ready);
+    assert(child_ready, "an attached child reaches readiness");
+    killed := os.Kill(process);
+    assert(killed == -9, "Kill still stops and reaps an attached process handle");
+    removed := os.Remove(ready);
+    assert(removed == nil && os.IsFile(error), "redirected output remains caller-owned after Kill");
+
+    pid := format_text("{}/attached.pid", scratch);
+    removed_pid := os.Remove(pid);
+    assert(removed_pid == nil, "remove an earlier child handle");
+    parent := os.Start([program, "attached-parent", program, ready, pid, error], os.Piped);
+    nested_ready := parent > 0 && Ready(parent, ready) && Ready(parent, pid);
+    assert(nested_ready, "the nested attached child reaches readiness");
+    child := strings.TrimSpace(os.ReadText(pid).text);
+    assert(child != "", "the parent published its live child handle");
+    cancelled := os.Kill(parent);
+    assert(cancelled == -9, "the controller cancels the parent's process group");
+    dead := false;
+    for (attempt in 0..<100) {
+        observed := os.Capture(["/bin/ps", "-o", "stat=", "-p", child]);
+        if (observed.status == 1 || strings.HasPrefix(strings.TrimSpace(observed.stdout), "Z")) { dead = true; break; }
+    }
+    assert(dead, "cancelling the parent leaves no running attached child");
+    removed_ready = os.Remove(ready);
+    removed_pid = os.Remove(pid);
+    removed_error := os.Remove(error);
+    assert(removed_ready == nil && removed_pid == nil && removed_error == nil, "remove caller-owned cancellation files");
+}
+
 Main :: () -> int {
     arguments := os.Arguments();
+    if (length(arguments) == 2 && arguments[0] == "blocked") {
+        written := os.WriteText(arguments[1], "ready");
+        if (written != nil) { return 2; }
+        while (true) {}
+    }
+    if (length(arguments) == 5 && arguments[0] == "attached-parent") {
+        process := os.StartRedirected([arguments[1], "blocked", arguments[2]], "", arguments[4], true);
+        written := os.WriteText(arguments[3], format_text("{}", process));
+        if (process <= 0 || written != nil) { return 2; }
+        return os.Wait(process, -1);
+    }
     if (length(arguments) > 0 && arguments[0] == "child") {
         assert(length(arguments) == 4 && arguments[1] == "a b" && arguments[2] == "", "spaced and empty process arguments");
         assert(strings.ByteLength(arguments[3]) == 4096 && strings.ByteAt(arguments[3], 4095) == 120, "long argument storage survives spawn");
@@ -62,5 +116,6 @@ Main :: () -> int {
     removed_output := os.Remove(output);
     removed_error := os.Remove(error);
     assert(removed_output == nil && removed_error == nil, "the caller removes its output files");
+    if (target.Os != target.Windows) { Cancellation(arguments[0], arguments[1]); }
     return 0;
 }

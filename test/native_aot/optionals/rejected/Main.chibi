@@ -1,0 +1,5 @@
+package unguarded
+
+Failure :: struct { code: int; }
+Main :: () -> int { return Read(nil); }
+Read :: (error: Failure?) -> int { return error.code; }

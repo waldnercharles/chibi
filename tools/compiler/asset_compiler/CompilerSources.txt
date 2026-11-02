@@ -16,6 +16,7 @@ package_compiler/Sequences.chibi
 package_compiler/Behavior.chibi
 package_compiler/Scalar.chibi
 package_compiler/ScalarArrays.chibi
+package_compiler/ScalarMaps.chibi
 package_compiler/Math.chibi
 syntax_diagnostics/Diagnostics.chibi
 /sdk/core/strings/Strings.chibi

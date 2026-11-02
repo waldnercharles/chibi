@@ -5,6 +5,7 @@ import facts "project:scalar_facts"
 import abi "project:native_abi"
 import scalar "project:scalar_llvm"
 import strings "core:strings"
+import syntax "project:syntax_diagnostics"
 
 // The native compiler's pure core: the sources of a program's closure in, one
 // LLVM module or the first rejection out. It touches no file and no global, so
@@ -69,10 +70,25 @@ Where :: (collections: string[], directories: string[], paths: string[], sources
 // `paths[0]` and `sources[0]` are the entry file, the others its closure: project
 // packages by project-relative path and collection packages by path under their
 // `directories`. The program starts at the function `chosen` of the first file,
-// or at its first function when `chosen` is "". A rejection message reads
-// `rejected FUNCTION: MESSAGE`.
+// or at its first function when `chosen` is "". With a `directory`, the module
+// has line tables naming the source in it (Linux x86-64 only). A rejection
+// message reads `rejected FUNCTION: MESSAGE`.
 pub Module :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
-               chosen: string) -> Output {
+               chosen: string, directory: string) -> Output {
+    return ModuleWith(collections, directories, paths, sources, triple, chosen, directory, false);
+}
+
+// Package generations expose Main/Frame and retained states to the native host.
+pub ModuleShared :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
+                     chosen: string, directory: string) -> Output {
+    if (directory != "") {
+        return Output.Rejected("shared package generations have no line tables yet");
+    }
+    return ModuleWith(collections, directories, paths, sources, triple, chosen, "", true);
+}
+
+ModuleWith :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
+               chosen: string, directory: string, shared: bool) -> Output {
     os := 1;
     arch := 1;
     if (strings.HasPrefix(triple, "aarch64-apple")) {
@@ -83,13 +99,53 @@ pub Module :: (collections: string[], directories: string[], paths: string[], so
     }
     rows := compiler.CollectScalarProgram("/project", collections, directories, paths, sources, TargetFacts(), Names(),
                                           Natives(), Ports(), Identities(), os, arch, chosen);
+    return EmitRows(collections, directories, paths, sources, os, arch, rows, Target(triple), directory, shared);
+}
+
+// The parser distinguishes library declarations from package generations,
+// including comments and nonstandard whitespace before the declaration.
+LibrarySource :: (source: string) -> bool {
+    switch compiler.ParseSyntax(source) {
+        case .Rejected(diagnostic): return false;
+        case .Parsed(nodes, fields, is_named, is_extra, root):
+            child := nodes[root].first_child;
+            while (child >= 0) {
+                if (!is_extra[child] && is_named[child]) {
+                    return nodes[child].kind == syntax.Library;
+                }
+                child = nodes[child].next_sibling;
+            }
+    }
+    return false;
+}
+
+// The existing single-source library producer; package libraries and line
+// tables are not supported here. The driver admits only Linux x86-64.
+LibraryModule :: (path: string, source: string) -> Output {
+    rows := compiler.CollectScalar("/project", path, source, TargetFacts(), Names(), Natives(), Ports(), Identities());
+    return EmitRows([], [], [path], [source], 1, 1, rows, abi.LinuxX64(), "", false);
+}
+
+// Both producers return the same facts rows and rejection contract. A
+// rejection names its file and line in the closure the producer read, with
+// the target `os` and `arch` (core:target's numbers) that chose its text.
+EmitRows :: (collections: string[], directories: string[], paths: string[], sources: string[], os: int, arch: int,
+             rows: facts.Row[], target: abi.Target, directory: string, shared: bool) -> Output {
     if (length(rows) < 2 || rows[1].kind == facts.RejectionRow) {
         rejected := rows[length(rows) - 1];
         return Output.Rejected(strings.Concatenate(["rejected ", FunctionAt(rows[0].text, rejected.start), ": ",
                                                     rejected.text, " (", Where(collections, directories, paths, sources, os, arch,
                                                                               strings.ByteLength(rows[0].text), rejected.start), ")"]));
     }
-    switch scalar.EmitFor(Target(triple), rows) {
+    emitted: scalar.Result = scalar.Result.Invalid("");
+    if (shared) {
+        emitted = scalar.EmitShared(target, rows);
+    } else if (directory == "") {
+        emitted = scalar.EmitFor(target, rows);
+    } else {
+        emitted = scalar.EmitLines(rows, directory);
+    }
+    switch emitted {
         case .Rejected(rejected):
             return Output.Rejected(strings.Concatenate(["rejected (module): ", rejected[length(rejected) - 1].text]));
         case .Invalid(message):
@@ -102,7 +158,7 @@ pub Module :: (collections: string[], directories: string[], paths: string[], so
 // The compiler host's entry: the module's bytes, or a 0 byte and then the
 // rejection's text.
 pub Compile :: (core: string, paths: string[], sources: string[], triple: string) -> u8[] {
-    switch Module(["core"], [core], paths, sources, triple, "") {
+    switch Module(["core"], [core], paths, sources, triple, "", "") {
         case .Rejected(message):
             flagged: u8[] = [0];
             for (byte in strings.Bytes(message)) {

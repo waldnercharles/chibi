@@ -1,0 +1,31 @@
+package active_tasks
+
+OwnerReadWrite: u32 : 384;
+
+foreign import libc "system:c"
+foreign libc {
+    creat :: (path: cstring, mode: u32) -> i32
+    close :: (descriptor: i32) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+}
+
+Main :: () -> int {
+    worker := Worker();
+    return 0;
+}
+
+Frame :: () -> int {
+    if access("./active-task-done", 0) == 0 { return 7; }
+    return 0;
+}
+
+Worker :: () -> int {
+    yield
+    return Done();
+}
+
+Done :: () -> int {
+    descriptor := creat("./active-task-done", OwnerReadWrite);
+    closed := close(descriptor);
+    return 0;
+}

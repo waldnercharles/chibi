@@ -46,7 +46,8 @@ Scalar :: (type: int) -> bool {
 // Whether a record field or union payload may have `type`: a scalar or a
 // string.
 Stored :: (records: int[], type: int) -> bool {
-    return Valued(records, type);
+    // Nested maps need recursive ownership before record/union admission.
+    return type < facts.MapType && Valued(records, type);
 }
 // Whether the record or union of type RecordType + `from` holds the one of
 // type RecordType + `wanted` by value, directly or through others it holds by
@@ -74,6 +75,12 @@ Nests :: (rows: facts.Row[], records: int[], from: int, wanted: int, depth: int)
 // unions, or an array of one of them, whose Record and Union rows are at
 // `records`.
 Valued :: (records: int[], type: int) -> bool {
+    if (type >= facts.MapType) {
+        key := (type - facts.MapType) % 16;
+        value := (type - facts.MapType) / 16;
+        return (Integer(key) || key == facts.BoolType || key == facts.StringType) &&
+               value >= facts.IntType && value <= facts.StringType;
+    }
     if (type >= facts.ArrayType) {
         return Element(records, type) != 0;
     }
@@ -84,7 +91,7 @@ Valued :: (records: int[], type: int) -> bool {
 // scalar, a string, or a record or union of the module.
 Element :: (records: int[], type: int) -> int {
     element := type - facts.ArrayType;
-    if (element < facts.IntType || element >= facts.ArrayType || !Valued(records, element)) {
+    if (type >= facts.MapType || element < facts.IntType || element >= facts.ArrayType || !Valued(records, element)) {
         return 0;
     }
     return element;
@@ -172,6 +179,9 @@ Converts :: (from: int, to: int) -> bool {
 // i8, u8, i16, u16, u32, i64, u64, number, f64 and string in facts type
 // order. Record r is the backend's record r.
 NativeType :: (type: int) -> int {
+    if (type >= facts.MapType) {
+        return native.MapOf(NativeType((type - facts.MapType) % 16), NativeType((type - facts.MapType) / 16));
+    }
     if (type >= facts.ArrayType) {
         return native.ArrayType + NativeType(type - facts.ArrayType);
     }
@@ -218,6 +228,18 @@ Opens :: (kind: int) -> bool {
 // Whether `kind` is a loop's row.
 Loop :: (kind: int) -> bool {
     return kind == facts.WhileRow || kind == facts.ForRow;
+}
+// The type of member `index` of record type `type`, or -1 when `type` is no record of the module or has no such
+// member.
+RecordMemberType :: (rows: facts.Row[], records: int[], type: int, index: i64) -> int {
+    if (type < facts.RecordType || type - facts.RecordType >= length(records)) {
+        return -1;
+    }
+    head := records[type - facts.RecordType];
+    if (rows[head].kind != facts.RecordRow || index < 0 || index >= i64(rows[head].count)) {
+        return -1;
+    }
+    return rows[head + 1 + int(index)].type;
 }
 // Whether `row` is a loop over an array, and whether it also names the index.
 Arrayed :: (row: facts.Row) -> bool {
@@ -480,8 +502,7 @@ TextOperands :: (operator: int) -> int {
     }
     return 0;
 }
-// Whether `type` is an array of anything: not a scalar, string, record or
-// reference.
+// Whether `type` is an array or map: a container tracked by value ownership.
 ArrayTyped :: (type: int) -> bool {
     return type >= facts.ArrayType && type < native.RefType;
 }
@@ -493,6 +514,11 @@ FreshArray :: (operand: facts.Row) -> bool {
     }
     if (operand.kind == facts.TextRow) {
         return operand.value == facts.TextFormat;
+    }
+    if (operand.kind == facts.MapRow) {
+        return operand.value == facts.MapNew || operand.value == facts.MapCopy ||
+               ((operand.value == facts.MapGet || operand.value == facts.MapKeyAt || operand.value == facts.MapValueAt) &&
+                operand.type == facts.StringType);
     }
     if (operand.kind != facts.ArrayRow) {
         return false;
@@ -509,6 +535,9 @@ Owning :: (type: int) -> bool {
 Giving :: (type: int, slot: int) -> native.Instruction {
     if (type == abi.TextStorage) {
         return Op(native.TextRelease, type, 0, slot, 0, 0);
+    }
+    if (type >= native.MapType) {
+        return Op(native.MapDrop, type, 0, slot, 0, 0);
     }
     return Op(native.ArrayDrop, type, 0, slot, 0, 0);
 }
@@ -804,7 +833,7 @@ UnionDrop :: (payloads: Payloads, type: int, place: int, held: int, next: int, b
         payload.literal = i64(payloads.fields[index]);
         found.code.extend([tag, expected, Op(native.Ne, integer, at + 2, at, at + 1, 0),
                            Op(native.Branch, 0, 0, at + 2, 0, past), payload,
-                           Op(native.ArrayDrop, payloads.types[index], 0, at + 3, 0, 0)]);
+                           Giving(payloads.types[index], at + 3)]);
         found.slot_types.extend([integer, integer, abi.BoolStorage, payloads.types[index]]);
         at += 4;
     }
@@ -841,7 +870,7 @@ DropAll :: (rows: facts.Row[], records: int[], vars: int[], types: int[], places
         for (frame in frames) {
             if (frame.held >= 0) {
                 found.code.extend([Op(native.Local, frame.held_type, next, frame.held, 0, 0),
-                                   Op(native.ArrayDrop, frame.held_type, 0, next, 0, 0)]);
+                                   Giving(frame.held_type, next)]);
                 found.slot_types.append(frame.held_type);
                 next += 1;
             }
@@ -875,6 +904,95 @@ ArrayChanges :: (operator: int) -> bool {
     return operator == facts.ArraySet || operator == facts.ArrayPush || operator == facts.ArrayExtend ||
            operator == facts.ArrayRemove;
 }
+// The postfix operands of one map operator; -1 means no such operator.
+MapOperands :: (operand: facts.Row) -> int {
+    if (operand.value == facts.MapNew) {
+        return operand.count;
+    }
+    if (operand.value == facts.MapLength || operand.value == facts.MapCopy || operand.value == facts.MapSpan) {
+        return 1;
+    }
+    if (operand.value == facts.MapSet) {
+        return 3;
+    }
+    if (operand.value >= facts.MapGet && operand.value <= facts.MapValueAt) {
+        return 2;
+    }
+    return -1;
+}
+// Validate maps independently of array encoding and mutation rules. Each change
+// must end an assignment of the map it first reads, so no descriptor aliases
+// an allocation while another descriptor mutates it.
+ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, operand: facts.Row, stack: int[],
+             floor: int) -> string {
+    consumed := MapOperands(operand);
+    base := length(stack) - consumed;
+    mismatch := "scalar map operation differs from its operands";
+    changed := operand.value == facts.MapSet || operand.value == facts.MapDelete;
+    mapped := operand.type;
+    if (operand.value != facts.MapNew && operand.value != facts.MapCopy && !changed) {
+        if (operand.literal < i64(facts.MapType) || operand.literal >= i64(facts.MapType + (facts.StringType + 1) * 16)) {
+            return mismatch;
+        }
+        mapped = int(operand.literal);
+    } else if (operand.literal != 0) {
+        return mismatch;
+    }
+    if (operand.name != "" || consumed < 0 || operand.count != consumed || base < floor ||
+        mapped < facts.MapType || !Valued(records, mapped)) {
+        return mismatch;
+    }
+    key := (mapped - facts.MapType) % 16;
+    value := (mapped - facts.MapType) / 16;
+    if (operand.value == facts.MapNew) {
+        if (consumed % 2 != 0) {
+            return mismatch;
+        }
+        for (index in 0..<consumed) {
+            wanted := key;
+            if (index % 2 == 1) {
+                wanted = value;
+            }
+            if (stack[base + index] != wanted) {
+                return mismatch;
+            }
+        }
+        return "";
+    }
+    if (stack[base] != mapped) {
+        return mismatch;
+    }
+    if ((operand.value == facts.MapLength || operand.value == facts.MapSpan) && operand.type != facts.IntType) {
+        return mismatch;
+    }
+    if ((operand.value == facts.MapHas || operand.value == facts.MapLiveAt) && operand.type != facts.BoolType) {
+        return mismatch;
+    }
+    if ((operand.value == facts.MapGet || operand.value == facts.MapValueAt) && operand.type != value) {
+        return mismatch;
+    }
+    if (operand.value == facts.MapKeyAt && operand.type != key) {
+        return mismatch;
+    }
+    if (consumed >= 2) {
+        wanted := key;
+        if (operand.value == facts.MapLiveAt || operand.value == facts.MapKeyAt || operand.value == facts.MapValueAt) {
+            wanted = facts.IntType;
+        }
+        if (stack[base + 1] != wanted) {
+            return mismatch;
+        }
+    }
+    if (operand.value == facts.MapSet && stack[base + 2] != value) {
+        return mismatch;
+    }
+    if (changed && (rows[at].kind != facts.AssignRow || base != 0 || row != last - 1 ||
+                    rows[at + 1].kind != facts.ReadRow || rows[at + 1].value != rows[at].value)) {
+        return "scalar map change is not the assignment of its map";
+    }
+    return "";
+}
+
 // Whether the Array row at `row` of the operands of the statement at `at`,
 // which end before `last`, reads operands of its types from `stack`, none
 // below `floor`. A change of an array is the last operand of an Assign to the
@@ -1014,10 +1132,13 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
         }
         operand := rows[row];
         // Only a string literal has text, and a foreign call the library it links.
+        // A reference's literal selects a record field; its type and index are checked below.
         texted := (operand.kind == facts.LiteralRow && operand.type == facts.StringType) ||
                   operand.kind == facts.ForeignRow;
         if ((!texted && operand.text != "") || !Valued(records, operand.type) || !Located(operand, starts, size) ||
-            !Within(operand, scope) || (operand.kind != facts.LiteralRow && operand.literal != 0)) {
+            !Within(operand, scope) ||
+            (operand.kind != facts.LiteralRow && operand.kind != facts.RefRow && operand.kind != facts.MapRow && operand.kind != facts.CallRow && operand.literal != 0) ||
+            (operand.kind == facts.CallRow && (operand.literal < 0 || operand.literal > i64(facts.CallSpawned)))) {
             return "invalid scalar operand row";
         }
         if (operand.kind == facts.LiteralRow) {
@@ -1031,8 +1152,14 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 return "scalar read differs from its variable";
             }
         } else if (operand.kind == facts.RefRow) {
+            // A literal of 1 + n makes it a reference to field n of the record variable, a number or a bool.
+            field := -1;
+            if (operand.literal != 0 && Holds(visible, operand.value)) {
+                field = RecordMemberType(rows, records, variables[operand.value], operand.literal - 1);
+            }
             if (operand.name != "" || operand.count != 0 || !Holds(visible, operand.value) ||
-                variables[operand.value] != operand.type) {
+                (operand.literal == 0 && variables[operand.value] != operand.type) ||
+                (operand.literal != 0 && (field < 0 || field != operand.type || (!Number(field) && field != facts.BoolType)))) {
                 return "scalar reference differs from its variable";
             }
             stack.append(facts.ReferenceType + operand.type);
@@ -1072,7 +1199,8 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.UnaryRow) {
             base := length(stack) - 1;
-            negates := Integer(operand.type) && (operand.value == facts.Negate || operand.value == facts.Complement);
+            negates := (Integer(operand.type) && (operand.value == facts.Negate || operand.value == facts.Complement)) ||
+                       (facts.Floating(operand.type) && operand.value == facts.Negate);
             nots := operand.type == facts.BoolType && operand.value == facts.Not;
             if (operand.name != "" || operand.count != 1 || (!negates && !nots) || base < floor ||
                 stack[base] != operand.type) {
@@ -1100,13 +1228,28 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                     return "scalar function address needs a function of numbers and bools";
                 }
             }
+        } else if (operand.kind == facts.YieldRow) {
+            if (operand.name != "" || operand.count != 0 || operand.value != 0 || operand.type != facts.IntType) {
+                return "scalar yield differs from its operands";
+            }
+        } else if (operand.kind == facts.AwaitRow || operand.kind == facts.CancelRow) {
+            base := length(stack) - 1;
+            if (operand.name != "" || operand.count != 1 || operand.value != 0 || base < floor ||
+                stack[base] != facts.WordType || operand.type != facts.IntType) {
+                return "scalar task operation differs from its operands";
+            }
+            stack = slice(stack, 0, base);
         } else if (operand.kind == facts.CallRow) {
             if (operand.value < 0 || operand.value >= length(heads)) {
                 return "scalar call names no function of the module";
             }
             callee := rows[heads[operand.value]];
             base := length(stack) - operand.count;
-            if (operand.name != callee.name || operand.type != callee.type || operand.count != callee.count ||
+            wanted_type := callee.type;
+            if (operand.literal == i64(facts.CallSpawned)) {
+                wanted_type = facts.WordType;
+            }
+            if (operand.name != callee.name || operand.type != wanted_type || operand.count != callee.count ||
                 base < floor) {
                 return "scalar call differs from its callee's signature";
             }
@@ -1190,6 +1333,12 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 return "scalar payload read differs from its union";
             }
             stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.MapRow) {
+            error := ValidMap(rows, records, at, row, last, operand, stack, floor);
+            if (error != "") {
+                return error;
+            }
+            stack = slice(stack, 0, length(stack) - MapOperands(operand));
         } else if (operand.kind == facts.ArrayRow) {
             error := ValidArray(rows, records, at, row, last, operand, stack, floor);
             if (error != "") {
@@ -1271,11 +1420,11 @@ Operated :: (rows: facts.Row[], at: int) -> int {
 // statements it is declared among, a For row's only in its body, and the
 // body ends in a terminating statement.
 ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int, starts: int[], size: int,
-                  is_library: bool) -> string {
+                  is_library: bool, identified: bool) -> string {
     head := heads[function];
     declaration := rows[head];
     if (declaration.name == "" || declaration.text != "" || !Valued(records, declaration.type) || declaration.value != 0 ||
-        (declaration.literal != 0) != is_library || !Located(declaration, starts, size)) {
+        (declaration.literal != 0) != identified || !Located(declaration, starts, size)) {
         return "invalid scalar function row";
     }
     variables: int[] = [];
@@ -1284,7 +1433,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         param := rows[head + 1 + index];
         if (param.kind != facts.ParameterRow || param.name == "" || param.text != "" || !Valued(records, param.type) ||
             param.value != index || param.count != 0 || (param.literal != 0 && param.literal != 1 && param.literal != 2) ||
-            (param.literal == 1 && (is_library || function == 0)) ||
+            (param.literal == 1 && (identified || function == 0)) ||
             (param.literal == 2 && !ArrayTyped(NativeType(param.type))) ||
             !Located(param, starts, size) ||
             !Within(param, declaration)) {
@@ -1327,6 +1476,9 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         // A local holding the union a switch is on, followed by that switch.
         subject := row.kind == facts.LocalRow && row.literal == i64(facts.SwitchSubject);
         retained := row.kind == facts.LocalRow && row.literal == i64(facts.Retained);
+        if (retained && row.type >= facts.RecordType && !Retainable(rows, records, row.type)) {
+            return "native retained records hold only numbers and bools; retain strings separately";
+        }
         declares := row.kind == facts.LocalRow || ranged;
         typed := declares || row.kind == facts.AssignRow || row.kind == facts.SwitchRow || row.kind == facts.CaseRow;
         if (row.text != "" || (row.literal != 0 && !ranged && !subject && !retained) || !Located(row, starts, size) ||
@@ -1422,8 +1574,8 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
                 (ranged && !arrayed && (row.type != facts.IntType || row.literal < 0 ||
                                         row.literal > i64(facts.RangeExclusive + facts.RangeReverse))) ||
                 (arrayed && (row.type >= facts.ArrayType || !Valued(records, facts.ArrayType + row.type))) ||
-                (retained && (!is_library || row.count != 1 || rows[at + 1].kind != facts.LiteralRow ||
-                              (facts.Bits(row.type) == 0 && row.type != facts.BoolType && !facts.Floating(row.type)))) ||
+                (retained && (!Retainable(rows, records, row.type) ||
+                              !RetainedInitializer(rows, at))) ||
                 (subject && (UnionHead(rows, records, row.type) < 0 || at + row.count + 1 >= last ||
                              rows[at + row.count + 1].kind != facts.SwitchRow ||
                              rows[at + row.count + 1].start != row.start || rows[at + row.count + 1].end != row.end))) {
@@ -1484,6 +1636,118 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
 // accepted rows. The caller must bind the actual trusted producer artifact,
 // source bytes and unchanged result envelope. No source parsing occurs here.
 pub Validate :: (rows: facts.Row[]) -> string {
+    return ValidateWith(rows, false);
+}
+// Index of an item in an ascending table, or -1. Slot and variable IDs are
+// appended in definition order, so tracking references needs no hashing.
+SortedIndex :: (items: int[], wanted: int) -> int {
+    low := 0;
+    high := length(items);
+    while (low < high) {
+        middle := low + (high - low) / 2;
+        if (items[middle] < wanted) { low = middle + 1; }
+        else { high = middle; }
+    }
+    if (low < length(items) && items[low] == wanted) { return low; }
+    return -1;
+}
+
+// Retained records migrate by named leaves, so adding or reordering fields
+// preserves existing fields and leaves new fields at their initializer.
+Retainable :: (rows: facts.Row[], records: int[], type: int) -> bool {
+    if (Scalar(type) || type == facts.StringType) {
+        return true;
+    }
+    if (type < facts.RecordType || type >= facts.ArrayType) {
+        return false;
+    }
+    head := records[type - facts.RecordType];
+    if (rows[head].kind != facts.RecordRow) {
+        return false;
+    }
+    for (field in head + 1..<After(rows, head)) {
+        if (rows[field].kind == facts.MemberRow &&
+            (rows[field].type == facts.StringType || !Retainable(rows, records, rows[field].type))) {
+            return false;
+        }
+    }
+    return true;
+}
+// Initializers have no side effects or allocation. Their constant record
+// construction is repeated, but every leaf initializes its state only once.
+RetainedInitializer :: (rows: facts.Row[], at: int) -> bool {
+    for (index in at + 1..<at + 1 + rows[at].count) {
+        kind := rows[index].kind;
+        if (kind != facts.LiteralRow && kind != facts.ZeroRow && kind != facts.UpdateRow && kind != facts.ConvertRow) {
+            return false;
+        }
+    }
+    return rows[at].count > 0;
+}
+
+RetainedCode :: struct {
+    types: int[];
+    code: native.Instruction[];
+    texts: string[];
+    value: int;
+    states: int;
+}
+// Flatten records once during lowering; the frame executes one load/store
+// per scalar or string leaf. StateLoad.left is its initializer slot plus one.
+RetainedValue :: (rows: facts.Row[], records: int[], type: int, value: int, name: string,
+                  state_index: int, text: int, slot: int, read: bool) -> RetainedCode {
+    lowered: RetainedCode = {types: [], code: [], texts: [], value: value, states: 0};
+    native_type := NativeType(type);
+    if (type < facts.RecordType) {
+        if (read) {
+            lowered.types.append(native_type);
+            lowered.code.append(Op(native.StateLoad, native_type, slot, value + 1, text, state_index));
+            lowered.texts.append(name);
+            lowered.value = slot;
+        } else {
+            lowered.code.append(Op(native.StateStore, native_type, 0, value, 0, state_index));
+        }
+        lowered.states = 1;
+        return lowered;
+    }
+    if (read) {
+        lowered.types.append(native_type);
+        lowered.code.append(Op(native.Constant, native_type, slot, 0, 0, 0));
+        lowered.value = slot;
+    }
+    head := records[type - facts.RecordType];
+    for (field in head + 1..<After(rows, head)) {
+        member := rows[field];
+        if (member.kind != facts.MemberRow) {
+            continue;
+        }
+        current := slot + length(lowered.types);
+        lowered.types.append(NativeType(member.type));
+        extract := Op(native.Extract, NativeType(member.type), current, value, native_type, 0);
+        extract.literal = i64(member.value);
+        lowered.code.append(extract);
+        leaf := RetainedValue(rows, records, member.type, current, format_text("{}.{}", name, member.name),
+                              state_index + lowered.states, text + length(lowered.texts), current + 1, read);
+        lowered.types.extend(leaf.types);
+        lowered.code.extend(leaf.code);
+        lowered.texts.extend(leaf.texts);
+        lowered.states += leaf.states;
+        if (read) {
+            next := slot + length(lowered.types);
+            lowered.types.append(native_type);
+            insert := Op(native.Insert, native_type, next, lowered.value, leaf.value, 0);
+            insert.literal = i64(member.value);
+            lowered.code.append(insert);
+            lowered.value = next;
+        }
+    }
+    return lowered;
+}
+
+// Validate, or for `shared` the rows of a package that a shared library holds:
+// every function is a library function, though the rows are a package's, which
+// name no library and carry no stable IDs.
+ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
     if (length(rows) < 2) {
         return "scalar module row count is out of bounds";
     }
@@ -1502,7 +1766,8 @@ pub Validate :: (rows: facts.Row[]) -> string {
         document.literal != 0 || document.name == "" || !Unlocated(document)) {
         return "noncanonical accepted scalar module";
     }
-    is_library := document.text != "";
+    identified := document.text != "";
+    is_library := identified || shared;
     records := Records(rows);
     error := ValidRecords(rows, records, starts, size);
     if (error != "") {
@@ -1516,10 +1781,59 @@ pub Validate :: (rows: facts.Row[]) -> string {
     if (!is_library && (first.count != 0 || first.type != facts.IntType)) {
         return "scalar module entry must take no parameters and return int";
     }
+    waiting := resize([false], length(heads));
+    task_calls := false;
     for (function in 0..<length(heads)) {
-        failure := ValidFunction(rows, records, heads, function, starts, size, is_library);
+        failure := ValidFunction(rows, records, heads, function, starts, size, is_library, identified);
         if (failure != "") {
             return failure;
+        }
+        waits := false;
+        head := heads[function];
+        for (at in head + rows[head].count + 1..<Last(rows, heads, function)) {
+            row := rows[at];
+            waits = waits || row.kind == facts.YieldRow || row.kind == facts.AwaitRow ||
+                    (row.kind == facts.CallRow && row.literal == i64(facts.CallAwaited));
+            task_calls = task_calls || (row.kind == facts.CallRow && row.literal == i64(facts.CallSpawned));
+        }
+        waiting[function] = waits;
+        task_calls = task_calls || waits;
+    }
+    if (task_calls) {
+        // ValidFunction has checked each function index. Coroutine ramps return
+        // frames, so plain calls and C-ABI function addresses cannot use them.
+        for (row in rows) {
+            if (row.kind == facts.FunctionAddressRow && waiting[row.value]) {
+                return "scalar function address cannot name a waiting function";
+            }
+            if (row.kind == facts.CallRow) {
+                if (row.literal == i64(facts.CallPlain) && waiting[row.value]) {
+                    return "scalar plain call cannot name a waiting function";
+                }
+                if (row.literal != i64(facts.CallPlain) && !waiting[row.value]) {
+                    return "scalar awaited call or spawn names a function that does not wait";
+                }
+            }
+        }
+    }
+    if (shared && !identified) {
+        main := false;
+        frame := false;
+        for (function in 0..<length(heads)) {
+            declaration := rows[heads[function]];
+            if (declaration.name == "Main" || declaration.name == "Frame") {
+                if (waiting[function]) {
+                    return "native package generation Main and Frame cannot wait";
+                }
+                if (declaration.count != 0 || declaration.type != facts.IntType) {
+                    return "native package generations require Main and Frame with a zero-argument int ABI";
+                }
+                main = main || declaration.name == "Main";
+                frame = frame || declaration.name == "Frame";
+            }
+        }
+        if (!main || !frame) {
+            return "native package generations require Main and Frame";
         }
     }
     return "";
@@ -1611,6 +1925,33 @@ ArrayLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: i
     }
     return Op(native.ArrayCopy, type, slot, stack[base], 0, 0);
 }
+// The native instruction for a map operator other than its literal.
+MapLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: int) -> native.Instruction {
+    op := native.MapLength;
+    if (operand.value == facts.MapGet) { op = native.MapGet; }
+    else if (operand.value == facts.MapSet) { op = native.MapSet; }
+    else if (operand.value == facts.MapHas) { op = native.MapHas; }
+    else if (operand.value == facts.MapDelete) { op = native.MapDelete; }
+    else if (operand.value == facts.MapCopy) { op = native.MapCopy; }
+    else if (operand.value == facts.MapSpan) { op = native.MapSpan; }
+    else if (operand.value == facts.MapLiveAt) { op = native.MapLiveAt; }
+    else if (operand.value == facts.MapKeyAt) { op = native.MapKeyAt; }
+    else if (operand.value == facts.MapValueAt) { op = native.MapValueAt; }
+    right := 0;
+    target := 0;
+    if (MapOperands(operand) >= 2) {
+        right = stack[base + 1];
+    }
+    if (operand.value == facts.MapSet) {
+        target = stack[base + 2];
+    }
+    item := Op(op, type, slot, stack[base], right, target);
+    if (operand.literal != 0) {
+        item.literal = i64(NativeType(int(operand.literal)));
+    }
+    return item;
+}
+
 // One native instruction without a literal.
 Op :: (op: int, type: int, output: int, left: int, right: int, target: int) -> native.Instruction {
     return {op: op, type: type, output: output, left: left, right: right, target: target, literal: 0};
@@ -1658,22 +1999,28 @@ Patched :: (code: native.Instruction[], at: int) -> native.Instruction[] {
 // and a Tag or Payload row extracts its field. A string literal is a
 // constant of the module's text table, one entry per distinct text.
 pub EmitFor :: (target: abi.Target, rows: facts.Row[]) -> Result {
-    return Lower(target, rows, "", false);
+    return Lower(target, rows, "", false, false);
+}
+// Emit the rows of a package as a shared library, the generation of an Edit and
+// Continue loop: its functions are the library's, named by the package's.
+pub EmitShared :: (target: abi.Target, rows: facts.Row[]) -> Result {
+    return Lower(target, rows, "", false, true);
 }
 // Emit with line tables: each instruction is at the position of the
 // statement row it lowers, the function's own row before its first, and the
 // source row names the file, which is in `directory`.
 pub EmitLines :: (rows: facts.Row[], directory: string) -> Result {
-    return Lower(abi.LinuxX64(), rows, directory, true);
+    return Lower(abi.LinuxX64(), rows, directory, true, false);
 }
-Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool) -> Result {
-    error := Validate(rows);
+Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool, shared: bool) -> Result {
+    error := ValidateWith(rows, shared);
     if (error != "") {
         return Result.Invalid(error);
     }
     if (rows[1].kind == facts.RejectionRow) {
         return Result.Rejected(rows);
     }
+    generation := shared && rows[1].text == "";
     functions: native.Function[] = [];
     parameters: int[] = [];
     slots: int[] = [];
@@ -1715,7 +2062,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
     for (function in 0..<length(heads)) {
         head := heads[function];
         declaration := rows[head];
-        ids.append(declaration.literal);
+        // Package generations have no prepared-artifact identities. These IDs
+        // belong only to this generation; retained states still use their names.
+        id := declaration.literal;
+        if (generation) {
+            id = i64(function);
+        }
+        ids.append(id);
         result := NativeType(declaration.type);
         shape: native.Function = {result: result, first_parameter: length(parameters),
                                   parameters: declaration.count, first_slot: length(slots), slots: 0,
@@ -1730,6 +2083,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
         // The variables that are retained states, and their states.
         retained_variables: int[] = [];
         retained_states: int[] = [];
+        retained_types: int[] = [];
+        reference_slots: int[] = [];
+        reference_variables: int[] = [];
         slot: int = 0;
         local: int = 0;
         // The variables that own their arrays, in the order they opened and
@@ -1744,6 +2100,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
         // The row of each local variable's declaration.
         decl_vars: int[] = [];
         decl_rows: int[] = [];
+        // A by-value string parameter is borrowed until its address can be
+        // passed to a mutating callee. Promote those parameters once at entry,
+        // so reference assignment may replace/release their local descriptor.
+        addressed_parameters := resize([false], declaration.count);
+        for (index in head + declaration.count + 1..<Last(rows, heads, function)) {
+            operand := rows[index];
+            if (operand.kind == facts.RefRow && operand.value < declaration.count) {
+                addressed_parameters[operand.value] = true;
+            }
+        }
         for (index in 0..<declaration.count) {
             type := NativeType(rows[head + 1 + index].type);
             if (Referenced(rows, head, index)) {
@@ -1754,8 +2120,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
             locals.append(type);
             body.extend([Op(native.Argument, type, slot, index, 0, 0), Op(native.Save, type, 0, slot, 0, local)]);
             places.append(local);
+            if (type == abi.TextStorage && addressed_parameters[index]) {
+                body.append(Op(native.TextRetain, type, 0, slot, 0, 0));
+                owned_vars.append(index);
+                owned_types.append(type);
+            }
             if (rows[head + 1 + index].literal == 2) {
-                // A parameter the function changes is its own array.
+                // A parameter the function changes is its own container.
                 owned_vars.append(index);
                 owned_types.append(type);
             }
@@ -1964,7 +2335,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                 if (frame.held >= 0) {
                     slots.append(frame.held_type);
                     body.extend([Op(native.Local, frame.held_type, slot, frame.held, 0, 0),
-                                 Op(native.ArrayDrop, frame.held_type, 0, slot, 0, 0)]);
+                                 Giving(frame.held_type, slot)]);
                     slot += 1;
                 }
                 ends = false;
@@ -2017,6 +2388,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
             answers: int[] = [];
             escapes: int[] = [];
             outputs: int[] = [];
+            // Fresh strings in a conditional RHS are released on that path,
+            // before its skip target joins. Nested RHSs own suffixes here.
+            logical_strings: int[] = [];
+            logical_first: int[] = [];
             first := at + 1;
             for (index in first..<first + row.count + 1) {
                 while (length(closes) > 0 && closes[length(closes) - 1] == index) {
@@ -2024,6 +2399,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     right := stack[length(stack) - 1];
                     stack = slice(stack, 0, length(stack) - 1);
                     body.append(Op(native.Save, abi.BoolStorage, 0, right, 0, answers[open]));
+                    for (temporary in logical_first[open]..<length(logical_strings)) {
+                        body.append(Op(native.TextRelease, abi.TextStorage, 0, logical_strings[temporary], 0, 0));
+                    }
+                    logical_strings = slice(logical_strings, 0, logical_first[open]);
+                    logical_first = slice(logical_first, 0, open);
                     body = Patched(body, escapes[open]);
                     body.append(Op(native.Local, abi.BoolStorage, outputs[open], answers[open], 0, 0));
                     stack.append(outputs[open]);
@@ -2052,6 +2432,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                         body.append(Op(native.Branch, 0, 0, left, 0, 0));
                     }
                     closes.append(index + operand.count + 1);
+                    logical_first.append(length(logical_strings));
                     answers.append(local);
                     outputs.append(slot);
                     local += 1;
@@ -2060,6 +2441,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                 }
                 item: native.Instruction = {op: native.Constant, type: type, output: slot, left: 0, right: 0,
                                             target: 0, literal: operand.literal};
+                retained_element := false;
                 if (operand.kind == facts.LiteralRow && operand.type == facts.StringType) {
                     // A repeated literal or default shares one entry.
                     item.literal = i64(length(texts));
@@ -2081,8 +2463,20 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     item = Op(native.Deref, type, slot + 1, slot, 0, 0);
                     slot += 1;
                 } else if (operand.kind == facts.RefRow) {
+                    reference_slots.append(slot);
+                    reference_variables.append(operand.value);
                     slots[length(slots) - 1] = native.RefType + type;
-                    if (Referenced(rows, head, operand.value)) {
+                    if (operand.literal != 0) {
+                        // The address of a field of the variable's record, or of the record a reference parameter
+                        // points to.
+                        held := locals[shape.first_local + places[operand.value]];
+                        item = Op(native.FieldAddress, native.RefType + type, slot, places[operand.value], held, 0);
+                        if (Referenced(rows, head, operand.value)) {
+                            item.right = held - native.RefType;
+                            item.target = 1;
+                        }
+                        item.literal = operand.literal - 1;
+                    } else if (Referenced(rows, head, operand.value)) {
                         item = Op(native.Local, native.RefType + type, slot, places[operand.value], 0, 0);
                     } else {
                         item = Op(native.LocalAddress, native.RefType + type, slot, places[operand.value], 0, 0);
@@ -2115,8 +2509,20 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.FunctionAddressRow) {
                     item = Op(native.FunctionAddress, type, slot, operand.value, 0, 0);
+                } else if (operand.kind == facts.YieldRow) {
+                    // The turn is given up first; the row gives int 0, the constant.
+                    body.append(Op(native.Suspend, 0, 0, 0, 0, 0));
+                } else if (operand.kind == facts.AwaitRow || operand.kind == facts.CancelRow) {
+                    base := length(stack) - 1;
+                    task_op := native.Cancel;
+                    if (operand.kind == facts.AwaitRow) {
+                        task_op = native.AwaitHandle;
+                    }
+                    body.append(Op(task_op, 0, 0, stack[base], 0, 0));
+                    stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.CallRow) {
                     item = Op(native.Call, type, slot, operand.value, shape.arguments, operand.count);
+                    item.literal = operand.literal;
                     base := length(stack) - operand.count;
                     for (argument in 0..<operand.count) {
                         arguments.append(stack[base + argument]);
@@ -2207,6 +2613,63 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     item = Op(native.Insert, type, slot, stack[base], stack[base + 1], 0);
                     item.literal = i64(operand.value);
                     stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.MapRow) {
+                    base := length(stack) - MapOperands(operand);
+                    op := operand.value;
+                    if (op == facts.MapNew) {
+                        // Take every string reference before inserting. A
+                        // duplicate literal key may replace and release an
+                        // earlier value during the first sequence of sets.
+                        for (index in 0..<operand.count) {
+                            kept := stack[base + index];
+                            if (slots[shape.first_slot + kept] == abi.TextStorage) {
+                                if (Holds(fresh, kept)) {
+                                    fresh = Without(fresh, kept);
+                                } else {
+                                    body.append(Op(native.TextRetain, abi.TextStorage, 0, kept, 0, 0));
+                                }
+                            }
+                        }
+                        item = Op(native.Constant, type, slot, 0, 0, 0);
+                        for (pair in 0..<operand.count / 2) {
+                            key := stack[base + pair * 2];
+                            value := stack[base + pair * 2 + 1];
+                            body.append(item);
+                            slots.append(type);
+                            item = Op(native.MapSet, type, slot + 1, slot, key, value);
+                            item.literal = 1;
+                            slot += 1;
+                        }
+                    } else {
+                        item = MapLowered(operand, type, slot, stack, base);
+                        if (op == facts.MapSet) {
+                            for (kept in [stack[base + 1], stack[base + 2]]) {
+                                if (slots[shape.first_slot + kept] == abi.TextStorage) {
+                                    stored.append(kept);
+                                }
+                            }
+                        }
+                        if (op == facts.MapSet || op == facts.MapDelete) {
+                            item.literal = 1;
+                        }
+                        if (op != facts.MapSet && op != facts.MapDelete && Holds(fresh, stack[base])) {
+                            pending.append(stack[base]);
+                        }
+                        // A string read borrows from its map. Retain it before
+                        // a fresh input map is dropped, then track the result
+                        // as fresh so the statement either keeps or releases it.
+                        if ((op == facts.MapGet || op == facts.MapKeyAt || op == facts.MapValueAt) && type == abi.TextStorage) {
+                            body.append(item);
+                            slots.append(type);
+                            body.append(Op(native.TextRetain, type, 0, slot, 0, 0));
+                            item = Op(native.Local, type, slot + 1, local, 0, 0);
+                            locals.append(type);
+                            body.append(Op(native.Save, type, 0, slot, 0, local));
+                            local += 1;
+                            slot += 1;
+                        }
+                    }
+                    stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.ArrayRow) {
                     base := length(stack) - ArrayOperands(operand);
                     // The arrays this row only reads: a fresh one dies with it.
@@ -2233,6 +2696,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                         op == facts.ArrayJoin || op == facts.ArrayCopy || op == facts.ArrayText) {
                         if (Holds(fresh, stack[base])) {
                             pending.append(stack[base]);
+                            // Keep a string result before dropping its temporary array.
+                            retained_element = op == facts.ArrayGet && type == abi.TextStorage;
                         }
                     }
                     if ((op == facts.ArrayJoin || op == facts.ArrayExtend) && Holds(fresh, stack[base + 1])) {
@@ -2327,15 +2792,19 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                 }
                 stored = [];
                 body.append(item);
+                if (retained_element) {
+                    body.append(Op(native.TextRetain, abi.TextStorage, 0, slot, 0, 0));
+                }
                 for (spent in pending) {
                     held_type := slots[shape.first_slot + spent];
-                    body.append(Op(native.ArrayDrop, held_type, 0, spent, 0, 0));
+                    body.append(Giving(held_type, spent));
                     fresh = Without(fresh, spent);
                 }
                 pending = [];
-                // A string made on the right of && or || exists on some paths
-                // only, so it is not tracked: it stays unreleased.
-                if (FreshArray(operand) && (length(closes) == 0 || type != abi.TextStorage)) {
+                fresh_value := FreshArray(operand) || retained_element;
+                if (fresh_value && length(closes) > 0 && type == abi.TextStorage) {
+                    logical_strings.append(slot);
+                } else if (fresh_value) {
                     fresh.append(slot);
                 } else if ((operand.kind == facts.CallRow || operand.kind == facts.MakeRow) &&
                            HoldsArrays(rows, declared, type)) {
@@ -2354,6 +2823,26 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                         }
                     }
                     moving = -1;
+                }
+                if (item.op == native.Call) {
+                    // A scoped call can mutate a retained local through a
+                    // reference. Publish it before any later expression calls
+                    // or control-flow exits, while the binding is in scope.
+                    for (argument in 0..<item.target) {
+                        passed := arguments[shape.first_argument + item.right + argument];
+                        origin := SortedIndex(reference_slots, passed);
+                        if (origin < 0) { continue; }
+                        variable := reference_variables[origin];
+                        retained := SortedIndex(retained_variables, variable);
+                        if (retained < 0) { continue; }
+                        held_type := NativeType(retained_types[retained]);
+                        slots.append(held_type);
+                        body.append(Op(native.Local, held_type, slot, places[variable], 0, 0));
+                        lowered := RetainedValue(rows, declared, retained_types[retained], slot, "", retained_states[retained], 0, slot + 1, false);
+                        slots.extend(lowered.types);
+                        body.extend(lowered.code);
+                        slot += 1 + length(lowered.types);
+                    }
                 }
             }
             value := stack[0];
@@ -2384,7 +2873,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                         held_by = read_vars[at_read];
                     }
                 }
-                if (row.kind == facts.LocalRow && row.name == "_") {
+                if (row.kind == facts.LocalRow && (row.name == "_" || row.literal == i64(facts.Retained))) {
                     keeps = false;
                 } else if (row.kind == facts.ReturnRow && held_by >= 0) {
                     // The variable returned moves out.
@@ -2522,21 +3011,28 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                 fail.literal = declaration.literal;
                 body.extend([Op(native.Branch, 0, 0, value, 0, length(body) + 2), fail]);
             } else if (row.kind == facts.LocalRow && row.literal == i64(facts.Retained)) {
-                // The variable starts as the state, which starts as the
-                // literal the declaration holds.
                 type := NativeType(row.type);
-                load := Op(native.StateLoad, type, slot, 0, length(texts), states);
-                load.literal = rows[at + 1].literal;
-                texts.append(format_text("{}.{}", declaration.name, row.name));
-                slots.append(type);
+                lowered := RetainedValue(rows, declared, row.type, value, format_text("{}.{}", declaration.name, row.name),
+                                         states, length(texts), slot, true);
+                slots.extend(lowered.types);
+                body.extend(lowered.code);
+                texts.extend(lowered.texts);
+                slot += length(lowered.types);
+                states += lowered.states;
                 locals.append(type);
                 places.append(local);
                 retained_variables.append(row.value);
-                retained_states.append(states);
-                body.extend([load, Op(native.Save, type, 0, slot, 0, local)]);
-                slot += 1;
+                retained_states.append(states - lowered.states);
+                retained_types.append(row.type);
+                body.append(Op(native.Save, type, 0, lowered.value, 0, local));
                 local += 1;
-                states += 1;
+                // The local borrows the retained string. Its assignment path
+                // owns replacement strings, while StateStore keeps its own.
+                if (type == abi.TextStorage) {
+                    body.append(Op(native.TextRetain, type, 0, lowered.value, 0, 0));
+                    owned_vars.append(row.value);
+                    owned_types.append(type);
+                }
             } else if (row.kind == facts.LocalRow) {
                 type := NativeType(row.type);
                 decl_vars.append(row.value);
@@ -2549,7 +3045,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                 if (ArrayTyped(type) && Holds(fresh, value)) {
                     fresh = Without(fresh, value);
                     if (row.name == "_") {
-                        body.append(Op(native.ArrayDrop, type, 0, value, 0, 0));
+                        body.append(Giving(type, value));
                     } else {
                         owned_vars.append(row.value);
                         owned_types.append(type);
@@ -2620,9 +3116,21 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                 // The value goes where the reference points.
                 type := NativeType(row.type);
                 slots.append(native.RefType + type);
-                body.extend([Op(native.Local, native.RefType + type, slot, places[row.value], 0, 0),
-                             Op(native.Poke, type, 0, slot, value, 0)]);
-                slot += 1;
+                body.append(Op(native.Local, native.RefType + type, slot, places[row.value], 0, 0));
+                if (type == abi.TextStorage || (type >= native.MapType && type < native.RefType && Holds(fresh, value))) {
+                    // A replacement owns fresh allocations. The old map must
+                    // be dropped after the value has finished reading it.
+                    // In-place MapSet/Delete results are consumed descriptors,
+                    // not fresh allocations, and already release their growth.
+                    if (type != abi.TextStorage) { fresh = Without(fresh, value); }
+                    slots.append(type);
+                    body.extend([Op(native.Deref, type, slot + 1, slot, 0, 0), Giving(type, slot + 1)]);
+                    body.append(Op(native.Poke, type, 0, slot, value, 0));
+                    slot += 2;
+                } else {
+                    body.append(Op(native.Poke, type, 0, slot, value, 0));
+                    slot += 1;
+                }
             } else if (row.kind == facts.AssignRow) {
                 type := NativeType(row.type);
                 // An owning variable given a fresh array drops its old one,
@@ -2631,7 +3139,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     fresh = Without(fresh, value);
                     slots.append(type);
                     body.extend([Op(native.Local, type, slot, places[row.value], 0, 0),
-                                 Op(native.ArrayDrop, type, 0, slot, 0, 0)]);
+                                 Giving(type, slot)]);
                     slot += 1;
                 } else if (!ArrayTyped(type) && Holds(owned_vars, row.value) && Holds(fresh, value) &&
                            HoldsArrays(rows, declared, type)) {
@@ -2645,10 +3153,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                 // A retained variable's state follows it.
                 for (retained in 0..<length(retained_variables)) {
                     if (retained_variables[retained] == row.value) {
-                        store := Op(native.StateStore, type, 0, slot, 0, retained_states[retained]);
                         slots.append(type);
-                        body.extend([Op(native.Local, type, slot, places[row.value], 0, 0), store]);
-                        slot += 1;
+                        body.append(Op(native.Local, type, slot, places[row.value], 0, 0));
+                        lowered := RetainedValue(rows, declared, row.type, slot, "", retained_states[retained], 0, slot + 1, false);
+                        slots.extend(lowered.types);
+                        body.extend(lowered.code);
+                        slot += 1 + length(lowered.types);
                     }
                 }
             } else if (row.kind == facts.SwitchRow) {
@@ -2703,13 +3213,18 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
     if (debug) {
         source = {file: rows[0].name, directory: directory};
     }
-    // A library's Document row names it.
+    // A library's Document row names it; a package generation has its own
+    // manifest name, not a prepared artifact's stable library identity.
     emitted: native.Result = native.Result.Rejected(-1, "");
-    if (rows[1].text == "") {
+    if (rows[1].text == "" && !generation) {
         emitted = native.Emit(target, functions, parameters, slots, locals, code, arguments, records, fields, texts,
                               source, names, lines, columns, false, 1);
     } else {
-        emitted = native.EmitLibrary(target, rows[1].text, names, ids, functions, parameters, slots, locals,
+        library_name := rows[1].text;
+        if (generation) {
+            library_name = "generation";
+        }
+        emitted = native.EmitLibrary(target, library_name, names, ids, functions, parameters, slots, locals,
                                      code, arguments, records, fields, texts, 1, field_names);
     }
     switch emitted {

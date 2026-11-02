@@ -1,0 +1,34 @@
+package live
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fwrite :: (data: cstring, size: u64, count: u64, stream: rawptr) -> u64
+    fclose :: (stream: rawptr) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+}
+State :: struct { marker: int; count: int; }
+Main :: () -> int {
+    stream := fopen("main-count", "ab");
+    written := fwrite("x", 1, 1, stream);
+    closed := fclose(stream);
+    return 0;
+}
+Frame :: () -> int {
+    progress: retain State = {marker: 9, count: 0};
+    message: retain string = "second";
+    assert(progress.count >= 2, "retained integer field converted and survived");
+    assert(progress.marker == 73, "retained record field survived reordering");
+    assert(message == "first", "retained string survived");
+    if access("allow-task", 0) != 0 {
+        stream := fopen("allow-task", "wb");
+        written := fwrite("allow", 1, 5, stream);
+        closed := fclose(stream);
+    }
+    if access("task-done", 0) != 0 {
+        return 0;
+    }
+    stream := fopen("done", "wb");
+    written := fwrite("done", 1, 4, stream);
+    closed := fclose(stream);
+    return 42;
+}

@@ -1,0 +1,9 @@
+package task_deadline_rejection
+Main :: () -> int {
+    handle := Worker();
+    cancel handle after 1
+    yield
+    return 0;
+}
+Worker :: () -> int { yield
+    return 0; }

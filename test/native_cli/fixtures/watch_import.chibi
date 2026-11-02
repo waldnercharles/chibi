@@ -1,0 +1,13 @@
+package lib
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fwrite :: (data: cstring, size: u64, count: u64, stream: rawptr) -> u64
+    fclose :: (stream: rawptr) -> i32
+}
+pub Tick :: () -> int {
+    stream := fopen("import-ready", "wb");
+    written := fwrite("ready", 1, 5, stream);
+    closed := fclose(stream);
+    return 0;
+}

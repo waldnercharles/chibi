@@ -1,0 +1,15 @@
+package driver_paths
+
+import strings "core:strings"
+
+// The path the compiler sees. It routes POSIX-absolute paths only, so a
+// Windows `C:/dir` or `C:\dir` becomes `/C/dir`; the driver reads the real path.
+// Any other path is returned as given. The rename is consistent, so the paths
+// of the build's own files appear in its output only under this name.
+pub Visible :: (path: string) -> string {
+    if (strings.ByteLength(path) < 3 || strings.ByteAt(path, 1) != 58 || (strings.ByteAt(path, 2) != 47 && strings.ByteAt(path, 2) != 92)) {
+        return path;
+    }
+    rest := strings.ReplaceAll(strings.Slice(path, 2, strings.ByteLength(path) - 2), "\\", "/");
+    return strings.Concatenate(["/", strings.Slice(path, 0, 1), rest]);
+}

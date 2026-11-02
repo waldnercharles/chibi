@@ -1,0 +1,170 @@
+package native_driver
+
+import os "core:os"
+import strings "core:strings"
+import target "core:target"
+
+when target.Os == target.Linux {
+    import process "core:sys/posix"
+}
+
+// Source files and their parent directories are watched. The directory stamp
+// notices a package gaining or losing a source file without reading it on each poll.
+WatchPaths :: (subject: Subject, core: string) -> string[] {
+    gathered := Gather(subject.project, ["core"], [core], subject.package, subject.source);
+    paths: string[] = [subject.project];
+    last_folder := subject.project;
+    for (path in gathered.paths) {
+        absolute := path;
+        if (!strings.HasPrefix(path, "/")) {
+            absolute = strings.Concatenate([subject.project, "/", path]);
+        }
+        paths.append(absolute);
+        folder := Directory(absolute);
+        // Gather keeps each package's files together.
+        if (folder != last_folder) {
+            paths.append(folder);
+            last_folder = folder;
+        }
+    }
+    if (gathered.problem != "") {
+        // Failed gathers have partial sources. Include requested folders even
+        // when they are empty, so creating the missing source retries the edit.
+        for (source in gathered.sources) {
+            for (name in ImportedFrom(source, "project")) {
+                folder := strings.Concatenate([subject.project, "/", name]);
+                paths.extend([folder, Directory(folder)]);
+            }
+            for (name in ImportedFrom(source, "core")) {
+                folder := strings.Concatenate([core, "/", name]);
+                paths.extend([folder, Directory(folder)]);
+            }
+        }
+    }
+    return paths;
+}
+
+WatchStamp :: (paths: string[]) -> string {
+    stamps: string[] = [];
+    for (path in paths) {
+        stamps.extend([path, "\n", os.Stamp(path), "\n"]);
+    }
+    return strings.Join(stamps, "");
+}
+
+// The installed SDK keeps the host beside its core resources. A checkout has
+// packages/core and apps/host. An override permits testing a staged SDK host.
+WatchHost :: (core: string) -> string {
+    chosen := os.Getenv("CHIBI_NATIVE_HOST_SOURCE");
+    candidates := [chosen, strings.Concatenate([Directory(core), "/apps/host/Host.chibi"]),
+                    strings.Concatenate([Directory(core), "/../apps/host/Host.chibi"])];
+    for (candidate in candidates) {
+        resolved := os.RealPath(candidate);
+        if (resolved != "" && os.IsFile(resolved)) {
+            return resolved;
+        }
+    }
+    return "";
+}
+
+// Main runs once in the host. Every later generation takes effect between
+// Frames; a rejected edit leaves the running generation and its state intact.
+when target.Os == target.Linux {
+WatchProgram :: (subject: Subject, core: string, llvm: string, triple: string, invocation: CliInvocation,
+                 tail: string[]) -> int {
+    if (triple != "x86_64-unknown-linux-gnu") {
+        Complain("run --watch requires the native Linux x86-64 shared-library target");
+        return 2;
+    }
+    host_source := WatchHost(core);
+    if (host_source == "") {
+        Complain("run --watch: cannot find apps/host/Host.chibi beside the SDK's core; set CHIBI_NATIVE_HOST_SOURCE");
+        return 2;
+    }
+    work := strings.Concatenate([subject.project, "/build/native/watch"]);
+    if (!MakeFolders(work)) {
+        Complain(strings.Concatenate(["run --watch: cannot make ", work]));
+        return 2;
+    }
+    for (name in ["live-0.so", "live-1.so", "next.so", "pending.so", "rejected.so"]) {
+        removed := os.Remove(strings.Concatenate([work, "/", name]));
+        if (removed != nil) {
+            Complain(strings.Concatenate(["run --watch: cannot clear ", work, "/", name]));
+            return 2;
+        }
+    }
+    // Capture before compiling, so an edit during either compile is retried.
+    paths := WatchPaths(subject, core);
+    known_paths := paths;
+    stamp := WatchStamp(paths);
+    host_subject: Subject = {project: Directory(host_source), source: host_source, package: ".", problem: ""};
+    program := strings.Concatenate([work, "/host"]);
+    built := CompileSubject(host_subject, core, llvm, triple, program, invocation);
+    if (built != 0) {
+        return built;
+    }
+    shared := invocation;
+    shared.shared = true;
+    built = CompileSubject(subject, core, llvm, triple, strings.Concatenate([work, "/live-0.so"]), shared);
+    if (built != 0) {
+        return built;
+    }
+    // The fixed shell script uses positional arguments, so paths and program
+    // arguments keep their bytes, including spaces, quotes and shell metacharacters.
+    command: string[] = ["/bin/sh", "-c", "cd \"$1\" && shift && exec \"$@\"", "chibi-watch", work, program];
+    command.extend(tail);
+    // Keep the host in our foreground group so Ctrl-C reaches both processes.
+    child := process.Spawn(command);
+    if (child < 0) {
+        Complain("run --watch: cannot start the native host");
+        return 2;
+    }
+    while (true) {
+        status := os.Wait(child, 250);
+        if (status != os.StillRunning) {
+            return ExitStatus(status);
+        }
+        changed := WatchStamp(paths);
+        if (changed == stamp) {
+            continue;
+        }
+        candidate := WatchPaths(subject, core);
+        observed := known_paths;
+        observed.extend(candidate);
+        before := WatchStamp(observed);
+        pending := strings.Concatenate([work, "/pending.so"]);
+        built = CompileSubject(subject, core, llvm, triple, pending, shared);
+        paths = observed;
+        if (built == 0) {
+            known_paths = candidate;
+            paths = candidate;
+        }
+        if (WatchStamp(observed) == before) {
+            stamp = WatchStamp(paths);
+        } else {
+            // Do not lose an edit made while the compiler was busy.
+            stamp = "";
+        }
+        if (built != 0) {
+            continue;
+        }
+        next := strings.Concatenate([work, "/next.so"]);
+        while (os.Exists(next)) {
+            status = os.Wait(child, 50);
+            if (status != os.StillRunning) {
+                return ExitStatus(status);
+            }
+        }
+        if (os.Rename(pending, next) != nil) {
+            Complain("run --watch: cannot publish the new generation");
+        }
+    }
+    return 0;
+}
+} else {
+WatchProgram :: (subject: Subject, core: string, llvm: string, triple: string, invocation: CliInvocation,
+                 tail: string[]) -> int {
+    Complain("run --watch requires the native Linux x86-64 shared-library target");
+    return 2;
+}
+}

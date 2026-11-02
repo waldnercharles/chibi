@@ -1,0 +1,8 @@
+package task_result_rejection
+Main :: () -> int {
+    handle := Worker();
+    value := await handle;
+    return 0;
+}
+Worker :: () -> int { yield
+    return 9; }

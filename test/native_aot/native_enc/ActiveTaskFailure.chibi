@@ -1,0 +1,18 @@
+package active_task_failure
+
+Main :: () -> int {
+    worker := Worker();
+    return 0;
+}
+
+Frame :: () -> int { return 0; }
+
+Worker :: () -> int {
+    yield
+    return Broken();
+}
+
+Broken :: () -> int {
+    assert(false, "active task failed");
+    return 0;
+}

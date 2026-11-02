@@ -1,0 +1,26 @@
+package task_reuse
+
+Main :: () -> int {
+    for (i in 0..<4096) {
+        handle := Worker();
+        await handle
+        // A completed handle must not name a later task reusing its row.
+        newer := Worker();
+        cancel handle
+        await newer
+    }
+    if (Count(false) != 8192) { return 1; }
+    return 0;
+}
+
+Count :: (increment: bool) -> int {
+    count: retain int = 0;
+    if (increment) { count += 1; }
+    return count;
+}
+
+Worker :: () -> int {
+    yield
+    Count(true);
+    return 1;
+}

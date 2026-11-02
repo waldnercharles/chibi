@@ -122,7 +122,7 @@ HostSymbolsReachFunctionsAndStatesWithoutMemory :: () {
     assert(strings.Contains(text, "define i32 @chibi_host_retained_count() #0 {\nentry:\n  ret i32 1\n}\n"));
     assert(strings.Contains(text, "define i32 @chibi_host_retained_type(i32 %i) #0 {\nentry:\n  switch i32 %i, label %none [i32 0, label %c0]\nc0:\n  ret i32 1\nnone:\n  ret i32 0\n}\n"));
     assert(strings.Contains(text, "define i64 @chibi_host_retained_hash(i32 %i) #0 {\nentry:\n  switch i32 %i, label %none [i32 0, label %c0]\nc0:\n  ret i64 -9211136534442197545\n"));
-    assert(strings.Contains(text, "define i64 @chibi_host_retained_get(i32 %i) #0 {\nentry:\n  %words = alloca [1 x i64]\n"));
+    assert(strings.Contains(text, "define i64 @chibi_host_retained_get(i32 %i) #0 {\nentry:\n  switch i32 %i, label %none [i32 0, label %c0]\n"));
     assert(strings.Contains(text, "define i32 @chibi_host_retained_set(i32 %i, i64 %v) #0 {\n"));
 }
 

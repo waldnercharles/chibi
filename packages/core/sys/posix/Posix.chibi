@@ -822,6 +822,25 @@ pub Print :: (line: string) -> bool {
     return int(written) == length(data);
 }
 
+// Writes the text to standard output unchanged, retrying a short write; false
+// when it cannot be written whole.
+pub WriteOutput :: (text: string) -> bool {
+    data := Bytes(text);
+    done := 0;
+    while done < length(data) {
+        rest: u8[] = [];
+        for index in done..<length(data) {
+            rest.append(data[index]);
+        }
+        written := int(write(1, rest, u64(length(rest))));
+        if written <= 0 {
+            return false;
+        }
+        done += written;
+    }
+    return true;
+}
+
 // Ends the process with the exit status; it does not return.
 pub Exit :: (code: int) -> int {
     return int(_exit(i32(code)));

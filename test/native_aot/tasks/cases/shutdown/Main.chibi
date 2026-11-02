@@ -1,0 +1,9 @@
+package task_shutdown
+Main :: () -> int {
+    Worker();
+    return 0;
+}
+Worker :: () -> int {
+    yield
+    return 1;
+}

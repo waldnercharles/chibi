@@ -11,7 +11,11 @@ Coverage equivalence to the retired C cases of `test/language/package_compiler_c
 | `native_calls_emit_definitions` | `CallsKeepDefinitionsAndArgumentOrder`: all five exact IR fragments |
 | `native_rejects_malformed_calls` | Eleven named rejection tests: three argument-table variants, seven instruction edits and late argument definition; exact messages retained |
 | `native_floats_emit` | `FloatsKeepBitsAndSaturatingConversions`: all nine IR fragments and two unique declaration counts, including the exact NaN payload |
-| `native_rejects_floats` | Five named rejection tests: 33-bit float literal, negation, remainder, int-to-float and bool-to-double; exact messages retained |
+| `native_rejects_floats` | Four named rejection tests: 33-bit float literal, remainder, int-to-float and bool-to-double; float negation is accepted and checked by `FloatNegationKeepsItsIEEEWidth` |
+
+`Tasks.chibi` checks plain and awaited call modes against coroutine functions,
+rejects coroutine function addresses and unused instruction numbers, and checks
+the same call contracts in scalar facts before lowering.
 
 Each test owns its module tables and result. No shared writable fixture, process,
 file, timing loop or benchmark is involved. Purity is inferred through the real

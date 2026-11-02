@@ -1,0 +1,45 @@
+package task_failure
+
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fwrite :: (data: cstring, size: u64, count: u64, stream: rawptr) -> u64
+    fclose :: (stream: rawptr) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+}
+
+Main :: () -> int { return 0; }
+
+Frame :: () -> int {
+    started: retain bool = false;
+    if !started {
+        started = true;
+        Worker();
+    }
+    return 0;
+}
+
+Worker :: () -> int {
+    TaskStarted();
+    while !TaskReleased() { yield }
+    return TaskFailed();
+}
+
+TaskStarted :: () -> int {
+    stream := fopen("task-started", "wb");
+    written := fwrite("old", 1, 3, stream);
+    closed := fclose(stream);
+    return 0;
+}
+
+TaskReleased :: () -> bool {
+    return access("task-release", 0) == 0;
+}
+
+TaskFailed :: () -> int {
+    stream := fopen("task-failed-old", "wb");
+    written := fwrite("old", 1, 3, stream);
+    closed := fclose(stream);
+    assert(false, "a retired task still reports its failure");
+    return 0;
+}

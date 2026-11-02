@@ -1,0 +1,26 @@
+package driver_paths_tests
+
+import route "project:driver_paths"
+
+Is :: (path: string, expected: string) {
+    assert(route.Visible(path) == expected, "the path the compiler sees");
+}
+
+// The compiler routes POSIX-absolute paths only; a Windows drive path is renamed
+// to one, and every other path is left as it is.
+@test
+WindowsDrivePathsBecomeAbsolute :: () {
+    Is("C:/a/packages/core", "/C/a/packages/core");
+    Is("D:\\a\\_work\\core", "/D/a/_work/core");
+    Is("C:/", "/C/");
+}
+
+@test
+OtherPathsAreUnchanged :: () {
+    Is("/sdk/core", "/sdk/core");
+    Is("core", "core");
+    Is("", "");
+    Is("C:", "C:");
+    Is("C:core", "C:core");
+    Is("ab/cd", "ab/cd");
+}

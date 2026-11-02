@@ -278,12 +278,36 @@ pub ForeignRow: int : 38;
 // A call operand that passes the variable `value`, of its `type`, by
 // reference: the callee's reference parameter reads and writes that variable.
 // Passing a reference parameter on gives the caller's variable on.
+// A nonzero literal selects field `literal - 1` of that record variable,
+// with `type` naming the field's number or bool type.
 pub RefRow: int : 39;
 // The address of a C-ABI function that calls the function `value`, a word, for
 // a foreign function that takes a function: `name` is the function's, `count`
 // is 0 and `type` is the word. The function's parameters and result are
 // numbers or bools and none of its parameters is a reference.
 pub FunctionAddressRow: int : 40;
+// Tasks. A function that holds a Yield, an Await, or a Call whose `literal` is
+// CallAwaited is a coroutine. A Call row's `literal` is CallPlain (0) for an
+// ordinary call, CallAwaited (1) for `await F(...)` of a waiting function F, run
+// inline and giving F's result, and CallSpawned (2) for `F(...)` of a waiting
+// function not awaited: F runs to its first suspension and the call gives its
+// task's handle, a word (`type` is WordType). A Yield is an operand row without
+// operands that gives int 0 and gives up the turn to resume on the next update.
+// An Await consumes the most recent operand, a task handle, and waits until the
+// task has finished or been cancelled, giving int 0: the task's result, `T |
+// Cancelled`, is not modelled yet. A Cancel consumes a task handle and cancels
+// the task, giving int 0.
+pub YieldRow: int : 41;
+pub AwaitRow: int : 42;
+pub CancelRow: int : 43;
+pub CallPlain: int : 0;
+pub CallAwaited: int : 1;
+pub CallSpawned: int : 2;
+// A postfix map operation. New consumes alternating key/value operands;
+// changes consume map, key and optionally value, and give the replacement map.
+// Reads use `literal` for their input map type and `type` for their result.
+// A map's assignment or declaration copies through MapCopy before sharing.
+pub MapRow: int : 50;
 // What a RefRow of `type` pushes on a call's operand stack, and so what a
 // reference parameter of `type` takes: ReferenceType plus the type. A
 // parameter row whose literal is 1 is a reference parameter. Its variable is
@@ -316,6 +340,20 @@ pub StringType: int : 12;
 pub RecordType: int : 32;
 // An array of type T is ArrayType + T.
 pub ArrayType: int : 1024;
+// A map from scalar/string K to scalar/string V is MapType + V * 16 + K.
+// Records and nested containers need their ownership rules before admission.
+pub MapType: int : 2048;
+pub MapNew: int : 1;
+pub MapLength: int : 2;
+pub MapGet: int : 3;
+pub MapSet: int : 4;
+pub MapHas: int : 5;
+pub MapDelete: int : 6;
+pub MapCopy: int : 7;
+pub MapSpan: int : 8;
+pub MapLiveAt: int : 9;
+pub MapKeyAt: int : 10;
+pub MapValueAt: int : 11;
 
 // Compare operators: the source's <, <=, >, >=, == and !=, signed or
 // unsigned as their operands' type is. On floats, each is false when an
@@ -383,11 +421,10 @@ pub ArrayText: int : 15;
 // again. It has the switch statement's range, a Switch row of the same range
 // follows it, and that Switch reads it.
 pub SwitchSubject: int : 1;
-// A Local row whose `literal` is Retained declares a retained local, a number
-// or bool the function keeps between calls: its one operand is a Literal, the
-// value it starts with, and the variable reads and writes that state, which a
-// native library exports to the host that replaces it. It is named for its
-// function and its `name`, so the state is the same across edits that keep both.
+// A Local row whose `literal` is Retained declares a retained number, bool,
+// standalone string or numeric/bool record. Its operands construct a constant initial
+// value. Native lowering migrates record leaves by their field paths under
+// Function.variable, so reordering fields does not change their identities.
 pub Retained: int : 2;
 
 // A For row's range flags; RangeArray stands alone or with RangeKeyed, which

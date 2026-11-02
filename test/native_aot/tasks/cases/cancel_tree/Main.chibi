@@ -1,0 +1,48 @@
+package task_cancel_tree
+
+Main :: () -> int {
+    stopped := Parent();
+    cancel stopped
+    yield
+    yield
+    if (Count(false) != 0) { return 1; }
+    finished := Finishes();
+    await finished
+    yield
+    yield
+    if (Count(false) != 1) { return 2; }
+    return 0;
+}
+
+Count :: (increment: bool) -> int {
+    count: retain int = 0;
+    if (increment) { count += 1; }
+    return count;
+}
+
+Parent :: () -> int {
+    Child();
+    Branch();
+    Child();
+    yield
+    return 0;
+}
+
+Branch :: () -> int {
+    Child();
+    Child();
+    yield
+    return 0;
+}
+
+Finishes :: () -> int {
+    Child();
+    if (false) { yield }
+    return 0;
+}
+
+Child :: () -> int {
+    yield
+    Count(true);
+    return 0;
+}

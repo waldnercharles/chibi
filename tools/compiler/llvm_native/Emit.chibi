@@ -179,9 +179,10 @@ pub ForeignCall: int : 49;
 // A module's retained states: scalars that outlive a call, which a host that
 // replaces the module reads out and sets in the new one. StateLoad declares
 // state `target` and gives its value: the states are numbered in code order,
-// `type` is a number or bool, `literal` the value it starts with, and
-// texts[right] its name. StateStore gives state `target` the left slot's value,
-// of its type.
+// `type` is a number, bool or string, and texts[right] is its name. With left
+// zero, literal is its initial number/bool. Otherwise left-1 is a slot of its
+// initial value, used only while the state's initialized marker is false.
+// StateStore gives state `target` the left slot's value, of its type.
 pub StateLoad: int : 50;
 pub StateStore: int : 51;
 // A reference type is RefType plus the type it refers to, a pointer to a
@@ -224,7 +225,73 @@ pub ArrayDrop: int : 57;
 // owns and outlives the call) has nothing to count. Neither gives anything.
 pub TextRetain: int : 58;
 pub TextRelease: int : 59;
-pub InstructionCount: int : 60;
+// A map type is MapType + value * 16 + key (Maps.chibi, docs/native-maps.md): an
+// LLVM { i32, i32, i32, i32, ptr, ptr }, its live count, physical span,
+// entries capacity, index slots, insertion-ordered entries and index, by value.
+// Its key is a bool, an integer or a string and its value a scalar or string. Its zero,
+// the Constant of literal 0, is the empty map, which owns no memory. A map is a
+// value, so a producer copies with MapCopy where it would share, and every
+// instruction that changes a map consumes the one it reads. The instructions
+// that read a map name its type: in `type` when they give a map, in `literal`
+// when they do not.
+pub MapType: int : 2048;
+// output = the entry count of the left slot's map, an int.
+pub MapLength: int : 60;
+// output = the value of the right slot's key in the left slot's map, of type,
+// or the value type's zero when the map has no such key.
+pub MapGet: int : 61;
+// output = whether the left slot's map has the right slot's key, a bool.
+pub MapHas: int : 62;
+// output = the left slot's map with the right slot's key given the value in slot
+// `target`; type is the map type. A new key goes last, and an old one keeps its
+// place. The map takes one reference of a string key and one of a string value;
+// a key already present gives the new key's back. Literal 1 gives back the
+// allocations a growth replaces.
+pub MapSet: int : 63;
+// output = the left slot's map without the right slot's key, or as it is
+// for a key it lacks. Indexed maps mark dead entries and compact amortized; it
+// borrows the key. Literal 1 gives back the allocations the removal replaces.
+pub MapDelete: int : 64;
+// output = a map of its own allocations equal to the left slot's; type is the
+// map type.
+pub MapCopy: int : 65;
+// Gives the left slot's map's allocations, and each string it holds, back to the
+// context. It gives nothing; type is the map type.
+pub MapDrop: int : 66;
+// output = the key at a live physical position in insertion order, of type;
+// an out-of-span or dead position ends the program. Iterate MapSpan/MapLiveAt.
+pub MapKeyAt: int : 67;
+// output = the value of the entry at the right slot's int position, of type.
+pub MapValueAt: int : 68;
+// output = the physical entry span, including dead positions, for map iteration.
+pub MapSpan: int : 69;
+// output = whether the right slot's int position in the entry span is live.
+// A position outside the span is false, so no key or value is read there.
+pub MapLiveAt: int : 70;
+// output = the address of field `literal` of the record local `left`, whose
+// type is `right`, or with a target of 1 of the record the reference parameter
+// `left` points to, whose type is a reference to `right`: a reference to the
+// field's type; type is that reference type. The field is a number or a bool,
+// and the reference lives as long as the local does.
+pub FieldAddress: int : 71;
+// A waiting function is a coroutine: its body holds a Suspend, an AwaitHandle or an
+// awaited Call. Suspend gives up the function's turn; it resumes at the next
+// instruction on the scheduler's next update (`yield`).
+pub Suspend: int : 80;
+// Waits for the task whose handle (a word) is `left` to finish or be cancelled. It
+// gives nothing: the task's result, `T | Cancelled`, needs a union the native
+// lane does not have for it yet.
+pub AwaitHandle: int : 81;
+// Cancels the task whose handle (a word) is `left`: its coroutine is destroyed.
+pub Cancel: int : 82;
+pub InstructionCount: int : 83;
+// A Call's `literal`: an ordinary call, an awaited call (the callee is a waiting
+// function, run inline in the waiting caller, giving its result), or a spawn (the
+// callee is a waiting function, started as a task of its own, giving its handle, a
+// word).
+pub CallPlain: int : 0;
+pub CallAwaited: int : 1;
+pub CallSpawned: int : 2;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -233,8 +300,8 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
     return Index(slot, length(slots)) && slots[slot] == type;
 }
 Produces :: (op: int) -> bool {
-    return op <= Local || op == LocalAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
-           op == ForeignCall || op == StateLoad || op == FunctionAddress;
+    return op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
+           op == ForeignCall || op == StateLoad || op == FunctionAddress || (op >= MapLength && op <= MapLiveAt && op != MapDrop);
 }
 Comparison :: (op: int) -> bool {
     return op >= Lt && op <= Ne;
@@ -245,7 +312,7 @@ Unary :: (op: int) -> bool {
 ReadsLeft :: (op: int) -> bool {
     return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
            (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText || op == ArrayDrop || op == TextRetain ||
-           op == TextRelease || op == StateStore || op == Deref || op == Poke;
+           op == TextRelease || op == StateStore || op == Deref || op == Poke || op == AwaitHandle || op == Cancel || (op >= MapLength && op <= MapLiveAt);
 }
 Integer :: (type: int) -> bool {
     return abi.IntegerBits(type) > 0;
@@ -275,7 +342,8 @@ Fits :: (literal: i64, type: int) -> bool {
 }
 ReadsRight :: (op: int) -> bool {
     return (op >= Add && op <= Ne && !Unary(op)) || op == Insert || op == Poke || (op >= TextByte && op <= TextTake) ||
-           ArrayReadsRight(op);
+           ArrayReadsRight(op) || (op >= MapGet && op <= MapDelete && op != MapCopy && op != MapDrop) || op == MapKeyAt ||
+           op == MapValueAt || op == MapLiveAt;
 }
 // Whether an array instruction reads a right slot: an index, an element,
 // another array or a length.
@@ -285,7 +353,7 @@ ArrayReadsRight :: (op: int) -> bool {
 // Whether an instruction reads the slot its target names: an array store's
 // value or a slice's count.
 ReadsTarget :: (op: int) -> bool {
-    return op == ArraySet || op == ArraySlice;
+    return op == ArraySet || op == ArraySlice || op == MapSet;
 }
 // Whether an array instruction calls the runtime context: an index check, or
 // an allocation.
@@ -318,6 +386,9 @@ Held :: (records: Record[], type: int) -> bool {
 // Whether `type` is a scalar, a string, one of the module's records or an
 // array of one of them.
 Valued :: (records: Record[], type: int) -> bool {
+    if (type >= MapType) {
+        return MapShaped(records, type);
+    }
     if (type >= ArrayType) {
         return ElementType(records, type) != 0;
     }
@@ -327,6 +398,9 @@ Valued :: (records: Record[], type: int) -> bool {
 TypeName :: (type: int) -> string {
     if (type >= RefType) {
         return "ptr";
+    }
+    if (type >= MapType) {
+        return abi.MapType();
     }
     if (type >= ArrayType) {
         return abi.ArrayType();
@@ -406,7 +480,7 @@ Computes :: (op: int, type: int) -> bool {
         return true;
     }
     if (abi.Floating(type)) {
-        return op == Add || op == Sub || op == Mul || op == Div || Comparison(op);
+        return op == Add || op == Sub || op == Mul || op == Div || op == Neg || Comparison(op);
     }
     return type == abi.BoolStorage && (op == Eq || op == Ne || op == BitNot);
 }
@@ -651,13 +725,15 @@ FormatValid :: (slots: int[], arguments: int[], item: Instruction) -> bool {
 // A retained state is a number or bool, a load names it and starts it at a
 // value of its type, and a store writes a slot of its type.
 StateValid :: (slots: int[], texts: string[], item: Instruction) -> bool {
-    if (abi.ScalarType(item.type) == "" || item.target < 0) {
+    if ((abi.ScalarType(item.type) == "" && item.type != abi.TextStorage) || item.target < 0) {
         return false;
     }
     if (item.op == StateStore) {
         return Typed(slots, item.left, item.type);
     }
-    return Fits(item.literal, item.type) && Index(item.right, length(texts));
+    return Index(item.right, length(texts)) &&
+           ((item.left == 0 && Fits(item.literal, item.type)) ||
+            (item.left > 0 && item.literal == 0 && Typed(slots, item.left - 1, item.type)));
 }
 // Whether a reference instruction names a local of the type its reference
 // type refers to, a reference slot, or a reference slot and a value slot.
@@ -720,14 +796,41 @@ CallbackAdapters :: (functions: Function[], parameters: int[], code: Instruction
     }
     return strings.Join(out, "");
 }
+// Whether each function is a coroutine: it suspends, awaits a task, or awaits a call.
+WaitingFunctions :: (functions: Function[], code: Instruction[]) -> bool[] {
+    waiting: bool[] = [];
+    for (shape in functions) {
+        found := false;
+        for (item in Codes(code, shape.first_code, shape.code)) {
+            if (item.op == Suspend || item.op == AwaitHandle || (item.op == Call && item.literal == i64(CallAwaited))) {
+                found = true;
+            }
+        }
+        waiting.append(found);
+    }
+    return waiting;
+}
+// Whether any function waits or starts a task.
+Tasks :: (code: Instruction[]) -> bool {
+    for (item in code) {
+        if (item.op == Suspend || item.op == AwaitHandle || item.op == Cancel || (item.op == Call && item.literal != i64(CallPlain))) {
+            return true;
+        }
+    }
+    return false;
+}
 // A call names another function of the module, with its result type and one
-// argument slot of each parameter's type.
+// argument slot of each parameter's type. A spawn gives a task handle, a word.
 CallValid :: (functions: Function[], parameters: int[], slots: int[], arguments: int[], item: Instruction) -> bool {
     if (!Index(item.left, length(functions))) {
         return false;
     }
     callee := functions[item.left];
-    if (item.type != callee.result || item.target != callee.parameters || item.right < 0 ||
+    wanted := callee.result;
+    if (item.literal == i64(CallSpawned)) {
+        wanted = abi.WordStorage;
+    }
+    if (item.type != wanted || item.target != callee.parameters || item.right < 0 ||
         item.right > length(arguments) - item.target) {
         return false;
     }
@@ -740,7 +843,7 @@ CallValid :: (functions: Function[], parameters: int[], slots: int[], arguments:
 }
 Validate :: (functions: Function[], function: int, module_parameters: int[], module_slots: int[],
              module_locals: int[], module_code: Instruction[], module_arguments: int[], records: Record[],
-             fields: int[], texts: string[], mode: int) -> Result {
+             fields: int[], texts: string[], mode: int, waiting: bool[]) -> Result {
     shape := functions[function];
     parameters := Part(module_parameters, shape.first_parameter, shape.parameters);
     slots := Part(module_slots, shape.first_slot, shape.slots);
@@ -756,11 +859,17 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         return Result.Rejected(-1, "unsupported native scalar signature or table size");
     }
     for (type in parameters) {
+        if (waiting[function] && abi.ScalarType(type) == "") {
+            return Result.Rejected(-1, "native waiting parameters need scalar values; managed values and dependencies are not supported yet");
+        }
         if (!Held(records, type) || (exported && abi.ScalarType(type) == "")) {
             return Result.Rejected(-1, "unsupported native scalar parameter");
         }
     }
     for (type in slots) {
+        if (waiting[function] && abi.ScalarType(type) == "") {
+            return Result.Rejected(-1, "native waiting frames cannot own managed values or pointers yet");
+        }
         if (!Held(records, type)) {
             return Result.Rejected(-1, "native scalar slot cannot hold a managed value or pointer");
         }
@@ -778,7 +887,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     pc: int = 0;
     while (pc < length(code)) {
         item := code[pc];
-        if (item.op < Constant || item.op >= InstructionCount) {
+        if (item.op < Constant || item.op >= InstructionCount || (item.op > FieldAddress && item.op < Suspend)) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {
@@ -827,6 +936,17 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
                                    (item.literal != 0 && item.literal != 1))) {
             return Result.Rejected(base + pc, "native conversion is not one the backend implements");
         }
+        if (item.op == FieldAddress) {
+            field := FieldType(records, fields, item.right, item.literal);
+            held := item.right;
+            if (item.target == 1) {
+                held = RefType + item.right;
+            }
+            if (field == 0 || item.type != RefType + field || abi.ScalarType(field) == "" ||
+                (item.target != 0 && item.target != 1) || !Typed(locals, item.left, held)) {
+                return Result.Rejected(base + pc, "native field reference differs from its record");
+            }
+        }
         if (item.op == Insert) {
             field := FieldType(records, fields, item.type, item.literal);
             if (field == 0 || !Typed(slots, item.left, item.type) || !Typed(slots, item.right, field)) {
@@ -853,6 +973,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (((item.op >= ArrayLength && item.op <= ArrayBytes) || item.op == ArrayText) && !ArrayValid(records, slots, item)) {
             return Result.Rejected(base + pc, "native array operation differs from its operands");
         }
+        if (item.op >= MapLength && item.op <= MapLiveAt && !MapValid(records, slots, item)) {
+            return Result.Rejected(base + pc, "native map operation differs from its operands");
+        }
         if (item.op >= TextLength && item.op <= TextTake && !TextValid(slots, item)) {
             return Result.Rejected(base + pc, "native text read differs from its operands");
         }
@@ -868,8 +991,24 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (item.op == FunctionAddress && !FunctionAddressValid(functions, module_parameters, item)) {
             return Result.Rejected(base + pc, "native function address differs from its function");
         }
+        if (item.op == FunctionAddress && waiting[item.left]) {
+            return Result.Rejected(base + pc, "native function address cannot name a waiting function");
+        }
         if (item.op == Call && !CallValid(functions, module_parameters, slots, arguments, item)) {
             return Result.Rejected(base + pc, "native call differs from its callee's signature");
+        }
+        if (item.op == Call && (item.literal < i64(CallPlain) || item.literal > i64(CallSpawned) ||
+                                (item.literal != i64(CallPlain) && !waiting[item.left]))) {
+            return Result.Rejected(base + pc, "native awaited call or spawn names a function that does not wait");
+        }
+        if (item.op == Call && item.literal == i64(CallPlain) && waiting[item.left]) {
+            return Result.Rejected(base + pc, "native plain call cannot name a waiting function");
+        }
+        if ((item.op == AwaitHandle || item.op == Cancel) && !Typed(slots, item.left, abi.WordStorage)) {
+            return Result.Rejected(base + pc, "native task operation requires a task handle");
+        }
+        if (waiting[function] && (item.op == Fail || item.op == Format || item.op == ForeignCall)) {
+            return Result.Rejected(base + pc, "native waiting function cannot fail, format or call foreign code yet");
         }
         if (item.op == Fail && (item.left < 0 || item.right < item.left)) {
             return Result.Rejected(base + pc, "native failure names no source range");
@@ -889,6 +1028,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     pc = 0;
     while (pc < length(code)) {
         item := code[pc];
+        if (item.op == StateLoad && item.left > 0 && !Dominates(dominance, definitions[item.left - 1], pc)) {
+            return Result.Rejected(base + pc, "native retained initializer is not defined on every path");
+        }
         if (ReadsLeft(item.op) && !Dominates(dominance, definitions[item.left], pc)) {
             return Result.Rejected(base + pc, "native scalar left operand is not defined on every path");
         }
@@ -1179,7 +1321,8 @@ Spelled :: (literal: i64, type: int) -> i64 {
     }
     return literal - (i64(1) << u32(bits));
 }
-EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], fields: int[], texts: string[]) -> string {
+EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], fields: int[], texts: string[],
+                    coroutine: bool) -> string {
     out := format_text("p{}:\n", pc);
     type := TypeName(item.type);
     if (item.op == Constant && item.type == abi.TextStorage) {
@@ -1204,6 +1347,9 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
     } else if (item.op == Publish) {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
         out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "result", 0));
+    } else if ((item.op == Return || item.op == End) && coroutine) {
+        // The result is in the promise; the coroutine finishes at its final suspension.
+        return format_text("{}  br label %coro.final\n", out);
     } else if (item.op == Return || item.op == End) {
         out = format_text("{}{}", out, Load(format_text("return{}", pc), result, "result", 0));
         return format_text("{}{}", out, format_text("  ret {} %return{}\n", TypeName(result), pc));
@@ -1234,6 +1380,17 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
     } else if (item.op == LocalAddress) {
         out = format_text("{}{}", out, Store(format_text("%l{}", item.left), item.type, "s", item.output));
+    } else if (item.op == FieldAddress) {
+        // A reference parameter's local holds the record's address; any other
+        // local is the record.
+        base_address := format_text("%l{}", item.left);
+        if (item.target == 1) {
+            out = format_text("{}  %field_base{} = load ptr, ptr %l{}\n", out, pc, item.left);
+            base_address = format_text("%field_base{}", pc);
+        }
+        out = format_text("{}  %v{} = getelementptr inbounds {}, ptr {}, i32 0, i32 {}\n", out, pc, TypeName(item.right),
+                           base_address, item.literal);
+        out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
     } else if (item.op == Deref) {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), RefType + item.type, "s", item.left));
         out = format_text("{}  %v{} = load {}, ptr %a{}\n", out, pc, type, pc);
@@ -1254,6 +1411,8 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, ArrayBytesRead(item, pc));
     } else if (item.op == ArrayText) {
         out = format_text("{}{}", out, ArrayTextRead(item, pc));
+    } else if (item.op >= MapLength && item.op <= MapLiveAt) {
+        out = format_text("{}{}", out, MapRead(item, pc));
     } else if (item.op >= ArrayLength && item.op <= ArrayRemove) {
         out = format_text("{}{}", out, ArrayRead(item, pc));
     } else if (item.op >= TextLength && item.op <= TextTake) {
@@ -1274,7 +1433,10 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
     } else {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
         if (Unary(item.op)) {
-            if (item.op == Neg) {
+            if (item.op == Neg && abi.Floating(item.type)) {
+                // Flips the sign bit, as the VMs' negation does: -0.0 for 0.0.
+                out = format_text("{}{}", out, format_text("  %v{} = fneg {} %a{}\n", pc, type, pc));
+            } else if (item.op == Neg) {
                 out = format_text("{}{}", out, format_text("  %v{} = sub {} 0, %a{}\n", pc, type, pc));
             } else {
                 out = format_text("{}{}", out, format_text("  %v{} = xor {} %a{}, -1\n", pc, type, pc));
@@ -1354,7 +1516,11 @@ TextHelpers :: () -> string {
 // Whether `code` counts references, so the module has the helpers.
 Counts :: (code: Instruction[]) -> bool {
     for (item in code) {
-        if (item.op == TextRetain || item.op == TextRelease || item.op == ArrayDrop || Holding(item.type)) {
+        if (item.op == TextRetain || item.op == TextRelease || item.op == ArrayDrop || Holding(item.type) ||
+            ((item.op == StateLoad || item.op == StateStore) && item.type == abi.TextStorage)) {
+            return true;
+        }
+        if (item.op >= MapLength && item.op <= MapLiveAt && MapHolds(MapUsed(item))) {
             return true;
         }
     }
@@ -1799,6 +1965,9 @@ TextRead :: (item: Instruction, pc: int) -> string {
 ScalarEntry: int : 0;
 MainEntry: int : 1;
 NoEntry: int : 2;
+// A scalar entry that is a coroutine: its ramp is internal and chibi_scalar is a
+// function that runs it and the tasks until it finishes.
+CoroutineEntry: int : 3;
 // The entry's symbol, or an internal function's.
 Symbol :: (function: int, mode: int) -> string {
     if (function == 0 && mode == MainEntry) {
@@ -1806,6 +1975,9 @@ Symbol :: (function: int, mode: int) -> string {
     }
     if (function == 0 && mode == ScalarEntry) {
         return "chibi_scalar";
+    }
+    if (function == 0 && mode == CoroutineEntry) {
+        return "chibi_scalar.ramp";
     }
     return format_text("chibi_scalar.{}", function);
 }
@@ -2019,15 +2191,134 @@ FailInstruction :: (function: int, pc: int) -> string {
 FailureSymbol :: (function: int, pc: int) -> string {
     return format_text("chibi_scalar.failure.{}.{}", function, pc);
 }
+// The coroutine intrinsics require LLVM 22 or later.
+CoroutineDeclarations :: () -> string {
+    return strings.Join(["declare token @llvm.coro.id(i32, ptr, ptr, ptr)\n",
+                         "declare i1 @llvm.coro.alloc(token)\n",
+                         "declare i64 @llvm.coro.size.i64()\n",
+                         "declare ptr @llvm.coro.begin(token, ptr)\n",
+                         "declare i8 @llvm.coro.suspend(token, i1)\n",
+                         "declare ptr @llvm.coro.free(token, ptr)\n",
+                         "declare void @llvm.coro.end(ptr, i1, token)\n",
+                         "declare void @llvm.coro.resume(ptr)\n",
+                         "declare void @llvm.coro.destroy(ptr)\n",
+                         "declare i1 @llvm.coro.done(ptr)\n",
+                         "declare ptr @llvm.coro.promise(ptr, i32, i1)\n"], "");
+}
+// chibi_scalar when the entry waits: it starts the entry as a task and updates the
+// tasks until the entry has finished, then gives its result.
+CoroutineEntryFunction :: (result: int, waiting: bool) -> string {
+    type := TypeName(result);
+    out := format_text("define {} @chibi_scalar(ptr %ctx) #0 {{\nentry:\n", type);
+    if (!waiting) {
+        return format_text("{}  %result = call {} @chibi_scalar.ramp(ptr %ctx)\n  %cancelled = call i32 @chibi_host_tasks_cancel_all()\n  ret {} %result\n}}\n", out, type, type);
+    }
+    out = format_text("{}  %handle = call i64 @chibi_tasks.begin(ptr %ctx, i1 true)\n  %frame = call ptr @chibi_scalar.ramp(ptr %ctx)\n  call void @chibi_tasks.attach(i64 %handle, ptr %frame)\n  store i64 0, ptr @chibi_tasks.current\n", out);
+    out = format_text("{}  br label %loop\nloop:\n  %done = call i1 @llvm.coro.done(ptr %frame)\n", out);
+    out = format_text("{}  br i1 %done, label %finished, label %tick\ntick:\n  call void @chibi_tasks.update()\n  br label %loop\n", out);
+    out = format_text("{}finished:\n  %promise = call ptr @llvm.coro.promise(ptr %frame, i32 8, i1 false)\n", out);
+    return format_text("{}  %result = load {}, ptr %promise\n  %cancelled = call i32 @chibi_host_tasks_cancel_all()\n  ret {} %result\n}}\n", out, type, type);
+}
+// A coroutine's start, in the entry block: the promise is the result's slot, the
+// frame comes from the context's allocate and goes back to its release.
+CoroutinePrologue :: () -> string {
+    out := "  %coro.id = call token @llvm.coro.id(i32 8, ptr %result0, ptr null, ptr null)\n";
+    out = format_text("{}  %coro.need = call i1 @llvm.coro.alloc(token %coro.id)\n", out);
+    out = format_text("{}  br i1 %coro.need, label %coro.alloc, label %coro.begin\ncoro.alloc:\n", out);
+    out = format_text("{}  %coro.size = call i64 @llvm.coro.size.i64()\n", out);
+    out = format_text("{}{}", out, Allocated("coro.mem", "%coro.size"));
+    out = format_text("{}  br label %coro.begin\ncoro.begin:\n", out);
+    out = format_text("{}  %coro.frame = phi ptr [ null, %entry ], [ %coro.mem, %coro.alloc ]\n", out);
+    out = format_text("{}  %coro.hdl = call ptr @llvm.coro.begin(token %coro.id, ptr %coro.frame)\n", out);
+    return format_text("{}  br label %p0\n", out);
+}
+// A coroutine's end: the final suspension keeps the frame, and so the promise,
+// for whoever reads the result; destroying it comes here to release the frame.
+CoroutineEpilogue :: () -> string {
+    out := "coro.final:\n  %coro.last = call i8 @llvm.coro.suspend(token none, i1 true)\n";
+    out = format_text("{}  switch i8 %coro.last, label %coro.suspend [ i8 0, label %trap\n                                     i8 1, label %coro.cleanup ]\n", out);
+    out = format_text("{}coro.cleanup:\n  %coro.free = call ptr @llvm.coro.free(token %coro.id, ptr %coro.hdl)\n", out);
+    out = format_text("{}  %coro.owned = icmp ne ptr %coro.free, null\n", out);
+    out = format_text("{}  br i1 %coro.owned, label %coro.release, label %coro.suspend\ncoro.release:\n", out);
+    out = format_text("{}{}", out, ContextCall("coro.release.call", 4));
+    out = format_text("{}  call void %coro.release.call(ptr %ctx, ptr %coro.free)\n", out);
+    out = format_text("{}  br label %coro.suspend\ncoro.suspend:\n", out);
+    return format_text("{}  call void @llvm.coro.end(ptr %coro.hdl, i1 false, token none)\n  ret ptr %coro.hdl\n", out);
+}
+// `yield`: give up the turn, to resume at the next instruction on the next update.
+SuspendInstruction :: (pc: int) -> string {
+    out := format_text("p{}:\n  %suspend{} = call i8 @llvm.coro.suspend(token none, i1 false)\n", pc, pc);
+    return format_text("{}  switch i8 %suspend{}, label %coro.suspend [ i8 0, label %p{}\n                                      i8 1, label %coro.cleanup ]\n",
+                       out, pc, pc + 1);
+}
+// The ramp call of a waiting callee: its frame, as `v{pc}`.
+RampCall :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int, mode: int,
+             spawned: bool) -> string {
+    callee := functions[item.left];
+    out := format_text("p{}:\n", pc);
+    if (spawned) {
+        out = format_text("{}  %parent{} = load i64, ptr @chibi_tasks.current\n  %task{} = call i64 @chibi_tasks.begin(ptr %ctx, i1 false)\n", out, pc, pc);
+    }
+    listed: string[] = ["ptr %ctx"];
+    for (index in 0..<item.target) {
+        type := parameters[callee.first_parameter + index];
+        out = format_text("{}{}", out, Load(format_text("c{}_{}", pc, index), type, "s", arguments[item.right + index]));
+        listed.append(format_text("{} %c{}_{}", TypeName(type), pc, index));
+    }
+    return format_text("{}  %v{} = call ptr @{}({})\n", out, pc, Symbol(item.left, mode), strings.Join(listed, ", "));
+}
+// `await F(arguments)` in a coroutine: F runs to its first suspension, and the
+// caller waits for it, resuming it each time it is resumed itself. Destroying
+// the caller destroys F's frame first.
+AwaitedCallInstruction :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int,
+                           mode: int) -> string {
+    out := RampCall(functions, parameters, arguments, item, pc, mode, false);
+    out = format_text("{}  br label %p{}.test\np{}.test:\n", out, pc, pc);
+    out = format_text("{}  %done{} = call i1 @llvm.coro.done(ptr %v{})\n", out, pc, pc);
+    out = format_text("{}  br i1 %done{}, label %p{}.finished, label %p{}.wait\np{}.wait:\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %suspend{} = call i8 @llvm.coro.suspend(token none, i1 false)\n", out, pc);
+    out = format_text("{}  switch i8 %suspend{}, label %coro.suspend [ i8 0, label %p{}.resume\n                                      i8 1, label %p{}.destroy ]\n",
+                      out, pc, pc, pc);
+    out = format_text("{}p{}.resume:\n  call void @llvm.coro.resume(ptr %v{})\n  br label %p{}.test\n", out, pc, pc, pc);
+    out = format_text("{}p{}.destroy:\n  call void @llvm.coro.destroy(ptr %v{})\n  br label %coro.cleanup\n", out, pc, pc);
+    out = format_text("{}p{}.finished:\n  %promise{} = call ptr @llvm.coro.promise(ptr %v{}, i32 8, i1 false)\n", out, pc, pc, pc);
+    out = format_text("{}  %result{} = load {}, ptr %promise{}\n  call void @llvm.coro.destroy(ptr %v{})\n", out, pc,
+                      TypeName(item.type), pc, pc);
+    out = format_text("{}{}", out, Store(format_text("%result{}", pc), item.type, "s", item.output));
+    return format_text("{}  br label %p{}\n", out, pc + 1);
+}
+// `F(arguments)` of a waiting F, not awaited: F runs to its first suspension and
+// is added to the scheduler; the task's handle is the result.
+SpawnedCallInstruction :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int,
+                           mode: int) -> string {
+    out := RampCall(functions, parameters, arguments, item, pc, mode, true);
+    out = format_text("{}  call void @chibi_tasks.attach(i64 %task{}, ptr %v{})\n  store i64 %parent{}, ptr @chibi_tasks.current\n", out, pc, pc, pc);
+    out = format_text("{}{}", out, Store(format_text("%task{}", pc), item.type, "s", item.output));
+    return format_text("{}  br label %p{}\n", out, pc + 1);
+}
+// `await handle` as a statement: when the task has not finished, the coroutine
+// records that it waits for it and suspends; the scheduler resumes it once the
+// task has finished or been cancelled.
+AwaitHandleInstruction :: (item: Instruction, pc: int) -> string {
+    out := format_text("p{}:\n", pc);
+    out = format_text("{}{}", out, Load(format_text("h{}", pc), abi.WordStorage, "s", item.left));
+    out = format_text("{}  %finished{} = call i1 @chibi_tasks.finished(i64 %h{})\n", out, pc, pc);
+    out = format_text("{}  br i1 %finished{}, label %p{}, label %p{}.wait\np{}.wait:\n", out, pc, pc + 1, pc, pc);
+    out = format_text("{}  call void @chibi_tasks.wait(i64 %h{})\n", out, pc);
+    out = format_text("{}  %suspend{} = call i8 @llvm.coro.suspend(token none, i1 false)\n", out, pc);
+    return format_text("{}  switch i8 %suspend{}, label %coro.suspend [ i8 0, label %p{}\n                                      i8 1, label %coro.cleanup ]\n",
+                       out, pc, pc + 1);
+}
 EmitFunction :: (functions: Function[], function: int, parameters: int[], slots: int[], locals: int[],
                  code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[],
-                 mode: int, step_budget: int, runtime: bool, fallible: bool[], shared: bool) -> string {
+                 mode: int, step_budget: int, runtime: bool, fallible: bool[], shared: bool, waiting: bool[]) -> string {
     shape := functions[function];
+    coroutine := waiting[function];
     result := shape.result;
     // A function another piece of the module calls is a hidden symbol the
     // link joins; the others stay internal to their piece.
     linkage := "";
-    if (function != 0 || mode == NoEntry) {
+    if (function != 0 || mode == NoEntry || mode == CoroutineEntry) {
         linkage = "internal ";
         if (shared) {
             linkage = "hidden ";
@@ -2040,8 +2331,15 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     for (index in 0..<shape.parameters) {
         listed.append(format_text("{} %arg{}", TypeName(parameters[shape.first_parameter + index]), index));
     }
-    out: string[] = [format_text("define {}{} @{}({}) #0 {\nentry:\n", linkage, TypeName(result),
-                                 Symbol(function, mode), strings.Join(listed, ", "))];
+    // A coroutine's ramp returns its frame, a pointer.
+    returns := TypeName(result);
+    attributes := "";
+    if (coroutine) {
+        returns = "ptr";
+        attributes = " presplitcoroutine";
+    }
+    out: string[] = [format_text("define {}{} @{}({}) #0{} {\nentry:\n", linkage, returns,
+                                 Symbol(function, mode), strings.Join(listed, ", "), attributes)];
     out.append(format_text("  %budget0 = alloca i32\n  store i32 {}, ptr %budget0\n", step_budget));
     for (index in 0..<shape.slots) {
         out.append(format_text("  %s{} = alloca {}\n", index, TypeName(slots[shape.first_slot + index])));
@@ -2079,10 +2377,26 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     for (index in 0..<buffers) {
         out.append(format_text("  %cstr{} = alloca [{} x i8]\n", index, CstringCapacity + 1));
     }
-    out.append("  br label %p0\n");
+    if (coroutine) {
+        out.append(CoroutinePrologue());
+    } else {
+        out.append("  br label %p0\n");
+    }
     for (pc in 0..<shape.code) {
         item := code[shape.first_code + pc];
-        if (item.op == Call) {
+        if (item.op == Call && item.literal == i64(CallAwaited)) {
+            out.append(AwaitedCallInstruction(functions, parameters, own, item, pc, mode));
+        } else if (item.op == Call && item.literal == i64(CallSpawned)) {
+            out.append(SpawnedCallInstruction(functions, parameters, own, item, pc, mode));
+        } else if (item.op == Suspend) {
+            out.append(SuspendInstruction(pc));
+        } else if (item.op == AwaitHandle) {
+            out.append(AwaitHandleInstruction(item, pc));
+        } else if (item.op == Cancel) {
+            out.append(format_text("p{}:\n", pc));
+            out.append(Load(format_text("h{}", pc), abi.WordStorage, "s", item.left));
+            out.append(format_text("  call void @chibi_tasks.cancel(i64 %h{})\n  br label %p{}\n", pc, pc + 1));
+        } else if (item.op == Call) {
             out.append(CallInstruction(functions, parameters, own, item, pc, mode, runtime,
                                        fallible[item.left]));
         } else if (item.op == ForeignCall) {
@@ -2096,12 +2410,18 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         } else if (item.op == Format) {
             out.append(FormatInstruction(own_slots, own, item, pc));
         } else {
-            out.append(EmitInstruction(item, pc, result, records, fields, texts));
+            out.append(EmitInstruction(item, pc, result, records, fields, texts, coroutine));
         }
     }
-    // A function fails with its result's zero, which no caller reads.
-    if (fallible[function]) {
+    // A function fails with its result's zero, which no caller reads; a coroutine
+    // that fails finishes.
+    if (fallible[function] && coroutine) {
+        out.append("failed:\n  br label %coro.final\n");
+    } else if (fallible[function]) {
         out.append(format_text("failed:\n  ret {} {}\n", TypeName(result), Zero(result)));
+    }
+    if (coroutine) {
+        out.append(CoroutineEpilogue());
     }
     out.append("trap:\n  call void @llvm.trap()\n  unreachable\n}\n");
     return strings.Join(out, "");
@@ -2143,9 +2463,13 @@ FormatInstruction :: (slots: int[], arguments: int[], item: Instruction, pc: int
     return format_text("{}  br label %p{}\n", out, pc + 1);
 }
 // Whether `code` calls the runtime.
-Runtime :: (code: Instruction[]) -> bool {
+pub Runtime :: (code: Instruction[]) -> bool {
+    if (Tasks(code)) {
+        return true;
+    }
     for (item in code) {
-        if (item.op == Format || item.op == Fail || ArrayCalls(item.op)) {
+        if (item.op == Format || item.op == Fail || ArrayCalls(item.op) || MapCalls(item.op) ||
+            ((item.op == StateLoad || item.op == StateStore) && item.type == abi.TextStorage)) {
             return true;
         }
     }
@@ -2164,7 +2488,7 @@ Fallible :: (functions: Function[], code: Instruction[]) -> bool[] {
         for (function in 0..<length(functions)) {
             shape := functions[function];
             for (item in Codes(code, shape.first_code, shape.code)) {
-                if (!fallible[function] && (item.op == Fail || (item.op == Call && fallible[item.left]))) {
+                if (!fallible[function] && (item.op == Fail || (item.op == Call && item.literal == i64(CallPlain) && fallible[item.left]))) {
                     fallible[function] = true;
                     changed = true;
                 }
@@ -2204,11 +2528,14 @@ StateStorage :: (type: int) -> string {
     if (type == abi.DoubleStorage) {
         return "i64";
     }
-    return abi.ScalarType(type);
+    return TypeName(type);
 }
 // The value of retained state `item.target`, as a `type` value `name`.
 StateValue :: (name: string, item: Instruction) -> string {
     out := format_text("  %{}.stored = load {}, ptr @{}\n", name, StateStorage(item.type), StateSymbol(item.target));
+    if (item.type == abi.TextStorage) {
+        return format_text("  %{} = load {}, ptr @{}\n", name, abi.TextType(), StateSymbol(item.target));
+    }
     if (abi.Floating(item.type)) {
         return format_text("{}  %{} = bitcast {} %{}.stored to {}\n", out, name, StateStorage(item.type), name,
                            abi.ScalarType(item.type));
@@ -2216,7 +2543,21 @@ StateValue :: (name: string, item: Instruction) -> string {
     return format_text("{}  %{} = add {} %{}.stored, 0\n", out, name, abi.ScalarType(item.type), name);
 }
 StateRead :: (item: Instruction, pc: int) -> string {
-    out := StateValue(format_text("v{}", pc), item);
+    out := "";
+    if (item.left > 0) {
+        symbol := StateSymbol(item.target);
+        out = format_text("  %ready{} = load i1, ptr @{}.ready\n  br i1 %ready{}, label %state{}, label %initial{}\ninitial{}:\n",
+                          pc, symbol, pc, pc, pc, pc);
+        out = format_text("{}{}", out, Load(format_text("initial.value{}", pc), item.type, "s", item.left - 1));
+        value := format_text("%initial.value{}", pc);
+        if (abi.Floating(item.type)) {
+            out = format_text("{}  %bits{} = bitcast {} {} to {}\n", out, pc, TypeName(item.type), value, StateStorage(item.type));
+            value = format_text("%bits{}", pc);
+        }
+        out = format_text("{}  store {} {}, ptr @{}\n  store i1 true, ptr @{}.ready\n  br label %state{}\nstate{}:\n",
+                          out, StateStorage(item.type), value, symbol, symbol, pc, pc);
+    }
+    out = format_text("{}{}", out, StateValue(format_text("v{}", pc), item));
     return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
 }
 StateWrite :: (item: Instruction, pc: int) -> string {
@@ -2227,7 +2568,16 @@ StateWrite :: (item: Instruction, pc: int) -> string {
                           StateStorage(item.type));
         value = format_text("%b{}", pc);
     }
-    return format_text("{}  store {} {}, ptr @{}\n", out, StateStorage(item.type), value, StateSymbol(item.target));
+    if (item.type == abi.TextStorage) {
+        symbol := StateSymbol(item.target);
+        out = format_text("{}  %held{} = extractvalue {} {}, 2\n  call void @chibi_scalar.retain(ptr %held{})\n", out,
+                          pc, abi.TextType(), value, pc);
+        out = format_text("{}  %previous{} = load {}, ptr @{}\n  %released{} = extractvalue {} %previous{}, 2\n", out,
+                          pc, abi.TextType(), symbol, pc, abi.TextType(), pc);
+        out = format_text("{}  call void @chibi_scalar.free(ptr %ctx, ptr %released{})\n", out, pc);
+    }
+    return format_text("{}  store {} {}, ptr @{}\n  store i1 true, ptr @{}.ready\n", out, StateStorage(item.type), value,
+                      StateSymbol(item.target), StateSymbol(item.target));
 }
 // The module's retained states, in the order their loads are in the code.
 RetainedStates :: (code: Instruction[]) -> Instruction[] {
@@ -2251,8 +2601,16 @@ StateGlobals :: (code: Instruction[], linkage: string) -> string {
         } else if (!abi.Floating(item.type)) {
             initial = Spelled(initial, item.type);
         }
-        out.append(format_text("@{} = {} global {} {}\n", StateSymbol(item.target), linkage, StateStorage(item.type),
-                               initial));
+        value := format_text("{}", initial);
+        if (item.type == abi.TextStorage) {
+            value = "zeroinitializer";
+        }
+        out.append(format_text("@{} = {} global {} {}\n", StateSymbol(item.target), linkage, StateStorage(item.type), value));
+        ready := "true";
+        if (item.left > 0) {
+            ready = "false";
+        }
+        out.append(format_text("@{}.ready = {} global i1 {}\n", StateSymbol(item.target), linkage, ready));
     }
     return strings.Join(out, "");
 }
@@ -2274,7 +2632,8 @@ StatesNumbered :: (code: Instruction[]) -> bool {
 // Whether `code` moves array elements, which the module's copy does.
 Copies :: (code: Instruction[]) -> bool {
     for (item in code) {
-        if (item.op == ArrayPush || item.op == ArrayCopy || (item.op >= ArrayExtend && item.op <= ArrayRemove && item.op != ArrayContains)) {
+        if (item.op == ArrayPush || item.op == ArrayCopy || (item.op >= ArrayExtend && item.op <= ArrayRemove && item.op != ArrayContains) ||
+            (item.op >= MapLength && item.op <= MapLiveAt)) {
             return true;
         }
     }
@@ -2283,7 +2642,7 @@ Copies :: (code: Instruction[]) -> bool {
 // Whether `code` makes zeros for a longer array, which the module's zero does.
 Zeroes :: (code: Instruction[]) -> bool {
     for (item in code) {
-        if (item.op == ArrayResize) {
+        if (item.op == ArrayResize || (item.op >= MapLength && item.op <= MapLiveAt)) {
             return true;
         }
     }
@@ -2344,6 +2703,9 @@ Compares :: (code: Instruction[]) -> bool {
         if (item.op == ArrayContains && item.literal == i64(abi.TextStorage)) {
             return true;
         }
+        if (item.op >= MapLength && item.op <= MapLiveAt && MapKey(MapUsed(item)) == abi.TextStorage) {
+            return true;
+        }
     }
     return false;
 }
@@ -2402,9 +2764,10 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     if (source.file != "" && !Placed(names, lines, columns, length(functions), length(code))) {
         return Result.Rejected(-1, "native line table differs from its module");
     }
+    waiting := WaitingFunctions(functions, code);
     for (function in 0..<length(functions)) {
         switch Validate(functions, function, parameters, slots, locals, code, arguments, records, fields, texts,
-                        mode) {
+                        mode, waiting) {
             case .Rejected(instruction, message):
                 return Result.Rejected(instruction, message);
             case .Emitted(text):
@@ -2419,13 +2782,17 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     if (runtime && mode == MainEntry) {
         return Result.Rejected(-1, "a native program cannot call the runtime yet");
     }
+    // A waiting entry is a coroutine that chibi_scalar runs with the tasks.
+    if (Tasks(code) && mode == ScalarEntry) {
+        mode = CoroutineEntry;
+    }
     debug := source.file != "";
     compares := Compares(code);
     fallible := Fallible(functions, code);
     // A program splits into pieces that opt and llc compile at once; a
     // library's manifests and line tables' metadata name every function, so
     // those stay one piece.
-    bounds := Pieces(functions, mode != NoEntry && !debug);
+    bounds := Pieces(functions, mode != NoEntry && !debug && !Tasks(code));
     pieces := length(bounds) - 1;
     home: int[] = [];
     for (piece in 0..<pieces) {
@@ -2497,15 +2864,24 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         out.append(format_text("{}declare void @llvm.trap()\n{}{}", Failures(functions, code, first, last),
                                Declarations(held),
                                ForeignDeclarations(functions, first, last, slots, code, arguments, texts)));
+        if (Tasks(held)) {
+            out.append(CoroutineDeclarations());
+        }
         out.append(Callees(functions, parameters, held, home, piece, mode, runtime));
         for (function in first..<last) {
             text := EmitFunction(functions, function, parameters, slots, locals, code, arguments, records, fields,
-                                 texts, mode, step_budget, runtime, fallible, shared[function]);
+                                 texts, mode, step_budget, runtime, fallible, shared[function], waiting);
             if (debug) {
                 text = Located(text, Subprogram(function), Location(length(functions), compares,
                                                                     functions[function].first_code));
             }
             out.append(format_text("\n{}", text));
+        }
+        if (Tasks(held)) {
+            out.append(format_text("\n{}", TaskScheduler()));
+            if (mode == CoroutineEntry) {
+                out.append(format_text("\n{}", CoroutineEntryFunction(functions[0].result, waiting[0])));
+            }
         }
         callbacks := CallbackAdapters(functions, parameters, held, mode, runtime);
         if (callbacks != "") {
@@ -2523,6 +2899,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             out.append(format_text("\n{}", text));
         }
         copies := Copies(held);
+        out.append(MapModule(held));
         if (copies) {
             out.append(format_text("\n{}", ArrayCopyHelper()));
         }
@@ -2633,8 +3010,8 @@ StateDeclarations :: (states: Instruction[], held: Instruction[]) -> string {
     out: string[] = [];
     for (index in 0..<length(states)) {
         if (wanted[index]) {
-            out.append(format_text("@{} = external hidden global {}\n", StateSymbol(index),
-                                   StateStorage(states[index].type)));
+            out.append(format_text("@{} = external hidden global {}\n@{}.ready = external hidden global i1\n", StateSymbol(index),
+                                   StateStorage(states[index].type), StateSymbol(index)));
         }
     }
     return strings.Join(out, "");
@@ -3052,15 +3429,24 @@ RetainedManifest :: (name: string, code: Instruction[], texts: string[]) -> stri
     for (item in states) {
         index := item.target;
         label := texts[item.right];
-        types.append(format_text("i8 {}", abi.ExportType(item.type)));
+        types.append(format_text("i8 {}", abi.ValueTag(item.type)));
         names.append(format_text("{}\\00", Escaped(label)));
         bytes += strings.ByteLength(label) + 1;
-        get.append(StateValue(format_text("g{}", index), item));
-        get.append(ToWord(format_text("w{}", index), format_text("%g{}", index), item.type));
+        if (item.type == abi.TextStorage) {
+            get.append(format_text("  %w{} = ptrtoint ptr @{} to i64\n", index, StateSymbol(index)));
+        } else {
+            get.append(StateValue(format_text("g{}", index), item));
+            get.append(ToWord(format_text("w{}", index), format_text("%g{}", index), item.type));
+        }
         get.append(format_text("  %o{}.at = getelementptr inbounds i64, ptr %out, i64 {}\n  store i64 %w{}, ptr %o{}.at\n",
                                index, index, index, index));
         set.append(format_text("  %i{}.at = getelementptr inbounds i64, ptr %in, i64 {}\n  %i{} = load i64, ptr %i{}.at\n",
                                index, index, index, index));
+        if (item.type == abi.TextStorage) {
+            set.append(format_text("  %source{} = inttoptr i64 %i{} to ptr\n  call void @chibi_scalar.retained.copy(ptr %ctx, ptr @{}, ptr %source{})\n", index, index, StateSymbol(index), index));
+            set.append(format_text("  store i1 true, ptr @{}.ready\n", StateSymbol(index)));
+            continue;
+        }
         set.append(FromWord(format_text("v{}", index), format_text("%i{}", index), item.type));
         value := format_text("%v{}", index);
         if (abi.Floating(item.type)) {
@@ -3068,7 +3454,7 @@ RetainedManifest :: (name: string, code: Instruction[], texts: string[]) -> stri
                                    StateStorage(item.type)));
             value = format_text("%b{}", index);
         }
-        set.append(format_text("  store {} {}, ptr @{}\n", StateStorage(item.type), value, StateSymbol(index)));
+        set.append(format_text("  store {} {}, ptr @{}\n  store i1 true, ptr @{}.ready\n", StateStorage(item.type), value, StateSymbol(index), StateSymbol(index)));
     }
     out := get;
     out.append("  ret void\n}\n\n");
@@ -3082,6 +3468,28 @@ RetainedManifest :: (name: string, code: Instruction[], texts: string[]) -> stri
                            name, length(states)));
     return strings.Join(out, "");
 }
+// Copy a retained string into the incoming generation. Constants can point
+// into the old object's mapping, so retaining its owner alone is insufficient.
+RetainedTextCopy :: () -> string {
+    return strings.Join([
+        "\ndeclare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n",
+        "define internal void @chibi_scalar.retained.copy(ptr %ctx, ptr %to, ptr %from) {\nentry:\n",
+        "  %source = load { ptr, i32, ptr }, ptr %from\n  %bytes = extractvalue { ptr, i32, ptr } %source, 0\n",
+        "  %length = extractvalue { ptr, i32, ptr } %source, 1\n  %wide = zext i32 %length to i64\n",
+        "  %size = add i64 %wide, 17\n",
+        Allocated("owner", "%size"),
+        "  store i64 1, ptr %owner\n  %size.at = getelementptr inbounds i8, ptr %owner, i64 8\n",
+        "  store i32 %length, ptr %size.at\n  %data = getelementptr inbounds i8, ptr %owner, i64 12\n",
+        "  call void @llvm.memcpy.p0.p0.i64(ptr %data, ptr %bytes, i64 %wide, i1 false)\n",
+        "  %old = load { ptr, i32, ptr }, ptr %to\n  %released = extractvalue { ptr, i32, ptr } %old, 2\n",
+        "  call void @chibi_scalar.free(ptr %ctx, ptr %released)\n",
+        "  %a = insertvalue { ptr, i32, ptr } zeroinitializer, ptr %data, 0\n",
+        "  %b = insertvalue { ptr, i32, ptr } %a, i32 %length, 1\n",
+        "  %value = insertvalue { ptr, i32, ptr } %b, ptr %owner, 2\n",
+        "  store { ptr, i32, ptr } %value, ptr %to\n  ret void\n}\n"
+    ], "");
+}
+
 // FNV-1a over the bytes of `name`, which a host compares in place of the name
 // it cannot read.
 NameHash :: (name: string) -> i64 {
@@ -3202,11 +3610,11 @@ ConvertDeclarations :: () -> string {
 // sets one from a word of another export type `from`, converted as the language
 // converts (ConvertWord); a library without states has none.
 HostSymbols :: (names: string[], functions: Function[], parameters: int[], code: Instruction[], texts: string[],
-                runtime: bool) -> string {
+                runtime: bool, waiting: bool[]) -> string {
     out: string[] = [];
     for (function in 0..<length(functions)) {
         shape := functions[function];
-        if (runtime || !HostCallable(shape, parameters)) {
+        if (waiting[function] || !HostCallable(shape, parameters)) {
             continue;
         }
         listed: string[] = [];
@@ -3216,17 +3624,32 @@ HostSymbols :: (names: string[], functions: Function[], parameters: int[], code:
             listed.append(format_text("{} %a{}", type, index));
             passed.append(format_text("{} %a{}", type, index));
         }
+        if (runtime) {
+            passed = extend(["ptr @chibi_context"], passed);
+        }
         out.append(format_text("\ndefine {} @chibi_host_call_{}({}) #0 {\nentry:\n  %r = call {} @{}({})\n  ret {} %r\n}\n",
                                TypeName(shape.result), names[function], strings.Join(listed, ", "), TypeName(shape.result),
                                Symbol(function, NoEntry), strings.Join(passed, ", "), TypeName(shape.result)));
+    }
+    if (runtime) {
+        out.append("\ndefine i32 @chibi_host_failed() #0 {\nentry:\n  %at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr @chibi_context, i32 0, i32 1\n  %failure = load ptr, ptr %at\n  %failed = icmp ne ptr %failure, null\n  %status = zext i1 %failed to i32\n  ret i32 %status\n}\n");
     }
     states := RetainedStates(code);
     types: string[] = [];
     hashes: string[] = [];
     for (item in states) {
-        types.append(format_text("{}", abi.ExportType(item.type)));
+        types.append(format_text("{}", abi.ValueTag(item.type)));
         hashes.append(format_text("{}", NameHash(texts[item.right])));
     }
+    released: string[] = ["\ndefine i32 @chibi_host_retained_release() #0 {\nentry:\n"];
+    for (item in states) {
+        if (item.type == abi.TextStorage) {
+            released.append(format_text("  %text{} = load {}, ptr @{}\n  %owner{} = extractvalue {} %text{}, 2\n", item.target, abi.TextType(), StateSymbol(item.target), item.target, abi.TextType(), item.target));
+            released.append(format_text("  call void @chibi_scalar.free(ptr @chibi_context, ptr %owner{})\n  store {} zeroinitializer, ptr @{}\n", item.target, abi.TextType(), StateSymbol(item.target)));
+        }
+    }
+    released.append("  ret i32 0\n}\n");
+    out.extend(released);
     count := length(states);
     out.append(format_text("\ndefine i32 @chibi_host_retained_count() #0 {\nentry:\n  ret i32 {}\n}\n", count));
     out.append("\n");
@@ -3234,20 +3657,43 @@ HostSymbols :: (names: string[], functions: Function[], parameters: int[], code:
     out.append("\n");
     out.append(HostTable("chibi_host_retained_hash", "i64", hashes));
     if (count == 0) {
+        out.append("\ndefine i32 @chibi_host_retained_ready(i32 %i) #0 {\nentry:\n  ret i32 0\n}\n");
         out.append("\ndefine i64 @chibi_host_retained_get(i32 %i) #0 {\nentry:\n  ret i64 0\n}\n");
         out.append("\ndefine i32 @chibi_host_retained_set(i32 %i, i64 %v) #0 {\nentry:\n  ret i32 0\n}\n");
         out.append("\ndefine i32 @chibi_host_retained_set_as(i32 %i, i32 %from, i64 %v) #0 {\nentry:\n  ret i32 0\n}\n");
         return strings.Join(out, "");
     }
-    out.append(format_text("\ndefine i64 @chibi_host_retained_get(i32 %i) #0 {\nentry:\n  %words = alloca [{} x i64]\n", count));
-    out.append(format_text("  call void @chibi_scalar.retained.get(ptr null, ptr null, ptr %words)\n  %ok = icmp ult i32 %i, {}\n", count));
-    out.append("  br i1 %ok, label %read, label %none\nread:\n  %at = getelementptr inbounds i64, ptr %words, i32 %i\n");
-    out.append("  %w = load i64, ptr %at\n  ret i64 %w\nnone:\n  ret i64 0\n}\n");
-    out.append(format_text("\ndefine i32 @chibi_host_retained_set(i32 %i, i64 %v) #0 {\nentry:\n  %words = alloca [{} x i64]\n", count));
-    out.append(format_text("  %ok = icmp ult i32 %i, {}\n  br i1 %ok, label %write, label %none\nwrite:\n", count));
-    out.append("  call void @chibi_scalar.retained.get(ptr null, ptr null, ptr %words)\n");
-    out.append("  %at = getelementptr inbounds i64, ptr %words, i32 %i\n  store i64 %v, ptr %at\n");
-    out.append("  call void @chibi_scalar.retained.set(ptr null, ptr %words, ptr null)\n  ret i32 1\nnone:\n  ret i32 0\n}\n");
+    read: string[] = [];
+    write: string[] = [];
+    ready: string[] = [];
+    cases: string[] = [];
+    for (item in states) {
+        index := item.target;
+        cases.append(format_text("i32 {}, label %c{}", index, index));
+        ready.append(format_text("c{}:\n  %v{} = load i1, ptr @{}.ready\n  %r{} = zext i1 %v{} to i32\n  ret i32 %r{}\n", index, index, StateSymbol(index), index, index, index));
+        read.append(format_text("c{}:\n", index));
+        write.append(format_text("c{}:\n", index));
+        if (item.type == abi.TextStorage) {
+            read.append(format_text("  %w{} = ptrtoint ptr @{} to i64\n  ret i64 %w{}\n", index, StateSymbol(index), index));
+            write.append(format_text("  %source{} = inttoptr i64 %v to ptr\n  call void @chibi_scalar.retained.copy(ptr @chibi_context, ptr @{}, ptr %source{})\n", index, StateSymbol(index), index));
+        } else {
+            read.append(StateValue(format_text("g{}", index), item));
+            read.append(ToWord(format_text("w{}", index), format_text("%g{}", index), item.type));
+            read.append(format_text("  ret i64 %w{}\n", index));
+            write.append(FromWord(format_text("v{}", index), "%v", item.type));
+            value := format_text("%v{}", index);
+            if (abi.Floating(item.type)) {
+                write.append(format_text("  %bits{} = bitcast {} {} to {}\n", index, TypeName(item.type), value, StateStorage(item.type)));
+                value = format_text("%bits{}", index);
+            }
+            write.append(format_text("  store {} {}, ptr @{}\n", StateStorage(item.type), value, StateSymbol(index)));
+        }
+        write.append(format_text("  store i1 true, ptr @{}.ready\n  ret i32 1\n", StateSymbol(index)));
+    }
+    dispatch := strings.Join(cases, " ");
+    out.append(format_text("\ndefine i32 @chibi_host_retained_ready(i32 %i) #0 {\nentry:\n  switch i32 %i, label %none [{}]\n{}none:\n  ret i32 0\n}\n", dispatch, strings.Join(ready, "")));
+    out.append(format_text("\ndefine i64 @chibi_host_retained_get(i32 %i) #0 {\nentry:\n  switch i32 %i, label %none [{}]\n{}none:\n  ret i64 0\n}\n", dispatch, strings.Join(read, "")));
+    out.append(format_text("\ndefine i32 @chibi_host_retained_set(i32 %i, i64 %v) #0 {\nentry:\n  switch i32 %i, label %none [{}]\n{}none:\n  ret i32 0\n}\n", dispatch, strings.Join(write, "")));
     out.append(format_text("\n{}\n{}", ConvertDeclarations(), ConvertWord()));
     out.append("\ndefine i32 @chibi_host_retained_set_as(i32 %i, i32 %from, i64 %v) #0 {\nentry:\n");
     out.append("  %to = call i32 @chibi_host_retained_type(i32 %i)\n");
@@ -3289,10 +3735,17 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
             module = text;
     }
     runtime := Runtime(code);
+    retained_text := false;
+    for (item in RetainedStates(code)) {
+        retained_text = retained_text || item.type == abi.TextStorage;
+    }
+    runtime = runtime || retained_text;
     // The manifests are joined apart, so the module's text is copied once.
     out: string[] = ["\n%chibi.export = type { ptr, i64, ptr, i32, i32, ptr }\n%chibi.manifest = type { i32, i32, ptr }\n"];
     exports: string[] = [];
+    waiting := WaitingFunctions(functions, code);
     for (function in 0..<length(functions)) {
+        if (waiting[function]) { continue; }
         types := ExportTypes(functions[function], parameters);
         if (length(types) == 0) {
             continue;
@@ -3315,7 +3768,859 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
     out.append(format_text("@chibi_natives_{} = constant %chibi.manifest { i32 {}, i32 {}, ptr @chibi_scalar.exports }\n",
                            name, abi.ExportAbi, length(exports)));
     out.append(StateManifest(name, names, ids, functions, parameters, records, fields, field_names, runtime));
+    if (retained_text) {
+        out.append(RetainedTextCopy());
+    }
     out.append(RetainedManifest(name, code, texts));
-    out.append(HostSymbols(names, functions, parameters, code, texts, runtime));
+    if (runtime && !strings.Contains(module, "@chibi_context = external global")) {
+        out.append(format_text("\n@chibi_context = external global {}\n", abi.ContextType()));
+    }
+    out.append(HostSymbols(names, functions, parameters, code, texts, runtime, waiting));
     return Result.Emitted(format_text("{}{}", module, strings.Join(out, "")));
+}
+
+// Native maps, docs/native-maps.md. The header holds live count, physical span,
+// entry capacity, index slot count, entries and index. Each insertion-ordered
+// entry is {key, value, hash}, hash 0 marks a dead entry. Robin Hood slots hold
+// {hash, entry + 1}; they keep a dead entry's hash until a compaction rebuilds
+// the index, so lookup stopping distances stay valid. Each mutation consumes
+// the map it reads. A string key/value passed to MapSet is one owned reference.
+
+// The most entries a map keeps without an index: a scan of that many keys beats
+// a hash.
+MapScanned: int : 8;
+// Doubling beyond this bound would overflow an i32 slot count.
+MapLimit: int : 1073741824;
+
+// The key and value types of map type `type`.
+MapKey :: (type: int) -> int {
+    return (type - MapType) % 16;
+}
+MapValue :: (type: int) -> int {
+    return (type - MapType) / 16;
+}
+// The type of the map from `key` to `value`.
+pub MapOf :: (key: int, value: int) -> int {
+    return MapType + value * 16 + key;
+}
+// Whether a map may be keyed by `key`: a bool, an integer or a string. A float
+// is not, as NaN equals nothing.
+MapKeyed :: (key: int) -> bool {
+    return key == abi.BoolStorage || Integer(key) || key == abi.TextStorage;
+}
+// Whether `type` is a map of a keyable type to a scalar or string. Records
+// and containers need recursive ownership before this representation admits them.
+MapShaped :: (records: Record[], type: int) -> bool {
+    if (type < MapType || type >= RefType) {
+        return false;
+    }
+    value := MapValue(type);
+    return MapKeyed(MapKey(type)) && (abi.ScalarType(value) != "" || value == abi.TextStorage);
+}
+// The map type an instruction works on: a change gives it as its type, and a
+// read has it in its literal.
+MapUsed :: (item: Instruction) -> int {
+    if (item.op == MapSet || item.op == MapDelete || item.op == MapCopy || item.op == MapDrop) {
+        return item.type;
+    }
+    return int(item.literal);
+}
+// Whether an instruction names the context: it allocates, gives back, or ends
+// the program on an index outside the map.
+MapCalls :: (op: int) -> bool {
+    return op == MapSet || op == MapDelete || op == MapCopy || op == MapDrop || op == MapKeyAt || op == MapValueAt;
+}
+// Whether a map instruction reads the operands of its type: the map in the left
+// slot, a key or an index in the right, and MapSet's value in slot `target`.
+MapValid :: (records: Record[], slots: int[], item: Instruction) -> bool {
+    used := MapUsed(item);
+    if (!MapShaped(records, used) || !Typed(slots, item.left, used)) {
+        return false;
+    }
+    key := MapKey(used);
+    value := MapValue(used);
+    if (item.op == MapLength || item.op == MapSpan) {
+        return item.type == abi.IntStorage;
+    }
+    if (item.op == MapGet) {
+        return item.type == value && Typed(slots, item.right, key);
+    }
+    if (item.op == MapHas) {
+        return item.type == abi.BoolStorage && Typed(slots, item.right, key);
+    }
+    if (item.op == MapSet) {
+        return (item.literal == 0 || item.literal == 1) && Typed(slots, item.right, key) && Typed(slots, item.target, value);
+    }
+    if (item.op == MapDelete) {
+        return (item.literal == 0 || item.literal == 1) && Typed(slots, item.right, key);
+    }
+    if (item.op == MapLiveAt) {
+        return item.type == abi.BoolStorage && Typed(slots, item.right, abi.IntStorage);
+    }
+    if (item.op == MapKeyAt) {
+        return item.type == key && Typed(slots, item.right, abi.IntStorage);
+    }
+    if (item.op == MapValueAt) {
+        return item.type == value && Typed(slots, item.right, abi.IntStorage);
+    }
+    return true;
+}
+// The map types `code` works on, once each, in order of first use.
+MapTypes :: (code: Instruction[]) -> int[] {
+    used: int[] = [];
+    for (item in code) {
+        if (item.op >= MapLength && item.op <= MapLiveAt && !used.contains(MapUsed(item))) {
+            used.append(MapUsed(item));
+        }
+    }
+    return used;
+}
+// Whether a map of `type` holds strings, which each hold a reference.
+MapHolds :: (type: int) -> bool {
+    return MapKey(type) == abi.TextStorage || MapValue(type) == abi.TextStorage;
+}
+
+// The instruction in `item` as LLVM text: the map is loaded as %m<pc>, and its
+// helpers are the ones of its type, below.
+MapRead :: (item: Instruction, pc: int) -> string {
+    used := MapUsed(item);
+    map := abi.MapType();
+    key := MapKey(used);
+    value := MapValue(used);
+    owns := "false";
+    if (item.literal == 1 && (item.op == MapSet || item.op == MapDelete)) {
+        owns = "true";
+    }
+    out := Load(format_text("m{}", pc), used, "s", item.left);
+    if (item.op == MapLength || item.op == MapSpan) {
+        field := 0;
+        if (item.op == MapSpan) {
+            field = 1;
+        }
+        out = format_text("{}  %v{} = extractvalue {} %m{}, {}\n", out, pc, map, pc, field);
+    } else if (item.op == MapGet || item.op == MapHas) {
+        out = format_text("{}{}", out, Load(format_text("k{}", pc), key, "s", item.right));
+        out = format_text("{}  %v{} = call {} @chibi_map.{}.{}({} %m{}, {} %k{})\n", out, pc, TypeName(item.type), used,
+                          MapHelper(item.op), map, pc, TypeName(key), pc);
+    } else if (item.op == MapSet) {
+        out = format_text("{}{}", out, Load(format_text("k{}", pc), key, "s", item.right));
+        out = format_text("{}{}", out, Load(format_text("c{}", pc), value, "s", item.target));
+        out = format_text("{}  %v{} = call {} @chibi_map.{}.set(ptr %ctx, {} %m{}, {} %k{}, {} %c{}, i1 {})\n", out, pc, map,
+                          used, map, pc, TypeName(key), pc, TypeName(value), pc, owns);
+    } else if (item.op == MapDelete) {
+        out = format_text("{}{}", out, Load(format_text("k{}", pc), key, "s", item.right));
+        out = format_text("{}  %v{} = call {} @chibi_map.{}.delete(ptr %ctx, {} %m{}, {} %k{}, i1 {})\n", out, pc, map,
+                          used, map, pc, TypeName(key), pc, owns);
+    } else if (item.op == MapCopy) {
+        out = format_text("{}  %v{} = call {} @chibi_map.{}.copy(ptr %ctx, {} %m{})\n", out, pc, map, used, map, pc);
+    } else if (item.op == MapDrop) {
+        return format_text("{}  call void @chibi_map.{}.drop(ptr %ctx, {} %m{})\n", out, used, map, pc);
+    } else {
+        // An entry by position, for a loop over the map's insertion order.
+        pair := format_text("{ {}, {}, i32 }", TypeName(key), TypeName(value));
+        field := 0;
+        if (item.op == MapValueAt) {
+            field = 1;
+        }
+        out = format_text("{}{}", out, Load(format_text("b{}", pc), abi.IntStorage, "s", item.right));
+        out = format_text("{}  %length{} = extractvalue {} %m{}, 1\n  %in{} = icmp ult i32 %b{}, %length{}\n", out, pc, map,
+                          pc, pc, pc, pc);
+        if (item.op == MapLiveAt) {
+            out = format_text("{}  br i1 %in{}, label %inside{}, label %after{}\ninside{}:\n", out, pc, pc, pc, pc);
+        } else {
+            out = format_text("{}  br i1 %in{}, label %inside{}, label %outside{}\noutside{}:\n", out, pc, pc, pc, pc);
+            out = format_text("{}{}", out, ContextCall(format_text("index{}", pc), 3));
+            out = format_text("{}  call void %index{}(ptr %ctx, i32 %b{}, i32 %length{})\n  unreachable\ninside{}:\n", out, pc,
+                              pc, pc, pc);
+        }
+        out = format_text("{}  %data{} = extractvalue {} %m{}, 4\n  %offset{} = zext i32 %b{} to i64\n", out, pc, map, pc,
+                          pc, pc);
+        out = format_text("{}  %hash.at{} = getelementptr inbounds {}, ptr %data{}, i64 %offset{}, i32 2\n", out, pc, pair, pc, pc);
+        out = format_text("{}  %hash{} = load i32, ptr %hash.at{}\n  %live{} = icmp ne i32 %hash{}, 0\n", out, pc, pc, pc, pc);
+        if (item.op == MapLiveAt) {
+            out = format_text("{}  br label %after{}\nafter{}:\n  %v{} = phi i1 [ false, %p{} ], [ %live{}, %inside{} ]\n", out, pc, pc, pc, pc, pc, pc);
+        } else {
+            out = format_text("{}  br i1 %live{}, label %live.entry{}, label %outside{}\nlive.entry{}:\n", out, pc, pc, pc, pc);
+            out = format_text("{}  %at{} = getelementptr inbounds {}, ptr %data{}, i64 %offset{}, i32 {}\n", out, pc, pair,
+                              pc, pc, field);
+            out = format_text("{}  %v{} = load {}, ptr %at{}\n", out, pc, TypeName(item.type), pc);
+        }
+    }
+    return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+}
+// The name of the helper a read instruction calls.
+MapHelper :: (op: int) -> string {
+    if (op == MapGet) {
+        return "get";
+    }
+    return "has";
+}
+
+// LLVM text that releases, or adds a reference to, the owner of the string
+// `value`, a name unique in the function by `tag`.
+MapOwner :: (call: string, value: string, tag: string) -> string {
+    text := abi.TextType();
+    out := format_text("  %o.{} = extractvalue {} {}, 2\n", tag, text, value);
+    if (call == "retain") {
+        return format_text("{}  call void @chibi_scalar.retain(ptr %o.{})\n", out, tag);
+    }
+    return format_text("{}  call void @chibi_scalar.free(ptr %ctx, ptr %o.{})\n", out, tag);
+}
+// The reference changes for the live entry just copied or being dropped.
+// Copy's `ymove` block ends in `yretained`, which its loop's phi names.
+MapEach :: (call: string, entries: string, prefix: string, key: int, value: int) -> string {
+    offset := "%xoff";
+    if (call == "retain") {
+        offset = "%woff";
+    }
+    out := "";
+    if (key == abi.TextStorage) {
+        out = format_text("  %{}k = getelementptr inbounds $E, ptr {}, i64 {}, i32 0\n", prefix, entries, offset);
+        out = format_text("{}  %{}kv = load $K, ptr %{}k\n{}", out, prefix, prefix,
+                          MapOwner(call, format_text("%{}kv", prefix), format_text("{}k", prefix)));
+    }
+    if (value == abi.TextStorage) {
+        out = format_text("{}  %{}v = getelementptr inbounds $E, ptr {}, i64 {}, i32 1\n", out, prefix, entries, offset);
+        out = format_text("{}  %{}vv = load $V, ptr %{}v\n{}", out, prefix, prefix,
+                          MapOwner(call, format_text("%{}vv", prefix), format_text("{}v", prefix)));
+    }
+    if (call == "retain") {
+        out = format_text("{}  br label %yretained\nyretained:\n", out);
+    }
+    return out;
+}
+
+// The helpers every map type shares: the context's allocation, a hash, the
+// index's Robin Hood placement and its rebuild.
+MapShared :: () -> string {
+    text := strings.Join([
+        "define internal ptr @chibi_map.allocate(ptr %ctx, i64 %bytes) {",
+        "entry:",
+        "  %at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 2",
+        "  %make = load ptr, ptr %at",
+        "  %fresh = call ptr %make(ptr %ctx, i64 %bytes)",
+        "  ret ptr %fresh",
+        "}",
+        "define internal void @chibi_map.give(ptr %ctx, ptr %memory) {",
+        "entry:",
+        "  %held = icmp ne ptr %memory, null",
+        "  br i1 %held, label %give, label %done",
+        "give:",
+        "  %at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 4",
+        "  %release = load ptr, ptr %at",
+        "  call void %release(ptr %ctx, ptr %memory)",
+        "  br label %done",
+        "done:",
+        "  ret void",
+        "}",
+        "define internal i32 @chibi_map.mix(i64 %wide) {",
+        "entry:",
+        "  %a = lshr i64 %wide, 30",
+        "  %b = xor i64 %wide, %a",
+        "  %c = mul i64 %b, -4658895280553007687",
+        "  %d = lshr i64 %c, 27",
+        "  %e = xor i64 %c, %d",
+        "  %f = mul i64 %e, -7723592293110705685",
+        "  %g = lshr i64 %f, 31",
+        "  %h = xor i64 %f, %g",
+        "  %hash = trunc i64 %h to i32",
+        "  ret i32 %hash",
+        "}",
+        "define internal i64 @chibi_map.text_hash({ ptr, i32, ptr } %text) {",
+        "entry:",
+        "  %bytes = extractvalue { ptr, i32, ptr } %text, 0",
+        "  %length = extractvalue { ptr, i32, ptr } %text, 1",
+        "  br label %head",
+        "head:",
+        "  %at = phi i32 [ 0, %entry ], [ %next, %body ]",
+        "  %hash = phi i64 [ -3750763034362895579, %entry ], [ %mixed, %body ]",
+        "  %end = icmp eq i32 %at, %length",
+        "  br i1 %end, label %done, label %body",
+        "body:",
+        "  %offset = zext i32 %at to i64",
+        "  %place = getelementptr inbounds i8, ptr %bytes, i64 %offset",
+        "  %byte = load i8, ptr %place",
+        "  %wide = zext i8 %byte to i64",
+        "  %folded = xor i64 %hash, %wide",
+        "  %mixed = mul i64 %folded, 1099511628211",
+        "  %next = add i32 %at, 1",
+        "  br label %head",
+        "done:",
+        "  ret i64 %hash",
+        "}",
+        "define internal void @chibi_map.place(ptr %index, i32 %slots, i32 %hash, i32 %entry1) {",
+        "entry:",
+        "  %mask = sub i32 %slots, 1",
+        "  %start = and i32 %hash, %mask",
+        "  br label %walk",
+        "walk:",
+        "  %pos = phi i32 [ %start, %entry ], [ %pnext, %cont ]",
+        "  %dist = phi i32 [ 0, %entry ], [ %dnext, %cont ]",
+        "  %h = phi i32 [ %hash, %entry ], [ %hn, %cont ]",
+        "  %e = phi i32 [ %entry1, %entry ], [ %en, %cont ]",
+        "  %poff = zext i32 %pos to i64",
+        "  %sp = getelementptr inbounds { i32, i32 }, ptr %index, i64 %poff",
+        "  %sea = getelementptr inbounds { i32, i32 }, ptr %sp, i32 0, i32 1",
+        "  %sh = load i32, ptr %sp",
+        "  %se = load i32, ptr %sea",
+        "  %empty = icmp eq i32 %se, 0",
+        "  br i1 %empty, label %put, label %resident",
+        "put:",
+        "  store i32 %h, ptr %sp",
+        "  store i32 %e, ptr %sea",
+        "  ret void",
+        "resident:",
+        "  %home = and i32 %sh, %mask",
+        "  %gap = sub i32 %pos, %home",
+        "  %rdist = and i32 %gap, %mask",
+        "  %closer = icmp ult i32 %rdist, %dist",
+        "  br i1 %closer, label %swap, label %cont",
+        "swap:",
+        "  store i32 %h, ptr %sp",
+        "  store i32 %e, ptr %sea",
+        "  br label %cont",
+        "cont:",
+        "  %hn = phi i32 [ %h, %resident ], [ %sh, %swap ]",
+        "  %en = phi i32 [ %e, %resident ], [ %se, %swap ]",
+        "  %dc = phi i32 [ %dist, %resident ], [ %rdist, %swap ]",
+        "  %pn = add i32 %pos, 1",
+        "  %pnext = and i32 %pn, %mask",
+        "  %dnext = add i32 %dc, 1",
+        "  br label %walk",
+        "}",
+        "define internal i32 @chibi_map.slots(i32 %capacity) {",
+        "entry:",
+        "  %cap = zext i32 %capacity to i64",
+        "  %want = shl i64 %cap, 2",
+        "  br label %head",
+        "head:",
+        "  %s = phi i64 [ 1, %entry ], [ %double, %body ]",
+        "  %have = mul i64 %s, 3",
+        "  %enough = icmp uge i64 %have, %want",
+        "  br i1 %enough, label %done, label %body",
+        "body:",
+        "  %double = shl i64 %s, 1",
+        "  br label %head",
+        "done:",
+        "  %slots = trunc i64 %s to i32",
+        "  ret i32 %slots",
+        "}",
+        "define internal i32 @chibi_map.capacity(i32 %count) {",
+        "entry:",
+        "  %double = shl i32 %count, 1",
+        "  %tiny = icmp ult i32 %double, 4",
+        "  %wanted = select i1 %tiny, i32 4, i32 %double",
+        "  %over = icmp ugt i32 %wanted, $LIMIT",
+        "  %capacity = select i1 %over, i32 $LIMIT, i32 %wanted",
+        "  ret i32 %capacity",
+        "}"
+    ], "\n");
+    return strings.ReplaceAll(text, "$LIMIT", format_text("{}", MapLimit));
+}
+
+// The helpers of map type `type`, named `@chibi_map.<type>.<helper>`: hash,
+// same, find, get, has, set, delete, copy and drop.
+MapHelpers :: (type: int) -> string {
+    key := MapKey(type);
+    value := MapValue(type);
+    keyed := key == abi.TextStorage;
+    valued := value == abi.TextStorage;
+    prehash := "  %wide = zext $K %key to i64";
+    same := "  %same = icmp eq $K %a, %b";
+    if (keyed) {
+        prehash = "  %wide = call i64 @chibi_map.text_hash($K %key)";
+        same = "  %same = call i1 @chibi_scalar.text_equal($K %a, $K %b)";
+    } else if (abi.IntegerBits(key) == 64) {
+        prehash = "  %wide = add i64 %key, 0";
+    }
+    // What replacing a value, or deleting an entry, gives back.
+    replaced: string[] = [];
+    deleted: string[] = [];
+    if (valued) {
+        replaced.append(format_text("  %old = load $V, ptr %rv\n{}", MapOwner("release", "%old", "rv")));
+        deleted.append(format_text("  %dv = getelementptr inbounds $E, ptr %hole, i32 0, i32 1\n  %dvv = load $V, ptr %dv\n{}",
+                                   MapOwner("release", "%dvv", "dv")));
+    }
+    if (keyed) {
+        replaced.append(MapOwner("release", "%key", "rk"));
+        deleted.append(format_text("  %dk = getelementptr inbounds $E, ptr %hole, i32 0, i32 0\n  %dkv = load $K, ptr %dk\n{}",
+                                   MapOwner("release", "%dkv", "dk")));
+    }
+    text := strings.Join([
+        "define internal i32 @chibi_map.$N.hash($K %key) {",
+        "entry:",
+        "$PREHASH",
+        "  %raw = call i32 @chibi_map.mix(i64 %wide)",
+        "  %zero = icmp eq i32 %raw, 0",
+        "  %hash = select i1 %zero, i32 1, i32 %raw",
+        "  ret i32 %hash",
+        "}",
+        "define internal i1 @chibi_map.$N.same($K %a, $K %b) {",
+        "entry:",
+        "$SAME",
+        "  ret i1 %same",
+        "}",
+        "define internal i32 @chibi_map.$N.find(ptr %entries, ptr %index, i32 %used, i32 %slots, $K %wanted, i32 %hash) {",
+        "entry:",
+        "  %indexed = icmp ne ptr %index, null",
+        "  br i1 %indexed, label %probe, label %scan",
+        "scan:",
+        "  %at = phi i32 [ 0, %entry ], [ %next, %step ]",
+        "  %end = icmp eq i32 %at, %used",
+        "  br i1 %end, label %absent, label %look",
+        "look:",
+        "  %off = zext i32 %at to i64",
+        "  %he = getelementptr inbounds $E, ptr %entries, i64 %off, i32 2",
+        "  %eh = load i32, ptr %he",
+        "  %alike = icmp eq i32 %eh, %hash",
+        "  br i1 %alike, label %test, label %step",
+        "test:",
+        "  %ke = getelementptr inbounds $E, ptr %entries, i64 %off, i32 0",
+        "  %k = load $K, ptr %ke",
+        "  %eq = call i1 @chibi_map.$N.same($K %k, $K %wanted)",
+        "  br i1 %eq, label %found, label %step",
+        "step:",
+        "  %next = add i32 %at, 1",
+        "  br label %scan",
+        "found:",
+        "  ret i32 %at",
+        "absent:",
+        "  ret i32 -1",
+        "probe:",
+        "  %mask = sub i32 %slots, 1",
+        "  %start = and i32 %hash, %mask",
+        "  br label %walk",
+        "walk:",
+        "  %pos = phi i32 [ %start, %probe ], [ %pnext, %skip ]",
+        "  %dist = phi i32 [ 0, %probe ], [ %dnext, %skip ]",
+        "  %poff = zext i32 %pos to i64",
+        "  %sp = getelementptr inbounds { i32, i32 }, ptr %index, i64 %poff",
+        "  %sea = getelementptr inbounds { i32, i32 }, ptr %sp, i32 0, i32 1",
+        "  %sh = load i32, ptr %sp",
+        "  %se = load i32, ptr %sea",
+        "  %empty = icmp eq i32 %se, 0",
+        "  br i1 %empty, label %absent, label %resident",
+        "resident:",
+        "  %home = and i32 %sh, %mask",
+        "  %gap = sub i32 %pos, %home",
+        "  %rdist = and i32 %gap, %mask",
+        "  %closer = icmp ult i32 %rdist, %dist",
+        "  br i1 %closer, label %absent, label %compare",
+        "compare:",
+        "  %salike = icmp eq i32 %sh, %hash",
+        "  br i1 %salike, label %live, label %skip",
+        "live:",
+        "  %idx = sub i32 %se, 1",
+        "  %ioff = zext i32 %idx to i64",
+        "  %lhe = getelementptr inbounds $E, ptr %entries, i64 %ioff, i32 2",
+        "  %leh = load i32, ptr %lhe",
+        "  %lalive = icmp eq i32 %leh, %hash",
+        "  br i1 %lalive, label %test2, label %skip",
+        "test2:",
+        "  %tke = getelementptr inbounds $E, ptr %entries, i64 %ioff, i32 0",
+        "  %tk = load $K, ptr %tke",
+        "  %teq = call i1 @chibi_map.$N.same($K %tk, $K %wanted)",
+        "  br i1 %teq, label %hit, label %skip",
+        "hit:",
+        "  ret i32 %idx",
+        "skip:",
+        "  %pn = add i32 %pos, 1",
+        "  %pnext = and i32 %pn, %mask",
+        "  %dnext = add i32 %dist, 1",
+        "  br label %walk",
+        "}",
+        "define internal $V @chibi_map.$N.get($M %m, $K %wanted) {",
+        "entry:",
+        "  %used = extractvalue $M %m, 1",
+        "  %slots = extractvalue $M %m, 3",
+        "  %entries = extractvalue $M %m, 4",
+        "  %index = extractvalue $M %m, 5",
+        "  %hash = call i32 @chibi_map.$N.hash($K %wanted)",
+        "  %at = call i32 @chibi_map.$N.find(ptr %entries, ptr %index, i32 %used, i32 %slots, $K %wanted, i32 %hash)",
+        "  %present = icmp sge i32 %at, 0",
+        "  br i1 %present, label %hit, label %miss",
+        "hit:",
+        "  %off = zext i32 %at to i64",
+        "  %ve = getelementptr inbounds $E, ptr %entries, i64 %off, i32 1",
+        "  %v = load $V, ptr %ve",
+        "  ret $V %v",
+        "miss:",
+        "  ret $V zeroinitializer",
+        "}",
+        "define internal i1 @chibi_map.$N.has($M %m, $K %wanted) {",
+        "entry:",
+        "  %used = extractvalue $M %m, 1",
+        "  %slots = extractvalue $M %m, 3",
+        "  %entries = extractvalue $M %m, 4",
+        "  %index = extractvalue $M %m, 5",
+        "  %hash = call i32 @chibi_map.$N.hash($K %wanted)",
+        "  %at = call i32 @chibi_map.$N.find(ptr %entries, ptr %index, i32 %used, i32 %slots, $K %wanted, i32 %hash)",
+        "  %present = icmp sge i32 %at, 0",
+        "  ret i1 %present",
+        "}",
+        "define internal ptr @chibi_map.$N.index(ptr %ctx, ptr %entries, i32 %used, i32 %slots) {",
+        "entry:",
+        "  %count = zext i32 %slots to i64",
+        "  %bytes = shl i64 %count, 3",
+        "  %fresh = call ptr @chibi_map.allocate(ptr %ctx, i64 %bytes)",
+        "  call void @chibi_scalar.zero(ptr %fresh, i64 %bytes)",
+        "  br label %head",
+        "head:",
+        "  %i = phi i32 [ 0, %entry ], [ %next, %step ]",
+        "  %end = icmp eq i32 %i, %used",
+        "  br i1 %end, label %done, label %look",
+        "look:",
+        "  %off = zext i32 %i to i64",
+        "  %he = getelementptr inbounds $E, ptr %entries, i64 %off, i32 2",
+        "  %h = load i32, ptr %he",
+        "  %alive = icmp ne i32 %h, 0",
+        "  br i1 %alive, label %put, label %step",
+        "put:",
+        "  %e1 = add i32 %i, 1",
+        "  call void @chibi_map.place(ptr %fresh, i32 %slots, i32 %h, i32 %e1)",
+        "  br label %step",
+        "step:",
+        "  %next = add i32 %i, 1",
+        "  br label %head",
+        "done:",
+        "  ret ptr %fresh",
+        "}",
+        "define internal $M @chibi_map.$N.set(ptr %ctx, $M %m, $K %key, $V %value, i1 %owns) {",
+        "entry:",
+        "  %count = extractvalue $M %m, 0",
+        "  %used = extractvalue $M %m, 1",
+        "  %cap = extractvalue $M %m, 2",
+        "  %slots = extractvalue $M %m, 3",
+        "  %entries = extractvalue $M %m, 4",
+        "  %index = extractvalue $M %m, 5",
+        "  %hash = call i32 @chibi_map.$N.hash($K %key)",
+        "  %at = call i32 @chibi_map.$N.find(ptr %entries, ptr %index, i32 %used, i32 %slots, $K %key, i32 %hash)",
+        "  %present = icmp sge i32 %at, 0",
+        "  br i1 %present, label %replace, label %insert",
+        "replace:",
+        "  %roff = zext i32 %at to i64",
+        "  %rv = getelementptr inbounds $E, ptr %entries, i64 %roff, i32 1",
+        "$REPLACED",
+        "  store $V %value, ptr %rv",
+        "  ret $M %m",
+        "insert:",
+        "  %atlimit = icmp uge i32 %count, $LIMIT",
+        "  br i1 %atlimit, label %limit, label %available",
+        "limit:",
+        "  %limit.at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 3",
+        "  %limit.fail = load ptr, ptr %limit.at",
+        "  call void %limit.fail(ptr %ctx, i32 %count, i32 $LIMIT)",
+        "  unreachable",
+        "available:",
+        "  %full = icmp eq i32 %used, %cap",
+        "  br i1 %full, label %grow, label %room",
+        "grow:",
+        "  %newcap = call i32 @chibi_map.capacity(i32 %count)",
+        "  %wat = getelementptr $E, ptr null, i32 1",
+        "  %width = ptrtoint ptr %wat to i64",
+        "  %cn = zext i32 %newcap to i64",
+        "  %bytes = mul i64 %cn, %width",
+        "  %fresh = call ptr @chibi_map.allocate(ptr %ctx, i64 %bytes)",
+        "  br label %ghead",
+        "ghead:",
+        "  %r = phi i32 [ 0, %grow ], [ %rnext, %gstep ]",
+        "  %w = phi i32 [ 0, %grow ], [ %wnext, %gstep ]",
+        "  %rend = icmp eq i32 %r, %used",
+        "  br i1 %rend, label %grown, label %glook",
+        "glook:",
+        "  %roff2 = zext i32 %r to i64",
+        "  %rhe = getelementptr inbounds $E, ptr %entries, i64 %roff2, i32 2",
+        "  %reh = load i32, ptr %rhe",
+        "  %ralive = icmp ne i32 %reh, 0",
+        "  br i1 %ralive, label %gmove, label %gstep",
+        "gmove:",
+        "  %src = getelementptr inbounds $E, ptr %entries, i64 %roff2",
+        "  %pair = load $E, ptr %src",
+        "  %woff = zext i32 %w to i64",
+        "  %dst = getelementptr inbounds $E, ptr %fresh, i64 %woff",
+        "  store $E %pair, ptr %dst",
+        "  %wmoved = add i32 %w, 1",
+        "  br label %gstep",
+        "gstep:",
+        "  %wnext = phi i32 [ %w, %glook ], [ %wmoved, %gmove ]",
+        "  %rnext = add i32 %r, 1",
+        "  br label %ghead",
+        "grown:",
+        "  %had = icmp ne ptr %entries, null",
+        "  %freeold = and i1 %had, %owns",
+        "  br i1 %freeold, label %giveback, label %regrown",
+        "giveback:",
+        "  call void @chibi_map.give(ptr %ctx, ptr %entries)",
+        "  br label %regrown",
+        "regrown:",
+        "  %hasindex = icmp ne ptr %index, null",
+        "  %freeindex = and i1 %hasindex, %owns",
+        "  br i1 %freeindex, label %giveindex, label %room",
+        "giveindex:",
+        "  call void @chibi_map.give(ptr %ctx, ptr %index)",
+        "  br label %room",
+        "room:",
+        "  %buffer = phi ptr [ %entries, %available ], [ %fresh, %regrown ], [ %fresh, %giveindex ]",
+        "  %space = phi i32 [ %cap, %available ], [ %newcap, %regrown ], [ %newcap, %giveindex ]",
+        "  %used1 = phi i32 [ %used, %available ], [ %w, %regrown ], [ %w, %giveindex ]",
+        "  %slots1 = phi i32 [ %slots, %available ], [ 0, %regrown ], [ 0, %giveindex ]",
+        "  %index1 = phi ptr [ %index, %available ], [ null, %regrown ], [ null, %giveindex ]",
+        "  %coff = zext i32 %used1 to i64",
+        "  %ek = getelementptr inbounds $E, ptr %buffer, i64 %coff, i32 0",
+        "  %ev = getelementptr inbounds $E, ptr %buffer, i64 %coff, i32 1",
+        "  %eh2 = getelementptr inbounds $E, ptr %buffer, i64 %coff, i32 2",
+        "  store $K %key, ptr %ek",
+        "  store $V %value, ptr %ev",
+        "  store i32 %hash, ptr %eh2",
+        "  %used2 = add i32 %used1, 1",
+        "  %count2 = add i32 %count, 1",
+        "  %big = icmp ugt i32 %used2, $SCANNED",
+        "  br i1 %big, label %indexed, label %out",
+        "indexed:",
+        "  %has = icmp ne ptr %index1, null",
+        "  br i1 %has, label %add, label %build",
+        "add:",
+        "  call void @chibi_map.place(ptr %index1, i32 %slots1, i32 %hash, i32 %used2)",
+        "  br label %out",
+        "build:",
+        "  %slots2 = call i32 @chibi_map.slots(i32 %space)",
+        "  %made = call ptr @chibi_map.$N.index(ptr %ctx, ptr %buffer, i32 %used2, i32 %slots2)",
+        "  br label %out",
+        "out:",
+        "  %final = phi ptr [ null, %room ], [ %index1, %add ], [ %made, %build ]",
+        "  %fslots = phi i32 [ 0, %room ], [ %slots1, %add ], [ %slots2, %build ]",
+        "  %m1 = insertvalue $M %m, i32 %count2, 0",
+        "  %m2 = insertvalue $M %m1, i32 %used2, 1",
+        "  %m3 = insertvalue $M %m2, i32 %space, 2",
+        "  %m4 = insertvalue $M %m3, i32 %fslots, 3",
+        "  %m5 = insertvalue $M %m4, ptr %buffer, 4",
+        "  %m6 = insertvalue $M %m5, ptr %final, 5",
+        "  ret $M %m6",
+        "}",
+        "define internal $M @chibi_map.$N.delete(ptr %ctx, $M %m, $K %wanted, i1 %owns) {",
+        "entry:",
+        "  %count = extractvalue $M %m, 0",
+        "  %used = extractvalue $M %m, 1",
+        "  %cap = extractvalue $M %m, 2",
+        "  %slots = extractvalue $M %m, 3",
+        "  %entries = extractvalue $M %m, 4",
+        "  %index = extractvalue $M %m, 5",
+        "  %hash = call i32 @chibi_map.$N.hash($K %wanted)",
+        "  %at = call i32 @chibi_map.$N.find(ptr %entries, ptr %index, i32 %used, i32 %slots, $K %wanted, i32 %hash)",
+        "  %present = icmp sge i32 %at, 0",
+        "  br i1 %present, label %cut, label %kept",
+        "cut:",
+        "  %coff = zext i32 %at to i64",
+        "  %hole = getelementptr inbounds $E, ptr %entries, i64 %coff",
+        "$DELETED",
+        "  %n = sub i32 %count, 1",
+        "  %scanned = icmp eq ptr %index, null",
+        "  br i1 %scanned, label %shift, label %mark",
+        "shift:",
+        "  %wat = getelementptr $E, ptr null, i32 1",
+        "  %width = ptrtoint ptr %wat to i64",
+        "  %after = add i32 %at, 1",
+        "  %tail = sub i32 %used, %after",
+        "  %noff = zext i32 %after to i64",
+        "  %next = getelementptr inbounds $E, ptr %entries, i64 %noff",
+        "  %tn = zext i32 %tail to i64",
+        "  %tbytes = mul i64 %tn, %width",
+        "  call void @chibi_scalar.copy(ptr %hole, ptr %next, i64 %tbytes)",
+        "  %shorter = sub i32 %used, 1",
+        "  %s1 = insertvalue $M %m, i32 %n, 0",
+        "  %s2 = insertvalue $M %s1, i32 %shorter, 1",
+        "  ret $M %s2",
+        "mark:",
+        "  %hh = getelementptr inbounds $E, ptr %hole, i32 0, i32 2",
+        "  store i32 0, ptr %hh",
+        "  %dead = sub i32 %used, %n",
+        "  %dead2 = shl i32 %dead, 1",
+        "  %crowded = icmp ugt i32 %dead2, %n",
+        "  br i1 %crowded, label %compact, label %marked",
+        "marked:",
+        "  %k1 = insertvalue $M %m, i32 %n, 0",
+        "  ret $M %k1",
+        "compact:",
+        "  br label %chead",
+        "chead:",
+        "  %r = phi i32 [ 0, %compact ], [ %rnext, %cstep ]",
+        "  %w = phi i32 [ 0, %compact ], [ %wnext, %cstep ]",
+        "  %rend = icmp eq i32 %r, %used",
+        "  br i1 %rend, label %packed, label %clook",
+        "clook:",
+        "  %roff = zext i32 %r to i64",
+        "  %rhe = getelementptr inbounds $E, ptr %entries, i64 %roff, i32 2",
+        "  %reh = load i32, ptr %rhe",
+        "  %ralive = icmp ne i32 %reh, 0",
+        "  br i1 %ralive, label %cmove, label %cstep",
+        "cmove:",
+        "  %src = getelementptr inbounds $E, ptr %entries, i64 %roff",
+        "  %pair = load $E, ptr %src",
+        "  %woff = zext i32 %w to i64",
+        "  %dst = getelementptr inbounds $E, ptr %entries, i64 %woff",
+        "  store $E %pair, ptr %dst",
+        "  %wmoved = add i32 %w, 1",
+        "  br label %cstep",
+        "cstep:",
+        "  %wnext = phi i32 [ %w, %clook ], [ %wmoved, %cmove ]",
+        "  %rnext = add i32 %r, 1",
+        "  br label %chead",
+        "packed:",
+        "  %wanted.capacity = call i32 @chibi_map.capacity(i32 %n)",
+        "  %smaller = icmp ult i32 %wanted.capacity, %cap",
+        "  %capacity = select i1 %smaller, i32 %wanted.capacity, i32 %cap",
+        "  %still = icmp ugt i32 %w, $SCANNED",
+        "  br i1 %still, label %refill, label %unindex",
+        "refill:",
+        "  %packedslots = call i32 @chibi_map.slots(i32 %capacity)",
+        "  %sbytes0 = zext i32 %packedslots to i64",
+        "  %sbytes = shl i64 %sbytes0, 3",
+        "  call void @chibi_scalar.zero(ptr %index, i64 %sbytes)",
+        "  br label %fhead",
+        "fhead:",
+        "  %fi = phi i32 [ 0, %refill ], [ %fnext, %fstep ]",
+        "  %fend = icmp eq i32 %fi, %w",
+        "  br i1 %fend, label %refilled, label %fput",
+        "fput:",
+        "  %foff = zext i32 %fi to i64",
+        "  %fhe = getelementptr inbounds $E, ptr %entries, i64 %foff, i32 2",
+        "  %fh = load i32, ptr %fhe",
+        "  %fe = add i32 %fi, 1",
+        "  call void @chibi_map.place(ptr %index, i32 %packedslots, i32 %fh, i32 %fe)",
+        "  br label %fstep",
+        "fstep:",
+        "  %fnext = add i32 %fi, 1",
+        "  br label %fhead",
+        "refilled:",
+        "  %c1 = insertvalue $M %m, i32 %n, 0",
+        "  %c2 = insertvalue $M %c1, i32 %w, 1",
+        "  %c3 = insertvalue $M %c2, i32 %capacity, 2",
+        "  %c4 = insertvalue $M %c3, i32 %packedslots, 3",
+        "  ret $M %c4",
+        "unindex:",
+        "  br i1 %owns, label %giveback, label %dropped",
+        "giveback:",
+        "  call void @chibi_map.give(ptr %ctx, ptr %index)",
+        "  br label %dropped",
+        "dropped:",
+        "  %u1 = insertvalue $M %m, i32 %n, 0",
+        "  %u2 = insertvalue $M %u1, i32 %w, 1",
+        "  %u3 = insertvalue $M %u2, i32 %capacity, 2",
+        "  %u4 = insertvalue $M %u3, i32 0, 3",
+        "  %u5 = insertvalue $M %u4, ptr null, 5",
+        "  ret $M %u5",
+        "kept:",
+        "  ret $M %m",
+        "}",
+        "define internal $M @chibi_map.$N.copy(ptr %ctx, $M %m) {",
+        "entry:",
+        "  %count = extractvalue $M %m, 0",
+        "  %used = extractvalue $M %m, 1",
+        "  %entries = extractvalue $M %m, 4",
+        "  %none = icmp eq i32 %count, 0",
+        "  br i1 %none, label %empty, label %clone",
+        "empty:",
+        "  ret $M zeroinitializer",
+        "clone:",
+        "  %wat = getelementptr $E, ptr null, i32 1",
+        "  %width = ptrtoint ptr %wat to i64",
+        "  %used64 = zext i32 %count to i64",
+        "  %bytes = mul i64 %used64, %width",
+        "  %fresh = call ptr @chibi_map.allocate(ptr %ctx, i64 %bytes)",
+        "  br label %yhead",
+        "yhead:",
+        "  %r = phi i32 [ 0, %clone ], [ %rnext, %ystep ]",
+        "  %w = phi i32 [ 0, %clone ], [ %wnext, %ystep ]",
+        "  %rend = icmp eq i32 %r, %used",
+        "  br i1 %rend, label %copied, label %ylook",
+        "ylook:",
+        "  %roff = zext i32 %r to i64",
+        "  %rhe = getelementptr inbounds $E, ptr %entries, i64 %roff, i32 2",
+        "  %reh = load i32, ptr %rhe",
+        "  %ralive = icmp ne i32 %reh, 0",
+        "  br i1 %ralive, label %ymove, label %ystep",
+        "ymove:",
+        "  %src = getelementptr inbounds $E, ptr %entries, i64 %roff",
+        "  %pair = load $E, ptr %src",
+        "  %woff = zext i32 %w to i64",
+        "  %dst = getelementptr inbounds $E, ptr %fresh, i64 %woff",
+        "  store $E %pair, ptr %dst",
+        "$RETAINED",
+        "  %wmoved = add i32 %w, 1",
+        "  br label %ystep",
+        "ystep:",
+        "  %wnext = phi i32 [ %w, %ylook ], [ %wmoved, %yretained ]",
+        "  %rnext = add i32 %r, 1",
+        "  br label %yhead",
+        "copied:",
+        "  %big = icmp ugt i32 %count, $SCANNED",
+        "  br i1 %big, label %indexed, label %done",
+        "indexed:",
+        "  %slots = call i32 @chibi_map.slots(i32 %count)",
+        "  %made = call ptr @chibi_map.$N.index(ptr %ctx, ptr %fresh, i32 %count, i32 %slots)",
+        "  br label %done",
+        "done:",
+        "  %final = phi ptr [ null, %copied ], [ %made, %indexed ]",
+        "  %fslots = phi i32 [ 0, %copied ], [ %slots, %indexed ]",
+        "  %m1 = insertvalue $M zeroinitializer, i32 %count, 0",
+        "  %m2 = insertvalue $M %m1, i32 %count, 1",
+        "  %m3 = insertvalue $M %m2, i32 %count, 2",
+        "  %m4 = insertvalue $M %m3, i32 %fslots, 3",
+        "  %m5 = insertvalue $M %m4, ptr %fresh, 4",
+        "  %m6 = insertvalue $M %m5, ptr %final, 5",
+        "  ret $M %m6",
+        "}",
+        "define internal void @chibi_map.$N.drop(ptr %ctx, $M %m) {",
+        "entry:",
+        "  %used = extractvalue $M %m, 1",
+        "  %entries = extractvalue $M %m, 4",
+        "  %index = extractvalue $M %m, 5",
+        "  br label %xhead",
+        "xhead:",
+        "  %xi = phi i32 [ 0, %entry ], [ %xnext, %xstep ]",
+        "  %xend = icmp eq i32 %xi, %used",
+        "  br i1 %xend, label %xd, label %xlook",
+        "xlook:",
+        "  %xoff = zext i32 %xi to i64",
+        "  %xhe = getelementptr inbounds $E, ptr %entries, i64 %xoff, i32 2",
+        "  %xeh = load i32, ptr %xhe",
+        "  %xalive = icmp ne i32 %xeh, 0",
+        "  br i1 %xalive, label %xbody, label %xstep",
+        "xbody:",
+        "$RELEASED",
+        "  br label %xstep",
+        "xstep:",
+        "  %xnext = add i32 %xi, 1",
+        "  br label %xhead",
+        "xd:",
+        "  call void @chibi_map.give(ptr %ctx, ptr %entries)",
+        "  call void @chibi_map.give(ptr %ctx, ptr %index)",
+        "  ret void",
+        "}"
+    ], "\n");
+    text = strings.ReplaceAll(text, "$SCANNED", format_text("{}", MapScanned));
+    text = strings.ReplaceAll(text, "$LIMIT", format_text("{}", MapLimit));
+    text = strings.ReplaceAll(text, "$PREHASH", prehash);
+    text = strings.ReplaceAll(text, "$SAME", same);
+    text = strings.ReplaceAll(text, "$REPLACED", strings.TrimSuffix(strings.Join(replaced, ""), "\n"));
+    text = strings.ReplaceAll(text, "$DELETED", strings.TrimSuffix(strings.Join(deleted, ""), "\n"));
+    text = strings.ReplaceAll(text, "$RETAINED", strings.TrimSuffix(MapEach("retain", "%fresh", "r", key, value), "\n"));
+    text = strings.ReplaceAll(text, "$RELEASED", strings.TrimSuffix(MapEach("release", "%entries", "x", key, value), "\n"));
+    text = strings.ReplaceAll(text, "$M", abi.MapType());
+    text = strings.ReplaceAll(text, "$E", format_text("{ {}, {}, i32 }", TypeName(key), TypeName(value)));
+    text = strings.ReplaceAll(text, "$K", TypeName(key));
+    text = strings.ReplaceAll(text, "$V", TypeName(value));
+    return format_text("{}\n", strings.ReplaceAll(text, "$N", format_text("{}", type)));
+}
+// The helpers of the map types `code` works on, once each.
+MapModule :: (code: Instruction[]) -> string {
+    types := MapTypes(code);
+    if (length(types) == 0) {
+        return "";
+    }
+    out: string[] = [MapShared()];
+    for (type in types) {
+        out.append(MapHelpers(type));
+    }
+    return format_text("\n{}", strings.Join(out, "\n"));
 }

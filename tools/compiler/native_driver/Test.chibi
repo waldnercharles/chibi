@@ -1,0 +1,431 @@
+package native_driver
+
+import compiler "project:package_compiler"
+import facts "project:scalar_facts"
+import route "project:driver_paths"
+import raw "project:compiler_syntax"
+import syntax "project:syntax_diagnostics"
+import os "core:os"
+import strings "core:strings"
+
+// `chibi test`: each package below the root that declares an `@test` function, or
+// whose last file ends with `// error: LINE:COL: MESSAGE`, is compiled on its own,
+// as Go builds one test binary per package.
+//
+// A package's tests compile into one native program: a root package that imports
+// the package under test, and a dispatcher file added to the package itself, so a
+// test sees the package's private names. The program runs one test, named by its
+// index on the command line, and exits 0 when it passes; a failed assert ends it with
+// its report on the standard error. Every test is a process of its own, so one
+// failure takes no other test down.
+
+// The names and the counts a test run adds up.
+Tally :: struct {
+    total: int;
+    failed: int;
+    compiled: bool;
+}
+
+// The package folders below `folder`, relative to the root, that may hold tests: those that
+// hold a .chibi file. Hidden folders and `build` folders are not looked in. "." is the root.
+TestFolders :: (root: string, relative: string) -> string[] {
+    found: string[] = [];
+    folder := root;
+    if (relative != ".") {
+        folder = strings.Concatenate([root, "/", relative]);
+    }
+    names := os.List(folder).names;
+    holds := false;
+    for (name in names) {
+        if (strings.HasSuffix(name, ".chibi") && os.IsFile(strings.Concatenate([folder, "/", name]))) {
+            holds = true;
+        }
+    }
+    if (holds) {
+        found.append(relative);
+    }
+    for (name in names) {
+        if (strings.HasPrefix(name, ".") || name == "build" || !os.IsDirectory(strings.Concatenate([folder, "/", name]))) {
+            continue;
+        }
+        child := name;
+        if (relative != ".") {
+            child = strings.Concatenate([relative, "/", name]);
+        }
+        found.extend(TestFolders(root, child));
+    }
+    return found;
+}
+
+// The .chibi files of a package folder, in name order.
+TestFiles :: (folder: string) -> string[] {
+    files: string[] = [];
+    for (name in os.List(folder).names) {
+        if (strings.HasSuffix(name, ".chibi") && os.IsFile(strings.Concatenate([folder, "/", name]))) {
+            files.append(name);
+        }
+    }
+    return files;
+}
+
+// The text after `// error: ` on the last line of `text`, "" when it does not end so.
+ExpectedError :: (text: string) -> string {
+    lines := strings.SplitLines(strings.TrimRight(text, "\n\r"));
+    if (length(lines) == 0) {
+        return "";
+    }
+    last := lines[length(lines) - 1];
+    if (strings.HasPrefix(last, "// error: ")) {
+        return strings.TrimSuffix(strings.TrimPrefix(last, "// error: "), "\r");
+    }
+    return "";
+}
+
+TestScan :: struct {
+    package: string;
+    names: string[];
+    attributed: bool;
+    problem: string;
+}
+
+TestAttribute :: (nodes: syntax.Node[], fields: int[], text: string, attribute: int) -> bool {
+    member := nodes[attribute].first_child;
+    while (member >= 0) {
+        if (fields[member] == syntax.FieldName) {
+            value := nodes[member];
+            return strings.Slice(text, value.start, value.end - value.start) == "test";
+        }
+        member = nodes[member].next_sibling;
+    }
+    return false;
+}
+
+// The compiler's parser owns attribute syntax. Comments and whitespace between
+// an attribute and its declaration do not change which function is a test.
+ScanTests :: (text: string) -> TestScan {
+    found: TestScan = {package: "", names: [], attributed: false, problem: ""};
+    switch raw.Parse(text) {
+        case .Rejected(diagnostic):
+            found.problem = format_text("{}:{}: {}", diagnostic.line, diagnostic.column, diagnostic.message);
+        case .Parsed(nodes, fields, named, extra, root):
+            for (index in 0..<length(nodes)) {
+                if (nodes[index].kind == syntax.Attribute) {
+                    found.attributed = found.attributed || TestAttribute(nodes, fields, text, index);
+                }
+                if (nodes[index].kind == syntax.PackageHeader) {
+                    member := nodes[index].first_child;
+                    while (member >= 0) {
+                        if (fields[member] == syntax.FieldName) {
+                            value := nodes[member];
+                            found.package = strings.Slice(text, value.start, value.end - value.start);
+                        }
+                        member = nodes[member].next_sibling;
+                    }
+                }
+                if (nodes[index].kind != syntax.FunctionDeclaration) {
+                    continue;
+                }
+                name := "";
+                test := false;
+                member := nodes[index].first_child;
+                while (member >= 0) {
+                    node := nodes[member];
+                    if (fields[member] == syntax.FieldName) {
+                        name = strings.Slice(text, node.start, node.end - node.start);
+                    }
+                    if (node.kind == syntax.Attribute) {
+                        test = test || TestAttribute(nodes, fields, text, member);
+                    }
+                    member = node.next_sibling;
+                }
+                if (test) {
+                    found.names.append(name);
+                }
+            }
+    }
+    return found;
+}
+
+// The file the dispatcher goes in, and its text: ChibiRunTest(index) calls the index'th test.
+DispatcherName :: () -> string {
+    return "ChibiTestDispatch.chibi";
+}
+
+Dispatcher :: (package: string, names: string[]) -> string {
+    text := strings.Concatenate(["package ", package, "\n\npub ChibiRunTest :: (index: int) {\n"]);
+    for (index in 0..<length(names)) {
+        text = strings.Concatenate([text, format_text("    if (index == {}) {{\n        {}();\n    }}\n", index, names[index])]);
+    }
+    return strings.Concatenate([text, "}\n"]);
+}
+
+// The root program of one package's tests: runs the test named by its first argument.
+RootProgram :: (relative: string) -> string {
+    return strings.Concatenate(["package tests\n\nimport tested \"project:", relative, "\"\nimport os \"core:os\"\nimport strings \"core:strings\"\n\n",
+        "Main :: () -> int {\n    arguments := os.Arguments();\n    index := 0;\n    for (byte in strings.Bytes(arguments[0])) {\n        index = index * 10 + byte - 48;\n    }\n",
+        "    tested.ChibiRunTest(index);\n    return 0;\n}\n"]);
+}
+
+// The file, line and column of byte `at` of the sources joined as the producer joins them,
+// each followed by a newline when it lacks one.
+Place :: (paths: string[], sources: string[], at: int) -> string {
+    offset := 0;
+    for (index in 0..<length(paths)) {
+        size := strings.ByteLength(sources[index]);
+        if (!strings.HasSuffix(sources[index], "\n")) {
+            size += 1;
+        }
+        if (at < offset + size) {
+            before := strings.Slice(sources[index], 0, at - offset);
+            line := strings.Count(before, "\n") + 1;
+            column := at - offset - Maximum(strings.LastIndex(before, "\n"), -1);
+            return format_text("{}:{}:{}", strings.TrimPrefix(paths[index], "./"), line, column);
+        }
+        offset += size;
+    }
+    return "?";
+}
+
+Maximum :: (a: int, b: int) -> int {
+    if (a > b) {
+        return a;
+    }
+    return b;
+}
+
+// The joined sources the producer reports byte offsets in.
+Joined :: (sources: string[]) -> string {
+    parts: string[] = [];
+    for (source in sources) {
+        if (strings.HasSuffix(source, "\n")) {
+            parts.append(source);
+        } else {
+            parts.append(strings.Concatenate([source, "\n"]));
+        }
+    }
+    return strings.Join(parts, "");
+}
+
+// What a failed assert's report says, as `PATH:LINE:COL: Assertion failed: MESSAGE`. The report
+// is `assertion failed in function N at source bytes A to B`; the message is the last string
+// of the assert's own text.
+AssertionFailure :: (report: string, paths: string[], sources: string[]) -> string {
+    marker := "at source bytes ";
+    at := strings.Index(report, marker);
+    if (at < 0) {
+        return strings.TrimSpace(report);
+    }
+    numbers := strings.Fields(strings.TrimSpace(strings.Slice(report, at + strings.ByteLength(marker), strings.ByteLength(report) - at - strings.ByteLength(marker))));
+    if (length(numbers) < 3) {
+        return strings.TrimSpace(report);
+    }
+    start := Decimal(numbers[0]);
+    end := Decimal(numbers[2]);
+    joined := Joined(sources);
+    message := "";
+    if (start >= 0 && end > start && end <= strings.ByteLength(joined)) {
+        call := strings.Slice(joined, start, end - start);
+        quote := strings.LastIndex(call, "\"");
+        if (quote > 0) {
+            opening := strings.LastIndex(strings.Slice(call, 0, quote), "\"");
+            if (opening >= 0) {
+                message = strings.Slice(call, opening + 1, quote - opening - 1);
+            }
+        }
+    }
+    if (message == "") {
+        return format_text("{}: Assertion failed", Place(paths, sources, start));
+    }
+    return format_text("{}: Assertion failed: {}", Place(paths, sources, start), message);
+}
+
+// The value of decimal digits, -1 when `text` holds anything else.
+Decimal :: (text: string) -> int {
+    value := 0;
+    if (text == "") {
+        return -1;
+    }
+    for (byte in strings.Bytes(text)) {
+        if (byte < 48 || byte > 57) {
+            return -1;
+        }
+        value = value * 10 + byte - 48;
+    }
+    return value;
+}
+
+// Checks a package that expects a compile error: it must fail with exactly that first
+// diagnostic, in the file it names. Prints the outcome as a test's; true when it passed.
+RejectedAsExpected :: (label: string, relative: string, file: string, expected: string, inputs: Inputs, core: string) -> bool {
+    parent := Directory(relative);
+    failing := strings.Concatenate([relative, "/", file]);
+    if (relative == ".") {
+        failing = file;
+    }
+    message := expected;
+    colon := strings.Index(expected, ":");
+    if (colon > 0 && (strings.ByteAt(expected, 0) < 48 || strings.ByteAt(expected, 0) > 57)) {
+        // `NAME:LINE:COL: message` names a file beside this package's folder.
+        failing = strings.Slice(expected, 0, colon);
+        if (parent != "") {
+            failing = strings.Concatenate([parent, "/", failing]);
+        }
+        message = strings.Slice(expected, colon + 1, strings.ByteLength(expected) - colon - 1);
+    }
+    triple := HostTriple();
+    os := 1;
+    arch := 1;
+    if (strings.HasPrefix(triple, "aarch64-apple")) {
+        os = 2;
+        arch = 2;
+    } else if (strings.HasPrefix(triple, "x86_64-pc-windows")) {
+        os = 3;
+    }
+    rows := compiler.CollectScalarProgram("/project", ["core"], [route.Visible(core)], inputs.paths, inputs.sources, TargetFacts(),
+                                           Names(), Natives(), Ports(), Identities(), os, arch, "");
+    actual := "it compiled";
+    passed := false;
+    if (length(rows) < 2 || rows[1].kind == facts.RejectionRow) {
+        diagnostic := rows[length(rows) - 1];
+        actual = strings.Concatenate([Place(inputs.paths, inputs.sources, diagnostic.start), ": ", diagnostic.text]);
+        passed = actual == strings.Concatenate([failing, ":", message]);
+    }
+    if (passed) {
+        Say(format_text("PASS {}.compile_error", label));
+        return true;
+    }
+    Say(format_text("FAIL {}.compile_error", label));
+    Say(format_text("  {}: expected {}, got {}", failing, message, actual));
+    return false;
+}
+
+// Compiles and runs the tests of one package, printing each outcome and adding to `tally`.
+TestPackage :: (root: string, relative: string, core: string, llvm: string, triple: string, scratch: string,
+                invocation: CliInvocation, tally: Tally) -> Tally {
+    result := tally;
+    folder := root;
+    if (relative != ".") {
+        folder = strings.Concatenate([root, "/", relative]);
+    }
+    label := relative;
+    if (relative == ".") {
+        label = "project";
+    }
+    rejected := "";
+    rejected_file := "";
+    names: string[] = [];
+    attributed := false;
+    package := "";
+    for (file in TestFiles(folder)) {
+        read := os.ReadText(strings.Concatenate([folder, "/", file]));
+        if (read.error != nil) {
+            Complain(strings.Concatenate(["cannot read ", folder, "/", file]));
+            result.compiled = false;
+            return result;
+        }
+        expected := ExpectedError(read.text);
+        if (expected != "" && rejected == "") {
+            rejected = expected;
+            rejected_file = file;
+        }
+        scanned := ScanTests(read.text);
+        if (package == "") {
+            package = scanned.package;
+        }
+        if (expected == "" && scanned.problem != "" && strings.Contains(read.text, "@test")) {
+            Complain(strings.Concatenate([folder, "/", file, ":", scanned.problem]));
+            result.compiled = false;
+            return result;
+        }
+        names.extend(scanned.names);
+        attributed = attributed || scanned.attributed;
+    }
+    if (rejected == "" && !attributed) {
+        return result;
+    }
+    collections: string[] = ["core"];
+    directories: string[] = [core];
+    extra: Extra = {folder: strings.Concatenate([root, "/", relative]), name: DispatcherName(), text: Dispatcher(package, names),
+                    entry_name: "Main.chibi", entry_text: RootProgram(relative)};
+    gathered := GatherWith(root, collections, directories, "__tests__", "", extra);
+    if (gathered.problem != "") {
+        Complain(strings.Concatenate(["native: ", gathered.problem]));
+        result.compiled = false;
+        return result;
+    }
+    if (rejected != "") {
+        result.total += 1;
+        if (!RejectedAsExpected(label, relative, rejected_file, rejected, gathered, core)) {
+            result.failed += 1;
+        }
+        return result;
+    }
+    program := strings.Concatenate([scratch, "/program"]);
+    if (os.Exists(scratch)) {
+        CacheDiscard(scratch);
+    }
+    if (os.Exists(scratch) || !MakeFolders(scratch)) {
+        Complain(strings.Concatenate(["cannot make ", scratch]));
+        result.compiled = false;
+        return result;
+    }
+    options: DriverOptions = {level: invocation.mode, lines: invocation.debug, static_link: false, shared: false,
+                             folder: root, keep_module: false};
+    built := EmitOptions(collections, directories, gathered.paths, gathered.sources, triple, "Main", llvm, program, Jobs([]), options);
+    if (built != 0) {
+        Complain(strings.Concatenate(["test: cannot compile ", label]));
+        result.compiled = false;
+        return result;
+    }
+    for (index in 0..<length(names)) {
+        ran := os.Capture([program, format_text("{}", index)]);
+        result.total += 1;
+        if (ran.status == 0) {
+            Say(format_text("PASS {}.{}", label, names[index]));
+            continue;
+        }
+        result.failed += 1;
+        Say(format_text("FAIL {}.{}", label, names[index]));
+        Say(strings.Concatenate(["  ", AssertionFailure(ran.stderr, gathered.paths, gathered.sources)]));
+    }
+    return result;
+}
+
+// `chibi test [ROOT]`.
+TestCommand :: (invocation: CliInvocation) -> int {
+    llvm := LlvmFolder(invocation.llvm);
+    if (llvm == "") {
+        Complain(strings.Concatenate(["test needs LLVM: ", NeedsLlvm()]));
+        return 2;
+    }
+    core := CoreFolder();
+    if (core == "") {
+        Complain("cannot find the SDK's share/chibi/core; set CHIBI_CORE");
+        return 2;
+    }
+    root := os.RealPath(Default(invocation.path, "."));
+    if (root == "" || !os.IsDirectory(root)) {
+        Complain(format_text("test: cannot find {}", Default(invocation.path, ".")));
+        return 1;
+    }
+    triple := Default(invocation.target, HostTriple());
+    if (triple != HostTriple()) {
+        Complain("test requires the host target; use build --native to cross-compile");
+        return 2;
+    }
+    tally: Tally = {total: 0, failed: 0, compiled: true};
+    number := 0;
+    for (relative in TestFolders(root, ".")) {
+        scratch := strings.Concatenate([root, "/build/native/test/", format_text("{}", number)]);
+        number += 1;
+        tally = TestPackage(root, relative, core, llvm, triple, scratch, invocation, tally);
+    }
+    if (!tally.compiled) {
+        return 1;
+    }
+    Say(format_text("{} tests, {} failed", tally.total, tally.failed));
+    if (tally.failed > 0) {
+        return 1;
+    }
+    return 0;
+}

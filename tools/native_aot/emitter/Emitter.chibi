@@ -9,12 +9,25 @@ import strings "core:strings"
 // CollectScalar's rows. Each returns raw bytes the compiler host writes
 // unchanged: the module's IR, or why it has none.
 // Emit for the driver's target 0, 1 or 2: Linux x86-64, macOS arm64 or
-// Windows x64.
+// Windows x64; target 3 is a numeric Linux package generation.
 pub Emit :: (rows: facts.Row[], target: int) -> u8[] {
     targets := [abi.LinuxX64(), abi.MacOSArm64(), abi.WindowsX64()];
-    if (Library(rows) || target < 0 || target >= length(targets)) {
+    if (Library(rows)) {
         none: u8[] = [];
         return none;
+    }
+    if (target == 3) {
+        switch scalar.EmitShared(abi.LinuxX64(), rows) {
+            case .Emitted(text):
+                return Text(text);
+            case .Rejected(rejected):
+                return [];
+            case .Invalid(reason):
+                return [];
+        }
+    }
+    if (target < 0 || target >= length(targets)) {
+        return [];
     }
     return scalar.EmitBytesFor(targets[target], rows);
 }
@@ -37,16 +50,25 @@ pub EmitLibrary :: (rows: facts.Row[]) -> u8[] {
     return scalar.EmitBytesFor(abi.LinuxX64(), rows);
 }
 
-// Why native code cannot hold the library, or no bytes when the emitter did
+// Why native code cannot hold the library or package generation, or no bytes when the emitter did
 // not reject it: `chibi export --native` keeps a rejected library in the VM and
 // fails on anything else.
 pub Rejection :: (rows: facts.Row[]) -> u8[] {
     message := "";
-    switch scalar.Emit(rows) {
+    is_library := Library(rows);
+    result: scalar.Result = scalar.Result.Invalid("");
+    if (is_library) {
+        result = scalar.Emit(rows);
+    } else {
+        result = scalar.EmitShared(abi.LinuxX64(), rows);
+    }
+    switch result {
         case .Rejected(rejected):
             message = Located(rejected[1]);
         case .Invalid(reason):
-            message = "";
+            if (!is_library) {
+                message = reason;
+            }
         case .Emitted(text):
             message = "";
     }
@@ -56,7 +78,7 @@ pub Rejection :: (rows: facts.Row[]) -> u8[] {
 // Whether the rows are a native library's, which has no entry to link a
 // program from: its Document row names the library.
 Library :: (rows: facts.Row[]) -> bool {
-    return rows[1].kind == facts.DocumentRow && rows[1].text != "";
+    return length(rows) > 1 && rows[1].kind == facts.DocumentRow && rows[1].text != "";
 }
 pub Diagnose :: (rows: facts.Row[]) -> u8[] {
     message := "";

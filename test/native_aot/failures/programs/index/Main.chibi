@@ -1,0 +1,9 @@
+package index
+foreign { chibi_native_test_index :: () -> int }
+Main :: () -> int {
+    index := chibi_native_test_index();
+    if (index == -1) { return 7; }
+    if (index == 2147483647) { return 8; }
+    if (index == 0) { return 9; }
+    return index;
+}

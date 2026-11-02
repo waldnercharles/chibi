@@ -1,0 +1,24 @@
+package install_paths
+
+import files "graph:install"
+import os "core:os"
+
+// Pure path forms also run without constructing a runtime SDK.
+Main :: () -> int {
+    assert(files.IsAbsolute("/") && files.IsAbsolute("/a/b") && files.IsAbsolute("C:/") &&
+           files.IsAbsolute("d:\\tree\\child"), "POSIX and Windows absolute paths");
+    assert(!files.IsAbsolute("") && !files.IsAbsolute("relative/path") && !files.IsAbsolute("C:relative") &&
+           !files.IsAbsolute("1:/invalid"), "relative paths and drive-relative names stay relative");
+    assert(files.Parent("/a") == "/" && files.Parent("/") == "", "POSIX traversal stops at its root");
+    assert(files.Parent("C:/tree/child") == "C:/tree" && files.Parent("C:/tree") == "C:/" &&
+           files.Parent("C:/") == "" && files.Parent("d:\\tree\\child") == "d:/tree",
+           "Windows traversal stops before a drive-relative name");
+    if (os.Platform() == "Windows") {
+        assert(files.Parent("//server/share/child") == "//server/share" &&
+               files.Parent("//server/share") == "" && !files.IsAbsolute("//server"),
+               "UNC traversal stops at the share root");
+    } else {
+        assert(files.CanonicalPath("C:/") == "", "a foreign drive cannot resolve below the working directory");
+    }
+    return 0;
+}

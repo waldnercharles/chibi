@@ -127,24 +127,36 @@ NoStartModuleForWhatCannotRun :: () {
 }
 
 @test
-Kernel32ExportsWhatTheStartModulesImport :: () {
+WindowsLibrariesExportWhatTheStartModulesImport :: () {
     kernel32 := link.StartImports("x86_64-pc-windows-msvc");
     assert(kernel32.name == "kernel32", "kernel32");
     declared: string[] = [];
     for (context in [false, true]) {
-        for (line in strings.SplitLines(link.Start("x86_64-pc-windows-msvc", true, context))) {
+        lines := strings.SplitLines(link.Start("x86_64-pc-windows-msvc", true, context));
+        imported := link.SystemImports(lines);
+        if (context) {
+            assert(length(imported) == 1 && imported[0].name == "ucrtbase", "formatting names the UCRT import library");
+            Same(imported[0].symbols, ["__stdio_common_vsprintf"]);
+        } else {
+            assert(length(imported) == 0, "a context-free start takes only kernel32");
+        }
+        for (line in lines) {
             at := strings.Index(line, "@");
             end := strings.Index(line, "(");
             if (strings.HasPrefix(line, "declare dllimport ") && at >= 0 && end > at) {
                 name := strings.Slice(line, at + 1, end - at - 1);
-                assert(kernel32.symbols.contains(name), "the list has each import");
-                if (!declared.contains(name)) {
+                found := kernel32.symbols.contains(name);
+                if (found && !declared.contains(name)) {
                     declared.append(name);
                 }
+                for (imported_library in imported) {
+                    found = found || imported_library.symbols.contains(name);
+                }
+                assert(found, "the named libraries export each DLL import");
             }
         }
     }
-    assert(length(declared) == length(kernel32.symbols), "the modules import each of the list");
+    assert(length(declared) == length(kernel32.symbols), "the modules import each kernel32 export");
     assert(link.StartImports("x86_64-unknown-linux-gnu").name == "", "libc has the rest");
 }
 
@@ -271,4 +283,11 @@ LibraryLinesNameArchives :: () {
     for (index in 0..<length(names)) {
         assert(link.Archive(names[index], "/game", "/v") == archives[index], "a library line's archive");
     }
+}
+
+// Source-only entry for the native formatting regression's import consumer.
+pub Run :: () -> int {
+    WindowsLibrariesExportWhatTheStartModulesImport();
+    StartModulesKeepTheProcessArguments();
+    return 0;
 }

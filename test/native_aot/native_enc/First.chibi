@@ -1,11 +1,17 @@
 package loop
-Progress :: struct { count: int; }
+Detail :: struct { label: string; }
+Progress :: struct { count: int; text: string; detail: Detail; }
 Main :: () -> int { return 0; }
 Frame :: () -> int {
-    progress: retain Progress = {count: 0};
+    progress: retain Progress = {count: 0, text: "initial", detail: {label: "nested"}};
     message: retain string = "first generation";
     note: retain string = "seed";
     changed := Increment(&progress);
+    record_snapshot := progress;
+    progress.text = format_text("progress {}", progress.count);
+    progress.detail = {label: format_text("detail {}", progress.count)};
+    assert(record_snapshot.text != progress.text);
+    assert(record_snapshot.detail.label != progress.detail.label);
     snapshot := note;
     note = format_text("value {}", progress.count);
     assert(text_byte_length(snapshot) > 0);

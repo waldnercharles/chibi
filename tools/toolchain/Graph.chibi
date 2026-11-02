@@ -2,6 +2,7 @@ package toolchain
 
 import c "graph:c"
 import engine "graph:engine"
+import paths "graph:install"
 import os "core:os"
 import strings "core:strings"
 
@@ -88,6 +89,32 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
     }
     build_dir := Option(arguments, "--build", "");
     jobs := Count(Option(arguments, "--jobs", "8"));
+    selected: string[] = [];
+    native_products: string[] = [];
+    for (target in targets) {
+        if (engine.Selected(arguments, target)) {
+            if (length(engine.NativeArguments(target)) == 0) { selected.append(target); }
+            else { native_products.append(target); }
+        }
+    }
+    native_commands := "[\n\n]\n";
+    if (length(native_products) != 0) {
+        driver := Option(arguments, "--native-driver", "");
+        llvm := Option(arguments, "--llvm", "");
+        if (!paths.IsAbsolute(build_dir) || driver == "" || llvm == "" || jobs < 1) {
+            os.Print("graph: native products require absolute --build, --native-driver FILE, --llvm DIR and positive --jobs");
+            return 2;
+        }
+        native_commands = engine.NativeCommands(driver, llvm, os.Root(), build_dir, native_products, jobs);
+        if (length(selected) == 0) {
+            if (Option(arguments, "--commands-only", "") != "on" &&
+                engine.BuildNative(driver, llvm, os.Root(), build_dir, native_products, jobs) < 0) { return 1; }
+            if (os.MakeDirectory(build_dir) ||
+                os.WriteText(strings.Concatenate([build_dir, "/compile_commands.json"]), "[]\n") ||
+                os.WriteText(strings.Concatenate([build_dir, "/link_commands.json"]), native_commands)) { return 1; }
+            return 0;
+        }
+    }
     // The named profile as this machine provides it; each option overrides
     // what it names.
     profile_name := Option(arguments, "--profile", "sanitizer");
@@ -174,12 +201,6 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
         os.Print("graph: --build must be absolute, a compiler, archiver and ranlib must be found, and --jobs must be positive");
         return 2;
     }
-    selected: string[] = [];
-    for (target in targets) {
-        if (engine.Selected(arguments, target)) {
-            selected.append(target);
-        }
-    }
     if (Option(arguments, "--commands-only", "") != "on" &&
         engine.Selected(arguments, "reflect") && profile.reflect == "" &&
         (!os.Exists(strings.Join([profile.libclang_include, "/clang-c/Index.h"], "")) ||
@@ -211,6 +232,9 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
             }
         }
     }
+    if (length(native_products) != 0 && Option(arguments, "--commands-only", "") != "on" &&
+        engine.BuildNative(Option(arguments, "--native-driver", ""), Option(arguments, "--llvm", ""),
+                           os.Root(), build_dir, native_products, jobs) < 0) { return 1; }
     if (os.MakeDirectory(build_dir)) {
         os.Print("graph: creating the build directory failed");
         return 1;
@@ -227,7 +251,14 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
         return 1;
     }
     links := strings.Join([build_dir, "/link_commands.json"], "");
-    if (os.WriteText(links, engine.LinkCommands(tools, profile, os.Root(), build_dir, selected))) {
+    link_commands := engine.LinkCommands(tools, profile, os.Root(), build_dir, selected);
+    if (length(native_products) != 0) {
+        native_body := strings.TrimSuffix(strings.TrimPrefix(native_commands, "[\n"), "\n]\n");
+        c_body := strings.TrimSuffix(strings.TrimPrefix(link_commands, "[\n"), "\n]\n");
+        if (c_body != "") { native_body = strings.Concatenate([native_body, ",\n", c_body]); }
+        link_commands = strings.Concatenate(["[\n", native_body, "\n]\n"]);
+    }
+    if (os.WriteText(links, link_commands)) {
         os.Print("graph: writing link_commands.json failed");
         return 1;
     }

@@ -14,7 +14,7 @@ import strings "core:strings"
 Main :: () -> int {
     arguments := os.Arguments();
     if (length(arguments) != 4) {
-        os.Print("usage: probe WORK LLVM RUNTIME positive|tombstone-key|tombstone-value|facts|readonly");
+        os.Print("usage: probe WORK LLVM RUNTIME positive|tombstone-key|tombstone-value|facts|readonly|source");
         return 2;
     }
     work := arguments[0];
@@ -40,7 +40,7 @@ Main :: () -> int {
         type := native.MapOf(abi.IntStorage, abi.IntStorage);
         map := Constant(&test, type, 0);
         returned = Read(&test, native.MapLength, abi.IntStorage, map, 0, type);
-    } else if (mode == "facts") {
+    } else if (mode == "facts" || mode == "source") {
         // The independent facts consumer is emitted after choosing its target.
     } else {
         os.Print("native maps: unknown probe mode");
@@ -63,7 +63,14 @@ Main :: () -> int {
     names: string[] = [];
     source: native.Source = {file: "", directory: ""};
     text := "";
-    if (mode == "facts") {
+    if (mode == "source") {
+        read := os.ReadText(format_text("{}/source.ll", work));
+        if (read.error) { return 2; }
+        // Standalone source uses typed process failures. This ownership-only
+        // harness arms no quotas, and every failure must fail the probe.
+        text = strings.ReplaceAll(read.text, "declare void @chibi_native_step()\n", "");
+        text = strings.ReplaceAll(text, "declare void @chibi_native_failure(i32) noreturn\n", "");
+    } else if (mode == "facts") {
         rows := FactModule();
         for (row in rows) {
             if (row.kind == facts.AssertRow) {
@@ -94,6 +101,11 @@ Main :: () -> int {
     module := format_text("{}/maps-{}.ll", work, mode);
     globals := format_text("\n@map_test.expected_index = internal constant i1 {}\n", expected_index);
     runtime_text := runtime.text;
+    if (mode == "source") {
+        runtime_text = strings.Concatenate([runtime_text,
+            "\ndefine void @chibi_native_step() { ret void }\n",
+            "define void @chibi_native_failure(i32 %kind) noreturn { call void @exit(i32 134)\n unreachable }\n"]);
+    }
     if (!strings.Contains(text, "@chibi_scalar(ptr %ctx)")) {
         runtime_text = strings.ReplaceAll(runtime_text, "call i32 @chibi_scalar(ptr @map_test.context)",
                                          "call i32 @chibi_scalar()");
@@ -127,7 +139,11 @@ Main :: () -> int {
             return 1;
         }
     }
-    os.Print(format_text("native maps: {} at O0 and O2 passed, {} assertion sites", mode, test.checks));
+    if (mode == "source") {
+        os.Print("native maps: authored source at O0 and O2 passed with balanced allocations");
+    } else {
+        os.Print(format_text("native maps: {} at O0 and O2 passed, {} assertion sites", mode, test.checks));
+    }
     return 0;
 }
 
@@ -433,6 +449,9 @@ FactText :: (value: string) -> facts.Row {
 FactRead :: (type: int, variable: int) -> facts.Row {
     return Fact(facts.ReadRow, type, variable, 0, 0, "");
 }
+FactReference :: (type: int, variable: int) -> facts.Row {
+    return Fact(facts.RefRow, type, variable, 0, 0, "");
+}
 FactMap :: (op: int, type: int, mapped: int, count: int) -> facts.Row {
     literal := mapped;
     if (op == facts.MapNew || op == facts.MapCopy || op == facts.MapSet || op == facts.MapDelete) {
@@ -477,7 +496,7 @@ FactModule :: () -> facts.Row[] {
     FactStatement(&table, "n := m;", facts.LocalRow, mapped, 1, "n",
                   [FactRead(mapped, 0), FactMap(facts.MapCopy, mapped, 0, 1)]);
     FactStatement(&table, "m[1] = 99;", facts.AssignRow, mapped, 0, "",
-                  [FactRead(mapped, 0), FactInt(1), FactInt(99), FactMap(facts.MapSet, mapped, 0, 3)]);
+                  [FactReference(mapped, 0), FactInt(1), FactInt(99), FactMap(facts.MapSet, mapped, 0, 3)]);
     FactAssert(&table, "assert(m[1] == 99);",
                [FactRead(mapped, 0), FactInt(1), FactMap(facts.MapGet, facts.IntType, mapped, 2), FactInt(99)]);
     FactAssert(&table, "assert(n[1] == 7);",
@@ -485,13 +504,13 @@ FactModule :: () -> facts.Row[] {
     FactAssert(&table, "assert(m[93] == 0);",
                [FactRead(mapped, 0), FactInt(93), FactMap(facts.MapGet, facts.IntType, mapped, 2), FactInt(0)]);
     FactStatement(&table, "delete m[2];", facts.AssignRow, mapped, 0, "",
-                  [FactRead(mapped, 0), FactInt(2), FactMap(facts.MapDelete, mapped, 0, 2)]);
+                  [FactReference(mapped, 0), FactInt(2), FactMap(facts.MapDelete, mapped, 0, 2)]);
     FactAssert(&table, "assert(length(m) == 1);",
                [FactRead(mapped, 0), FactMap(facts.MapLength, facts.IntType, mapped, 1), FactInt(1)]);
     FactAssert(&table, "assert(length(n) == 2);",
                [FactRead(mapped, 1), FactMap(facts.MapLength, facts.IntType, mapped, 1), FactInt(2)]);
     FactStatement(&table, "m[2] = 22;", facts.AssignRow, mapped, 0, "",
-                  [FactRead(mapped, 0), FactInt(2), FactInt(22), FactMap(facts.MapSet, mapped, 0, 3)]);
+                  [FactReference(mapped, 0), FactInt(2), FactInt(22), FactMap(facts.MapSet, mapped, 0, 3)]);
     FactAssert(&table, "assert(m[2] == 22);",
                [FactRead(mapped, 0), FactInt(2), FactMap(facts.MapGet, facts.IntType, mapped, 2), FactInt(22)]);
     FactAssert(&table, "assert(m.has(2));",
@@ -525,7 +544,7 @@ FactModule :: () -> facts.Row[] {
     FactAssert(&table, "assert(length(dups) == 1);",
                [FactRead(text_map, 6), FactMap(facts.MapLength, facts.IntType, text_map, 1), FactInt(1)]);
     FactStatement(&table, "s[key] = label;", facts.AssignRow, text_map, 2, "",
-                  [FactRead(text_map, 2), FactRead(facts.StringType, 4), FactRead(facts.StringType, 5),
+                  [FactReference(text_map, 2), FactRead(facts.StringType, 4), FactRead(facts.StringType, 5),
                    FactMap(facts.MapSet, text_map, 0, 3)]);
     FactAssert(&table, "assert(s[\"a\\u0000b\"] == \"new\");",
                [FactRead(text_map, 2), FactText("a\u0000b"), FactMap(facts.MapGet, facts.StringType, text_map, 2),

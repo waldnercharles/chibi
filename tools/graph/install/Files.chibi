@@ -8,32 +8,84 @@ Join :: (parts: string[]) -> string {
     return strings.Join(parts, "");
 }
 
-pub Parent :: (path: string) -> string {
-    end := strings.LastIndex(path, "/");
-    if (end == 0 && path != "/") {
-        return "/";
+UpperA: int : 65;
+UpperZ: int : 90;
+LowerA: int : 97;
+LowerZ: int : 122;
+Colon: int : 58;
+Slash: int : 47;
+Backslash: int : 92;
+
+DriveRoot :: (path: string) -> bool {
+    if (strings.ByteLength(path) < 3) {
+        return false;
     }
-    return strings.Slice(path, 0, end);
+    drive := strings.ByteAt(path, 0);
+    letter := (drive >= UpperA && drive <= UpperZ) || (drive >= LowerA && drive <= LowerZ);
+    separator := strings.ByteAt(path, 2);
+    return letter && strings.ByteAt(path, 1) == Colon && (separator == Slash || separator == Backslash);
+}
+
+Normalize :: (path: string) -> string {
+    if (os.Platform() == "Windows" || DriveRoot(path)) {
+        return strings.ReplaceAll(path, "\\", "/");
+    }
+    return path;
+}
+
+// The end of '/', 'C:/', or a Windows '//server/share' root, never 'C:'.
+RootLength :: (path: string) -> int {
+    if (DriveRoot(path)) { return 3; }
+    if (os.Platform() == "Windows" && strings.HasPrefix(path, "//")) {
+        parts := strings.Split(strings.TrimPrefix(path, "//"), "/");
+        if (length(parts) < 2 || parts[0] == "" || parts[1] == "") { return 0; }
+        return 3 + strings.ByteLength(parts[0]) + strings.ByteLength(parts[1]);
+    }
+    if (strings.HasPrefix(path, "/")) { return 1; }
+    return 0;
+}
+
+pub IsAbsolute :: (path: string) -> bool {
+    return RootLength(Normalize(path)) != 0;
+}
+
+pub Parent :: (path: string) -> string {
+    normalized := Normalize(path);
+    root := RootLength(normalized);
+    while (strings.ByteLength(normalized) > root && strings.HasSuffix(normalized, "/")) {
+        normalized = strings.TrimSuffix(normalized, "/");
+    }
+    if (strings.ByteLength(normalized) == root) { return ""; }
+    end := strings.LastIndex(normalized, "/");
+    if (end < 0) { return ""; }
+    if (end < root) { return strings.Slice(normalized, 0, root); }
+    return strings.Slice(normalized, 0, end);
 }
 // Resolve existing components before interpreting '..', preserving symlink
 // semantics. Missing suffixes are normalized without creating directories.
 pub CanonicalPath :: (path: string) -> string {
-    result := "/";
-    parts := strings.Split(path, "/");
+    normalized := Normalize(path);
+    // A Windows-looking root is still a relative filename to POSIX realpath.
+    // Classify it for portable path checks, but never resolve it on that host.
+    if (DriveRoot(normalized) && os.Platform() != "Windows") { return ""; }
+    root := RootLength(normalized);
+    if (root == 0) { return ""; }
+    result := os.RealPath(strings.Slice(normalized, 0, root));
+    if (result == "") { return ""; }
+    result = Normalize(result);
+    parts := strings.Split(strings.Slice(normalized, root, strings.ByteLength(normalized)), "/");
     for (index in 0..<length(parts)) {
         part := parts[index];
         if (part == "" || part == ".") {
             continue;
         }
         if (part == "..") {
-            result = Parent(result);
-            if (result == "") {
-                result = "/";
-            }
+            parent := Parent(result);
+            if (parent != "") { result = parent; }
             continue;
         }
         candidate := Join([result, "/", part]);
-        if (result == "/") {
+        if (strings.HasSuffix(result, "/")) {
             candidate = Join([result, part]);
         }
         resolved := os.RealPath(candidate);
@@ -44,7 +96,7 @@ pub CanonicalPath :: (path: string) -> string {
         }
         result = candidate;
         if (resolved != "") {
-            result = resolved;
+            result = Normalize(resolved);
         }
     }
     return result;
@@ -121,7 +173,7 @@ pub CopyTree :: (source: string, destination: string) -> bool {
     return true;
 }
 pub RemoveTree :: (path: string) -> bool {
-    if (os.IsDirectory(path)) {
+    if (os.Kind(path) == os.KindDirectory) {
         for (name in files.Names(path)) {
             if (!RemoveTree(Join([path, "/", name]))) {
                 return false;

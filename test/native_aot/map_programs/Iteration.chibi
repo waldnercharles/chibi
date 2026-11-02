@@ -1,0 +1,218 @@
+package map_iteration
+
+Main :: () -> int {
+    StableOrder();
+    EmptyAndDeadPositions();
+    Nested();
+    BreakAndContinue();
+    assert(Early([1: 10, 2: 20, 3: 30]) == 20);
+    assert(Early([:]) == 0);
+    Strings();
+    Temporaries();
+    Snapshot();
+    return 0;
+}
+
+StableOrder :: () {
+    values: [int: int] = [3: 30, 1: 10, 2: 20];
+    values[3] = 31;
+    delete values[1];
+    values[1] = 11;
+    keys: int[] = [3, 2, 1];
+    expected: int[] = [31, 20, 11];
+    index: int = 0;
+    for (key, value in values) {
+        assert(key == keys[index] && value == expected[index]);
+        index += 1;
+    }
+    assert(index == 3);
+    total: int = 0;
+    for (value in values) {
+        total += value;
+    }
+    assert(total == 62);
+}
+
+EmptyAndDeadPositions :: () {
+    empty: [int: int] = [:];
+    visited: int = 0;
+    for (key, value in empty) {
+        visited += 1;
+    }
+    for (value in empty) {
+        visited += 1;
+    }
+    assert(visited == 0);
+    values: [int: int] = [:];
+    for (index in 0..<32) {
+        values[index] = index + 100;
+    }
+    delete values[3];
+    next: int = 0;
+    for (key, value in values) {
+        if (next == 3) {
+            next += 1;
+        }
+        assert(key == next && value == next + 100);
+        next += 1;
+        visited += 1;
+    }
+    assert(visited == 31 && next == 32);
+    for (index in 0..<32) {
+        delete values[index];
+    }
+    for (key, value in values) {
+        visited += 1;
+    }
+    assert(visited == 31);
+}
+
+Nested :: () {
+    left: [int: int] = [1: 10, 2: 20];
+    right: [int: int] = [3: 30, 4: 40];
+    order: int = 0;
+    total: int = 0;
+    for (key, value in left) {
+        for (other, amount in right) {
+            order = order * 100 + key * 10 + other;
+            total += value + amount;
+        }
+    }
+    assert(order == 13142324 && total == 200);
+    count: int = 0;
+    for (value in left) {
+        for (other in right) {
+            if (other == 30) {
+                continue;
+            }
+            count += 1;
+            break;
+        }
+    }
+    assert(count == 2);
+}
+
+BreakAndContinue :: () {
+    values: [int: int] = [5: 50, 6: 60, 7: 70, 8: 80];
+    total: int = 0;
+    for (value in values) {
+        if (value == 60) {
+            continue;
+        }
+        if (value == 80) {
+            break;
+        }
+        total += value;
+    }
+    assert(total == 120);
+    total = 0;
+    for (key, value in values) {
+        if (key == 6) {
+            continue;
+        }
+        if (key == 8) {
+            break;
+        }
+        total += key + value;
+    }
+    assert(total == 132);
+}
+
+Early :: (values: [int: int]) -> int {
+    for (key, value in values) {
+        if (key >= 2) {
+            return value;
+        }
+    }
+    return 0;
+}
+
+Key :: (last: u8) -> string {
+    return text_from_bytes([u8(97), 0, last]);
+}
+Word :: (first: u8) -> string {
+    return text_from_bytes([first, u8(120)]);
+}
+Strings :: () {
+    first := Key(98);
+    second := Key(99);
+    values: [string: string] = [first: Word(66), second: Word(67)];
+    keys: string[] = [first, second];
+    expected: string[] = ["Bx", "Cx"];
+    index: int = 0;
+    for (key, value in values) {
+        assert(key == keys[index] && value == expected[index]);
+        if (index == 0) {
+            delete values[first];
+            delete values[second];
+        }
+        index += 1;
+    }
+    assert(index == 2 && !values.has(first) && !values.has(second));
+    held: string = "";
+    for (value in TextMap()) {
+        held = value;
+        break;
+    }
+    assert(held == "Bx");
+    assert(EarlyText() == "Cx");
+}
+
+TextMap :: () -> [string: string] {
+    return [Key(98): Word(66), Key(99): Word(67)];
+}
+EarlyText :: () -> string {
+    for (key, value in TextMap()) {
+        if (key == Key(99)) {
+            return value;
+        }
+    }
+    return "";
+}
+
+Make :: (calls: ^int) -> [int: int] {
+    calls^ += 1;
+    return [9: 90, 4: 40];
+}
+Temporaries :: () {
+    calls: int = 0;
+    index: int = 0;
+    keys: int[] = [9, 4];
+    for (key, value in Make(&calls)) {
+        assert(key == keys[index] && value == key * 10);
+        index += 1;
+    }
+    assert(calls == 1 && index == 2);
+    total: int = 0;
+    for (value in Make(&calls)) {
+        total += value;
+    }
+    assert(calls == 2 && total == 130);
+}
+
+Clear :: (values: ^([int: int])) {
+    values^ = [:];
+}
+Snapshot :: () {
+    values: [int: int] = [1: 10, 2: 20, 3: 30];
+    alias := values;
+    index: int = 0;
+    for (key, value in values) {
+        assert(key == index + 1 && value == (index + 1) * 10);
+        values[key] = value + 100;
+        delete values[2];
+        values[4] = 40;
+        index += 1;
+    }
+    assert(index == 3 && values[1] == 110 && values[3] == 130 && values[4] == 40);
+    assert(!values.has(2) && alias[1] == 10 && alias[2] == 20 && alias[3] == 30);
+    index = 0;
+    for (key, value in alias) {
+        if (index == 0) {
+            Clear(&alias);
+        }
+        assert(key == index + 1 && value == (index + 1) * 10);
+        index += 1;
+    }
+    assert(index == 3 && !alias.has(1) && !alias.has(2) && !alias.has(3));
+}

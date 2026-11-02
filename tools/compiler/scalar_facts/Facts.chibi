@@ -300,15 +300,22 @@ pub FunctionAddressRow: int : 40;
 pub YieldRow: int : 41;
 pub AwaitRow: int : 42;
 pub CancelRow: int : 43;
+// CancelAfter consumes a task handle and an f64 duration. Delay consumes an
+// f64 duration and suspends until it expires. Both give int 0.
+pub CancelAfterRow: int : 46;
+pub DelayRow: int : 47;
 pub CallPlain: int : 0;
 pub CallAwaited: int : 1;
 pub CallSpawned: int : 2;
 // A postfix map operation. New consumes alternating key/value operands;
-// changes consume map, key and optionally value, and give the replacement map.
+// changes consume a map place, key and optionally value, and give the replacement map.
 // Reads use `literal` for their input map type and `type` for their result.
 // A map's assignment or declaration copies through MapCopy before sharing.
+// MapSet/MapDelete consume a reference to the target variable, then the key
+// and optional value. The operation reads that place after its arguments,
+// so a call in the key/value may replace the map before the change applies.
 pub MapRow: int : 50;
-// What a RefRow of `type` pushes on a call's operand stack, and so what a
+// What a RefRow of `type` pushes on the operand stack, and so what a
 // reference parameter of `type` takes: ReferenceType plus the type. A
 // parameter row whose literal is 1 is a reference parameter. Its variable is
 // of its `type` for every other row, and reading or writing it reads or
@@ -340,8 +347,8 @@ pub StringType: int : 12;
 pub RecordType: int : 32;
 // An array of type T is ArrayType + T.
 pub ArrayType: int : 1024;
-// A map from scalar/string K to scalar/string V is MapType + V * 16 + K.
-// Records and nested containers need their ownership rules before admission.
+// A map from scalar/string K to scalar/string/record V is MapType + V * 16 + K.
+// Lowering checks whether the record's fields have supported ownership.
 pub MapType: int : 2048;
 pub MapNew: int : 1;
 pub MapLength: int : 2;
@@ -386,6 +393,8 @@ pub ShiftRight: int : 10;
 pub Negate: int : 1;
 pub Complement: int : 2;
 pub Not: int : 3;
+// The scalar f32 built-in, with the same precision as ordinary math lowering.
+pub SquareRoot: int : 4;
 
 // Logical operators: the source's && and ||.
 pub LogicalAnd: int : 1;
@@ -427,12 +436,16 @@ pub SwitchSubject: int : 1;
 // Function.variable, so reordering fields does not change their identities.
 pub Retained: int : 2;
 
-// A For row's range flags; RangeArray stands alone or with RangeKeyed, which
-// declares the next variable, an int, as the index of the element.
+// A For row's range flags. RangeArray stands alone or with RangeKeyed,
+// which declares the next variable, an int, as the index of the element.
 pub RangeExclusive: int : 1;
 pub RangeReverse: int : 2;
 pub RangeArray: int : 4;
 pub RangeKeyed: int : 8;
+// A map loop's type is the map type. Its bindings are the value alone, or
+// with RangeKeyed the key followed by the value, in insertion order. Its
+// operand is borrowed unless the producer supplies a snapshot copy.
+pub RangeMap: int : 16;
 
 // Conversions between integer types: `T(value)` clamps the value to T, and
 // `T(wrap: value)` keeps its low bits. A floating value converts to an

@@ -117,6 +117,15 @@ status=0
 (cd "$work/import run" && timeout 90 "$host") || status=$?
 test "$status" -eq 7
 
+# A void Main is called once and adapts to zero status; Frame still controls exit.
+mkdir -p "$work/void main" "$work/void run"
+printf 'package loop\nMain :: () { calls: retain int = 0; calls += 1; assert(calls == 1); }\nFrame :: () -> int { return 7; }\n' > "$work/void main/Main.chibi"
+must_build "$work/void main" shared
+cp "$(output "$work/void main")" "$work/void run/live-0.so"
+status=0
+(cd "$work/void run" && timeout 90 "$host") || status=$?
+test "$status" -eq 7
+
 # Invalid edits preserve the already published generation byte for byte and
 # publish no second generation. Test real diagnostics, not just nonzero status.
 project="$work/package first"
@@ -138,8 +147,6 @@ printf 'package loop\nMain :: () -> int { return 0; }\n' > "$project/Main.chibi"
 rejected 'native package generations require Main and Frame'
 printf 'package loop\nFrame :: () -> int { return 0; }\n' > "$project/Main.chibi"
 rejected 'native package generations require Main and Frame'
-printf 'package loop\nMain :: () { }\nFrame :: () -> int { return 0; }\n' > "$project/Main.chibi"
-rejected 'scalar proof requires its first function to return int'
 printf 'package loop\nFrame :: () -> int { return 0; }\nMain :: (x: int) -> int { return x; }\n' > "$project/Main.chibi"
 rejected 'Main and Frame with a zero-argument int ABI'
 printf 'package loop\nFrame :: () -> int { return 0; }\nMain :: () -> f64 { return 0.0; }\n' > "$project/Main.chibi"

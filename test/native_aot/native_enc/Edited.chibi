@@ -1,0 +1,14 @@
+package loop
+
+Progress :: struct { extra: int; count: int; }
+Main :: () -> int { return 9; }
+Frame :: () -> int {
+    progress: retain Progress = {extra: 37, count: 0};
+    message: retain string = "edited generation";
+    note: retain string = "reset";
+    if progress.count < 3 { return 3; }
+    if message != "first generation" { return 4; }
+    if progress.extra != 37 { return 5; }
+    if text_byte_length(note) < 6 { return 6; }
+    return 7;
+}

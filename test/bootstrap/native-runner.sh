@@ -84,7 +84,7 @@ printf 'host\n' >> "$SEED_EVENTS"
 HOST
 chmod +x "$scratch/legacy-host"
 printf 'tool\tnative\tsh\t%s\ntool\tlegacy\t@host@\ngroup\tmixed\tnative\tlegacy\n' "$scratch/native-tool" > tools/tests.tsv
-export SEED_EVENTS=$scratch/seed-events LEGACY_SEED_STATUS=23
+export SEED_EVENTS="$scratch/seed-events" LEGACY_SEED_STATUS=23
 : > "$SEED_EVENTS"
 run
 test ! -s "$SEED_EVENTS"
@@ -96,7 +96,7 @@ if "$scratch/driver" build test --build-host "$scratch/legacy-host" legacy; then
 printf 'seed tools/compiler/bootstrap\n' > "$scratch/expected-events"
 cmp "$scratch/expected-events" "$SEED_EVENTS"
 : > "$SEED_EVENTS"
-"$scratch/driver" build test --dry-run --build-host "$scratch/legacy-host" legacy > "$scratch/seed-plan"
+"$scratch/driver" build test --dry-run --build-host "$scratch/legacy-host" legacy > "$scratch/seed-plan" 2>&1
 grep -q 'legacy-seed: sh tools/bootstrap/seed.sh' "$scratch/seed-plan"
 test ! -s "$SEED_EVENTS"
 export LEGACY_SEED_STATUS=0

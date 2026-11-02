@@ -1,5 +1,7 @@
 package native_link
 
+import strings "core:strings"
+
 // The start modules: the LLVM IR of the shim that starts a native program,
 // calls its entry `chibi_scalar() -> i32` (`chibi_scalar(ptr)` with a runtime
 // context when `context` is set) and makes the result the exit status. Link it
@@ -489,6 +491,8 @@ PosixArguments :: () -> string {
         "  %w = sext i32 %n to i64\n",
         "  ret i64 %w\n",
         "}\n",
+        "define ptr @chibi_process_argv() {\n",
+        "  %a = load ptr, ptr @chibi_argv\n  ret ptr %a\n}\n",
         "define ptr @chibi_environment() {\n",
         "  %e = load ptr, ptr @chibi_envp\n",
         "  ret ptr %e\n",
@@ -928,4 +932,22 @@ pub Start :: (triple: string, static: bool, context: bool) -> string {
         return Join([module, WindowsArguments()]);
     }
     return Join([module, PosixArguments()]);
+}
+
+// A shared generation has no process entry. Its host-call wrappers use the
+// same libc-backed runtime as an executable, held privately by this generation.
+pub SharedContext :: (triple: string, context: bool) -> string {
+    if (TargetOf(triple) != LinuxX64) {
+        return "";
+    }
+    module := DynamicStart(triple, context);
+    boundary := strings.Index(module, "define i32 @main(");
+    assert(boundary > 0);
+    module = strings.Slice(module, 0, boundary);
+    module = strings.ReplaceAll(module, "@chibi_context = global", "@chibi_context = hidden global");
+    module = Join([module, PosixArguments(),
+        "define i32 @chibi_host_set_process(i64 %count, ptr %arguments, ptr %environment) {\n",
+        "  %n = trunc i64 %count to i32\n  store i32 %n, ptr @chibi_argc\n",
+        "  store ptr %arguments, ptr @chibi_argv\n  store ptr %environment, ptr @chibi_envp\n  ret i32 0\n}\n"]);
+    return strings.ReplaceAll(module, "= dso_local global", "= hidden global");
 }

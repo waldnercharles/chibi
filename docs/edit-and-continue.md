@@ -127,7 +127,7 @@ VM session above remains the implementation behind `chibi --watch`.
 ### Status
 
 Native programs do this on Linux x86-64: `chibi run --native --watch [-O0|-O2] [--llvm DIR] PATH`
-builds the library source in PATH's folder as a generation (`chibi build --native --shared`), runs
+builds the library or package source in PATH's folder as a generation (`chibi build --native --shared`), runs
 it under the loop host (`apps/host/Host.chibi`, written in Chibi and built natively), and rebuilds
 and publishes each saved edit as the next generation. The host calls `Main` once, calls `Frame`
 until it returns a nonzero status, which is the exit status, and swaps `next.so` in between two
@@ -137,7 +137,31 @@ fails to build is reported and the running one continues; one that fails to load
 `rejected.so`. The `native-build` case `WatchesAndSwapsARunningLoop`
 (`test/native_aot/native_build/BuildTests.chibi`) edits a running loop and checks the exit status that
 only a surviving count gives; `SwapsARunningLoopKeepingState` does the same with the editor played by the
-test. Not done: a source that is a program rather than a `library` block, other targets.
+test. Ordinary packages also build as numeric generations when they define
+zero-argument `Main` and `Frame` with an int result ABI (`() -> int`; a non-entry
+void `Frame` also has the existing int-zero adaptation). The isolated real-driver test
+`test/native_aot/generations/run.sh` swaps a package while inserting a function and a retained
+binding, and changing retained numeric types. Retained keys remain `Function.variable` names;
+package generation function IDs are local indices, not stable prepared-artifact identities.
+Duplicate function names across imported packages are rejected rather than aliased.
+
+Package generations have a private libc-backed runtime context, so arrays, string
+operations and assertions keep their native behavior. An assertion failure exits the host
+with status 134. Retained numbers, bools, standalone strings and numeric/bool records migrate by
+named leaves. Record fields can be reordered or added; a new leaf takes its initializer.
+Initializers must be scalar/string literals or constant record construction. Arrays,
+unions, task handles and records containing strings remain unsupported as retained state. Changing a shared leaf
+between a string and a scalar rejects the incoming generation before state is written.
+Strings are copied into the incoming generation, including strings whose bytes originally
+lived in the old object's constant data.
+
+A retired generation stays loaded while its tasks are pending. The host polls those tasks
+between active Frames, then cancels/releases their scheduler storage and retained values
+before unloading the generation. On program exit it cancels every generation's tasks.
+`test/native_aot/generations/run.sh NATIVE_COMPILER LLVM_BIN` exercises native package
+reloads, numeric conversions, record field migration, retained strings, incompatible
+schema rejection, runtime allocation and assertions. The VM and C hosts remain until the
+other migration gates pass.
 
 ## Limits
 

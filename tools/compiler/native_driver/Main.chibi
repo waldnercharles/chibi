@@ -172,11 +172,19 @@ EmitOptions :: (collections: string[], directories: string[], paths: string[], s
     }
     compiled: Output = Output.Rejected("");
     if (shared) {
-        if (length(paths) != 1 || chosen != "") {
-            os.Print("native: a shared library takes one source and no --entry");
+        if (chosen != "") {
+            os.Print("native: a shared generation takes no --entry");
             return 1;
         }
-        compiled = LibraryModule(paths[0], sources[0]);
+        if (LibrarySource(sources[0])) {
+            if (length(paths) != 1) {
+                os.Print("native: a library declaration takes one source");
+                return 1;
+            }
+            compiled = LibraryModule(paths[0], sources[0]);
+        } else {
+            compiled = ModuleShared(collections, visible, paths, sources, triple, "", directory);
+        }
     } else {
         compiled = Module(collections, visible, paths, sources, triple, chosen, directory);
     }
@@ -227,6 +235,9 @@ EmitOptions :: (collections: string[], directories: string[], paths: string[], s
     // when it takes the context (the other functions are `@chibi_scalar.N`).
     // Definitions start a line; a text constant never does.
     context := strings.Contains(pieces[0], "\ndefine i32 @chibi_scalar(ptr %ctx)");
+    if (shared) {
+        context = strings.Contains(pieces[0], "\n@chibi_context = external global ");
+    }
     static := windows || (linux && options.static_link);
     if (options.static_link && linux && context) {
         os.Print("native: a program that allocates links libc dynamically; omit --static");
@@ -235,7 +246,7 @@ EmitOptions :: (collections: string[], directories: string[], paths: string[], s
     // A library's module is its manifest and functions, with no entry.
     is_library := strings.Contains(pieces[0], "\n@chibi_natives_");
     if (shared != is_library) {
-        os.Print("native: --shared builds a library source, and only it");
+        os.Print("native: --shared requires a library or a package generation");
         return 2;
     }
     // Each piece of the module is optimized and compiled to its own object,
@@ -267,7 +278,9 @@ EmitOptions :: (collections: string[], directories: string[], paths: string[], s
     }
     files.extend(objects);
     start := "";
-    if (!shared) {
+    if (shared) {
+        start = link.SharedContext(triple, context);
+    } else {
         start = link.Start(triple, static, context);
     }
     if (start != "") {

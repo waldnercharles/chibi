@@ -2707,7 +2707,6 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
              params: Param[], table: ^(TypeDecl[]), members: TypeMember[], constants: ConstDecl[], natives: ResolvedNative[], ports: ResolvedPort[],
              makes: NativeMake[], make_fields: int[], names: Name[], package: int, values: Value[], top: int,
              built: int[], item: Work, ops: Ops, target: Target, at: Bases) -> Step {
-    types := table^;
     node := forest[item.node];
     code: Code[] = [];
     slots: Slot[] = [];
@@ -2720,28 +2719,28 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     next: Work[] = [];
     marks: int[] = [];
     if (item.phase == 1 && item.c == MathCall) {
-        return MathConstructStep(forest, text, document, types, members, constants, names, package,
+        return MathConstructStep(forest, text, document, table^, members, constants, names, package,
                                  slice(values, top - item.b, item.b), item.a, item.b, ops, target, at, node);
     }
     if (item.phase == 1 && item.c == MathFunctionCall) {
         name := Text(forest, text, Field(forest, item.node, syntax.FieldFunction));
-        return MathFunctionStep(forest, text, document, types, members, constants, names, package,
+        return MathFunctionStep(forest, text, document, table^, members, constants, names, package,
                                 name, slice(values, top - item.b, item.b), item.b, ops, target, at, node);
     }
     if (item.phase == 0) {
         callee := Field(forest, item.node, syntax.FieldFunction);
-        hidden := PrivateAccess(forest, text, callables, types, constants, names, package, callee);
+        hidden := PrivateAccess(forest, text, callables, table^, constants, names, package, callee);
         if (hidden >= 0) {
             return Fail(forest, hidden, document, PrivateMessage(Text(forest, text, hidden)));
         }
         sum_type: int = -1;
         if (Is(forest, callee, syntax.MemberExpression)) {
-            sum_type = UnionOf(forest, text, types, names, package, callee);
+            sum_type = UnionOf(forest, text, table^, names, package, callee);
         }
         if (sum_type >= 0) {
             // A variant with a payload: each argument is a payload field, in order.
             member := Text(forest, text, Field(forest, callee, syntax.FieldMember));
-            variant := FindVariant(types, sum_type, member);
+            variant := FindVariant(table^, sum_type, member);
             if (variant < 0) {
                 return Fail(forest, callee, document, format_text("Unknown variant '{}'", member));
             }
@@ -2751,16 +2750,16 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 if (Is(forest, argument, syntax.NamedArgument)) {
                     return Fail(forest, argument, document, "named payload arguments are not supported yet");
                 }
-                if (count >= types[variant].count) {
+                if (count >= table^[variant].count) {
                     break;
                 }
-                field := members[types[variant].first + count];
+                field := members[table^[variant].first + count];
                 next.append(Expect(argument, field.storage, field.container, field.record));
                 next.append(Resume(argument, CopyValuePhase, 0, 0));
                 count += 1;
                 argument = NextMember(forest, argument);
             }
-            if (argument >= 0 || count != types[variant].count) {
+            if (argument >= 0 || count != table^[variant].count) {
                 return Fail(forest, item.node, document, "variant payload needs one value per field");
             }
             finish := Resume(item.node, 1, variant, count);
@@ -2876,14 +2875,14 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 next.extend([Visit(argument), Resume(argument, MathCapturePhase, 0, 0)]);
                 count += 1;
             }
-            finish := Resume(item.node, 1, MathRecord(types, math_kind), count);
+            finish := Resume(item.node, 1, MathRecord(table^, math_kind), count);
             finish.c = MathCall;
             next.append(finish);
             return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
         }
         if (qualifier < 0 && found == -1 && MathFunctionName(callee_name) &&
             (callee_name == "step" || FindNative(natives, callee_name) == -1 ||
-             MathArguments(forest, text, types, members, callables, natives, ports, names, package, item.node))) {
+             MathArguments(forest, text, table^, members, callables, natives, ports, names, package, item.node))) {
             positional := true;
             arguments := Members(forest, Field(forest, item.node, syntax.FieldArguments));
             for (argument in arguments) {
@@ -2916,7 +2915,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         }
         conversion: int = 0;
         if (qualifier < 0 && found < 0 && callee_name == "char") {
-            if (CharIndex(types) < 0) {
+            if (CharIndex(table^) < 0) {
                 return Fail(forest, item.node, document, "char conversion needs its nominal type");
             }
             argument := FirstMember(forest, Field(forest, item.node, syntax.FieldArguments));
@@ -3232,7 +3231,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                             NoValue(), marks);
     }
     if (item.c == CharConversionCall) {
-        return CharConversionStep(forest, document, types, values[top - 1], item, ops, target, at);
+        return CharConversionStep(forest, document, table^, values[top - 1], item, ops, target, at);
     }
     if (item.c == ConversionCall) {
         // A conversion to types item.a in mode item.b. A constant converted
@@ -3304,7 +3303,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         // returned variant is built in the caller's storage, so the return
         // need not copy it, with a mask of the payload values it keeps there:
         // the locals the function builds there. It copies the others.
-        variant := types[item.a];
+        variant := table^[item.a];
         returned := Returned(forest, item.node);
         keep: i64 = 0;
         argument_node := FirstMember(forest, Field(forest, item.node, syntax.FieldArguments));
@@ -3331,7 +3330,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         while (index < count) {
             argument := values[first + index];
             field := members[variant.first + index];
-            if (!Accepts(types, field.storage, field.container, field.record, argument)) {
+            if (!Accepts(table^, field.storage, field.container, field.record, argument)) {
                 return Fail(forest, item.node, document, "payload value differs from its field type");
             }
             cell: Cell = {storage: argument.storage, container: argument.container, record: argument.record,
@@ -3370,14 +3369,14 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         result.owned = true;
         emitted := Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, count,
                                 result, NoValue(), marks);
-        return CleanupSequenceValues(emitted, Held(types, members, slice(values, first, count)), ops, target, at, node);
+        return CleanupSequenceValues(emitted, Held(table^, members, slice(values, first, count)), ops, target, at, node);
     }
-    argument_reads := ArgumentReadEffects(types, members, slice(values, first, count));
+    argument_reads := ArgumentReadEffects(table^, members, slice(values, first, count));
     chosen := item.a;
     if (item.c == NativeChoiceCall) {
         // An overloaded native: the one whose parameters take the arguments.
         callee := Field(forest, item.node, syntax.FieldFunction);
-        chosen = Overload(forest, text, document, item.node, constants, callables, types, names, package,
+        chosen = Overload(forest, text, document, item.node, constants, callables, table^, names, package,
                           natives, ports, NativeCallName(forest, text, item.node), NativeSources(forest, item.node, false),
                           values, first);
         if (chosen == -2) {
@@ -3443,7 +3442,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 return Fail(forest, problem, document, message);
             case .Bound(supplied, total):
                 given = supplied;
-                switch NativeBoundValues(forest, text, document, item.node, constants, callables, types, names,
+                switch NativeBoundValues(forest, text, document, item.node, constants, callables, table^, names,
                                          package, natives[chosen], ports, supplied, total, values, first,
                                          ops, at) {
                     case .Failed(problem, message):
@@ -3460,11 +3459,11 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             shifted: Bases = {pc: at.pc + length(code), slot: at.slot + length(slots), local: at.local,
                               cell: at.cell, host: at.host, call: at.call};
             made := NativeCallPrefix(code, slots, next,
-                                     MakeStep(forest, document, types, members, makes[make], make_fields,
+                                     MakeStep(forest, document, table^, members, makes[make], make_fields,
                                               arguments, 0, length(arguments), item.node, ops, target, shifted, node),
                                      count);
             // A make copies its arguments into the record; the caller drops those it owns.
-            return CleanupSequenceValues(made, Held(types, members, slice(values, first, count)), ops, target, at, node);
+            return CleanupSequenceValues(made, Held(table^, members, slice(values, first, count)), ops, target, at, node);
         }
     } else {
         called := callables[item.a];
@@ -3489,8 +3488,8 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     }
     if (linked && natives[chosen].name == "resize" && length(arguments) > 0) {
         source := arguments[0];
-        element := SequenceElement(types, {storage: source.storage, container: source.container, record: source.record});
-        if (NeedsPointerValue(types, members, element.storage, element.container, element.record)) {
+        element := SequenceElement(table^, {storage: source.storage, container: source.container, record: source.record});
+        if (NeedsPointerValue(table^, members, element.storage, element.container, element.record)) {
             return Fail(forest, item.node, document, "resize cannot create missing initialized values");
         }
     }
@@ -3511,7 +3510,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                     if (argument.container != ArrayContainer && argument.container != ViewContainer) {
                         return Fail(forest, item.node, document, "argument differs from its parameter type");
                     }
-                    part := SequenceElement(types, {storage: argument.storage, container: argument.container,
+                    part := SequenceElement(table^, {storage: argument.storage, container: argument.container,
                                                     record: argument.record});
                     element = Typed(-1, part.storage, part.container, part.record);
                 } else if (port.container != 0) {
@@ -3531,12 +3530,12 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 expected = Typed(-1, ReferenceStorage, 0, -1);
             }
         }
-        if (CharValue(types, argument) && expected.storage > 0 &&
-            !CharWidens(types, expected.storage, expected.container, expected.record, argument) &&
-            !CharType(types, expected.storage, expected.container, expected.record)) {
+        if (CharValue(table^, argument) && expected.storage > 0 &&
+            !CharWidens(table^, expected.storage, expected.container, expected.record, argument) &&
+            !CharType(table^, expected.storage, expected.container, expected.record)) {
             return Fail(forest, item.node, document, "argument differs from its parameter type");
         }
-        if (CharWidens(types, expected.storage, expected.container, expected.record, argument)) {
+        if (CharWidens(table^, expected.storage, expected.container, expected.record, argument)) {
             if (argument.storage != expected.storage) {
                 output := at.slot + length(slots);
                 slots.extend(NumberSlots(argument.storage, expected.storage));
@@ -3561,9 +3560,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             argument = Typed(at.slot + length(slots) - 1, expected.storage, 0, -1);
             arguments[index] = argument;
         }
-        takes := Accepts(types, expected.storage, expected.container, expected.record, argument);
+        takes := Accepts(table^, expected.storage, expected.container, expected.record, argument);
         if (linked) {
-            takes = NativeTakes(types, expected, argument);
+            takes = NativeTakes(table^, expected, argument);
         }
         if (!takes) {
             return Fail(forest, item.node, document, "argument differs from its parameter type");
@@ -3588,7 +3587,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     named_results: bool = false;
     task := !linked && callables[item.a].waits && !ImmediatelyAwaited(forest, item.node);
     if (task) {
-        unsupported := TaskResultSupport(callables[item.a], types, params);
+        unsupported := TaskResultSupport(callables[item.a], table^, params);
         if (unsupported != "") {
             return Fail(forest, item.node, document, unsupported);
         }
@@ -3617,16 +3616,15 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             if (inferred.storage == 0) {
                 return Fail(forest, item.node, document, "native result type is not known");
             }
-            if (CharType(types, inferred.storage, 0, inferred.record)) {
+            if (CharType(table^, inferred.storage, 0, inferred.record)) {
                 return Fail(forest, item.node, document, "generic char native results are not supported yet");
             }
             inferred_type: ValueType = {storage: inferred.storage, container: inferred.container, record: inferred.record};
             if (port.container == ArrayContainer) {
-                if (inferred_type.container != 0 || OptionalElement(types, inferred).storage != 0) {
+                if (inferred_type.container != 0 || OptionalElement(table^, inferred).storage != 0) {
                     EnsureSequenceCollection(table, inferred_type, package);
-                    types = table^;
                 }
-                inferred_type = SequenceArrayType(types, inferred_type);
+                inferred_type = SequenceArrayType(table^, inferred_type);
             }
             result = Typed(-1, inferred_type.storage, inferred_type.container, inferred_type.record);
         }
@@ -3654,7 +3652,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         result = Typed(-1, called.result, called.result_container, called.result_record);
         result_count = 1;
     }
-    if (result.container != 0 && CharType(types, result.storage, 0, result.record)) {
+    if (result.container != 0 && CharType(table^, result.storage, 0, result.record)) {
         return Fail(forest, item.node, document, "char containers are not supported yet");
     }
     if (result.storage > 0 && !named_results) {
@@ -3735,7 +3733,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                                            NoValue(), marks),
                               at.cell + total, ops, target, at, node);
     // The call lent its arguments; the caller drops those it owns.
-    return EffectsStep(CleanupSequenceValues(emitted, Held(types, members, slice(values, first, count)),
+    return EffectsStep(CleanupSequenceValues(emitted, Held(table^, members, slice(values, first, count)),
                                              ops, target, at, node), argument_reads);
 }
 

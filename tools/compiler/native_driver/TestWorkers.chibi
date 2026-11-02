@@ -60,6 +60,10 @@ TestRuns :: (label: string, names: string[], effects: int[], program: string, sc
             if (process > 0) { status = os.Wait(process, -1); }
             error := os.ReadText(error_path);
             message := error.text;
+            if (error.error != nil) {
+                message = "cannot read the native test error output";
+                if (status == 0) { status = 2; }
+            }
             if (process <= 0) { message = "cannot start the native test process"; }
             ran: os.Result = {status: status, stdout: "", stderr: message};
             result = TestReport(label, names[first], ran, paths, sources, result);
@@ -99,8 +103,19 @@ TestRuns :: (label: string, names: string[], effects: int[], program: string, sc
                 output := os.ReadText(format_text("{}/{}.stdout", scratch, reported));
                 error := os.ReadText(format_text("{}/{}.stderr", scratch, reported));
                 message := error.text;
+                status := statuses[reported - first];
+                if (output.error != nil) {
+                    if (message != "") { message = strings.Concatenate([message, "\n"]); }
+                    message = strings.Concatenate([message, "cannot read the native test standard output"]);
+                    if (status == 0) { status = 2; }
+                }
+                if (error.error != nil) {
+                    if (message != "") { message = strings.Concatenate([message, "\n"]); }
+                    message = strings.Concatenate([message, "cannot read the native test error output"]);
+                    if (status == 0) { status = 2; }
+                }
                 if (processes[reported - first] < 0) { message = "cannot start the native test process"; }
-                ran: os.Result = {status: statuses[reported - first], stdout: output.text, stderr: message};
+                ran: os.Result = {status: status, stdout: output.text, stderr: message};
                 result = TestReport(label, names[reported], ran, paths, sources, result);
                 reported += 1;
             }

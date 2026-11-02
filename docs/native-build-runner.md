@@ -5,10 +5,19 @@
 its SHA-256 before use. A cached seed is verified again on every invocation.
 `--native-driver PATH` selects a different compiler explicitly.
 
+Windows x64 uses `tools/build.ps1` with Windows PowerShell 5.1 or PowerShell 7. It verifies
+the same manifest through `tools/bootstrap/native-seed.ps1`, then delegates
+to the native CLI's checkout build. It restores the caller's working directory
+and preserves the child status and argument boundaries. Until a Windows release
+passes the fixed-point/runtime proof and is published and pinned, default
+selection stops with status 3. An explicit verified candidate works through
+`--native-driver C:/path/to/chibi.exe`; no Windows release pin is invented.
+
 LLVM/LLD 22 or newer is required. The tools come from `--llvm DIR`,
 `CHIBI_LLVM_BIN`, or the directory containing `opt` on `PATH`. The directory must contain `opt`, `llc` and the platform's linker:
-`ld.lld` on Linux, `ld64.lld` on macOS. The supported native default platforms
-are Linux x64 and macOS arm64. Windows filesystem, cache and asynchronous process
+`ld.lld` on Linux, `ld64.lld` on macOS, or `lld-link.exe` on Windows, alongside
+`opt.exe` and `llc.exe`. The pinned native default platforms are currently
+Linux x64 and macOS arm64. Windows filesystem, cache and asynchronous process
 operations use kernel32 and have Windows execution checks. The authored runner's
 Windows paths, private directories, cleanup and receipts have also passed on
 Windows. The default bootstrap entry still needs a verified Windows seed.
@@ -24,6 +33,8 @@ also account for this limit.
 ```
 CHIBI_LLVM_BIN=/path/to/llvm/bin sh tools/build.sh build --release
 sh tools/build.sh test --llvm /path/to/llvm/bin --list
+# Windows, with an explicit candidate until its release is pinned:
+./tools/build.ps1 build --native-driver C:/compiler/chibi.exe --llvm C:/llvm/bin
 ```
 
 ## Entry and program caches
@@ -90,3 +101,8 @@ checks cleanup, and verifies the repaired program runs without a build host.
 The Windows checkout consumer additionally builds both default native products
 from a checkout descendant with an empty `PATH`, missing C/VM tools and unset
 `CHIBI_CORE`, then runs the produced CLI against its packaged core.
+It also exercises the PowerShell entry with a real native build program:
+explicit/default selection, cold/warm verification, corrupted bytes, failed
+checksums, empty/quoted/Unicode arguments, exit status and caller-directory
+restoration. Both seed fetchers reject malformed or duplicate manifest rows
+before accepting a warm cache or downloading anything.

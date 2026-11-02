@@ -76,3 +76,4 @@ CHIBI_CORE=$root/packages/core "$scratch/exit-statuses" "$compiler" "$llvm" "$sc
     --source "$root/test/native_cli/RunAssertions.chibi" --entry Main --output "$scratch/run-assertions" \
     --llvm "$llvm" --target "$target"
 CHIBI_CORE=$root/packages/core "$scratch/run-assertions" "$compiler" "$llvm" "$scratch/programs"
+python3 "$root/test/native_cli/foreground.py" "$compiler" "$llvm"

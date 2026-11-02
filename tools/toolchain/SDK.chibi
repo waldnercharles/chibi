@@ -76,8 +76,9 @@ WasmInputs :: (build_dir: string) -> bool {
         if (threaded) { name = "libchibi_asset_compiler_threads.a"; }
         archive := Join([directory, "/", name]);
         digest := os.HashFile(archive);
+        if (digest.error != nil) { return false; }
         read := os.ReadText(Join([archive, ".json"]));
-        if (digest.error != nil || read.error != nil || strings.ByteLength(read.text) > 4096) { return false; }
+        if (read.error != nil || strings.ByteLength(read.text) > 4096) { return false; }
         fields := json.JsonFields(read.text);
         if (length(fields) != 7) { return false; }
         for (field in fields) {
@@ -106,10 +107,19 @@ WasmInputs :: (build_dir: string) -> bool {
 // Staged compiler sources exclude non-authored files such as legacy seeds.
 // Verify both directions so extra or missing authored sources cannot pass.
 SameSources :: (source: string, staged: string) -> bool {
-    if (os.Kind(source) != os.KindDirectory || os.Kind(staged) != os.KindDirectory) { return false; }
+    if (os.Kind(source) != os.KindDirectory) { return false; }
+    kind := os.Kind(staged);
+    if (kind != os.KindNone && kind != os.KindDirectory) { return false; }
     original := os.List(source);
-    copied := os.List(staged);
-    if (original.error || copied.error) { return false; }
+    if (original.error) { return false; }
+    copied_names: string[] = [];
+    if (kind == os.KindDirectory) {
+        copied := os.List(staged);
+        if (copied.error) { return false; }
+        copied_names = copied.names;
+    }
+    // Empty directories, including test scratch parents, do not change the
+    // authored source inventory. A missing .chibi file still fails below.
     for (name in original.names) {
         from := Join([source, "/", name]);
         to := Join([staged, "/", name]);
@@ -117,10 +127,14 @@ SameSources :: (source: string, staged: string) -> bool {
             if (!SameSources(from, to)) { return false; }
         } else if (strings.HasSuffix(name, ".chibi") && !files.SameTree(from, to)) { return false; }
     }
-    for (name in copied.names) {
+    for (name in copied_names) {
         from := Join([source, "/", name]);
         to := Join([staged, "/", name]);
-        if (!os.Exists(from) || (os.IsFile(to) && !strings.HasSuffix(name, ".chibi"))) { return false; }
+        if (os.Kind(from) == os.KindDirectory) {
+            if (os.Kind(to) != os.KindDirectory) { return false; }
+        } else if (!strings.HasSuffix(name, ".chibi") || os.Kind(from) != os.KindFile || os.Kind(to) != os.KindFile) {
+            return false;
+        }
     }
     return true;
 }
@@ -149,7 +163,10 @@ Verify :: () -> int {
     reserved := Join([arguments[0], "/.compiler-tools-probe"]);
     published := Join([reserved, ".published"]);
     if (os.Reserve(reserved)) { return 1; }
-    if (os.Publish(reserved, published)) { os.Remove(reserved); return 1; }
+    if (os.Publish(reserved, published)) {
+        if (os.Remove(reserved)) { os.Print(Join(["sdk: capability check directory retained at ", reserved])); }
+        return 1;
+    }
     if (os.Remove(published)) { return 1; }
     return 0;
 }
@@ -225,7 +242,7 @@ CompilerTools :: () -> int {
         }
     }
     if (!SameSources(Join([root, "/tools/compiler"]), Join([build_dir, "/share/chibi/compiler"])) ||
-        !files.SameTree(Join([root, "/packages/core"]), Join([build_dir, "/share/chibi/core"]))) {
+        !SameSources(Join([root, "/packages/core"]), Join([build_dir, "/share/chibi/core"]))) {
         os.Print("sdk: graph compiler/core resources are missing or stale; rebuild the native products");
         return 1;
     }

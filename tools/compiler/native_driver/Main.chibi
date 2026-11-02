@@ -264,8 +264,8 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
         }
         partial := strings.Concatenate([output, ".partial"]);
         if (os.WriteText(partial, text) != nil || os.Rename(partial, output) != nil) {
-            removed := os.Remove(partial);
             os.Print("native: cannot publish the LLVM module bundle");
+            DiscardPath(partial);
             return 2;
         }
         return 0;
@@ -397,7 +397,7 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
         return ToolFailure(link_error.kind, link_error.code, "LLVM link failed");
     }
     for (name in files) {
-        removed := os.Remove(name);
+        DiscardPath(name);
     }
     return 0;
 }
@@ -503,6 +503,8 @@ ImportedFrom :: (text: string, collection: string) -> string[] {
 PackageFiles :: (folder: string, tests: bool) -> string[] {
     files: string[] = [];
     listed := os.List(folder);
+    // GatherWith reports this empty result as a package with no sources.
+    if (listed.error != nil) { return files; }
     for (name in listed.names) {
         if (strings.HasSuffix(name, ".chibi") && (tests || !strings.HasSuffix(name, "Tests.chibi")) && os.IsFile(strings.Concatenate([folder, "/", name]))) {
             files.append(name);

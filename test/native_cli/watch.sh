@@ -11,8 +11,8 @@ log=$work/watch.log
 cleanup() {
     status=$?
     if [ -n "$process" ] && kill -0 "$process" 2>/dev/null; then
-        # The native host shares the CLI's foreground group for Ctrl-C. This
-        # test terminates only its owned children when a check fails.
+        # The CLI supervises its native host group. This test terminates only
+        # its owned processes when a check fails.
         for child in $(ps -axo pid=,ppid= | awk -v parent="$process" '$2 == parent { print $1 }'); do
             kill "$child" 2>/dev/null || :
         done
@@ -281,3 +281,15 @@ Frame :: () -> int {
 SOURCE
 finish 42
 printf 'native watch: root entries and imported retained identities survive import reordering\n'
+
+# Explicit Frame statuses can equal 128+signal. Only raw cancellation signals
+# end an editing session successfully; these ordinary statuses stay unchanged.
+mkdir "$work/status"
+for expected in 130 143; do
+    printf 'package frame_status\nFrame :: () -> int { return %s; }\n' "$expected" >"$work/status/Main.chibi"
+    log=$work/status-$expected.log
+    "$driver" run --watch -O0 --llvm "$llvm" "$work/status" >"$log" 2>&1 &
+    process=$!
+    finish "$expected"
+done
+printf 'native watch: explicit Frame statuses 130 and 143 are preserved\n'

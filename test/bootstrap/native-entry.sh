@@ -152,6 +152,24 @@ cmp "$scratch/expected" "$ENTRY_RESULT"
 CHIBI_LLVM_BIN=$checkout/llvm CHIBI_BUILD_HOST=$checkout/missing sh tools/build.sh census
 count "$next"
 test "$(wc -l < "$ENTRY_DOWNLOADS" | tr -d ' ')" = 1
+# Manifest validation precedes even a valid warm cache. Match the Windows
+# fetcher's exact field, character, duplicate and lowercase digest contract.
+cp tools/bootstrap/native-seed.tsv "$scratch/valid-pin.tsv"
+for invalid in duplicate path option uppercase short platform extra; do
+    case "$invalid" in
+        duplicate) cat "$scratch/valid-pin.tsv" "$scratch/valid-pin.tsv" > tools/bootstrap/native-seed.tsv ;;
+        path) printf '%s\ttag\t../escape\t%s\n' "$platform" "$seed_hash" > tools/bootstrap/native-seed.tsv ;;
+        option) printf '%s\t--option\tasset\t%s\n' "$platform" "$seed_hash" > tools/bootstrap/native-seed.tsv ;;
+        uppercase) printf '%s\ttag\tasset\t%s\n' "$platform" "$(printf '%s' "$seed_hash" | tr 'a-f' 'A-F')" > tools/bootstrap/native-seed.tsv ;;
+        short) printf '%s\ttag\tasset\tshort\n' "$platform" > tools/bootstrap/native-seed.tsv ;;
+        platform) printf 'alien-x64\ttag\tasset\t%s\n' "$seed_hash" > tools/bootstrap/native-seed.tsv ;;
+        extra) printf '%s\ttag\tasset\t%s\textra\n' "$platform" "$seed_hash" > tools/bootstrap/native-seed.tsv ;;
+    esac
+    if sh tools/build.sh census --llvm "$checkout/llvm"; then exit 1; else test "$?" = 2; fi
+    count "$next"
+    test "$(wc -l < "$ENTRY_DOWNLOADS" | tr -d ' ')" = 1
+done
+cp "$scratch/valid-pin.tsv" tools/bootstrap/native-seed.tsv
 # Damaged cached bytes are replaced only by a verified download.
 printf 'damaged\n' > "$seed"
 sh tools/build.sh census --llvm "$checkout/llvm"

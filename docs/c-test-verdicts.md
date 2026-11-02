@@ -44,7 +44,7 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/tools/box3d.c` | 2 | the third-party box3d library | goes with the C engine build |
 | `test/tools/collab.c`, `web_storage.c` | 5, 19 | the Node collab server; chibi-studio's `web_storage.js` | not Chibi: these move to Node tests in their owners' repositories |
 | `test/tools/build_process.c` | 53 | the C build host's natives | goes, except 16 core:os cases |
-| `test/tools/chibi_cli.c` | 24 | `apps/chibi` launched by the C apphost | 17 cases survive as CLI behavior |
+| `test/tools/chibi_cli.c` (retired 2026-11-02) | 24 | `apps/chibi` launched by the C apphost | native CLI behavior is covered by `ChibiCliTests.chibi` and `test/native_cli/foreground.py`; launcher/VM mechanics leave with the host |
 | `test/tools/native_workloads.c` | 2 | `chibi build --native` end to end | `native_workloads_build_and_run` survives |
 
 ## What survives, and where it goes
@@ -134,7 +134,14 @@ They don't port:
   `private_unwaited_and_late_steps_stop`: the two implementations disagree, so these
   wait on an owner decision.
 
-### The CLI: `test/graph/ChibiCliTests.chibi` (ported), which drives the built `chibi` like `BuildTests.chibi`
+### The CLI: native public commands (ported)
+
+`chibi-cli` runs `test/graph/ChibiCliTests.chibi` through the native compiler, then
+`test/native_cli/foreground.py`. `chibi-cli-installed` runs the same suite against an
+installed SDK; `chibi-cli-process` runs only the POSIX process cases. The C CLI harness,
+its tooling-executable echo mode and its source registration are retired.
+
+`ChibiCliTests.chibi` drives the built or installed native `chibi`:
 
 - `version` and `doctor`, apart from the backend line:
   - `version_reads_the_build_identity`;
@@ -155,13 +162,24 @@ They don't port:
   - `installed_package_commands`;
   - the reporting part of `compiler_test_reports_each_test`.
 
-  Its PASS/FAIL reporting is C today (`src/host/compile_tests.c`), so these tests are the
-  specification for its replacement.
+  Native test workers preserve PASS/FAIL reporting and physical assertion locations.
 - `chibi run --watch`:
   - `program_watch_tracks_siblings_and_keeps_imported_state`;
-  - the uncovered parts of `program_watch_patches_a_running_frame_and_keeps_state`;
+  - `program_watch_patches_a_running_frame_and_keeps_state`, including entry removal,
+    rejected edits and retained-state reset on restoration;
   - from `program_session.c`: a rejected source or entry keeps the accepted program, a
     broken edit keeps state, and an unreachable package's error is never reported.
+- POSIX child ownership and terminals (`test/native_cli/foreground.py`):
+  - the four parent-only INT/TERM cases, including a child and descendant that ignore signals;
+  - the six ordinary/watch terminal cases, typed input, Ctrl-Z and resume, Ctrl-C,
+    redirected stdin with `/dev/tty`, and a prior exited child;
+  - signal exit statuses, watch cancellation status 0, and child/root group cleanup.
+
+The removed C cases that checked launcher compilation reuse, native-driver wrapper argv,
+VM-only package filtering/core admission, independent C program sessions and retired SDK
+companions described the retired launcher/host. Relocation still runs a native program
+from a copied SDK; editing `apps/chibi` no longer overrides the native executable.
+
 - `chibi build --native` of `test/native_aot/workloads` at O0 and O2
   (`native_workloads_build_and_run`): ported as `BuildTests.chibi`'s
   `BuildsTheWorkloads`, which checks each kernel's checksum. The timings stay with

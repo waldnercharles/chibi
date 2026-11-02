@@ -1,0 +1,26 @@
+package monotonic_scratch
+
+import posix "core:sys/posix"
+
+foreign { chibi_value_test_allocations :: () -> u64 }
+
+Main :: () -> int {
+    scratch := resize([u8(0)], 16);
+    allocations := chibi_value_test_allocations();
+    previous := posix.MonotonicMilliseconds(&scratch);
+    assert(previous >= 0, "the monotonic clock is available");
+    for index in 0..<1024 {
+        now := posix.MonotonicMilliseconds(&scratch);
+        assert(now >= previous, "monotonic samples do not go backwards");
+        previous = now;
+    }
+    current := chibi_value_test_allocations();
+    assert(current == allocations, "reusing uniquely owned clock scratch does not allocate");
+    empty: u8[] = [];
+    invalid := posix.MonotonicMilliseconds(&empty);
+    assert(invalid == -1, "undersized scratch is rejected before the foreign write");
+    short := resize([u8(0)], 15);
+    truncated := posix.MonotonicMilliseconds(&short);
+    assert(truncated == -1, "a truncated platform timespec cannot be written");
+    return 0;
+}

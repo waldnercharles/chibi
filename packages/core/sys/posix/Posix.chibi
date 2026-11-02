@@ -1226,11 +1226,15 @@ pub ForegroundStart :: (command: string[]) -> Foreground {
     return scope;
 }
 
-ForegroundMillis :: (stamp: u8[]) -> i64 {
-    read := clock_gettime(i32(ForegroundClock), stamp);
+// A monotonic millisecond sample, or -1 when the clock cannot be read.
+// Reuse at least 16 scratch bytes for the platform timespec. A uniquely
+// owned buffer needs no allocation; an undersized buffer returns -1.
+pub MonotonicMilliseconds :: (stamp: ^(u8[])) -> i64 {
+    if (length(stamp^) < 16) { return -1; }
+    read := clock_gettime(i32(ForegroundClock), stamp^);
     if (read != 0) { return -1; }
-    seconds := i64(u64(Word32(stamp, 0)) | (u64(Word32(stamp, 4)) << 32));
-    nanos := i64(u64(Word32(stamp, 8)) | (u64(Word32(stamp, 12)) << 32));
+    seconds := i64(u64(Word32(stamp^, 0)) | (u64(Word32(stamp^, 4)) << 32));
+    nanos := i64(u64(Word32(stamp^, 8)) | (u64(Word32(stamp^, 12)) << 32));
     return seconds * 1000 + nanos / 1000000;
 }
 
@@ -1254,10 +1258,10 @@ pub ForegroundWait :: (scope: ^Foreground, timeout_ms: int) -> int {
             scope^.cancelled = 1;
             if (notice[0] == 73) { scope^.cancelled = 2; }
             else if (notice[0] == 84) { scope^.cancelled = 15; }
-            scope^.cancel_started = ForegroundMillis(clock);
+            scope^.cancel_started = MonotonicMilliseconds(&clock);
         }
         if (scope^.cancelled != 0) {
-            now := ForegroundMillis(clock);
+            now := MonotonicMilliseconds(&clock);
             if (now < 0 || scope^.cancel_started < 0) {
                 scope^.problem = "cannot read the foreground cancellation clock";
                 killed := kill(i32(0 - scope^.pid), 9);

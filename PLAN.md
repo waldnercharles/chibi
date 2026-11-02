@@ -1,13 +1,70 @@
 # Native toolchain continuation
 
 The November 2 handoff continues in PR #1331 on `codex/native-default-20261102`.
-The next combined checkpoint has compiler/core source `776ead2f1`, following
-CI merge `a76ea8005`; its exact-revision platform CI is pending. Further work is composed
+The published checkpoint `b0f4dfa0b` has compiler/core source `776ead2f1`, following
+CI merge `a76ea8005`. Further work is composed
 on `codex/native-runtime-completion-20261102`. The owner's checkout and
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
 ## Current checkpoint, 2 November
+
+CI run `41531103929` reproduces Linux stages three and four byte for byte
+(`1cff2a7d8d021daa4639df9537ba6fb136323f0317dd6a89976885c132e70b36`).
+It then fails the Windows cross-link on LLVM-generated `memset`.
+`7576fe5c1` supplies freestanding memory operations and checks 1,056 cases at
+O0/O2, including an explicit UCRT collision check. `4db6b2eb4` repairs a deleted
+helper still called by a retained Linux C test. The completed run also exposes
+native language gaps on macOS. It is not a green combined run.
+
+The next batch includes POSIX process-group and terminal supervision, its watch
+adapter, waiting scalar foreign calls, native core/portable selectors, source
+inventory receipts and the Windows PowerShell 5.1 bootstrap. The original
+fallible-result checker now also runs on native source; its stricter coverage
+found unchecked cleanup errors in the native driver. The callers now consume
+those errors, and a missing test-output file can no longer produce a false
+PASS. `3736ee5b5` preserves false optional-bool payloads after a presence guard;
+the seven original cases and parenthesized variants pass at O0/O2.
+
+The compiler/core snapshot at `9306b2fe0` builds through the `776ead2f1`-derived
+intermediate compiler in 110.63 seconds. Its next native generation is byte-identical,
+SHA-256 `40d00b84123ae44eb8bf5453747276666338b3f298a717f42c3b1acba5c1db58`.
+The original `60901f2fa` pin rejects the newer combined source, so advancing the
+verified seed is required before the next normal checkout build. The existing
+`60901f2fa` → `776ead2f1` proof below is the intermediate upgrade evidence.
+CI run `41539102677` on `c5c0a1ac2` retains Linux native candidates and their
+fixed-point log; artifact existence alone is not acceptance. Local Linux
+self-build attempts were killed by Docker's memory limit, including one worker
+(`OOMKilled=true`); other running services were left untouched.
+
+All seventeen CLI survivor cases pass through the public native compiler,
+together with four parent-signal and six terminal cases (43.02 seconds).
+The six backend survivors pass on macOS (36.01 seconds) and Linux (151.40
+seconds), including exact bounds diagnostics and child-process cleanup. Their
+C harness deletions are being integrated. Fresh installed-SDK acceptance is
+pending: the old `build-native-product-proof` fixture correctly rejects its
+stale compiler/core resources before reaching the intended installer checks.
+
+Remaining ownership is explicit:
+
+- CLI lane: Windows public watch acceptance and the live compile-only asset
+  facade. Replace desktop/browser C orchestration, cache and generated identity
+  C with authored code and LLVM ABI adapters while preserving diagnostics,
+  quotas, cancellation, thread isolation and caller-owned outputs.
+- Producer and collector lanes: source pointers and precise ownership roots;
+  reload lane: retained arrays and nominal retained schemas.
+- Driver lane: remaining authored language samples and error-result handling.
+- Tasks lane: the six remaining C native-backend cases, preserving their live
+  behaviors before deleting the C harness.
+- Cutover lane: all seventeen CLI survivors and signal/terminal counterparts.
+- Root: graph fixtures that depend on retired C targets, final host/VM deletion,
+  recovery-command and CI retirement, combined review and platform acceptance.
+- Windows lane: optimized memory helpers, real Windows execution, and verified
+  fixed-point seed preparation. Root owns final seed publication and pinning.
+
+No further owner decision is pending. Archived engine and Studio services stay
+archived. The public compile-only API remains a live dependency until its
+replacement passes; its C wrapper is not an acceptable final state.
 
 Published `590030513` failed before runtime testing: the pinned native seed
 could not read an optional error record's fields while compiling the newer
@@ -68,8 +125,8 @@ named revisions, not the latest integration. Remaining deletion gates are:
 
 - Finish native language and ownership parity, including live pointer forms,
   array-backed records/maps and managed suspended/retained values.
-- Complete the 17 authored CLI survivor cases and three live Edit-and-Continue
-  behaviors from `docs/c-test-verdicts.md`; port surviving scalar/C test cases.
+- Integrate the reviewed CLI and backend harness deletions after their passing
+  survivor proofs; retain the native cases in the canonical selectors.
 - Finish remaining live graph/CLI consumers; native build/link and producer tests are migrated.
 - Validate the combined installed compiler, CLI, asset companion and optional
   browser SDK on each supported platform, including Windows execution.

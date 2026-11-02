@@ -815,11 +815,14 @@ ScalarCommon :: (left: int, right: int) -> int {
     }
     return left;
 }
-// The storage two untyped literals of spelled storages `left` and `right`
-// compare at: double beside a floating spelling, else their common integer.
+// Untyped comparison operands first take their spelled storages, then meet
+// at the wider floating storage, or their common integer storage.
 ScalarSpelled :: (left: int, right: int) -> int {
     if (left == DoubleStorage || right == DoubleStorage) {
         return DoubleStorage;
+    }
+    if (left == FloatStorage || right == FloatStorage) {
+        return FloatStorage;
     }
     if (!Integer(left) || !Integer(right) || CommonInteger(left, right) < 0) {
         return 0;
@@ -1897,14 +1900,24 @@ ScalarConversion :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         output.append(ScalarAt(forest, node, facts.TaskRunningRow, facts.BoolType, 0, 1, ""));
         return ScalarOperands.Built(output);
     }
-    // An optional where a bool is expected is true when it is not nil.
-    if (own == UnionStorage && storage == BoolStorage &&
-        ScalarOptional(types, ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, operand))) {
-        output := rows;
-        output.extend([ScalarAt(forest, operand, facts.TagRow, facts.IntType, 0, 1, ""),
-                       ScalarLiteral(forest, operand, facts.IntType, 0),
-                       ScalarAt(forest, node, facts.CompareRow, facts.BoolType, facts.NotEqual, 2, "")]);
-        return ScalarOperands.Built(output);
+    // Before presence is known, a bool context tests the optional's tag.
+    // The ordinary checker narrows a proven bool payload first, so false
+    // remains false inside its guard. Nil comparisons still inspect the tag.
+    if (own == UnionStorage && storage == BoolStorage) {
+        optional := ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, operand);
+        if (ScalarOptional(types, optional)) {
+            output := rows;
+            shape: ValueType = {storage: UnionStorage, container: 0, record: optional};
+            if (types[optional].value_storage == BoolStorage && types[optional].value_container == 0 &&
+                OptionalValuePresent(forest, text, names, Unparenthesized(forest, operand), shape)) {
+                output.append(ScalarAt(forest, operand, facts.PayloadRow, facts.BoolType, 0, 1, ""));
+            } else {
+                output.extend([ScalarAt(forest, operand, facts.TagRow, facts.IntType, 0, 1, ""),
+                               ScalarLiteral(forest, operand, facts.IntType, 0),
+                               ScalarAt(forest, node, facts.CompareRow, facts.BoolType, facts.NotEqual, 2, "")]);
+            }
+            return ScalarOperands.Built(output);
+        }
     }
     converts := [ScalarAt(forest, node, facts.ConvertRow, ScalarTypeOf(storage), mode, 1, "")];
     if (Integer(own) && storage == FloatStorage) {
@@ -3221,27 +3234,40 @@ ScalarClosing :: (forest: snapshot.SnapshotNode[], node: int) -> int {
     }
     return last;
 }
-// Whether each cell is an argument or result of an authored call, part of a
-// host call's, or a record or union a return or local moves into, the only
-// storage a call of this subset takes.
-ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], lent: bool) -> bool {
+// Claim a typed invocation's contiguous argument/result cells. These ranges
+// come from EmitBody, whose table indices are compiler-internal invariants.
+ScalarClaimCells :: (claimed: ^(bool[]), first: int, end: int) {
+    assert(first >= 0 && end >= first && end <= length(claimed^));
+    for (cell in first..<end) { claimed^[cell] = true; }
+}
+
+// Each cell belongs to an admitted value, invocation or host, or was copied
+// into a result bank by the ordinary typed copier. Index ownership once;
+// scanning every call/host for every cell would multiply their table sizes.
+ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], semantic: SemanticFact[], lent: bool) -> bool {
+    claimed := resize([false], length(cells));
     for (cell in 0..<length(cells)) {
-        // A local a scoped argument lends is read, never written, by its callee.
-        owned := (lent && cells[cell].container == 0) || ((cells[cell].storage == StructStorage || cells[cell].storage == UnionStorage) &&
-                  cells[cell].container == 0) ||
-                 (cells[cell].container == ArrayContainer && ScalarArrayElement(cells[cell].storage)) ||
-                 cells[cell].container == MapContainer;
-        for (call in calls) {
-            owned = owned || (cell >= call.first && cell < call.first + call.count) ||
-                    (cell >= call.result_first && cell < call.result_first + call.result_count);
-        }
-        for (host in hosts) {
-            owned = owned || (cell >= host.first && cell < host.result_first + host.result_count);
-        }
-        if (!owned) {
-            return false;
+        claimed[cell] = (lent && cells[cell].container == 0) ||
+            ((cells[cell].storage == StructStorage || cells[cell].storage == UnionStorage) && cells[cell].container == 0) ||
+            (cells[cell].container == ArrayContainer && ScalarArrayElement(cells[cell].storage)) ||
+            cells[cell].container == MapContainer;
+    }
+    for (call in calls) {
+        ScalarClaimCells(&claimed, call.first, call.first + call.count);
+        if (call.result_count > 0) {
+            ScalarClaimCells(&claimed, call.result_first, call.result_first + call.result_count);
         }
     }
+    for (host in hosts) {
+        ScalarClaimCells(&claimed, host.first, host.result_first + host.result_count);
+    }
+    for (fact in semantic) {
+        if (fact.kind == ResultCopyCellFact) {
+            if (fact.target < 0 || fact.target >= length(cells) || !ScalarResultCell(cells[fact.target])) { return false; }
+            claimed[fact.target] = true;
+        }
+    }
+    for (known in claimed) { if (!known) { return false; } }
     return true;
 }
 // SCRIPT_EFFECT_HOST: a synchronous output action.
@@ -3380,7 +3406,8 @@ ScalarRetainedNames :: (forest: snapshot.SnapshotNode[], text: string, types: Ty
 // construction, tests and payload reads, no traced roots but records and
 // unions, and no cells besides those, moved records and unions and its
 // authored calls' arguments and results.
-ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, callables: Callable[], params: Param[],
+ScalarEmits :: (forest: snapshot.SnapshotNode[], authored: snapshot.SnapshotNode[], documents: snapshot.Document[],
+                text: string, key: string, callables: Callable[], params: Param[],
                 table: ^(TypeDecl[]), body_optionals: ^(int[]), members: TypeMember[], constants: ConstDecl[], solid: int[], function: int,
                 ops: Ops, target: Target, natives: ResolvedNative[], ports: ResolvedPort[],
                 identities: u64[], aliases: Name[], retained: Name[], summary: ^ScalarEffectSummary,
@@ -3411,6 +3438,11 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
                             "scalar proof requires a callable body");
         case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
                       direct_write, facts):
+            // Reuse the ordinary checker's typed error-result facts and authored
+            // control flow. Scoped lowering preserves node IDs but changes
+            // pointer syntax; error ownership uses the original authored syntax.
+            problems := FallibleBody(authored, documents, callables, params, table^, callables[function], facts);
+            if (length(problems) > 0) { return problems[0]; }
             if (summary.wanted) { ScalarBodyEffects(summary, function, callables[function].waits, effects, ops, code, hosts, calls); }
             while (length(body_optionals^) < length(table^)) { body_optionals.append(0); }
             for (cell in cells) {
@@ -3438,7 +3470,7 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
                 why = "a direct write";
             } else if (host_problem != "") {
                 why = host_problem;
-            } else if (!ScalarCells(cells, calls, hosts, AnyReference(params) || length(retained) > 0)) {
+            } else if (!ScalarCells(cells, calls, hosts, facts, AnyReference(params) || length(retained) > 0)) {
                 why = "a cell";
             }
             if (why != "") {
@@ -3845,26 +3877,9 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
                 return ScalarOperands.Failed(Diagnose(forest, attributes.fault, 0, attributes.message));
             }
         }
-        rejected := ScalarSignature(forest, records, params, callable);
-        if (rejected >= 0) {
-            return ScalarOperands.Failed(Diagnose(forest, rejected, 0, ScalarSignatureMessage(params, callable, rejected, forest)));
-        }
     }
     if (length(seen) == 0) {
         return ScalarOperands.Failed(ScalarStart("scalar proof requires a concrete function"));
-    }
-    // A library has no entry.
-    first := seen[0];
-    if (!is_library && first.count != 0) {
-        return ScalarOperands.Failed(Diagnose(forest, Field(forest, first.node, syntax.FieldParameters), 0,
-                                              "scalar proof requires its first function to take no parameters"));
-    }
-    if (!is_library && (first.result != IntStorage || first.result_container != 0)) {
-        at := Field(forest, first.node, syntax.FieldResults);
-        if (at < 0) {
-            at = first.node;
-        }
-        return ScalarOperands.Failed(Diagnose(forest, at, 0, "scalar proof requires its first function to return int or nothing"));
     }
     solid := SolidOffsets(text);
     // A scoped parameter's `p^` is `p`, as every body sees it.
@@ -3891,11 +3906,33 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         if (length(generic_bindings) > 0) {
             used = GenericConstants(forest, constants, generic_bindings, function, callables[function], documents);
         }
-        emitted := ScalarEmits(scoped, text, key, callables, marked, &checked, &body_optionals, members, used, solid, function,
+        emitted := ScalarEmits(scoped, forest, documents, text, key, callables, marked, &checked, &body_optionals, members, used, solid, function,
                                ops, target, natives, ports, identities, aliases,
                                ScalarRetainedNames(scoped, text, checked, callables[function]), summary, &assertions);
         if (emitted.message != "") { return ScalarOperands.Failed(emitted); }
         assertion_offsets.append(length(assertions));
+    }
+    // Source diagnostics precede restrictions of the native representation or
+    // process entry ABI. In particular, an invalid math expression must keep
+    // the ordinary checker's diagnostic even when its signature uses vectors.
+    for (callable in seen) {
+        rejected := ScalarSignature(forest, records, params, callable);
+        if (rejected >= 0) {
+            return ScalarOperands.Failed(Diagnose(forest, rejected, 0, ScalarSignatureMessage(params, callable, rejected, forest)));
+        }
+    }
+    // A library has no entry.
+    first := seen[0];
+    if (!is_library && first.count != 0) {
+        return ScalarOperands.Failed(Diagnose(forest, Field(forest, first.node, syntax.FieldParameters), 0,
+                                              "scalar proof requires its first function to take no parameters"));
+    }
+    if (!is_library && (first.result != IntStorage || first.result_container != 0)) {
+        at := Field(forest, first.node, syntax.FieldResults);
+        if (at < 0) {
+            at = first.node;
+        }
+        return ScalarOperands.Failed(Diagnose(forest, at, 0, "scalar proof requires its first function to return int or nothing"));
     }
     switch ScalarResults(callables, params, checked, members, body_optionals) {
         case .Viewed(viewed_callables, viewed_types, viewed_members):

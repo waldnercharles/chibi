@@ -155,7 +155,7 @@ TestSelectors :: (toolchain: Toolchain) {
     planned := Verb(toolchain, "test", ["--dry-run", "--build", "out", "--release-build", "rel", "chibi-cli", "projects", "types"]);
     log = Output(planned);
     assert(planned.status == 0 && Has(log, "types (600s): env "), "the default deadline");
-    assert(Has(log, "/out/test/tools/test_tools --chibi-cli /") && Has(log, "CHIBI_CLI=") && Has(log, "/rel/sdk/chibi "), "the selector command");
+    assert(Has(log, "sh test/native_cli/survivors.sh ") && Has(log, "CHIBI_CLI=") && Has(log, "/rel/sdk/chibi "), "the native selector command");
     native := Verb(toolchain, "test", ["--dry-run", "--native-driver", "/native driver", "--llvm", "/LLVM tools", "types"]);
     assert(native.status == 0 && Has(Output(native), "types (600s): env "), "native entry options are not test selectors");
     bounded := Verb(toolchain, "test", ["--dry-run", "--timeout", "30", "chibi-cli", "types"]);

@@ -340,6 +340,21 @@ StaleCompilerResourcesFailBeforeStaging :: (fixture: Fixture) {
     assert(!Exists(output) && !Exists(Path([output, ".chibi-stage"])), "it leaves nothing");
 }
 
+UnexpectedCompilerResourcesFailBeforeStaging :: (fixture: Fixture) {
+    for (kind in ["directory", "link"]) {
+        clone := CloneGraph(fixture, Path(["unexpected resource ", kind]));
+        // This exists in the source tree as a non-authored file. Its name
+        // cannot authorize an unrelated directory or an external symlink.
+        extra := Path([clone, "/share/chibi/compiler/bootstrap.kdl"]);
+        if (kind == "directory") { Make(extra); }
+        else { Link(fixture.checkout, extra); }
+        output := Path([fixture.suite, "/unexpected output ", kind]);
+        result := Install(fixture, fixture.checkout, clone, output);
+        assert(result.status == 1 && Says(result, "sdk: graph compiler/core resources are missing or stale"), "extra resource kinds are refused");
+        assert(!Exists(output) && !Exists(Path([output, ".chibi-stage"])), "extra resources leave no stage");
+    }
+}
+
 ManifestName :: () -> string {
     return "share/chibi/compiler-tools.tsv";
 }
@@ -612,6 +627,7 @@ pub Run :: () -> int {
     FailedStagedCapabilityVerificationRemovesOwnedStaging(fixture);
     FailedStagedAssetVerificationRemovesOwnedStaging(fixture);
     StaleCompilerResourcesFailBeforeStaging(fixture);
+    UnexpectedCompilerResourcesFailBeforeStaging(fixture);
     CompilerToolsPackageAndRunAfterRelocation(fixture);
     OverlayRetiresOnlyOwnedPaths(fixture);
     cleaned := files.RemoveTree(suite);

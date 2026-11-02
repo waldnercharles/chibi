@@ -51,13 +51,18 @@ pub NativeCommand :: (driver: string, llvm: string, root: string, build_dir: str
 }
 
 // Include directory stamps so additions, as well as changed or deleted files,
-// invalidate the graph's existing command/input receipt.
-NativeInputs :: (directory: string) -> string[] {
+// invalidate the graph's existing command/input receipt. Empty propagates an
+// os.List error; a partial inventory must never validate a cache.
+pub NativeInputs :: (directory: string) -> string[] {
+    listed := os.List(directory);
+    if (listed.error) { return []; }
     inputs: string[] = [directory];
-    for (name in files.Names(directory)) {
+    for (name in listed.names) {
         path := Join([directory, "/", name]);
         if (os.IsDirectory(path)) {
-            inputs.extend(NativeInputs(path));
+            nested := NativeInputs(path);
+            if (length(nested) == 0) { return []; }
+            inputs.extend(nested);
         } else if (strings.HasSuffix(name, ".chibi")) {
             inputs.append(path);
         }
@@ -105,7 +110,12 @@ pub BuildNative :: (driver: string, llvm: string, root: string, build_dir: strin
         return -1;
     }
     inputs := NativeInputs(Join([root, "/tools/compiler"]));
-    inputs.extend(NativeInputs(Join([root, "/packages/core"])));
+    core := NativeInputs(Join([root, "/packages/core"]));
+    if (length(inputs) == 0 || length(core) == 0) {
+        os.Print("graph: cannot read native compiler/core source inventory");
+        return -1;
+    }
+    inputs.extend(core);
     linker := "ld.lld";
     if (os.Platform() == "Darwin") { linker = "ld64.lld"; }
     if (os.Platform() == "Windows") { linker = "lld-link"; }

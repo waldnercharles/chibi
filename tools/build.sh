@@ -72,7 +72,7 @@ fi
 mkdir -p .chibi/build-entry
 work=$(mktemp -d "$root/.chibi/build-entry/work.XXXXXX")
 trap 'rm -rf "$work"' EXIT
-printf '%s\n' "$triple" "$native_driver" "$llvm" > "$work/inputs"
+printf '%s\n' 'chibi-native-build-entry 2 LLVM22' "$triple" "$native_driver" "$llvm" > "$work/inputs"
 $digest tools/toolchain/Driver.chibi "$native_driver" "$llvm/opt" "$llvm/llc" "$llvm/$linker" >> "$work/inputs"
 # The fixed digest command above includes shasum's two arguments.
 # shellcheck disable=SC2086
@@ -89,6 +89,24 @@ if [ "${#key}" -ne 64 ]; then
 fi
 cached=$root/.chibi/build-entry/$key
 if [ ! -x "$cached/driver" ]; then
+    # This schema's cache entries were compiled only after all required tools
+    # established LLVM/LLD 22 or newer. Hashed tool bytes make warm hits trusted.
+    for tool in opt llc "$linker"; do
+        if ! reported=$("$llvm/$tool" --version 2>&1); then
+            printf 'tools/build.sh: LLVM 22 or newer is required; cannot query %s: %s\n' "$llvm/$tool" "$reported" >&2
+            exit 2
+        fi
+        label='LLVM version '
+        [ "$tool" = "$linker" ] && label='LLD '
+        major=$(printf '%s\n' "$reported" | sed -n "s/.*$label\([0-9][0-9]*\).*/\1/p")
+        case "$major" in
+            ''|*[!0-9]*) major=0 ;;
+        esac
+        if [ "${#major}" -gt 4 ] || [ "$major" -lt 22 ]; then
+            printf 'tools/build.sh: LLVM 22 or newer is required; cannot use %s: %s\n' "$llvm/$tool" "$reported" >&2
+            exit 2
+        fi
+    done
     "$native_driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
         --source "$root/tools/toolchain/Driver.chibi" --entry Main --output "$work/driver" \
         --llvm "$llvm" --target "$triple"

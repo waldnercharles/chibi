@@ -40,3 +40,12 @@ Cached root builds reject thin archives because their object members live outsid
 `.a` files. Use a regular archive, or compile directly with `--source` and
 `--output`. The cache regression requires LLVM's `llvm-ar` in the tools folder;
 an optional third argument supplies its path when it is installed elsewhere.
+
+The native driver and bootstrap entry require LLVM/LLD 22 or newer for `opt`,
+`llc` and the target linker. New outputs query each version before compiling;
+verified cache hits trust the recorded tool bytes and run no version processes.
+`chibi doctor` reports an older or unrecognized installation as broken.
+
+```
+sh test/native_aot/native_driver/minimum.sh /absolute/path/to/chibi /absolute/path/to/llvm/bin
+```

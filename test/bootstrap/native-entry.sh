@@ -14,7 +14,12 @@ printf 'package sample\n' > "$checkout/packages/core/sample/Sample.chibi"
 printf '#!/bin/sh\nexit 93\n' > "$checkout/tools/bootstrap.sh"
 printf '#!/bin/sh\nexit 94\n' > "$checkout/tools/bootstrap/seed.sh"
 for tool in opt llc ld.lld ld64.lld; do
-    printf '#!/bin/sh\nexit 0\n' > "$checkout/llvm/$tool"
+    cat > "$checkout/llvm/$tool" <<'TOOL'
+#!/bin/sh
+[ "${1:-}" = --version ] || exit 64
+printf '%s\n' "$0" >> "$ENTRY_VERSION_LOG"
+case "${0##*/}" in opt|llc) echo 'LLVM version 22.1.8' ;; *) echo 'LLD 22.1.8' ;; esac
+TOOL
     chmod +x "$checkout/llvm/$tool"
 done
 cat > "$checkout/compiler" <<'COMPILER'
@@ -34,7 +39,7 @@ if [ "${ENTRY_COMPILE_STATUS:-0}" != 0 ]; then exit "$ENTRY_COMPILE_STATUS"; fi
 chmod +x "$output"
 COMPILER
 chmod +x "$checkout/compiler"
-export ENTRY_COMPILES="$scratch/compiles" ENTRY_RESULT="$scratch/arguments"
+export ENTRY_COMPILES="$scratch/compiles" ENTRY_RESULT="$scratch/arguments" ENTRY_VERSION_LOG="$scratch/versions"
 cd "$checkout"
 checkout=$(pwd -P)
 count() { test "$(wc -l < "$ENTRY_COMPILES" | tr -d ' ')" = "$1"; }
@@ -45,8 +50,10 @@ entry build test --build 'output with spaces'
 printf '%s\n' build test --build 'output with spaces' --native-driver "$checkout/compiler" --llvm "$checkout/llvm" > "$scratch/expected"
 cmp "$scratch/expected" "$ENTRY_RESULT"
 count 1
+test "$(wc -l < "$ENTRY_VERSION_LOG" | tr -d ' ')" = 3
 entry census
 count 1
+test "$(wc -l < "$ENTRY_VERSION_LOG" | tr -d ' ')" = 3
 if (ENTRY_EXIT=17 entry census); then exit 1; else test "$?" = 17; fi
 count 1
 
@@ -151,4 +158,27 @@ printf 'invalid release\n' > "$ENTRY_SEED"
 if sh tools/build.sh census --llvm "$checkout/llvm"; then exit 1; else test "$?" = 1; fi
 count "$next"
 test "$(wc -l < "$ENTRY_DOWNLOADS" | tr -d ' ')" = 3
+# Unsupported tools must fail before the compiler or publication. Restoring
+# their bytes recovers the previously verified cache.
+case "$(uname -s)" in Darwin) active_linker=ld64.lld ;; *) active_linker=ld.lld ;; esac
+for tool in opt llc "$active_linker"; do
+    cp "llvm/$tool" "$scratch/supported-tool"
+    case "$tool" in opt|llc) label='LLVM version ' ;; *) label='LLD ' ;; esac
+    printf '#!/bin/sh\necho "%s21.1.8"\n' "$label" > "llvm/$tool"
+    status=0
+    entry census > "$scratch/old-tool.log" 2>&1 || status=$?
+    test "$status" = 2
+    grep -F 'LLVM 22 or newer is required' "$scratch/old-tool.log"
+    count "$next"
+    cp "$scratch/supported-tool" "llvm/$tool"
+done
+cp llvm/opt "$scratch/supported-tool"
+printf '#!/bin/sh\necho "unrecognized optimizer"\n' > llvm/opt
+if entry census > "$scratch/unknown-version.log" 2>&1; then exit 1; else test "$?" = 2; fi
+count "$next"
+printf '#!/bin/sh\nexit 7\n' > llvm/opt
+if entry census > "$scratch/failed-version.log" 2>&1; then exit 1; else test "$?" = 2; fi
+count "$next"
+cp "$scratch/supported-tool" llvm/opt
+test -z "$(find .chibi/build-entry -maxdepth 1 -name 'work.*' -print)"
 printf 'native build entry: cold, cached, invalidated, failed and verified default cases passed\n'

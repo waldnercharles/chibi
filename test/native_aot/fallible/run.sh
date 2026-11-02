@@ -65,6 +65,23 @@ for level in 0 2; do
             "$samples/$name/facts" > "$work/case.log" 2>&1 || { cat "$work/case.log"; exit 1; }
         grep -q '^PASS .*Calls$' "$work/case.log"
     done
+    for name in optional_locals_become_absent_and_present_again \
+                optional_locals_start_absent_and_become_present \
+                optional_parameters_take_optionals_and_nil \
+                optional_results_wrap_values_and_return_nil; do
+        CHIBI_CORE="$root/packages/core" "$compiler" test --llvm "$llvm" -O"$level" \
+            --root "$root/test/compiler/samples/imports" \
+            "$root/test/compiler/samples/imports/$name/facts" > "$work/case.log" 2>&1 || { cat "$work/case.log"; exit 1; }
+        grep -q '^PASS .*Calls$' "$work/case.log"
+    done
+    CHIBI_CORE="$root/packages/core" "$compiler" test --llvm "$llvm" -O"$level" \
+        --root "$root/test/compiler/samples/types" \
+        "$root/test/compiler/samples/types/typed_optional_locals_after_descriptor_growth/facts" > "$work/case.log" 2>&1 || { cat "$work/case.log"; exit 1; }
+    grep -q '^PASS .*Calls$' "$work/case.log"
+    "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+        --source "$root/test/native_aot/fallible/primitive_optionals/Main.chibi" --entry Main --output "$work/primitive-optionals" \
+        --llvm "$llvm" --target "$target" --level "$level"
+    "$work/primitive-optionals"
     "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
         --source "$root/test/native_aot/fallible/result_copies/Main.chibi" --entry Main --output "$work/result-copies" \
         --llvm "$llvm" --target "$target" --level "$level"
@@ -86,6 +103,15 @@ if [ -n "$reference" ]; then
         "$reference" --project-root "$samples/$name/facts" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
         grep -F 'PASS' "$work/reference.log" > /dev/null
     done
+    for name in optional_locals_become_absent_and_present_again \
+                optional_locals_start_absent_and_become_present \
+                optional_parameters_take_optionals_and_nil \
+                optional_results_wrap_values_and_return_nil; do
+        "$reference" --project-root "$root/test/compiler/samples/imports/$name/facts" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
+        grep -F 'PASS' "$work/reference.log" > /dev/null
+    done
+    "$reference" --project-root "$root/test/compiler/samples/types/typed_optional_locals_after_descriptor_growth/facts" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
+    grep -F 'PASS' "$work/reference.log" > /dev/null
     "$reference" --project-root "$root/test/native_aot/fallible" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
     grep -F 'PASS' "$work/reference.log" > /dev/null
     printf 'PASS ordinary optional bool and result-copy references\n'

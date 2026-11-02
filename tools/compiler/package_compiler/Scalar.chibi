@@ -870,6 +870,17 @@ ScalarTaskCallee :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     }
     return -1;
 }
+// A checked primitive optional read uses its payload in a value context.
+// A union context keeps the original descriptor for copying and nil tests.
+ScalarOptionalRead :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], types: TypeDecl[],
+                       node: int, record: int, context: int) -> bool {
+    if (context == UnionStorage || !ScalarOptional(types, record)) { return false; }
+    payload := types[record];
+    if (payload.value_container != 0 || (!Numeric(payload.value_storage) && payload.value_storage != BoolStorage)) { return false; }
+    shape: ValueType = {storage: UnionStorage, container: 0, record: record};
+    return OptionalValuePresent(forest, text, names, node, shape);
+}
+
 ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                          callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], operand: int, context: int) -> int {
     original := Unparenthesized(forest, operand);
@@ -922,7 +933,7 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
     if (Is(forest, node, syntax.String)) {
         return TextStorage;
     }
-    if (ScalarVariantMade(forest, text, callables, names, callable.package, node) && ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, node) >= 0) {
+    if (ScalarVariantMade(forest, text, callables, names, callable.package, node) && ScalarUnionOf(forest, text, callables, names, types, callable.package, node) >= 0) {
         return UnionStorage;
     }
     named := ConstantOf(forest, text, constants, names, callable.package, node);
@@ -941,6 +952,9 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
     }
     if (Is(forest, node, syntax.Identifier)) {
         binding := ScalarVariable(names, Text(forest, text, node));
+        if (binding.storage == UnionStorage && ScalarOptionalRead(forest, text, names, types, node, binding.record, context)) {
+            return types[binding.record].value_storage;
+        }
         if (binding.storage == UnionStorage && binding.record >= 0 && types[binding.record].kind == TaskResultDecl &&
             TaskResultPresent(forest, text, binding, node)) {
             return TaskResultSuccess(types, binding.record).storage;
@@ -1011,6 +1025,10 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         field := ScalarMember(forest, text, callables, params, names, types, members, callable.package, node);
         if (field < 0) {
             return 0;
+        }
+        if (members[field].storage == UnionStorage &&
+            ScalarOptionalRead(forest, text, names, types, node, members[field].record, context)) {
+            return types[members[field].record].value_storage;
         }
         return members[field].storage;
     }
@@ -1186,7 +1204,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         ScalarProjected(forest, text, callables, params, names, callable.package, node) < 0) {
         field := ScalarMember(forest, text, callables, params, names, types, members, callable.package, node);
         if (field >= 0) {
-            type = ScalarMemberType(types, members, field);
+            if (storage == members[field].storage) { type = ScalarMemberType(types, members, field); }
             fielded = true;
         }
     }
@@ -1261,8 +1279,9 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (Is(forest, node, syntax.Identifier)) {
         binding := ScalarVariable(names, Text(forest, text, node));
         ordinal := binding.index;
-        if (binding.storage == UnionStorage && binding.record >= 0 && types[binding.record].kind == TaskResultDecl &&
-            TaskResultPresent(forest, text, binding, node)) {
+        if (binding.storage == UnionStorage &&
+            ((ScalarOptional(types, binding.record) && storage != UnionStorage) ||
+             (binding.record >= 0 && types[binding.record].kind == TaskResultDecl && TaskResultPresent(forest, text, binding, node)))) {
             output.append(ScalarAt(forest, node, facts.ReadRow, ScalarRecordType(types, binding.record), ordinal, 0, ""));
             output.append(ScalarAt(forest, node, facts.PayloadRow, type, 0, 1, ""));
         } else {
@@ -1285,7 +1304,11 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             case .Built(built):
                 output = built;
         }
-        output.append(ScalarAt(forest, node, facts.FieldRow, type, field - types[record].first, 1, ""));
+        field_type := type;
+        narrowed := members[field].storage == UnionStorage && ScalarOptional(types, members[field].record) && storage != UnionStorage;
+        if (narrowed) { field_type = ScalarMemberType(types, members, field); }
+        output.append(ScalarAt(forest, node, facts.FieldRow, field_type, field - types[record].first, 1, ""));
+        if (narrowed) { output.append(ScalarAt(forest, node, facts.PayloadRow, type, 0, 1, "")); }
         return ScalarOperands.Built(output);
     }
     if (ScalarCompares(forest, text, node)) {
@@ -1975,24 +1998,15 @@ ScalarConversion :: (forest: snapshot.SnapshotNode[], text: string, callables: C
             ScalarAt(forest, node, facts.CompareRow, facts.BoolType, facts.NotEqual, 2, "")]);
         return ScalarOperands.Built(output);
     }
-    // Before presence is known, a bool context tests the optional's tag.
-    // The ordinary checker narrows a proven bool payload first, so false
-    // remains false inside its guard. Nil comparisons still inspect the tag.
-    if (own == UnionStorage && storage == BoolStorage) {
-        optional := ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, operand);
-        if (ScalarOptional(types, optional)) {
-            output := rows;
-            shape: ValueType = {storage: UnionStorage, container: 0, record: optional};
-            if (types[optional].value_storage == BoolStorage && types[optional].value_container == 0 &&
-                OptionalValuePresent(forest, text, names, Unparenthesized(forest, operand), shape)) {
-                output.append(ScalarAt(forest, operand, facts.PayloadRow, facts.BoolType, 0, 1, ""));
-            } else {
-                output.extend([ScalarAt(forest, operand, facts.TagRow, facts.IntType, 0, 1, ""),
-                               ScalarLiteral(forest, operand, facts.IntType, 0),
-                               ScalarAt(forest, node, facts.CompareRow, facts.BoolType, facts.NotEqual, 2, "")]);
-            }
-            return ScalarOperands.Built(output);
-        }
+    // Unproven optionals still test presence in a bool context. Proven
+    // primitive reads have already emitted their payload at its own storage.
+    if (own == UnionStorage && storage == BoolStorage &&
+        ScalarOptional(types, ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, operand))) {
+        output := rows;
+        output.extend([ScalarAt(forest, operand, facts.TagRow, facts.IntType, 0, 1, ""),
+                       ScalarLiteral(forest, operand, facts.IntType, 0),
+                       ScalarAt(forest, node, facts.CompareRow, facts.BoolType, facts.NotEqual, 2, "")]);
+        return ScalarOperands.Built(output);
     }
     converts := [ScalarAt(forest, node, facts.ConvertRow, ScalarTypeOf(storage), mode, 1, "")];
     if (Integer(own) && storage == FloatStorage) {

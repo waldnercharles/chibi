@@ -1,0 +1,55 @@
+package primitive_optionals
+
+Scale :: (value: f64?) -> f64 {
+    if value { return value * f64(2); }
+    return -1.0;
+}
+
+Keep :: (value: i16?) -> i16? { return value; }
+
+CopyAsOptional :: () -> int {
+    value: i16? = i16(5);
+    copied: i16? = nil;
+    if value { copied = Keep(value); }
+    value = nil;
+    if copied { return int(copied); }
+    return 0;
+}
+
+BoolValue :: () -> bool {
+    value: bool? = false;
+    if value {
+        copy := value;
+        return copy;
+    }
+    return true;
+}
+
+NilIdentity :: () -> int {
+    value: int? = 0;
+    if value != nil {
+        if value == nil { return -7; }
+        copy := value;
+        return copy + 3;
+    }
+    return -1;
+}
+
+@test
+PayloadsKeepStorageAndIdentity :: () {
+    scaled := Scale(f64(1.25));
+    assert(scaled == f64(2.5));
+    scaled = Scale(nil);
+    assert(scaled == f64(-1));
+    copied := CopyAsOptional();
+    assert(copied == 5, "an optional argument keeps its descriptor after a guard");
+    bit := BoolValue();
+    assert(!bit, "a proven false payload remains a bool local");
+    zero := NilIdentity();
+    assert(zero == 3, "a present zero is distinct from nil");
+}
+
+Main :: () -> int {
+    PayloadsKeepStorageAndIdentity();
+    return 0;
+}

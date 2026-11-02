@@ -1242,9 +1242,9 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         compared := ScalarCommon(ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, sides[0], 0),
                                  ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, sides[1], 0));
         contexts := [compared, compared];
-        // Two untyped literals each take their spelled type.
+        // Untyped constant expressions each take the type their literals spell.
         if (compared == 0) {
-            contexts = [InferredNumberStorage(forest, text, sides[0]), InferredNumberStorage(forest, text, sides[1])];
+            contexts = [ConstantExpressionStorage(forest, text, sides[0]), ConstantExpressionStorage(forest, text, sides[1])];
             compared = ScalarSpelled(contexts[0], contexts[1]);
         }
         operator := ScalarComparison(Operator(forest, node));

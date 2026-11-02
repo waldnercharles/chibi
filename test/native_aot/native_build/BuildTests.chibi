@@ -732,7 +732,7 @@ CrossTargets :: () -> CrossTarget[] {
 // With CHIBI_NATIVE_BUNDLE set, copies `program` into the target's bundle
 // directory as `name` and lists it with its exit status 42, for
 // test/native_aot/targets/run.c to run on that target.
-BundleProgram :: (program: string, target: CrossTarget, name: string) {
+BundleProgram :: (suite: Suite, program: string, target: CrossTarget, name: string) {
     bundle := os.Getenv("CHIBI_NATIVE_BUNDLE");
     if (bundle == "") {
         return;
@@ -742,12 +742,44 @@ BundleProgram :: (program: string, target: CrossTarget, name: string) {
     copied := Path([folder, "/programs/", name]);
     assert(os.Remove(copied) == nil, "the old copy removed");
     Clone(program, copied);
-    list := Path([folder, "/programs.txt"]);
-    listed := "";
-    if (Exists(list)) {
-        listed = Read(list);
+    fragments := Path([suite.folder, "/bundle-manifests/", target.directory]);
+    Write(Path([fragments, "/", name, ".txt"]), Path(["program ", name, " 42\n"]));
+}
+
+// Each worker owns its fragment. Only Run publishes the merged list, after
+// every worker succeeds; native-link owns a separate list in the same bundle.
+PrepareBundle :: (suite: Suite) {
+    bundle := os.Getenv("CHIBI_NATIVE_BUNDLE");
+    if (bundle == "") {
+        return;
     }
-    Write(list, Path([listed, "program ", name, " 42\n"]));
+    for (target in CrossTargets()) {
+        folder := Path([bundle, "/", target.directory]);
+        Make(Path([folder, "/programs"]));
+        Make(Path([suite.folder, "/bundle-manifests/", target.directory]));
+        assert(os.Remove(Path([folder, "/native-build-programs.txt"])) == nil, "the old native-build list removed");
+    }
+}
+BundlePrograms :: (suite: Suite) {
+    bundle := os.Getenv("CHIBI_NATIVE_BUNDLE");
+    if (bundle == "") {
+        return;
+    }
+    for (target in CrossTargets()) {
+        fragments := Path([suite.folder, "/bundle-manifests/", target.directory]);
+        names := Names(fragments);
+        expected := 3;
+        if (target.program == "program.exe") {
+            expected = 6;
+        }
+        assert(length(names) == expected, "every native-build program has a fragment");
+        listed: string[] = [];
+        // core:os.List orders names by bytes, independently of worker finish order.
+        for (name in names) {
+            listed.append(Read(Path([fragments, "/", name])));
+        }
+        Write(Path([bundle, "/", target.directory, "/native-build-programs.txt"]), strings.Join(listed, ""));
+    }
 }
 
 // Real LLVM tools link macOS arm64 and Windows x64 programs with no SDK of
@@ -761,10 +793,6 @@ LinksOtherTargetsWithLLVM :: (suite: Suite) {
     RealTools(suite, built);
     runs := os.Platform() == "Darwin";
     for (target in CrossTargets()) {
-        bundle := os.Getenv("CHIBI_NATIVE_BUNDLE");
-        if (bundle != "") {
-            assert(os.Remove(Path([bundle, "/", target.directory, "/programs.txt"])) == nil, "the old list removed");
-        }
         for (mode in ["-O0", "-O2"]) {
             result := Build(suite, suite.built, built, [mode, "--target", target.triple]);
             assert(result.status == 0, "the program builds");
@@ -778,7 +806,7 @@ LinksOtherTargetsWithLLVM :: (suite: Suite) {
             if (target.program == "program.exe") {
                 name = Path([name, ".exe"]);
             }
-            BundleProgram(program, target, name);
+            BundleProgram(suite, program, target, name);
         }
         ir := Path([built.game, "/frame-", target.directory, ".ll"]);
         out := Path([built.game, "/frame-", target.directory]);
@@ -798,7 +826,7 @@ LinksOtherTargetsWithLLVM :: (suite: Suite) {
         if (target.program == "program.exe") {
             frame = "frame-O2.exe";
         }
-        BundleProgram(program, target, frame);
+        BundleProgram(suite, program, target, frame);
     }
 }
 
@@ -974,7 +1002,7 @@ ImportsFromAWindowsSystemLibrary :: (suite: Suite) {
     folder := strings.TrimSuffix(program, "/program.exe");
     assert(Holds(Path([folder, "/kernel32.def"]), "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n    GetCommandLineW\n    GetProcessHeap\n    HeapAlloc\n    HeapFree\n    GetStdHandle\n    WriteFile\n    GetCurrentProcessId\n    GetTickCount\n"), "the import definition");
     assert(Holds(program, "GetCurrentProcessId") && Holds(program, "GetTickCount"), "the import table");
-    BundleProgram(program, windows, "windows-imports.exe");
+    BundleProgram(suite, program, windows, "windows-imports.exe");
     result = Build(suite, suite.built, built, ["-O0"]);
     assert(result.status != 0 && Says(result, "system library kernel32 links on Windows only"), "other targets refuse kernel32");
 }
@@ -995,14 +1023,14 @@ AllocatesOnWindowsWithoutLibc :: (suite: Suite) {
     assert(Holds(Path([folder, "/start.ll"]), "call ptr @HeapAlloc(ptr %heap, i32 8, i64 %size)"), "the start module allocates");
     assert(Holds(Path([folder, "/kernel32.def"]), "    GetProcessHeap\n    HeapAlloc\n    HeapFree\n    GetStdHandle\n    WriteFile\n"), "the kernel32 imports");
     assert(Holds(program, "HeapAlloc") && !Holds(program, "msvcrt") && !Holds(program, "ucrtbase"), "no C library");
-    BundleProgram(program, windows, "windows-heap.exe");
+    BundleProgram(suite, program, windows, "windows-heap.exe");
 }
 
 // core:sys/windows over kernel32: files, directories, the environment, the
 // command line and processes, in a program with no C library. It links on Linux and macOS; with CHIBI_NATIVE_BUNDLE set, CI's
 // native-targets job runs it on Windows.
 LinksCoreSysWindows :: (suite: Suite) {
-    source := "package scalar\nimport windows \"core:sys/windows\"\nMain :: () -> int {\n    windows.Print(\"step make\");\n    assert(windows.MakeDirectory(\"chibi_win_probe\"), \"make\");\n    windows.Print(\"step exists\");\n    assert(windows.Exists(\"chibi_win_probe\"), \"exists\");\n    windows.Print(\"step directory\");\n    assert(windows.Kind(\"chibi_win_probe\") == windows.KindDirectory, \"directory\");\n    data: u8[] = [104, 105];\n    windows.Print(\"step write\");\n    assert(windows.WriteBytes(\"chibi_win_probe\\\\a.txt\", data), \"write\");\n    back := windows.ReadBytes(\"chibi_win_probe\\\\a.txt\");\n    windows.Print(\"step read\");\n    assert(length(back) == 2 && back[0] == 104, \"read\");\n    names := windows.List(\"chibi_win_probe\");\n    windows.Print(\"step list\");\n    assert(length(names) == 1 && names[0] == \"a.txt\", \"list\");\n    windows.Print(\"step unset variable\");\n    assert(windows.Getenv(\"CHIBI_WINDOWS_UNSET\") == \"\", \"unset variable\");\n    windows.Print(\"step set variable\");\n    assert(windows.Getenv(\"SystemRoot\") != \"\", \"set variable\");\n    windows.Print(\"step program name\");\n    assert(length(windows.Arguments()) >= 1, \"program name\");\n    windows.Print(\"step run\");\n    assert(windows.Run([\"cmd.exe\", \"/c\", \"exit\", \"3\"]) == 3, \"run\");\n    captured := windows.Capture([\"cmd.exe\", \"/c\", \"echo\", \"hi\"]);\n    windows.Print(\"step capture status\");\n    assert(captured.status == 0, \"capture status\");\n    windows.Print(\"step capture output\");\n    assert(text_byte_length(captured.stdout) >= 2, \"capture output\");\n    windows.Print(\"step rename\");\n    assert(windows.Rename(\"chibi_win_probe\\\\a.txt\", \"chibi_win_probe\\\\b.txt\"), \"rename\");\n    windows.Print(\"step remove\");\n    assert(windows.Remove(\"chibi_win_probe\\\\b.txt\") && windows.Remove(\"chibi_win_probe\"), \"remove\");\n    windows.Print(\"step removed\");\n    assert(!windows.Exists(\"chibi_win_probe\"), \"removed\");\n    windows.Print(\"step text and kinds\");\n    assert(windows.IsFile(\"Main.chibi\") || windows.IsFile(\"program.exe\") || windows.IsDirectory(\".\"), \"kinds\");\n    assert(windows.WriteText(\"chibi_win_text\", \"x\") && windows.Remove(\"chibi_win_text\") && !windows.Remove(\"chibi_win_text\"), \"text and remove\");\n    return 42;\n}\n";
+    source := "package scalar\nimport windows \"core:sys/windows\"\nMain :: () -> int {\n    windows.Print(\"step make\");\n    assert(windows.MakeDirectory(\"chibi_win_probe\"), \"make\");\n    windows.Print(\"step exists\");\n    assert(windows.Exists(\"chibi_win_probe\"), \"exists\");\n    windows.Print(\"step directory\");\n    assert(windows.Kind(\"chibi_win_probe\") == windows.KindDirectory, \"directory\");\n    data: u8[] = [104, 105];\n    windows.Print(\"step write\");\n    assert(windows.WriteBytes(\"chibi_win_probe\\\\a.txt\", data), \"write\");\n    back := windows.ReadBytes(\"chibi_win_probe\\\\a.txt\");\n    windows.Print(\"step read\");\n    assert(length(back) == 2 && back[0] == 104, \"read\");\n    names := windows.List(\"chibi_win_probe\");\n    windows.Print(\"step list\");\n    assert(length(names) == 1 && names[0] == \"a.txt\", \"list\");\n    assert(!windows.Remove(\"chibi_win_probe\"), \"nonempty directory remains\");\n    windows.Print(\"step unset variable\");\n    assert(windows.Getenv(\"CHIBI_WINDOWS_UNSET\") == \"\", \"unset variable\");\n    windows.Print(\"step set variable\");\n    assert(windows.Getenv(\"SystemRoot\") != \"\", \"set variable\");\n    windows.Print(\"step program name\");\n    assert(length(windows.Arguments()) >= 1, \"program name\");\n    windows.Print(\"step run\");\n    assert(windows.Run([\"cmd.exe\", \"/c\", \"exit\", \"3\"]) == 3, \"run\");\n    captured := windows.Capture([\"cmd.exe\", \"/c\", \"echo\", \"hi\"]);\n    windows.Print(\"step capture status\");\n    assert(captured.status == 0, \"capture status\");\n    windows.Print(\"step capture output\");\n    assert(text_byte_length(captured.stdout) >= 2, \"capture output\");\n    windows.Print(\"step rename\");\n    assert(windows.Rename(\"chibi_win_probe\\\\a.txt\", \"chibi_win_probe\\\\b.txt\"), \"rename\");\n    windows.Print(\"step remove\");\n    assert(windows.Remove(\"chibi_win_probe\\\\b.txt\") && windows.Remove(\"chibi_win_probe\"), \"remove\");\n    windows.Print(\"step removed\");\n    assert(!windows.Exists(\"chibi_win_probe\"), \"removed\");\n    windows.Print(\"step text and kinds\");\n    assert(windows.IsFile(\"Main.chibi\") || windows.IsFile(\"program.exe\") || windows.IsDirectory(\".\"), \"kinds\");\n    assert(windows.WriteText(\"chibi_win_text\", \"x\") && windows.Remove(\"chibi_win_text\") && windows.Remove(\"chibi_win_text\"), \"text and remove\");\n    return 42;\n}\n";
     built := Reset(suite, "windows-os", source);
     RealTools(suite, built);
     result := Build(suite, suite.built, built, ["-O0", "--target", "x86_64-pc-windows-msvc"]);
@@ -1016,7 +1044,7 @@ LinksCoreSysWindows :: (suite: Suite) {
     folder := strings.TrimSuffix(program, "/program.exe");
     assert(Holds(Path([folder, "/kernel32.def"]), "    CreateFileW\n"), "kernel32's file calls");
     assert(!Holds(program, "msvcrt") && !Holds(program, "ucrtbase"), "no C library");
-    BundleProgram(program, windows, "windows-os.exe");
+    BundleProgram(suite, program, windows, "windows-os.exe");
 }
 
 // Each case by name, so Run can give each a build host of its own.
@@ -1127,6 +1155,7 @@ pub Run :: () -> int {
     folder = os.RealPath(folder);
     built := os.RealPath(arguments[1]);
     suite := NewSuite(folder, built, Relocate(folder, built));
+    PrepareBundle(suite);
     LinksAProgramAndReusesIt(suite);
     if (suite.llvm == "") {
         os.Print("native build: set CHIBI_LLVM_BIN to link with real LLVM tools");
@@ -1175,6 +1204,7 @@ pub Run :: () -> int {
         }
     }
     assert(failures == 0, "every case passes");
+    BundlePrograms(suite);
     assert(os.Run(["/bin/rm", "-rf", folder]) == 0, "the scratch cleanup");
     return 0;
 }

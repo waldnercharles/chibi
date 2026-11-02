@@ -76,7 +76,7 @@ status 1.
 
 The preceding sections describe VM-backed sessions. The native path uses a Chibi host
 (`apps/host/Host.chibi`) and shared libraries loaded through `foreign import`. It currently
-runs on Linux x86-64. `Main` runs once, and a saved edit changes the next `Frame` without
+runs on Linux x86-64 and macOS arm64. `Main` runs once, and a saved edit changes the next `Frame` without
 restarting the process.
 
 Each successful build is a generation, loaded from a unique `.so` path. A generation owns
@@ -109,7 +109,7 @@ status 134. The VM's pause-and-resume behavior above does not apply to the nativ
 
 ### Status
 
-Native programs do this on Linux x86-64: `chibi run --native --watch [-O0|-O2] [--llvm DIR] PATH`
+Native programs do this on Linux x86-64 and macOS arm64: `chibi run --native --watch [-O0|-O2] [--llvm DIR] PATH`
 builds the library or package source in PATH's folder as a generation (`chibi build --native --shared`), runs
 it under the loop host (`apps/host/Host.chibi`, written in Chibi and built natively), and rebuilds
 and publishes each saved edit as the next generation. The host calls `Main` once, calls `Frame`

@@ -1,0 +1,40 @@
+package facts
+
+OwnedRecord :: struct { text: string; number: int; }
+OwnedChoice :: union { Empty | Value(number: int) }
+
+Main :: () -> int {
+    number: int? = 41;
+    assert(number! + 1 == 42);
+    flag: bool? = false;
+    assert(flag! == false);
+    word: string? = OwnedText();
+    saved := word!;
+    word = nil;
+    assert(text_byte_length(saved) == 3 && text_byte_at(saved, 1) == 0);
+    record := OwnedOptional(true)!;
+    assert(record.number == 42 && text_byte_at(record.text, 2) == 66);
+    value := OwnedOptional(true);
+    result := ReadOwned(value!, ClearOwned(&value));
+    assert(result == 42 && value == nil);
+    choice := OptionalChoice(true)!;
+    switch choice {
+        case .Value(number): assert(number == 42);
+        case .Empty: assert(false);
+    }
+    return 0;
+}
+OwnedText :: () -> string { return text_from_bytes([u8(65), 0, 66]); }
+OwnedOptional :: (present: bool) -> OwnedRecord? {
+    if (present) { return {text: OwnedText(), number: 42}; }
+    return nil;
+}
+ClearOwned :: (value: ^(OwnedRecord?)) -> int { value^ = nil; return 0; }
+ReadOwned :: (value: OwnedRecord, ignored: int) -> int {
+    assert(text_byte_length(value.text) == 3 && text_byte_at(value.text, 2) == 66);
+    return value.number;
+}
+OptionalChoice :: (present: bool) -> OwnedChoice? {
+    if (present) { return OwnedChoice.Value(42); }
+    return nil;
+}

@@ -19,7 +19,7 @@ pub Output :: union {
 
 Target :: (triple: string) -> abi.Target {
     if (triple == "wasm32-unknown-emscripten") { return abi.WebAssembly32(); }
-    if (strings.HasPrefix(triple, "aarch64-apple")) {
+    if (triple == "arm64-apple-macosx11.0.0" || strings.HasPrefix(triple, "aarch64-apple")) {
         return abi.MacOSArm64();
     }
     if (strings.HasPrefix(triple, "x86_64-pc-windows")) {
@@ -104,10 +104,10 @@ ModuleWith :: (collections: string[], directories: string[], paths: string[], so
     if (!abi.Supported(target)) { return Output.Rejected("unsupported native target"); }
     os := 1;
     arch := 1;
-    if (strings.HasPrefix(triple, "aarch64-apple")) {
+    if (abi.Same(target, abi.MacOSArm64())) {
         os = 2;
         arch = 2;
-    } else if (strings.HasPrefix(triple, "x86_64-pc-windows")) {
+    } else if (abi.Same(target, abi.WindowsX64())) {
         os = 3;
     } else if (triple == "wasm32-unknown-emscripten") {
         os = 4;
@@ -136,10 +136,14 @@ LibrarySource :: (source: string) -> bool {
 }
 
 // The existing single-source library producer; package libraries and line
-// tables are not supported here. The driver admits only Linux x86-64.
-LibraryModule :: (path: string, source: string) -> Output {
+// tables are not supported here.
+LibraryModule :: (path: string, source: string, triple: string) -> Output {
     rows := compiler.CollectScalar("/project", path, source, TargetFacts(), Names(), Natives(), Ports(), Identities());
-    return EmitRows([], [], [path], [source], 1, 1, rows, abi.LinuxX64(), "", false);
+    target := Target(triple);
+    os := 1;
+    arch := 1;
+    if (abi.Same(target, abi.MacOSArm64())) { os = 2; arch = 2; }
+    return EmitRows([], [], [path], [source], os, arch, rows, target, "", false);
 }
 
 // Both producers return the same facts rows and rejection contract. A

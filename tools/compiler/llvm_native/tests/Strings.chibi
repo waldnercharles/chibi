@@ -140,7 +140,7 @@ StringArrays :: () -> native.Instruction[] {
 ArraysOfStringsCountTheirElements :: () {
     empty: int[] = [];
     ir := Emitted(TextEmit(6, empty, [1037, 1037, 6], StringArrays(), TextTable()));
-    assert(strings.Contains(ir, "call void @chibi_scalar.retain_range(ptr %fresh2, i32 %length2)\n"));
-    assert(strings.Contains(ir, "call void @chibi_scalar.free_range(ptr %ctx, ptr %data3, i32 %length3)\n"));
+    assert(strings.Contains(ir, "call void @chibi_scalar.retain_range(ptr %data, i32 %length)\n"));
+    assert(strings.Contains(ir, "call void @chibi_scalar.free_range(ptr %ctx, ptr %data, i32 %length)\n"));
     assert(strings.Contains(ir, "define internal void @chibi_scalar.free_range(ptr %ctx, ptr %data, i32 %count) {\n"));
 }

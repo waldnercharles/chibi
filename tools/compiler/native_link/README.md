@@ -82,8 +82,9 @@ link order, with their symbols merged and deduplicated:
 `objects` come first and define the entry (`main`, or `_start` / `mainCRTStartup` when
 `static`), then `archives`, then `libraries` by name: `m` on Linux, `c++` or
 `framework:Cocoa` on macOS, `user32.lib` on Windows. A macOS framework is linked from a
-stub naming its install path, so no SDK is read. A plan with `shared` set links a Linux
-shared library of its objects and archives (`-shared`) instead of a program.
+stub naming its install path, so no SDK is read. A plan with `shared` set links
+its objects and archives as a Linux shared library (`-shared`) or a macOS dylib
+(`-dylib`), without a process entry. Each generation supplies its own runtime context.
 
 ## Checks
 

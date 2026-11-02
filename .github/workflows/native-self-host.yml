@@ -42,6 +42,7 @@ on:
       - test/native_aot/link/windows/**
       - test/native_aot/native_driver/**
       - test/native_aot/text_format/**
+      - test/native_aot/output/**
       - .github/native-llvm.sh
       - .github/workflows/native-self-host.yml
   push:
@@ -107,7 +108,9 @@ jobs:
           sh test/native_aot/native_driver/cache.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
           sh test/native_aot/native_driver/minimum.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native scalar text formatting
-        run: sh test/native_aot/text_format/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+        run: |
+          sh test/native_aot/text_format/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+          sh test/native_aot/output/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native diagnostic coordinates
         timeout-minutes: 5
         run: sh test/native_aot/diagnostics/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
@@ -304,6 +307,7 @@ jobs:
           path: ${{ runner.temp }}/clang+llvm-22.1.8-x86_64-pc-windows-msvc/bin
           key: ${{ steps.llvm-cache.outputs.cache-primary-key }}
       - name: Build the Windows compiler to a fixed point
+        id: windows-fixed-point
         env:
           BOOTSTRAP_RUN: ${{ inputs.windows_bootstrap_run }}
           BOOTSTRAP_COMMIT: ${{ inputs.windows_bootstrap_commit }}
@@ -366,9 +370,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 1
       - name: Check the native Windows asset compiler and C consumer
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |
           & ./test/native_aot/asset_compiler/Bridge.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
       - name: Exercise the native Windows object pipeline
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |
           $ErrorActionPreference = 'Stop'
           $root = $PWD.Path.Replace('\', '/')
@@ -377,13 +383,19 @@ jobs:
           if ($LASTEXITCODE) { throw 'could not compile the Windows object regression' }
           & "$work/windows-objects.exe" $env:CHIBI_WINDOWS_LLVM $work
           if ($LASTEXITCODE) { throw 'the Windows object regression failed' }
+      - name: Check the native Windows build runner
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
+        run: |
+          & ./test/bootstrap/native-runner.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
       - name: Check native Windows formatting, task timing, math and SDK paths
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |
           $ErrorActionPreference = 'Stop'
           $root = $PWD.Path.Replace('\', '/')
           $work = $env:RUNNER_TEMP.Replace('\', '/')
           $cases = @(
             @{ name = 'text-format'; source = 'test/native_aot/text_format/Main.chibi' },
+            @{ name = 'print'; source = 'test/native_aot/output/Main.chibi' },
             @{ name = 'task-timing'; source = 'test/native_aot/tasks/cases/timing/Main.chibi' },
             @{ name = 'square-root'; source = 'test/native_aot/math_scalar/SquareRoot.chibi' },
             @{ name = 'shadow-root'; source = 'test/native_aot/math_scalar/Shadow.chibi' },

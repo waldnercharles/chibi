@@ -21,3 +21,17 @@ Imported :: () { helper.Arm(); assert(false, "imported arm"); }
 Overwrite :: () { testing.ExpectFailure(testing.Failure.IndexOutOfRange); helper.Arm(); assert(false, "last arm wins"); }
 @test
 Budget :: () { testing.ExpectFailure(testing.Failure.BudgetExhausted); while (true) {} }
+@test
+Unwrapped :: () { testing.ExpectFailure(testing.Failure.UnwrappedNil); value := helper.Optional(false)!; }
+@test
+WrongUnwrap :: () { testing.ExpectFailure(testing.Failure.AssertionFailed); value := helper.Optional(false)!; }
+@test
+BeforeUnwrap :: () { value := helper.Optional(false)!; testing.ExpectFailure(testing.Failure.UnwrappedNil); }
+@test
+ImportedUnwrap :: () { helper.ArmNil(); value := helper.Optional(false)!; }
+@test
+PresentUnwrap :: () { value := helper.Optional(true)!; assert(value == 42); }
+@test
+ReturnsUnwrap :: () { testing.ExpectFailure(testing.Failure.UnwrappedNil); }
+@test
+OverwriteUnwrap :: () { testing.ExpectFailure(testing.Failure.AssertionFailed); helper.ArmNil(); value := helper.Optional(false)!; }

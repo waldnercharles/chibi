@@ -21,3 +21,13 @@ dropping the source array, and all owners are released. Invalid scalar operands
 are rejected. Native array ranges and map payloads share the generated record
 helpers; frontend record expansion remains specialized until array backing
 joins the same lifecycle.
+
+The native array probe shares counted backing, then checks set/remove, append
+with and without growth, self-extension during growth and release order. A raw
+caller-owned array has a null owner; the probe imports it before mutation and
+checks that releasing the borrowed descriptor neither frees nor changes it.
+The descriptor is now 24 bytes, with its data pointer still at field 2. Source
+array copies remain eager until foreign calls carry writable-place leases; no
+array descriptor currently crosses the generation host's scalar/text ABI.
+A unique writable loan also appends inside existing capacity without creating
+another allocation; this catches repeated copying of compiler record fields.

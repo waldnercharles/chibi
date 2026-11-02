@@ -3,18 +3,33 @@
 ## Current integration, 2 November 2026
 
 The native-default change series is in [PR #1331](https://github.com/waldnercharles/chibi/pull/1331).
-The compiler now self-hosts natively, and the default build and installed tools
-use the verified native compiler. The combined compiler at `975dbd72d`
-reproduces identical bytes on macOS arm64; cross-platform CI for that revision
-is still in progress. The direct native compiler test inventory passes 403 of
-408 tests, with five unit-algebra tests awaiting array operations.
+The verified native compiler drives the default build and installed tools.
+At `3c7d1d52e`, all 410 compiler tests pass directly through native execution
+in 22.05 seconds, including the original 408-test inventory. At `c32f5d6b6`,
+the pinned macOS seed builds the complete compiler in 40.93 seconds, and that
+compiler passes the native CLI suite in 6.44 seconds. Fresh combined
+cross-platform fixed-point and installed-product checks remain required.
 
-Native desktop asset compilation, task timing, map iteration, retained string
-records, optional values and typed failures have implementation and focused
-tests. Task results, broader managed ownership, complete test-runner parity and
-remaining platform coverage are still being integrated. Program/application
-runtime APIs and browser execution still use the VM. See [PLAN.md](../PLAN.md)
-for current commits, validation and deletion gates.
+The continuation includes numeric task results, typed nil-unwrap failures,
+scalar/string record maps, shared array backing, synchronous `print_string`,
+and typed test-effect collection. The array producer still copies eagerly;
+foreign mutation leases and broader managed ownership are not yet complete.
+Individual changes have focused O0/O2 and ownership checks; the latest combined
+source is awaiting its next execution pass. Native test-worker integration,
+macOS reload integration and the browser SDK compiler archive are in progress.
+
+Windows source `585e40829` reproduces identical stage-four/five binaries,
+SHA-256 `d9a56bde96fdce41d9b9c335f5120dc4ec659c8aad62ddf0641d4eb9e909f96f`.
+Its subsequent native asset-compiler build traps with `0xC000001D`; Windows
+acceptance and seed publication remain blocked on that diagnosis and the
+remaining runtime probes. Program/application APIs and browser execution
+still use the VM. See [PLAN.md](../PLAN.md) for evidence and deletion gates.
+
+Native shared generations and `run --watch` now run on Linux x86-64 and macOS
+arm64. The real compiler and host tests cover retained scalar/string records,
+rejected edits, Main running once, and tasks finishing or failing in their
+original generation. The generation suite runs at O0 and O2. Windows shared
+generation loading remains a separate platform gate.
 
 The milestone tables and census below preserve the earlier rollout's evidence
 and main-branch status; they do not describe the current integration branch.
@@ -96,7 +111,7 @@ which have one writer at a time, so they run in order in the LLVM lane.
 | W4 | Text natives: byte length, byte reads, slices | W3 | native catalog input to `CollectScalar` | LLVM lane | no | 17 `core:strings` functions copied into a module (Compare, HasPrefix, Index, LastIndex, Count, EqualFold and others) agree with both VMs at O0 and O2 | yes (#764) | none | decided: a slice is a view of its source's bytes, as Odin's and Rust's string slices are; a byte outside is -1 and a slice clamps, as the runtime's natives do. `for` over a string waits: no census function uses it |
 | W5 | Native runtime library and context | W3 | the hidden context parameter, `execution_native_context` (`src/execution/native.h`): a table of the runtime's operations, versioned with the export ABI (2) | LLVM lane with the runtime owner | partly: each later operation is one more context entry | a library that formats text loads with no undefined symbol and agrees with the VM in a scene; C static assertions pin the context and value layouts to `native_abi.ContextType()` and `ValueType()`; the VM frees each call's heap when it returns, so the native selectors leak nothing under ASan; an out-of-range index ends the program with its named message (with W7 and W11) | yes (#768): the context, its call-scoped heap and `format_text`; so far `language-native-calls` formats every scalar type and text through a context as the VM does and runs a C entry that formats in a Probe, `language-package-compiler-chibi-scalar` checks the format rows, 4 malformed variants, a formatted record's rejection and `llvm_native`'s format IR with 5 changed-plan rejections, and `language-package-compiler-chibi-native` runs a library that formats in a scene | none | decided: D9, D10 |
 | W6 | Allocating text: `format_text`, joins, case conversion | W4, W5 | W5's context | LLVM lane | no | the same `core:strings` functions that build strings agree at O0 and O2, with no leak under ASan | partly (#768): `format_text` calls the VM's formatter through the context, so `ToLower`, `ToUpper`, `Repeat`, `Replace` and `ReplaceAll` agree with both VMs at O0 and O2 in `language-package-compiler-chibi-native`, as does `format_text` of each scalar type, widths, precision, hex, explicit indexes, escaped braces and an embedded NUL; joins wait for W7's arrays | none | decided: every text native that allocates calls the runtime, which formats as the VM does; the byte reads stay inline (W4) |
-| W7 | Arrays (M4d) | W5 | the context's `allocate` and `index_failed` (export ABI 4); `native_abi.ArrayType()`, `{ i32, i32, ptr }` | LLVM lane | no | copy independence, growth, empty arrays, out-of-range panics, `for` over arrays, at O0 and O2 and under ASan | partly: arrays of numbers, `bool`, strings and the source's records as parameters, results, locals, record fields, union payloads and literals; `a[i]`, `a[i].f`, `a[i] = x`, `a[i] += x`, `a[i].f = x`, `a.append(x)`, `a.extend(b)`, `a.remove_index(i)`, `append(a, x)`, `extend(a, b)`, `slice`, `resize`, `contains`, `length(a)`, a switch on any union of the source, `a.length()`, `for x in a`, `for x, i in a`, array literals as receivers and loop subjects, written array and record parameters as the callee's copy, array and string results among several, and `text_bytes`, copy independence and growth in the `array_*` corpus cases and the `Arrays` emitter tests; the out-of-range panic and ASan runs wait for a Linux run | none | decided: D10's arrays, native values for now (below), the VM boundary waits for W16 |
+| W7 | Arrays (M4d) | W5 | the context's `allocate` and `index_failed` (export ABI 4); `native_abi.ArrayType()`, `{ i32, i32, ptr, ptr }` | LLVM lane | no | copy independence, growth, empty arrays, out-of-range panics, `for` over arrays, at O0 and O2 and under ASan | partly: arrays of numbers, `bool`, strings and the source's records as parameters, results, locals, record fields, union payloads and literals; `a[i]`, `a[i].f`, `a[i] = x`, `a[i] += x`, `a[i].f = x`, `a.append(x)`, `a.extend(b)`, `a.remove_index(i)`, `append(a, x)`, `extend(a, b)`, `slice`, `resize`, `contains`, `length(a)`, a switch on any union of the source, `a.length()`, `for x in a`, `for x, i in a`, array literals as receivers and loop subjects, written array and record parameters as the callee's copy, array and string results among several, and `text_bytes`, copy independence and growth in the `array_*` corpus cases and the `Arrays` emitter tests; the out-of-range panic and ASan runs wait for a Linux run | none | decided: D10's arrays, native values for now (below), the VM boundary waits for W16 |
 | W8 | Maps (M4e) | W7 | #694's map operations | LLVM lane | no | as W7, plus hashing and iteration order matching the VM | no | none | decided: D10 |
 | W9 | Strings and arrays in records and unions (M4f) | W3, W7 | record layout with managed fields | LLVM lane | no | copy independence of nested values; corpus `struct` accepted | no | none | open: field copy and drop placement |
 | W10 | Pointers (`^T`) in place of references | #695, #698 merged; W5 | #695's managed heap | LLVM lane | no | corpus `reference` replaced by a pointer case; cycles collected after native calls return | no | #695, #698 (dependencies) | decided: D10, quiescent collection |

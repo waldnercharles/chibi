@@ -10,7 +10,7 @@ case "$(uname -s)-$(uname -m)" in
     Linux-x86_64) triple=x86_64-unknown-linux-gnu ;;
     *) echo 'native map programs: unsupported test host' >&2; exit 2 ;;
 esac
-for name in Values Strings Iteration Records Effects Receivers; do
+for name in Values Strings Iteration Records Effects Receivers ManagedRecords; do
     for level in 0 2; do
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$root/test/native_aot/map_programs/$name.chibi" --entry Main \
@@ -34,4 +34,11 @@ if "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     exit 1
 fi
 grep -F 'native compound map assignment is not supported yet' "$work/compound.log" >/dev/null
+if "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_aot/map_programs/ArrayBacked.chibi" --entry Main \
+    --output "$work/ArrayBacked" --llvm "$llvm" --target "$triple" --jobs 2 > "$work/array-backed.log" 2>&1; then
+    echo 'native map programs: array-backed record was accepted' >&2
+    exit 1
+fi
+grep -F 'native map operation differs from its operands' "$work/array-backed.log" >/dev/null
 echo 'native map programs passed'

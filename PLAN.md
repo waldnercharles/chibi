@@ -231,3 +231,25 @@ Remaining runtime consumers include `application.*`, `program.open/update/call`
 and browser compilation/execution. The current WebAssembly JIT still delegates
 some operations to VM stepping. These need working replacements before their
 VM support, APIs or recovery assets can be deleted.
+
+At the next checkpoint, `975dbd72d`, the optional-value fix and scoped map-alias
+fix are integrated. Its compiler source reproduced identical macOS arm64
+executables: SHA-256
+`efd11e1e9fd61aa03f5c02ce711c1202ba73500dc23721cd68d238bfe94369bd`.
+The two builds took 78.23 s and 61.52 s under ambient load. Subsequent local
+commits through `3520eaef0` changed graph/docs/CI and asset test fixtures, not
+the compiler inputs used for that proof.
+
+CI at `975dbd72d` found the native asset product was still compiled by the old
+pinned seed, which cannot emit the new quota-scope helpers. Local graph proofs
+had supplied a current compiler and therefore missed this dependency. The
+graph lane is fixing the product ordering and compiler receipt so the current
+native compiler builds the asset service. This remains a default-build gate.
+
+The second quiet performance window ran from 17:00:40 to 17:05:14 UTC. All
+migration lanes drained before it and resumed afterward. Four balanced pairs
+measured removal of `StatementStep` type-table snapshots: mean wall time fell
+from 35.02 s to 31.49 s and mean CPU time from 63.93 s to 60.69 s; all eight
+outputs matched the frozen compiler. The focused commit is `7d798d802` in
+PR #1333, pending composition with the task type-compatibility fix. These are
+compiler measurements, not complete installed-toolchain equivalence results.

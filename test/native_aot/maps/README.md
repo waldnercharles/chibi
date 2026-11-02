@@ -32,5 +32,8 @@ reinsertion order, tombstones, snapshots during direct and reference mutation,
 nested loops, break/continue and returning strings from temporary maps. The
 ownership source is also compiled to LLVM and rerun through the poisoned
 allocator at O0/O2, requiring zero outstanding allocations after every exit.
+Numeric/bool record values cover nested records, copied reads, aliases,
+replacement, growth, deletion and reference replacement. Missing record keys
+must report `MapKeyAbsent`; they never synthesize a zero record.
 
 A growth/shrink regression builds 4096 entries, deletes all but 64 and checks that logical entry/index capacity shrinks with the live map. Capacity planning near 2^30 is checked without allocating those buffers.

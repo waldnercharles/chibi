@@ -5,8 +5,8 @@ import snapshot "project:source_snapshot"
 import syntax "project:syntax_diagnostics"
 import tk "project:source_tokenizer"
 
-// Native maps currently hold scalar or string keys and values. The ordinary
-// compiler supplies their declared type; the facts carry the two scalar types.
+// Native maps have scalar or string keys and scalar, string or record values.
+// The ordinary compiler supplies the types; lowering checks record ownership.
 ScalarMapType :: (types: TypeDecl[], record: int) -> int {
     if (record < 0 || record >= length(types) || types[record].kind != MapDecl) {
         return 0;
@@ -14,8 +14,10 @@ ScalarMapType :: (types: TypeDecl[], record: int) -> int {
     declared := types[record];
     key := ScalarTypeOf(declared.key);
     value := ScalarTypeOf(declared.value_storage);
+    if (declared.value_storage == StructStorage) { value = ScalarRecordType(types, declared.value_record); }
     if ((facts.Bits(key) == 0 && key != facts.BoolType && key != facts.StringType) ||
-        value == 0 || declared.value_container != 0 || declared.value_record >= 0) {
+        value == 0 || declared.value_container != 0 ||
+        (declared.value_record >= 0 && declared.value_storage != StructStorage)) {
         return 0;
     }
     return facts.MapType + value * 16 + key;
@@ -65,7 +67,7 @@ ScalarMapValue :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     mapped := ScalarMapType(types, record);
     output := rows;
     if (mapped == 0) {
-        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native maps require scalar or string keys and values"));
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native maps require scalar or string keys and supported value types"));
     }
     if (Is(forest, node, syntax.MapExpression)) {
         pairs := Members(forest, node);
@@ -76,8 +78,10 @@ ScalarMapValue :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
                 if (part == syntax.FieldValue) {
                     storage = types[record].value_storage;
                 }
-                switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
-                                     value, value, storage, storage, facts.Clamp, output) {
+                shape: ValueType = {storage: storage, container: 0, record: -1};
+                if (part == syntax.FieldValue) { shape.record = types[record].value_record; }
+                switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                                          value, shape, output) {
                     case .Failed(diagnostic):
                         return ScalarOperands.Failed(diagnostic);
                     case .Built(built):
@@ -163,7 +167,8 @@ ScalarMapReadRows :: (forest: snapshot.SnapshotNode[], text: string, callables: 
     if (read.operator == facts.MapHas) {
         type = facts.BoolType;
     } else if (read.operator == facts.MapGet) {
-        type = ScalarTypeOf(types[record].value_storage);
+        type = ScalarValueType(types, types[record].value_storage, types[record].value_container,
+                               types[record].value_record);
     }
     row := ScalarAt(forest, node, facts.MapRow, type, read.operator, count, "");
     row.literal = i64(ScalarMapType(types, record));
@@ -226,9 +231,10 @@ ScalarMapChanged :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     count := 2;
     if (change.operator == facts.MapSet) {
         value := Field(forest, statement, syntax.FieldValue);
-        storage := types[record].value_storage;
-        switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
-                             value, value, storage, storage, facts.Clamp, output) {
+        shape: ValueType = {storage: types[record].value_storage, container: types[record].value_container,
+                            record: types[record].value_record};
+        switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                                  value, shape, output) {
             case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
             case .Built(built): output = built;
         }

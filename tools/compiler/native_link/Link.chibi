@@ -65,6 +65,9 @@ pub Plan :: struct {
     interpreter: string;
     static: bool;
     shared: bool;
+    // Exact additional COFF symbols exported by a Windows DLL. Other plans
+    // leave this empty; spelling is not decorated or interpreted as options.
+    exports: string[];
 }
 
 // A plan for the program of these objects and archives: dynamically linked
@@ -74,7 +77,7 @@ pub Program :: (triple: string, llvm: string, objects: string[], archives: strin
                 libpaths: string[], output: string, work: string, static: bool) -> Plan {
     plan: Plan = {triple: triple, llvm: llvm, objects: objects, archives: archives, libraries: libraries, imports: [],
                   libpaths: libpaths, output: output, work: work, libc: "", interpreter: "", static: static,
-                  shared: false};
+                  shared: false, exports: []};
     return plan;
 }
 
@@ -219,6 +222,15 @@ pub ImportName :: (value: string) -> bool {
         if (!word && byte != 46 && byte != 45 && byte != 64 && byte != 36) {
             return false;
         }
+    }
+    return true;
+}
+
+pub ValidExports :: (plan: Plan) -> bool {
+    if (length(plan.exports) == 0) { return true; }
+    if (!plan.shared || TargetOf(plan.triple) != WindowsX64) { return false; }
+    for (name in plan.exports) {
+        if (!ImportName(name)) { return false; }
     }
     return true;
 }
@@ -545,6 +557,7 @@ pub Command :: (plan: Plan, to: string) -> string[] {
             command.append(ImportLibrary(plan, stub.name));
         }
         command.extend(plan.libraries);
+        for (name in plan.exports) { command.append(Join(["/export:", name])); }
         return command;
     }
     if (plan.shared) {

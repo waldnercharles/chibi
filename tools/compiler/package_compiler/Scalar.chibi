@@ -1897,14 +1897,24 @@ ScalarConversion :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         output.append(ScalarAt(forest, node, facts.TaskRunningRow, facts.BoolType, 0, 1, ""));
         return ScalarOperands.Built(output);
     }
-    // An optional where a bool is expected is true when it is not nil.
-    if (own == UnionStorage && storage == BoolStorage &&
-        ScalarOptional(types, ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, operand))) {
-        output := rows;
-        output.extend([ScalarAt(forest, operand, facts.TagRow, facts.IntType, 0, 1, ""),
-                       ScalarLiteral(forest, operand, facts.IntType, 0),
-                       ScalarAt(forest, node, facts.CompareRow, facts.BoolType, facts.NotEqual, 2, "")]);
-        return ScalarOperands.Built(output);
+    // Before presence is known, a bool context tests the optional's tag.
+    // The ordinary checker narrows a proven bool payload first, so false
+    // remains false inside its guard. Nil comparisons still inspect the tag.
+    if (own == UnionStorage && storage == BoolStorage) {
+        optional := ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, operand);
+        if (ScalarOptional(types, optional)) {
+            output := rows;
+            shape: ValueType = {storage: UnionStorage, container: 0, record: optional};
+            if (types[optional].value_storage == BoolStorage && types[optional].value_container == 0 &&
+                OptionalValuePresent(forest, text, names, Unparenthesized(forest, operand), shape)) {
+                output.append(ScalarAt(forest, operand, facts.PayloadRow, facts.BoolType, 0, 1, ""));
+            } else {
+                output.extend([ScalarAt(forest, operand, facts.TagRow, facts.IntType, 0, 1, ""),
+                               ScalarLiteral(forest, operand, facts.IntType, 0),
+                               ScalarAt(forest, node, facts.CompareRow, facts.BoolType, facts.NotEqual, 2, "")]);
+            }
+            return ScalarOperands.Built(output);
+        }
     }
     converts := [ScalarAt(forest, node, facts.ConvertRow, ScalarTypeOf(storage), mode, 1, "")];
     if (Integer(own) && storage == FloatStorage) {

@@ -3,6 +3,7 @@ package asset_wasm_build
 import os "core:os"
 import strings "core:strings"
 import wasmtools "graph:wasm_toolchain"
+import wasmruntime "graph:asset_wasm_runtime"
 
 Join :: (parts: string[]) -> string { return strings.Concatenate(parts); }
 Tool :: (llvm: string, name: string) -> string {
@@ -27,7 +28,7 @@ RemoveTree :: (path: string) -> bool {
 }
 
 CFiles :: () -> string[] {
-    return ["authoring/asset_compiler_wasm.c", "authoring/asset_compiler_host.c", "support/binary_cache.c",
+    return ["authoring/asset_compiler_host.c", "support/binary_cache.c",
             "support/file_io.c", "support/sha256.c", "support/xalloc.c"];
 }
 
@@ -57,7 +58,8 @@ InputDigest :: (root: string, driver: string, emcc: string, llvm: string) -> str
     toolchain := wasmtools.Toolchain(emcc, llvm);
     if (toolchain.error != "") { os.Print(toolchain.error); return ""; }
     chunks.append(toolchain.configuration);
-    inputs := [driver, Join([root, "/tools/graph/asset_wasm/Build.chibi"]), Join([root, "/tools/graph/wasm_toolchain/Toolchain.chibi"])];
+    inputs := [driver, Join([root, "/tools/graph/asset_wasm/Build.chibi"]), Join([root, "/tools/graph/wasm_toolchain/Toolchain.chibi"]),
+               Join([root, "/tools/graph/asset_wasm_runtime/Runtime.chibi"]), Join([root, "/tools/graph/asset_wasm_runtime/Runtime.ll"])];
     inputs.extend(toolchain.files);
     for (source in CFiles()) { inputs.append(Join([root, "/src/", source])); }
     for (header in ["authoring/asset_compiler_wasm.h", "authoring/asset_compiler_host.h", "support/binary_cache.h",
@@ -103,7 +105,7 @@ Flags :: (threads: bool) -> string[] {
     return flags;
 }
 
-// Check the small C/SDK closure before paying for compiler IR emission.
+// Check the facade LLVM and remaining cache C/SDK closure before compiler IR.
 Runtime :: (root: string, emcc: string, work: string, threads: bool, testing: bool) -> string[] {
     if (os.MakeDirectory(work) != nil) { return []; }
     compiler := [emcc];
@@ -111,6 +113,15 @@ Runtime :: (root: string, emcc: string, work: string, threads: bool, testing: bo
     compiler.extend(["-std=gnu11", "-Wall", "-Wextra", "-Werror", "-flto", "-I", Join([root, "/src"])]);
     if (testing) { compiler.append("-DCHIBI_ASSET_COMPILER_WASM_TEST"); }
     modules: string[] = [];
+    source := Join([work, "/runtime.ll"]);
+    object := Join([work, "/runtime.bc"]);
+    text := wasmruntime.Module(root, emcc, work, testing);
+    if (text == "" || os.WriteText(source, text) != nil) { return []; }
+    facade := [emcc];
+    facade.extend(Flags(threads));
+    facade.extend(["-flto", "-c", source, "-o", object]);
+    if (!Run(facade)) { return []; }
+    modules.append(object);
     for (source, index in CFiles()) {
         runtime := format_text("{}/runtime-{}.bc", work, index);
         compile_source := compiler;
@@ -141,12 +152,12 @@ Generate :: (root: string, emcc: string, llvm: string, work: string, output: str
     if (!Run(compiler)) { return false; }
     identity := os.HashFile(payload);
     if (identity.error != nil) { return false; }
-    identity_source := Join([work, "/identity.c"]);
+    identity_source := Join([work, "/identity.ll"]);
     identity_object := Join([work, "/identity.o"]);
-    if (os.WriteText(identity_source, format_text("const char *asset_compiler_wasm_identity(void) {{ return \"{}\"; }}\n", identity.digest)) != nil) { return false; }
+    if (os.WriteText(identity_source, wasmruntime.Identity(identity.digest)) != nil) { return false; }
     compiler = [emcc];
     compiler.extend(Flags(threads));
-    compiler.extend(["-std=c11", "-Wall", "-Wextra", "-Werror", "-c", identity_source, "-o", identity_object]);
+    compiler.extend(["-c", identity_source, "-o", identity_object]);
     if (!Run(compiler)) { return false; }
     archive := Join([work, "/compiler.a"]);
     if (!Run([Tool(llvm, "llvm-ar"), "rcs", archive, payload, identity_object])) { return false; }
@@ -234,15 +245,21 @@ Main :: () -> int {
         present := os.Kind(Join([output, "/", product]));
         if (present != os.KindNone && present != os.KindFile) {
             os.Print("asset wasm: an output is not an ordinary file");
-            removed := os.Remove(lock); return 2;
+            if (os.Remove(lock) != nil) { os.Print(Join(["asset wasm: cannot release output lock ", lock])); }
+            return 2;
         }
     }
     before := InputDigest(root, driver, emcc, llvm);
     if (before == "") {
-        os.Print("asset wasm: cannot verify compiler inputs"); removed := os.Remove(lock); return 1;
+        os.Print("asset wasm: cannot verify compiler inputs");
+        if (os.Remove(lock) != nil) { os.Print(Join(["asset wasm: cannot release output lock ", lock])); }
+        return 1;
     }
     temporary := os.TemporaryDirectory(lock);
-    if (temporary.error != nil) { removed := os.Remove(lock); return 1; }
+    if (temporary.error != nil) {
+        if (os.Remove(lock) != nil) { os.Print(Join(["asset wasm: cannot release output lock ", lock])); }
+        return 1;
+    }
     single_threaded := Runtime(root, emcc, Join([temporary.path, "/plain"]), false, testing);
     threaded: string[] = [];
     if (length(single_threaded) != 0) { threaded = Runtime(root, emcc, Join([temporary.path, "/threads"]), true, testing); }

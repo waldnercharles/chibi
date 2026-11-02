@@ -1,13 +1,12 @@
-name: Windows native diagnosis
-# Temporary exact-source crash reproduction. This does not replace fresh-source
-# self-host proof or publish a seed. Remove it after the captured failure is fixed.
+name: Windows counted Unicode regression
+# Temporary ordinary compiler regression using the checked retained compiler.
+# Fresh-source self-host proof remains separate. No debugger or dump collection.
 on:
   workflow_dispatch:
   push:
     branches: [claude/windows-self-build]
     paths:
       - .github/workflows/windows-native-diagnose.yml
-      - .github/windows-asset-diagnose.ps1
       - .github/native-llvm-windows.ps1
 permissions:
   contents: read
@@ -84,17 +83,6 @@ jobs:
             if ($LASTEXITCODE) { throw "LLVM tool $tool is unusable" }
           }
           "CHIBI_WINDOWS_LLVM=$llvm" >> $env:GITHUB_ENV
-      - name: Reproduce exact asset compiler failure with a mini dump
-        run: |
-          & ./harness/.github/windows-asset-diagnose.ps1 -Compiler "$env:RUNNER_TEMP/retained/stage4/chibi.exe" -Source "$PWD/frozen" -Llvm $env:CHIBI_WINDOWS_LLVM -Output "$env:RUNNER_TEMP/asset-diagnose"
-      - name: Keep the exact compiler crash evidence
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: windows-asset-diagnose
-          path: ${{ runner.temp }}/asset-diagnose
-          retention-days: 1
-          if-no-files-found: warn
       - name: Run the current Windows OS and object regression
         if: ${{ !cancelled() && steps.retained.outcome == 'success' && steps.llvm.outcome == 'success' }}
         run: |
@@ -109,19 +97,108 @@ jobs:
         if: ${{ !cancelled() && steps.retained.outcome == 'success' && steps.llvm.outcome == 'success' }}
         run: |
           & ./harness/test/bootstrap/native-runner.ps1 -Compiler "$env:RUNNER_TEMP/retained/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
+      - name: Capture actual UCRT float formatting bytes
+        if: ${{ !cancelled() && steps.retained.outcome == 'success' && steps.llvm.outcome == 'success' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $probe = @'
+          package formatter_probe
+          foreign import win "system:kernel32"
+          foreign win {
+              GetStdHandle :: (kind: i32) -> u64
+              WriteFile :: (handle: u64, data: u8[], size: u32, written: u32[], overlap: u64) -> i32
+          }
+          Main :: () -> int {
+              single: f32 = 1.25
+              text := format_text("{}|{:.1f}|{:e}|{:a}", single, int(42), single, single)
+              bytes: u8[] = []
+              for (byte in text_bytes(text)) { bytes.append(u8(byte)) }
+              written: u32[] = [0]
+              status := WriteFile(GetStdHandle(-11), bytes, u32(length(bytes)), written, 0)
+              if (status == 0 || written[0] != u32(length(bytes))) { return 1 }
+              return 0
+          }
+          '@
+          $path = "$env:RUNNER_TEMP/formatter-probe.chibi"
+          [IO.File]::WriteAllText($path, $probe)
+          & "$env:RUNNER_TEMP/retained/stage4/chibi.exe" --compiler "$PWD/harness/tools/compiler" --core "$PWD/harness/packages/core" --source $path --entry Main --output "$env:RUNNER_TEMP/formatter-probe.exe" --llvm $env:CHIBI_WINDOWS_LLVM --target x86_64-pc-windows-msvc --jobs 2
+          if ($LASTEXITCODE) { throw 'Could not compile the UCRT formatter probe' }
+          $actual = & "$env:RUNNER_TEMP/formatter-probe.exe"
+          if ($LASTEXITCODE) { throw 'The UCRT formatter probe failed' }
+          "UCRT mixed float actual: $actual" | Tee-Object -FilePath "$env:RUNNER_TEMP/formatter-actual.txt"
+      - name: Keep the UCRT formatting bytes
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-formatter-bytes
+          path: ${{ runner.temp }}/formatter-actual.txt
+          retention-days: 1
+          if-no-files-found: warn
       - name: Run current scalar platform regressions
         if: ${{ !cancelled() && steps.retained.outcome == 'success' && steps.llvm.outcome == 'success' }}
         run: |
           $ErrorActionPreference = 'Stop'
           $root = "$PWD/harness".Replace('\', '/')
           $work = $env:RUNNER_TEMP.Replace('\', '/')
+          $failed = @()
           foreach ($source in 'test/native_aot/text_format/Main.chibi', 'test/native_aot/tasks/cases/timing/Main.chibi', 'test/native_aot/math_scalar/SquareRoot.chibi', 'test/native_aot/math_scalar/Shadow.chibi', 'test/bootstrap/fixtures/InstallPaths.chibi') {
             foreach ($level in 0, 2) {
               $output = "$work/scalar-probe.exe"
               & "$work/retained/stage4/chibi.exe" --compiler "$root/tools/compiler" --core "$root/packages/core" --source "$root/$source" --collection "graph=$root/tools/graph" --entry Main --output $output --llvm $env:CHIBI_WINDOWS_LLVM --target x86_64-pc-windows-msvc --jobs 2 --level $level
-              if ($LASTEXITCODE) { throw "Could not compile $source O$level" }
+              if ($LASTEXITCODE) { $failed += "$source O$level compilation"; continue }
               & $output
-              if ($LASTEXITCODE) { throw "$source O$level failed" }
+              if ($LASTEXITCODE) { $failed += "$source O$level runtime"; continue }
               "PASS diagnostic Windows $source O$level" >> $env:GITHUB_STEP_SUMMARY
             }
           }
+          if ($failed.Count) { throw ("Scalar failures: " + ($failed -join ', ')) }
+      - name: Confirm the old compiler fails the original long Unicode asset output
+        if: ${{ !cancelled() && steps.retained.outcome == 'success' && steps.llvm.outcome == 'success' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path ([IO.Path]::GetTempPath()) ('chibi-native-asset-Ω-' + [Guid]::NewGuid().ToString('N'))
+          $asset = "$work/SDK/libexec/chibi/chibi-asset-compiler.exe"
+          New-Item -ItemType Directory -Path "$work/SDK/libexec/chibi" | Out-Null
+          try {
+            $source = "$PWD/frozen".Replace('\', '/')
+            $began = [Diagnostics.Stopwatch]::StartNew()
+            & "$env:RUNNER_TEMP/retained/stage4/chibi.exe" --compiler "$source/tools/compiler" --core "$source/packages/core" --source "$source/tools/compiler/asset_driver/Main.chibi" --entry Main --output $asset --llvm $env:CHIBI_WINDOWS_LLVM --target x86_64-pc-windows-msvc --level 0 --jobs 2
+            $status = $LASTEXITCODE
+            $objects = @(Get-ChildItem -LiteralPath $work -File -Recurse -Filter '*.o')
+            $minimum = [long]0
+            foreach ($object in $objects) { $minimum += [Text.Encoding]::UTF8.GetByteCount($object.FullName) + 3 }
+            "Old compiler long output: exit=$status objects=$($objects.Count) object-path argv UTF8 lower-bound=$minimum elapsed=$($began.Elapsed.TotalSeconds)s" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+            if ($status -ne -1073741795 -or $minimum -lt 4096) { throw 'The old compiler did not reproduce its long-command CString failure' }
+          } finally {
+            Remove-Item -LiteralPath $work -Recurse -Force
+          }
+      - name: Build the frozen compiler with only counted Windows text conversion
+        if: ${{ !cancelled() && steps.retained.outcome == 'success' && steps.llvm.outcome == 'success' }}
+        id: repaired
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = "$env:RUNNER_TEMP/fixed-source"
+          New-Item -ItemType Directory -Path "$source/tools", "$source/packages", "$env:RUNNER_TEMP/fixed" | Out-Null
+          Copy-Item ./frozen/tools/compiler "$source/tools/compiler" -Recurse
+          Copy-Item ./frozen/packages/core "$source/packages/core" -Recurse
+          $path = "$source/packages/core/sys/windows/Windows.chibi"
+          $old = [IO.File]::ReadAllText($path)
+          $new = [IO.File]::ReadAllText("$PWD/harness/packages/core/sys/windows/Windows.chibi")
+          $start = $new.IndexOf('Wide :: (text: string)')
+          $end = $new.IndexOf('// The text of the first', $start)
+          $wide = $new.Substring($start, $end - $start)
+          $start = $old.IndexOf('Wide :: (text: string)')
+          $end = $old.IndexOf('// The text of the first', $start)
+          if ($start -lt 0 -or $end -le $start -or !$wide.Contains('i32(length(bytes))')) { throw 'Counted conversion patch differs' }
+          $patched = $old.Substring(0, $start) + $wide + $old.Substring($end)
+          $patched = $patched.Replace('text: cstring, length: i32, wide: u16[]', 'text: u8[], length: i32, wide: u16[]')
+          if ($patched -eq $old) { throw 'Counted conversion patch did not change the old compiler' }
+          [IO.File]::WriteAllText($path, $patched)
+          & "$env:RUNNER_TEMP/retained/stage4/chibi.exe" --compiler "$source/tools/compiler" --core "$source/packages/core" --output "$env:RUNNER_TEMP/fixed/chibi.exe" --llvm $env:CHIBI_WINDOWS_LLVM --target x86_64-pc-windows-msvc --jobs 2
+          if ($LASTEXITCODE) { throw 'Could not build the isolated counted-conversion candidate' }
+          $sha = (Get-FileHash "$env:RUNNER_TEMP/fixed/chibi.exe").Hash.ToLowerInvariant()
+          "Diagnostic fixed candidate, frozen585e plus only Windows counted conversion, sha256 $sha" >> $env:GITHUB_STEP_SUMMARY
+      - name: Replay the original long Unicode asset build and C bridge with the fixed compiler
+        if: ${{ !cancelled() && steps.repaired.outcome == 'success' }}
+        run: |
+          & ./harness/test/native_aot/asset_compiler/Bridge.ps1 -Compiler "$env:RUNNER_TEMP/fixed/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM

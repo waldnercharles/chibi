@@ -25,6 +25,7 @@ Main :: () -> int {
     Write(source, text);
     ran := os.Capture([chibi, "run", "-O0", "--llvm", llvm, source, "--", "first", "a b", "--watch"]);
     assert(ran.status == 7 && ran.stdout == "native run\n", "run selects Main and passes arguments and exit status");
+    ScopedRuns(chibi, llvm, scratch);
     invalid := os.Capture([chibi, "run", "--llvm"]);
     assert(invalid.status == 2 && strings.Contains(invalid.stderr, "--llvm needs a nonempty value"), "missing option value is diagnosed");
 
@@ -75,4 +76,36 @@ Main :: () -> int {
 Write :: (path: string, text: string) {
     written := os.WriteText(path, text);
     assert(written == nil, "write fixture source");
+}
+
+// Graph tools need a named entry, checkout project imports and independent
+// collection bindings while keeping source files in their owning directories.
+ScopedRuns :: (chibi: string, llvm: string, scratch: string) {
+    root := strings.Concatenate([scratch, "/project scope"]);
+    collection_root := strings.Concatenate([scratch, "/collection scope"]);
+    for (folder in [root, strings.Concatenate([root, "/facts"]), strings.Concatenate([root, "/sub"]),
+                   collection_root, strings.Concatenate([collection_root, "/facts"])]) {
+        made := os.MakeDirectory(folder);
+        assert(made == nil, "scoped directory");
+    }
+    Write(strings.Concatenate([root, "/facts/Facts.chibi"]), "package facts\npub Value :: () -> int { return 20; }\n");
+    Write(strings.Concatenate([collection_root, "/facts/Facts.chibi"]), "package external_facts\npub Value :: () -> int { return 22; }\n");
+    source := strings.Concatenate([scratch, "/ScopedEntry.chibi"]);
+    Write(source, "package scoped\nimport facts \"project:facts\"\nimport extra \"extra:facts\"\nimport os \"core:os\"\nMain :: () -> int { return 99; }\nRun :: () -> int { args := os.Arguments(); assert(length(args) == 1 && args[0] == \"a b\", \"scoped argument\"); return facts.Value() + extra.Value(); }\n");
+    command := [chibi, "run", "-O0", "--llvm", llvm, "--entry", "Run", "--root", root,
+                "--collection", strings.Concatenate(["extra=", collection_root]), source, "--", "a b"];
+    ran := os.Capture(command);
+    if (ran.status != 42) { os.Print(ran.stderr); }
+    assert(ran.status == 42 && ran.stdout == "", "entry and independent roots compile without moving sources");
+    again := os.Capture(command);
+    assert(again.status == 42, "scoped run reuses the program");
+    Write(strings.Concatenate([root, "/sub/Main.chibi"]), "package consumer\nimport facts \"project:facts\"\nMain :: () -> int { return 99; }\nRun :: () -> int { return facts.Value() + Sibling(); }\n");
+    Write(strings.Concatenate([root, "/sub/Sibling.chibi"]), "package consumer\nSibling :: () -> int { return 22; }\n");
+    directory := os.Capture([chibi, "run", "-O0", "--llvm", llvm, "--entry", "Run", "--root", root,
+                             strings.Concatenate([root, "/sub"])]);
+    assert(directory.status == 42, "directory entry stays in its package under the chosen project root");
+    duplicate := os.Capture([chibi, "run", "--llvm", llvm, "--collection", strings.Concatenate(["core=", collection_root]), source]);
+    assert(duplicate.status == 2 && strings.Contains(duplicate.stderr, "unique name"), "duplicate collection is rejected");
+    missing := os.Capture([chibi, "run", "--entry"]);
+    assert(missing.status == 2 && strings.Contains(missing.stderr, "--entry needs a nonempty value"), "missing named entry is diagnosed");
 }

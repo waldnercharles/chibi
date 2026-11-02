@@ -37,7 +37,7 @@ Invoke :: (fixture: Fixture, name: string, request: string, status: int, diagnos
 }
 Main :: () -> int {
     arguments := os.Arguments();
-    assert(length(arguments) == 5, "asset service, catalog, scratch and optional legacy pair");
+    assert(length(arguments) == 3 || length(arguments) == 5, "asset service, catalog, scratch and optional legacy pair");
     fixture: Fixture = {program: arguments[0], folder: arguments[2]};
     catalog := strings.TrimSpace(Read(arguments[1]));
     catalog = strings.Slice(catalog, 1, strings.ByteLength(catalog) - 2);
@@ -48,7 +48,7 @@ Main :: () -> int {
     digest := os.HashFile(output);
     // Frozen from the VM-hosted compiler, then loaded there to return 42.
     assert(digest.error == nil && digest.digest == "08b7ec6ca8d209820e44ddbda3151b5f8b866334fd45cc7f06124794279f3dc9", "reference closure bytes");
-    if (arguments[3] != "") {
+    if (length(arguments) == 5 && arguments[3] != "") {
         reference := Path([fixture.folder, "/reference.chibip"]);
         input := Path([fixture.folder, "/simple.json"]);
         compiled := os.Capture([arguments[3], "--artifact", arguments[4], "--entry", "0xf10ff1d6771d8100",

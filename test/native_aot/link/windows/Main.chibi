@@ -227,15 +227,18 @@ CollideMetadata :: (record: string, path: string) {
 }
 
 GraphCache :: (work: string) {
-    source := strings.Concatenate([work, "/graph cache input ü"]);
+    folder := strings.Concatenate([work, "/graph cache inputs ü"]);
+    made := os.MakeDirectory(folder);
+    assert(made == nil, "make the graph input directory");
+    source := strings.Concatenate([folder, "/source"]);
     output := strings.Concatenate([work, "/graph cache output ü"]);
     record := strings.Concatenate([output, ".chibi-record"]);
     command := [os.ProgramPath(), "child-cache", "-c", source, "-o", output];
     written := os.WriteText(source, "before");
     assert(written == nil, "write a graph input");
-    stepped := c.Step(command, [source], output);
+    stepped := c.Step(command, [folder, source], output);
     assert(stepped == 1, "the cold graph step runs");
-    stepped = c.Step(command, [source], output);
+    stepped = c.Step(command, [folder, source], output);
     assert(stepped == 0 && evidence.ReadRecord(output) == "",
            "an unchanged graph step and its evidence are current");
     written = os.WriteText(source, "after!");
@@ -243,7 +246,7 @@ GraphCache :: (work: string) {
     CollideMetadata(record, source);
     assert(strings.Contains(evidence.ReadRecord(output), "stale input/output"),
            "evidence refuses changed content even when its metadata matches");
-    stepped = c.Step(command, [source], output);
+    stepped = c.Step(command, [folder, source], output);
     assert(stepped == 1 && os.ReadText(output).text == "after!",
            "changed content rebuilds even when its metadata matches");
     assert(evidence.ReadRecord(output) == "", "the rebuilt record proves the current bytes");
@@ -252,10 +255,20 @@ GraphCache :: (work: string) {
     CollideMetadata(record, output);
     assert(strings.Contains(evidence.ReadRecord(output), "stale input/output"),
            "evidence refuses an output with changed content");
-    stepped = c.Step(command, [source], output);
+    stepped = c.Step(command, [folder, source], output);
     assert(stepped == 1 && os.ReadText(output).text == "after!",
            "a modified output is rebuilt too");
-    for path in [source, output, record] {
+    added := strings.Concatenate([folder, "/added.chibi"]);
+    written = os.WriteText(added, "new source");
+    assert(written == nil, "add a graph source without changing recorded files");
+    CollideMetadata(record, folder);
+    assert(strings.Contains(evidence.ReadRecord(output), "stale input/output"),
+           "evidence notices added sources even when directory metadata matches");
+    stepped = c.Step(command, [folder, source], output);
+    assert(stepped == 1, "an added source rebuilds even when directory metadata matches");
+    stepped = c.Step(command, [folder, source], output);
+    assert(stepped == 0, "a directory inventory can be reused");
+    for path in [source, added, output, record, folder] {
         removed := os.Remove(path);
         assert(removed == nil, "remove the graph cache fixture");
     }

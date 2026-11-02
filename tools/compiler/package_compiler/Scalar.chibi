@@ -1199,6 +1199,8 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     }
     target := callables[callee];
     count: int = 0;
+    map_addresses: string[] = [];
+    map_addresses_read := false;
     // A float argument widens to a double parameter, as the call step widens
     // it, and a record argument is the record its parameter takes. Calling
     // ScalarOperand here for a call, not ScalarConvert or ScalarRecordValue,
@@ -1240,8 +1242,13 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             continue;
         }
         if (param.container == MapContainer) {
+            if (!map_addresses_read) {
+                map_addresses = ScalarMapChanges(forest, text, callables, params, names, callable.package, node);
+                map_addresses_read = true;
+            }
+            copied := param.written || ScalarMapSnapshot(forest, text, params, callable, names, types, argument, map_addresses);
             switch ScalarMapValue(forest, text, callables, params, callable, names, types, members, constants,
-                                  argument, param.record, param.written, output) {
+                                  argument, param.record, copied, output) {
                 case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
                 case .Built(built): output = built;
             }
@@ -2155,9 +2162,8 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             if (map >= 0 && Field(forest, statement, syntax.FieldReference) < 0 &&
                 Field(forest, statement, syntax.FieldReverse) < 0) {
                 body := Field(forest, statement, syntax.FieldBody);
-                changed := MutatedNames(forest, text, body, AddressedNames(forest, text, body, []));
-                copied := Is(forest, Unparenthesized(forest, visited), syntax.Identifier) &&
-                          NamePosition(changed, Text(forest, text, Unparenthesized(forest, visited))) >= 0;
+                changed := ScalarMapChanges(forest, text, callables, params, names, callable.package, body);
+                copied := ScalarMapSnapshot(forest, text, params, callable, names, types, visited, changed);
                 return ScalarPlan.MapIterated(visited, map, copied);
             }
             if (visited >= 0 && Field(forest, statement, syntax.FieldReference) < 0 &&

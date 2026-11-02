@@ -35,7 +35,7 @@ pub Targets :: () -> string[] {
         targets.extend(ToolConsumers());
         targets.append("test_tools");
     }
-    targets.extend(["policy_worker", "benchmark_trials", "reflect"]);
+    targets.extend(["policy_worker", "reflect"]);
     return targets;
 }
 
@@ -213,9 +213,6 @@ Files :: (target: string) -> string[] {
     }
     if (target == "policy_worker") {
         return ["test/tools/policy_worker.c"];
-    }
-    if (target == "benchmark_trials") {
-        return ["tools/benchmark.c", "src/host/process.c"];
     }
     if (target == "test_language") {
         return [
@@ -767,9 +764,6 @@ pub Includes :: (target: string) -> string[] {
             "public/host_native_default", "public/host_native_catalog"
         ];
     }
-    if (target == "benchmark_trials") {
-        return ["src"];
-    }
     if (target == "test_language") {
         return [
             "build/test/language/testing/include", "public/host_clock", "public/native_capabilities",
@@ -920,9 +914,6 @@ pub Defines :: (target: string) -> string[] {
     }
     if (target == "policy_worker") {
         return ["_DEFAULT_SOURCE", "_POSIX_C_SOURCE=200809L"];
-    }
-    if (target == "benchmark_trials") {
-        return ["_POSIX_C_SOURCE=200809L"];
     }
     if (target == "test_language") {
         return [
@@ -1207,7 +1198,7 @@ pub ProgramDirectory :: (target: string) -> string {
     if (target == "test_language") {
         return "test/language";
     }
-    if (target == "policy_worker" || target == "test_tools" || target == "benchmark_trials") {
+    if (target == "policy_worker" || target == "test_tools") {
         return "test/tools";
     }
     return "";
@@ -1273,7 +1264,7 @@ pub Runs :: (target: string) -> string[] {
         return ["chibi-asset-compiler"];
     }
     if (target == "test_tools") {
-        return ["policy_worker", "benchmark_trials", "chibi-build-host", "chibi-compiler-host", "chibi-compile"];
+        return ["policy_worker", "chibi-build-host", "chibi-compiler-host", "chibi-compile"];
     }
     return [];
 }
@@ -1282,7 +1273,7 @@ pub Runs :: (target: string) -> string[] {
 pub Programs :: () -> string[] {
     programs := [
         "reflect", "chibi-build-host", "chibi-compiler-host",
-        "policy_worker", "benchmark_trials"
+        "policy_worker"
     ];
     if (os.Platform() == "Darwin" || os.Platform() == "Linux") {
         programs.extend(["chibi-compile", "test_language", "test_tools"]);

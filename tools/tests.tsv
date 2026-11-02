@@ -17,7 +17,7 @@ tool	chibi-cli-build	@build@/test/tools/test_tools	--chibi-cli-build	@release@/s
 tool	chibi-cli-doctor	@build@/test/tools/test_tools	--chibi-cli-doctor	@release@/sdk/chibi
 tool	chibi-cli-process	@build@/test/tools/test_tools	--chibi-cli-process	@release@/sdk/chibi
 tool	chibi-cli	@build@/test/tools/test_tools	--chibi-cli	@release@/sdk/chibi
-tool	native-build	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/native_aot/native_build/BuildTests.chibi	--core	packages/core	--entry	Run	--timeout-ms	1500000	--	@host@	@release@/sdk/chibi
+tool	native-build	env	CHIBI_LLVM_BIN=@llvm@	@compiler@	run	--llvm	@llvm@	--root	tools/compiler	--core	packages/core	--entry	Run	test/native_aot/native_build/BuildTests.chibi	--	@compiler@	@release@/sdk/chibi
 tool	chibi-cli-authored	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/ChibiCliTests.chibi	--core	packages/core	--entry	Run	--timeout-ms	600000	--	@release@/sdk/chibi
 tool	native-workload-benchmark	@build@/test/tools/test_tools	--native-workload-benchmark	@release@/sdk/chibi
 tool	chibi-cli-installed	@build@/test/tools/test_tools	--chibi-cli-installed	dist/sdk/bin/chibi

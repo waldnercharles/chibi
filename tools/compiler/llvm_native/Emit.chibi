@@ -292,6 +292,9 @@ pub Suspend: int : 80;
 pub AwaitHandle: int : 81;
 // Cancels the task whose handle (a word) is `left`: its coroutine is destroyed.
 pub Cancel: int : 82;
+// End a standalone program with the core:testing failure kind in literal.
+// It never returns; embedded/library modes have no typed failure ABI yet.
+pub TypedFail: int : 84;
 // Shortens the left task's deadline to its start plus the right f64 duration.
 pub CancelAfter: int : 85;
 // Suspends for the left f64 duration in the program's clock domain.
@@ -554,7 +557,7 @@ Dominators :: (code: Instruction[]) -> Dominance {
         if (item.op == Jump || item.op == Branch) {
             target = item.target;
         }
-        if (item.op == Jump || item.op == Return || item.op == End || item.op == Fail) {
+        if (item.op == Jump || item.op == Return || item.op == End || item.op == Fail || item.op == TypedFail) {
             next = -1;
         }
         jumps.append(target);
@@ -930,7 +933,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     while (pc < length(code)) {
         item := code[pc];
         if (item.op < Constant || item.op >= InstructionCount || (item.op > ValueDrop && item.op < Suspend) ||
-            (item.op > Cancel && item.op < CancelAfter)) {
+            (item.op > Cancel && item.op < CancelAfter && item.op != TypedFail)) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {
@@ -1080,13 +1083,23 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (item.op == Fail && (item.left < 0 || item.right < item.left)) {
             return Result.Rejected(base + pc, "native failure names no source range");
         }
+        if (item.op == TypedFail) {
+            if (!ProgramMode(mode)) {
+                return Result.Rejected(base + pc, "typed failures require a standalone native program");
+            }
+            if (item.type != 0 || item.output != 0 || item.left != 0 || item.right != 0 || item.target != 0 ||
+                item.literal < 1 || item.literal > 7) {
+                return Result.Rejected(base + pc, "native typed failure has no valid failure kind");
+            }
+        }
         if ((item.op == Branch || item.op == Jump) && !Index(item.target, length(code))) {
             return Result.Rejected(base + pc, "native branch target is out of range");
         }
         if (item.op == Branch && !Typed(slots, item.left, 1)) {
             return Result.Rejected(base + pc, "native branch requires bool");
         }
-        if (pc + 1 == length(code) && item.op != Return && item.op != End && item.op != Jump && item.op != Fail) {
+        if (pc + 1 == length(code) && item.op != Return && item.op != End && item.op != Jump && item.op != Fail &&
+            item.op != TypedFail) {
             return Result.Rejected(base + pc, "native scalar code falls outside its body");
         }
         pc += 1;
@@ -1422,6 +1435,8 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
     } else if (item.op == Return || item.op == End) {
         out = format_text("{}{}", out, Load(format_text("return{}", pc), result, "result", 0));
         return format_text("{}{}", out, format_text("  ret {} %return{}\n", TypeName(result), pc));
+    } else if (item.op == TypedFail) {
+        return format_text("{}  call void @chibi_native_failure(i32 {})\n  unreachable\n", out, item.literal);
     } else if (item.op == Branch) {
         if (program && item.target <= pc) { out = format_text("{}  call void @chibi_native_step()\n", out); }
         out = format_text("{}{}", out, Load(format_text("a{}", pc), 1, "s", item.left));

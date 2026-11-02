@@ -303,6 +303,9 @@ pub FunctionAddressRow: int : 40;
 pub YieldRow: int : 41;
 pub AwaitRow: int : 42;
 pub CancelRow: int : 43;
+// Consumes an optional union, Nil | Some(value), and gives its payload type.
+// A Nil ends a standalone program with UnwrappedNil; value/name/literal are zero/empty.
+pub UnwrapRow: int : 44;
 // CancelAfter consumes a task handle and an f64 duration. Delay consumes an
 // f64 duration and suspends until it expires. Both give int 0.
 pub CancelAfterRow: int : 46;

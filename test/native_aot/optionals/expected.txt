@@ -1,5 +1,6 @@
 PASS body.LocalBool
 PASS body.LocalInt
+PASS facts.ForceValues
 PASS facts.NamedOptionalResult
 PASS facts.NarrowedArgument
 PASS facts.OptionalCallAndLocal

@@ -3376,7 +3376,7 @@ static int library_child(const char *library, int count, char **specs)
  * them and built with the driver's opt and llc arguments into the bundle,
  * whose runner (test/native_aot/targets) links and runs it on that target.
  * Each has native_abi's function, the bundle's subdirectory, the triple and
- * the data layout LLVM 18 gives it, which the driver admits, and the
+ * the data layout LLVM 22 gives it, which the driver admits, and the
  * symbols its objects may leave undefined, which the bundle's runtime.o
  * defines from `runtime`, or none. Windows code that uses floating point
  * references _fltused, and a frame larger than a page calls __chkstk; the C
@@ -3395,7 +3395,7 @@ static const struct
     { "MacOSArm64",
       "macos-arm64",
       "arm64-apple-macosx11.0.0",
-      "e-m:o-i64:64-i128:128-n32:64-S128",
+      "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-n32:64-S128-Fn32",
       NULL,
       { NULL } },
     { "WindowsX64",

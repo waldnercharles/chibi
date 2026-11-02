@@ -701,7 +701,7 @@ TypeMember :: struct {
     // does not own.
     fixed: bool;
 }
-Result :: union {
+pub Result :: union {
     Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: u64, bytes: u8[])
 }
 // Package assembly also returns the effects of its callables, so importers
@@ -4403,16 +4403,26 @@ pub CompileWithCatalog :: (project: string, collection_names: string[], collecti
                            natives: CatalogNative[], ports: CatalogPort[], identities: u64[], types: GameType[],
                            type_fields: GameField[], entity: u64, os: int, arch: int, native_effects: int[])
 -> (module: u64, bytes: u8[], error: syntax.Diagnostic?) {
-    native_types := NativeTypes(types);
-    switch CompileResolved(project, collection_names, collection_paths, paths, sources, debug, target, abi, names,
-                           CatalogNatives(natives), CatalogPorts(ports, native_types, entity), identities,
-                           native_effects, native_types, NativeFields(type_fields), os, arch) {
+    switch CompileCatalogResult(project, collection_names, collection_paths, paths, sources, debug, target, abi,
+                                names, natives, ports, identities, types, type_fields, entity, os, arch, native_effects) {
         case .Rejected(diagnostic):
             return (0, [], diagnostic);
         case .Compiled(compiled_module, prepared):
             return (compiled_module, prepared, nil);
     }
 }
+// Catalog compiles expose their existing result directly to native callers;
+// the tuple entry above keeps the VM request ABI during its retirement.
+pub CompileCatalogResult :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                             sources: string[], debug: bool, target: Target, abi: u64, names: string[],
+                             natives: CatalogNative[], ports: CatalogPort[], identities: u64[], types: GameType[],
+                             type_fields: GameField[], entity: u64, os: int, arch: int, native_effects: int[]) -> Result {
+    native_types := NativeTypes(types);
+    return CompileResolved(project, collection_names, collection_paths, paths, sources, debug, target, abi, names,
+                           CatalogNatives(natives), CatalogPorts(ports, native_types, entity), identities,
+                           native_effects, native_types, NativeFields(type_fields), os, arch);
+}
+
 pub CompileClosureWithCatalog :: (project: string, collection_names: string[], collection_paths: string[],
                                   paths: string[], sources: string[], debug: bool, target: Target, abi: u64,
                                   names: string[], natives: CatalogNative[], ports: CatalogPort[], identities: u64[],

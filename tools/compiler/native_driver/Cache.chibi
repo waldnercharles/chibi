@@ -181,16 +181,35 @@ CacheDiscard :: (folder: string) {
     removed := os.Remove(folder);
 }
 
+// One compiler result is consumed by build's printed artifact and run's
+// execution. A failed compile never supplies a path to an older program.
+ProgramBuild :: struct {
+    status: int;
+    path: string;
+    reused: bool;
+}
+
 CachedBuild :: (root: string, collections: string[], directories: string[], gathered: Inputs, triple: string,
                 chosen: string, llvm: string, jobs: int, options: DriverOptions, source: string) -> int {
+    result := CachedProgram(root, collections, directories, gathered, triple, chosen, llvm, jobs, options, ".", source);
+    if (result.status == 0) {
+        suffix := "";
+        if (result.reused) { suffix = " is up to date"; }
+        os.Print(strings.Concatenate(["native: ", result.path, suffix]));
+    }
+    return result.status;
+}
+
+CachedProgram :: (root: string, collections: string[], directories: string[], gathered: Inputs, triple: string,
+                chosen: string, llvm: string, jobs: int, options: DriverOptions, package: string, source: string) -> ProgramBuild {
     if (link.TargetOf(triple) < 0) {
         os.Print(strings.Concatenate(["native: unknown target ", triple]));
-        return 2;
+        return {status: 2, path: "", reused: false};
     }
     snapshot := CacheSnapshot(collections, directories, gathered, triple, chosen, llvm, options);
     if (snapshot.problem != "") {
         os.Print(strings.Concatenate(["native: ", snapshot.problem]));
-        return 2;
+        return {status: 2, path: "", reused: false};
     }
     parent := strings.Concatenate([root, "/build/native"]);
     output := strings.Concatenate([parent, "/O", options.level, "-", strings.Slice(snapshot.key, 0, 16)]);
@@ -205,35 +224,34 @@ CachedBuild :: (root: string, collections: string[], directories: string[], gath
         problem := CacheProblem(output, program, snapshot);
         if (problem != "") {
             os.Print(strings.Concatenate(["native: ", output, " ", problem, "; remove it to rebuild"]));
-            return 1;
+            return {status: 1, path: "", reused: false};
         }
-        os.Print(strings.Concatenate(["native: ", output, "/", program, " is up to date"]));
-        return 0;
+        return {status: 0, path: strings.Concatenate([output, "/", program]), reused: true};
     }
     work := strings.Concatenate([output, ".work"]);
     for (stale in [work, strings.Concatenate([output, ".partial"])]) {
         if (os.Exists(stale)) {
             os.Print(strings.Concatenate(["native: an interrupted build left ", stale, "; remove it once no build is running"]));
-            return 1;
+            return {status: 1, path: "", reused: false};
         }
     }
     if (os.MakeDirectory(parent) != nil || os.Reserve(work) != nil) {
         os.Print(strings.Concatenate(["native: cannot reserve ", work]));
-        return 2;
+        return {status: 2, path: "", reused: false};
     }
     status := EmitOptions(collections, directories, gathered.paths, gathered.sources, triple, chosen, llvm,
                           strings.Concatenate([work, "/", program]), jobs, options);
     if (status != 0) {
         CacheDiscard(work);
-        return status;
+        return {status: status, path: "", reused: false};
     }
-    refreshed := Gather(root, collections, directories, ".", source);
+    refreshed := Gather(root, collections, directories, package, source);
     checked := CacheSnapshot(collections, directories, refreshed, triple, chosen, llvm, options);
     hashed := os.HashFile(strings.Concatenate([work, "/", program]));
     if (refreshed.problem != "" || checked.problem != "" || checked.key != snapshot.key || hashed.error != nil) {
         os.Print("native: an input changed during the build; retry");
         CacheDiscard(work);
-        return 1;
+        return {status: 1, path: "", reused: false};
     }
     linkage := "dynamic libc";
     if (options.static_link || strings.HasPrefix(triple, "x86_64-pc-windows")) {
@@ -250,8 +268,7 @@ CachedBuild :: (root: string, collections: string[], directories: string[], gath
     if (os.WriteText(strings.Concatenate([work, "/receipt.txt"]), receipt) != nil || os.Publish(work, output) != nil) {
         os.Print(strings.Concatenate(["native: cannot publish ", output]));
         CacheDiscard(work);
-        return 2;
+        return {status: 2, path: "", reused: false};
     }
-    os.Print(strings.Concatenate(["native: ", output, "/", program]));
-    return 0;
+    return {status: 0, path: strings.Concatenate([output, "/", program]), reused: false};
 }

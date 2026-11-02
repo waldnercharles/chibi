@@ -15,6 +15,9 @@ import strings "core:strings"
 CliInvocation :: struct {
     command: string;
     path: string;
+    root: string;
+    entry: string;
+    collections: string[];
     llvm: string;
     target: string;
     mode: string;
@@ -30,7 +33,7 @@ CliInvocation :: struct {
 }
 
 NewInvocation :: (command: string) -> CliInvocation {
-    return {command: command, path: "", llvm: "", target: "", mode: "2", error: "", tail_first: 0, valid: true,
+    return {command: command, path: "", root: "", entry: "Main", collections: [], llvm: "", target: "", mode: "2", error: "", tail_first: 0, valid: true,
             help: false, watch: false, native: false, debug: false, static_link: false, shared: false};
 }
 
@@ -76,15 +79,22 @@ ParseRun :: (arguments: string[], first: int) -> CliInvocation {
             invocation.mode = strings.Slice(argument, 2, 1);
         } else if (argument == "-g" && !invocation.debug) {
             invocation.debug = true;
-        } else if (argument == "--llvm" || argument == "--target") {
+        } else if (argument == "--llvm" || argument == "--target" || argument == "--entry" ||
+                   argument == "--collection" || argument == "--root") {
             if (index + 1 >= length(arguments) || arguments[index + 1] == "" || IsOption(arguments[index + 1])) {
                 return Invalid(invocation, format_text("{} needs a nonempty value", argument));
             }
             index += 1;
             if (argument == "--llvm") {
                 invocation.llvm = arguments[index];
-            } else {
+            } else if (argument == "--target") {
                 invocation.target = arguments[index];
+            } else if (argument == "--entry") {
+                invocation.entry = arguments[index];
+            } else if (argument == "--root") {
+                invocation.root = arguments[index];
+            } else {
+                invocation.collections.append(arguments[index]);
             }
         } else if (IsOption(argument) && argument != "--") {
             return Invalid(invocation, format_text("Invalid run option: {}; use --help.", argument));
@@ -218,7 +228,9 @@ Usage :: (program: string) -> string {
         "the language so far; a source outside it fails with the first unsupported form.\n",
         "test runs each @test function of the packages below ROOT, the working\n",
         "directory without one, and fails when one fails.\n",
-        "run compiles a program natively and calls its Main. Its arguments come after\n",
+        "run compiles a program natively and calls Main, or --entry NAME.\n",
+        "--root DIR resolves project imports; --collection NAME=DIR adds a package collection.\n",
+        "Distinct source/entry combinations own separate cached programs. Arguments come after\n",
         "PATH or --, and it needs the LLVM tools as build --native does.\n"]);
 }
 
@@ -414,24 +426,68 @@ MakeFolders :: (path: string) -> bool {
     return os.MakeDirectory(path) == nil;
 }
 
-// Compiles `target` to the executable `output`: 0 compiled, 1 the sources were rejected,
-// 2 the arguments or the machine were unusable. The compiler's reports go to the standard error.
-CompileSubject :: (subject: Subject, core: string, llvm: string, triple: string, output: string,
-                   invocation: CliInvocation) -> int {
+// The same closure compilation serves CLI run, project build programs and
+// the live host. An empty output selects the verified native output cache;
+// an explicit output is the watch protocol's private generation file.
+CompileProgram :: (subject: Subject, core: string, llvm: string, triple: string, output: string,
+                   invocation: CliInvocation) -> ProgramBuild {
+    scoped := subject;
+    if (invocation.root != "") {
+        scoped.project = os.RealPath(invocation.root);
+        if (scoped.project == "" || !os.IsDirectory(scoped.project)) {
+            Complain("run: --root must name an existing project directory");
+            return {status: 2, path: "", reused: false};
+        }
+        if (scoped.source == "" && subject.project != scoped.project) {
+            prefix := strings.Concatenate([scoped.project, "/"]);
+            if (!strings.HasPrefix(subject.project, prefix)) {
+                Complain("run: a package directory must be within --root");
+                return {status: 2, path: "", reused: false};
+            }
+            scoped.package = strings.TrimPrefix(subject.project, prefix);
+        }
+    }
     collections: string[] = ["core"];
     directories: string[] = [core];
-    gathered := Gather(subject.project, collections, directories, subject.package, subject.source);
+    for (declared in invocation.collections) {
+        equals := strings.Index(declared, "=");
+        if (equals <= 0) {
+            Complain(strings.Concatenate(["run: --collection takes NAME=DIR: ", declared]));
+            return {status: 2, path: "", reused: false};
+        }
+        name := strings.Slice(declared, 0, equals);
+        directory := os.RealPath(strings.Slice(declared, equals + 1, strings.ByteLength(declared) - equals - 1));
+        if (Contains(collections, name) || directory == "" || !os.IsDirectory(directory)) {
+            Complain(strings.Concatenate(["run: --collection needs a unique name and an existing directory: ", declared]));
+            return {status: 2, path: "", reused: false};
+        }
+        collections.append(name);
+        directories.append(directory);
+    }
+    gathered := Gather(scoped.project, collections, directories, scoped.package, scoped.source);
     if (gathered.problem != "") {
         Complain(strings.Concatenate(["native: ", gathered.problem]));
-        return 2;
+        return {status: 2, path: "", reused: false};
     }
+    folder := subject.project;
+    if (scoped.source != "") { folder = Directory(scoped.source); }
     options: DriverOptions = {level: invocation.mode, lines: invocation.debug, static_link: false, shared: invocation.shared,
-                             folder: subject.project, keep_module: false};
-    chosen := "Main";
-    if (invocation.shared) {
-        chosen = "";
+                             folder: folder, keep_module: output == ""};
+    chosen := invocation.entry;
+    if (invocation.shared) { chosen = ""; }
+    if (output == "") {
+        return CachedProgram(scoped.project, collections, directories, gathered, triple, chosen, llvm, Jobs([]), options,
+                             scoped.package, scoped.source);
     }
-    return EmitOptions(collections, directories, gathered.paths, gathered.sources, triple, chosen, llvm, output, Jobs([]), options);
+    status := EmitOptions(collections, directories, gathered.paths, gathered.sources, triple, chosen, llvm, output, Jobs([]), options);
+    if (status != 0) { return {status: status, path: "", reused: false}; }
+    return {status: 0, path: output, reused: false};
+}
+
+CompileSubject :: (subject: Subject, core: string, llvm: string, triple: string, output: string,
+                   invocation: CliInvocation) -> int {
+    result := CompileProgram(subject, core, llvm, triple, output, invocation);
+    return result.status;
 }
 
 // The program's own exit status as the command's, which fits 0..255.
@@ -443,7 +499,7 @@ ExitStatus :: (status: int) -> int {
     return status;
 }
 
-// `chibi run`: compiles the program to ROOT/build/native/run and calls its Main.
+// `chibi run`: compiles or reuses its own content-keyed program and calls the chosen entry.
 RunProgram :: (invocation: CliInvocation, tail: string[]) -> int {
     llvm := LlvmFolder(invocation.llvm);
     if (llvm == "") {
@@ -460,25 +516,23 @@ RunProgram :: (invocation: CliInvocation, tail: string[]) -> int {
         Complain(subject.problem);
         return 2;
     }
-    folder := strings.Concatenate([subject.project, "/build/native/run"]);
-    if (!MakeFolders(folder)) {
-        Complain(strings.Concatenate(["cannot make ", folder]));
-        return 2;
-    }
     triple := Default(invocation.target, HostTriple());
     if (triple != HostTriple()) {
         Complain("run requires the host target; use build --native to cross-compile");
         return 2;
     }
     if (invocation.watch) {
+        if (invocation.entry != "Main" || invocation.root != "" || length(invocation.collections) != 0) {
+            Complain("run --watch does not support --entry, --root or --collection yet");
+            return 2;
+        }
         return WatchProgram(subject, core, llvm, triple, invocation, tail);
     }
-    program := strings.Concatenate([folder, "/program"]);
-    compiled := CompileSubject(subject, core, llvm, triple, program, invocation);
-    if (compiled != 0) {
-        return compiled;
+    compiled := CompileProgram(subject, core, llvm, triple, "", invocation);
+    if (compiled.status != 0) {
+        return compiled.status;
     }
-    command: string[] = [program];
+    command: string[] = [compiled.path];
     command.extend(tail);
     return ExitStatus(os.Run(command));
 }

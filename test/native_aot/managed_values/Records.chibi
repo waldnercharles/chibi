@@ -109,6 +109,12 @@ FunctionalArrays :: () {
     assert(length(temporary) == 0);
     surviving := remove_index(ReturnArray(), 99)[0];
     assert(text_byte_at(surviving.message, 2) == 5);
+    loop_words := [Text(1), Text(2), Text(3)];
+    word_sum := LoopWords(&loop_words, &loop_words);
+    assert(word_sum == 6 && length(loop_words) == 1 && text_byte_at(loop_words[0], 2) == 9);
+    loop_records := [Make(1), Make(2), Make(3)];
+    record_sum := LoopRecords(&loop_records, &loop_records);
+    assert(record_sum == 6 && length(loop_records) == 1 && text_byte_at(loop_records[0].message, 2) == 9);
 }
 
 Text :: (i: int) -> string { return text_from_bytes([u8(65), 0, u8(i)]); }
@@ -133,5 +139,23 @@ ReplaceArray :: (values: ^(int[])) -> int { values^ = [int(99)]; return 1; }
 SliceAliased :: (values: ^(int[]), alias: ^(int[])) -> int {
     part := values^.slice(0, ReplaceArray(alias));
     return part[0];
+}
+ReplaceWords :: (words: ^(string[])) { words^ = [Text(9)]; }
+LoopWords :: (original: ^(string[]), changed: ^(string[])) -> int {
+    total := 0;
+    for word in original^ {
+        ReplaceWords(changed);
+        total += text_byte_at(word, 2);
+    }
+    return total;
+}
+ReplaceRecords :: (records: ^(Value[])) { records^ = [Make(9)]; }
+LoopRecords :: (original: ^(Value[]), changed: ^(Value[])) -> int {
+    total := 0;
+    for value in original^ {
+        ReplaceRecords(changed);
+        total += text_byte_at(value.message, 2);
+    }
+    return total;
 }
 Choose :: (i: int) -> Choice { return Choice.Some(Make(i)); }

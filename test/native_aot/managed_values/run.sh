@@ -39,3 +39,9 @@ for level in 0 2; do
     "$work/records-O$level"
     printf 'PASS native managed records, arrays and unions O%s, allocations balanced\n' "$level"
 done
+# The public native lifecycle operations also run directly, independently of
+# scalar lowering's current specialized record expansion.
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_aot/managed_values/Probe.chibi" --entry Main \
+    --output "$work/probe" --llvm "$llvm" --target "$triple" --level 2 --jobs 1
+"$work/probe" "$work" "$llvm" "$root/test/native_aot/managed_values/Audit.ll"

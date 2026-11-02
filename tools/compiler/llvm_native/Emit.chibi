@@ -275,6 +275,11 @@ pub MapLiveAt: int : 70;
 // field's type; type is that reference type. The field is a number or a bool,
 // and the reference lives as long as the local does.
 pub FieldAddress: int : 71;
+// An independent owned copy of the left slot's aggregate, in output. The
+// current lifecycle counts scalar/string records and zeroed union payloads.
+pub ValueCopy: int : 72;
+// Releases one owned aggregate from the left slot; it gives no value.
+pub ValueDrop: int : 73;
 // A waiting function is a coroutine: its body holds a Suspend, an AwaitHandle or an
 // awaited Call. Suspend gives up the function's turn; it resumes at the next
 // instruction on the scheduler's next update (`yield`).
@@ -308,7 +313,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
 }
 Produces :: (op: int) -> bool {
     return op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
-           op == ForeignCall || op == StateLoad || op == FunctionAddress || op == Sqrt || (op >= MapLength && op <= MapLiveAt && op != MapDrop);
+           op == ForeignCall || op == StateLoad || op == FunctionAddress || op == Sqrt || op == ValueCopy || (op >= MapLength && op <= MapLiveAt && op != MapDrop);
 }
 Comparison :: (op: int) -> bool {
     return op >= Lt && op <= Ne;
@@ -319,7 +324,7 @@ Unary :: (op: int) -> bool {
 ReadsLeft :: (op: int) -> bool {
     return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
            (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText || op == ArrayDrop || op == TextRetain ||
-           op == TextRelease || op == StateStore || op == Deref || op == Poke || op == AwaitHandle || op == Cancel ||
+           op == TextRelease || op == StateStore || op == Deref || op == Poke || op == ValueCopy || op == ValueDrop || op == AwaitHandle || op == Cancel ||
            op == CancelAfter || op == Delay || op == Sqrt || (op >= MapLength && op <= MapLiveAt);
 }
 Integer :: (type: int) -> bool {
@@ -896,7 +901,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     pc: int = 0;
     while (pc < length(code)) {
         item := code[pc];
-        if (item.op < Constant || item.op >= InstructionCount || (item.op > FieldAddress && item.op < Suspend) ||
+        if (item.op < Constant || item.op >= InstructionCount || (item.op > ValueDrop && item.op < Suspend) ||
             (item.op > Cancel && item.op < CancelAfter)) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
@@ -979,6 +984,12 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if ((item.op == TextRetain || item.op == TextRelease) &&
             (!Index(item.left, length(slots)) || slots[item.left] != abi.TextStorage)) {
             return Result.Rejected(base + pc, "native text reference differs from its operand");
+        }
+        if ((item.op == ValueCopy || item.op == ValueDrop) &&
+            (item.type < RecordType || item.type >= ArrayType || !Typed(slots, item.left, item.type) ||
+             !CountedRecordType(records, fields, item.type) || !RecordHasText(records, fields, item.type) ||
+             item.right != 0 || item.target != 0 || item.literal != 0 || (item.op == ValueDrop && item.output != 0))) {
+            return Result.Rejected(base + pc, "native value lifecycle requires a scalar/string aggregate operand");
         }
         if ((item.op == ArrayPush || item.op == ArrayExtend) && item.literal != 0 && item.literal != 1) {
             return Result.Rejected(base + pc, "native array growth ownership is not 0 or 1");
@@ -1428,6 +1439,12 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, ArrayDropped(item, pc, record_owners));
     } else if (item.op == TextRetain || item.op == TextRelease) {
         out = format_text("{}{}", out, TextCounted(item, pc));
+    } else if (item.op == ValueCopy) {
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
+        out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "s", item.output));
+        out = format_text("{}  call void @chibi_value.{}.keep_at(ptr %ctx, ptr %s{})\n", out, item.type, item.output);
+    } else if (item.op == ValueDrop) {
+        out = format_text("{}  call void @chibi_value.{}.drop_at(ptr %ctx, ptr %s{})\n", out, item.type, item.left);
     } else if (item.op == ArrayBytes) {
         out = format_text("{}{}", out, ArrayBytesRead(item, pc));
     } else if (item.op == ArrayText) {
@@ -1512,20 +1529,8 @@ TextCounted :: (item: Instruction, pc: int) -> string {
 Holding :: (type: int) -> bool {
     return type == ArrayType + abi.TextStorage;
 }
-// String-owner paths within a plain aggregate. Array backing has a separate
-// ownership operation and therefore ends this walk.
-RecordTextPaths :: (records: Record[], fields: int[], type: int, path: string, found: string[]) -> string[] {
-    if (type == abi.TextStorage) { found.append(path); return found; }
-    if (type < RecordType || type >= ArrayType) { return found; }
-    record := records[type - RecordType];
-    for (index in 0..<record.count) {
-        next := format_text("{}, i32 {}", path, index);
-        found = RecordTextPaths(records, fields, fields[record.first + index], next, found);
-    }
-    return found;
-}
 CountedRecordType :: (records: Record[], fields: int[], type: int) -> bool {
-    if (type < RecordType) { return true; }
+    if (type < RecordType) { return abi.ScalarType(type) != "" || type == abi.TextStorage; }
     if (type >= ArrayType) { return false; }
     record := records[type - RecordType];
     for (index in record.first..<record.first + record.count) {
@@ -1561,31 +1566,53 @@ ArrayRefs :: (record_owners: bool[], type: int, data: string, count: string, kee
         return "";
     }
     operation := "drop";
-    if (keep) { operation = "keep"; }
-    return format_text("  call void @chibi_record.{}.{}_range(ptr %ctx, ptr {}, i32 {})\n", element, operation, data, count);
+    if (keep) { operation = "copy"; }
+    return format_text("  call void @chibi_value.{}.{}_range(ptr %ctx, ptr {}, i32 {})\n", element, operation, data, count);
 }
-RecordRanges :: (code: Instruction[], records: Record[], fields: int[], record_owners: bool[]) -> string {
+// Native values use one lifecycle implementation whether they are held in
+// an array, map or ordinary aggregate slot. The dependency walk emits only
+// helpers required by this piece and their nested aggregate fields.
+ValueModule :: (code: Instruction[], records: Record[], fields: int[], owners: bool[]) -> string {
     used := resize([false], length(records));
+    ranges := resize([false], length(records));
+    by_value := resize([false], length(records));
+    pending: int[] = [];
     for (item in code) {
-        element := item.type - ArrayType;
-        if (element >= RecordType && element < ArrayType && element - RecordType < length(records)) {
-            used[element - RecordType] = true;
+        type := 0;
+        range := false;
+        if (item.op == ValueCopy || item.op == ValueDrop) { type = item.type; }
+        else if (item.type >= ArrayType && item.type < MapType) { type = item.type - ArrayType; range = true; }
+        else if (item.op >= MapLength && item.op <= MapLiveAt) { type = MapValue(MapUsed(item)); }
+        if (type < RecordType || type >= ArrayType || !owners[type - RecordType]) { continue; }
+        index := type - RecordType;
+        if (range) { ranges[index] = true; }
+        if (item.op >= MapLength && item.op <= MapLiveAt) { by_value[index] = true; }
+        if (!used[index]) { used[index] = true; pending.append(index); }
+    }
+    at := 0;
+    while (at < length(pending)) {
+        record := records[pending[at]];
+        for (field in record.first..<record.first + record.count) {
+            type := fields[field];
+            if (type < RecordType || type >= ArrayType) { continue; }
+            index := type - RecordType;
+            if (owners[index] && !used[index]) { used[index] = true; pending.append(index); }
         }
+        at += 1;
     }
     out: string[] = [];
     for (index in 0..<length(records)) {
-        if (!used[index] || !record_owners[index]) { continue; }
+        if (!used[index]) { continue; }
         type := RecordType + index;
-        paths := RecordTextPaths(records, fields, type, "", []);
-        for (operation in ["keep", "drop"]) {
-            out.append(format_text("define internal void @chibi_record.{}.{}_range(ptr %ctx, ptr %data, i32 %count) {{\nentry:\n  br label %head\n", type, operation));
-            out.append("head:\n  %index = phi i32 [ 0, %entry ], [ %next, %body ]\n  %done = icmp eq i32 %index, %count\n  br i1 %done, label %exit, label %body\nbody:\n  %offset = zext i32 %index to i64\n");
-            for (leaf in 0..<length(paths)) {
-                out.append(format_text("  %at{} = getelementptr inbounds {}, ptr %data, i64 %offset{}, i32 2\n  %owner{} = load ptr, ptr %at{}\n", leaf, TypeName(type), paths[leaf], leaf, leaf));
-                if (operation == "keep") { out.append(format_text("  call void @chibi_scalar.retain(ptr %owner{})\n", leaf)); }
-                else { out.append(format_text("  call void @chibi_scalar.free(ptr %ctx, ptr %owner{})\n", leaf)); }
-            }
-            out.append("  %next = add i32 %index, 1\n  br label %head\nexit:\n  ret void\n}\n");
+        out.append(ValueRecordAt(type, records, fields, owners, true));
+        out.append(ValueRecordAt(type, records, fields, owners, false));
+        if (by_value[index]) {
+            out.append(ValueRecordCopy(type));
+            out.append(ValueRecordDrop(type));
+        }
+        if (ranges[index]) {
+            out.append(ValueRecordRange(type, true));
+            out.append(ValueRecordRange(type, false));
         }
     }
     return strings.Join(out, "");
@@ -1617,7 +1644,7 @@ TextHelpers :: () -> string {
 // Whether `code` counts references, so the module has the helpers.
 Counts :: (code: Instruction[]) -> bool {
     for (item in code) {
-        if (item.op == TextRetain || item.op == TextRelease || item.op == ArrayDrop || Holding(item.type) ||
+        if (item.op == TextRetain || item.op == TextRelease || item.op == ValueCopy || item.op == ValueDrop || item.op == ArrayDrop || Holding(item.type) ||
             ((item.op == StateLoad || item.op == StateStore) && item.type == abi.TextStorage)) {
             return true;
         }
@@ -2581,7 +2608,7 @@ pub Runtime :: (code: Instruction[]) -> bool {
         return true;
     }
     for (item in code) {
-        if (item.op == Format || item.op == Fail || ArrayCalls(item.op) || MapCalls(item.op) ||
+        if (item.op == Format || item.op == Fail || item.op == ValueCopy || item.op == ValueDrop || ArrayCalls(item.op) || MapCalls(item.op) ||
             ((item.op == StateLoad || item.op == StateStore) && item.type == abi.TextStorage)) {
             return true;
         }
@@ -3038,9 +3065,9 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         if (Zeroes(held)) {
             out.append(format_text("\n{}", ArrayZeroHelper()));
         }
-        record_ranges := RecordRanges(held, records, fields, record_owners);
-        if (Counts(held) || record_ranges != "") {
-            out.append(format_text("\n{}{}", TextHelpers(), record_ranges));
+        value_helpers := ValueModule(held, records, fields, record_owners);
+        if (Counts(held) || value_helpers != "") {
+            out.append(format_text("\n{}{}", TextHelpers(), value_helpers));
         }
         cstrings := Cstrings(functions, first, last, slots, code, arguments);
         if (cstrings) {

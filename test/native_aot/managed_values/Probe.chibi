@@ -1,0 +1,95 @@
+package native_value_probe
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import link "project:native_link"
+import host "project:native_link_host"
+import os "core:os"
+import strings "core:strings"
+
+Op :: (op: int, type: int, output: int, left: int, right: int, literal: i64) -> native.Instruction {
+    return {op: op, type: type, output: output, left: left, right: right, target: 0, literal: literal};
+}
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 3) { return 2; }
+    work := arguments[0];
+    llvm := arguments[1];
+    audit := os.ReadText(arguments[2]);
+    if (audit.error) { return 2; }
+    code := [Op(native.Check, 0, 0, 0, 0, 0),
+             Op(native.Constant, native.RecordType, 0, 0, 0, 0),
+             Op(native.Constant, native.ArrayType + abi.ByteStorage, 1, 0, 0, 0),
+             Op(native.Constant, abi.ByteStorage, 2, 0, 0, 65),
+             Op(native.ArrayPush, native.ArrayType + abi.ByteStorage, 3, 1, 2, 1),
+             Op(native.ArrayText, abi.TextStorage, 4, 3, 0, 0),
+             Op(native.ArrayDrop, native.ArrayType + abi.ByteStorage, 0, 3, 0, 0),
+             Op(native.Insert, native.RecordType, 5, 0, 4, 0),
+             Op(native.ValueCopy, native.RecordType, 6, 5, 0, 0),
+             Op(native.ValueDrop, native.RecordType, 0, 5, 0, 0),
+             Op(native.Extract, abi.TextStorage, 7, 6, native.RecordType, 0),
+             Op(native.Constant, abi.IntStorage, 8, 0, 0, 0),
+             Op(native.TextByte, abi.IntStorage, 9, 7, 8, 0),
+             Op(native.ValueCopy, native.RecordType, 12, 6, 0, 0),
+             Op(native.Constant, native.ArrayType + native.RecordType, 13, 0, 0, 0),
+             Op(native.ArrayPush, native.ArrayType + native.RecordType, 14, 13, 12, 1),
+             Op(native.ArrayCopy, native.ArrayType + native.RecordType, 15, 14, 0, 0),
+             Op(native.ArrayDrop, native.ArrayType + native.RecordType, 0, 14, 0, 0),
+             Op(native.ArrayGet, native.RecordType, 16, 15, 8, 0),
+             Op(native.Extract, abi.TextStorage, 17, 16, native.RecordType, 0),
+             Op(native.TextByte, abi.IntStorage, 18, 17, 8, 0),
+             Op(native.ArrayDrop, native.ArrayType + native.RecordType, 0, 15, 0, 0),
+             Op(native.ValueDrop, native.RecordType, 0, 6, 0, 0),
+             Op(native.Constant, abi.IntStorage, 10, 0, 0, 65),
+             Op(native.Sub, abi.IntStorage, 11, 18, 10, 0),
+             Op(native.Publish, abi.IntStorage, 0, 11, 0, 0),
+             Op(native.Return, 0, 0, 0, 0, 0)];
+    function: native.Function = {result: abi.IntStorage, first_parameter: 0, parameters: 0, first_slot: 0,
+        slots: 19, first_local: 0, locals: 0, first_code: 0, code: length(code), first_argument: 0, arguments: 0};
+    slots := [native.RecordType, native.ArrayType + abi.ByteStorage, abi.ByteStorage, native.ArrayType + abi.ByteStorage,
+              abi.TextStorage, native.RecordType, native.RecordType, abi.TextStorage,
+              abi.IntStorage, abi.IntStorage, abi.IntStorage, abi.IntStorage,
+              native.RecordType, native.ArrayType + native.RecordType, native.ArrayType + native.RecordType,
+              native.ArrayType + native.RecordType, native.RecordType, abi.TextStorage, abi.IntStorage];
+    records: native.Record[] = [{first: 0, count: 1}];
+    fields := [abi.TextStorage];
+    source: native.Source = {file: "", directory: ""};
+    empty: int[] = [];
+    texts: string[] = [];
+    target := abi.LinuxX64();
+    if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
+    rejected := code;
+    wrong := rejected[8];
+    wrong.left = 2;
+    rejected[8] = wrong;
+    switch native.Emit(target, [function], empty, slots, empty, rejected, empty, records, fields, texts,
+                       source, texts, empty, empty, false, 1) {
+        case .Emitted(text): os.Print("native lifecycle accepted a scalar operand"); return 1;
+        case .Rejected(instruction, message):
+            if (!strings.Contains(message, "native value lifecycle requires")) { os.Print(message); return 1; }
+    }
+    text := "";
+    switch native.Emit(target, [function], empty, slots, empty, code, empty, records, fields, texts,
+                       source, texts, empty, empty, false, 1) {
+        case .Rejected(instruction, message): os.Print(message); return 1;
+        case .Emitted(emitted): text = emitted;
+    }
+    module := format_text("{}/lifecycle.ll", work);
+    start := format_text("{}/lifecycle-start.ll", work);
+    text = strings.ReplaceAll(text, "define i32 @chibi_scalar(ptr %ctx)", "define i32 @chibi_value_test_entry(ptr %ctx)");
+    if (os.WriteText(module, strings.Concatenate([text, audit.text])) ||
+        os.WriteText(start, link.Start(target.triple, false, true))) { return 2; }
+    for (level in [int(0), 2]) {
+        objects := [format_text("{}/lifecycle-O{}.o", work, level), format_text("{}/lifecycle-start-O{}.o", work, level)];
+        if (host.Objects(llvm, [module, start], objects, level, 1)) { return 1; }
+        program := format_text("{}/lifecycle-O{}", work, level);
+        plan := link.Program(target.triple, llvm, objects, [], [], [], program, "", false);
+        if (os.Platform() == "Darwin") {
+            runtime: link.Import = {name: "System", symbols: ["malloc", "calloc", "free", "dprintf", "abort"]};
+            plan.imports = [runtime];
+        }
+        if (host.Link(plan) || os.Run([program]) != 0) { return 1; }
+    }
+    os.Print("PASS native ValueCopy/ValueDrop O0/O2, poisoned frees and allocations balanced");
+    return 0;
+}

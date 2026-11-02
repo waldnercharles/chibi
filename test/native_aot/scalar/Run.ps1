@@ -287,6 +287,7 @@ try {
         'llvm_native/Emit.chibi' = 'tools/compiler/llvm_native/Emit.chibi'
         'llvm_native/Tasks.chibi' = 'tools/compiler/llvm_native/Tasks.chibi'
         'llvm_native/TaskTiming.chibi' = 'tools/compiler/llvm_native/TaskTiming.chibi'
+        'llvm_native/Values.chibi' = 'tools/compiler/llvm_native/Values.chibi'
         'native_abi/Abi.chibi' = 'tools/compiler/native_abi/Abi.chibi'
         '/sdk/core/strings/Strings.chibi' = 'packages/core/strings/Strings.chibi'
     }

@@ -68,9 +68,10 @@ WatchHost :: (core: string) -> string {
 }
 
 when target.Os == target.Windows {
-WatchStart :: (work: string, program: string, tail: string[]) -> int {
+WatchProcess :: struct { pid: int; }
+WatchStart :: (work: string, program: string, tail: string[]) -> WatchProcess {
     original := os.Root();
-    if (original == "" || os.ChangeDirectory(work) != nil) { return -1; }
+    if (original == "" || os.ChangeDirectory(work) != nil) { return {pid: 0}; }
     command: string[] = [program];
     command.extend(tail);
     child := os.Start(command, os.Inherited);
@@ -78,18 +79,33 @@ WatchStart :: (work: string, program: string, tail: string[]) -> int {
     if (restored != nil) {
         if (child >= 0) { killed := os.Kill(child); }
         Complain("run --watch: cannot restore the working directory after starting the host");
-        return -1;
+        return {pid: 0};
     }
-    return child;
+    if (child < 0) { return {pid: 0}; }
+    return {pid: child};
+}
+WatchWait :: (child: ^WatchProcess, timeout: int) -> int {
+    return os.Wait(child^.pid, timeout);
 }
 }
 when target.Os == target.Linux || target.Os == target.Darwin {
-WatchStart :: (work: string, program: string, tail: string[]) -> int {
+WatchProcess :: struct { pid: int; scope: process.Foreground; }
+WatchStart :: (work: string, program: string, tail: string[]) -> WatchProcess {
     // Positional arguments preserve paths and program arguments byte for byte.
     command: string[] = ["/bin/sh", "-c", "cd \"$1\" && shift && exec \"$@\"", "chibi-watch", work, program];
     command.extend(tail);
-    // Keep the host in our foreground group so Ctrl-C reaches both processes.
-    return process.Spawn(command);
+    scope := process.ForegroundStart(command);
+    if (scope.pid == 0) { Complain(strings.Concatenate(["run --watch: ", scope.problem])); }
+    return {pid: scope.pid, scope: scope};
+}
+WatchWait :: (child: ^WatchProcess, timeout: int) -> int {
+    scope := child^.scope;
+    status := process.ForegroundWait(&scope, timeout);
+    child^.scope = scope;
+    if (status != os.StillRunning && scope.problem != "") {
+        Complain(strings.Concatenate(["run --watch: ", scope.problem]));
+    }
+    return status;
 }
 }
 
@@ -151,12 +167,12 @@ WatchProgram :: (subject: Subject, core: string, llvm: string, triple: string, i
         return built;
     }
     child := WatchStart(work, program, tail);
-    if (child < 0) {
+    if (child.pid == 0) {
         Complain("run --watch: cannot start the native host");
         return 2;
     }
     while (true) {
-        status := os.Wait(child, 250);
+        status := WatchWait(&child, 250);
         if (status != os.StillRunning) {
             return ExitStatus(status);
         }
@@ -186,7 +202,7 @@ WatchProgram :: (subject: Subject, core: string, llvm: string, triple: string, i
         }
         next := strings.Concatenate([work, "/next.so"]);
         while (os.Exists(next)) {
-            status = os.Wait(child, 50);
+            status = WatchWait(&child, 50);
             if (status != os.StillRunning) {
                 return ExitStatus(status);
             }

@@ -1240,7 +1240,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                   operand.kind == facts.ForeignRow;
         if ((!texted && operand.text != "") || !Valued(records, operand.type) || !Located(operand, starts, size) ||
             !Within(operand, scope) ||
-            (operand.kind != facts.LiteralRow && operand.kind != facts.RefRow && operand.kind != facts.MapRow && operand.kind != facts.ArrayRow && operand.kind != facts.CallRow && operand.kind != facts.AwaitResultRow && operand.literal != 0) ||
+            (operand.kind != facts.LiteralRow && operand.kind != facts.RefRow && operand.kind != facts.MapRow && operand.kind != facts.ArrayRow && operand.kind != facts.CallRow && operand.kind != facts.AwaitResultRow && operand.kind != facts.ForeignRow && operand.literal != 0) ||
             (operand.kind == facts.CallRow && (operand.literal < 0 || operand.literal > i64(facts.CallSpawned)))) {
             return "invalid scalar operand row";
         }
@@ -1413,7 +1413,8 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
         } else if (operand.kind == facts.ForeignRow) {
             base := length(stack) - operand.count;
             indirect := operand.value == 1;
-            if ((operand.value != 0 && !indirect) || (indirect && (operand.name != "" || operand.text != "" || operand.count < 1)) ||
+            if ((operand.literal != 0 && (operand.literal != i64(facts.ForeignReversed) || indirect || operand.count != 2)) ||
+                (operand.value != 0 && !indirect) || (indirect && (operand.name != "" || operand.text != "" || operand.count < 1)) ||
                 (!indirect && operand.name == "") || !Scalar(operand.type) ||
                 operand.count < 0 || base < floor) {
                 return "scalar foreign call differs from its operands";
@@ -1946,6 +1947,7 @@ ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
     }
     heads := Heads(rows, Start(rows, records));
     if (length(heads) == 0) {
+        if (shared && !identified && length(rows) == 2) { return ""; }
         return "invalid scalar module layout";
     }
     first := rows[heads[0]];
@@ -1997,8 +1999,6 @@ ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
         }
     }
     if (shared && !identified) {
-        main := false;
-        frame := false;
         for (function in 0..<length(heads)) {
             declaration := rows[heads[function]];
             if (declaration.name == "Main" || declaration.name == "Frame") {
@@ -2006,14 +2006,9 @@ ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
                     return "native package generation Main and Frame cannot wait";
                 }
                 if (declaration.count != 0 || declaration.type != facts.IntType) {
-                    return "native package generations require Main and Frame with a zero-argument int ABI";
+                    return format_text("No runnable {}: native package generations require Main and Frame with a zero-argument int ABI", declaration.name);
                 }
-                main = main || declaration.name == "Main";
-                frame = frame || declaration.name == "Frame";
             }
-        }
-        if (!main && !frame) {
-            return "native package generations require Main or Frame";
         }
     }
     return "";
@@ -2107,7 +2102,9 @@ ArrayLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: i
     if (operand.value == facts.ArrayText) {
         return Op(native.ArrayText, type, slot, stack[base], 0, 0);
     }
-    return Op(native.ArrayCopy, type, slot, stack[base], 0, 0);
+    // Source copies use value ownership. Their foreign writes carry loans;
+    // explicit native ArrayCopy stays a physical clone for raw ABI callers.
+    return Op(native.ValueCopy, type, slot, stack[base], 0, 0);
 }
 // The native instruction for a map operator other than its literal.
 MapLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: int) -> native.Instruction {
@@ -2820,10 +2817,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     texts.append(operand.name);
                     base := length(stack) - operand.count;
                     for (argument in 0..<operand.count) {
-                        arguments.append(stack[base + argument]);
-                        if (Holds(fresh, stack[base + argument]) &&
-                            ArrayTyped(slots[shape.first_slot + stack[base + argument]])) {
-                            pending.append(stack[base + argument]);
+                        selected := argument;
+                        if (operand.literal == i64(facts.ForeignReversed)) { selected = 1 - argument; }
+                        passed := stack[base + selected];
+                        arguments.append(passed);
+                        if (Holds(fresh, passed) && ArrayTyped(slots[shape.first_slot + passed])) {
+                            pending.append(passed);
                         }
                     }
                     shape.arguments += operand.count;
@@ -3195,7 +3194,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                             item = Op(native.ArrayRemove, type, slot, stack[base], stack[base + 1], 0);
                             fresh = Without(fresh, stack[base]);
                         } else {
-                            body.append(Op(native.ArrayCopy, type, slot, stack[base], 0, 0));
+                            body.append(Op(native.ValueCopy, type, slot, stack[base], 0, 0));
                             slots.append(type);
                             change := native.ArrayPush;
                             if (operand.value == facts.ArrayJoin) {
@@ -3946,7 +3945,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         code.extend(body);
         functions.append(shape);
     }
+    entries := -1;
     if (generation) {
+        entries = 0;
+        if (names.contains("Main")) { entries |= 1; }
+        if (names.contains("Frame")) { entries |= 2; }
         // The host always calls the same C ABI. An absent source entry does
         // nothing, so adding/removing Frame never restarts Main on an edit.
         for (name in ["Main", "Frame"]) {
@@ -3981,13 +3984,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             library_name = "generation";
         }
         emitted = native.EmitLibrary(target, library_name, names, ids, functions, parameters, slots, locals,
-                                     code, arguments, records, fields, texts, 1, field_names);
+                                     code, arguments, records, fields, texts, 1, field_names, entries);
     }
     switch emitted {
         case .Rejected(instruction, message):
             return Result.Invalid(message);
         case .Emitted(text):
-            return Result.Emitted(Linked(text, rows));
+            return Result.Emitted(Linked(text, rows, target));
     }
 }
 // The module's text with a comment naming each library a foreign call needs,
@@ -3997,10 +4000,17 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
 // import definition. A foreign block with no library declares symbols of the
 // program's own objects, such as its start module: each gets `; chibi-self
 // SYMBOL`, and no stub or import library lists it.
-Linked :: (text: string, rows: facts.Row[]) -> string {
+Linked :: (text: string, rows: facts.Row[], target: abi.Target) -> string {
     paths: string[] = [];
     imports: string[] = [];
-    for (row in rows) {
+    for (original in rows) {
+        row := original;
+        // Scalar libm capabilities use the C math ABI. Each target owns that
+        // same ABI in its system library; emitted calls retain their symbols.
+        if (row.kind == facts.ForeignRow && row.text == "system:m") {
+            if (abi.Same(target, abi.MacOSArm64())) { row.text = "system:System"; row.name = format_text("_{}", row.name); }
+            if (abi.Same(target, abi.WindowsX64())) { row.text = "system:ucrtbase"; }
+        }
         if (row.kind == facts.ForeignRow && row.text != "" && !paths.contains(row.text)) {
             paths.append(row.text);
         }

@@ -12,8 +12,10 @@ cross-platform fixed-point and installed-product checks remain required.
 
 The continuation includes numeric task results, typed nil-unwrap failures,
 scalar/string record maps, shared array backing, synchronous `print_string`,
-and typed test-effect collection. The array producer still copies eagerly;
-foreign mutation leases and broader managed ownership are not yet complete.
+and typed test-effect collection. Source array copies share owned backing and
+detach at writable boundaries, including foreign buffer loans. Records and
+unions use the same recursive value lifecycle for string and array fields.
+Retained arrays/unions and broader managed pointer ownership remain incomplete.
 Individual changes have focused O0/O2 and ownership checks; the latest combined
 source is awaiting its next execution pass. Native test-worker integration,
 macOS reload integration and the browser SDK compiler archive are in progress.
@@ -425,13 +427,15 @@ of scalars is one `release`), records and unions call their fields', a string
 is a null test, a decrement and a release. Types that own nothing emit
 nothing, so scalar-only modules are unchanged.
 
-**`x := arr`.** The VM copies on write; the native lane copies eagerly at
-`x := arr` (ArrayCopy), which is correct with drops (both own their buffers)
-but O(n) where the VM shares. The amendment keeps the eager copy and adds one
-elision for later: when `arr` is a local that nothing reads after the
-statement in its scope, the copy is a move, and `arr`'s drop is skipped. The
-rows have no liveness today, so the elision is its own stage and its own
-measurement; until then the cost is the copy and the temporary's drop.
+**`x := arr`.** Source ArrayCopy facts lower to native ValueCopy, which shares
+owned backing and imports borrowed external storage. Set, append, extend, remove and foreign buffer writes make
+their current destination unique before mutation. Record field places resolve
+after argument evaluation, so a later callback can replace the owner safely.
+Slices still copy their elements. A future liveness pass can move a dying
+source instead of retaining and releasing its backing; that optimization is
+separate from value semantics.
+Explicit native ArrayCopy retains its physical clone contract for raw foreign
+callers that do not use source buffer loans.
 
 **Stages and tests.**
 

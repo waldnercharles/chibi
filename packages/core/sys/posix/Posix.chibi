@@ -437,14 +437,25 @@ pub Spawn :: (command: string[]) -> int {
     return Launch(command, actions, false);
 }
 
-// Waits for the process and returns its exit status.
+// Waits for an attached child and returns its exit status. A child stopped by
+// job control stops its caller too; resuming the caller resumes that child.
 pub Wait :: (process: int) -> int {
     status := Block(8);
-    done := waitpid(i32(process), status, 0);
-    if done < 0 {
-        return -1;
+    while (true) {
+        done := waitpid(i32(process), status, 2);
+        if (done < 0) {
+            if (ForegroundError() == 4) { continue; }
+            return -1;
+        }
+        word := Word32(status, 0);
+        if ((word & 127) == 127) {
+            stopped := kill(getpid(), i32(ForegroundStop));
+            continued := kill(i32(process), i32(ForegroundContinue));
+            continue;
+        }
+        return Decoded(word);
     }
-    return Decoded(Word32(status, 0));
+    return -1;
 }
 
 // Runs the program, keeping the standard streams, and returns its exit status;
@@ -553,6 +564,11 @@ Terminated :: (buffer: u8[]) -> string {
 
 pub ChangeDirectory :: (path: string) -> bool {
     return chdir(path) == 0;
+}
+
+// Sets mode 0755 after artifact transfer has discarded a program's file mode.
+pub MakeExecutable :: (path: string) -> bool {
+    return chmod(path, 493) == 0;
 }
 
 // The current working directory, "" when it cannot be read.
@@ -930,4 +946,365 @@ pub WriteOutput :: (text: string) -> bool {
 // Ends the process with the exit status; it does not return.
 pub Exit :: (code: int) -> int {
     return int(_exit(i32(code)));
+}
+
+foreign import foreground_libc "system:c"
+foreign foreground_libc {
+    open :: (path: cstring, flags: i32) -> i32
+    dup :: (descriptor: i32) -> i32
+    socketpair :: (domain: i32, type: i32, protocol: i32, descriptors: u8[]) -> i32
+    send :: (descriptor: i32, text: cstring, count: u64, flags: i32) -> i64
+    signal :: (number: i32, handler: fn(number: i32) -> i32) -> u64
+    sigaction :: (number: i32, actions: u8[], previous: u8[]) -> i32
+    sigemptyset :: (signals: u8[]) -> i32
+    sigaddset :: (signals: u8[], number: i32) -> i32
+    sigprocmask :: (how: i32, signals: u8[], previous: u8[]) -> i32
+    posix_spawnattr_setsigmask :: (attributes: u8[], signals: u8[]) -> i32
+    posix_spawnattr_setsigdefault :: (attributes: u8[], signals: u8[]) -> i32
+    getpgrp :: () -> i32
+    tcgetpgrp :: (terminal: i32) -> i32
+    tcsetpgrp :: (terminal: i32, group: i32) -> i32
+    waitid :: (kind: i32, process: u32, information: u8[], options: i32) -> i32
+    clock_gettime :: (clock: i32, stamp: u8[]) -> i32
+    __error :: () -> rawptr
+    __errno_location :: () -> rawptr
+}
+
+when target.Os == target.Darwin {
+    ForegroundBlock: int : 1;
+    ForegroundSetMask: int : 3;
+    ForegroundCloseOnExec: int : 16777216;
+    ForegroundNonblockingSend: int : 128;
+    ForegroundStopped: int : 8;
+    ForegroundNowait: int : 32;
+    ForegroundInfoPid: int : 12;
+    ForegroundStop: int : 17;
+    ForegroundContinue: int : 19;
+    ForegroundClock: int : 6;
+    ForegroundErrno :: () -> rawptr { return __error(); }
+} else {
+    ForegroundBlock: int : 0;
+    ForegroundSetMask: int : 2;
+    ForegroundCloseOnExec: int : 524288;
+    ForegroundNonblockingSend: int : 64;
+    ForegroundStopped: int : 2;
+    ForegroundNowait: int : 16777216;
+    ForegroundInfoPid: int : 16;
+    ForegroundStop: int : 19;
+    ForegroundContinue: int : 18;
+    ForegroundClock: int : 1;
+    ForegroundErrno :: () -> rawptr { return __errno_location(); }
+}
+
+ForegroundError :: () -> int {
+    bytes := Block(4);
+    copied := memcpy(bytes, ForegroundErrno(), 4);
+    return Word32(bytes, 0);
+}
+
+ForegroundReaped :: struct { status: int; error: int; }
+ForegroundReap :: (pid: int) -> ForegroundReaped {
+    status := Block(8);
+    done := waitpid(i32(pid), status, 0);
+    while (done < 0) {
+        error := ForegroundError();
+        if (error != 4) { return {status: 1, error: error}; }
+        done = waitpid(i32(pid), status, 0);
+    }
+    return {status: Decoded(Word32(status, 0)), error: 0};
+}
+
+// One process-wide foreground owner. These scalars are initialized while the
+// signals are blocked and remain read-only until the old handlers are restored.
+// The handler never allocates, changes retained state, or enters the collector.
+ForegroundHook :: (descriptor: int, child: int) -> int {
+    output: retain int = 0;
+    pid: retain int = 0;
+    if (descriptor >= 0) { output = descriptor; pid = child; }
+    if (descriptor == -2) { return pid; }
+    return output;
+}
+
+ForegroundSignal :: (number: i32) -> i32 {
+    child := ForegroundHook(-2, 0);
+    if (child > 0) { sent := kill(i32(0 - child), number); }
+    descriptor := ForegroundHook(-1, 0);
+    if (number == 2) { return i32(send(i32(descriptor), "I", 1, i32(ForegroundNonblockingSend))); }
+    if (number == 15) { return i32(send(i32(descriptor), "T", 1, i32(ForegroundNonblockingSend))); }
+    return i32(send(i32(descriptor), "H", 1, i32(ForegroundNonblockingSend)));
+}
+
+// ForegroundStart owns one child group, its terminal handoff, and the temporary
+// signal handlers. ForegroundWait releases all of them when the child ends.
+// Only one scope may be active in a process. An empty scope owns no resources.
+pub Foreground :: struct {
+    pid: int;
+    terminal: int;
+    parent_group: int;
+    input: int;
+    output: int;
+    interrupt: u8[];
+    terminate: u8[];
+    hangup: u8[];
+    signals: u8[];
+    cancelled: int;
+    cancel_started: i64;
+    problem: string;
+}
+
+// Descriptors below 3 must stay closed if the caller had closed them. Every
+// owned descriptor is positive, leaving zero as absence. Spawn closes the
+// signal channel explicitly; the terminal is opened close-on-exec.
+ForegroundDescriptor :: (descriptor: int) -> int {
+    if (descriptor < 0) { return 0; }
+    held: int[] = [];
+    while (descriptor >= 0 && descriptor < 3) {
+        held.append(descriptor);
+        descriptor = int(dup(i32(descriptor)));
+    }
+    for (temporary in held) { closed := close(i32(temporary)); }
+    if (descriptor < 0) { return 0; }
+    return descriptor;
+}
+
+ForegroundTerminal :: (scope: Foreground, group: int) -> bool {
+    if (scope.terminal == 0) { return true; }
+    previous := Block(128);
+    signals := scope.signals;
+    blocked := sigprocmask(i32(ForegroundBlock), signals, previous);
+    if (blocked != 0) { return false; }
+    changed := tcsetpgrp(i32(scope.terminal), i32(group));
+    empty: u8[] = [];
+    restored := sigprocmask(i32(ForegroundSetMask), previous, empty);
+    return changed == 0 && restored == 0;
+}
+
+ForegroundRelease :: (scope: ^Foreground) {
+    previous := Block(128);
+    signals := scope^.signals;
+    blocked := sigprocmask(i32(ForegroundBlock), signals, previous);
+    if (blocked != 0 && scope^.problem == "") { scope^.problem = "cannot block signals while releasing the foreground program"; }
+    empty: u8[] = [];
+    if (scope^.terminal > 0) {
+        if (tcgetpgrp(i32(scope^.terminal)) == i32(scope^.pid)) {
+            restored := ForegroundTerminal(scope^, scope^.parent_group);
+            if (!restored && scope^.problem == "") { scope^.problem = "cannot restore the foreground terminal"; }
+        }
+        closed := close(i32(scope^.terminal));
+        scope^.terminal = 0;
+    }
+    old_interrupt := scope^.interrupt;
+    old_terminate := scope^.terminate;
+    old_hangup := scope^.hangup;
+    if (length(old_interrupt) > 0) {
+        restored := sigaction(2, old_interrupt, empty);
+        if (restored != 0 && scope^.problem == "") { scope^.problem = "cannot restore the interrupt handler"; }
+    }
+    if (length(old_terminate) > 0) {
+        restored := sigaction(15, old_terminate, empty);
+        if (restored != 0 && scope^.problem == "") { scope^.problem = "cannot restore the termination handler"; }
+    }
+    if (length(old_hangup) > 0) {
+        restored := sigaction(1, old_hangup, empty);
+        if (restored != 0 && scope^.problem == "") { scope^.problem = "cannot restore the hangup handler"; }
+    }
+    if (ForegroundHook(-1, 0) == scope^.output) { cleared := ForegroundHook(0, 0); }
+    if (scope^.input > 0) { closed := close(i32(scope^.input)); scope^.input = 0; }
+    if (scope^.output > 0) { closed := close(i32(scope^.output)); scope^.output = 0; }
+    if (blocked == 0) {
+        restored := sigprocmask(i32(ForegroundSetMask), previous, empty);
+        if (restored != 0 && scope^.problem == "") { scope^.problem = "cannot restore the signal mask after foreground cleanup"; }
+    }
+    scope^.pid = 0;
+}
+
+pub ForegroundStart :: (command: string[]) -> Foreground {
+    scope: Foreground = {pid: 0, terminal: 0, parent_group: 0, input: 0, output: 0,
+        interrupt: [], terminate: [], hangup: [], signals: [], cancelled: 0, cancel_started: 0, problem: ""};
+    if (length(command) == 0 || ForegroundHook(-1, 0) != 0) {
+        scope.problem = "a foreground command needs an inactive process scope";
+        return scope;
+    }
+    signals := Block(128);
+    initialized := sigemptyset(signals);
+    for (number in [int(1), 2, 15, 22]) {
+        if (initialized == 0) { initialized = sigaddset(signals, i32(number)); }
+    }
+    if (initialized != 0) { scope.problem = "cannot prepare the foreground signal set"; return scope; }
+    scope.signals = signals;
+    previous_mask := Block(128);
+    blocked := sigprocmask(i32(ForegroundBlock), signals, previous_mask);
+    if (blocked != 0) { scope.problem = "cannot block foreground signals"; return scope; }
+    sockets := Block(8);
+    paired := socketpair(1, 2, 0, sockets);
+    if (paired == 0) {
+        scope.input = ForegroundDescriptor(Word32(sockets, 0));
+        scope.output = ForegroundDescriptor(Word32(sockets, 4));
+    }
+    empty: u8[] = [];
+    if (scope.input == 0 || scope.output == 0) {
+        scope.problem = "cannot make the foreground signal channel";
+    } else {
+        saved_interrupt := Block(128);
+        saved_terminate := Block(128);
+        saved_hangup := Block(128);
+        saved := sigaction(2, empty, saved_interrupt);
+        if (saved == 0) { scope.interrupt = saved_interrupt; saved = sigaction(15, empty, saved_terminate); }
+        if (saved == 0) { scope.terminate = saved_terminate; saved = sigaction(1, empty, saved_hangup); }
+        if (saved == 0) { scope.hangup = saved_hangup; }
+        if (saved != 0) {
+            scope.problem = "cannot prepare foreground signal handling";
+        } else {
+            configured := ForegroundHook(scope.output, 0);
+            interrupt := signal(2, ForegroundSignal);
+            terminate := signal(15, ForegroundSignal);
+            hangup := signal(1, ForegroundSignal);
+            if (interrupt == u64(wrap: -1) || terminate == u64(wrap: -1) || hangup == u64(wrap: -1)) {
+                scope.problem = "cannot install foreground signal handling";
+            }
+        }
+    }
+    if (scope.problem == "") {
+        terminal := open("/dev/tty", i32(2 + ForegroundCloseOnExec));
+        scope.terminal = ForegroundDescriptor(int(terminal));
+        scope.parent_group = int(getpgrp());
+        handoff := scope.terminal > 0 && tcgetpgrp(i32(scope.terminal)) == i32(scope.parent_group);
+        if (!handoff && scope.terminal > 0) { closed := close(i32(scope.terminal)); scope.terminal = 0; }
+        attributes := Block(512);
+        pid := Block(8);
+        defaults := Block(128);
+        mask := Block(128);
+        attributes_status := posix_spawnattr_init(attributes);
+        prepared := attributes_status;
+        cleared := sigemptyset(defaults);
+        if (cleared == 0) { cleared = sigemptyset(mask); }
+        for (number in [int(1), 2, 13, 15, 21, 22]) {
+            if (cleared == 0) { cleared = sigaddset(defaults, i32(number)); }
+        }
+        if (cleared == 0 && target.Os == target.Darwin) { cleared = sigaddset(defaults, 18); }
+        else if (cleared == 0) { cleared = sigaddset(defaults, 20); }
+        if (prepared == 0) { prepared = cleared; }
+        flags := 14;
+        if (target.Os == target.Darwin && handoff) { flags += 128; }
+        if (prepared == 0) { prepared = posix_spawnattr_setpgroup(attributes, 0); }
+        if (prepared == 0) { prepared = posix_spawnattr_setsigmask(attributes, mask); }
+        if (prepared == 0) { prepared = posix_spawnattr_setsigdefault(attributes, defaults); }
+        if (prepared == 0) { prepared = posix_spawnattr_setflags(attributes, i16(flags)); }
+        vector := Vector(command);
+        actions := Block(256);
+        actions_initialized := posix_spawn_file_actions_init(actions);
+        actions_status := actions_initialized;
+        if (actions_status == 0) { actions_status = posix_spawn_file_actions_addclose(actions, i32(scope.input)); }
+        if (actions_status == 0) { actions_status = posix_spawn_file_actions_addclose(actions, i32(scope.output)); }
+        if (actions_status == 0 && scope.terminal > 0) { actions_status = posix_spawn_file_actions_addclose(actions, i32(scope.terminal)); }
+        if (prepared == 0 && actions_status == 0) {
+            prepared = posix_spawnp(pid, command[0], actions, attributes, vector, chibi_environment());
+        }
+        if (attributes_status == 0) { destroyed := posix_spawnattr_destroy(attributes); }
+        if (actions_initialized == 0) { destroyed_actions := posix_spawn_file_actions_destroy(actions); }
+        if (prepared != 0 || actions_status != 0) {
+            scope.problem = "cannot start the foreground program";
+        } else {
+            scope.pid = Word32(pid, 0);
+            configured := ForegroundHook(scope.output, scope.pid);
+            if (target.Os == target.Darwin) {
+                if (handoff) { status := Block(8); stopped := waitpid(i32(scope.pid), status, 2); }
+            }
+            if (handoff && !ForegroundTerminal(scope, scope.pid)) {
+                scope.problem = "cannot give the foreground program its terminal";
+            }
+            if (handoff) { continued := kill(i32(0 - scope.pid), i32(ForegroundContinue)); }
+        }
+    }
+    restored := sigprocmask(i32(ForegroundSetMask), previous_mask, empty);
+    if (restored != 0 && scope.problem == "") { scope.problem = "cannot restore the foreground signal mask"; }
+    if (scope.problem != "") {
+        if (scope.pid > 0) { killed := kill(i32(0 - scope.pid), 9); reaped := ForegroundReap(scope.pid); }
+        ForegroundRelease(&scope);
+        if (restored != 0) { retried := sigprocmask(i32(ForegroundSetMask), previous_mask, empty); }
+    }
+    return scope;
+}
+
+ForegroundMillis :: (stamp: u8[]) -> i64 {
+    read := clock_gettime(i32(ForegroundClock), stamp);
+    if (read != 0) { return -1; }
+    seconds := i64(u64(Word32(stamp, 0)) | (u64(Word32(stamp, 4)) << 32));
+    nanos := i64(u64(Word32(stamp, 8)) | (u64(Word32(stamp, 12)) << 32));
+    return seconds * 1000 + nanos / 1000000;
+}
+
+// A waitable exit keeps the PID reserved until its group is killed. Stopped
+// children hand the terminal back and suspend their wrapper; a resumed wrapper
+// restores the child's terminal before continuing that entire group.
+pub ForegroundWait :: (scope: ^Foreground, timeout_ms: int) -> int {
+    if (scope^.pid <= 0) { return 127; }
+    information := Block(128);
+    notice := Block(1);
+    polling := Block(8);
+    for (byte in 0..<4) { polling[byte] = u8((scope^.input >> u32(byte * 8)) & 255); }
+    polling[4] = 1;
+    clock := Block(16);
+    waited := 0;
+    while (true) {
+        available := poll(polling, 1, 0);
+        received: i64 = 0;
+        if (available > 0 && (polling[6] & 1) != 0) { received = read(i32(scope^.input), notice, 1); }
+        if (received > 0 && scope^.cancelled == 0) {
+            scope^.cancelled = 1;
+            if (notice[0] == 73) { scope^.cancelled = 2; }
+            else if (notice[0] == 84) { scope^.cancelled = 15; }
+            scope^.cancel_started = ForegroundMillis(clock);
+        }
+        if (scope^.cancelled != 0) {
+            now := ForegroundMillis(clock);
+            if (now < 0 || scope^.cancel_started < 0) {
+                scope^.problem = "cannot read the foreground cancellation clock";
+                killed := kill(i32(0 - scope^.pid), 9);
+            } else if (now - scope^.cancel_started >= 2000) {
+                killed := kill(i32(0 - scope^.pid), 9);
+            }
+        }
+        for (byte in ForegroundInfoPid..<ForegroundInfoPid + 4) { information[byte] = 0; }
+        checked := waitid(1, u32(scope^.pid), information, i32(1 + 4 + ForegroundStopped + ForegroundNowait));
+        if (checked < 0) {
+            error := ForegroundError();
+            if (error == 4) { continue; }
+            // ECHILD proves that this process no longer owns the PID; never
+            // signal a group through a handle whose leader was reaped elsewhere.
+            if (error != 10) { killed := kill(i32(0 - scope^.pid), 9); reaped := ForegroundReap(scope^.pid); }
+            scope^.problem = format_text("cannot wait for the foreground program (errno {})", error);
+            ForegroundRelease(scope);
+            return 1;
+        }
+        if (checked == 0 && Word32(information, ForegroundInfoPid) == scope^.pid) {
+            code := Word32(information, 8);
+            if (code == 1 || code == 2 || code == 3) {
+                killed := kill(i32(0 - scope^.pid), 9);
+                reaped := ForegroundReap(scope^.pid);
+                result := reaped.status;
+                if (reaped.error != 0) { scope^.problem = "cannot reap the foreground program"; }
+                else if (scope^.problem != "") { result = 1; }
+                else if (scope^.cancelled != 0) { result = 0 - scope^.cancelled; }
+                ForegroundRelease(scope);
+                if (scope^.problem != "") { return 1; }
+                return result;
+            }
+            consumed := waitid(1, u32(scope^.pid), information, i32(1 + ForegroundStopped));
+            if (scope^.cancelled == 0) {
+                if (scope^.terminal > 0 && tcgetpgrp(i32(scope^.terminal)) == i32(scope^.pid)) {
+                    restored := ForegroundTerminal(scope^, scope^.parent_group);
+                }
+                stopped := kill(getpid(), i32(ForegroundStop));
+                if (scope^.terminal > 0 && tcgetpgrp(i32(scope^.terminal)) == i32(scope^.parent_group)) {
+                    handed := ForegroundTerminal(scope^, scope^.pid);
+                }
+            }
+            continued := kill(i32(0 - scope^.pid), i32(ForegroundContinue));
+        }
+        if (timeout_ms >= 0 && waited >= timeout_ms) { return StillRunning; }
+        slept := usleep(5000);
+        waited += 5;
+    }
+    return 127;
 }

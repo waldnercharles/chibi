@@ -50,24 +50,28 @@ pub NativeCommand :: (driver: string, llvm: string, root: string, build_dir: str
     return command;
 }
 
-// Include directory stamps so additions, as well as changed or deleted files,
-// invalidate the graph's existing command/input receipt. Empty propagates an
-// os.List error; a partial inventory must never validate a cache.
+// Only authored source files decide these products. Step compares the complete
+// current path inventory with its receipt, so additions/removals need no
+// directory stamps and generated caches cannot invalidate unchanged sources.
+// A failed walk returns no partial inventory; an empty subtree is valid.
 pub NativeInputs :: (directory: string) -> string[] {
+    inputs: string[] = [];
+    if (!NativeInputFiles(directory, &inputs)) { return []; }
+    return inputs;
+}
+
+NativeInputFiles :: (directory: string, inputs: ^(string[])) -> bool {
     listed := os.List(directory);
-    if (listed.error) { return []; }
-    inputs: string[] = [directory];
+    if (listed.error) { return false; }
     for (name in listed.names) {
         path := Join([directory, "/", name]);
         if (os.IsDirectory(path)) {
-            nested := NativeInputs(path);
-            if (length(nested) == 0) { return []; }
-            inputs.extend(nested);
+            if (!NativeInputFiles(path, inputs)) { return false; }
         } else if (strings.HasSuffix(name, ".chibi")) {
             inputs.append(path);
         }
     }
-    return inputs;
+    return true;
 }
 
 // A native compiler distribution needs authored sources, never the legacy
@@ -165,4 +169,67 @@ pub BuildNative :: (driver: string, llvm: string, root: string, build_dir: strin
         built += status;
     }
     return built;
+}
+
+VersionDigitZero: int : 48;
+VersionDigitNine: int : 57;
+
+// A positive canonical int32 version works in both metadata JSON and the
+// remaining C test fixture. Reject missing/malformed owners without defaults.
+VersionNumber :: (text: string) -> bool {
+    size := strings.ByteLength(text);
+    if (size == 0 || strings.ByteAt(text, 0) == VersionDigitZero) { return false; }
+    value: i64 = 0;
+    for (index in 0..<size) {
+        byte := strings.ByteAt(text, index);
+        if (byte < VersionDigitZero || byte > VersionDigitNine) { return false; }
+        value = value * 10 + i64(byte - VersionDigitZero);
+        if (value > 2147483647) { return false; }
+    }
+    return true;
+}
+
+ProjectVersion :: (source_root: string) -> string {
+    path := Join([source_root, "/sdk/PROJECT_VERSION"]);
+    text := strings.TrimSpace(files.Text(path));
+    if (!VersionNumber(text)) {
+        os.Print(Join(["graph: invalid project compatibility version ", path]));
+        return "";
+    }
+    return text;
+}
+
+// The prepared writer owns this declaration and every byte of its codec.
+// Read its Version declaration directly when writing metadata.
+PreparedVersion :: (text: string) -> string {
+    found := "";
+    for (line in strings.SplitLines(text)) {
+        parts := strings.Partition(line, ":");
+        if (strings.TrimSpace(parts.head) != "Version") { continue; }
+        typed := strings.Partition(parts.tail, ":");
+        value := strings.TrimSpace(typed.tail);
+        if (found != "" || strings.TrimSpace(typed.head) != "int" || !strings.HasSuffix(value, ";")) { return ""; }
+        value = strings.TrimSpace(strings.TrimSuffix(value, ";"));
+        if (!VersionNumber(value)) { return ""; }
+        found = value;
+    }
+    return found;
+}
+
+// Native distributions keep the compile-only prepared artifact API. Its
+// authored encoder owns the reported format. Read/hash the same source bytes once.
+NativeIdentity :: (source_root: string, processor: string) -> string {
+    sdk := SDKVersion(source_root);
+    project := ProjectVersion(source_root);
+    owner := "tools/compiler/prepared_writer/Writer.chibi";
+    path := Join([source_root, "/", owner]);
+    source := files.Text(path);
+    version := PreparedVersion(source);
+    if (sdk == "" || project == "" || version == "") {
+        if (version == "") { os.Print(Join(["graph: invalid prepared format version ", path])); }
+        return "";
+    }
+    record := Join(["\"execution\": {\"version\": ", version, ", \"source\": \"", owner,
+                    "\", \"sha256\": \"", os.HashText(source), "\"}"]);
+    return IdentityText(sdk, project, processor, "[\"native\"]", [record]);
 }

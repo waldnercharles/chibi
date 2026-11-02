@@ -1,0 +1,9 @@
+package live
+
+Main :: () { Mark("main-restarted"); }
+Frame :: () -> int {
+    count: retain int = 0;
+    text: retain int = 99;
+    Mark("bad-schema-ran");
+    return count + text;
+}

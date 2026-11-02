@@ -11,8 +11,8 @@ log=$work/watch.log
 cleanup() {
     status=$?
     if [ -n "$process" ] && kill -0 "$process" 2>/dev/null; then
-        # The native host shares the CLI's foreground group for Ctrl-C. This
-        # test terminates only its owned children when a check fails.
+        # The CLI supervises its native host group. This test terminates only
+        # its owned processes when a check fails.
         for child in $(ps -axo pid=,ppid= | awk -v parent="$process" '$2 == parent { print $1 }'); do
             kill "$child" 2>/dev/null || :
         done
@@ -47,6 +47,15 @@ wait_log() {
         kill -0 "$process" 2>/dev/null || fail 'a rejected edit stopped the running program'
         attempts=$((attempts + 1))
         [ "$attempts" -lt 600 ] || fail 'the invalid edit was not diagnosed'
+        sleep 0.1
+    done
+}
+wait_occurrences() {
+    attempts=0
+    while [ "$(grep -c "$1" "$log" || :)" -lt "$2" ]; do
+        kill -0 "$process" 2>/dev/null || fail 'the CLI exited before reporting the accepted edit'
+        attempts=$((attempts + 1))
+        [ "$attempts" -lt 600 ] || fail 'the accepted edit was not reported'
         sleep 0.1
     done
 }
@@ -171,13 +180,63 @@ Frame :: () -> int {
     count: retain int = 0;
     count += 1;
     assert(count >= 3, "Frame-only state migrated");
+    shown: retain bool = false;
+    if !shown { print_string("optional-retained-ready"); shown = true; }
+    return 0;
+}
+SOURCE
+wait_log 'optional-retained-ready'
+printf 'package optional_entries\nHelper :: () {}\n' >"$work/optional/Main.chibi"
+wait_occurrences 'No runnable Frame' 1
+printf 'package optional_entries\n' >"$work/optional/Main.chibi"
+wait_occurrences 'No runnable Frame' 2
+cat >"$work/optional/Main.chibi" <<'SOURCE'
+package optional_entries
+Main :: () { print_string("optional-main-restarted"); }
+Frame :: () -> int {
+    count: retain int = 0;
+    count += 1;
+    assert(count == 1, "a removed Frame drops its retained state");
     return 42;
 }
 SOURCE
 finish 42
 [ "$(grep -c '^optional-main-once$' "$log")" -eq 1 ] || fail 'a Main-only entry did not run exactly once'
 if grep -F 'optional-main-restarted' "$log" >/dev/null; then fail 'an edit restarted Main'; fi
-printf 'native watch: Main-only and Frame-only edits preserve Main-once and retained state\n'
+printf 'native watch: optional and removed entries preserve Main-once, migrate and reset retained state\n'
+
+# An initially empty package waits for its first runnable entry. That first
+# Main runs once; later edits still replace Frame without restarting Main.
+mkdir "$work/initially-empty"
+printf 'package initially_empty\n' >"$work/initially-empty/Main.chibi"
+log=$work/initially-empty.log
+"$driver" run --watch -O0 --llvm "$llvm" "$work/initially-empty" >"$log" 2>&1 &
+process=$!
+wait_log 'No runnable Main'
+cat >"$work/initially-empty/Main.chibi" <<'SOURCE'
+package initially_empty
+Main :: () { print_string("late-main-once"); }
+Frame :: () {
+    count: retain int = 0;
+    count += 1;
+    if count == 2 { print_string("late-frame-ready"); }
+}
+SOURCE
+wait_log 'late-frame-ready'
+cat >"$work/initially-empty/Main.chibi" <<'SOURCE'
+package initially_empty
+Main :: () { print_string("late-main-restarted"); }
+Frame :: () -> int {
+    count: retain int = 0;
+    count += 1;
+    assert(count >= 3);
+    return 7;
+}
+SOURCE
+finish 7
+[ "$(grep -c '^late-main-once$' "$log")" -eq 1 ] || fail 'the first runnable Main did not run exactly once'
+if grep -F 'late-main-restarted' "$log" >/dev/null; then fail 'a later edit restarted the first runnable Main'; fi
+printf 'native watch: an initially empty package starts its first runnable Main once\n'
 
 # Imported names never become root host entries. Their retained keys use the
 # stable package identity, rather than package order in a changing closure.

@@ -1,0 +1,165 @@
+package native_driver
+
+import compiler "project:package_compiler"
+import facts "project:scalar_facts"
+import scalar "project:scalar_llvm"
+import abi "project:native_abi"
+import cases "fixtures:cases"
+import strings "core:strings"
+import os "core:os"
+
+KindField: int : 0;
+TypeField: int : 1;
+ValueField: int : 2;
+CountField: int : 3;
+LiteralField: int : 4;
+StartField: int : 5;
+EndField: int : 6;
+LineField: int : 7;
+ColumnField: int : 8;
+NameField: int : 9;
+TextField: int : 10;
+
+Edit :: struct { row: int; field: int; value: i64; from: int; text: string; }
+Changed :: (row: int, field: int, value: i64) -> Edit {
+    return {row: row, field: field, value: value, from: -1, text: ""};
+}
+Copied :: (row: int, field: int, from: int) -> Edit {
+    return {row: row, field: field, value: 0, from: from, text: ""};
+}
+Named :: (row: int, field: int, text: string) -> Edit {
+    return {row: row, field: field, value: 0, from: -1, text: text};
+}
+NumberField :: (row: facts.Row, field: int) -> i64 {
+    switch field {
+        case KindField: return i64(row.kind);
+        case TypeField: return i64(row.type);
+        case ValueField: return i64(row.value);
+        case CountField: return i64(row.count);
+        case LiteralField: return row.literal;
+        case StartField: return i64(row.start);
+        case EndField: return i64(row.end);
+        case LineField: return i64(row.line);
+        case ColumnField: return i64(row.column);
+    }
+    assert(false, "unknown numeric row field");
+    return 0;
+}
+ChangedRows :: (rows: facts.Row[], edits: Edit[]) -> facts.Row[] {
+    output := rows;
+    for edit in edits {
+        row := output[edit.row];
+        value := edit.value;
+        text := edit.text;
+        if edit.from >= 0 {
+            from := output[edit.from];
+            if edit.field == NameField { text = from.name; }
+            else if edit.field == TextField { text = from.text; }
+            else { value = NumberField(from, edit.field); }
+        }
+        switch edit.field {
+            case KindField: row.kind = int(value);
+            case TypeField: row.type = int(value);
+            case ValueField: row.value = int(value);
+            case CountField: row.count = int(value);
+            case LiteralField: row.literal = value;
+            case StartField: row.start = int(value);
+            case EndField: row.end = int(value);
+            case LineField: row.line = int(value);
+            case ColumnField: row.column = int(value);
+            case NameField: row.name = text;
+            case TextField: row.text = text;
+            case: assert(false, "unknown row field");
+        }
+        output[edit.row] = row;
+    }
+    return output;
+}
+ValidateRows :: (rows: facts.Row[], expected: string) {
+    actual := scalar.Validate(rows);
+    if actual != expected {
+        os.Print(format_text("Validate: expected '{}', received '{}'", expected, actual));
+        os.Print(rows[0].text);
+    }
+    assert(actual == expected, "real producer validation diagnostic");
+    bytes := scalar.EmitBytesFor(abi.LinuxX64(), rows);
+    assert((length(bytes) != 0) == (expected == ""), "malformed rows emit no LLVM");
+}
+RejectChanged :: (rows: facts.Row[], edits: Edit[], expected: string) {
+    changed := ChangedRows(rows, edits);
+    ValidateRows(changed, expected);
+}
+ExpectKinds :: (rows: facts.Row[], kinds: int[]) {
+    assert(length(rows) == length(kinds), "producer row count");
+    for index in 0..<length(kinds) {
+        assert(rows[index].kind == kinds[index], "producer row kinds");
+    }
+}
+Produced :: (source: string) -> facts.Row[] {
+    // The rows must retain their source after the collector and this temporary
+    // heap string leave scope, while later calls create different projections.
+    owned := strings.Concatenate([source, ""]);
+    return compiler.CollectScalar("/project", "Scalar.chibi", owned, TargetFacts(), Names(), Natives(), Ports(), Identities());
+}
+IR :: (rows: facts.Row[]) -> string {
+    switch scalar.EmitFor(abi.LinuxX64(), rows) {
+        case .Emitted(text): return text;
+        case .Invalid(message): os.Print(message);
+        case .Rejected(rejected): os.Print(rejected[length(rejected) - 1].text);
+    }
+    assert(false, "valid producer rows emit LLVM");
+    return "";
+}
+
+BasicFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return Pick(7, true); }\nPick :: (x: int, b: bool) -> int { return x; }\n"; }
+GenericFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return int(Named(0.25) * 100) + int(Inline(0.5) * 100); }\nNamed :: (sample: number) -> number { return Remap(sample, Gain); }\nInline :: (sample: number) -> number { return Remap(sample, (value: number) => value * 3); }\nRemap :: (sample: $T, transform: fn(value: T) -> T) -> T { return transform(value: sample); }\nGain :: (input: number) -> number { return input * 2; }\n"; }
+GenericIntegerFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return Named(25) + Inline(50); }\nNamed :: (sample: int) -> int { return Remap(sample, Gain); }\nInline :: (sample: int) -> int { return Remap(sample, (value: int) => value * 3); }\nRemap :: (sample: $T, transform: fn(value: T) -> T) -> T { return transform(value: sample); }\nGain :: (input: int) -> int { return input * 2; }\n"; }
+
+Main :: () -> int {
+    basic := Produced(BasicFixtureSource());
+    specialized := Produced(GenericFixtureSource());
+    specialized_integer := Produced(GenericIntegerFixtureSource());
+    guards := GuardsRows();
+    arithmetic := ArithmeticRows();
+    widths := WidthsRows();
+    control := ControlRows();
+    loops := LoopsRows();
+    switches := SwitchesRows();
+    records := RecordsRows();
+    unions := UnionsRows();
+    string_rows := StringsRows();
+    text := TextRows();
+    formats := FormatsRows();
+    assertions := AssertsRows();
+    GenericShape(specialized);
+    ValidateRows(specialized, "");
+    GenericShape(specialized_integer);
+    ValidateRows(specialized_integer, "");
+    assert(cases.Value(specialized_integer) == 200);
+    WidthShape(widths);
+    LoopShape(loops);
+    SwitchShape(switches);
+    RecordShape(records);
+    UnionShape(unions);
+    StringShape(string_rows);
+    TextShape(text);
+    FormatShape(formats);
+    AssertShape(assertions);
+    assert(guards[0].text == GuardsFixtureSource() && arithmetic[0].text == ArithmeticFixtureSource());
+    assert(length(basic) == 12 && basic[0].name == "Scalar.chibi" && basic[0].text == BasicFixtureSource());
+    assert(basic[1].name == "project:Scalar.chibi" && basic[2].name == "Main");
+    assert(basic[6].name == "Pick" && basic[6].value == 1 && basic[6].count == 2 && basic[7].name == "Pick");
+    base_ir := IR(basic);
+    assert(strings.Contains(base_ir, "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1)"));
+    assert(strings.Contains(base_ir, "call i32 @chibi_scalar.1(i32 %c3_0, i1 %c3_1)"));
+    ImportedPackages();
+    CollectionPackages();
+    ScopedPackages();
+    LocatedPackages();
+    UnsupportedSources();
+    LibraryContracts();
+    RetainedLibraryRows();
+    Corpus();
+    os.Print("PASS real producer rows, 169 malformed variants, packages and library contracts");
+    return 0;
+}

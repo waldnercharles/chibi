@@ -32,14 +32,18 @@ with and without growth, self-extension during growth and release order. A raw
 caller-owned array has a null owner; the probe imports it before mutation and
 checks that releasing the borrowed descriptor neither frees nor changes it.
 The descriptor is now 24 bytes, with its data pointer still at field 2. Source
-array copies remain eager while the ownership transition is validated; no array
-descriptor currently crosses the generation host's scalar/text ABI. Flat element
+array copies share owned backing and detach at writable boundaries; caller-owned
+backing is imported. No array descriptor currently crosses the generation host's
+scalar/text ABI. Flat element
 backings have an eight-byte reference count. Backings of array-bearing record
 elements reserve 32 bytes; only their last release uses that dead header as a
 pending node in a stack-owned drain queue. No callback or context survives the
 synchronous drop, and value depth does not consume native call depth.
 A unique writable loan also appends inside existing capacity without creating
 another allocation; this catches repeated copying of compiler record fields.
+Explicit native `ArrayCopy` still clones for raw foreign ABI consumers.
+Native `ValueCopy` shares, so its callers must take an `ArrayLoan` before exposing
+a mutable buffer. Raw `ForeignCall` supplies no uniqueness or descriptor writeback.
 
 Foreign buffers carry an owned argument snapshot and its writable descriptor
 cell until the call. The source regression uses actual libc calls to check an
@@ -56,5 +60,6 @@ caller-unchanged assertion as an acceptance case for that foreign boundary.
 `Growth.chibi` counts context allocations for 4,096 appends through a direct
 record field and through a scoped record parameter. Each path allows at most
 16 allocations, so spare capacity must be reused rather than cloned for every
-append. Field-place mutations also replace their owner from an argument and
+append. Another 4,096 readonly source array snapshots must allocate no backing.
+Field-place mutations also replace their owner from an argument and
 check the current record's descriptor and sibling fields.

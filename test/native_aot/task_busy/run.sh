@@ -75,6 +75,10 @@ for level in 0 2; do
     program=${build#native: }
     program=${program% is up to date}
     "$program" 0
+    "$stage" --compiler "$repo/tools/compiler" --core "$repo/packages/core" \
+        --source "$repo/test/native_aot/task_busy/scalar_foreign/Main.chibi" --entry Main \
+        --output "$work/scalar-foreign" --llvm "$llvm" --target "$target" --level "$level" --jobs 2
+    "$work/scalar-foreign"
     printf 'PASS native test task effects O%s\n' "$level"
 done
 for source in "$repo"/test/native_aot/task_busy/rejected/*.chibi; do
@@ -83,7 +87,7 @@ for source in "$repo"/test/native_aot/task_busy/rejected/*.chibi; do
         --target "$target" --jobs 2 > "$work/rejection.log" 2>&1; then
         echo 'native test task effects: an unsupported waiting foreign ABI compiled' >&2; exit 1
     fi
-    grep -q 'native waiting function cannot fail, format or call foreign code yet' "$work/rejection.log"
+    grep -q 'native foreign call differs from its operands' "$work/rejection.log"
     test ! -e "$work/rejected"
 done
 printf '%s\n' 'PASS native test waiting foreign ABI boundaries'

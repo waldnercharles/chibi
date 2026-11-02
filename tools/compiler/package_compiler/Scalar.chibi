@@ -940,9 +940,6 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (ScalarMathCall(forest, text, node)) {
             return ScalarMathStorage(forest, text, callables, params, callable, names, types, members, constants, node);
         }
-        if (ScalarSquareRoot(forest, text, node)) {
-            return FloatStorage;
-        }
         if (ScalarLengthOf(forest, text, callables, params, names, types, members, callable.package, node) >= 0) {
             return IntStorage;
         }
@@ -1285,13 +1282,6 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (callee < 0 && ScalarMathCall(forest, text, node)) {
         return ScalarMathOperands(forest, text, callables, params, callable, names, types, members, constants, node, output);
     }
-    if (callee < 0 && ScalarSquareRoot(forest, text, node)) {
-        // EmitBody has checked the built-in's positional f32 argument.
-        argument := FirstMember(forest, Field(forest, node, syntax.FieldArguments));
-        row := ScalarAt(forest, node, facts.UnaryRow, facts.FloatType, facts.SquareRoot, 1, "");
-        return ScalarSides(forest, text, callables, params, callable, names, types, members, constants,
-                           node, [argument], [FloatStorage], FloatStorage, row, output);
-    }
     if (callee < 0 && ScalarCharacter(forest, text, node)) {
         // EmitBody rejects invalid constants, non-integer dynamic inputs and
         // named arguments. Keep the original width until the scalar check.
@@ -1484,10 +1474,7 @@ ScalarReferenceArgument :: (forest: snapshot.SnapshotNode[], text: string, calla
 }
 // Called only after authored functions, foreign calls and procedure values
 // have been resolved, so their names can shadow the built-in.
-ScalarSquareRoot :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
-    callee := Field(forest, node, syntax.FieldFunction);
-    return Is(forest, callee, syntax.Identifier) && Text(forest, text, callee) == "sqrt";
-}
+
 ScalarCharacter :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
     callee := Field(forest, node, syntax.FieldFunction);
     return Is(forest, callee, syntax.Identifier) && Text(forest, text, callee) == "char";
@@ -3261,7 +3248,7 @@ ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], lent: bool) -
 NativePrintEffect: int : 8;
 // The text, output, array and scalar math natives this producer lowers.
 ScalarTextNative :: (native: ResolvedNative) -> bool {
-    return NativeNameMatches(native, "fmod") || NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
+    return ScalarMathNative(native) || NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
            NativeNameMatches(native, "text_slice") || NativeNameMatches(native, "format_text") ||
            NativeNameMatches(native, "print_string") ||
            NativeNameMatches(native, "length") || NativeNameMatches(native, "append") ||
@@ -3393,7 +3380,8 @@ ScalarRetainedNames :: (forest: snapshot.SnapshotNode[], text: string, types: Ty
 // construction, tests and payload reads, no traced roots but records and
 // unions, and no cells besides those, moved records and unions and its
 // authored calls' arguments and results.
-ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, callables: Callable[], params: Param[],
+ScalarEmits :: (forest: snapshot.SnapshotNode[], authored: snapshot.SnapshotNode[], documents: snapshot.Document[],
+                text: string, key: string, callables: Callable[], params: Param[],
                 table: ^(TypeDecl[]), body_optionals: ^(int[]), members: TypeMember[], constants: ConstDecl[], solid: int[], function: int,
                 ops: Ops, target: Target, natives: ResolvedNative[], ports: ResolvedPort[],
                 identities: u64[], aliases: Name[], retained: Name[], summary: ^ScalarEffectSummary,
@@ -3424,6 +3412,11 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
                             "scalar proof requires a callable body");
         case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
                       direct_write, facts):
+            // Reuse the ordinary checker's typed error-result facts and authored
+            // control flow. Scoped lowering preserves node IDs but changes
+            // pointer syntax; error ownership uses the original authored syntax.
+            problems := FallibleBody(authored, documents, callables, params, table^, callables[function], facts);
+            if (length(problems) > 0) { return problems[0]; }
             if (summary.wanted) { ScalarBodyEffects(summary, function, callables[function].waits, effects, ops, code, hosts, calls); }
             while (length(body_optionals^) < length(table^)) { body_optionals.append(0); }
             for (cell in cells) {
@@ -3904,7 +3897,7 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         if (length(generic_bindings) > 0) {
             used = GenericConstants(forest, constants, generic_bindings, function, callables[function], documents);
         }
-        emitted := ScalarEmits(scoped, text, key, callables, marked, &checked, &body_optionals, members, used, solid, function,
+        emitted := ScalarEmits(scoped, forest, documents, text, key, callables, marked, &checked, &body_optionals, members, used, solid, function,
                                ops, target, natives, ports, identities, aliases,
                                ScalarRetainedNames(scoped, text, checked, callables[function]), summary, &assertions);
         if (emitted.message != "") { return ScalarOperands.Failed(emitted); }
@@ -4549,6 +4542,11 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
                                 case .Failed(diagnostic):
                                     return ScalarFailed(packaged, path, text, documents, diagnostic);
                                 case .Ready(concrete, concrete_params, bindings):
+                                    if (generation && length(concrete) == 0) {
+                                        empty_head: facts.Row = {kind: facts.DocumentRow, type: 0, value: 0, count: 0,
+                                            literal: 0, name: document.key, text: "", start: 0, end: 0, line: 0, column: 0};
+                                        return [ScalarSource(path, ScalarJoined(documents)), empty_head];
+                                    }
                                     entered := concrete;
                                     entered_bindings := bindings;
                                     if (!generation && packaged && length(concrete) > 0 && (concrete[0].document != 0 || chosen != "")) {

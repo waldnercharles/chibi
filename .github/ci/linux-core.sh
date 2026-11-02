@@ -33,6 +33,7 @@ trap finish EXIT
 export CHIBI_BUILD_TIMINGS="$RUNNER_TEMP/build-timings"
 sh tools/build.sh build --release --target chibi --target chibi-build-host --target chibi-compiler-host --target test_tools --libclang-root /usr/lib/llvm-18
 export CHIBI_BUILD_HOST=build-release/sdk/chibi-build-host
+sh test/native_aot/targets/build.sh "$PWD/build-release/sdk/chibi" "$CHIBI_LLVM_BIN" "$CHIBI_NATIVE_BUNDLE"
 
 # Build products and test drivers (selected Debug profile)
 debug_attempted=true

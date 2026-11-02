@@ -276,9 +276,11 @@ pub MapLiveAt: int : 70;
 // field's type; type is that reference type. The field is a scalar or array,
 // and the reference lives as long as the local does.
 pub FieldAddress: int : 71;
-// An independent owned value in output: a scalar/string aggregate or an
+// An independent owned value in output: a managed aggregate or an
 // array of counted elements. Owned array backing can be shared until mutation;
-// a null-owner array imports its caller-owned storage.
+// a null-owner array imports its caller-owned storage. Use ArrayLoan before
+// exposing shared backing to a mutable foreign call; raw ForeignCall does not
+// supply uniqueness or write a replaced descriptor back to its source.
 pub ValueCopy: int : 72;
 // Releases one owned value from the left slot; it gives no value.
 pub ValueDrop: int : 73;
@@ -1067,8 +1069,12 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if ((item.op == StateLoad || item.op == StateStore) && !StateValid(slots, texts, item)) {
             return Result.Rejected(base + pc, "native retained state differs from its operands");
         }
-        if (item.op == ForeignCall && !ForeignValid(slots, arguments, texts, item)) {
-            return Result.Rejected(base + pc, "native foreign call differs from its operands");
+        foreign_abi := InvalidForeignABI;
+        if (item.op == ForeignCall) {
+            foreign_abi = ForeignABI(slots, arguments, texts, item);
+            if (foreign_abi == InvalidForeignABI) {
+                return Result.Rejected(base + pc, "native foreign call differs from its operands");
+            }
         }
         if (item.op == ForeignCall && length(loan_uses) > 0) {
             for (index in 0..<item.target) {
@@ -1111,18 +1117,12 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             (item.op == Delay && !Typed(slots, item.left, abi.DoubleStorage))) {
             return Result.Rejected(base + pc, "native timed task operation requires an f64 duration");
         }
-        if (waiting[function] && (item.op == Fail || item.op == Format || item.op == ForeignCall)) {
-            // Generated test entry scopes are scalar, synchronous runtime
-            // calls. No general foreign ABI or managed frame admission changes.
-            test_runtime := false;
-            if (ProgramMode(mode) && item.op == ForeignCall && item.left == 0 && item.target == 0 && item.type == abi.IntStorage) {
-                symbol := texts[int(item.literal)];
-                test_runtime = symbol == "chibi_native_test_index" || symbol == "chibi_native_test_begin" ||
-                               symbol == "chibi_native_test_end";
-            }
-            if (!test_runtime) {
-                return Result.Rejected(base + pc, "native waiting function cannot fail, format or call foreign code yet");
-            }
+        // C calls complete synchronously. Scalar arguments/results live in the
+        // coroutine's existing scalar slots; borrowed strings/array buffers
+        // retain the separate lifetime gate. Typed source effects are unchanged.
+        if (waiting[function] && (item.op == Fail || item.op == Format ||
+            (item.op == ForeignCall && foreign_abi != ScalarForeignABI))) {
+            return Result.Rejected(base + pc, "native waiting function cannot fail, format or borrow foreign buffers yet");
         }
         if (item.op == Fail && (item.left < 0 || item.right < item.left)) {
             return Result.Rejected(base + pc, "native failure names no source range");
@@ -2198,37 +2198,47 @@ ForeignType :: (type: int) -> string {
     }
     return format_text("{}{}", TypeName(type), CExtension(type));
 }
-// Whether a foreign call names a C symbol the module does not define, or when
-// its `left` is 1 calls through the address in its first argument, a word, and
-// has number, bool or string operands and a number or bool result.
-ForeignValid :: (slots: int[], arguments: int[], texts: string[], item: Instruction) -> bool {
+// One validation pass also identifies whether all arguments travel by value.
+// A synchronous scalar C call needs no buffer lease in a coroutine frame.
+InvalidForeignABI: int : 0;
+ScalarForeignABI: int : 1;
+BorrowedForeignABI: int : 2;
+ForeignABI :: (slots: int[], arguments: int[], texts: string[], item: Instruction) -> int {
     if (item.literal < 0 || item.literal >= i64(length(texts)) || abi.ScalarType(item.type) == "") {
-        return false;
+        return InvalidForeignABI;
     }
     symbol := texts[int(item.literal)];
     indirect := item.left == 1;
     if (item.left != 0 && !indirect) {
-        return false;
+        return InvalidForeignABI;
     }
     if (indirect && symbol != "") {
-        return false;
+        return InvalidForeignABI;
     }
     if (!indirect && (!Identifier(symbol) || symbol == "main" || symbol == "chibi_scalar")) {
-        return false;
+        return InvalidForeignABI;
     }
     if (item.right < 0 || item.target < 0 || item.target > length(arguments) - item.right) {
-        return false;
+        return InvalidForeignABI;
     }
     if (indirect && (item.target < 1 || !Typed(slots, arguments[item.right], abi.WordStorage))) {
-        return false;
+        return InvalidForeignABI;
     }
+    // These program-owned helpers have a fixed ABI, regardless of the caller's
+    // frame. A source declaration cannot change their result or add arguments.
+    if (!indirect && (symbol == "chibi_native_test_index" || symbol == "chibi_native_test_begin" ||
+                      symbol == "chibi_native_test_end") && (item.type != abi.IntStorage || item.target != 0)) {
+        return InvalidForeignABI;
+    }
+    capability := ScalarForeignABI;
     for (index in 0..<item.target) {
         slot := arguments[item.right + index];
         if (!Index(slot, length(slots)) || !ForeignArgument(slots[slot])) {
-            return false;
+            return InvalidForeignABI;
         }
+        if (abi.ScalarType(slots[slot]) == "") { capability = BorrowedForeignABI; }
     }
-    return true;
+    return capability;
 }
 // The declaration of each foreign symbol functions [first, last) call, once.
 ForeignDeclarations :: (functions: Function[], first: int, last: int, slots: int[], code: Instruction[],
@@ -4000,13 +4010,29 @@ WindowsLibraryExports :: (symbols: string[]) -> string {
 // plain C-ABI symbols of HostSymbols.
 pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
                     parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
-                    records: Record[], fields: int[], texts: string[], step_budget: int, field_names: string[]) -> Result {
+                    records: Record[], fields: int[], texts: string[], step_budget: int, field_names: string[], entries: int = -1) -> Result {
     windows := abi.Same(target, abi.WindowsX64());
     if (!abi.Same(target, abi.LinuxX64()) && !abi.Same(target, abi.MacOSArm64()) && !windows) {
         return Result.Rejected(-1, "native libraries require Linux x86-64, macOS arm64 or Windows x86-64");
     }
     if (!Identifier(name) || length(names) != length(functions) || length(ids) != length(functions)) {
         return Result.Rejected(-1, "native library needs an identifier and a name and ID for each function");
+    }
+    // Package generations distinguish real entries from their fixed-ABI stubs:
+    // bit 0 is Main, bit 1 is Frame; -1 leaves ordinary libraries unchanged.
+    if (entries < -1 || entries > 3) {
+        return Result.Rejected(-1, "native generation entry mask is out of bounds");
+    }
+    if (entries >= 0 && (!names.contains("Main") || !names.contains("Frame"))) {
+        return Result.Rejected(-1, "native generation needs both host entry adapters");
+    }
+    if (entries >= 0) {
+        for (index in 0..<length(names)) {
+            if ((names[index] == "Main" || names[index] == "Frame") &&
+                (functions[index].result != abi.IntStorage || functions[index].parameters != 0)) {
+                return Result.Rejected(-1, "native generation entry adapters require zero arguments and int results");
+            }
+        }
     }
     for (index in 0..<length(names)) {
         for (other in 0..<index) {
@@ -4037,10 +4063,19 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
     exports: string[] = [];
     waiting := WaitingFunctions(functions, code);
     dll_exports: string[] = [];
+    if (entries >= 0) {
+        for (index in 0..<length(names)) {
+            if ((names[index] == "Main" || names[index] == "Frame") && waiting[index]) {
+                return Result.Rejected(-1, "native generation entry adapters cannot wait");
+            }
+        }
+        out.append(format_text("\ndefine i32 @chibi_host_entries() #0 {{\nentry:\n  ret i32 {}\n}}\n", entries));
+        if (windows) { dll_exports.append("chibi_host_entries"); }
+    }
     if (windows) {
-        dll_exports = [format_text("chibi_natives_{},data", name), "chibi_host_retained_release", "chibi_host_retained_count",
+        dll_exports.extend([format_text("chibi_natives_{},data", name), "chibi_host_retained_release", "chibi_host_retained_count",
                        "chibi_host_retained_type", "chibi_host_retained_hash", "chibi_host_retained_ready", "chibi_host_retained_get",
-                       "chibi_host_retained_set", "chibi_host_retained_set_as"];
+                       "chibi_host_retained_set", "chibi_host_retained_set_as"]);
         if (runtime) { dll_exports.append("chibi_host_failed"); }
         if (waiting.contains(true)) {
             dll_exports.extend(["chibi_host_tasks_pending", "chibi_host_tasks_poll", "chibi_host_tasks_cancel_all"]);

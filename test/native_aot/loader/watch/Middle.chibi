@@ -1,0 +1,18 @@
+package live
+
+Main :: () { Mark("main-restarted"); }
+Frame :: () -> int {
+    count: retain f64 = 0.5;
+    text: retain string = "middle";
+    presented: retain bool = false;
+    completed: retain bool = false;
+    assert(count >= 2.0 && text == "first", "rejected edits keep state and numeric migration");
+    count += 10.0;
+    if !presented { Mark("ready-middle"); presented = true; }
+    if Exists("task-old") && !completed { Mark("ready-after-task"); completed = true; }
+    return 0;
+}
+Worker :: () { yield
+    NewTask();
+}
+NewTask :: () { Mark("task-new"); }

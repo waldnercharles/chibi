@@ -2,6 +2,10 @@
 set -euo pipefail
 # The native build entry reuses its compiler; VM parity uses the explicit Release helpers.
 : "${CHIBI_LLVM_BIN:?Install the native LLVM tools before this proof}"
+# A failed core test may precede this phase. It must not change the proven source.
+test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+source_status=$(git status --porcelain --untracked-files=normal)
+test -z "$source_status"
 set -o pipefail
 stage_one=()
 comparison=()
@@ -27,6 +31,7 @@ node .github/ci/budget.js "$(($(date +%s) + 300))" sh test/native_aot/test_attri
 sh test/native_aot/failures/run.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/task_busy/run.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/optionals/run.sh "$driver" "$CHIBI_LLVM_BIN"
+sh test/native_aot/fallible/run.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/bootstrap/native-entry.sh
 sh test/bootstrap/native-runner.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/tasks/run.sh "$driver" "$CHIBI_LLVM_BIN"

@@ -1,0 +1,32 @@
+package live
+
+Main :: () {
+    Mark("main-started");
+    worker := Worker();
+}
+Frame :: () -> int {
+    count: retain int = 0;
+    text: retain string = "first";
+    count += 1;
+    assert(text == "first");
+    if count == 1 {
+        cancelled := CancelledWorker();
+        cancel cancelled
+    }
+    if count == 2 { Mark("ready-first"); }
+    if Exists("finish-first") {
+        assert(count == 1, "a restarted host initializes its own state");
+        return 43;
+    }
+    return 0;
+}
+Worker :: () {
+    while !Released() { yield }
+    OldTask();
+}
+CancelledWorker :: () { yield
+    CancelledTask();
+}
+Released :: () -> bool { return Exists("release-task"); }
+OldTask :: () { Mark("task-old"); }
+CancelledTask :: () { Mark("cancelled-ran"); }

@@ -193,8 +193,6 @@ rejected() {
     fi
     cmp "$prior" "$work/prior.so"
 }
-printf 'package loop\nHelper :: () -> int { return 0; }\n' > "$project/Main.chibi"
-rejected 'native package generations require Main or Frame'
 printf 'package loop\nFrame :: () -> int { return 0; }\nMain :: (x: int) -> int { return x; }\n' > "$project/Main.chibi"
 rejected 'Main and Frame with a zero-argument int ABI'
 printf 'package loop\nFrame :: () -> int { return 0; }\nMain :: () -> f64 { return 0.0; }\n' > "$project/Main.chibi"

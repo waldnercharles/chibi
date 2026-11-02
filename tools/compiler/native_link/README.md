@@ -11,6 +11,11 @@ executable through LLVM's lld, with no C compiler or compiler driver on `PATH`.
   start files on Linux, and `Link` writes the stubs, runs `Command`'s vector and
   publishes the program (a rename from `Partial(plan)`).
 
+`ObjectResult`, `ObjectsResult` and `LinkResult` return the same `Error` record
+with kind/code zero on success. The optional `Object`, `Objects` and `Link`
+interfaces adapt those operations. The native bootstrap driver uses plain
+records so the pinned seed does not need nullable-record field projections.
+
 The native compiler driver uses these entry points directly. Every vector names
 lld's flavor (`-flavor gnu`, `darwin` or `link`), so a caller may run any of lld's
 names, or lld itself, in place of the vector's first argument. The real native

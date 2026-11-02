@@ -61,12 +61,25 @@ test('canonical work has no classifier, receipt or silent source-path bypass', (
   const linux = source.slice(source.indexOf('\n  native:\n'), source.indexOf('\n  native-macos:\n'));
   assert.doesNotMatch(source, /receipt|ci-policy|CHIBI_CI_PROFILE|Prepare native bootstrap|ci-tested-tree/);
   assert.doesNotMatch(readFileSync(path.join(root, '.github/ci/linux-setup.sh'), 'utf8'), /CHIBI_CI_PROFILE|static\)/);
-  for (const name of ['Format and static checks', 'Core functional tests', 'Native fixed-point proof']) {
+  for (const name of ['Format and static checks', 'Core functional tests']) {
     const step = linux.split('    - name: ' + name + '\n')[1].split(/^    - /m)[0];
     assert.doesNotMatch(step, /^      if:/m);
   }
   assert.match(source, /pull_request:\n    branches:\n    - main/);
   assert.match(source, /push:\n    branches:\n    - main/);
+});
+
+test('native proof runs after an attempted core phase while preserving its failure', () => {
+  const step = source.split('    - name: Native fixed-point proof\n')[1].split(/^    - /m)[0];
+  const condition = /^      if: \$\{\{ (.+) \}\}$/m.exec(step)[1];
+  for (const outcome of ['success', 'failure', 'skipped']) {
+    for (const stopped of [false, true]) {
+      assert.equal(vm.runInNewContext(condition, {cancelled: () => stopped, steps: {core: {outcome}}}),
+        !stopped && outcome !== 'skipped');
+    }
+  }
+  const core = source.split('    - name: Core functional tests\n')[1].split(/^    - /m)[0];
+  assert.doesNotMatch(core, /continue-on-error/);
 });
 
 test('ordinary native targets consume the Linux bundle without enabling full-only work', () => {

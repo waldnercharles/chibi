@@ -26,15 +26,25 @@ Tally :: struct {
     compiled: bool;
 }
 
+TestPaths :: struct {
+    names: string[];
+    problem: string;
+}
+
 // The package folders below `folder`, relative to the root, that may hold tests: those that
 // hold a .chibi file. Hidden folders and `build` folders are not looked in. "." is the root.
-TestFolders :: (root: string, relative: string) -> string[] {
-    found: string[] = [];
+TestFolders :: (root: string, relative: string) -> TestPaths {
+    found: TestPaths = {names: [], problem: ""};
     folder := root;
     if (relative != ".") {
         folder = strings.Concatenate([root, "/", relative]);
     }
-    names := os.List(folder).names;
+    listed := os.List(folder);
+    if (listed.error != nil) {
+        found.problem = strings.Concatenate(["cannot list test directory ", folder]);
+        return found;
+    }
+    names := listed.names;
     holds := false;
     for (name in names) {
         if (strings.HasSuffix(name, ".chibi") && os.IsFile(strings.Concatenate([folder, "/", name]))) {
@@ -42,7 +52,7 @@ TestFolders :: (root: string, relative: string) -> string[] {
         }
     }
     if (holds) {
-        found.append(relative);
+        found.names.append(relative);
     }
     for (name in names) {
         if (strings.HasPrefix(name, ".") || name == "build" || !os.IsDirectory(strings.Concatenate([folder, "/", name]))) {
@@ -52,17 +62,24 @@ TestFolders :: (root: string, relative: string) -> string[] {
         if (relative != ".") {
             child = strings.Concatenate([relative, "/", name]);
         }
-        found.extend(TestFolders(root, child));
+        scanned := TestFolders(root, child);
+        if (scanned.problem != "") { return scanned; }
+        found.names.extend(scanned.names);
     }
     return found;
 }
 
 // The .chibi files of a package folder, in name order.
-TestFiles :: (folder: string) -> string[] {
-    files: string[] = [];
-    for (name in os.List(folder).names) {
+TestFiles :: (folder: string) -> TestPaths {
+    files: TestPaths = {names: [], problem: ""};
+    listed := os.List(folder);
+    if (listed.error != nil) {
+        files.problem = strings.Concatenate(["cannot list test directory ", folder]);
+        return files;
+    }
+    for (name in listed.names) {
         if (strings.HasSuffix(name, ".chibi") && os.IsFile(strings.Concatenate([folder, "/", name]))) {
-            files.append(name);
+            files.names.append(name);
         }
     }
     return files;
@@ -390,7 +407,13 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
     attributed := false;
     package := "";
     known: string[] = [];
-    for (file in TestFiles(folder)) {
+    files := TestFiles(folder);
+    if (files.problem != "") {
+        Complain(files.problem);
+        result.compiled = false;
+        return result;
+    }
+    for (file in files.names) {
         known.append(file);
         read := os.ReadText(strings.Concatenate([folder, "/", file]));
         if (read.error != nil) {
@@ -555,7 +578,12 @@ TestCommand :: (invocation: CliInvocation) -> int {
     }
     tally: Tally = {total: 0, failed: 0, compiled: true};
     number := 0;
-    for (relative in TestFolders(root, ".")) {
+    folders := TestFolders(root, ".");
+    if (folders.problem != "") {
+        Complain(folders.problem);
+        return 1;
+    }
+    for (relative in folders.names) {
         scratch := strings.Concatenate([root, "/build/native/test/", format_text("{}", number)]);
         number += 1;
         tally = TestPackage(root, relative, project, core, llvm, triple, scratch, invocation, workers, tally);

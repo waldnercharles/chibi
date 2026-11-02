@@ -693,9 +693,12 @@ configures them: the launcher's `BUILD/share/chibi`, which `chibi version`
 and `chibi test` read as installed ones do. Its `engine.json` is the build
 identity the graph writes to `BUILD/sdk/chibi_engine_metadata.json` as
 `sdk/artifact_formats.cmake` does: the SDK version from
-`sdk/VERSION`, the project version from `src/assets/project.h`, the
-platform, processors and backends, and each of `ArtifactFormats`' versions
-with the SHA-256 of the sources and headers that own it. A target's
+`sdk/VERSION` and the project compatibility version from `sdk/PROJECT_VERSION`,
+the platform, processors and backends. Native distributions identify the
+compile-only execution format with the version and source digest of
+`tools/compiler/prepared_writer/Writer.chibi`; they require no C VM decoder or
+retired event catalog. Explicit VM reference builds retain `ArtifactFormats`'
+C codec records, using the same SDK project compatibility version. A target's
 `SourceLists` (`OUTPUT=ROOT`) are written then too: every `.chibi` file below
 ROOT by absolute path, byte-sorted, as
 `test/language/CMakeLists.txt` writes the language corpus `test_language`
@@ -971,6 +974,12 @@ x64 and macOS arm64. Explicit publication uses `chibi-native-PLATFORM` under the
 immutable tag `native-seed-COMMIT`; preparation does not publish by itself.
 `tools/bootstrap/native-seed.tsv` records them (platform, tag, asset, SHA-256),
 and `tools/bootstrap/native-seed.sh PLATFORM OUTPUT` fetches and checks one.
+Windows uses `tools/bootstrap/native-seed.ps1` and the thin `tools/build.ps1`
+checkout entry. Its proposed seed comes from the exact source's successful
+Windows CI fixed-point/runtime artifact, with verified archive and compiler
+hashes and a restored compiler/core source archive. The manual procedure above
+does not publish it or add a Windows pin; an unpinned default fails until that
+separately approved release is available.
 Once a platform is pinned, seed preparation and the canonical CI native phase pass
 it as `--stage-one`, so recovery starts from the native seed: it compiles the
 current sources to stage two, and stage two compiles them to stage three. A

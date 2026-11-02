@@ -410,7 +410,7 @@ Identity :: (source_root: string, profile: Profile) -> string {
 
 IdentityFor :: (source_root: string, processor: string, backends: string) -> string {
     sdk := SDKVersion(source_root);
-    project := Version(Join([source_root, "/src/assets/project.h"]), "CHIBI_PROJECT_VERSION");
+    project := ProjectVersion(source_root);
     if (sdk == "" || project == "") { return ""; }
     records: string[] = [];
     for (format in ArtifactFormats()) {
@@ -420,6 +420,10 @@ IdentityFor :: (source_root: string, processor: string, backends: string) -> str
         }
         records.append(record);
     }
+    return IdentityText(sdk, project, processor, backends, records);
+}
+
+IdentityText :: (sdk: string, project: string, processor: string, backends: string, records: string[]) -> string {
     return Join([
         "{\"sdk_version\": \"", sdk, "\", \"system\": \"",
         os.Platform(), "\", \"processors\": [\"", processor,
@@ -493,7 +497,7 @@ pub WriteNativeIdentity :: (source_root: string, build_dir: string) -> bool {
     processor := "x86_64";
     if (os.Platform() == "Darwin") { processor = "arm64"; }
     if (os.Platform() == "Windows") { processor = "AMD64"; }
-    return WriteIdentityText(build_dir, IdentityFor(source_root, processor, "[\"native\"]"));
+    return WriteIdentityText(build_dir, NativeIdentity(source_root, processor));
 }
 
 WriteIdentityText :: (build_dir: string, text: string) -> bool {

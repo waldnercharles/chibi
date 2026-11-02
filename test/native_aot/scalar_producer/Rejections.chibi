@@ -1,0 +1,22 @@
+package native_driver
+
+import facts "project:scalar_facts"
+import strings "core:strings"
+
+UnsupportedSources :: () {
+    RejectedSource("package scalar\nShape :: union { Dot | Box(w: int) }\nMain :: () -> int { s := Shape.Box(1); if (s is .Box(w)) { return w; } return 0; }\n", "scalar proof binds payloads only in switch arms", ".Box(w)");
+    RejectedSource("package scalar\nNamed :: union { Tag(items: [int: int]) }\nMain :: () -> int { return 1; }\n", "native map payloads require union ownership support", "items: [int: int]");
+    RejectedSource("package scalar\nWrapped :: union { Of(p: ^int) }\nMain :: () -> int { return 1; }\n", "scalar proof requires number, bool, string, array, record and union payloads", "p: ^int");
+    RejectedSource("package scalar\nMain :: () -> int { return text_byte_length(Value: \"ab\"); }\n", "scalar proof passes a text native's arguments in order", "Value: \"ab\"");
+    RejectedSource("package scalar\nPoint :: struct { x: int; }\nMain :: () -> int { p: Point = {x: 1}; return text_byte_length(format_text(\"{}\", p)); }\n", "scalar proof formats only numbers, bools and strings", "p");
+    RejectedSource("package scalar\nMain :: () -> int { return text_byte_length(format_text(\"{}\", 7)); }\n", "a number needs an integer type here", "7");
+    RejectedSource("package scalar\nMain :: () -> int { if (text_equal(\"a\", \"b\")) { return 1; } return 0; }\n", "Unknown function 'text_equal'", "text_equal");
+}
+
+RejectedSource :: (source: string, message: string, excerpt: string) {
+    rows := Produced(source);
+    assert(length(rows) == 2 && rows[1].kind == facts.RejectionRow);
+    rejected := rows[1];
+    assert(rejected.text == message);
+    assert(strings.Slice(source, rejected.start, rejected.end - rejected.start) == excerpt);
+}

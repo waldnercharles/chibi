@@ -38,6 +38,17 @@ PointerFacts :: (target: abi.Target) -> compiler.Target {
     return facts;
 }
 
+TargetPlatform :: struct { os: int; arch: int; }
+
+// core:target's platform numbers follow the canonical destination ABI, so
+// accepted spellings of one target select identical declarations and offsets.
+PlatformFor :: (target: abi.Target) -> TargetPlatform {
+    if (abi.Same(target, abi.MacOSArm64())) { return {os: 2, arch: 2}; }
+    if (abi.Same(target, abi.WindowsX64())) { return {os: 3, arch: 1}; }
+    if (abi.Same(target, abi.WebAssembly32())) { return {os: 4, arch: 3}; }
+    return {os: 1, arch: 1};
+}
+
 // The function whose declaration lies last before byte `at` of `text`.
 FunctionAt :: (text: string, at: int) -> string {
     lines := strings.SplitLines(strings.Slice(text, 0, at));
@@ -102,20 +113,10 @@ ModuleWith :: (collections: string[], directories: string[], paths: string[], so
                chosen: string, directory: string, shared: bool) -> Output {
     target := Target(triple);
     if (!abi.Supported(target)) { return Output.Rejected("unsupported native target"); }
-    os := 1;
-    arch := 1;
-    if (abi.Same(target, abi.MacOSArm64())) {
-        os = 2;
-        arch = 2;
-    } else if (abi.Same(target, abi.WindowsX64())) {
-        os = 3;
-    } else if (triple == "wasm32-unknown-emscripten") {
-        os = 4;
-        arch = 3;
-    }
+    platform := PlatformFor(target);
     rows := compiler.CollectScalarProgram("/project", collections, directories, paths, sources, PointerFacts(target), Names(),
-                                          Natives(), Ports(), Identities(), os, arch, chosen);
-    return EmitRows(collections, directories, paths, sources, os, arch, rows, target, directory, shared);
+                                          Natives(), Ports(), Identities(), platform.os, platform.arch, chosen);
+    return EmitRows(collections, directories, paths, sources, platform.os, platform.arch, rows, target, directory, shared);
 }
 
 // Program rows already checked by the collector, with the same diagnostics,
@@ -124,12 +125,8 @@ CollectedModule :: (collections: string[], directories: string[], paths: string[
                     rows: facts.Row[], directory: string) -> Output {
     target := Target(triple);
     if (!abi.Supported(target)) { return Output.Rejected("unsupported native target"); }
-    os := 1;
-    arch := 1;
-    if (abi.Same(target, abi.MacOSArm64())) { os = 2; arch = 2; }
-    else if (abi.Same(target, abi.WindowsX64())) { os = 3; }
-    else if (abi.Same(target, abi.WebAssembly32())) { os = 4; arch = 3; }
-    return EmitRows(collections, directories, paths, sources, os, arch, rows, target, directory, false);
+    platform := PlatformFor(target);
+    return EmitRows(collections, directories, paths, sources, platform.os, platform.arch, rows, target, directory, false);
 }
 
 // The parser distinguishes library declarations from package generations,
@@ -154,10 +151,8 @@ LibrarySource :: (source: string) -> bool {
 LibraryModule :: (path: string, source: string, triple: string) -> Output {
     rows := compiler.CollectScalar("/project", path, source, TargetFacts(), Names(), Natives(), Ports(), Identities());
     target := Target(triple);
-    os := 1;
-    arch := 1;
-    if (abi.Same(target, abi.MacOSArm64())) { os = 2; arch = 2; }
-    return EmitRows([], [], [path], [source], os, arch, rows, target, "", false);
+    platform := PlatformFor(target);
+    return EmitRows([], [], [path], [source], platform.os, platform.arch, rows, target, "", false);
 }
 
 // Both producers return the same facts rows and rejection contract. A

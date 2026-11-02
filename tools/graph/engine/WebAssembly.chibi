@@ -1,0 +1,100 @@
+package engine
+
+import c "graph:c"
+import programs "graph:programs"
+import wasm "graph:wasm_toolchain"
+import os "core:os"
+import strings "core:strings"
+
+// An optional cross-target SDK component, never part of desktop NativeProducts
+// or a graph's selection when no --target was supplied.
+pub WebAssemblyProducts :: () -> string[] { return ["chibi-asset-compiler-wasm"]; }
+pub WebAssemblyDirectory :: (build_dir: string) -> string { return Join([build_dir, "/sdk/wasm32"]); }
+pub WebAssemblyFiles :: () -> string[] {
+    return ["libchibi_asset_compiler.a", "libchibi_asset_compiler.a.json",
+            "libchibi_asset_compiler_threads.a", "libchibi_asset_compiler_threads.a.json", "asset_compiler_host.h"];
+}
+WebAssemblyBuilder :: (build_dir: string) -> string {
+    suffix := "";
+    if (os.Platform() == "Windows") { suffix = ".exe"; }
+    return Join([build_dir, "/tools/asset-wasm-build", suffix]);
+}
+WebAssemblyEmitter :: (build_dir: string) -> string {
+    suffix := "";
+    if (os.Platform() == "Windows") { suffix = ".exe"; }
+    return Join([build_dir, "/tools/wasm-emitter", suffix]);
+}
+WebAssemblyBuildCommand :: (driver: string, llvm: string, root: string, build_dir: string) -> string[] {
+    return programs.Command(root, driver, llvm, "tools/graph/asset_wasm/Build.chibi", "Main", ["graph=tools/graph"],
+                            programs.HostTriple(), WebAssemblyBuilder(build_dir));
+}
+WebAssemblyCommand :: (builder: string, driver: string, emcc: string, llvm: string, root: string, build_dir: string) -> string[] {
+    return [builder, root, driver, emcc, llvm, WebAssemblyDirectory(build_dir)];
+}
+pub WebAssemblyCommands :: (driver: string, native_llvm: string, emcc: string, wasm_llvm: string,
+                           root: string, build_dir: string) -> string {
+    return Join(["[\n", c.LinkEntry(programs.CompilerCommand(root, driver, native_llvm, WebAssemblyEmitter(build_dir)),
+                                    WebAssemblyEmitter(build_dir)), ",\n",
+                 c.LinkEntry(WebAssemblyBuildCommand(WebAssemblyEmitter(build_dir), native_llvm, root, build_dir),
+                             WebAssemblyBuilder(build_dir)), ",\n",
+                 c.LinkEntry(WebAssemblyCommand(WebAssemblyBuilder(build_dir), WebAssemblyEmitter(build_dir), emcc, wasm_llvm, root, build_dir),
+                             Join([WebAssemblyDirectory(build_dir), "/libchibi_asset_compiler.a"])), "\n]\n"]);
+}
+// Real builds record the actual content-published program paths. Commands-only
+// uses the equivalent uncached preparation plan above without probing tools.
+pub WebAssemblyRecordedCommands :: (build_dir: string) -> string {
+    output := Join([WebAssemblyDirectory(build_dir), "/libchibi_asset_compiler.a"]);
+    read := os.ReadText(Join([output, ".chibi-record"]));
+    if (read.error != nil) { return ""; }
+    command: string[] = [];
+    for (line in strings.SplitLines(read.text)) {
+        if (line == "") { break; }
+        command.append(line);
+    }
+    if (length(command) != 6) { return ""; }
+    return Join(["[\n", c.LinkEntry(command, output), "\n]\n"]);
+}
+pub BuildWebAssembly :: (driver: string, native_llvm: string, emcc: string, wasm_llvm: string,
+                        root: string, build_dir: string, jobs: int) -> int {
+    if (os.Platform() == "Windows") {
+        os.Print("graph: building the optional Wasm compiler archives currently requires Linux or macOS");
+        return -1;
+    }
+    if (!os.IsFile(os.RealPath(driver)) || !os.IsFile(os.RealPath(emcc)) || !os.IsDirectory(native_llvm) || !os.IsDirectory(wasm_llvm) || jobs < 1) {
+        os.Print("graph: the optional Wasm compiler requires --native-driver FILE, --llvm DIR, --emcc FILE and --wasm-llvm DIR");
+        return -1;
+    }
+    toolchain := wasm.Toolchain(emcc, wasm_llvm);
+    if (toolchain.error != "") { os.Print(toolchain.error); return -1; }
+    emitter := programs.Compiler(root, driver, native_llvm);
+    if (emitter == "") { return -1; }
+    builder := programs.Build(root, emitter, native_llvm, "tools/graph/asset_wasm/Build.chibi", "Main", ["graph=tools/graph"]);
+    if (builder == "") { return -1; }
+    inputs := NativeInputs(Join([root, "/tools/compiler"]));
+    core := NativeInputs(Join([root, "/packages/core"]));
+    if (length(inputs) == 0 || length(core) == 0) { os.Print("graph: cannot inventory Wasm compiler sources"); return -1; }
+    inputs.extend(core);
+    inputs.extend([builder, emitter]);
+    inputs.extend(toolchain.files);
+    configuration := Join([WebAssemblyDirectory(build_dir), "/toolchain.txt"]);
+    if (os.MakeDirectory(WebAssemblyDirectory(build_dir)) != nil) { return -1; }
+    read := os.ReadText(configuration);
+    if (read.error != nil || read.text != toolchain.configuration) {
+        if (os.WriteText(configuration, toolchain.configuration) != nil) { return -1; }
+    }
+    inputs.append(configuration);
+    for (path in ["authoring/asset_compiler_wasm.c", "authoring/asset_compiler_wasm.h",
+                  "authoring/asset_compiler_host.c", "authoring/asset_compiler_host.h",
+                  "support/binary_cache.c", "support/binary_cache.h", "support/file_io.c", "support/file_io.h",
+                  "support/sha256.c", "support/sha256.h", "support/xalloc.c", "support/xalloc.h"]) {
+        inputs.append(Join([root, "/src/", path]));
+    }
+    files := WebAssemblyFiles();
+    // Step records after the command returns. Track the other owned outputs
+    // too, so deleting or replacing any variant/manifest invalidates the step.
+    for (index in 1..<length(files)) { inputs.append(Join([WebAssemblyDirectory(build_dir), "/", files[index]])); }
+    status := c.Step(WebAssemblyCommand(builder, emitter, emcc, wasm_llvm, root, build_dir), inputs,
+                     Join([WebAssemblyDirectory(build_dir), "/", files[0]]));
+    if (status < 0) { return -1; }
+    return status;
+}

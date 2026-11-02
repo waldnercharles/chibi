@@ -59,6 +59,60 @@ ArrayBacking :: (code: ^(native.Instruction[]), slots: ^(int[]), status: int) ->
     }
     return checked;
 }
+PointerLoan :: (code: ^(native.Instruction[]), slots: ^(int[]), arguments: ^(int[]), input: int, address: int, mode: int, status: int, expected: int) -> int {
+    array := native.ArrayType + abi.IntStorage;
+    right := input;
+    if (mode == 0) { right = address; }
+    held := Value(code, slots, native.ArrayLoan, array, input, right, mode, 0);
+    begin := length(arguments^);
+    arguments.append(held);
+    result := Value(code, slots, native.ForeignCall, abi.IntStorage, 0, begin, 1, 1);
+    checked := Expected(code, slots, status, result, expected);
+    code.append(Op(native.ValueDrop, array, 0, held, 0, 0));
+    return checked;
+}
+// The two loans name the same canonical cell. A later logical copy must
+// survive C's write, while both C pointers still name one detached buffer.
+ForeignBacking :: (code: ^(native.Instruction[]), slots: ^(int[]), arguments: ^(int[]), status: int) -> int {
+    array := native.ArrayType + abi.IntStorage;
+    empty := Value(code, slots, native.Constant, array, 0, 0, 0, 0);
+    seven := Value(code, slots, native.Constant, abi.IntStorage, 0, 0, 0, 7);
+    original := Value(code, slots, native.ArrayPush, array, empty, seven, 0, 1);
+    code.append({op: native.Save, type: array, output: 0, left: original, right: 0, target: 0, literal: 0});
+    address := Value(code, slots, native.LocalAddress, native.RefType + array, 0, 0, 0, 0);
+    captured := Value(code, slots, native.Deref, array, address, 0, 0, 0);
+    first := Value(code, slots, native.ArrayLoan, array, captured, address, 0, 0);
+    second := Value(code, slots, native.ArrayLoan, array, captured, address, 0, 0);
+    later := Value(code, slots, native.ValueCopy, array, captured, 0, 0, 0);
+    begin := length(arguments^);
+    arguments.extend([first, second]);
+    result := Value(code, slots, native.ForeignCall, abi.IntStorage, 0, begin, 2, 0);
+    checked := Expected(code, slots, status, result, 9);
+    code.append(Op(native.ValueDrop, array, 0, first, 0, 0));
+    code.append(Op(native.ValueDrop, array, 0, second, 0, 0));
+    canonical := Value(code, slots, native.Local, array, 0, 0, 0, 0);
+    zero := Value(code, slots, native.Constant, abi.IntStorage, 0, 0, 0, 0);
+    readback := Value(code, slots, native.ArrayGet, abi.IntStorage, canonical, zero, 0, 0);
+    checked = Expected(code, slots, checked, readback, 9);
+    copied := Value(code, slots, native.ArrayGet, abi.IntStorage, later, zero, 0, 0);
+    checked = Expected(code, slots, checked, copied, 7);
+    code.append(Op(native.ValueDrop, array, 0, canonical, 0, 0));
+    code.append(Op(native.ValueDrop, array, 0, later, 0, 0));
+    // Zero descriptors remain C null pointers. An allocated zero-length
+    // value with spare capacity remains a nonnull buffer, including a shared one.
+    unbacked := Value(code, slots, native.Constant, array, 0, 0, 0, 0);
+    checked = PointerLoan(code, slots, arguments, unbacked, 0, 1, checked, 1);
+    checked = PointerLoan(code, slots, arguments, unbacked, 0, 2, checked, 1);
+    code.append({op: native.Save, type: array, output: 0, left: unbacked, right: 0, target: 0, literal: 0});
+    current_zero := Value(code, slots, native.Deref, array, address, 0, 0, 0);
+    checked = PointerLoan(code, slots, arguments, current_zero, address, 0, checked, 1);
+    allocated := Value(code, slots, native.ArrayPush, array, unbacked, seven, 0, 1);
+    backed := Value(code, slots, native.ArrayRemove, array, allocated, zero, 0, 0);
+    backed_copy := Value(code, slots, native.ValueCopy, array, backed, 0, 0, 0);
+    checked = PointerLoan(code, slots, arguments, backed_copy, 0, 1, checked, 0);
+    code.append(Op(native.ValueDrop, array, 0, backed, 0, 0));
+    return checked;
+}
 Main :: () -> int {
     arguments := os.Arguments();
     if (length(arguments) != 3) { return 2; }
@@ -102,16 +156,20 @@ Main :: () -> int {
               native.ArrayType + native.RecordType, native.RecordType, abi.TextStorage, abi.IntStorage];
     code = slice(code, 0, length(code) - 2);
     status := ArrayBacking(&code, &slots, 11);
+    foreign_arguments: int[] = [];
+    status = ForeignBacking(&code, &slots, &foreign_arguments, status);
     code.append(Op(native.Publish, abi.IntStorage, 0, status, 0, 0));
     code.append(Op(native.Return, 0, 0, 0, 0, 0));
     function.slots = length(slots);
     function.code = length(code);
+    function.locals = 1;
+    function.arguments = length(foreign_arguments);
     // A raw ABI input has no native owner. Import it before mutation and
     // never release its caller-owned memory through the native allocator.
     array := native.ArrayType + abi.IntStorage;
     borrowed: native.Function = {result: abi.IntStorage, first_parameter: 0, parameters: 1,
-        first_slot: length(slots), slots: 8, first_local: 0, locals: 0,
-        first_code: length(code), code: 12, first_argument: 0, arguments: 0};
+        first_slot: length(slots), slots: 8, first_local: 1, locals: 0,
+        first_code: length(code), code: 12, first_argument: length(foreign_arguments), arguments: 0};
     code.extend([Op(native.Check, 0, 0, 0, 0, 0), Op(native.Argument, array, 0, 0, 0, 0),
         Op(native.ValueCopy, array, 1, 0, 0, 0), Op(native.Constant, abi.IntStorage, 2, 0, 0, 0),
         Op(native.Constant, abi.IntStorage, 3, 0, 0, 99),
@@ -125,8 +183,8 @@ Main :: () -> int {
     // A writable loan of unique storage keeps spare capacity. The compiler
     // uses this path for array fields whose enclosing record owns the buffer.
     loan: native.Function = {result: array, first_parameter: 1, parameters: 1,
-        first_slot: length(slots), slots: 4, first_local: 0, locals: 0,
-        first_code: length(code), code: 7, first_argument: 0, arguments: 0};
+        first_slot: length(slots), slots: 4, first_local: 1, locals: 0,
+        first_code: length(code), code: 7, first_argument: length(foreign_arguments), arguments: 0};
     code.extend([Op(native.Check, 0, 0, 0, 0, 0), Op(native.Argument, array, 0, 0, 0, 0),
         Op(native.Constant, abi.IntStorage, 1, 0, 0, 7),
         Op(native.ArrayPush, array, 2, 0, 1, 0), Op(native.ArrayPush, array, 3, 2, 1, 0),
@@ -134,32 +192,38 @@ Main :: () -> int {
     slots.extend([array, abi.IntStorage, array, array]);
     functions := [function, borrowed, loan];
     parameters := [array, array];
+    native_locals := [array];
     records: native.Record[] = [{first: 0, count: 1}];
     fields := [abi.TextStorage];
     source: native.Source = {file: "", directory: ""};
     empty: int[] = [];
-    texts: string[] = [];
+    texts := ["chibi_value_probe_alias", "chibi_value_probe_pointer"];
     target := abi.LinuxX64();
     if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
     rejected := code;
     wrong := rejected[8];
     wrong.left = 2;
     rejected[8] = wrong;
-    switch native.Emit(target, functions, parameters, slots, empty, rejected, empty, records, fields, texts,
-                       source, texts, empty, empty, false, 1) {
+    switch native.Emit(target, functions, parameters, slots, native_locals, rejected, foreign_arguments, records, fields, texts,
+                       source, [], empty, empty, false, 1) {
         case .Emitted(text): os.Print("native lifecycle accepted a scalar operand"); return 1;
         case .Rejected(instruction, message):
             if (!strings.Contains(message, "native value lifecycle requires")) { os.Print(message); return 1; }
     }
     text := "";
-    switch native.Emit(target, functions, parameters, slots, empty, code, empty, records, fields, texts,
-                       source, texts, empty, empty, false, 1) {
+    switch native.Emit(target, functions, parameters, slots, native_locals, code, foreign_arguments, records, fields, texts,
+                       source, [], empty, empty, false, 1) {
         case .Rejected(instruction, message): os.Print(message); return 1;
         case .Emitted(emitted): text = emitted;
     }
     module := format_text("{}/lifecycle.ll", work);
     start := format_text("{}/lifecycle-start.ll", work);
     text = strings.ReplaceAll(text, "define i32 @chibi_scalar(ptr %ctx)", "define i32 @chibi_value_test_entry(ptr %ctx)");
+    text = strings.ReplaceAll(text, "declare i32 @chibi_value_probe_alias(ptr, ptr)\n", "");
+    text = strings.ReplaceAll(text, "declare i32 @chibi_value_probe_pointer(ptr)\n", "");
+    text = strings.Concatenate([text,
+        "define i32 @chibi_value_probe_pointer(ptr %data) {\nentry:\n  %null = icmp eq ptr %data, null\n  %result = zext i1 %null to i32\n  ret i32 %result\n}\n",
+        "define i32 @chibi_value_probe_alias(ptr %left, ptr %right) {\nentry:\n  store i32 9, ptr %left\n  %value = load i32, ptr %right\n  ret i32 %value\n}\n"]);
     borrowed_data := "@chibi_value_test_borrowed = private global [2 x i32] [i32 7, i32 8]\n";
     audit_text := strings.ReplaceAll(audit.text,
         "%result = call i32 @chibi_value_test_entry(ptr @chibi_value_test_ctx)",

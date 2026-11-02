@@ -63,18 +63,19 @@ entry of capacity, and about 16 bytes per live entry in a map that has just grow
 - At most 2^30 entries (`count`, `used` and slot numbers are 32 bits; the slot count must stay a 32-bit power of two).
   Growth past it ends the call (to do: the `MapFull` failure).
 - Insert O(1) amortized (doubling); lookup O(1) expected, with the index at most 75% occupied by live entries and
-  tombstones together (`used <= capacity`); replace O(1); delete O(1) amortized above 8 entries and O(8) below; copy and
-  equality O(n). Iteration visits `used` positions, at most 1.5 times the live entries after any delete.
+  tombstones together (`used <= capacity`); replace O(1); delete O(1) amortized above 8 entries and O(8) below; copy O(n). Iteration visits `used` positions, at most 1.5 times the live entries after any delete.
 - Allocation failure aborts, as everywhere.
 
 ## Keys and values
 
-Keys: ints of every width, bool, string; floats are not keys (NaN). Values are scalars, strings and records whose leaves are numbers or bools.
-Records with owning fields and containers as values (`[string: int[]]`) need recursive value drop and copy before admission. A map owns its strings:
+Keys: ints of every width, bool, string; floats are not keys (NaN). Authored values are scalars, strings and records whose leaves are numbers, bools or strings. Record values use the shared value copy/drop helpers.
+The native emitter also owns int[] payloads through the shared array lifecycle; authored admission stays closed until projected writes and foreign buffers preserve that ownership. Other container payloads and array-backed records remain rejected. A map owns its strings:
 `MapSet` consumes one reference of a string key and of a string value (a repeated key's new key is released, the replaced
 value is released), `MapDelete` releases the entry's strings, `MapCopy` retains them, `MapDrop` releases them (D10).
-A read of a missing scalar or string key gives the value type's zero; a missing record key fails with `MapKeyAbsent`.
+A read of a missing scalar or string key gives the value type's zero; a native int[] read gives an empty array. A missing record key fails with `MapKeyAbsent`.
 Reads borrow. Writing through a missing key (`m[a][b] = v`) ends the call.
+
+Native `MapValueAddress` (75) borrows an existing int[] entry. Resolve it after argument callbacks and immediately update the array descriptor with `Poke`; replacing, growing or dropping the map invalidates the address. A missing entry produces an unnamed failure, matching the ordinary mutation-place failure rather than a typed `MapKeyAbsent`. This address cannot be retained across later foreign arguments.
 
 ## Plan and state
 
@@ -86,4 +87,4 @@ Implemented:
 
 The authored producer admits typed literals, variable copies, indexing, assignment, `in`/`not in`, `has`, deletion, parameters, results and insertion-order iteration. Read-only parameters borrow; changed by-value parameters receive a private copy. Iteration snapshots a map when the body can change it. `test/native_aot/map_programs` runs these as real source programs, including reference replacement, numeric record values and string reads from temporary returned maps.
 
-Remaining native parity work includes owning record values, nested containers and cross-platform runtime coverage. Map equality, compound writes and inferred map literal types are rejected by the ordinary authored compiler too; they are not native-only parity gaps. Host and VM retirement still requires migrating their remaining consumers.
+Remaining native parity work includes array-backed record values, nested containers and cross-platform runtime coverage. Map equality, compound writes and inferred map literal types are rejected by the ordinary authored compiler too; they are not native-only parity gaps. Host and VM retirement still requires migrating their remaining consumers.

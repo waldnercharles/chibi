@@ -240,7 +240,7 @@ ScalarArrayWithoutOperandsAreValidated :: () {
     assert(scalar.Validate(Changed(rows, 7, Type, facts.BoolType)) == expected);
     assert(scalar.Validate(Changed(rows, 8, Count, 1)) == expected);
     assert(scalar.Validate(Changed(rows, 8, Type, facts.IntType)) == expected);
-    assert(scalar.Validate(Changed(rows, 8, Value, facts.ArrayWithout + 1)) == expected);
+    assert(scalar.Validate(Changed(rows, 8, Value, facts.ArrayLoan + 1)) == expected);
 }
 ScalarForceUnwrapRequiresAnOptionalAndAProgramRuntime :: () {
     original := TaskFacts(facts.CallPlain, false);

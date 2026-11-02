@@ -12,9 +12,11 @@ RetainedText: int : 12;
 RtldNow: i32 : 2;
 DarwinRtldLocal: i32 : 4;
 DarwinRtldFirst: i32 : 256;
+InvalidFileAttributes: u32 : 4294967295;
 
+foreign import kernel32 "system:kernel32"
+foreign kernel32 { GetFileAttributesA :: (path: cstring) -> u32 }
 foreign import libc "system:c"
-
 foreign libc {
     dlopen :: (path: cstring, flags: i32) -> rawptr
     dlsym :: (handle: rawptr, name: cstring) -> rawptr
@@ -25,49 +27,79 @@ foreign libc {
     usleep :: (microseconds: u32) -> i32
 }
 
+when target.Os == target.Windows {
+    import windows "core:sys/windows"
+    OpenGeneration :: (path: string) -> rawptr { return windows.OpenLibrary(path); }
+    Symbol :: (handle: rawptr, name: string) -> rawptr { return windows.LibrarySymbol(handle, name); }
+    CloseGeneration :: (handle: rawptr) -> bool { return windows.CloseLibrary(handle); }
+    MoveGeneration :: (from: string, to: string) -> bool { return windows.Rename(from, to); }
+    // All polling names are fixed ASCII protocol files. Avoid UTF conversion
+    // and allocation on every frame; dynamic image paths use LoadLibraryW.
+    HasNext :: () -> bool { return GetFileAttributesA("./next.so") != InvalidFileAttributes; }
+    PauseFrame :: () -> bool { return windows.Pause(5); }
+    LoadedFile :: (path: string) -> bool { return true; }
+    RetiredFile :: (path: string) -> bool { return windows.Remove(path); }
+    ProcessArguments :: () -> rawptr { return 0; }
+} else {
+    // Darwin defaults to global symbol visibility. Look only in this image
+    // and keep its symbols private from the other generations.
+    when target.Os == target.Darwin {
+        OpenGeneration :: (path: string) -> rawptr {
+            return dlopen(path, RtldNow | DarwinRtldLocal | DarwinRtldFirst);
+        }
+    } else {
+        OpenGeneration :: (path: string) -> rawptr { return dlopen(path, RtldNow); }
+    }
+    Symbol :: (handle: rawptr, name: string) -> rawptr { return dlsym(handle, name); }
+    CloseGeneration :: (handle: rawptr) -> bool { return dlclose(handle) == 0; }
+    MoveGeneration :: (from: string, to: string) -> bool { return rename(from, to) == 0; }
+    HasNext :: () -> bool { return access("./next.so", 0) == 0; }
+    PauseFrame :: () -> bool { return usleep(5000) == 0; }
+    LoadedFile :: (path: string) -> bool { return unlink(path) == 0; }
+    RetiredFile :: (path: string) -> bool { return true; }
+    ProcessArguments :: () -> rawptr { return chibi_process_argv(); }
+}
+
 foreign {
     chibi_argument_count :: () -> i64
     chibi_process_argv :: () -> rawptr
     chibi_environment :: () -> rawptr
 }
 
-// Darwin defaults to global symbol visibility. Keep each generation local,
-// and restrict handle lookups to that image rather than its dependencies.
-when target.Os == target.Darwin {
-    OpenGeneration :: (path: string) -> rawptr {
-        return dlopen(path, RtldNow | DarwinRtldLocal | DarwinRtldFirst);
-    }
-} else {
-    OpenGeneration :: (path: string) -> rawptr {
-        return dlopen(path, RtldNow);
-    }
+// Windows keeps a mapped DLL's file until its loader reference is released.
+// A retired generation owns both until its suspended tasks finish.
+Generation :: struct { handle: rawptr; path: string; }
+Discard :: (generation: Generation) -> int {
+    released := Release(generation.handle);
+    removed := RetiredFile(generation.path);
+    return 0;
 }
 
 Main :: () -> int {
-    handle := OpenGeneration("./live-0.so");
-    if handle == 0 {
+    active: Generation = {handle: OpenGeneration("./live-0.so"), path: "./live-0.so"};
+    if active.handle == 0 {
         return 2;
     }
-    if !Complete(handle) {
-        released := Release(handle);
+    if !Complete(active.handle) {
+        released := Release(active.handle);
         return 2;
     }
-    initialized := Process(handle);
-    start: fn() -> i32 = dlsym(handle, "chibi_host_call_Main");
-    frame: fn() -> i32 = dlsym(handle, "chibi_host_call_Frame");
+    initialized := Process(active.handle);
+    start: fn() -> i32 = Symbol(active.handle, "chibi_host_call_Main");
+    frame: fn() -> i32 = Symbol(active.handle, "chibi_host_call_Frame");
     status := int(start());
-    if Failed(handle) {
+    if Failed(active.handle) {
         status = 134;
     }
     generation := 0;
-    retired: rawptr[] = [];
+    retired: Generation[] = [];
     while status == 0 {
         status = int(frame());
-        if Failed(handle) {
+        if Failed(active.handle) {
             status = 134;
         } else if status == 0 {
-            polled_active := Poll(handle);
-            if Failed(handle) {
+            polled_active := Poll(active.handle);
+            if Failed(active.handle) {
                 status = 134;
             }
         }
@@ -76,71 +108,71 @@ Main :: () -> int {
         }
         index := 0;
         while index < length(retired) {
-            polled := Poll(retired[index]);
-            if Failed(retired[index]) {
+            polled := Poll(retired[index].handle);
+            if Failed(retired[index].handle) {
                 status = 134;
                 break;
             }
-            if Pending(retired[index]) {
+            if Pending(retired[index].handle) {
                 index += 1;
             } else {
-                released := Release(retired[index]);
+                released := Discard(retired[index]);
                 retired.remove_index(index);
             }
         }
         if status != 0 {
             break;
         }
-        slept := usleep(5000);
-        if access("./next.so", 0) != 0 {
+        slept := PauseFrame();
+        if !HasNext() {
             continue;
         }
         generation += 1;
         name := format_text("./generation-{}.so", generation);
-        moved := rename("./next.so", name);
-        if moved != 0 {
+        moved := MoveGeneration("./next.so", name);
+        if !moved {
             continue;
         }
         incoming := OpenGeneration(name);
         if incoming == 0 {
-            set_aside := rename(name, "./rejected.so");
+            set_aside := MoveGeneration(name, "./rejected.so");
             continue;
         }
         initialized_incoming := Process(incoming);
-        if !Complete(incoming) || !Migrate(handle, incoming) {
+        if !Complete(incoming) || !Migrate(active.handle, incoming) {
             released := Release(incoming);
-            set_aside := rename(name, "./rejected.so");
+            set_aside := MoveGeneration(name, "./rejected.so");
             continue;
         }
-        removed := unlink(name);
-        next_frame: fn() -> i32 = dlsym(incoming, "chibi_host_call_Frame");
-        if Pending(handle) {
-            retired.append(handle);
+        removed := LoadedFile(name);
+        next_frame: fn() -> i32 = Symbol(incoming, "chibi_host_call_Frame");
+        if Pending(active.handle) {
+            retired.append(active);
         } else {
-            released := Release(handle);
+            released := Discard(active);
         }
-        handle = incoming;
+        active = {handle: incoming, path: name};
         frame = next_frame;
     }
-    released := Release(handle);
+    released := Discard(active);
     for previous in retired {
-        released_previous := Release(previous);
+        released_previous := Discard(previous);
     }
     return status;
 }
 
 Process :: (handle: rawptr) -> int {
-    address := dlsym(handle, "chibi_host_set_process");
+    address := Symbol(handle, "chibi_host_set_process");
     if address == 0 { return 0; }
     initialize: fn(count: i64, arguments: rawptr, environment: rawptr) -> i32 = address;
-    return int(initialize(chibi_argument_count(), chibi_process_argv(), chibi_environment()));
+    return int(initialize(chibi_argument_count(), ProcessArguments(), chibi_environment()));
 }
 
 Complete :: (handle: rawptr) -> bool {
     for symbol in ["chibi_host_call_Main", "chibi_host_call_Frame", "chibi_host_retained_count",
                    "chibi_host_retained_type", "chibi_host_retained_hash", "chibi_host_retained_get",
                    "chibi_host_retained_set", "chibi_host_retained_set_as"] {
-        if dlsym(handle, symbol) == 0 {
+        if Symbol(handle, symbol) == 0 {
             return false;
         }
     }
@@ -148,7 +180,7 @@ Complete :: (handle: rawptr) -> bool {
 }
 
 Failed :: (handle: rawptr) -> bool {
-    address := dlsym(handle, "chibi_host_failed");
+    address := Symbol(handle, "chibi_host_failed");
     if address == 0 {
         return false;
     }
@@ -157,7 +189,7 @@ Failed :: (handle: rawptr) -> bool {
 }
 
 Pending :: (handle: rawptr) -> bool {
-    address := dlsym(handle, "chibi_host_tasks_pending");
+    address := Symbol(handle, "chibi_host_tasks_pending");
     if address == 0 {
         return false;
     }
@@ -166,7 +198,7 @@ Pending :: (handle: rawptr) -> bool {
 }
 
 Poll :: (handle: rawptr) -> int {
-    address := dlsym(handle, "chibi_host_tasks_poll");
+    address := Symbol(handle, "chibi_host_tasks_poll");
     if address != 0 {
         poll: fn() -> i32 = address;
         polled := poll();
@@ -175,17 +207,17 @@ Poll :: (handle: rawptr) -> int {
 }
 
 Release :: (handle: rawptr) -> int {
-    cancel_address := dlsym(handle, "chibi_host_tasks_cancel_all");
+    cancel_address := Symbol(handle, "chibi_host_tasks_cancel_all");
     if cancel_address != 0 {
         cancel_tasks: fn() -> i32 = cancel_address;
         cancelled := cancel_tasks();
     }
-    release_address := dlsym(handle, "chibi_host_retained_release");
+    release_address := Symbol(handle, "chibi_host_retained_release");
     if release_address != 0 {
         release_states: fn() -> i32 = release_address;
         released := release_states();
     }
-    closed := dlclose(handle);
+    closed := CloseGeneration(handle);
     return 0;
 }
 
@@ -227,16 +259,16 @@ Order :: (hashes: i64[]) -> int[] {
 // convert; strings require a string on both sides and copy their bytes before
 // the old generation can unload.
 Migrate :: (old: rawptr, incoming: rawptr) -> bool {
-    old_count: fn() -> i32 = dlsym(old, "chibi_host_retained_count");
-    old_type: fn(index: i32) -> i32 = dlsym(old, "chibi_host_retained_type");
-    old_hash: fn(index: i32) -> i64 = dlsym(old, "chibi_host_retained_hash");
-    old_get: fn(index: i32) -> i64 = dlsym(old, "chibi_host_retained_get");
-    ready_address := dlsym(old, "chibi_host_retained_ready");
-    new_count: fn() -> i32 = dlsym(incoming, "chibi_host_retained_count");
-    new_type: fn(index: i32) -> i32 = dlsym(incoming, "chibi_host_retained_type");
-    new_hash: fn(index: i32) -> i64 = dlsym(incoming, "chibi_host_retained_hash");
-    new_set: fn(index: i32, word: i64) -> i32 = dlsym(incoming, "chibi_host_retained_set");
-    new_set_as: fn(index: i32, from: i32, word: i64) -> i32 = dlsym(incoming, "chibi_host_retained_set_as");
+    old_count: fn() -> i32 = Symbol(old, "chibi_host_retained_count");
+    old_type: fn(index: i32) -> i32 = Symbol(old, "chibi_host_retained_type");
+    old_hash: fn(index: i32) -> i64 = Symbol(old, "chibi_host_retained_hash");
+    old_get: fn(index: i32) -> i64 = Symbol(old, "chibi_host_retained_get");
+    ready_address := Symbol(old, "chibi_host_retained_ready");
+    new_count: fn() -> i32 = Symbol(incoming, "chibi_host_retained_count");
+    new_type: fn(index: i32) -> i32 = Symbol(incoming, "chibi_host_retained_type");
+    new_hash: fn(index: i32) -> i64 = Symbol(incoming, "chibi_host_retained_hash");
+    new_set: fn(index: i32, word: i64) -> i32 = Symbol(incoming, "chibi_host_retained_set");
+    new_set_as: fn(index: i32, from: i32, word: i64) -> i32 = Symbol(incoming, "chibi_host_retained_set_as");
     hashes: i64[] = [];
     for source in 0..<int(old_count()) { hashes.append(old_hash(i32(source))); }
     order := Order(hashes);

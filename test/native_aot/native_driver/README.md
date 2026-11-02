@@ -64,3 +64,23 @@ behind the SDK's inline `vsnprintf`, with standard snprintf and rounding options
 The [SDK declaration and wrapper](https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/ucrt/stdio.h)
 and [option constants](https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/ucrt/corecrt_stdio_config.h)
 define that boundary. The Win64 argument list points at one 8-byte scalar word.
+
+
+The former build-host `tools/native_aot` driver and its JSON compiler/emitter
+adapter are retired. Their surviving contracts are exercised by the native
+compiler and link owners:
+
+| Contract | Native coverage |
+| --- | --- |
+| Tool paths, spaces, missing tools, target/link arguments | `native_build/BuildTests.chibi`, `native_link/tests`, `native_driver/run.sh` |
+| O0/O2 object verification and execution without a C compiler | `native_driver/run.sh`, `link/Objects.chibi`, `link/Smoke.chibi` |
+| Source/import/archive identity and unchanged reuse | `native_driver/cache.sh` |
+| Source and opt/llc/linker mutation during a build | `native_driver/cache.sh` |
+| Corrupt/stale entries, exclusive publication, prior output preservation | `native_driver/cache.sh`, `native_build/BuildTests.chibi` |
+| Shared libraries, reloads and retained state | `native_driver/run.sh`, `generations/run.sh`, `native_cli/watch.sh` |
+
+The old raw-IR target/layout scanner, bounded VM arrays, compiler-host JSON calls
+and private `Build`/`Object` wrapper argv were implementation contracts of that
+adapter. Source-native builds select an explicit target, and LLVM verifies its
+module. Direct object/link consumers use `native_link_host`; production builds
+never prepare a bytecode emitter or invoke a compiler host.

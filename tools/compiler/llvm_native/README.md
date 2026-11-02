@@ -78,8 +78,7 @@ interface, or the complete allocation/memory/output/free native island.
   past the stack. What the fault prints is up to the process. A host that has
   called `stack_overflow_init` (`src/host/stack_overflow.c`) on the thread
   running native code writes `stack overflow` and aborts. So far only the
-  native test host does that, on Linux. A program that `tools/native_aot`
-  links on its own installs no handler, so an overflow there ends with the
+  native test host does that, on Linux. A standalone native program installs no handler, so an overflow there ends with the
   system's default fault (SIGSEGV). Installing the report in production hosts
   is open (D4).
 - Scalar locals, branches, comparisons, bitwise operations, integer and
@@ -156,10 +155,10 @@ scalar ordinals.
 - `test/fixtures/native-abi/Checks.chibi`: pure target/type checks; the adjacent
   `Tests.chibi` provides normal authored test wrappers. Neither belongs in a
   production package's dependency closure.
-- `tools/native_aot/Driver.chibi`: existing explicit `Object` and `Build` entries
-  consume emitted LLVM text through trusted LLVM CLI tools. See
-  `test/native_aot/driver/README.md` for invocation, tool identities, exclusive
-  publication rules and current validation limits.
+- `tools/compiler/native_driver`: the self-hosted source compiler invokes LLVM
+  through `native_link_host`, without a VM host. See
+  `test/native_aot/native_driver/README.md` for tool identities, exclusive
+  publication and cross-target coverage.
 
 The historical scalar proof includes independently verified O0/O2 arithmetic,
 traps and source comparisons. It is evidence for the retained backend, not

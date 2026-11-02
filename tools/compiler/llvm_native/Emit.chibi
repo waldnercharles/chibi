@@ -4019,7 +4019,7 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
         return Result.Rejected(-1, "native library needs an identifier and a name and ID for each function");
     }
     // Package generations distinguish real entries from their fixed-ABI stubs:
-    // bit 0 is Main, bit 1 is Frame; -1 leaves ordinary libraries unchanged.
+    // bit 0 is Main, bit 1 is Frame; -1 derives runnable ordinary library entries.
     if (entries < -1 || entries > 3) {
         return Result.Rejected(-1, "native generation entry mask is out of bounds");
     }
@@ -4063,14 +4063,14 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
     exports: string[] = [];
     waiting := WaitingFunctions(functions, code);
     dll_exports: string[] = [];
+    host_entries := entries;
+    if (entries < 0) { host_entries = 0; }
     if (entries >= 0) {
         for (index in 0..<length(names)) {
             if ((names[index] == "Main" || names[index] == "Frame") && waiting[index]) {
                 return Result.Rejected(-1, "native generation entry adapters cannot wait");
             }
         }
-        out.append(format_text("\ndefine i32 @chibi_host_entries() #0 {{\nentry:\n  ret i32 {}\n}}\n", entries));
-        if (windows) { dll_exports.append("chibi_host_entries"); }
     }
     if (windows) {
         dll_exports.extend([format_text("chibi_natives_{},data", name), "chibi_host_retained_release", "chibi_host_retained_count",
@@ -4083,6 +4083,10 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
     }
     for (function in 0..<length(functions)) {
         if (waiting[function]) { continue; }
+        if (entries < 0 && functions[function].parameters == 0 && functions[function].result == abi.IntStorage) {
+            if (names[function] == "Main") { host_entries |= 1; }
+            if (names[function] == "Frame") { host_entries |= 2; }
+        }
         if (windows && HostCallable(functions[function], parameters)) {
             dll_exports.append(strings.Concatenate(["chibi_host_call_", names[function]]));
         }
@@ -4103,6 +4107,8 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
         exports.append(format_text("%chibi.export { ptr @chibi_scalar.export.name.{}, i64 {}, ptr @chibi_scalar.export.types.{}, i32 {}, i32 1, ptr @chibi_scalar.export.{} }",
                                    function, ids[function], function, functions[function].parameters, function));
     }
+    out.append(format_text("\ndefine i32 @chibi_host_entries() #0 {{\nentry:\n  ret i32 {}\n}}\n", host_entries));
+    if (windows) { dll_exports.append("chibi_host_entries"); }
     out.append(format_text("\n@chibi_scalar.exports = private constant [{} x %chibi.export] [{}]\n",
                            length(exports), strings.Join(exports, ", ")));
     out.append(format_text("@chibi_natives_{} = constant %chibi.manifest { i32 {}, i32 {}, ptr @chibi_scalar.exports }\n",

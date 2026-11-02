@@ -179,8 +179,8 @@ Main :: () -> int {
     return status;
 }
 
-// Old library producers have no presence metadata and expose both real
-// entries. New package generations keep these bits separate from ABI stubs.
+// Older library images have no presence metadata and require both entries.
+// Current libraries and generations describe only their runnable entries.
 Entries :: (handle: rawptr) -> int {
     address := Symbol(handle, "chibi_host_entries");
     if address == 0 { return 3; }
@@ -202,7 +202,10 @@ Process :: (handle: rawptr) -> int {
 }
 
 Complete :: (handle: rawptr) -> bool {
-    for symbol in ["chibi_host_call_Main", "chibi_host_call_Frame", "chibi_host_retained_count",
+    entries := Entries(handle);
+    if (entries & 1) != 0 && Symbol(handle, "chibi_host_call_Main") == 0 { return false; }
+    if (entries & 2) != 0 && Symbol(handle, "chibi_host_call_Frame") == 0 { return false; }
+    for symbol in ["chibi_host_retained_count",
                    "chibi_host_retained_type", "chibi_host_retained_hash", "chibi_host_retained_get",
                    "chibi_host_retained_set", "chibi_host_retained_set_as"] {
         if Symbol(handle, symbol) == 0 {

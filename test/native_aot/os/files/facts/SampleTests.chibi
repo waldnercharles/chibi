@@ -33,7 +33,8 @@ Calls :: () {
     assert(os.WriteText("os_files/tool", "#!/bin/sh\nexit 3\n") == nil && os.Run(["/bin/chmod", "751", "os_files/tool"]) == 0, "a tool");
     assert(os.Copy("os_files/tool", "os_files/a/tool") == nil && os.Run(["os_files/a/tool"]) == 3, "a copy keeps the mode");
     assert(os.Copy("os_files/link", "os_files/a/copied") == nil && os.Kind("os_files/a/copied") == os.KindFile, "a copy follows a link");
-    assert(os.ReadText("os_files/a/copied").text == "longer text", "the link's file");
+    copied_text := os.ReadText("os_files/a/copied");
+    assert(copied_text.error == nil && copied_text.text == "longer text", "the link's file");
     assert(os.Copy("os_files/missing", "os_files/a/none") != nil, "no copy of nothing");
     assert(os.Rename("os_files/a/copied", "os_files/a/renamed") == nil && !os.Exists("os_files/a/copied") &&
            os.Kind("os_files/a/renamed") == os.KindFile, "rename");
@@ -57,7 +58,8 @@ Calls :: () {
 
     assert(os.HashText("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "SHA-256 of text");
     assert(os.Run(["/bin/sh", "-c", "head -c 1000000 /dev/zero | tr '\\000' a > os_files/million"]) == 0, "a million a's");
-    assert(os.HashFile("os_files/million").digest == "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0", "SHA-256 of a file");
+    hashed := os.HashFile("os_files/million");
+    assert(hashed.error == nil && hashed.digest == "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0", "SHA-256 of a file");
     assert(os.HashFile("os_files/missing").error != nil, "no hash of nothing");
     assert(os.Run(["/bin/rm", "-rf", "os_files"]) == 0, "cleaned up");
 }

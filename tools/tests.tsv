@@ -59,7 +59,7 @@ tool	chibi-test-samples-comptime	@release@/sdk/chibi	test	test/compiler/samples/
 tool	chibi-test-samples-fallible	@release@/sdk/chibi	test	test/compiler/samples/fallible
 tool	chibi-test-samples-imports	@release@/sdk/chibi	test	test/compiler/samples/imports
 tool	chibi-test-samples-math	@release@/sdk/chibi	test	test/compiler/samples/math
-tool	chibi-test-samples-native	@release@/sdk/chibi	test	test/compiler/samples/native
+tool	chibi-test-samples-native	sh	test/native_cli/samples-native.sh	@release@/sdk/chibi	@llvm@
 tool	chibi-test-samples-native-arguments	@release@/sdk/chibi	test	test/compiler/samples/native_arguments
 tool	chibi-test-samples-types	@release@/sdk/chibi	test	test/compiler/samples/types
 tool	language-package-compiler-chibi-scalar	sh	test/native_aot/scalar_producer/run.sh	@compiler@	@llvm@

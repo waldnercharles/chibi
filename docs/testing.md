@@ -33,6 +33,11 @@ rows of `tools/tests.tsv` run it over the compiler (`tools/compiler`), `core`
 `test/standard_library/time`, `test/packages/portable_consumer` and each
 registered folder of `test/compiler/samples`, all in the `language` group.
 
+`chibi-test-samples-native` stages the whole native sample folder in a private
+working directory with `Main.chibi` and `Inter.ttf`. It uses the selected SDK's
+core and FreeType archive even when `CHIBI_CORE` names another source tree.
+Missing SDK resources or the font fail before the sample tests run.
+
 The compiler's packages keep their tests beside them in `tools/compiler/*/tests`:
 the tokenizer, parser, package paths, routes, syntax and graph, source snapshot,
 type relations, unit algebra, prepared writer, shader source, asset packaging and

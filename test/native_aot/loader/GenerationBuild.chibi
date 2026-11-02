@@ -26,9 +26,11 @@ Main :: () -> int {
     core := strings.Concatenate([root, "/packages/core"]);
     folder := strings.Slice(input, 0, strings.LastIndex(input, "/"));
     source := os.ReadText(input);
+    if (source.error != nil) { return 2; }
     shared := os.ReadText(strings.Concatenate([folder, "/Shared.chibi"]));
+    if (shared.error != nil) { return 2; }
     target := os.ReadText(strings.Concatenate([core, "/target/Target.chibi"]));
-    if (source.error != nil || shared.error != nil || target.error != nil) { return 2; }
+    if (target.error != nil) { return 2; }
     visible := route.Visible(core);
     module := "";
     switch driver.ModuleShared(["core"], [visible], ["Main.chibi", "Shared.chibi", strings.Concatenate([visible, "/target/Target.chibi"])],

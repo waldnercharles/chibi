@@ -51,7 +51,8 @@ Start :: (inputs: Inputs, folder: string, running: ^Running) -> bool {
     running^.status = os.StillRunning;
     restored := os.ChangeDirectory(previous);
     if (child < 0) { running^.pid = 0; running^.status = 127; }
-    return child >= 0 && restored == nil;
+    if (restored != nil) { return false; }
+    return child >= 0;
 }
 
 // Every failure returns to Main while it still owns the child. No assert can

@@ -2504,6 +2504,30 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             continue;
         }
         if (Is(forest, statement, syntax.ExpressionStatement) &&
+            Is(forest, FirstMember(forest, statement), syntax.AwaitExpression)) {
+            awaited := Unparenthesized(forest, Field(forest, FirstMember(forest, statement), syntax.FieldValue));
+            callee := Field(forest, awaited, syntax.FieldFunction);
+            if (Is(forest, awaited, syntax.CallExpression) && Is(forest, callee, syntax.Identifier) &&
+                NameMatches(Text(forest, text, callee), "Delay") &&
+                ScalarTaskCallee(forest, text, callables, names, callable, awaited) < 0) {
+                arguments := Members(forest, Field(forest, awaited, syntax.FieldArguments));
+                if (length(arguments) != 1) {
+                    return ScalarOperands.Failed(Diagnose(forest, awaited, 0, "Delay requires one duration"));
+                }
+                switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants,
+                                     arguments[0], DoubleStorage, []) {
+                    case .Failed(diagnostic):
+                        return ScalarOperands.Failed(diagnostic);
+                    case .Built(built):
+                        rows.append(ScalarAt(forest, statement, facts.LocalRow, facts.IntType, variables, length(built) + 1, "_"));
+                        rows.extend(built);
+                        rows.append(ScalarAt(forest, awaited, facts.DelayRow, facts.IntType, 0, 1, ""));
+                        variables += 1;
+                }
+                continue;
+            }
+        }
+        if (Is(forest, statement, syntax.ExpressionStatement) &&
             Is(forest, FirstMember(forest, statement), syntax.AwaitExpression) &&
             !Is(forest, Unparenthesized(forest, Field(forest, FirstMember(forest, statement), syntax.FieldValue)),
                 syntax.CallExpression)) {
@@ -2527,9 +2551,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             continue;
         }
         if (Is(forest, statement, syntax.CancelStatement)) {
-            if (Field(forest, statement, syntax.FieldDuration) >= 0) {
-                return ScalarOperands.Failed(Diagnose(forest, statement, 0, "scalar proof does not support cancel after yet"));
-            }
+            duration := Field(forest, statement, syntax.FieldDuration);
             handle := Field(forest, statement, syntax.FieldValue);
             held := ScalarTaskCallee(forest, text, callables, names, callable, handle);
             if (held < 0 || ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants,
@@ -2541,9 +2563,23 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 case .Failed(diagnostic):
                     return ScalarOperands.Failed(diagnostic);
                 case .Built(built):
-                    rows.append(ScalarAt(forest, statement, facts.LocalRow, facts.IntType, variables, length(built) + 1, "_"));
-                    rows.extend(built);
-                    rows.append(ScalarAt(forest, statement, facts.CancelRow, facts.IntType, 0, 1, ""));
+                    task_rows := built;
+                    kind := facts.CancelRow;
+                    count: int = 1;
+                    if (duration >= 0) {
+                        switch ScalarOperand(forest, text, callables, params, callable, names, types, members,
+                                             constants, duration, DoubleStorage, task_rows) {
+                            case .Failed(diagnostic):
+                                return ScalarOperands.Failed(diagnostic);
+                            case .Built(timed):
+                                task_rows = timed;
+                        }
+                        kind = facts.CancelAfterRow;
+                        count = 2;
+                    }
+                    rows.append(ScalarAt(forest, statement, facts.LocalRow, facts.IntType, variables, length(task_rows) + 1, "_"));
+                    rows.extend(task_rows);
+                    rows.append(ScalarAt(forest, statement, kind, facts.IntType, 0, count, ""));
                     variables += 1;
             }
             continue;
@@ -2983,7 +3019,8 @@ ScalarHosts :: (hosts: Host[], roots: Root[]) -> string {
             continue;
         }
         // The facts below lower these commands to native coroutine operations.
-        if (host.command == YieldCommand || host.command == JoinCommand || host.command == CancelCommand) {
+        if (host.command == YieldCommand || host.command == JoinCommand || host.command == CancelCommand ||
+            host.command == CancelAfterCommand || host.command == DelayCommand) {
             continue;
         }
         intrinsic := host.intrinsic;
@@ -3075,11 +3112,6 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
                             "scalar proof requires a callable body");
         case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
                       direct_write, facts):
-            for (host in hosts) {
-                if (host.command == CancelAfterCommand) {
-                    return Diagnose(forest, host.syntax_node, 0, "scalar proof does not support cancel after yet");
-                }
-            }
             // A retained local reads and writes its state, which the facts carry.
             // A write through a scoped parameter the module passes by reference
             // changes the caller's variable, which the facts carry.

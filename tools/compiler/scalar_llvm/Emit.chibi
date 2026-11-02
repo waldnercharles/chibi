@@ -1232,6 +1232,18 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             if (operand.name != "" || operand.count != 0 || operand.value != 0 || operand.type != facts.IntType) {
                 return "scalar yield differs from its operands";
             }
+        } else if (operand.kind == facts.CancelAfterRow || operand.kind == facts.DelayRow) {
+            count: int = 1;
+            if (operand.kind == facts.CancelAfterRow) { count = 2; }
+            base := length(stack) - count;
+            if (operand.name != "" || operand.count != count || operand.value != 0 || base < floor ||
+                stack[base + count - 1] != facts.DoubleType || operand.type != facts.IntType) {
+                return "scalar timed task operation differs from its operands";
+            }
+            if (count == 2 && stack[base] != facts.WordType) {
+                return "scalar timed cancellation needs a task handle";
+            }
+            stack = slice(stack, 0, base);
         } else if (operand.kind == facts.AwaitRow || operand.kind == facts.CancelRow) {
             base := length(stack) - 1;
             if (operand.name != "" || operand.count != 1 || operand.value != 0 || base < floor ||
@@ -1795,7 +1807,7 @@ ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
         head := heads[function];
         for (at in head + rows[head].count + 1..<Last(rows, heads, function)) {
             row := rows[at];
-            waits = waits || row.kind == facts.YieldRow || row.kind == facts.AwaitRow ||
+            waits = waits || row.kind == facts.YieldRow || row.kind == facts.AwaitRow || row.kind == facts.DelayRow ||
                     (row.kind == facts.CallRow && row.literal == i64(facts.CallAwaited));
             task_calls = task_calls || (row.kind == facts.CallRow && row.literal == i64(facts.CallSpawned));
         }
@@ -2515,6 +2527,14 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 } else if (operand.kind == facts.YieldRow) {
                     // The turn is given up first; the row gives int 0, the constant.
                     body.append(Op(native.Suspend, 0, 0, 0, 0, 0));
+                } else if (operand.kind == facts.CancelAfterRow) {
+                    base := length(stack) - 2;
+                    body.append(Op(native.CancelAfter, 0, 0, stack[base], stack[base + 1], 0));
+                    stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.DelayRow) {
+                    base := length(stack) - 1;
+                    body.append(Op(native.Delay, 0, 0, stack[base], 0, 0));
+                    stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.AwaitRow || operand.kind == facts.CancelRow) {
                     base := length(stack) - 1;
                     task_op := native.Cancel;

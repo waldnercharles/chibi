@@ -1,0 +1,20 @@
+package timing_foreign
+
+foreign import libc "system:c"
+foreign libc {
+    clock_gettime :: (kind: int, stamp: i64[]) -> int
+    nanosleep :: (duration: i64[], remaining: i64[]) -> int
+}
+
+Main :: () -> int {
+    if (Sample() != 0) { return 1; }
+    await Delay(0.001)
+    return 0;
+}
+
+Sample :: () -> int {
+    stamp: i64[] = [0, 0];
+    duration: i64[] = [0, 0];
+    // Clock 6 is monotonic on both supported POSIX test hosts.
+    return clock_gettime(6, stamp) + nanosleep(duration, stamp);
+}

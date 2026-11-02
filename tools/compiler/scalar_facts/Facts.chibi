@@ -300,6 +300,10 @@ pub FunctionAddressRow: int : 40;
 pub YieldRow: int : 41;
 pub AwaitRow: int : 42;
 pub CancelRow: int : 43;
+// CancelAfter consumes a task handle and an f64 duration. Delay consumes an
+// f64 duration and suspends until it expires. Both give int 0.
+pub CancelAfterRow: int : 46;
+pub DelayRow: int : 47;
 pub CallPlain: int : 0;
 pub CallAwaited: int : 1;
 pub CallSpawned: int : 2;

@@ -114,7 +114,7 @@ StartModulesKeepTheProcessArguments :: () {
     windows := link.Start("x86_64-pc-windows-msvc", true, false);
     assert(strings.Contains(windows, "define void @mainCRTStartup()"), "windows entry");
     assert(strings.Contains(windows, "store ptr %line, ptr @chibi_command_line"), "command line");
-    assert(strings.Contains(windows, "call void @ExitProcess(i32 %status)"), "exit");
+    assert(strings.Contains(windows, "call void @ExitProcess(i32 %checked)"), "exit");
     context := link.Start("x86_64-pc-windows-msvc", true, true);
     assert(strings.Contains(context, "store ptr %line, ptr @chibi_command_line"), "context command line");
     assert(strings.Contains(context, "@HeapAlloc"), "context heap");
@@ -326,5 +326,23 @@ pub Run :: () -> int {
     WindowsSharedLibrariesHaveNoProcessEntry();
     WindowsLibrariesExportWhatTheStartModulesImport();
     StartModulesKeepTheProcessArguments();
+    ProgramFormattingControlsWindowsRuntimeImports();
     return 0;
+}
+
+@test
+ProgramFormattingControlsWindowsRuntimeImports :: () {
+    for (public_run in [false, true]) {
+        unformatted := link.ProgramStart("x86_64-pc-windows-msvc", true, true, false);
+        formatted := link.ProgramStart("x86_64-pc-windows-msvc", true, true, true);
+        if (public_run) {
+            unformatted = link.RunStart("x86_64-pc-windows-msvc", true, true, false);
+            formatted = link.RunStart("x86_64-pc-windows-msvc", true, true, true);
+        }
+        assert(length(link.SystemImports(strings.SplitLines(unformatted))) == 0, "an allocation-only program needs kernel32");
+        assert(!strings.Contains(unformatted, "@chibi_format_text"), "an unused formatter is absent");
+        imported := link.SystemImports(strings.SplitLines(formatted));
+        assert(length(imported) == 1 && imported[0].name == "ucrtbase", "formatting imports the UCRT");
+        Same(imported[0].symbols, ["__stdio_common_vsprintf"]);
+    }
 }

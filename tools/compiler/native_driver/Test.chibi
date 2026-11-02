@@ -471,7 +471,7 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
     }
     program := strings.Concatenate([scratch, "/program"]);
     options: DriverOptions = {level: invocation.mode, lines: invocation.debug, static_link: false, shared: false,
-                             folder: project, project: project, source: "", keep_module: false, emit_llvm: false};
+                             folder: project, project: project, source: "", keep_module: false, emit_llvm: false, cli_errors: false};
     target := Target(triple);
     platform := PlatformFor(target);
     visible: string[] = [];

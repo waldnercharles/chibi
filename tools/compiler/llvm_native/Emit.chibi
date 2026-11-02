@@ -118,7 +118,8 @@ pub Format: int : 36;
 // Ends the call from the VM with the failure of the assert at source bytes
 // [left, right) of the function whose stable ID is `literal`: the context's
 // failure names it, a native_abi.FailureType() constant, and this function,
-// and each call it is in, returns its result's zero.
+// and each call it is in, returns its result's zero. In program mode, target
+// is one plus the diagnostic's text-table index, or zero for no diagnostic.
 pub Fail: int : 37;
 // An array type is ArrayType plus its element's type, a scalar, a string or a
 // record, and an array holds no array: its length, capacity, elements and
@@ -1125,6 +1126,10 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if (item.op == Fail && (item.left < 0 || item.right < item.left)) {
             return Result.Rejected(base + pc, "native failure names no source range");
+        }
+        if (item.op == Fail && (item.target < 0 || item.target > length(texts) ||
+                               (!ProgramMode(mode) && item.target != 0))) {
+            return Result.Rejected(base + pc, "native assertion has invalid diagnostic metadata");
         }
         if (item.op == TypedFail) {
             if (!ProgramMode(mode)) {
@@ -2712,16 +2717,27 @@ Fallible :: (functions: Function[], code: Instruction[]) -> bool[] {
 }
 // Each Fail's constant in functions [first, last): its function's stable ID
 // and its source range.
-Failures :: (functions: Function[], code: Instruction[], first: int, last: int) -> string {
+Failures :: (functions: Function[], code: Instruction[], texts: string[], first: int, last: int, program: bool) -> string {
     out: string[] = [];
     for (function in first..<last) {
         shape := functions[function];
         for (pc in 0..<shape.code) {
             item := code[shape.first_code + pc];
             if (item.op == Fail) {
-                out.append(format_text("@{} = private unnamed_addr constant {} { i64 {}, i32 {}, i32 {} }\n",
-                                       FailureSymbol(function, pc), abi.FailureType(), item.literal, item.left,
-                                       item.right));
+                type := abi.FailureType();
+                metadata := "";
+                if (program) {
+                    type = abi.ProgramFailureType();
+                    pointer := "null";
+                    count := 0;
+                    if (item.target > 0) {
+                        pointer = format_text("@{}", TextSymbol(item.target - 1));
+                        count = strings.ByteLength(texts[item.target - 1]);
+                    }
+                    metadata = format_text(", ptr {}, i32 {}", pointer, count);
+                }
+                out.append(format_text("@{} = private unnamed_addr constant {} { i64 {}, i32 {}, i32 {}{} }\n",
+                                       FailureSymbol(function, pc), type, item.literal, item.left, item.right, metadata));
             }
         }
     }
@@ -3078,6 +3094,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             if (item.op == Constant && item.type == abi.TextStorage) {
                 wanted[int(item.literal)] = true;
             }
+            if (item.op == Fail && item.target > 0) { wanted[item.target - 1] = true; }
         }
         for (index in 0..<length(texts)) {
             if (wanted[index]) {
@@ -3101,7 +3118,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         for (item in held) { printed = printed || item.op == Print; }
         if (printed) { out.append("declare void @chibi_print_string(ptr, ptr, i32)\n"); }
         foreign_declarations := ForeignDeclarations(functions, first, last, slots, code, arguments, texts);
-        out.append(format_text("{}declare void @llvm.trap()\n{}{}", Failures(functions, code, first, last),
+        out.append(format_text("{}declare void @llvm.trap()\n{}{}", Failures(functions, code, texts, first, last, ProgramMode(mode)),
                                Declarations(held), foreign_declarations));
         if (Tasks(held)) {
             out.append(CoroutineDeclarations());

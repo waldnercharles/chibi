@@ -56,13 +56,46 @@ WindowsStart :: () -> string {
         "  %line = call ptr @GetCommandLineW()\n",
         "  store ptr %line, ptr @chibi_command_line\n",
         "  %status = call i32 @chibi_scalar()\n",
-        "  call void @ExitProcess(i32 %status)\n",
+        "  %checked = call i32 @chibi_native_exit_status(i32 %status)\n",
+        "  call void @ExitProcess(i32 %checked)\n",
         "  unreachable\n",
         "}\n"
     ]);
 }
 
-WindowsContextStart :: () -> string {
+AssertionReport :: (windows: bool, rich: bool) -> string {
+    if (rich) {
+        return "  call void @chibi_native_assertion(ptr %failure)\n  unreachable\n";
+    }
+    report := [
+        "  %function = load i64, ptr %failure\n",
+        "  %start.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 1\n",
+        "  %start = load i32, ptr %start.at\n",
+        "  %end.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 2\n",
+        "  %end = load i32, ptr %end.at\n"
+    ];
+    if (windows) {
+        report.extend([
+            "  %start.wide = zext i32 %start to i64\n  %end.wide = zext i32 %end to i64\n",
+            "  call void @chibi_write(ptr @chibi_report_head, i32 29)\n",
+            "  call void @chibi_write_decimal(i64 %function)\n",
+            "  call void @chibi_write(ptr @chibi_report_from, i32 17)\n",
+            "  call void @chibi_write_decimal(i64 %start.wide)\n",
+            "  call void @chibi_write(ptr @chibi_report_to, i32 4)\n",
+            "  call void @chibi_write_decimal(i64 %end.wide)\n",
+            "  call void @chibi_write(ptr @chibi_report_end, i32 1)\n"
+        ]);
+    } else {
+        report.append("  call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @chibi_report, i64 %function, i32 %start, i32 %end)\n");
+    }
+    report.append("  call void @chibi_native_failure(i32 4)\n  unreachable\n");
+    return Join(report);
+}
+
+WindowsContextStart :: (rich_assertions: bool, formatting: bool) -> string {
+    format := "";
+    callback := "null";
+    if (formatting) { format = RuntimeFormat(true); callback = "@chibi_format_text"; }
     return Join([
         WindowsPrelude(),
         "declare dllimport ptr @GetProcessHeap()\n",
@@ -74,7 +107,7 @@ WindowsContextStart :: () -> string {
         "@chibi_report_from = private unnamed_addr constant [17 x i8] c\" at source bytes \"\n",
         "@chibi_report_to = private unnamed_addr constant [4 x i8] c\" to \"\n",
         "@chibi_report_end = private unnamed_addr constant [1 x i8] c\"\\0A\"\n",
-        RuntimeFormat(true),
+        format,
         "define internal ptr @chibi_allocate(ptr %ctx, i64 %size) {\n",
         "  %heap = call ptr @GetProcessHeap()\n",
         "  %memory = call ptr @HeapAlloc(ptr %heap, i32 8, i64 %size)\n",
@@ -118,7 +151,8 @@ WindowsContextStart :: () -> string {
         "  ret void\n",
         "}\n",
         "@chibi_context = global { ptr, ptr, ptr, ptr, ptr } ",
-        "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release }\n",
+        "{ ptr ", callback,
+        ", ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release }\n",
         "define void @mainCRTStartup() {\n",
         "  %line = call ptr @GetCommandLineW()\n",
         "  store ptr %line, ptr @chibi_command_line\n",
@@ -128,24 +162,10 @@ WindowsContextStart :: () -> string {
         "  %failed = icmp ne ptr %failure, null\n",
         "  br i1 %failed, label %report, label %done\n",
         "report:\n",
-        "  %function = load i64, ptr %failure\n",
-        "  %start.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 1\n",
-        "  %start = load i32, ptr %start.at\n",
-        "  %end.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 2\n",
-        "  %end = load i32, ptr %end.at\n",
-        "  %start.wide = zext i32 %start to i64\n",
-        "  %end.wide = zext i32 %end to i64\n",
-        "  call void @chibi_write(ptr @chibi_report_head, i32 29)\n",
-        "  call void @chibi_write_decimal(i64 %function)\n",
-        "  call void @chibi_write(ptr @chibi_report_from, i32 17)\n",
-        "  call void @chibi_write_decimal(i64 %start.wide)\n",
-        "  call void @chibi_write(ptr @chibi_report_to, i32 4)\n",
-        "  call void @chibi_write_decimal(i64 %end.wide)\n",
-        "  call void @chibi_write(ptr @chibi_report_end, i32 1)\n",
-        "  call void @chibi_native_failure(i32 4)\n",
-        "  unreachable\n",
+        AssertionReport(true, rich_assertions),
         "done:\n",
-        "  call void @ExitProcess(i32 %status)\n",
+        "  %checked = call i32 @chibi_native_exit_status(i32 %status)\n",
+        "  call void @ExitProcess(i32 %checked)\n",
         "  unreachable\n",
         "}\n"
     ]);
@@ -169,6 +189,8 @@ LinuxStart :: () -> string {
         "module asm \"andq $-16, %rsp\"\n",
         "module asm \"callq chibi_scalar\"\n",
         "module asm \"movl %eax, %edi\"\n",
+        "module asm \"callq chibi_native_exit_status\"\n",
+        "module asm \"movl %eax, %edi\"\n",
         "module asm \"movl $231, %eax\"\n",
         "module asm \"syscall\"\n",
         "module asm \"ud2\"\n",
@@ -178,7 +200,7 @@ LinuxStart :: () -> string {
     ]);
 }
 
-DynamicStart :: (triple: string, context: bool) -> string {
+DynamicStart :: (triple: string, context: bool, rich_assertions: bool, formatting: bool) -> string {
     if (!context) {
         return Join([
             "target triple = \"", triple, "\"\n",
@@ -190,10 +212,14 @@ DynamicStart :: (triple: string, context: bool) -> string {
             "  store ptr %argv, ptr @chibi_argv\n",
             "  store ptr %envp, ptr @chibi_envp\n",
             "  %status = call i32 @chibi_scalar()\n",
-            "  ret i32 %status\n",
+            "  %checked = call i32 @chibi_native_exit_status(i32 %status)\n",
+            "  ret i32 %checked\n",
             "}\n"
         ]);
     }
+    format := "";
+    callback := "null";
+    if (formatting) { format = RuntimeFormat(false); callback = "@chibi_format_text"; }
     return Join([
         "target triple = \"", triple, "\"\n",
         "declare ptr @calloc(i64, i64)\n",
@@ -203,7 +229,7 @@ DynamicStart :: (triple: string, context: bool) -> string {
         "@chibi_report = private unnamed_addr constant [59 x i8] ",
         "c\"assertion failed in function %lu at source bytes %d to %d\\0A\\00\"\n",
         "declare i32 @chibi_scalar(ptr)\n",
-        RuntimeFormat(false),
+        format,
         OutputRuntime(false, false),
         "define internal ptr @chibi_allocate(ptr %ctx, i64 %size) {\n",
         "  %memory = call ptr @calloc(i64 1, i64 %size)\n",
@@ -218,7 +244,8 @@ DynamicStart :: (triple: string, context: bool) -> string {
         "  unreachable\n",
         "}\n",
         "@chibi_context = global { ptr, ptr, ptr, ptr, ptr } ",
-        "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release }\n",
+        "{ ptr ", callback,
+        ", ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release }\n",
         "@chibi_argc = dso_local global i32 0\n",
         "@chibi_argv = dso_local global ptr null\n",
         "define i32 @main(i32 %argc, ptr %argv, ptr %envp) {\n",
@@ -231,16 +258,10 @@ DynamicStart :: (triple: string, context: bool) -> string {
         "  %failed = icmp ne ptr %failure, null\n",
         "  br i1 %failed, label %report, label %done\n",
         "report:\n",
-        "  %function = load i64, ptr %failure\n",
-        "  %start.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 1\n",
-        "  %start = load i32, ptr %start.at\n",
-        "  %end.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 2\n",
-        "  %end = load i32, ptr %end.at\n",
-        "  call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @chibi_report, i64 %function, i32 %start, i32 %end)\n",
-        "  call void @chibi_native_failure(i32 4)\n",
-        "  unreachable\n",
+        AssertionReport(false, rich_assertions),
         "done:\n",
-        "  ret i32 %status\n",
+        "  %checked = call i32 @chibi_native_exit_status(i32 %status)\n",
+        "  ret i32 %checked\n",
         "}\n"
     ]);
 }
@@ -248,10 +269,10 @@ DynamicStart :: (triple: string, context: bool) -> string {
 // The start module for the triple. A static Linux program has no C library, so
 // it takes no context: "" for that combination and for a triple this link step
 // does not know.
-Module :: (triple: string, static: bool, context: bool) -> string {
+Module :: (triple: string, static: bool, context: bool, rich_assertions: bool, formatting: bool) -> string {
     target := TargetOf(triple);
     if (target == WindowsX64 && context) {
-        return WindowsContextStart();
+        return WindowsContextStart(rich_assertions, formatting);
     }
     if (target == WindowsX64) {
         return WindowsStart();
@@ -265,7 +286,7 @@ Module :: (triple: string, static: bool, context: bool) -> string {
     if (target < 0) {
         return "";
     }
-    return DynamicStart(triple, context);
+    return DynamicStart(triple, context, rich_assertions, formatting);
 }
 
 // The process arguments as C-ABI functions, appended to every start module:
@@ -713,15 +734,49 @@ pub StartImports :: (triple: string) -> Import {
     return kernel32;
 }
 
+// External linkage keeps the helper reachable from Linux's module-asm entry.
+// Shared generations have no process entry and do not emit this helper.
+ExitStatusRuntime :: () -> string {
+    return Join([
+        "@chibi_exit_status_message = private constant [44 x i8] c\"Main returned an exit status outside 0..255\\0A\"\n",
+        "define i32 @chibi_native_exit_status(i32 %status) {\n",
+        "  %valid = icmp ule i32 %status, 255\n",
+        "  br i1 %valid, label %done, label %report\n",
+        "report:\n",
+        "  call void @chibi_failure_write(ptr @chibi_exit_status_message, i32 44)\n",
+        "  ret i32 1\n",
+        "done:\n",
+        "  ret i32 %status\n",
+        "}\n"
+    ]);
+}
+
 pub Start :: (triple: string, static: bool, context: bool) -> string {
-    module := Module(triple, static, context);
+    return ProgramStart(triple, static, context, true);
+}
+
+// Program-mode modules mark formatting use across their complete body bundle.
+// Omitting an unused callback keeps allocating Windows programs kernel32-only.
+pub ProgramStart :: (triple: string, static: bool, context: bool, formatting: bool) -> string {
+    module := Module(triple, static, context, false, formatting);
     if (module == "") {
         return "";
     }
     if (TargetOf(triple) == WindowsX64) {
-        return Join([module, FailureRuntime(true, context, false), WindowsArguments()]);
+        return Join([module, FailureRuntime(true, context, false, false), ExitStatusRuntime(), WindowsArguments()]);
     }
-    return Join([module, FailureRuntime(false, context, static && TargetOf(triple) == LinuxX64), PosixArguments()]);
+    return Join([module, FailureRuntime(false, context, static && TargetOf(triple) == LinuxX64, false), ExitStatusRuntime(), PosixArguments()]);
+}
+
+// Public run commands link program-mode diagnostic metadata. Raw and shared
+// consumers keep their prefix-only reporting and failure status.
+pub RunStart :: (triple: string, static: bool, context: bool, formatting: bool) -> string {
+    module := Module(triple, static, context, true, formatting);
+    if (module == "") { return ""; }
+    if (TargetOf(triple) == WindowsX64) {
+        return Join([module, FailureRuntime(true, context, false, true), ExitStatusRuntime(), WindowsArguments()]);
+    }
+    return Join([module, FailureRuntime(false, context, static && TargetOf(triple) == LinuxX64, true), ExitStatusRuntime(), PosixArguments()]);
 }
 
 // A shared generation has no process entry. Its host-call wrappers use the
@@ -744,12 +799,12 @@ pub SharedContext :: (triple: string, context: bool) -> string {
     if (target != LinuxX64 && target != MacOSArm64) {
         return "";
     }
-    module := DynamicStart(triple, context);
+    module := DynamicStart(triple, context, false, true);
     boundary := strings.Index(module, "define i32 @main(");
     assert(boundary > 0);
     module = strings.Slice(module, 0, boundary);
     module = strings.ReplaceAll(module, "@chibi_context = global", "@chibi_context = hidden global");
-    module = Join([module, FailureRuntime(false, context, false), PosixArguments(),
+    module = Join([module, FailureRuntime(false, context, false, false), PosixArguments(),
         "define i32 @chibi_host_set_process(i64 %count, ptr %arguments, ptr %environment) {\n",
         "  %n = trunc i64 %count to i32\n  store i32 %n, ptr @chibi_argc\n",
         "  store ptr %arguments, ptr @chibi_argv\n  store ptr %environment, ptr @chibi_envp\n  ret i32 0\n}\n"]);

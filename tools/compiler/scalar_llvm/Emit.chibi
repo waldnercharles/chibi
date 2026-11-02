@@ -1649,7 +1649,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         }
         declares := row.kind == facts.LocalRow || ranged;
         typed := declares || row.kind == facts.AssignRow || row.kind == facts.SwitchRow || row.kind == facts.CaseRow;
-        if (row.text != "" || (row.literal != 0 && !ranged && !subject && !retained) || !Located(row, starts, size) ||
+        if ((row.text != "" && row.kind != facts.AssertRow) || (row.literal != 0 && !ranged && !subject && !retained) || !Located(row, starts, size) ||
             (row.kind != facts.EndRow && row.start < earliest) || (!declares && row.name != "") ||
             (!typed && row.type != 0) || (!declares && row.kind != facts.AssignRow && row.value != 0)) {
             return "invalid scalar statement row";
@@ -3610,6 +3610,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             } else if (row.kind == facts.AssertRow) {
                 fail := Op(native.Fail, 0, 0, row.start, row.end, 0);
                 fail.literal = declaration.literal;
+                if (program && row.text != "") {
+                    texts.append(row.text);
+                    fail.target = length(texts);
+                }
                 body.extend([Op(native.Branch, 0, 0, value, 0, length(body) + 2), fail]);
             } else if (row.kind == facts.LocalRow && row.literal == i64(facts.Retained)) {
                 type := NativeType(row.type);

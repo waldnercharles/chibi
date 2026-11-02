@@ -101,6 +101,20 @@ bool build_io_reserve_directory(const char *root, const char *path)
     return ok;
 }
 
+char *build_io_temporary_directory(const char *root, const char *parent)
+{
+    char *base = build_io_path(root, parent);
+    size_t size = strlen(base) + sizeof "/work.XXXXXX";
+    char *path = xmalloc(size);
+    snprintf(path, size, "%s/work.XXXXXX", base);
+    free(base);
+    if (!mkdtemp(path)) {
+        free(path);
+        return NULL;
+    }
+    return path;
+}
+
 bool build_io_publish_directory(const char *root, const char *source, const char *destination)
 {
     char *from = build_io_path(root, source), *to = build_io_path(root, destination);

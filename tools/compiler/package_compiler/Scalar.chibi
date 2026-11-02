@@ -595,6 +595,8 @@ ScalarRecordOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     }
     // An element of an array of records.
     if (Is(forest, value, syntax.IndexExpression)) {
+        mapped := ScalarMapShape(forest, text, callables, names, types, package, Field(forest, value, syntax.FieldObject));
+        if (mapped >= 0 && types[mapped].value_storage == StructStorage) { return types[mapped].value_record; }
         element := ScalarArrayShape(forest, text, callables, params, names, types, members, package, Field(forest, value, syntax.FieldObject));
         if (element.storage == StructStorage) {
             return element.record;
@@ -865,6 +867,9 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (callee_proc >= 0) {
             shape := ProcShape(forest, text, callee_proc);
             return shape[length(shape) - 1];
+        }
+        if (ScalarSquareRoot(forest, text, node)) {
+            return FloatStorage;
         }
         if (ScalarLengthOf(forest, text, callables, params, names, types, members, callable.package, node) >= 0) {
             return IntStorage;
@@ -1180,6 +1185,13 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (callee < 0 && ScalarTextOperator(forest, text, node) != 0) {
         return ScalarText(forest, text, callables, params, callable, names, types, members, constants, node, output);
     }
+    if (callee < 0 && ScalarSquareRoot(forest, text, node)) {
+        // EmitBody has checked the built-in's positional f32 argument.
+        argument := FirstMember(forest, Field(forest, node, syntax.FieldArguments));
+        row := ScalarAt(forest, node, facts.UnaryRow, facts.FloatType, facts.SquareRoot, 1, "");
+        return ScalarSides(forest, text, callables, params, callable, names, types, members, constants,
+                           node, [argument], [FloatStorage], FloatStorage, row, output);
+    }
     if ((!Is(forest, Field(forest, node, syntax.FieldFunction), syntax.Identifier) &&
          !Is(forest, Field(forest, node, syntax.FieldFunction), syntax.MemberExpression)) || callee < 0) {
         return ScalarOperands.Failed(Diagnose(forest, Field(forest, node, syntax.FieldFunction), 0,
@@ -1344,6 +1356,12 @@ ScalarReferenceArgument :: (forest: snapshot.SnapshotNode[], text: string, calla
     output := rows;
     output.append(ScalarAt(forest, argument, facts.RefRow, type, names[found].index, 0, ""));
     return ScalarOperands.Built(output);
+}
+// Called only after authored functions, foreign calls and procedure values
+// have been resolved, so their names can shadow the built-in.
+ScalarSquareRoot :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+    callee := Field(forest, node, syntax.FieldFunction);
+    return Is(forest, callee, syntax.Identifier) && Text(forest, text, callee) == "sqrt";
 }
 // The Text operator of `node` when it calls text_byte_length, text_byte_at,
 // text_slice or format_text by name, 0 otherwise. When no function of the
@@ -2083,7 +2101,8 @@ ScalarPlan :: union {
     Failed(diagnostic: syntax.Diagnostic) | Converted(value: int, context: int, storage: int) | Compound(storage: int) |
     Range(first: int, last: int) | Record(value: int, record: int) | Member(record: int, field: int) |
     Tagged(subject: int) | Subject(value: int, held: int) | Array(value: int, shape: ValueType, copied: bool) | Element | Changed(object: int, operator: int) |
-    Iterated(value: int, copied: bool) | Mapped(value: int, record: int, copied: bool) |
+    Iterated(value: int, copied: bool) | MapIterated(value: int, record: int, copied: bool) |
+    Mapped(value: int, record: int, copied: bool) |
     MapEdited(change: ScalarMapCall) | Bare
 }
 // The plan of `statement`'s operands: a return's value, widened to the result
@@ -2132,6 +2151,15 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         first := Field(forest, statement, syntax.FieldFirst);
         if (first < 0) {
             visited := Field(forest, statement, syntax.FieldValue);
+            map := ScalarMapShape(forest, text, callables, names, types, callable.package, visited);
+            if (map >= 0 && Field(forest, statement, syntax.FieldReference) < 0 &&
+                Field(forest, statement, syntax.FieldReverse) < 0) {
+                body := Field(forest, statement, syntax.FieldBody);
+                changed := MutatedNames(forest, text, body, AddressedNames(forest, text, body, []));
+                copied := Is(forest, Unparenthesized(forest, visited), syntax.Identifier) &&
+                          NamePosition(changed, Text(forest, text, Unparenthesized(forest, visited))) >= 0;
+                return ScalarPlan.MapIterated(visited, map, copied);
+            }
             if (visited >= 0 && Field(forest, statement, syntax.FieldReference) < 0 &&
                 ScalarArrayType(types, ScalarVisitedShape(forest, text, callables, params, callable, names, types, members,
                                                           constants, visited).storage,
@@ -2140,7 +2168,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
                 return ScalarPlan.Iterated(visited, ScalarIterationCopies(forest, text, Field(forest, statement, syntax.FieldBody),
                                                                            visited));
             }
-            return ScalarPlan.Failed(Diagnose(forest, statement, 0, "scalar proof iterates only int ranges and arrays of numbers, bool and strings"));
+            return ScalarPlan.Failed(Diagnose(forest, statement, 0, "scalar proof iterates only int ranges, arrays and scalar maps"));
         }
         return ScalarPlan.Range(first, Field(forest, statement, syntax.FieldLast));
     }
@@ -2534,6 +2562,30 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             continue;
         }
         if (Is(forest, statement, syntax.ExpressionStatement) &&
+            Is(forest, FirstMember(forest, statement), syntax.AwaitExpression)) {
+            awaited := Unparenthesized(forest, Field(forest, FirstMember(forest, statement), syntax.FieldValue));
+            callee := Field(forest, awaited, syntax.FieldFunction);
+            if (Is(forest, awaited, syntax.CallExpression) && Is(forest, callee, syntax.Identifier) &&
+                NameMatches(Text(forest, text, callee), "Delay") &&
+                ScalarTaskCallee(forest, text, callables, names, callable, awaited) < 0) {
+                arguments := Members(forest, Field(forest, awaited, syntax.FieldArguments));
+                if (length(arguments) != 1) {
+                    return ScalarOperands.Failed(Diagnose(forest, awaited, 0, "Delay requires one duration"));
+                }
+                switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants,
+                                     arguments[0], DoubleStorage, []) {
+                    case .Failed(diagnostic):
+                        return ScalarOperands.Failed(diagnostic);
+                    case .Built(built):
+                        rows.append(ScalarAt(forest, statement, facts.LocalRow, facts.IntType, variables, length(built) + 1, "_"));
+                        rows.extend(built);
+                        rows.append(ScalarAt(forest, awaited, facts.DelayRow, facts.IntType, 0, 1, ""));
+                        variables += 1;
+                }
+                continue;
+            }
+        }
+        if (Is(forest, statement, syntax.ExpressionStatement) &&
             Is(forest, FirstMember(forest, statement), syntax.AwaitExpression) &&
             !Is(forest, Unparenthesized(forest, Field(forest, FirstMember(forest, statement), syntax.FieldValue)),
                 syntax.CallExpression)) {
@@ -2557,9 +2609,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             continue;
         }
         if (Is(forest, statement, syntax.CancelStatement)) {
-            if (Field(forest, statement, syntax.FieldDuration) >= 0) {
-                return ScalarOperands.Failed(Diagnose(forest, statement, 0, "scalar proof does not support cancel after yet"));
-            }
+            duration := Field(forest, statement, syntax.FieldDuration);
             handle := Field(forest, statement, syntax.FieldValue);
             held := ScalarTaskCallee(forest, text, callables, names, callable, handle);
             if (held < 0 || ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants,
@@ -2571,9 +2621,23 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 case .Failed(diagnostic):
                     return ScalarOperands.Failed(diagnostic);
                 case .Built(built):
-                    rows.append(ScalarAt(forest, statement, facts.LocalRow, facts.IntType, variables, length(built) + 1, "_"));
-                    rows.extend(built);
-                    rows.append(ScalarAt(forest, statement, facts.CancelRow, facts.IntType, 0, 1, ""));
+                    task_rows := built;
+                    kind := facts.CancelRow;
+                    count: int = 1;
+                    if (duration >= 0) {
+                        switch ScalarOperand(forest, text, callables, params, callable, names, types, members,
+                                             constants, duration, DoubleStorage, task_rows) {
+                            case .Failed(diagnostic):
+                                return ScalarOperands.Failed(diagnostic);
+                            case .Built(timed):
+                                task_rows = timed;
+                        }
+                        kind = facts.CancelAfterRow;
+                        count = 2;
+                    }
+                    rows.append(ScalarAt(forest, statement, facts.LocalRow, facts.IntType, variables, length(task_rows) + 1, "_"));
+                    rows.extend(task_rows);
+                    rows.append(ScalarAt(forest, statement, kind, facts.IntType, 0, count, ""));
                     variables += 1;
             }
             continue;
@@ -2588,6 +2652,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
         hidden_held: int = -1;
         appended: int = -1;
         iterated := false;
+        map_iterated := -1;
         switch ScalarPlanned(forest, text, callables, params, callable, names, types, members, constants, statement, written,
                              kept_whole) {
             case .Failed(diagnostic):
@@ -2677,6 +2742,10 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 built = ScalarArrayStored(forest, text, callables, params, callable, names, types, members, constants, value,
                                           ScalarVisitedShape(forest, text, callables, params, callable, names, types, members, constants, value), copied,
                                           operands);
+            case .MapIterated(value, record, copied):
+                map_iterated = record;
+                built = ScalarMapValue(forest, text, callables, params, callable, names, types, members, constants,
+                                       value, record, copied, operands);
             case .Bare:
                 built = ScalarOperands.Built(operands);
         }
@@ -2705,6 +2774,15 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 element := IntStorage;
                 element_record := -1;
                 row = ScalarAt(forest, statement, facts.ForRow, facts.IntType, variables, count, name);
+                if (map_iterated >= 0) {
+                    map := types[map_iterated];
+                    element = map.value_storage;
+                    element_record = map.value_record;
+                    if (keyed) { element = map.key; element_record = -1; }
+                    row.type = ScalarMapType(types, map_iterated);
+                    row.literal = i64(facts.RangeMap);
+                    if (keyed) { row.literal += i64(facts.RangeKeyed); }
+                }
                 if (iterated) {
                     visited := ScalarVisitedShape(forest, text, callables, params, callable, names, types, members, constants,
                                                   Field(forest, statement, syntax.FieldValue));
@@ -2716,7 +2794,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                         row.literal += i64(facts.RangeKeyed);
                     }
                 }
-                if (!iterated && Text(forest, text, Field(forest, statement, syntax.FieldBound)) == "..<") {
+                if (!iterated && map_iterated < 0 && Text(forest, text, Field(forest, statement, syntax.FieldBound)) == "..<") {
                     row.literal += i64(facts.RangeExclusive);
                 }
                 if (Field(forest, statement, syntax.FieldReverse) >= 0) {
@@ -2728,8 +2806,14 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 names.append(binding);
                 variables += 1;
                 if (keyed) {
+                    keyed_storage := IntStorage;
+                    keyed_record := -1;
+                    if (map_iterated >= 0) {
+                        keyed_storage = types[map_iterated].value_storage;
+                        keyed_record = types[map_iterated].value_record;
+                    }
                     index: Name = {owned: false, name: Text(forest, text, Field(forest, statement, syntax.FieldName)), place: LocalPlace,
-                                   index: variables, storage: IntStorage, container: 0, record: -1, writable: false,
+                                   index: variables, storage: keyed_storage, container: 0, record: keyed_record, writable: false,
                                    node: Field(forest, statement, syntax.FieldName)};
                     names.append(index);
                     variables += 1;
@@ -3006,14 +3090,16 @@ ScalarHosts :: (hosts: Host[], roots: Root[]) -> string {
                  ArrayPushIntrinsic, ArrayStoreIntrinsic, ArrayMutateIntrinsic, ArrayMutatePlaceIntrinsic,
                  SequenceGetIntrinsic, SequenceLengthIntrinsic, SequenceBorrowIntrinsic, SequenceCloneIntrinsic,
                  ArrayExtendIntrinsic, SequenceSliceIntrinsic, MapMakeIntrinsic, MapGetIntrinsic, MapHasIntrinsic,
-                 MapStoreIntrinsic, MapDeleteIntrinsic, MapDeletePlaceIntrinsic, ReferenceKeyIntrinsic];
+                 MapStoreIntrinsic, MapDeleteIntrinsic, MapDeletePlaceIntrinsic, MapItemIntrinsic,
+                 ReferenceKeyIntrinsic];
     for (host in hosts) {
         // A text native, the only natives EmitBody is given.
         if (host.intrinsic == 0 && host.linked >= 0) {
             continue;
         }
         // The facts below lower these commands to native coroutine operations.
-        if (host.command == YieldCommand || host.command == JoinCommand || host.command == CancelCommand) {
+        if (host.command == YieldCommand || host.command == JoinCommand || host.command == CancelCommand ||
+            host.command == CancelAfterCommand || host.command == DelayCommand) {
             continue;
         }
         intrinsic := host.intrinsic;
@@ -3108,11 +3194,6 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
             for (cell in cells) {
                 if (cell.storage == UnionStorage && cell.container == 0 && ScalarOptional(table^, cell.record)) {
                     body_optionals^[cell.record] = 1;
-                }
-            }
-            for (host in hosts) {
-                if (host.command == CancelAfterCommand) {
-                    return Diagnose(forest, host.syntax_node, 0, "scalar proof does not support cancel after yet");
                 }
             }
             // A retained local reads and writes its state, which the facts carry.
@@ -3496,7 +3577,7 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         callable := seen[index];
         if (Field(forest, callable.node, syntax.FieldAttribute) >= 0) {
             // Test metadata follows the ordinary front-end policy. It does not
-            // change the native entry ABI or turn a void test into an entry.
+            // change the entry ABI; a void entry returns the ordinary zero status.
             attributes := ReadAttributes(forest, text, callables[index]);
             if (attributes.fault >= 0) {
                 return ScalarOperands.Failed(Diagnose(forest, attributes.fault, 0, attributes.message));
@@ -3516,12 +3597,12 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         return ScalarOperands.Failed(Diagnose(forest, Field(forest, first.node, syntax.FieldParameters), 0,
                                               "scalar proof requires its first function to take no parameters"));
     }
-    if (!is_library && (first.result != IntStorage || first.result_container != 0 || ScalarVoid(callables[0]))) {
+    if (!is_library && (first.result != IntStorage || first.result_container != 0)) {
         at := Field(forest, first.node, syntax.FieldResults);
         if (at < 0) {
             at = first.node;
         }
-        return ScalarOperands.Failed(Diagnose(forest, at, 0, "scalar proof requires its first function to return int"));
+        return ScalarOperands.Failed(Diagnose(forest, at, 0, "scalar proof requires its first function to return int or nothing"));
     }
     solid := SolidOffsets(text);
     // A scoped parameter's `p^` is `p`, as every body sees it.

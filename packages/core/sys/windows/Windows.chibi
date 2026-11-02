@@ -14,6 +14,11 @@ import strings "core:strings"
 // with any start module.
 
 foreign import kernel32 "system:kernel32"
+foreign import bcrypt "system:bcrypt"
+
+foreign bcrypt {
+    BCryptGenRandom :: (algorithm: rawptr, buffer: u8[], size: u32, flags: u32) -> i32
+}
 
 foreign kernel32 {
     MultiByteToWideChar :: (page: u32, flags: u32, text: cstring, length: i32, wide: u16[], size: i32) -> i32
@@ -32,6 +37,11 @@ foreign kernel32 {
     GetFinalPathNameByHandleW :: (handle: u64, path: u16[], size: u32, flags: u32) -> u32
     GetCurrentDirectoryW :: (size: u32, path: u16[]) -> u32
     GetCurrentProcessId :: () -> u32
+    GetCurrentProcess :: () -> u64
+    GetProcessId :: (handle: u64) -> u32
+    GetProcessTimes :: (handle: u64, created: u8[], exited: u8[], kernel: u8[], user: u8[]) -> i32
+    GetTempPathW :: (size: u32, path: u16[]) -> u32
+    GetTempFileNameW :: (path: u16[], prefix: u16[], unique: u32, name: u16[]) -> u32
     CopyFileW :: (source: u16[], destination: u16[], no_replace: i32) -> i32
     CloseHandle :: (handle: u64) -> i32
     GetEnvironmentVariableW :: (name: u16[], buffer: u16[], size: u32) -> u32
@@ -49,6 +59,12 @@ foreign kernel32 {
     CreateProcessW :: (application: rawptr, command: u16[], process: rawptr, thread: rawptr, inherit: i32, flags: u32, environment: rawptr, directory: rawptr, startup: u8[], information: u8[]) -> i32
     WaitForSingleObject :: (handle: u64, milliseconds: u32) -> u32
     GetExitCodeProcess :: (handle: u64, code: u32[]) -> i32
+    CreateJobObjectW :: (security: rawptr, name: rawptr) -> u64
+    AssignProcessToJobObject :: (job: u64, process: u64) -> i32
+    TerminateJobObject :: (job: u64, code: u32) -> i32
+    TerminateProcess :: (process: u64, code: u32) -> i32
+    ResumeThread :: (thread: u64) -> u32
+    GetLastError :: () -> u32
 }
 
 pub KindNone: int : 0;
@@ -64,6 +80,7 @@ LinkAttribute: u32 : 1024;
 ReadAccess: u32 : 2147483648;
 WriteAccess: u32 : 1073741824;
 ShareAll: u32 : 7;
+ShareDelete: u32 : 4;
 CreateAlways: u32 : 2;
 OpenExisting: u32 : 3;
 ReplaceExisting: u32 : 1;
@@ -82,6 +99,13 @@ FileTimeTicks: i64 : 10000000;
 FileTimeEpochSeconds: i64 : 11644473600;
 Slash: int : 47;
 Backslash: int : 92;
+CreateNew: u32 : 1;
+CreateSuspended: u32 : 4;
+NewProcessGroup: u32 : 512;
+KilledExit: u32 : 4294967287; // The DWORD representation of exit status -9.
+WaitTimeout: u32 : 258;
+MaxPathUnits: int : 260;
+SystemPreferredRng: u32 : 2;
 
 // A zeroed block for a structure the program only passes along.
 Block :: (size: int) -> u8[] {
@@ -531,12 +555,11 @@ Shared :: (handle: u64) -> u64 {
     return handle;
 }
 
-// Starts the program with `command`'s arguments, its standard streams being
-// `input`, `output` and `errors` when they are not zero, and returns its
-// process handle; -1 when it cannot be started.
-Create :: (command: string[], input: u64, output: u64, errors: u64) -> int {
+// The PROCESS_INFORMATION of a new child, empty when CreateProcessW fails.
+Launch :: (command: string[], input: u64, output: u64, errors: u64, flags: u32) -> u8[] {
     if length(command) == 0 {
-        return -1;
+        empty: u8[] = [];
+        return empty;
     }
     startup := Block(104);
     startup[0] = 104;
@@ -545,8 +568,18 @@ Create :: (command: string[], input: u64, output: u64, errors: u64) -> int {
     startup = Put64(startup, 88, output);
     startup = Put64(startup, 96, errors);
     information := Block(24);
-    started := CreateProcessW(0, Wide(CommandLine(command)), 0, 0, 1, 0, 0, 0, startup, information);
+    started := CreateProcessW(0, Wide(CommandLine(command)), 0, 0, 1, flags, 0, 0, startup, information);
     if started == 0 {
+        empty: u8[] = [];
+        return empty;
+    }
+    return information;
+}
+
+// The synchronous callers do not need the child's initial thread handle.
+Create :: (command: string[], input: u64, output: u64, errors: u64) -> int {
+    information := Launch(command, input, output, errors, 0);
+    if length(information) == 0 {
         return -1;
     }
     thread := Word64(information, 8);
@@ -744,6 +777,26 @@ pub Copy :: (source: string, destination: string) -> bool {
     return copied && removed && closed;
 }
 
+// A 128-bit system nonce avoids a shared counter or a tempfile-to-directory
+// conversion window. Exclusive creation never replaces somebody else's path.
+pub TemporaryDirectory :: (parent: string) -> string {
+    random := Block(16);
+    if BCryptGenRandom(0, random, 16, SystemPreferredRng) != 0 {
+        return "";
+    }
+    hexadecimal := "0123456789abcdef";
+    name := Block(32);
+    for index in 0..<16 {
+        name[2 * index] = u8(text_byte_at(hexadecimal, int(random[index] >> 4)));
+        name[2 * index + 1] = u8(text_byte_at(hexadecimal, int(random[index] & 15)));
+    }
+    path := strings.Concatenate([parent, "/work-", text_from_bytes(name)]);
+    if !Reserve(path) {
+        return "";
+    }
+    return path;
+}
+
 // CreateDirectoryW refuses every existing path, unlike MakeDirectory.
 pub Reserve :: (path: string) -> bool {
     return CreateDirectoryW(Wide(path), 0) != 0;
@@ -827,17 +880,302 @@ pub FindExecutable :: (name: string) -> string {
     return "";
 }
 
-// Asynchronous process operations still report failure.
-pub Start :: (command: string[], piped: bool) -> int {
-    return -1;
-}
-
 pub StillRunning: int : 65536;
 
+// A parent's creation time isolates its ownership files from recycled PIDs.
+// Each file holds a PID and the parent's opaque OS job descriptor, never a
+// Chibi memory pointer. It is only read by this process while claiming a child.
+ProcessIdentity :: () -> string {
+    created := Block(8);
+    exited := Block(8);
+    kernel := Block(8);
+    user := Block(8);
+    if GetProcessTimes(GetCurrentProcess(), created, exited, kernel, user) == 0 {
+        return "";
+    }
+    return format_text("chibi-{}-{}", GetCurrentProcessId(), Word64(created, 0));
+}
+
+ProcessFolder :: () -> string {
+    identity := ProcessIdentity();
+    if identity == "" {
+        return "";
+    }
+    none: u16[] = [];
+    size := GetTempPathW(0, none);
+    if size == 0 {
+        return "";
+    }
+    buffer := resize([u16(0)], int(size) + 1);
+    count := GetTempPathW(u32(length(buffer)), buffer);
+    if count == 0 || int(count) >= length(buffer) {
+        return "";
+    }
+    return strings.Concatenate([strings.TrimRight(Narrow(buffer, int(count)), "/\\"), "/", identity]);
+}
+
+ProcessPath :: (folder: string, process: int, suffix: string) -> string {
+    return format_text("{}/{}{}", folder, process, suffix);
+}
+
+Close :: (handle: u64) {
+    if handle != 0 && ~handle != 0 {
+        closed := CloseHandle(handle);
+    }
+}
+
+// Creates one ownership marker without replacing an earlier invocation's file.
+RecordProcess :: (path: string, pid: u32, job: u64) -> bool {
+    handle := CreateFileW(Wide(path), WriteAccess, 0, 0, CreateNew, 0, 0);
+    if ~handle == 0 {
+        return false;
+    }
+    data := Block(12);
+    for index in 0..<4 {
+        data[index] = u8((pid >> u32(index * 8)) & 255);
+    }
+    data = Put64(data, 4, job);
+    written: u32[] = [0];
+    status := WriteFile(handle, data, 12, written, 0);
+    closed := CloseHandle(handle);
+    if status == 0 || written[0] != 12 || closed == 0 {
+        removed := Remove(path);
+        return false;
+    }
+    return true;
+}
+
+// Exclusive marker access makes concurrent Wait/Kill calls reject a handle
+// already being consumed. A foreign or completed handle never reaches Close.
+ProcessClaim :: struct {
+    marker: u64;
+    job: u64;
+}
+
+ClaimProcess :: (folder: string, process: int) -> ProcessClaim {
+    claim: ProcessClaim = {marker: 0, job: 0};
+    if folder == "" || process <= 0 {
+        return claim;
+    }
+    pid := GetProcessId(u64(process));
+    if pid == 0 {
+        return claim;
+    }
+    handle := CreateFileW(Wide(ProcessPath(folder, process, ".state")), ReadAccess, ShareDelete, 0, OpenExisting, 0, 0);
+    if ~handle == 0 {
+        return claim;
+    }
+    size := Block(8);
+    data := Block(12);
+    count: u32[] = [0];
+    sized := GetFileSizeEx(handle, size);
+    read := ReadFile(handle, data, 12, count, 0);
+    if sized == 0 || Word64(size, 0) != 12 || read == 0 || count[0] != 12 ||
+       Word32(data, 0) != u64(pid) || Word64(data, 4) == 0 {
+        Close(handle);
+        return claim;
+    }
+    claim.marker = handle;
+    claim.job = Word64(data, 4);
+    return claim;
+}
+
+StartingProcess :: struct {
+    information: u8[];
+    input: u64;
+    output: u64;
+    job: u64;
+    waiting: string;
+    marker: string;
+}
+
+AbandonProcess :: (starting: StartingProcess, folder: string) {
+    process: u64 = 0;
+    if length(starting.information) != 0 {
+        process = Word64(starting.information, 0);
+        stopped := TerminateProcess(process, 127);
+        waited := WaitForSingleObject(process, Infinite);
+        Close(Word64(starting.information, 8));
+    }
+    Close(starting.job);
+    Close(starting.input);
+    Close(starting.output);
+    if starting.waiting != "" {
+        removed := Remove(starting.waiting);
+    }
+    if starting.marker != "" {
+        removed := Remove(starting.marker);
+    }
+    Close(process);
+    removed := RemoveDirectoryW(Wide(folder));
+}
+
+// Launch suspended so the job owns the child before any descendants can start.
+// Retain the job handle until reap: closing the last handle removes its name
+// even while associated processes still live, so reopening by name is unsafe.
+pub Start :: (command: string[], piped: bool) -> int {
+    if length(command) == 0 {
+        return -1;
+    }
+    folder := ProcessFolder();
+    if folder == "" || !MakeDirectory(folder) {
+        return -1;
+    }
+    starting: StartingProcess = {information: [], input: 0, output: 0, job: 0, waiting: "", marker: ""};
+    starting.input = CreateFileW(Wide("NUL"), ReadAccess, ShareAll, 0, OpenExisting, 0, 0);
+    if ~starting.input == 0 || Shared(starting.input) == 0 {
+        AbandonProcess(starting, folder);
+        return -1;
+    }
+    output := Shared(GetStdHandle(-11));
+    errors := Shared(GetStdHandle(-12));
+    if piped {
+        name := resize([u16(0)], MaxPathUnits);
+        if GetTempFileNameW(Wide(folder), Wide("out"), 0, name) == 0 {
+            AbandonProcess(starting, folder);
+            return -1;
+        }
+        end := 0;
+        while end < length(name) && name[end] != 0 {
+            end += 1;
+        }
+        starting.waiting = Narrow(name, end);
+        starting.output = CreateFileW(Wide(starting.waiting), WriteAccess, ShareAll, 0, OpenExisting, 0, 0);
+        if ~starting.output == 0 || Shared(starting.output) == 0 {
+            AbandonProcess(starting, folder);
+            return -1;
+        }
+        output = starting.output;
+        errors = output;
+    }
+    starting.information = Launch(command, starting.input, output, errors, CreateSuspended | NewProcessGroup);
+    if length(starting.information) == 0 {
+        AbandonProcess(starting, folder);
+        return -1;
+    }
+    process := int(Word64(starting.information, 0));
+    pid := u32(Word32(starting.information, 16));
+    job := CreateJobObjectW(0, 0);
+    if job == 0 {
+        AbandonProcess(starting, folder);
+        return -1;
+    }
+    starting.job = job;
+    if AssignProcessToJobObject(job, u64(process)) == 0 {
+        AbandonProcess(starting, folder);
+        return -1;
+    }
+    marker := ProcessPath(folder, process, ".state");
+    if !RecordProcess(marker, pid, job) {
+        AbandonProcess(starting, folder);
+        return -1;
+    }
+    starting.marker = marker;
+    if piped {
+        published := ProcessPath(folder, process, ".out");
+        if MoveFileExW(Wide(starting.waiting), Wide(published), 0) == 0 {
+            AbandonProcess(starting, folder);
+            return -1;
+        }
+        starting.waiting = published;
+    }
+    if ResumeThread(Word64(starting.information, 8)) == InvalidAttributes {
+        AbandonProcess(starting, folder);
+        return -1;
+    }
+    Close(Word64(starting.information, 8));
+    Close(starting.input);
+    Close(starting.output);
+    return process;
+}
+
+// Report in bounded chunks, preserving NUL bytes and combined output order.
+ReportProcess :: (path: string) -> bool {
+    if !Exists(path) {
+        return true;
+    }
+    handle := CreateFileW(Wide(path), ReadAccess, ShareAll, 0, OpenExisting, 0, 0);
+    if ~handle == 0 {
+        return false;
+    }
+    data := Block(ReadChunk);
+    read: u32[] = [0];
+    written: u32[] = [0];
+    complete := true;
+    while true {
+        if ReadFile(handle, data, u32(ReadChunk), read, 0) == 0 {
+            complete = false;
+            break;
+        }
+        if read[0] == 0 {
+            break;
+        }
+        if WriteFile(GetStdHandle(-12), data, read[0], written, 0) == 0 || written[0] != read[0] {
+            complete = false;
+            break;
+        }
+    }
+    Close(handle);
+    removed := Remove(path);
+    return complete && removed;
+}
+
+// Timeouts preserve ownership. Completion consumes a handle exactly once.
 pub WaitFor :: (process: int, timeout_ms: int) -> int {
-    return 127;
+    if process < 0 {
+        return 127;
+    }
+    folder := ProcessFolder();
+    claim := ClaimProcess(folder, process);
+    if claim.marker == 0 {
+        return -1;
+    }
+    return WaitClaimed(folder, process, claim, timeout_ms);
+}
+
+WaitClaimed :: (folder: string, process: int, claim: ProcessClaim, timeout_ms: int) -> int {
+    timeout := Infinite;
+    if timeout_ms >= 0 {
+        timeout = u32(timeout_ms);
+    }
+    waited := WaitForSingleObject(u64(process), timeout);
+    if waited == WaitTimeout {
+        Close(claim.marker);
+        return StillRunning;
+    }
+    code: u32[] = [0];
+    found := GetExitCodeProcess(u64(process), code);
+    reported := ReportProcess(ProcessPath(folder, process, ".out"));
+    removed := Remove(ProcessPath(folder, process, ".state"));
+    // Drop the ownership marker before the OS can reuse the process handle.
+    // ShareDelete permits this removal while other claim readers stay excluded.
+    Close(claim.marker);
+    Close(claim.job);
+    Close(u64(process));
+    directory := RemoveDirectoryW(Wide(folder));
+    if waited != 0 || found == 0 || !reported || !removed {
+        return -1;
+    }
+    return int(wrap: code[0]);
 }
 
 pub Kill :: (process: int) -> int {
-    return 127;
+    if process < 0 {
+        return 127;
+    }
+    folder := ProcessFolder();
+    claim := ClaimProcess(folder, process);
+    if claim.marker == 0 {
+        return -1;
+    }
+    // The root may have exited while descendants still belong to its job.
+    // Stop that job before reaping the root, preserving a completed root's code.
+    stopped := TerminateJobObject(claim.job, KilledExit);
+    if stopped == 0 {
+        failure := GetLastError();
+        Print(format_text("windows: cannot terminate process job: Win32 error {}", failure));
+        Close(claim.marker);
+        return -1;
+    }
+    return WaitClaimed(folder, process, claim, -1);
 }

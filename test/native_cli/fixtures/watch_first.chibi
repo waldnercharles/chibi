@@ -6,7 +6,7 @@ foreign libc {
     fclose :: (stream: rawptr) -> i32
     access :: (path: cstring, mode: i32) -> i32
 }
-State :: struct { count: i64; marker: int; }
+State :: struct { count: i64; marker: int; text: string; }
 Main :: () -> int {
     stream := fopen("main-count", "ab");
     written := fwrite("x", 1, 1, stream);
@@ -14,9 +14,12 @@ Main :: () -> int {
     return 0;
 }
 Frame :: () -> int {
-    progress: retain State = {count: 0, marker: 73};
+    progress: retain State = {count: 0, marker: 73, text: "initial"};
     message: retain string = "first";
     progress.count += 1;
+    snapshot := progress;
+    progress.text = format_text("record {}", progress.count);
+    assert(snapshot.text != progress.text, "retained record snapshot owns its string");
     if progress.count == 1 {
         Worker();
     }

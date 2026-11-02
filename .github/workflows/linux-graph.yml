@@ -76,7 +76,7 @@ jobs:
             > "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
           cat "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
       - name: Build graph products and test drivers (selected Debug profile)
-        run: sh tools/build.sh build --jobs "$JOBS" --libclang-root "$LIBCLANG_ROOT" --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --build build-sdk-tests --target chibi --target chibi-compile --target test_tools --target test_language --target chibi-compiler-host --host "$PWD/build-release/sdk/chibi-build-host" --asset-generator-hosts build-release/sdk
+        run: sh tools/build.sh build --jobs "$JOBS" --libclang-root "$LIBCLANG_ROOT" --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --build build-sdk-tests --target chibi --target chibi-compile --target test_tools --target test_language --target chibi-compiler-host --host "$PWD/build-release/sdk/chibi-build-host"
       - name: Verify Release graph tools survived the harness build unchanged
         run: sha256sum --check "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
       - name: Verify graph commands, discovery, incremental builds and resources

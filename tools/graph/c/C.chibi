@@ -74,7 +74,7 @@ pub Command :: (tools: Tools, target: Library, flags: string[], source: string) 
 
 // The record that says what built a file: its command, one argument per line,
 // an empty line, then for each input and for the output its path and, on the
-// next line, its stamp.
+// next line, its fingerprint, including a content hash on Windows.
 Record :: (output: string) -> string {
     return Join([output, ".chibi-record"]);
 }
@@ -83,7 +83,7 @@ RecordText :: (command: string, inputs: string[], output: string) -> string {
     recorded := slice(inputs, 0, length(inputs));
     recorded.append(output);
     for (input in recorded) {
-        lines.extend([input, os.Stamp(input)]);
+        lines.extend([input, files.Fingerprint(input)]);
     }
     lines.append("");
     return strings.Join(lines, "\n");
@@ -113,7 +113,8 @@ Current :: (command: string[], output: string) -> bool {
     }
     for (i in 0..<(length(lines) - count - 1) / 2) {
         at := count + 1 + 2 * i;
-        if (os.Stamp(lines[at]) != lines[at + 1]) {
+        fingerprint := files.Fingerprint(lines[at]);
+        if (fingerprint == "" || fingerprint != lines[at + 1]) {
             return false;
         }
     }

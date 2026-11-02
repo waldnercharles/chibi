@@ -1,4 +1,4 @@
-package sdk
+package json
 
 import strings "core:strings"
 
@@ -40,7 +40,7 @@ JsonJoin :: (parts: string[]) -> string {
     return parts[0];
 }
 JsonByte :: (value: int) -> string {
-    return format_text("{:c}", value);
+    return text_from_bytes([u8(value)]);
 }
 JsonUtf8 :: (point: int) -> string {
     if (point < 128) {

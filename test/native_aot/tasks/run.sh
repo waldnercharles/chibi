@@ -26,6 +26,11 @@ set -eu
 for source do
     case "$source" in
         *.ll)
+            if grep -q '^declare i32 @TestTime(double)' "$source"; then
+                sed '/^declare i32 @TestTime(double)/d; /^declare double @TestNaN()/d' "$source" > "$source.clock"
+                cat "$CHIBI_TASK_CLOCK" >> "$source.clock"
+                mv "$source.clock" "$source"
+            fi
             if grep -q 'define i32 @chibi_scalar(ptr %ctx)' "$source"; then
                 sed 's/define i32 @chibi_scalar(ptr %ctx)/define i32 @chibi_task_test_entry(ptr %ctx)/' "$source" > "$source.audit"
                 cat "$CHIBI_TASK_AUDIT" >> "$source.audit"
@@ -58,7 +63,8 @@ exec "$CHIBI_TASK_REAL_LLVM/llc" "$@"
 WRAPPER
 chmod +x "$work/llvm/opt" "$work/llvm/llc"
 ln -s "$llvm/$linker" "$work/llvm/$linker"
-export CHIBI_TASK_REAL_LLVM=$llvm CHIBI_TASK_AUDIT=$root/test/native_aot/tasks/audit.ll
+export CHIBI_TASK_REAL_LLVM="$llvm" CHIBI_TASK_AUDIT="$root/test/native_aot/tasks/audit.ll"
+export CHIBI_TASK_CLOCK="$root/test/native_aot/tasks/clock.ll"
 for level in 0 2; do
     export CHIBI_TASK_LEVEL=$level
     for folder in "$root"/test/native_aot/tasks/cases/*; do
@@ -93,7 +99,6 @@ for folder in "$root"/test/native_aot/tasks/rejected/*; do
     fi
     case "$name" in
         await_result) grep -q 'awaits a call of a waiting function, or a task as a statement' "$work/rejection" ;;
-        deadline) grep -q 'does not support cancel after yet' "$work/rejection" ;;
         dependency) grep -q 'waiting frames cannot own managed values or pointers yet' "$work/rejection" ;;
         managed_frame) grep -q 'waiting frames cannot own managed values or pointers yet' "$work/rejection" ;;
     esac

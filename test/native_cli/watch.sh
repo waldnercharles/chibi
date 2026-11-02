@@ -4,7 +4,7 @@
 set -eu
 driver=${1:?usage: watch.sh NATIVE_CHIBI LLVM_DIRECTORY}
 llvm=${2:?usage: watch.sh NATIVE_CHIBI LLVM_DIRECTORY}
-root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd -P)
+root=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd -P)
 work=$(mktemp -d "${TMPDIR:-/tmp}/chibi-native-watch.XXXXXX")
 process=
 log=$work/watch.log

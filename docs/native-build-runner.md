@@ -5,8 +5,8 @@
 its SHA-256 before use. A cached seed is verified again on every invocation.
 `--native-driver PATH` selects a different compiler explicitly.
 
-LLVM comes from `--llvm DIR`, `CHIBI_LLVM_BIN`, or the directory containing `opt`
-on `PATH`. The directory must contain `opt`, `llc` and the platform's linker:
+LLVM/LLD 22 or newer is required. The tools come from `--llvm DIR`,
+`CHIBI_LLVM_BIN`, or the directory containing `opt` on `PATH`. The directory must contain `opt`, `llc` and the platform's linker:
 `ld.lld` on Linux, `ld64.lld` on macOS. The supported native default platforms
 are Linux x64 and macOS arm64. Windows filesystem and cache operations now
 use kernel32 and have cross-link checks, but still need a Windows execution

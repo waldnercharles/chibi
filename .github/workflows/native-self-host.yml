@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - tools/compiler/**
+      - apps/host/**
       - test/native_aot/diagnostics/**
       - test/native_aot/test_attributes/**
       - test/native_aot/tasks/**
@@ -16,6 +17,7 @@ on:
       - tools/build.sh
       - tools/native_aot/**
       - test/native_aot/generations/**
+      - test/native_aot/native_enc/**
       - tools/toolchain/Driver.chibi
       - tools/toolchain/Graph.chibi
       - tools/bootstrap/native-seed.tsv
@@ -105,6 +107,8 @@ jobs:
         run: sh test/native_aot/maps/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native CLI programs
         run: sh test/native_cli/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+      - name: Check native CLI live reload
+        run: sh test/native_cli/watch.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Summarize the proof
         if: always()
         shell: bash

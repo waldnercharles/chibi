@@ -66,3 +66,24 @@ Copies :: () -> string {
     delete b[2];
     return format_text("{}|{}", Join(a), Join(b));
 }
+ReplaceKeyMap :: (values: ^([int: int])) -> int { values^ = [9: 99]; return 1; }
+ScopedKeyRead :: (read: ^([int: int]), changed: ^([int: int])) -> int {
+    read^ = [1: 11];
+    return read^[ReplaceKeyMap(changed)];
+}
+ReceiverReads :: () -> int {
+    values: [int: int] = [1: 11];
+    read := values[ReplaceKeyMap(&values)];
+    scoped := ScopedKeyRead(&values, &values);
+    return read * 100 + scoped;
+}
+ReceiverMembership :: () -> int {
+    values: [int: int] = [1: 11];
+    flags: int = 0;
+    if (values.has(ReplaceKeyMap(&values))) { flags += 1; }
+    values = [1: 11];
+    if (ReplaceKeyMap(&values) in values) { flags += 10; }
+    values = [1: 11];
+    if (ReplaceKeyMap(&values) not in values) { flags += 100; }
+    return flags;
+}

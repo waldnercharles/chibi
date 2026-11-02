@@ -10,7 +10,7 @@ case "$(uname -s)-$(uname -m)" in
     Linux-x86_64) triple=x86_64-unknown-linux-gnu ;;
     *) echo 'native map programs: unsupported test host' >&2; exit 2 ;;
 esac
-for name in Values Strings Iteration Records Effects; do
+for name in Values Strings Iteration Records Effects Receivers; do
     for level in 0 2; do
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$root/test/native_aot/map_programs/$name.chibi" --entry Main \

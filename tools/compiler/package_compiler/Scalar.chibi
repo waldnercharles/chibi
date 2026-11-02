@@ -1218,7 +1218,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         }
         if (param.container == MapContainer) {
             if (!map_addresses_read) {
-                map_addresses = ScalarMapChanges(forest, text, callables, params, names, callable.package, node);
+                map_addresses = EvaluationChanges(forest, text, callables, params, [], names, callable.package, node, true);
                 map_addresses_read = true;
             }
             copied := param.written || ScalarMapSnapshot(forest, text, params, callable, names, types, argument, map_addresses);
@@ -2116,7 +2116,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             if (map >= 0 && Field(forest, statement, syntax.FieldReference) < 0 &&
                 Field(forest, statement, syntax.FieldReverse) < 0) {
                 body := Field(forest, statement, syntax.FieldBody);
-                changed := ScalarMapChanges(forest, text, callables, params, names, callable.package, body);
+                changed := EvaluationChanges(forest, text, callables, params, [], names, callable.package, body, true);
                 copied := ScalarMapSnapshot(forest, text, params, callable, names, types, visited, changed);
                 return ScalarPlan.MapIterated(visited, map, copied);
             }

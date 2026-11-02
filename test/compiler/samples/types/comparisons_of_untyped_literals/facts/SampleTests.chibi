@@ -12,6 +12,10 @@ Calls :: () {
     r3: bool = Mixed();
     e3: bool = true;
     assert(r3 == e3, "Mixed call 3");
+    assert(ReverseMixed(), "reversed mixed literals");
+    assert(!FalseMixed(), "mixed literals preserve false");
+    assert(RoundedMixed(), "integer promotion rounds at the spelled f32 width");
+    assert(NegativeMixed(), "signed mixed literals");
     r4: bool = Negative();
     e4: bool = true;
     assert(r4 == e4, "Negative call 4");

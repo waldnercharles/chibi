@@ -5,5 +5,9 @@ Guard :: () -> int {
 }
 Wide :: () -> bool { return 3000000000 > 2; }
 Mixed :: () -> bool { return 2.5 > 2; }
+ReverseMixed :: () -> bool { return 2 < 2.5; }
+FalseMixed :: () -> bool { return 2.5 < 2; }
+RoundedMixed :: () -> bool { return 16777217 == 16777216.0; }
+NegativeMixed :: () -> bool { return -2 > -2.5; }
 Negative :: () -> bool { return -1 < 0; }
 Same :: () -> bool { return 7 == 7; }

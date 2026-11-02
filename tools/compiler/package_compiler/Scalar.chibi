@@ -815,11 +815,14 @@ ScalarCommon :: (left: int, right: int) -> int {
     }
     return left;
 }
-// The storage two untyped literals of spelled storages `left` and `right`
-// compare at: double beside a floating spelling, else their common integer.
+// Untyped comparison operands first take their spelled storages, then meet
+// at the wider floating storage, or their common integer storage.
 ScalarSpelled :: (left: int, right: int) -> int {
     if (left == DoubleStorage || right == DoubleStorage) {
         return DoubleStorage;
+    }
+    if (left == FloatStorage || right == FloatStorage) {
+        return FloatStorage;
     }
     if (!Integer(left) || !Integer(right) || CommonInteger(left, right) < 0) {
         return 0;

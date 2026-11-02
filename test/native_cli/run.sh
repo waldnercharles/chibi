@@ -61,3 +61,8 @@ CHIBI_CORE=$root/packages/core "$scratch/generics" "$compiler" "$llvm" "$root" "
     --source "$root/test/native_cli/ArrayArguments.chibi" --entry Main --output "$scratch/array-arguments" \
     --llvm "$llvm" --target "$target"
 CHIBI_CORE=$root/packages/core "$scratch/array-arguments" "$compiler" "$llvm" "$root"
+
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_cli/PackageEntries.chibi" --entry Main --output "$scratch/package-entries" \
+    --llvm "$llvm" --target "$target"
+CHIBI_CORE=$root/packages/core "$scratch/package-entries" "$compiler" "$llvm" "$scratch/programs"

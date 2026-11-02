@@ -563,8 +563,8 @@ GatherWith :: (project: string, collections: string[], directories: string[], pa
             }
             prefixes[0] = "";
         } else if (next == 0) {
-            // The entry file is first, as the producer reads the first file's
-            // first function as the module's entry.
+            // Prefer Main.chibi for the default entry. An explicit entry name
+            // is selected from this root package after all its files are read.
             if (Contains(files, "Main.chibi")) {
                 ordered: string[] = ["Main.chibi"];
                 for (file in files) {
@@ -573,9 +573,6 @@ GatherWith :: (project: string, collections: string[], directories: string[], pa
                     }
                 }
                 files = ordered;
-            } else if (length(files) != 1) {
-                found.problem = strings.Concatenate(["package directory needs one source or Main.chibi: ", folders[next]]);
-                return found;
             }
         }
         if (length(files) == 0) {

@@ -390,8 +390,7 @@ Subject :: struct {
     problem: string;
 }
 
-// The program PATH names, a .chibi file or a folder with a Main.chibi, or with
-// exactly one .chibi file.
+// The program PATH names: one source file, or every source in a package folder.
 Resolve :: (requested: string) -> Subject {
     path := os.RealPath(requested);
     if (path == "") {
@@ -412,18 +411,12 @@ Resolve :: (requested: string) -> Subject {
     if (os.IsFile(strings.Concatenate([path, "/Main.chibi"]))) {
         return {project: path, source: "", package: ".", problem: ""};
     }
-    only := "";
-    count := 0;
     for (name in os.List(path).names) {
         if (strings.HasSuffix(name, ".chibi") && os.IsFile(strings.Concatenate([path, "/", name]))) {
-            only = name;
-            count += 1;
+            return {project: path, source: "", package: ".", problem: ""};
         }
     }
-    if (count == 1) {
-        return {project: path, source: strings.Concatenate([path, "/", only]), package: ".", problem: ""};
-    }
-    return {project: "", source: "", package: ".", problem: format_text("{}: holds no Main.chibi and not exactly one .chibi source", requested)};
+    return {project: "", source: "", package: ".", problem: format_text("{}: holds no .chibi source", requested)};
 }
 
 // Makes `path` and the folders above it that are missing.

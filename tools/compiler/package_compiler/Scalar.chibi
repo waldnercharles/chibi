@@ -4221,13 +4221,13 @@ ScalarJoinedNodes :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docum
 // The callables with those of document 0 first, in their order, then the rest
 // in theirs: the entry of a package set is the first function of its first
 // file, whichever package order puts the dependencies in front. A function
-// named `chosen` in document 0 goes before the others of its document.
-ScalarEntryFirst :: (callables: Callable[], chosen: string, bindings: ^(GenericBinding[])) -> Callable[] {
+// named `chosen` in the root package goes first, regardless of its source file.
+ScalarEntryFirst :: (callables: Callable[], chosen: string, root: int, bindings: ^(GenericBinding[])) -> Callable[] {
     ordered: Callable[] = [];
     remap := resize([int(-1)], length(callables));
     if (chosen != "") {
         for (callable, index in callables) {
-            if (callable.document == 0 && callable.name == chosen) {
+            if (callable.package == root && callable.name == chosen) {
                 remap[index] = length(ordered);
                 ordered.append(callable);
             }
@@ -4240,7 +4240,7 @@ ScalarEntryFirst :: (callables: Callable[], chosen: string, bindings: ^(GenericB
         }
     }
     for (callable, index in callables) {
-        if (callable.document != 0) {
+        if (callable.document != 0 && (chosen == "" || callable.package != root || callable.name != chosen)) {
             remap[index] = length(ordered);
             ordered.append(callable);
         }
@@ -4291,8 +4291,8 @@ pub CollectScalarPackages :: (project: string, collection_names: string[], colle
     return ScalarCollect(project, collection_names, collection_paths, paths, sources, target, names, natives, ports,
                          identities, true, os, arch, "");
 }
-// CollectScalarPackages with the entry named: the function `chosen` of the first
-// file instead of its first function, and packages of any of the collections.
+// CollectScalarPackages with the entry named: the function `chosen` of the root
+// package instead of the first file's first function, and any collection's packages.
 pub CollectScalarProgram :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                              sources: string[], target: Target, names: string[], natives: Native[], ports: Port[],
                              identities: u64[], os: int, arch: int, chosen: string) -> facts.Row[] {
@@ -4473,10 +4473,14 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
                                     entered := concrete;
                                     entered_bindings := bindings;
                                     if (packaged && length(concrete) > 0 && (concrete[0].document != 0 || chosen != "")) {
-                                        entered = ScalarEntryFirst(concrete, chosen, &entered_bindings);
-                                        if (chosen != "" && entered[0].name != chosen) {
+                                        entered = ScalarEntryFirst(concrete, chosen, file_packages[0], &entered_bindings);
+                                        if (chosen != "" && (entered[0].name != chosen || entered[0].package != file_packages[0])) {
                                             return ScalarFailure(path, shown_text, Diagnose(shown_nodes, document.syntax_root, 0,
-                                                "scalar proof requires the entry function in the first file"));
+                                                format_text("No runnable {} in the root package", chosen)));
+                                        }
+                                        if (chosen == "" && entered[0].document != 0) {
+                                            return ScalarFailure(path, shown_text, Diagnose(shown_nodes, document.syntax_root, 0,
+                                                "No runnable entry in the first file"));
                                         }
                                     }
                                     // Import aliases name a package set's qualified calls; a lone source has none.

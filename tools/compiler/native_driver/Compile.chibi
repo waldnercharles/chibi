@@ -117,10 +117,10 @@ Where :: (collections: string[], directories: string[], paths: string[], sources
 
 // `paths[0]` and `sources[0]` are the entry file, the others its closure: project
 // packages by project-relative path and collection packages by path under their
-// `directories`. The program starts at the function `chosen` of the first file,
-// or at its first function when `chosen` is "". With a `directory`, the module
-// has line tables naming the source in it (Linux x86-64 only). A rejection
-// message reads `rejected FUNCTION: MESSAGE`.
+// `directories`. The program starts at the function `chosen` in the root package,
+// or the first file's first function when `chosen` is "". With a `directory`,
+// the module has line tables naming the source in it (Linux x86-64 only).
+// A rejection message reads `rejected FUNCTION: MESSAGE`.
 pub Module :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
                chosen: string, directory: string) -> Output {
     return ModuleWith(collections, directories, paths, sources, triple, chosen, directory, false, {root: "", source: "", directories: [], entry: ""});

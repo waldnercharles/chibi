@@ -1,12 +1,12 @@
 # Native modules on macOS and Windows
 
-`language-scalar-native` (`--package-compiler-chibi-native`) runs every
-native scalar module on Linux x86-64. When `CHIBI_NATIVE_BUNDLE` names a
-directory, it also emits each module it runs for the other targets
-`native_abi` admits and builds them into that directory:
+`language-scalar-native` (`test/native_aot/backend/run.sh`) runs the native
+arithmetic boundary matrix and source-level array corpus without a compiler
+host. When `CHIBI_NATIVE_BUNDLE` names a directory, it publishes the arithmetic
+modules for the other targets `native_abi` admits:
 
-- each module's IR comes from `scalar_llvm` (or `llvm_native` for the
-  arithmetic module) for `MacOSArm64()` or `WindowsX64()`, with the same
+- each module's IR comes from `llvm_native` for `MacOSArm64()` or
+  `WindowsX64()`, with the same 12 operations, eight boundary values and
   probe adapters as the Linux run;
 - `opt` and `llc` build it at O0 and O2 with the native driver's exact
   arguments, and the optimized module must declare the target's triple and
@@ -16,9 +16,8 @@ directory, it also emits each module it runs for the other targets
   that uses floating point references `_fltused`, and a frame larger than a
   page calls `__chkstk`. The bundle's `windows-x64/runtime.o` defines both,
   `__chkstk` as compiler-rt's x86-64 probe;
-- `<target>/modules.txt` lists each object, then each call with the value
-  both VMs and the native Linux runs gave: `call SYMBOL EXPECTED COUNT
-  ARGUMENTS...`.
+- `<target>/modules.txt` lists each object, then each call with the independent
+  wider-integer oracle's result: `call SYMBOL EXPECTED COUNT ARGUMENTS...`.
 
 `native-build` (`test/native_aot/native_build/BuildTests.chibi`) adds programs that
 `chibi build --native --target` links on Linux, at O0 and O2, and one with a
@@ -42,9 +41,8 @@ It checks `chibi_argument_count`, `chibi_argument` and `chibi_environment`. On W
 the C reference starts it with `_wspawnv`; the authored runner uses
 `core:os.Run`. Both pass Unicode arguments to `GetCommandLineW` as UTF-16.
 
-The Linux cases that supervise a hung or overflowing native call, and the
-lazy-arm and lookup-table checks that rewrite or hand-write IR, stay on
-Linux.
+Deadlines, descendant cleanup and the O2 PIC lookup-table check run locally
+on Linux and macOS through the native backend fixture.
 
 `Runner.chibi` links and runs a bundle on its own target. It uses
 `native_link_host.Link` with LLVM22's `ld64.lld` on macOS or `lld-link` on
@@ -54,6 +52,8 @@ original ABI. `chibi_scalar` takes no arguments and returns `i32`; each
 Calls and arguments occupy flat arrays; symbols are interned and resolved
 once per module. The Windows DLL plan exports those exact symbols. Loaded
 images are closed before removal.
+Its `--modules DIRECTORY LLD_LINKER` mode uses the same parser, linker and
+call ABI for the backend producer's local Linux/macOS verification.
 
 The runner then executes every listed program and checks its exit status.
 On macOS it first sets mode 0755 because artifact transfer discards file

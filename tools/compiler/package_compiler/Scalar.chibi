@@ -573,6 +573,11 @@ ScalarVariable :: (names: Name[], name: string) -> Name {
 ScalarRecordOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                    names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> int {
     value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.ForceUnwrapExpression)) {
+        payload := ScalarUnwrappedType(forest, text, callables, params, names, types, members, package, value);
+        if (payload.storage == StructStorage && payload.container == 0) { return payload.record; }
+        return -1;
+    }
     // A single named result projected by name is its call's value.
     if (Is(forest, value, syntax.MemberExpression) &&
         ScalarProjected(forest, text, callables, params, names, package, value) >= 0) {
@@ -797,6 +802,11 @@ ScalarTaskCallee :: (forest: snapshot.SnapshotNode[], text: string, callables: C
 ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                          callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], operand: int, context: int) -> int {
     node := ScalarTarget(forest, operand);
+    if (Is(forest, node, syntax.ForceUnwrapExpression)) {
+        payload := ScalarUnwrappedType(forest, text, callables, params, names, types, members, callable.package, node);
+        if (payload.container == 0) { return payload.storage; }
+        return 0;
+    }
     if (Is(forest, node, syntax.AwaitExpression)) {
         // The result of the waiting function it awaits; a task's is a union.
         awaited := Unparenthesized(forest, Field(forest, node, syntax.FieldValue));
@@ -954,6 +964,9 @@ ScalarTarget :: (forest: snapshot.SnapshotNode[], operand: int) -> int {
 ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], operand: int, expected: int, rows: facts.Row[]) -> ScalarOperands {
     node := ScalarTarget(forest, operand);
+    if (Is(forest, node, syntax.ForceUnwrapExpression)) {
+        return ScalarUnwrapRows(forest, text, callables, params, callable, names, types, members, constants, node, rows);
+    }
     mapped_read := ScalarMapRead(forest, text, callables, names, types, callable.package, node);
     if (mapped_read.operator != 0) {
         return ScalarMapReadRows(forest, text, callables, params, callable, names, types, members, constants, node, mapped_read, rows);
@@ -1514,6 +1527,11 @@ ScalarIs :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[
 ScalarHeldUnion :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                     names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> int {
     value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.ForceUnwrapExpression)) {
+        payload := ScalarUnwrappedType(forest, text, callables, params, names, types, members, package, value);
+        if (payload.storage == UnionStorage && payload.container == 0) { return payload.record; }
+        return -1;
+    }
     if (Is(forest, value, syntax.MemberExpression)) {
         field := ScalarMember(forest, text, callables, params, names, types, members, package, value);
         if (field >= 0 && members[field].storage == UnionStorage && members[field].container == 0) {
@@ -1529,6 +1547,33 @@ ScalarHeldUnion :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
         return -1;
     }
     return ScalarUnionOf(forest, text, callables, names, types, package, value);
+}
+// The payload descriptor already checked by the ordinary force-unwrap step.
+ScalarUnwrappedType :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                        names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> ValueType {
+    optional := ScalarHeldUnion(forest, text, callables, params, names, types, members, package,
+                                Field(forest, node, syntax.FieldOperand));
+    if (!ScalarOptional(types, optional)) { return {storage: 0, container: 0, record: -1}; }
+    return {storage: types[optional].value_storage, container: types[optional].value_container,
+            record: types[optional].value_record};
+}
+ScalarUnwrapRows :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                     callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                     constants: ConstDecl[], node: int, rows: facts.Row[]) -> ScalarOperands {
+    payload := ScalarUnwrappedType(forest, text, callables, params, names, types, members, callable.package, node);
+    type := ScalarValueType(types, payload.storage, payload.container, payload.record);
+    if (payload.container != 0 || type == 0) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0,
+                                              "native force unwrap requires a number, bool, string, record or union payload"));
+    }
+    switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants,
+                         Field(forest, node, syntax.FieldOperand), UnionStorage, rows) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built):
+            output := built;
+            output.append(ScalarAt(forest, node, facts.UnwrapRow, type, 0, 1, ""));
+            return ScalarOperands.Built(output);
+    }
 }
 // The operand of the comparison `node`, `x == nil` or `x != nil`, that is a
 // value of an optional, or -1 for any other comparison.
@@ -1616,6 +1661,9 @@ ScalarRecordValue :: (forest: snapshot.SnapshotNode[], text: string, callables: 
                       callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], operand: int,
                       record: int, rows: facts.Row[]) -> ScalarOperands {
     node := Unparenthesized(forest, operand);
+    if (Is(forest, node, syntax.ForceUnwrapExpression)) {
+        return ScalarUnwrapRows(forest, text, callables, params, callable, names, types, members, constants, node, rows);
+    }
     type := ScalarRecordType(types, record);
     if (ScalarOptional(types, record)) {
         return ScalarOptionalValue(forest, text, callables, params, callable, names, types, members, constants, operand,

@@ -5,6 +5,7 @@ compiler=${1:?pass the native compiler}
 llvm=${2:?pass the LLVM tools directory}
 reference=${3:-}
 root=$(cd "$(dirname "$0")/../../.." && pwd -P)
+source=${4:-$root/test/native_aot/managed_values/Records.chibi}
 case "$compiler" in /*) ;; *) compiler=$(pwd -P)/$compiler ;; esac
 case "$llvm" in /*) ;; *) llvm=$(pwd -P)/$llvm ;; esac
 case "$(uname -s)-$(uname -m)" in
@@ -35,7 +36,7 @@ ln -s "$llvm/$linker" "$work/llvm/$linker"
 export CHIBI_VALUE_LLVM=$llvm CHIBI_VALUE_AUDIT=$root/test/native_aot/managed_values/Audit.ll
 for level in 0 2; do
     "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
-        --source "$root/test/native_aot/managed_values/Records.chibi" --entry Main \
+        --source "$source" --entry Main \
         --output "$work/records-O$level" --llvm "$work/llvm" --target "$triple" --level "$level" --jobs 1
     "$work/records-O$level"
     printf 'PASS native managed records, arrays and unions O%s, allocations balanced\n' "$level"

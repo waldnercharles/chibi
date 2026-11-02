@@ -18,9 +18,11 @@ for level in 0 2; do
     [ "$native_status" -eq 1 ] || { cat "$work/native.log"; exit 1; }
     awk '/^(PASS|FAIL) facts[.]/ { print }' "$work/native.log" | LC_ALL=C sort > "$work/native.results"
     diff -u "$repo/test/native_aot/failures/expected.txt" "$work/native.results"
-    awk '/10 tests, 4 failed/ { found=1 } END { exit !found }' "$work/native.log"
+    awk '/17 tests, 7 failed/ { found=1 } END { exit !found }' "$work/native.log"
     awk '/expected IndexOutOfRange, but it failed with AssertionFailed/ { found=1 } END { exit !found }' "$work/native.log"
     awk '/expected AssertionFailed, but the test returned/ { found=1 } END { exit !found }' "$work/native.log"
+    awk '/expected AssertionFailed, but it failed with UnwrappedNil/ { found=1 } END { exit !found }' "$work/native.log"
+    awk '/expected UnwrappedNil, but the test returned/ { found=1 } END { exit !found }' "$work/native.log"
 done
 if [ -n "$reference" ]; then
     set +e

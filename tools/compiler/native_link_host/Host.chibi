@@ -97,6 +97,14 @@ pub Objects :: (llvm: string, modules: string[], objects: string[], level: int, 
                         stopped := os.Kill(processes[other]);
                     }
                 }
+                // opt and llc may leave partial bitcode, including the failing
+                // step. Reap active writers before removing owned intermediates.
+                for (other in 0..<next) {
+                    bitcode := Join([objects[other], ".bc"]);
+                    if (os.Exists(bitcode) && os.Remove(bitcode) != nil) {
+                        os.Print(Join(["native: cannot remove intermediate bitcode ", bitcode]));
+                    }
+                }
                 return failure;
             }
             if (steps[index] == 1) {

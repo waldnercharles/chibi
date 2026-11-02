@@ -44,8 +44,8 @@ pub Targets :: () -> string[] {
 // archive for a `third-party/` entry.
 Files :: (target: string) -> string[] {
     if (target == "chibi_asset_compiler_host") {
-        return ["src/authoring/asset_compiler_host.c", "src/authoring/package_compile.c",
-                "src/authoring/asset_compiler_native.c", "src/support/binary_cache.c", "src/host/process.c"];
+        return ["src/authoring/asset_compiler_host.c", "src/authoring/asset_compiler_native.c",
+                "src/support/binary_cache.c", "src/host/process.c"];
     }
     if (target == "reflect") {
         return [
@@ -176,7 +176,7 @@ Files :: (target: string) -> string[] {
         return ["src/host/native_default.c"];
     }
     if (target == "chibi_source_catalog") {
-        return ["src/authoring/source_package_files.c", "src/authoring/package_tests.c"];
+        return ["src/authoring/source_package_files.c", "src/authoring/package_tests.c", "src/authoring/package_compile.c"];
     }
     if (target == "chibi_build_host") {
         return [
@@ -290,7 +290,7 @@ pub PublicHeaders :: (target: string) -> string[] {
         return ["toolchain/compiler_host.h"];
     }
     if (target == "chibi_asset_compiler_host") {
-        return ["authoring/asset_compiler_host.h", "authoring/package_compile.h"];
+        return ["authoring/asset_compiler_host.h"];
     }
     if (target == "chibi_support") {
         return [
@@ -409,7 +409,7 @@ pub PublicHeaders :: (target: string) -> string[] {
         return ["host/native_default.h"];
     }
     if (target == "chibi_source_catalog") {
-        return ["authoring/package_tests.h", "authoring/source_package_io.h"];
+        return ["authoring/package_tests.h", "authoring/source_package_io.h", "authoring/package_compile.h"];
     }
     if (target == "chibi_program") {
         return ["authoring/program.h", "authoring/program_service.h"];
@@ -421,6 +421,9 @@ pub PublicHeaders :: (target: string) -> string[] {
 // no target, such as chibi_physics, is a private/NAME directory several
 // libraries share, which CMake stages for none of them alone.
 pub PrivateHeaders :: (target: string) -> string[] {
+    if (target == "chibi_source_catalog") {
+        return ["support/sha256.h"];
+    }
     if (target == "chibi_asset_compiler_host") {
         return ["support/binary_cache.h", "support/sha256.h", "authoring/asset_compiler_native.h", "host/process.h"];
     }
@@ -550,13 +553,9 @@ pub Includes :: (target: string) -> string[] {
         ];
     }
     if (target == "chibi_asset_compiler_host") {
-        return [
-            "public/asset_compiler_host", "private/asset_compiler_host",
-            "third_party/yyjson", "public/asset_values", "public/support", "public/compiler_host",
-            "public/behavior_runtime", "public/execution", "public/types", "public/execution_contract", "public/capabilities", "public/tasks", "public/events", "public/asset_json", "public/json",
-            "public/source_catalog", "private/compiler-target", "public/native_prepared",
-            "public/native_capabilities"
-        ];
+        // This compile-only ABI runs the native service; the legacy VM
+        // decoder belongs to chibi_source_catalog, not the facade archive.
+        return ["public/asset_compiler_host", "private/asset_compiler_host", "public/support"];
     }
     if (target == "reflect") {
         return ["public/capabilities", "public/types", "public/support", "public/execution_contract"];
@@ -716,7 +715,8 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_source_catalog") {
         return [
             "public/source_catalog", "private/source_catalog", "third_party/yyjson",
-            "public/support",
+            "public/support", "public/asset_compiler_host", "public/compiler_host",
+            "private/compiler-target", "public/native_prepared",
             "public/capabilities", "public/types", "public/execution",
             "public/execution_contract", "public/tasks", "public/native_capabilities",
             "public/input_action",
@@ -1382,13 +1382,13 @@ pub Links :: (target: string) -> string[] {
     }
     if (target == "chibi-compile" && os.Platform() == "Darwin") {
         return [
-            "chibi_behavior_runtime",
+            "chibi_source_catalog", "chibi_behavior_runtime",
             "chibi_asset_json", "chibi_asset_compiler_host", "chibi_compiler_host", "chibi_asset_json", "chibi_native_prepared",
             "chibi_host_native_default",
             "chibi_host_native_catalog", "chibi_native_bindings",
             "chibi_task_pool_runtime",
             "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lc++",
-            "chibi_source_catalog", "chibi_text_capabilities", "chibi_fmt",
+            "chibi_text_capabilities", "chibi_fmt",
             "chibi_array_capabilities", "chibi_core_capabilities", "chibi_selection_capabilities", "chibi_set_capabilities", "chibi_comparison_capabilities",
             "chibi_conversion_capabilities", "chibi_vector_capabilities", "chibi_math_capabilities",
             "chibi_arithmetic_capabilities", "chibi_value_document", "chibi_json", "chibi_behavior_runtime", "chibi_events",

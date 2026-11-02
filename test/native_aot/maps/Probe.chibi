@@ -14,7 +14,7 @@ import strings "core:strings"
 Main :: () -> int {
     arguments := os.Arguments();
     if (length(arguments) != 4) {
-        os.Print("usage: probe WORK LLVM RUNTIME positive|tombstone-key|tombstone-value|facts|readonly");
+        os.Print("usage: probe WORK LLVM RUNTIME positive|tombstone-key|tombstone-value|facts|readonly|source");
         return 2;
     }
     work := arguments[0];
@@ -40,7 +40,7 @@ Main :: () -> int {
         type := native.MapOf(abi.IntStorage, abi.IntStorage);
         map := Constant(&test, type, 0);
         returned = Read(&test, native.MapLength, abi.IntStorage, map, 0, type);
-    } else if (mode == "facts") {
+    } else if (mode == "facts" || mode == "source") {
         // The independent facts consumer is emitted after choosing its target.
     } else {
         os.Print("native maps: unknown probe mode");
@@ -63,7 +63,14 @@ Main :: () -> int {
     names: string[] = [];
     source: native.Source = {file: "", directory: ""};
     text := "";
-    if (mode == "facts") {
+    if (mode == "source") {
+        read := os.ReadText(format_text("{}/source.ll", work));
+        if (read.error) { return 2; }
+        // Standalone source uses typed process failures. This ownership-only
+        // harness arms no quotas, and every failure must fail the probe.
+        text = strings.ReplaceAll(read.text, "declare void @chibi_native_step()\n", "");
+        text = strings.ReplaceAll(text, "declare void @chibi_native_failure(i32) noreturn\n", "");
+    } else if (mode == "facts") {
         rows := FactModule();
         for (row in rows) {
             if (row.kind == facts.AssertRow) {
@@ -94,6 +101,11 @@ Main :: () -> int {
     module := format_text("{}/maps-{}.ll", work, mode);
     globals := format_text("\n@map_test.expected_index = internal constant i1 {}\n", expected_index);
     runtime_text := runtime.text;
+    if (mode == "source") {
+        runtime_text = strings.Concatenate([runtime_text,
+            "\ndefine void @chibi_native_step() { ret void }\n",
+            "define void @chibi_native_failure(i32 %kind) noreturn { call void @exit(i32 134)\n unreachable }\n"]);
+    }
     if (!strings.Contains(text, "@chibi_scalar(ptr %ctx)")) {
         runtime_text = strings.ReplaceAll(runtime_text, "call i32 @chibi_scalar(ptr @map_test.context)",
                                          "call i32 @chibi_scalar()");
@@ -127,7 +139,11 @@ Main :: () -> int {
             return 1;
         }
     }
-    os.Print(format_text("native maps: {} at O0 and O2 passed, {} assertion sites", mode, test.checks));
+    if (mode == "source") {
+        os.Print("native maps: authored source at O0 and O2 passed with balanced allocations");
+    } else {
+        os.Print(format_text("native maps: {} at O0 and O2 passed, {} assertion sites", mode, test.checks));
+    }
     return 0;
 }
 

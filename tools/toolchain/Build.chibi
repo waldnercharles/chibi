@@ -86,7 +86,7 @@ ThirdPartyArchive :: (cache: string, buildDir: string, repository: string, relea
 }
 // Makes sure the cache holds every archive third_party/archives.tsv lists
 // for this host's target; cmake/third_party.cmake picks the build's variant.
-ThirdParty :: (cache: string, buildDir: string) -> bool {
+ThirdParty :: (cache: string, buildDir: string, requested: string) -> bool {
     target := ThirdPartyTarget();
     repository := "";
     manifest := os.ReadText(Join([os.Root(), "/third_party/archives.tsv"]));
@@ -102,6 +102,7 @@ ThirdParty :: (cache: string, buildDir: string) -> bool {
             continue;
         }
         variant := strings.Partition(strings.Partition(line, "\t").tail, "\t").head;
+        if (requested != "" && variant != requested) { continue; }
         release := strings.Partition(strings.Partition(strings.Partition(line, "\t").tail, "\t").tail, "\t").head;
         sha256 := strings.Partition(strings.Partition(strings.Partition(line, "\t").tail, "\t").tail, "\t").tail;
         asset := Join(["third-party-", target, "-", variant, ".tar.gz"]);
@@ -149,7 +150,7 @@ PruneThirdParty :: (cache: string) -> bool {
 }
 // Prepares only the third-party archives, for a build the Chibi graph
 // (tools/toolchain/Graph.chibi) compiles instead of CMake.
-PrepareThirdParty :: (buildDir: string) -> int {
+PrepareThirdParty :: (buildDir: string, variant: string) -> int {
     cache := ThirdPartyCache();
     made := os.MakeDirectory(buildDir);
     if (made) {
@@ -157,7 +158,7 @@ PrepareThirdParty :: (buildDir: string) -> int {
         return 1;
     }
     made = os.MakeDirectory(cache);
-    if (made || !ThirdParty(cache, buildDir) || !PruneThirdParty(cache)) {
+    if (made || !ThirdParty(cache, buildDir, variant) || !PruneThirdParty(cache)) {
         os.Print("cannot prepare the third-party archives");
         return 1;
     }
@@ -187,7 +188,7 @@ Build :: () -> int {
     arguments := os.Arguments();
     if (length(arguments) == 2 && arguments[0] == "vendor") {
         // Prepares the archives and prints where the Release one keeps its libraries.
-        status := PrepareThirdParty(arguments[1]);
+        status := PrepareThirdParty(arguments[1], "release");
         folder := VendorFolder();
         if (status != 0 || folder == "") {
             os.Print("no vendored libraries are pinned for this host");
@@ -196,9 +197,14 @@ Build :: () -> int {
         os.Print(folder);
         return 0;
     }
-    if (length(arguments) != 2 || arguments[0] != "third-party") {
-        os.Print("usage: third-party BUILD_DIR | vendor BUILD_DIR");
+    if ((length(arguments) != 2 && length(arguments) != 3) || arguments[0] != "third-party") {
+        os.Print("usage: third-party BUILD_DIR [release] | vendor BUILD_DIR");
         return 2;
     }
-    return PrepareThirdParty(arguments[1]);
+    variant := "";
+    if (length(arguments) == 3) {
+        variant = arguments[2];
+        if (variant != "release") { os.Print("third-party: the optional variant must be release"); return 2; }
+    }
+    return PrepareThirdParty(arguments[1], variant);
 }

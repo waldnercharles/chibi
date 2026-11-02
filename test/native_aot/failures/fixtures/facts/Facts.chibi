@@ -1,0 +1,23 @@
+package facts
+import testing "core:testing"
+import helper "project:helper"
+@test
+Plain :: () { assert(true); }
+@test
+Assertion :: () { testing.ExpectFailure(testing.Failure.AssertionFailed); assert(false, "expected assert"); }
+@test
+Wrong :: () { testing.ExpectFailure(testing.Failure.IndexOutOfRange); assert(false, "wrong category"); }
+@test
+Before :: () { assert(false, "before expectation"); testing.ExpectFailure(testing.Failure.AssertionFailed); }
+@test
+Returns :: () { testing.ExpectFailure(testing.Failure.AssertionFailed); }
+@test
+Bounds :: () { testing.ExpectFailure(testing.Failure.IndexOutOfRange); items := [int(1), 2]; assert(items[9] == 0); }
+@test
+WrongBounds :: () { testing.ExpectFailure(testing.Failure.AssertionFailed); items := [int(1)]; assert(items[9] == 0); }
+@test
+Imported :: () { helper.Arm(); assert(false, "imported arm"); }
+@test
+Overwrite :: () { testing.ExpectFailure(testing.Failure.IndexOutOfRange); helper.Arm(); assert(false, "last arm wins"); }
+@test
+Budget :: () { testing.ExpectFailure(testing.Failure.BudgetExhausted); while (true) {} }

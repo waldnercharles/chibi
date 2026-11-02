@@ -10,20 +10,27 @@ run it with `chibi`. Game projects add scenes, components and resources.
 
 ## Install
 
-Native builds need a C23 compiler and libclang for reflection.
-Run these commands from the engine checkout:
+The native compiler and CLI need LLVM/LLD 22 or newer. Set
+`CHIBI_LLVM_BIN` to the directory containing `opt`, `llc` and the platform linker,
+then run these commands from the engine checkout:
 
 ```sh
-chibi build install
+sh tools/build.sh install
 export PATH="$HOME/.local/bin:$PATH"
 chibi doctor
 ```
 
-The default install directory is `~/.local`. Use `chibi build install --prefix /absolute/prefix`
-to select another directory. The SDK includes the `chibi` command, compiler,
-player, headers and libraries.
+The default install directory is `~/.local`. Use
+`chibi build install --prefix /absolute/prefix` to select another directory.
+The SDK includes the native `chibi` compiler and CLI, authored core and graph
+packages, the native asset compiler, and their resources. Installed tools find
+these resources beside their prefix, so the prefix can move.
 
-For a development build, use `tools/build.sh build` (once a `chibi` exists, `chibi build` inside the checkout does the same). It builds everything: the launcher, the compiler, the private hosts and the test drivers; `--target chibi` builds one product. Run the command as `build/sdk/chibi`. From a cold tree it first builds the Release hosts in `build-release` so the asset compiler is generated quickly, then the Debug build. A cold Release build of everything took 238 seconds on a 10-core Apple M-series machine (`--release` builds `build-release`).
+For a development build, use `sh tools/build.sh build`. Once `chibi` is installed,
+`chibi build` inside the checkout does the same. The default products are the
+native CLI/compiler and asset compiler; `--target chibi` builds the CLI/compiler
+alone. Run it as `build/sdk/chibi`. Explicit C engine and test targets still
+require a C23 compiler and libclang for reflection.
 
 ## Hello World
 

@@ -2,6 +2,19 @@ name: Native self-host
 
 on:
   workflow_dispatch:
+    inputs:
+      windows_bootstrap_run:
+        description: Reuse this run's successful Linux cross-build for Windows only
+        type: string
+        default: ''
+      windows_bootstrap_commit:
+        description: Exact source commit of the reused cross-build
+        type: string
+        default: ''
+      windows_bootstrap_sha256:
+        description: SHA-256 of the reused chibi.exe, checked before execution
+        type: string
+        default: ''
   pull_request:
     branches: [main]
     paths:
@@ -33,6 +46,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: native-self-host-${{ github.ref }}
@@ -40,6 +54,7 @@ concurrency:
 
 jobs:
   native-self-host:
+    if: inputs.windows_bootstrap_run == ''
     # Goal items 1 and 9: native stage one builds stage two, stage two builds
     # stage three, the two are byte-identical, and each stage's wall time is
     # printed next to the VM-hosted self-build's. The log names the first
@@ -106,6 +121,10 @@ jobs:
           sh test/bootstrap/native-runner.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native task lifetimes
         run: sh test/native_aot/tasks/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+      - name: Check native scalar math
+        run: sh test/native_aot/math_scalar/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+      - name: Check native managed values
+        run: sh test/native_aot/managed_values/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native maps
         run: sh test/native_aot/maps/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native CLI programs
@@ -137,6 +156,10 @@ jobs:
     # Linux job's llc is another version than this runner's.
     name: Native self-host (Windows)
     needs: native-self-host
+    if: >-
+      always() && !cancelled() &&
+      (needs.native-self-host.result == 'success' ||
+       (github.event_name == 'workflow_dispatch' && inputs.windows_bootstrap_run != ''))
     runs-on: windows-2022
     timeout-minutes: 60
     defaults:
@@ -148,10 +171,54 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Validate the pinned Windows bootstrap artifact
+        if: inputs.windows_bootstrap_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BOOTSTRAP_RUN: ${{ inputs.windows_bootstrap_run }}
+          BOOTSTRAP_COMMIT: ${{ inputs.windows_bootstrap_commit }}
+          BOOTSTRAP_SHA256: ${{ inputs.windows_bootstrap_sha256 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:BOOTSTRAP_RUN -notmatch '^[1-9][0-9]*$' -or
+              $env:BOOTSTRAP_COMMIT -notmatch '^[0-9a-f]{40}$' -or
+              $env:BOOTSTRAP_SHA256 -notmatch '^[0-9a-f]{64}$') {
+            throw 'Windows bootstrap requires a run ID, full source commit and SHA-256'
+          }
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BOOTSTRAP_RUN" | ConvertFrom-Json
+          if ($LASTEXITCODE) { throw 'cannot inspect the Windows bootstrap producer' }
+          if ($run.repository.full_name -ne $env:GITHUB_REPOSITORY -or
+              $run.path -ne '.github/workflows/native-self-host.yml' -or
+              $run.head_sha -ne $env:BOOTSTRAP_COMMIT -or $run.status -ne 'completed') {
+            throw 'Windows bootstrap producer identity differs from its pin'
+          }
+          $jobs = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BOOTSTRAP_RUN/jobs?per_page=100" | ConvertFrom-Json
+          if ($LASTEXITCODE) { throw 'cannot inspect the Windows bootstrap producer jobs' }
+          $producer = @($jobs.jobs | Where-Object { $_.name -eq 'Native self-host (Linux)' -and $_.conclusion -eq 'success' })
+          if ($producer.Count -ne 1) { throw 'Windows bootstrap needs a successful Linux cross-build' }
+          $artifacts = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BOOTSTRAP_RUN/artifacts?per_page=100" | ConvertFrom-Json
+          if ($LASTEXITCODE) { throw 'cannot inspect the Windows bootstrap artifact' }
+          $artifact = @($artifacts.artifacts | Where-Object { $_.name -eq 'native-stage-two-windows' -and !$_.expired })
+          if ($artifact.Count -ne 1 -or $artifact[0].workflow_run.head_sha -ne $env:BOOTSTRAP_COMMIT) {
+            throw 'Windows bootstrap has no unexpired artifact from its pinned commit'
+          }
+          "Windows bootstrap producer $env:BOOTSTRAP_RUN source $env:BOOTSTRAP_COMMIT artifact $($artifact[0].id)" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
       - uses: actions/download-artifact@v4
         with:
           name: native-stage-two-windows
           path: ${{ runner.temp }}/stage2
+          run-id: ${{ inputs.windows_bootstrap_run || github.run_id }}
+          github-token: ${{ github.token }}
+      - name: Check the Windows bootstrap compiler's bytes
+        env:
+          BOOTSTRAP_SHA256: ${{ inputs.windows_bootstrap_sha256 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sha256 = (Get-FileHash "$env:RUNNER_TEMP/stage2/chibi.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($env:BOOTSTRAP_SHA256 -and $sha256 -ne $env:BOOTSTRAP_SHA256) {
+            throw 'Windows bootstrap compiler SHA-256 differs from its pin'
+          }
+          "Windows bootstrap compiler sha256 $sha256" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
       - name: Restore the verified LLVM tools
         id: llvm-cache
         uses: actions/cache/restore@v4
@@ -241,7 +308,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $root = $PWD.Path.Replace('\', '/')
           $work = $env:RUNNER_TEMP.Replace('\', '/')
-          & "$work/stage2/chibi.exe" --compiler "$root/tools/compiler" --core "$root/packages/core" --source "$root/test/native_aot/link/windows/Main.chibi" --entry Main --output "$work/windows-objects.exe" --llvm $env:CHIBI_WINDOWS_LLVM --target x86_64-pc-windows-msvc --jobs 4
+          & "$work/stage2/chibi.exe" --compiler "$root/tools/compiler" --core "$root/packages/core" --source "$root/test/native_aot/link/windows/Main.chibi" --collection "graph=$root/tools/graph" --entry Main --output "$work/windows-objects.exe" --llvm $env:CHIBI_WINDOWS_LLVM --target x86_64-pc-windows-msvc --jobs 4
           if ($LASTEXITCODE) { throw 'could not compile the Windows object regression' }
           & "$work/windows-objects.exe" $env:CHIBI_WINDOWS_LLVM $work
           if ($LASTEXITCODE) { throw 'the Windows object regression failed' }

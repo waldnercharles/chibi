@@ -87,7 +87,7 @@ WindowsContextStart :: () -> string {
         "  ret void\n",
         "}\n",
         "define internal void @chibi_index_failed(ptr %ctx, i32 %index, i32 %length) {\n",
-        "  call void @ExitProcess(i32 134)\n",
+        "  call void @chibi_native_failure(i32 1)\n",
         "  unreachable\n",
         "}\n",
         "define internal void @chibi_write(ptr %bytes, i32 %count) {\n",
@@ -143,7 +143,7 @@ WindowsContextStart :: () -> string {
         "  call void @chibi_write(ptr @chibi_report_to, i32 4)\n",
         "  call void @chibi_write_decimal(i64 %end.wide)\n",
         "  call void @chibi_write(ptr @chibi_report_end, i32 1)\n",
-        "  call void @ExitProcess(i32 134)\n",
+        "  call void @chibi_native_failure(i32 4)\n",
         "  unreachable\n",
         "done:\n",
         "  call void @ExitProcess(i32 %status)\n",
@@ -214,7 +214,7 @@ DynamicStart :: (triple: string, context: bool) -> string {
         "  ret void\n",
         "}\n",
         "define internal void @chibi_index_failed(ptr %ctx, i32 %index, i32 %length) {\n",
-        "  call void @abort()\n",
+        "  call void @chibi_native_failure(i32 1)\n",
         "  unreachable\n",
         "}\n",
         "@chibi_context = global { ptr, ptr, ptr, ptr, ptr } ",
@@ -237,7 +237,8 @@ DynamicStart :: (triple: string, context: bool) -> string {
         "  %end.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 2\n",
         "  %end = load i32, ptr %end.at\n",
         "  call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @chibi_report, i64 %function, i32 %start, i32 %end)\n",
-        "  ret i32 134\n",
+        "  call void @chibi_native_failure(i32 4)\n",
+        "  unreachable\n",
         "done:\n",
         "  ret i32 %status\n",
         "}\n"
@@ -718,9 +719,9 @@ pub Start :: (triple: string, static: bool, context: bool) -> string {
         return "";
     }
     if (TargetOf(triple) == WindowsX64) {
-        return Join([module, WindowsArguments()]);
+        return Join([module, FailureRuntime(true, context, false), WindowsArguments()]);
     }
-    return Join([module, PosixArguments()]);
+    return Join([module, FailureRuntime(false, context, static && TargetOf(triple) == LinuxX64), PosixArguments()]);
 }
 
 // A shared generation has no process entry. Its host-call wrappers use the
@@ -734,7 +735,7 @@ pub SharedContext :: (triple: string, context: bool) -> string {
     assert(boundary > 0);
     module = strings.Slice(module, 0, boundary);
     module = strings.ReplaceAll(module, "@chibi_context = global", "@chibi_context = hidden global");
-    module = Join([module, PosixArguments(),
+    module = Join([module, FailureRuntime(false, context, false), PosixArguments(),
         "define i32 @chibi_host_set_process(i64 %count, ptr %arguments, ptr %environment) {\n",
         "  %n = trunc i64 %count to i32\n  store i32 %n, ptr @chibi_argc\n",
         "  store ptr %arguments, ptr @chibi_argv\n  store ptr %environment, ptr @chibi_envp\n  ret i32 0\n}\n"]);

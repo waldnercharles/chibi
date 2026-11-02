@@ -141,9 +141,9 @@ EmitRows :: (collections: string[], directories: string[], paths: string[], sour
     if (shared) {
         emitted = scalar.EmitShared(target, rows);
     } else if (directory == "") {
-        emitted = scalar.EmitFor(target, rows);
+        emitted = scalar.EmitProgramFor(target, rows, "");
     } else {
-        emitted = scalar.EmitLines(rows, directory);
+        emitted = scalar.EmitProgramFor(target, rows, directory);
     }
     switch emitted {
         case .Rejected(rejected):

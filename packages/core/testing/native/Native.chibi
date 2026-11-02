@@ -2,8 +2,7 @@ package native
 
 // The native test process owns the expectation; the helper is provided by
 // the native start module, not an external C library.
-foreign import runtime "system:c"
-foreign runtime {
+foreign {
     chibi_native_test_expect :: (kind: int) -> int
 }
 

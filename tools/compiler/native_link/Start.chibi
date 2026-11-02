@@ -930,12 +930,9 @@ pub Start :: (triple: string, static: bool, context: bool) -> string {
         return "";
     }
     if (TargetOf(triple) == WindowsX64) {
-        return Join([module, FailureRuntime(true, context), WindowsArguments()]);
+        return Join([module, FailureRuntime(true, context, false), WindowsArguments()]);
     }
-    if (static && !context) {
-        return Join([module, PosixArguments()]);
-    }
-    return Join([module, FailureRuntime(false, context), PosixArguments()]);
+    return Join([module, FailureRuntime(false, context, static && TargetOf(triple) == LinuxX64), PosixArguments()]);
 }
 
 // A shared generation has no process entry. Its host-call wrappers use the
@@ -949,7 +946,7 @@ pub SharedContext :: (triple: string, context: bool) -> string {
     assert(boundary > 0);
     module = strings.Slice(module, 0, boundary);
     module = strings.ReplaceAll(module, "@chibi_context = global", "@chibi_context = hidden global");
-    module = Join([module, FailureRuntime(false, context), PosixArguments(),
+    module = Join([module, FailureRuntime(false, context, false), PosixArguments(),
         "define i32 @chibi_host_set_process(i64 %count, ptr %arguments, ptr %environment) {\n",
         "  %n = trunc i64 %count to i32\n  store i32 %n, ptr @chibi_argc\n",
         "  store ptr %arguments, ptr @chibi_argv\n  store ptr %environment, ptr @chibi_envp\n  ret i32 0\n}\n"]);

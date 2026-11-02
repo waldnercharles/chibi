@@ -997,8 +997,10 @@ NativeVendorSample :: (arguments: string[]) -> int {
 // Proves goal item 1: the native stage one compiles tools/compiler to stage
 // two, stage two compiles it to stage three, and the two are byte-identical.
 // Prints each stage's wall time and, for item 9, the VM-hosted self-build's
-// (the recovery's seed to stage one to stage two) only with --compare-vm. Stage one is
-// the selected native compiler, optionally overridden by --stage-one.
+// (the recovery's seed to stage one to stage two) only with --compare-vm,
+// unless --skip-vm-comparison omits that timing while retaining both command
+// parity checks. Stage one is the selected native compiler, optionally
+// overridden by --stage-one.
 NativeSelfHost :: (arguments: string[]) -> int {
     dry := Flag(arguments, "--dry-run")
     compare_vm := Flag(arguments, "--compare-vm") && !Flag(arguments, "--skip-vm")
@@ -1013,7 +1015,7 @@ NativeSelfHost :: (arguments: string[]) -> int {
         os.Print("native-self-host: pass --stage-one PROGRAM or --native-driver PROGRAM")
         return 2
     }
-    // C hosts are used only for the optional historical performance comparison.
+    // C hosts serve the opt-in VM command parity and historical self-build comparison.
     releases := Absolute(Option(arguments, "--release-build", "build-release"))
     build_host := Join([releases, "/sdk/chibi-build-host"])
     compiler_host := Join([releases, "/sdk/chibi-compiler-host"])
@@ -1104,7 +1106,7 @@ NativeSelfHost :: (arguments: string[]) -> int {
             return status
         }
     }
-    if (compare_vm) {
+    if (compare_vm && !Flag(arguments, "--skip-vm-comparison")) {
         began := Clock()
         status = Step("vm-hosted-self-build", [compiler_host, "--bootstrap", "tools/compiler/bootstrap", "--compiler", "tools/compiler", "--core", "packages/core"], dry)
         if (status != 0) {
@@ -1204,7 +1206,7 @@ Usage :: () -> int {
     os.Print("       build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--timeout SECONDS] [--list] [--dry-run] NAME...")
     os.Print("       build install [--prefix DIR] [--release-build DIR]")
     os.Print("       build format [--check] | clean | census | publish-seed | native-census | native-evidence --build DIR --output DIR --nm PATH --sha SHA --sanitizers ON|OFF ...")
-    os.Print("       build native-self-host --llvm DIR [--stage-one PROGRAM] [--windows DIR] [--work DIR] [--release-build DIR] [--build-host PATH --compiler-host PATH] [--stage-two-only] [--compare-vm] [--dry-run]")
+    os.Print("       build native-self-host --llvm DIR [--stage-one PROGRAM] [--windows DIR] [--work DIR] [--release-build DIR] [--build-host PATH --compiler-host PATH] [--stage-two-only] [--compare-vm [--skip-vm-comparison]] [--dry-run]")
     os.Print("       build native-vendor-sample --llvm DIR --native-driver PROGRAM [--work DIR] [--dry-run]")
     os.Print("       build bootstrap-artifact | bootstrap-recover [--release-build DIR]")
     os.Print("       build sdk-reflect [--reflect-build DIR] [-- NATIVE ARGUMENTS]")

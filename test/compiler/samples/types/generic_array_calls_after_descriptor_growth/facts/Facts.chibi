@@ -1,0 +1,13 @@
+package facts
+
+Read :: () -> int {
+    first := [int(2), int(3)];
+    older := make_array(first);
+    flags := [false, true];
+    newer := make_array(flags);
+    reused := make_array(first);
+    result := older[0][1] * 100 + reused[0][0] * 10 + length(newer[0]);
+    if newer[0][0] { result += 1000; }
+    if newer[0][1] { result += 1; }
+    return result;
+}

@@ -375,7 +375,7 @@ ScalarTypeOf :: (storage: int) -> int {
 ScalarDeclares :: (types: TypeDecl[], declared: TypeDecl) -> bool {
     // An optional is the union of nil and its payload; ScalarResults leaves
     // the kind only on those with a payload of this subset.
-    return declared.kind == TaskResultDecl || declared.kind == OptionalDecl || ((declared.kind == RecordDecl || declared.kind == UnionDecl) && declared.node >= 0);
+    return declared.kind == TaskResultDecl || declared.kind == OptionalDecl || ScalarNestedCollection(declared) || ((declared.kind == RecordDecl || declared.kind == UnionDecl) && declared.node >= 0);
 }
 // Whether `held` is the record of an optional.
 ScalarOptional :: (types: TypeDecl[], held: int) -> bool {
@@ -392,7 +392,7 @@ ScalarRecordType :: (types: TypeDecl[], record: int) -> int {
     ordinal: int = 0;
     for (index in 0..<record) {
         kind := types[index].kind;
-        if (kind == TaskResultDecl || kind == OptionalDecl || ((kind == RecordDecl || kind == UnionDecl) && types[index].node >= 0)) {
+        if (kind == TaskResultDecl || kind == OptionalDecl || ScalarNestedCollection(types[index]) || ((kind == RecordDecl || kind == UnionDecl) && types[index].node >= 0)) {
             ordinal += 1;
         }
     }
@@ -519,7 +519,18 @@ ScalarResults :: (callables: Callable[], params: Param[], types: TypeDecl[], mem
         if (declared.kind == OptionalDecl &&
             (used[index] == 0 ||
              ScalarValueType(records, declared.value_storage, declared.value_container, declared.value_record) == 0)) {
-            records[index].kind = CollectionDecl;
+            records[index].kind = ScalarExcludedDecl;
+        }
+    }
+    // Collection constructors are interned inside out. Each immediate array
+    // points to an earlier collection, and the facts record domain is <1024.
+    for (index in 0..<length(records)) {
+        declared := records[index];
+        if (declared.kind == CollectionDecl &&
+            (!ScalarNestedCollection(declared) || declared.value_storage == PointerStorage ||
+             declared.value_record >= index ||
+             ScalarValueType(records, declared.value_storage, declared.value_container, declared.value_record) == 0)) {
+            records[index].kind = ScalarExcludedDecl;
         }
     }
     return ScalarView.Viewed(seen, records, fields);
@@ -943,6 +954,9 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (ScalarLengthOf(forest, text, callables, params, names, types, members, callable.package, node) >= 0) {
             return IntStorage;
         }
+        if (ScalarMakeArray(forest, text, callables, names, callable.package, node)) {
+            return ScalarMadeShape(forest, text, callables, params, names, types, members, callable.package, node).storage;
+        }
         native := ScalarArrayCall(forest, text, callables, params, names, types, members, callable.package, node);
         if (native.operator == facts.ArrayContains) {
             return BoolStorage;
@@ -1100,6 +1114,9 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             return ScalarForeignRows(forest, text, callables, params, callable, names, types, members, constants, node,
                                      callee_foreign, rows);
         }
+    }
+    if (ScalarMakeArray(forest, text, callables, names, callable.package, node)) {
+        return ScalarMadeRows(forest, text, callables, params, callable, names, types, members, constants, node, rows);
     }
     native := ScalarArrayCall(forest, text, callables, params, names, types, members, callable.package, node);
     if (native.operator != 0) {
@@ -2336,6 +2353,10 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         first := Field(forest, statement, syntax.FieldFirst);
         if (first < 0) {
             visited := Field(forest, statement, syntax.FieldValue);
+            nested := ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, visited);
+            if (nested.record >= 0 && ScalarNestedCollection(types[nested.record])) {
+                return ScalarPlan.Failed(Diagnose(forest, visited, 0, "native nested array iteration requires projected element bindings"));
+            }
             map := ScalarMapShape(forest, text, callables, names, types, callable.package, visited);
             if (map >= 0 && Field(forest, statement, syntax.FieldReference) < 0 &&
                 Field(forest, statement, syntax.FieldReverse) < 0) {
@@ -3248,7 +3269,7 @@ ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], lent: bool) -
 NativePrintEffect: int : 8;
 // The text, output, array and scalar math natives this producer lowers.
 ScalarTextNative :: (native: ResolvedNative) -> bool {
-    return ScalarMathNative(native) || NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
+    return ScalarMathNative(native) || NativeNameMatches(native, "make_array") || NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
            NativeNameMatches(native, "text_slice") || NativeNameMatches(native, "format_text") ||
            NativeNameMatches(native, "print_string") ||
            NativeNameMatches(native, "length") || NativeNameMatches(native, "append") ||
@@ -3985,6 +4006,10 @@ ScalarRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: T
         if (!ScalarDeclares(types, declared)) {
             continue;
         }
+        if (ScalarNestedCollection(declared)) {
+            rows.extend(ScalarCollectionRows(forest, types, declared));
+            continue;
+        }
         if (declared.kind == TaskResultDecl) {
             rows.append(ScalarAt(forest, 0, facts.UnionRow, 0, 0, 2, format_text("taskresult{}", position)));
             for (ordinal in 0..<2) {
@@ -4400,6 +4425,7 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
     text_natives := ScalarTextNatives(resolved);
     text_ports := ScalarTextPorts(resolved, resolved_ports);
     text_identities := ScalarTextIdentities(resolved, identities);
+    ScalarCollectionCatalog(text_natives, &text_ports);
     ScalarMathCatalog(&text_natives, &text_ports, &text_identities);
     // The bootstrap catalog contains data functions only. Printing is a void
     // action, supplied here for the ordinary body checker and lowered below.

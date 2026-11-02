@@ -45,7 +45,8 @@ Native execution of the build programs does not make every product native:
 - A non-release build still prepares release hosts for that generator unless
   `--asset-generator-hosts` is supplied.
 - The installed SDK and C test drivers still name these products.
-- The old bytecode bootstrap and vendor-sample routes still use compiler hosts.
+- The explicit old bytecode bootstrap route still uses the compiler host.
+  Native recovery and the vendor-sample route use the native compiler.
 
 The native CLI, native driver parity, and retained-state host replace these
 callers. Delete the packaged compiler generator and its targets with that

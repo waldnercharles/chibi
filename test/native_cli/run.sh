@@ -28,6 +28,11 @@ mkdir "$scratch/current directory Ω"
 "$scratch/directories" "$scratch/current directory Ω"
 
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_cli/Checkout.chibi" --entry Main --output "$scratch/checkout" \
+    --llvm "$llvm" --target "$target"
+"$scratch/checkout" "$compiler" "$llvm" "$scratch/programs"
+
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$root/test/native_cli/Identities.chibi" --entry Main --output "$scratch/identities" \
     --llvm "$llvm" --target "$target"
 CHIBI_CORE=$root/packages/core "$scratch/identities" "$compiler" "$llvm" "$scratch/programs"

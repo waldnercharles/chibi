@@ -392,6 +392,10 @@ jobs:
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |
           & ./test/bootstrap/native-runner.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
+      - name: Build native Windows checkout products without host tools
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
+        run: |
+          & ./test/bootstrap/native-checkout.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
       - name: Check native Windows formatting, task timing, math and SDK paths
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |

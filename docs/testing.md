@@ -24,12 +24,14 @@ Nothing is prepared with stage zero.
 ### Authored package tests
 
 `chibi test DIR` runs every `@test` in the packages below `DIR`. The end-user
-command runs eligible tests on a bounded worker pool, with separate native processes;
+native compiler builds one executable per package, then runs each test in its
+own process. Eligible pure tests use a bounded worker pool;
 `CHIBI_TEST_WORKERS=1` keeps it serial (see the
 [package testing guide](guide/testing.md#parallel-execution)). The `chibi-test-*`
 rows of `tools/tests.tsv` run it over the compiler (`tools/compiler`), `core`
-(`packages/core`), `test/integer_arithmetic` and each folder of
-`test/compiler/samples`, all in the `language` group.
+(`packages/core`), `test/integer_arithmetic`, `test/core_strings`,
+`test/standard_library/time`, `test/packages/portable_consumer` and each
+registered folder of `test/compiler/samples`, all in the `language` group.
 
 The compiler's packages keep their tests beside them in `tools/compiler/*/tests`:
 the tokenizer, parser, package paths, routes, syntax and graph, source snapshot,
@@ -62,9 +64,9 @@ benchmark loops.
 `test/core_strings` holds the 174 string behavior rows and the formatting
 fallback rows of the retired `language-package-core` C selector as `@test`s
 against the production `core:strings` package. Its README maps each test to the
-C row it replaced. `chibi test test/core_strings` runs all 191; no
-`tools/tests.tsv` row runs them yet. Native byte ownership, read counters,
-metadata and binary/hash witnesses stay in C.
+C row it replaced. `chibi test test/core_strings` runs all 191;
+`chibi-test-core-strings` runs them in the `language` group. Native byte
+ownership, read counters, metadata and binary/hash witnesses stay in C.
 
 ### Portable byte-library regressions
 
@@ -88,17 +90,21 @@ after another.
 The same `CI` workflow runs full **ASan + UBSan** coverage daily at **08:00 UTC**
 on the latest default-branch commit (GitHub may delay scheduled starts). To run
 it on demand, choose **Actions → CI → Run workflow**, select the candidate
-branch, and enable **sanitizers**. A manual run without that option uses the
-fast profile. Run titles identify `ASan + UBSan` versus `fast Debug O1`; native
-profile artifacts record the selected instrumentation and checked build evidence.
-The event and profile have separate concurrency keys, so a scheduled sanitizer
-run cannot cancel ordinary CI. Job/check names and 45-minute native timeouts
-are unchanged. Sanitizer-only defects can now be discovered after merge rather
-than blocking every PR; a scheduled workflow by itself does not automatically
+branch, choose **mode=full**, and enable **sanitizers**. Manual `mode=ci` runs
+the canonical five jobs without sanitizers; `mode=full` without that option also
+uses the fast profile. Run titles show the mode/event and ref; native-profile
+artifacts record the selected instrumentation and checked build evidence.
+The event and manual mode have separate concurrency keys, so a scheduled
+sanitizer run cannot cancel ordinary CI. Job/check names remain stable. Linux
+keeps separate 45-minute core and 90-minute native budgets within a 135-minute
+job; macOS core keeps 45 minutes and target-module jobs keep 10 minutes. Windows
+native self-host keeps 60 minutes without sanitizers. Sanitizer-only defects
+can now be discovered after merge rather than blocking every PR; a scheduled
+workflow by itself does not automatically
 triage or fix failures.
 
-Before a major release, dispatch with **sanitizers enabled** on the exact release
-candidate; require both Linux and macOS native jobs and all existing functional
+Before a major release, use **mode=full with sanitizers enabled** on the exact
+release candidate when dispatch is authorized; require both Linux and macOS native jobs and all existing functional
 checks to pass. Check the run's commit SHA and profile receipts, investigate any
 sanitizer failure, and rerun on the fixed candidate. A passing fast run is not
 a substitute for sanitizer evidence. Explicit holds and required repository checks
@@ -109,8 +115,9 @@ steps to prevent drift. Graph frame pointers are a separate Debug-only opt-in
 ## Run the checks
 
 The engine build compiles the test drivers, `test_tools` and `test_language`.
-CI runs the groups below on every push to `main` and every pull request into it
-that changes more than documentation.
+CI runs the correctness groups on every push to `main` and every pull request
+into it, including documentation-only changes. Benchmarks and bootstrap asset
+maintenance below remain explicit opt-in operations.
 
 ```sh
 # Unsanitized Release tools in build-release/
@@ -141,23 +148,27 @@ does. Mark a selector exclusive when it starts its own worker pool
 has a deadline, set by `--timeout SECONDS` (600 by default) or by a
 `timeout NAME SECONDS` row. A selector that passes it is killed with its process
 tree and reported as `FAIL NAME (timed out after Ns)`; the others still run.
-CI runs the `projects language` invocation with `--jobs 3` on Linux (4 cores,
-16 GB) and `--jobs 2` on macOS (3 cores, 7 GB).
+CI runs `bootstrap-load projects language` with `--jobs 3` on Linux and
+`chibi-cli language` with `--jobs 2` on macOS. Other groups retain their explicit
+invocations and worker limits.
 
-The `projects` group runs `chibi-cli`, `chibi-cli-authored` and `native-build` against the Release
-`chibi` launcher in `build-release/sdk/`, with its `chibi-compile` beside it.
+The `projects` group runs `chibi-cli`, `chibi-cli-authored` and `native-build`
+against the Release native `chibi` in `build-release/sdk/`, plus the
+`native-build-entry` regression. `chibi` implements build/run/test directly.
+The explicitly requested `chibi-compile`, `chibi-build-host` and
+`chibi-compiler-host` targets remain C comparison and recovery tools; they are
+not default native products.
 `native-build` links real programs only when `CHIBI_LLVM_BIN` names the LLVM
 tools; without it, LLVM stand-ins cover the process contract.
 
 `chibi-cli` runs twenty-three launcher cases: `version` and `doctor`, over a
-fake sibling and the built launcher; `chibi test` through the real
-`chibi-compile` beside it; `build --native` argument forwarding; and programs
-run from files and directories, with `--watch`, cancellation and child
-processes.
+fake sibling and the built CLI; `chibi test` through controlled launcher
+fixtures and the built native compiler; `build --native` argument forwarding;
+and programs run from files and directories, with `--watch`, cancellation and
+child processes.
 
 `chibi-cli-authored` (`test/graph/ChibiCliTests.chibi`) runs the `chibi-cli`
-cases that outlive the VM, through the same launcher, for its native
-replacement.
+cases through controlled launcher fixtures and the built native CLI.
 
 `chibi build test <name>` runs one selector against the drivers in `build/` and
 the Release tools in `build-release/`; `--build`, `--release-build` and
@@ -173,7 +184,7 @@ The groups of `tools/tests.tsv`:
 | Group | Current coverage |
 | --- | --- |
 | `native` | CPU `test_tools` and build-graph selectors with checked-in inputs. |
-| `projects` | The Release `chibi` launcher (`chibi-cli`, `chibi-cli-authored`) and its native builds (`native-build`). |
+| `projects` | The Release native `chibi` (`chibi-cli`, `chibi-cli-authored`), native builds (`native-build`) and native build entry (`native-build-entry`). |
 | `language` | `test_language` selectors, `chibi test` over the compiler, `core` and the compiler samples, and stage-one bootstrap and recovery. |
 | `compiler` | The scalar package-compiler route. |
 | `wasm` | The browser `test_language` build under Node. No build currently produces `build-wasm-language`. |
@@ -182,53 +193,32 @@ The groups of `tools/tests.tsv`:
 The groups list their members explicitly; they do not include every standalone
 selector. Registering a selector alone does not add it to a group.
 
-CI runs the build, the `short` selector and the `native`, `projects` and
-`language` groups on Linux and macOS.
+Linux CI runs the build, `short`, and the `native`, `projects` and `language`
+groups. macOS retains `short`, `native`, `language`, and selected project/native-driver checks.
 The general Windows engine and Studio jobs are paused pending desktop archives.
-The independent `Compiler self-build` workflow runs nonadvisory macOS, Linux and
-Windows proofs on every PR into `main` and push to `main`. Each downloads a
+The single CI workflow runs nonadvisory macOS, Linux and Windows prepared
+compiler recovery on its daily schedule and manual `full` mode. Each downloads a
 checksum-pinned runtime seed and uses the checked-in Chibi compiler to compile
 the current compiler/core sources. It then executes that output to compile them
-again. This workflow installs and invokes neither a C compiler nor CMake, and
-has no native-build job dependency. Both compiler processes use an isolated
+again. These recovery jobs install and invoke neither a C compiler nor CMake, and
+have no native-build job dependency. Both compiler processes use an isolated
 input directory and an empty tool search path. The two stages must agree locally,
 and the three platforms must produce identical compiler bytes. See the
 [compiler recovery proof](self-hosting-build.md#three-platform-compiler-recovery-proof)
 for the exact command, isolation and uploaded evidence.
-The separate manual runtime-seed workflow retains the C/CMake recovery route
-for updating the explicitly prebuilt runtime dependency.
+The [manual maintenance scripts](ci-maintenance.md) retain the C recovery route
+for preparing updates to the explicitly prebuilt runtime dependency.
 
-### Starting CI with labels
+### Continuous integration
 
-The `CI control` workflow starts runs for maintainers and agents whose GitHub
-access cannot re-run or dispatch workflows. It acts only when the person who
-added the label or retargeted the PR has write access, which GitHub requires
-for re-runs and dispatches anyway. It only acts on branches of this repository
-and on the head commit that the event named, and removes the label when it is
-done.
-
-- `ci-rerun` re-runs the failed jobs of the PR's own CI and compiler
-  self-build runs on the head commit. It never re-runs a push or publishing
-  run that shares the commit. On a PR into `main`, it dispatches a workflow
-  that never ran on the head branch.
-- `ci-seed` dispatches the runtime-seed workflow on the head branch with
-  `publish` set. Once all three platforms recover identical compiler bytes, it
-  publishes the seeds as a commit-specific prerelease and commits the new pin in
-  `tools/compiler/runtime.json` to that branch, then starts CI and the compiler
-  self-build on the pin commit. Pull before pushing again. If the branch moved
-  after the seed run started, unrelated branch movement fails the pin step.
-  Rerunning the same workflow can resume its verified one-file pin commit and
-  dispatch only checks not already started on that exact pin. Existing published
-  seeds are reused only after verifying their tag target, source identity,
-  complete asset inventory, checksums and three-platform recovery evidence;
-  a mismatch fails without replacing published assets. Runs for the same source
-  SHA serialize across refs and do not cancel an active publication/pin.
-
-A dispatched run must build the head commit the event named. If the branch
-moved in between, the workflow cancels the run and fails, and the PR needs the
-label again. Retargeting a stacked PR to `main` does the same as `ci-rerun`, so
-it gets CI without a new push. A dispatched run checks the head branch, not the
-merge with `main`.
+[CI modes and proof mapping](ci.md) describe the single workflow. Ordinary PRs
+run Linux core/native acceptance, macOS core, two real macOS/Windows target
+module jobs and native Windows self-host validation. Main pushes repeat those
+checks. Daily/manual full validation adds prepared recovery and clean-machine
+proofs, with scheduled or explicitly selected
+manual sanitizers. Label-driven `ci-rerun`, `ci-seed` and Graph
+workflows are retired. Use Actions' normal rerun/dispatch controls; seed
+preparation and publication follow the [manual maintenance procedure](ci-maintenance.md).
 
 ## Focused regression coverage
 

@@ -1,0 +1,36 @@
+package native_directories
+
+import os "core:os"
+import strings "core:strings"
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 1, "one private directory or child mode");
+    if (arguments[0] == "child") {
+        read := os.ReadText("marker.txt");
+        assert(read.error == nil && read.text == "inherited", "a child inherits the current directory");
+        return 23;
+    }
+    previous := os.Root();
+    self := os.RealPath(os.ProgramPath());
+    work := os.RealPath(arguments[0]);
+    assert(previous != "" && self != "" && work != "", "resolved process paths");
+    missing := strings.Concatenate([work, "/missing"]);
+    missing_change := os.ChangeDirectory(missing);
+    assert(missing_change != nil && os.Root() == previous, "a failed change preserves the directory");
+    entered := os.ChangeDirectory(work);
+    assert(entered == nil && os.RealPath(os.Root()) == work, "enter a private Unicode directory");
+    written := os.WriteText("marker.txt", "inherited");
+    assert(written == nil, "relative files follow the current directory");
+    file_change := os.ChangeDirectory("marker.txt");
+    assert(file_change != nil && os.RealPath(os.Root()) == work,
+           "a file cannot replace the current directory");
+    child := os.Capture([self, "child"]);
+    assert(child.status == 23, "child execution preserves its exit code");
+    restored := os.ChangeDirectory(previous);
+    assert(restored == nil && os.Root() == previous, "restore the caller directory");
+    removed := os.Remove(strings.Concatenate([work, "/marker.txt"]));
+    assert(removed == nil, "remove the owned relative file after restoring");
+    os.Print("PASS native current directory and child inheritance");
+    return 0;
+}

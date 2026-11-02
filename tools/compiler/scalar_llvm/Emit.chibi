@@ -160,10 +160,10 @@ Number :: (type: int) -> bool {
     return Integer(type) || facts.Floating(type);
 }
 // Whether the operation `operator` applies to `type`: every arithmetic
-// operator to integers, and +, -, * and / to floats.
+// operator to integers; floats also have the native fmod remainder.
 Computes :: (operator: int, type: int) -> bool {
     if (facts.Floating(type)) {
-        return operator >= facts.Add && operator <= facts.Divide;
+        return (operator >= facts.Add && operator <= facts.Remainder) || operator == facts.ReversedRemainder;
     }
     return Integer(type) && operator >= facts.Add && operator <= facts.ShiftRight;
 }
@@ -1663,7 +1663,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         }
         declares := row.kind == facts.LocalRow || ranged;
         typed := declares || row.kind == facts.AssignRow || row.kind == facts.SwitchRow || row.kind == facts.CaseRow;
-        if (row.text != "" || (row.literal != 0 && !ranged && !subject && !retained) || !Located(row, starts, size) ||
+        if ((row.text != "" && row.kind != facts.AssertRow) || (row.literal != 0 && !ranged && !subject && !retained) || !Located(row, starts, size) ||
             (row.kind != facts.EndRow && row.start < earliest) || (!declares && row.name != "") ||
             (!typed && row.type != 0) || (!declares && row.kind != facts.AssignRow && row.value != 0)) {
             return "invalid scalar statement row";
@@ -2026,8 +2026,8 @@ ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
                 frame = frame || declaration.name == "Frame";
             }
         }
-        if (!main || !frame) {
-            return "native package generations require Main and Frame";
+        if (!main && !frame) {
+            return "native package generations require Main or Frame";
         }
     }
     return "";
@@ -2040,6 +2040,7 @@ Comparison :: (operator: int) -> int {
 }
 // The native operation of a facts arithmetic operator.
 Arithmetic :: (operator: int) -> int {
+    if (operator == facts.ReversedRemainder) { return native.Mod; }
     operations := [native.Add, native.Sub, native.Mul, native.Div, native.Mod, native.BitAnd, native.BitOr,
                    native.BitXor, native.Shl, native.Shr];
     return operations[operator - facts.Add];
@@ -2728,7 +2729,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.ArithmeticRow) {
                     base := length(stack) - 2;
-                    item = Op(Arithmetic(operand.value), type, slot, stack[base], stack[base + 1], 0);
+                    left := stack[base];
+                    right := stack[base + 1];
+                    if (operand.value == facts.ReversedRemainder) { left = stack[base + 1]; right = stack[base]; }
+                    item = Op(Arithmetic(operand.value), type, slot, left, right, 0);
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.UnaryRow) {
                     base := length(stack) - 1;
@@ -3662,6 +3666,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             } else if (row.kind == facts.AssertRow) {
                 fail := Op(native.Fail, 0, 0, row.start, row.end, 0);
                 fail.literal = declaration.literal;
+                if (program && row.text != "") {
+                    texts.append(row.text);
+                    fail.target = length(texts);
+                }
                 body.extend([Op(native.Branch, 0, 0, value, 0, length(body) + 2), fail]);
             } else if (row.kind == facts.LocalRow && row.literal == i64(facts.Retained)) {
                 type := NativeType(row.type);
@@ -3891,6 +3899,22 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         shape.code = length(body);
         code.extend(body);
         functions.append(shape);
+    }
+    if (generation) {
+        // The host always calls the same C ABI. An absent source entry does
+        // nothing, so adding/removing Frame never restarts Main on an edit.
+        for (name in ["Main", "Frame"]) {
+            if (names.contains(name)) { continue; }
+            shape: native.Function = {result: abi.IntStorage, first_parameter: length(parameters), parameters: 0,
+                                      first_slot: length(slots), slots: 1, first_local: length(locals), locals: 0,
+                                      first_code: length(code), code: 4, first_argument: length(arguments), arguments: 0};
+            ids.append(i64(length(functions)));
+            names.append(name);
+            slots.append(abi.IntStorage);
+            code.extend([Op(native.Check, 0, 0, 0, 0, 0), Op(native.Constant, abi.IntStorage, 0, 0, 0, 0),
+                         Op(native.Publish, abi.IntStorage, 0, 0, 0, 0), Op(native.Return, 0, 0, 0, 0, 0)]);
+            functions.append(shape);
+        }
     }
     source: native.Source = {file: "", directory: ""};
     if (debug) {

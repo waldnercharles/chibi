@@ -174,7 +174,7 @@ Build :: (arguments: string[]) -> int {
     needs_archive := engine.NeedsThirdParty(targets)
     native_only := true
     for (target in targets) {
-        native_only = native_only && length(engine.NativeArguments(target)) != 0
+        native_only = native_only && (length(engine.NativeArguments(target)) != 0 || engine.WebAssemblyProducts().contains(target))
         for (resource in engine.Resources(target)) {
             needs_archive = needs_archive || strings.HasPrefix(strings.Partition(resource, "=").tail, "third-party/")
         }
@@ -189,7 +189,7 @@ Build :: (arguments: string[]) -> int {
         if (status != 0) { return status }
     }
     graph := ["--build", Absolute(directory), "--profile", profile]
-    for (name in ["--libclang-root", "--reflect", "--native-driver", "--llvm"]) {
+    for (name in ["--libclang-root", "--reflect", "--native-driver", "--llvm", "--emcc", "--wasm-llvm"]) {
         value := Option(arguments, name, "")
         if (value != "") {
             graph = extend(graph, [name, Absolute(value)])
@@ -618,7 +618,7 @@ ReleaseBuild :: (arguments: string[], targets: string[], dry: bool) -> int {
     nested := ["--release", "--release-build", Option(arguments, "--release-build", "build-release"),
                "--build", Option(arguments, "--release-build", "build-release"),
                "--jobs", Jobs(arguments)]
-    for (name in ["--host", "--libclang-root", "--reflect", "--native-driver", "--llvm"]) {
+    for (name in ["--host", "--libclang-root", "--reflect", "--native-driver", "--llvm", "--emcc", "--wasm-llvm"]) {
         value := Option(arguments, name, "")
         if (value != "") {
             nested = extend(nested, [name, value])
@@ -638,14 +638,19 @@ ReleaseBuild :: (arguments: string[], targets: string[], dry: bool) -> int {
 Install :: (arguments: string[]) -> int {
     dry := Flag(arguments, "--dry-run")
     releases := Absolute(Option(arguments, "--release-build", "build-release"))
-    status := ReleaseBuild(arguments, engine.NativeProducts(), dry)
+    targets := engine.NativeProducts()
+    with_wasm := Flag(arguments, "--with-wasm")
+    if (with_wasm) { targets = extend(targets, engine.WebAssemblyProducts()) }
+    status := ReleaseBuild(arguments, targets, dry)
     if (status != 0) {
         return status
     }
     prefix := Absolute(Option(arguments, "--prefix", Join([os.Getenv("HOME"), "/.local"])))
+    installed := ["--build", releases, "--prefix", prefix]
+    if (with_wasm) { installed.append("--with-wasm") }
     return GraphStep(
         arguments, "install", "tools/toolchain/SDK.chibi", "Install",
-        ["--build", releases, "--prefix", prefix], dry
+        installed, dry
     )
 }
 
@@ -981,8 +986,10 @@ NativeVendorSample :: (arguments: string[]) -> int {
 // Proves goal item 1: the native stage one compiles tools/compiler to stage
 // two, stage two compiles it to stage three, and the two are byte-identical.
 // Prints each stage's wall time and, for item 9, the VM-hosted self-build's
-// (the recovery's seed to stage one to stage two) only with --compare-vm. Stage one is
-// the selected native compiler, optionally overridden by --stage-one.
+// (the recovery's seed to stage one to stage two) only with --compare-vm,
+// unless --skip-vm-comparison omits that timing while retaining both command
+// parity checks. Stage one is the selected native compiler, optionally
+// overridden by --stage-one.
 NativeSelfHost :: (arguments: string[]) -> int {
     dry := Flag(arguments, "--dry-run")
     compare_vm := Flag(arguments, "--compare-vm") && !Flag(arguments, "--skip-vm")
@@ -997,7 +1004,7 @@ NativeSelfHost :: (arguments: string[]) -> int {
         os.Print("native-self-host: pass --stage-one PROGRAM or --native-driver PROGRAM")
         return 2
     }
-    // C hosts are used only for the optional historical performance comparison.
+    // C hosts serve the opt-in command parity and historical self-build comparison.
     releases := Absolute(Option(arguments, "--release-build", "build-release"))
     build_host := Join([releases, "/sdk/chibi-build-host"])
     compiler_host := Join([releases, "/sdk/chibi-compiler-host"])
@@ -1088,7 +1095,7 @@ NativeSelfHost :: (arguments: string[]) -> int {
             return status
         }
     }
-    if (compare_vm) {
+    if (compare_vm && !Flag(arguments, "--skip-vm-comparison")) {
         began := Clock()
         status = Step("vm-hosted-self-build", [compiler_host, "--bootstrap", "tools/compiler/bootstrap", "--compiler", "tools/compiler", "--core", "packages/core"], dry)
         if (status != 0) {
@@ -1188,7 +1195,7 @@ Usage :: () -> int {
     os.Print("       build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--timeout SECONDS] [--list] [--dry-run] NAME...")
     os.Print("       build install [--prefix DIR] [--release-build DIR]")
     os.Print("       build format [--check] | clean | census | publish-seed | native-census | native-evidence --build DIR --output DIR --nm PATH --sha SHA --sanitizers ON|OFF ...")
-    os.Print("       build native-self-host --llvm DIR [--stage-one PROGRAM] [--windows DIR] [--work DIR] [--release-build DIR] [--build-host PATH --compiler-host PATH] [--stage-two-only] [--compare-vm] [--dry-run]")
+    os.Print("       build native-self-host --llvm DIR [--stage-one PROGRAM] [--windows DIR] [--work DIR] [--release-build DIR] [--build-host PATH --compiler-host PATH] [--stage-two-only] [--compare-vm [--skip-vm-comparison]] [--dry-run]")
     os.Print("       build native-vendor-sample --llvm DIR --native-driver PROGRAM [--work DIR] [--dry-run]")
     os.Print("       build bootstrap-artifact | bootstrap-recover [--release-build DIR]")
     os.Print("       build sdk-reflect [--reflect-build DIR] [-- NATIVE ARGUMENTS]")

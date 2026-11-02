@@ -103,7 +103,9 @@ package scalar_facts
 //   it is in, through any switch around it. It has no operands;
 // - a Return row is followed by its `count` operands, the returned value;
 // - an Assert row, with the range of its assert's call, is followed by its
-//   `count` condition operands. When the condition is false, the call from
+//   `count` condition operands. Its optional `text` is the ordinary checker's
+//   decoded diagnostic, which a program driver may prefix with source position.
+//   When the condition is false, the call from
 //   the VM ends with the failure the VM's assert at that range gives, and
 //   every call it is in ends with it.
 // A variable is visible from the end of its declaration to the end of the
@@ -396,7 +398,7 @@ pub NotEqual: int : 6;
 // Arithmetic operators: the source's +, -, *, /, %, &, |, ^, << and >> on
 // integers. None fails: they wrap, x / 0 is 0, x % 0 is x, MIN / -1 is MIN
 // and MIN % -1 is 0, and a shift count at or past the width, read unsigned,
-// gives 0, or the sign fill for a signed >>. Floats have +, -, * and /,
+// gives 0, or the sign fill for a signed >>. Floats have +, -, *, / and the native fmod remainder,
 // IEEE at their own width, rounding to nearest.
 pub Add: int : 1;
 pub Subtract: int : 2;
@@ -408,6 +410,9 @@ pub Or: int : 7;
 pub Xor: int : 8;
 pub ShiftLeft: int : 9;
 pub ShiftRight: int : 10;
+// The same floating remainder with right evaluated before left, for named
+// native arguments. The operand rows retain source order.
+pub ReversedRemainder: int : 11;
 
 // Unary operators: the source's - and ~ on integers, and ! on bool;
 // negation wraps.

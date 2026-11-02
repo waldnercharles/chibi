@@ -11,10 +11,11 @@ executable through LLVM's lld, with no C compiler or compiler driver on `PATH`.
   start files on Linux, and `Link` writes the stubs, runs `Command`'s vector and
   publishes the program (a rename from `Partial(plan)`).
 
-`tools/native_aot/driver` links through the same entry points with the build host's
-effects, and records each vector in its receipt. Every vector names lld's flavor
-(`-flavor gnu`, `darwin` or `link`), so a caller may run any of lld's names, or lld
-itself, in place of the vector's first argument.
+The native compiler driver uses these entry points directly. Every vector names
+lld's flavor (`-flavor gnu`, `darwin` or `link`), so a caller may run any of lld's
+names, or lld itself, in place of the vector's first argument. The real native
+[driver/cache checks](../../../test/native_aot/native_driver/README.md) cover tool
+identities, interruption, cleanup and exclusive publication.
 
 ```chibi
 import link "project:native_link"

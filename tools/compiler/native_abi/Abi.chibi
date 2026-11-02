@@ -200,3 +200,8 @@ pub MapType :: () -> string {
 pub FailureType :: () -> string {
     return "{ i64, i32, i32 }";
 }
+// Program-mode assertions preserve that 16-byte prefix and append immutable
+// diagnostic bytes and their count: 32 bytes on 64-bit, 24 bytes on Wasm32.
+pub ProgramFailureType :: () -> string {
+    return "{ i64, i32, i32, ptr, i32 }";
+}

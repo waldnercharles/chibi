@@ -44,11 +44,15 @@ LibraryNamesEachFunctionOnce :: () {
     Rejects(Library(abi.LinuxX64(), "Lib", ["Main", "Pick"], shared), RepeatedName());
 }
 @test
-LibrariesAcceptLinuxAndMacOSTargets :: () {
+LibrariesAcceptNativeTargets :: () {
     ids: i64[] = [11, -5];
     text := Emitted(Library(abi.MacOSArm64(), "Lib", ["Main", "Pick"], ids));
     assert(strings.Contains(text, "target triple = \"arm64-apple-macosx11.0.0\""));
     assert(strings.Contains(text, "@chibi_natives_Lib = constant %chibi.manifest { i32 5, i32 2,"));
-    Rejects(Library(abi.WindowsX64(), "Lib", ["Main", "Pick"], ids),
-            "native libraries require Linux x86-64 or macOS arm64");
+    windows := Emitted(Library(abi.WindowsX64(), "Lib", ["Main", "Pick"], ids));
+    assert(strings.Contains(windows, "!llvm.linker.options = !{"));
+    assert(strings.Contains(windows, "/export:chibi_natives_Lib,data"));
+    assert(strings.Contains(windows, "/export:chibi_host_call_Main"));
+    Rejects(Library(abi.WebAssembly32(), "Lib", ["Main", "Pick"], ids),
+            "native libraries require Linux x86-64, macOS arm64 or Windows x86-64");
 }

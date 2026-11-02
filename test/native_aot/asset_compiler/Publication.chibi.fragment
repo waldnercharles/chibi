@@ -1,0 +1,74 @@
+
+// Appended to the real builder source by publication.sh, so the regression
+// invokes its publication operations against filesystem failures, without mocks.
+PublicationChecks :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 1, "one private fixture directory");
+    root := arguments[0];
+    sources := Join([root, "/sources"]);
+    source_error := os.MakeDirectory(sources);
+    assert(source_error == nil, "the source inventory fixture");
+    main := Join([sources, "/Main.chibi"]);
+    source_error = os.WriteText(main, "package main\nMain :: () -> int { return 42; }\n");
+    assert(source_error == nil, "the source bytes");
+    before: string[] = [];
+    inventoried := SourceInputs(sources, &before);
+    assert(inventoried, "the initial source inventory");
+    generated := Join([sources, "/build/native/program"]);
+    source_error = os.MakeDirectory(generated);
+    assert(source_error == nil, "an independent native compile creates output directories");
+    source_error = os.WriteText(Join([generated, "/source.ll"]), "generated");
+    assert(source_error == nil, "the generated artifact");
+    changed: string[] = [];
+    inventoried = SourceInputs(sources, &changed);
+    assert(inventoried && Join(changed) == Join(before), "generated output leaves source identity unchanged");
+    added := Join([generated, "/Added.chibi"]);
+    source_error = os.WriteText(added, "package main\n");
+    assert(source_error == nil, "a new nested source");
+    changed = [];
+    inventoried = SourceInputs(sources, &changed);
+    assert(inventoried && Join(changed) != Join(before), "source additions still invalidate preparation");
+    source_error = os.Remove(added);
+    assert(source_error == nil, "remove the nested source");
+    changed = [];
+    inventoried = SourceInputs(sources, &changed);
+    assert(inventoried && Join(changed) == Join(before), "removed sources restore the original identity");
+    source_error = os.WriteText(main, "package main\nMain :: () -> int { return 43; }\n");
+    assert(source_error == nil, "edit the source");
+    changed = [];
+    inventoried = SourceInputs(sources, &changed);
+    assert(inventoried && Join(changed) != Join(before), "source edits still invalidate preparation");
+    changed = [];
+    inventoried = SourceInputs(Join([sources, "/missing"]), &changed);
+    assert(!inventoried, "unreadable inventory is distinct from an empty directory");
+    work := Join([root, "/work"]);
+    output := Join([root, "/output"]);
+    made := os.MakeDirectory(work);
+    assert(made == nil, "the private builder directory");
+    made = os.MakeDirectory(output);
+    assert(made == nil, "the output directory");
+    for (name in ["a", "b"]) {
+        written := os.WriteText(Join([output, "/", name]), Join(["old-", name]));
+        assert(written == nil, "previous product bytes");
+    }
+    for (name in ["a", "new"]) {
+        written := os.WriteText(Join([work, "/", name]), Join(["new-", name]));
+        assert(written == nil, "staged bytes");
+    }
+    result := Publish(work, output, ["new", "a", "b"]);
+    assert(!result.written && result.recoverable, "a missing staged product rolls back the earlier replacements");
+    for (name in ["a", "b"]) {
+        read := os.ReadText(Join([output, "/", name]));
+        assert(read.error == nil && read.text == Join(["old-", name]), "previous bytes restored exactly");
+    }
+    assert(os.Kind(Join([output, "/new"])) == os.KindNone, "the newly introduced product is removed");
+    written := os.WriteText(Join([work, "/previous-recovery"]), "recover-me");
+    assert(written == nil, "a backup for the rollback failure");
+    made = os.MakeDirectory(Join([output, "/recovery"]));
+    assert(made == nil, "an OS collision prevents restoring a backup file");
+    restored := RestorePublication(work, output, [], ["recovery"]);
+    assert(!restored, "failed rollback propagates to the caller that preserves work");
+    read := os.ReadText(Join([work, "/previous-recovery"]));
+    assert(read.error == nil && read.text == "recover-me", "rollback failure preserves recovery bytes");
+    return 0;
+}

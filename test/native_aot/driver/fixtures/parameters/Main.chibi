@@ -1,7 +1,0 @@
-package scalar
-Main :: (a: int, b: bool) -> int {
-    if (b) {
-        return a;
-    }
-    return 0;
-}

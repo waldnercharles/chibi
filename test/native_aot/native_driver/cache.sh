@@ -19,21 +19,53 @@ mkdir -p "$project/facts" "$tools"
 for tool in opt llc "$linker"; do
     cat >"$tools/$tool" <<'TOOL'
 #!/bin/sh
+set -eu
 folder=${0%/*}
 if [ -f "$folder/forbid" ]; then
     echo 'cache test: LLVM ran on a cache hit' >&2
     exit 93
 fi
 printf '%s\n' "$0" >>"$folder/calls"
+if [ "$#" != 1 ] || [ "$1" != --version ]; then
+    marker=$folder/mutate-${0##*/}
+    if [ -f "$marker" ] && /bin/mv "$marker" "$marker.claim" 2>/dev/null; then
+        printf '\n# changed during compilation\n' >>"$0"
+    fi
+    if [ "${0##*/}" = opt ] && [ -f "$folder/mutate-source" ] &&
+        /bin/mv "$folder/mutate-source" "$folder/mutate-source.claim" 2>/dev/null; then
+        printf '\n// changed after native source collection\n' >>"$CHIBI_CACHE_PROJECT/Main.chibi"
+    fi
+    case ${0##*/} in
+        ld.lld|ld64.lld|lld-link)
+            if [ -f "$folder/collide" ]; then
+                previous=
+                partial=
+                for argument in "$@"; do
+                    [ "$previous" != -o ] || partial=$argument
+                    case $argument in /out:*) partial=${argument#/out:} ;; esac
+                    previous=$argument
+                done
+                [ -n "$partial" ] || exit 94
+                destination=${partial%/*}
+                destination=${destination%/*}
+                case $destination in *.work) destination=${destination%.work} ;; *) exit 95 ;; esac
+                /bin/mkdir "$destination"
+                printf 'another publisher owns this\n' >"$destination/prior-owner"
+                printf '%s\n' "$destination" >"$folder/collision-path"
+            fi
+            ;;
+    esac
+fi
 exec "$CHIBI_CACHE_REAL/${0##*/}" "$@"
 TOOL
     chmod +x "$tools/$tool"
 done
 export CHIBI_CACHE_REAL=$llvm
+export CHIBI_CACHE_PROJECT=$project
 cache_level=0
 fail() { printf 'native cache: %s\n' "$*" >&2; exit 1; }
 build() {
-    "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    /usr/bin/env PATH= "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
         --root "$project" --llvm "$tools" --target "$triple" --level "$cache_level" --jobs 2 "$@"
 }
 path() { sed -n 's/^native: \(.*\) is up to date$/\1/p;s/^native: \(.*\/program\)$/\1/p' "$1"; }
@@ -117,6 +149,46 @@ rm "$tools/forbid"
 run42 "$program"
 [ -f "$changed" ] || fail 'failure removed the other published output'
 printf 'native cache: invalidation, receipt corruption, interruption and prior-output preservation passed\n'
+
+# The LLVM subprocesses run after source collection and the initial identity
+# snapshot. A changed source or tool must reject publication, retain earlier
+# programs, and clean only this invocation's reserved work directory.
+cp "$project/Main.chibi" "$work/source-before"
+for tool in opt llc "$linker"; do cp "$tools/$tool" "$work/$tool.before"; done
+for mutation in source opt llc "$linker"; do
+    cp "$work/source-before" "$project/Main.chibi"
+    printf '\n// mutation case %s\n' "$mutation" >>"$project/Main.chibi"
+    if [ "$mutation" = source ]; then touch "$tools/mutate-source"
+    else touch "$tools/mutate-$mutation"; fi
+    if build >"$work/mutation-$mutation.log" 2>&1; then fail "changed $mutation input was published"; fi
+    grep -F 'an input changed during the build; retry' "$work/mutation-$mutation.log" >/dev/null || {
+        cat "$work/mutation-$mutation.log" >&2; fail "missing $mutation identity rejection";
+    }
+    [ -z "$(find "$project/build/native" -name '*.work' -o -name '*.partial')" ] || fail 'changed input left private output'
+    run42 "$program"
+    [ -f "$changed" ] || fail 'changed input removed a sibling program'
+    if [ "$mutation" != source ]; then cp "$work/$mutation.before" "$tools/$mutation"; fi
+    rm "$tools/mutate-$mutation.claim"
+done
+cp "$work/source-before" "$project/Main.chibi"
+printf 'native cache: source and every LLVM tool are fenced through publication\n'
+
+# An output can appear after admission but before exclusive publication. Keep
+# that owner's bytes and every previous program, and discard only our work.
+printf '\n// publication collision\n' >>"$project/Main.chibi"
+touch "$tools/collide"
+if build >"$work/collision.log" 2>&1; then fail 'a concurrent output was replaced'; fi
+rm "$tools/collide"
+grep -F 'cannot publish' "$work/collision.log" >/dev/null || { cat "$work/collision.log" >&2; fail 'publication collision diagnostic'; }
+collision=$(cat "$tools/collision-path")
+[ "$(cat "$collision/prior-owner")" = 'another publisher owns this' ] || fail 'publication changed another owner'
+[ ! -e "$collision/receipt.txt" ] && [ ! -e "$collision/program" ] || fail 'publication mixed generation contents'
+[ -z "$(find "$project/build/native" -name '*.work' -o -name '*.partial')" ] || fail 'publication collision left private output'
+run42 "$program"
+rm "$collision/prior-owner"
+rmdir "$collision"
+cp "$work/source-before" "$project/Main.chibi"
+printf 'native cache: publication collisions preserve prior owners and sibling programs\n'
 
 # A symlinked foreign archive's target bytes are part of the identity.
 rm "$project/Before.chibi"

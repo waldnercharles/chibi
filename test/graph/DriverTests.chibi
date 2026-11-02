@@ -340,6 +340,57 @@ NativeFixedPoint :: (toolchain: Toolchain) {
     assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch root is removed")
 }
 
+// Skipping the duplicate VM compiler build must not skip native graph parity.
+// Controlled stages and comparison hosts use the real native driver's dry run;
+// the graph rejects deliberately, so this checks selection rather than LLVM or VM execution.
+NativeComparisonMode :: (toolchain: Toolchain) {
+    for (flag in ["", "--skip-vm", "--skip-vm-comparison"]) {
+        options := ["--dry-run", "--llvm", "/llvm", "--stage-one", "/stage-one", "--compare-vm",
+                    "--build-host", toolchain.compiler, "--compiler-host", toolchain.compiler]
+        if (flag != "") {
+            options = extend(options, [flag])
+        }
+        planned := Verb(toolchain, "native-self-host", options)
+        log := Output(planned)
+        assert(planned.status == 0 && Has(log, "stage-two:") && Has(log, "stage-three:"), "native stages remain")
+        assert(Has(log, "vm-hosted-self-build:") == (flag == ""), "only the requested VM comparison is omitted")
+    }
+    scratch := format_text("{}/.chibi/graph-native-comparison", os.Root())
+    removed := os.Run(["rm", "-rf", scratch])
+    made := os.MakeDirectory(scratch)
+    assert(made == nil, "the scratch root exists")
+    assert(removed == 0, "the previous scratch root was removed")
+    seed := format_text("{}/seed", scratch)
+    fake_host := format_text("{}/host", scratch)
+    for (path in [seed, fake_host]) {
+        copied := os.Run(["cp", "test/graph/fixtures/native-comparison.sh", path])
+        executable := os.Run(["chmod", "+x", path])
+        assert(copied == 0 && executable == 0, "the controlled executable")
+    }
+    real_driver := programs.Build(os.Root(), toolchain.compiler, toolchain.llvm,
+                                  "tools/toolchain/Driver.chibi", "Main", ["graph=tools/graph"])
+    assert(real_driver != "", "the real native driver")
+    written := os.WriteText(format_text("{}/real-driver", scratch), real_driver)
+    assert(written == nil, "the native comparison driver")
+    for (tool in ["opt", "llc", "ld.lld", "ld64.lld"]) {
+        written = os.WriteText(format_text("{}/{}", scratch, tool), "planner fixture\n")
+        assert(written == nil, "the planner's fingerprinted LLVM input")
+    }
+    for (flag in ["--skip-vm", "--skip-vm-comparison"]) {
+        result := Verb(toolchain, "native-self-host", ["--llvm", scratch, "--work", scratch, "--stage-one", seed,
+                                                "--build-host", fake_host, "--compiler-host", toolchain.compiler, "--compare-vm", flag])
+        log := Output(result)
+        if (flag == "--skip-vm") {
+            assert(result.status == 0 && !Has(log, "fixture reached graph comparison"), "explicit native-only mode remains")
+        } else {
+            assert(Has(log, "native runner: the dry-run commands match"), "driver parity still runs")
+            assert(result.status != 0 && Has(log, "fixture reached graph comparison"), "the graph proof still rejects")
+        }
+    }
+    removed = os.Run(["rm", "-rf", scratch])
+    assert(removed == 0, "the scratch root is removed")
+}
+
 // `census` fails on build tooling outside archive/ and counts the C that
 // remains, in a scratch repository of its own.
 Census :: (toolchain: Toolchain) {
@@ -400,6 +451,7 @@ pub Run :: () -> int {
     TestScheduling(toolchain);
     NativeRunners(toolchain);
     NativeFixedPoint(toolchain);
+    NativeComparisonMode(toolchain);
     Census(toolchain);
     OtherVerbs(toolchain);
     assert(os.Run(["rm", "-rf", format_text("{}/.chibi/graph-plan-native", os.Root())]) == 0,

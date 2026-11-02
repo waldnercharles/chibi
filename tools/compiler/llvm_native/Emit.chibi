@@ -118,7 +118,8 @@ pub Format: int : 36;
 // Ends the call from the VM with the failure of the assert at source bytes
 // [left, right) of the function whose stable ID is `literal`: the context's
 // failure names it, a native_abi.FailureType() constant, and this function,
-// and each call it is in, returns its result's zero.
+// and each call it is in, returns its result's zero. In program mode, target
+// is one plus the diagnostic's text-table index, or zero for no diagnostic.
 pub Fail: int : 37;
 // An array type is ArrayType plus its element's type, a scalar, a string or a
 // record, and an array holds no array: its length, capacity, elements and
@@ -523,7 +524,7 @@ Computes :: (op: int, type: int) -> bool {
         return true;
     }
     if (abi.Floating(type)) {
-        return op == Add || op == Sub || op == Mul || op == Div || op == Neg || Comparison(op);
+        return op == Add || op == Sub || op == Mul || op == Div || op == Mod || op == Neg || Comparison(op);
     }
     return type == abi.BoolStorage && (op == Eq || op == Ne || op == BitNot);
 }
@@ -1126,6 +1127,10 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (item.op == Fail && (item.left < 0 || item.right < item.left)) {
             return Result.Rejected(base + pc, "native failure names no source range");
         }
+        if (item.op == Fail && (item.target < 0 || item.target > length(texts) ||
+                               (!ProgramMode(mode) && item.target != 0))) {
+            return Result.Rejected(base + pc, "native assertion has invalid diagnostic metadata");
+        }
         if (item.op == TypedFail) {
             if (!ProgramMode(mode)) {
                 return Result.Rejected(base + pc, "typed failures require a standalone native program");
@@ -1246,7 +1251,7 @@ TextValid :: (slots: int[], item: Instruction) -> bool {
 Operation :: (op: int, type: int) -> string {
     if (abi.Floating(type)) {
         // Ordered comparisons are false for NaN; != is unordered, so true.
-        operations := ["fadd", "fsub", "fmul", "fdiv", "", "", "", "", "", "", "", "", "fcmp olt", "fcmp ole",
+        operations := ["fadd", "fsub", "fmul", "fdiv", "frem", "", "", "", "", "", "", "", "fcmp olt", "fcmp ole",
                        "fcmp ogt", "fcmp oge", "fcmp oeq", "fcmp une"];
         return operations[op - Add];
     }
@@ -2712,16 +2717,27 @@ Fallible :: (functions: Function[], code: Instruction[]) -> bool[] {
 }
 // Each Fail's constant in functions [first, last): its function's stable ID
 // and its source range.
-Failures :: (functions: Function[], code: Instruction[], first: int, last: int) -> string {
+Failures :: (functions: Function[], code: Instruction[], texts: string[], first: int, last: int, program: bool) -> string {
     out: string[] = [];
     for (function in first..<last) {
         shape := functions[function];
         for (pc in 0..<shape.code) {
             item := code[shape.first_code + pc];
             if (item.op == Fail) {
-                out.append(format_text("@{} = private unnamed_addr constant {} { i64 {}, i32 {}, i32 {} }\n",
-                                       FailureSymbol(function, pc), abi.FailureType(), item.literal, item.left,
-                                       item.right));
+                type := abi.FailureType();
+                metadata := "";
+                if (program) {
+                    type = abi.ProgramFailureType();
+                    pointer := "null";
+                    count := 0;
+                    if (item.target > 0) {
+                        pointer = format_text("@{}", TextSymbol(item.target - 1));
+                        count = strings.ByteLength(texts[item.target - 1]);
+                    }
+                    metadata = format_text(", ptr {}, i32 {}", pointer, count);
+                }
+                out.append(format_text("@{} = private unnamed_addr constant {} { i64 {}, i32 {}, i32 {}{} }\n",
+                                       FailureSymbol(function, pc), type, item.literal, item.left, item.right, metadata));
             }
         }
     }
@@ -3014,6 +3030,21 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     if (ProgramMode(mode)) { scope = ProgramScope(code, texts); }
     scoped := scope != RuntimeScopeNone;
     testing := scope == RuntimeScopeTest;
+    formatting := false;
+    numeric_formatting := false;
+    for (shape in functions) {
+        for (pc in shape.first_code..<shape.first_code + shape.code) {
+            item := code[pc];
+            if (item.op != Format) { continue; }
+            formatting = true;
+            // A bool can use numeric modifiers too. Only string-only calls
+            // can omit the number renderer and its C runtime dependency.
+            for (index in 1..<item.target) {
+                slot := arguments[shape.first_argument + item.right + index];
+                if (slots[shape.first_slot + slot] != abi.TextStorage) { numeric_formatting = true; }
+            }
+        }
+    }
     compares := Compares(code);
     fallible := Fallible(functions, code);
     // A program splits into pieces that opt and llc compile at once; a
@@ -3056,6 +3087,8 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         // No host-derived data layout: the explicit LLVM target selects it. No
         // raw pointer or foreign ABI is admitted yet, and records stay internal.
         out.append(format_text("target triple = \"{}\"\n\n", target.triple));
+        if (piece == 0 && formatting) { out.append("; chibi-format\n"); }
+        if (piece == 0 && numeric_formatting) { out.append("; chibi-format-numbers\n"); }
         for (index in 0..<length(records)) {
             record := records[index];
             types: string[] = [];
@@ -3073,6 +3106,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             if (item.op == Constant && item.type == abi.TextStorage) {
                 wanted[int(item.literal)] = true;
             }
+            if (item.op == Fail && item.target > 0) { wanted[item.target - 1] = true; }
         }
         for (index in 0..<length(texts)) {
             if (wanted[index]) {
@@ -3092,11 +3126,12 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         if (ProgramMode(mode)) {
             out.append("declare void @chibi_native_step()\ndeclare void @chibi_native_failure(i32) noreturn\n");
         }
+        out.append(MathImports(target, held));
         printed := false;
         for (item in held) { printed = printed || item.op == Print; }
         if (printed) { out.append("declare void @chibi_print_string(ptr, ptr, i32)\n"); }
         foreign_declarations := ForeignDeclarations(functions, first, last, slots, code, arguments, texts);
-        out.append(format_text("{}declare void @llvm.trap()\n{}{}", Failures(functions, code, first, last),
+        out.append(format_text("{}declare void @llvm.trap()\n{}{}", Failures(functions, code, texts, first, last, ProgramMode(mode)),
                                Declarations(held), foreign_declarations));
         if (Tasks(held)) {
             out.append(CoroutineDeclarations());
@@ -3143,6 +3178,11 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         array_helpers := ArrayModule(held, record_owners);
         out.append(array_helpers);
         copies := Copies(held);
+        if (mode == NoEntry) {
+            // The library's retained-text migration also copies bytes, using
+            // the same freestanding helper as array operations.
+            for (retained in states) { copies = copies || retained.type == abi.TextStorage; }
+        }
         out.append(MapModule(held, ProgramMode(mode), record_owners));
         if (copies || array_helpers != "") {
             out.append(format_text("\n{}", ArrayCopyHelper()));
@@ -3724,7 +3764,6 @@ RetainedManifest :: (name: string, code: Instruction[], texts: string[]) -> stri
 // into the old object's mapping, so retaining its owner alone is insufficient.
 RetainedTextCopy :: () -> string {
     return strings.Join([
-        "\ndeclare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n",
         "define internal void @chibi_scalar.retained.copy(ptr %ctx, ptr %to, ptr %from) {\nentry:\n",
         "  %source = load { ptr, i32, ptr }, ptr %from\n  %bytes = extractvalue { ptr, i32, ptr } %source, 0\n",
         "  %length = extractvalue { ptr, i32, ptr } %source, 1\n  %wide = zext i32 %length to i64\n",
@@ -3732,7 +3771,7 @@ RetainedTextCopy :: () -> string {
         Allocated("owner", "%size"),
         "  store i64 1, ptr %owner\n  %size.at = getelementptr inbounds i8, ptr %owner, i64 8\n",
         "  store i32 %length, ptr %size.at\n  %data = getelementptr inbounds i8, ptr %owner, i64 12\n",
-        "  call void @llvm.memcpy.p0.p0.i64(ptr %data, ptr %bytes, i64 %wide, i1 false)\n",
+        "  call void @chibi_scalar.copy(ptr %data, ptr %bytes, i64 %wide)\n",
         "  %old = load { ptr, i32, ptr }, ptr %to\n  %released = extractvalue { ptr, i32, ptr } %old, 2\n",
         "  call void @chibi_scalar.free(ptr %ctx, ptr %released)\n",
         "  %a = insertvalue { ptr, i32, ptr } zeroinitializer, ptr %data, 0\n",
@@ -3953,6 +3992,18 @@ HostSymbols :: (names: string[], functions: Function[], parameters: int[], code:
     out.append("  %r = call i32 @chibi_host_retained_set(i32 %i, i64 %w)\n  ret i32 %r\n}\n");
     return strings.Join(out, "");
 }
+// COFF exports are explicit. Libraries have no debug metadata, so these
+// module-local metadata IDs start at zero without sharing another namespace.
+WindowsLibraryExports :: (symbols: string[]) -> string {
+    references: string[] = [];
+    declarations: string[] = [];
+    for (symbol, index in symbols) {
+        references.append(format_text("!{}", index));
+        declarations.append(strings.Concatenate([format_text("!{} = !", index), "{!\"/export:", Escaped(symbol), "\"}\n"]));
+    }
+    return strings.Concatenate(["\n!llvm.linker.options = !{", strings.Join(references, ", "), "}\n", strings.Join(declarations, "")]);
+}
+
 // A library module: each function is internal, and the symbols it exports are
 // its manifest, `chibi_natives_<library>`, a constant execution_native_manifest
 // (src/execution/native.h) listing an entry for each function whose
@@ -3961,8 +4012,9 @@ HostSymbols :: (names: string[], functions: Function[], parameters: int[], code:
 pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
                     parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
                     records: Record[], fields: int[], texts: string[], step_budget: int, field_names: string[]) -> Result {
-    if (!abi.Same(target, abi.LinuxX64()) && !abi.Same(target, abi.MacOSArm64())) {
-        return Result.Rejected(-1, "native libraries require Linux x86-64 or macOS arm64");
+    windows := abi.Same(target, abi.WindowsX64());
+    if (!abi.Same(target, abi.LinuxX64()) && !abi.Same(target, abi.MacOSArm64()) && !windows) {
+        return Result.Rejected(-1, "native libraries require Linux x86-64, macOS arm64 or Windows x86-64");
     }
     if (!Identifier(name) || length(names) != length(functions) || length(ids) != length(functions)) {
         return Result.Rejected(-1, "native library needs an identifier and a name and ID for each function");
@@ -3995,8 +4047,21 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
     out: string[] = ["\n%chibi.export = type { ptr, i64, ptr, i32, i32, ptr }\n%chibi.manifest = type { i32, i32, ptr }\n"];
     exports: string[] = [];
     waiting := WaitingFunctions(functions, code);
+    dll_exports: string[] = [];
+    if (windows) {
+        dll_exports = [format_text("chibi_natives_{},data", name), "chibi_host_retained_release", "chibi_host_retained_count",
+                       "chibi_host_retained_type", "chibi_host_retained_hash", "chibi_host_retained_ready", "chibi_host_retained_get",
+                       "chibi_host_retained_set", "chibi_host_retained_set_as"];
+        if (runtime) { dll_exports.append("chibi_host_failed"); }
+        if (waiting.contains(true)) {
+            dll_exports.extend(["chibi_host_tasks_pending", "chibi_host_tasks_poll", "chibi_host_tasks_cancel_all"]);
+        }
+    }
     for (function in 0..<length(functions)) {
         if (waiting[function]) { continue; }
+        if (windows && HostCallable(functions[function], parameters)) {
+            dll_exports.append(strings.Concatenate(["chibi_host_call_", names[function]]));
+        }
         types := ExportTypes(functions[function], parameters);
         if (length(types) == 0) {
             continue;
@@ -4018,15 +4083,20 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
                            length(exports), strings.Join(exports, ", ")));
     out.append(format_text("@chibi_natives_{} = constant %chibi.manifest { i32 {}, i32 {}, ptr @chibi_scalar.exports }\n",
                            name, abi.ExportAbi, length(exports)));
-    out.append(StateManifest(name, names, ids, functions, parameters, records, fields, field_names, runtime));
+    state_manifest := StateManifest(name, names, ids, functions, parameters, records, fields, field_names, runtime);
+    out.append(state_manifest);
+    if (windows && state_manifest != "") { dll_exports.append(format_text("chibi_state_{},data", name)); }
     if (retained_text) {
         out.append(RetainedTextCopy());
     }
-    out.append(RetainedManifest(name, code, texts));
+    retained_manifest := RetainedManifest(name, code, texts);
+    out.append(retained_manifest);
+    if (windows && retained_manifest != "") { dll_exports.append(format_text("chibi_retained_{},data", name)); }
     if (runtime && !strings.Contains(module, "@chibi_context = external global")) {
         out.append(format_text("\n@chibi_context = external global {}\n", abi.ContextType()));
     }
     out.append(HostSymbols(names, functions, parameters, code, texts, runtime, waiting));
+    if (windows) { out.append(WindowsLibraryExports(dll_exports)); }
     return Result.Emitted(format_text("{}{}", module, strings.Join(out, "")));
 }
 
@@ -4944,4 +5014,22 @@ MapModule :: (code: Instruction[], native_program: bool, owners: bool[]) -> stri
         out.append(MapHelpers(type, native_program, owners));
     }
     return format_text("\n{}", strings.Join(out, "\n"));
+}
+
+// LLVM may lower floating remainder to libm. Declare that system dependency
+// even when optimization later folds a call, so linking never relies on luck.
+MathImports :: (target: abi.Target, code: Instruction[]) -> string {
+    single := false;
+    wide := false;
+    for (item in code) {
+        if (item.op == Mod && item.type == abi.FloatStorage) { single = true; }
+        if (item.op == Mod && item.type == abi.DoubleStorage) { wide = true; }
+    }
+    library_name := "m";
+    prefix := "";
+    if (abi.Same(target, abi.WindowsX64())) { library_name = "ucrtbase"; } else if (abi.Same(target, abi.MacOSArm64())) { library_name = "System"; prefix = "_"; } else if (abi.Same(target, abi.WebAssembly32())) { return ""; }
+    out := "";
+    if (single) { out = format_text("; chibi-import system:{} {}fmodf\n", library_name, prefix); }
+    if (wide) { out = format_text("{}; chibi-import system:{} {}fmod\n", out, library_name, prefix); }
+    return out;
 }

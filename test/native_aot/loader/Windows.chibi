@@ -2,7 +2,57 @@ package windows_loader
 
 import windows "core:sys/windows"
 
+Images :: (directory: string, variant: string, arguments: int) {
+    source := format_text("{}/generation {}.dll", directory, variant);
+    first_path := format_text("{}/first-雪.dll", directory);
+    second_path := format_text("{}/second-😀.dll", directory);
+    copied_first := windows.Copy(source, first_path);
+    copied_second := windows.Copy(source, second_path);
+    assert(copied_first && copied_second, "two images are staged with Unicode names");
+    first := windows.OpenLibrary(first_path);
+    second := windows.OpenLibrary(second_path);
+    assert(first != 0 && second != 0, "both DLL images load");
+    for (module in [first, second]) {
+        address := windows.LibrarySymbol(module, "chibi_host_set_process");
+        assert(address != 0, "the process initializer is exported");
+        initialize: fn(count: i64, arguments: rawptr, environment: rawptr) -> i32 = address;
+        initialized := initialize(0, 0, 0);
+        assert(initialized == 0, "the DLL initializes its process command line");
+        address = windows.LibrarySymbol(module, "fixture_arguments");
+        assert(address != 0, "the argument reader is exported");
+        count: fn() -> i64 = address;
+        assert(count() == i64(arguments), "each runtime sees the actual process arguments");
+        address = windows.LibrarySymbol(module, "fixture_context");
+        assert(address != 0, "the runtime probe is exported");
+        context: fn() -> i32 = address;
+        initialized_context := context();
+        expected_context := 0;
+        if (variant == "context") { expected_context = 1; }
+        assert(initialized_context == expected_context, "a DLL owns its zeroed heap allocation and release callbacks");
+    }
+    first_address := windows.LibrarySymbol(first, "fixture_tick");
+    second_address := windows.LibrarySymbol(second, "fixture_tick");
+    assert(first_address != 0 && second_address != 0, "both code entry points are exported");
+    first_tick: fn() -> i32 = first_address;
+    second_tick: fn() -> i32 = second_address;
+    first_value := first_tick();
+    second_value := second_tick();
+    next_value := first_tick();
+    assert(first_value == 1 && second_value == 1 && next_value == 2, "each DLL owns its globals");
+    first_closed := windows.CloseLibrary(first);
+    first_removed := windows.Remove(first_path);
+    next_value = second_tick();
+    assert(first_closed && first_removed && next_value == 2, "the first image releases its file while the other stays alive");
+    second_closed := windows.CloseLibrary(second);
+    second_removed := windows.Remove(second_path);
+    assert(second_closed && second_removed, "the second image releases its file");
+}
+
 Main :: () -> int {
+    invalid_pause := windows.Pause(-1);
+    assert(!invalid_pause, "a negative pause is rejected");
+    paused := windows.Pause(0);
+    assert(paused, "an immediate pause succeeds");
     missing := windows.OpenLibrary("chibi-missing-generation.dll");
     assert(missing == 0, "a missing generation is rejected");
     module := windows.OpenLibrary("kernel32.dll");
@@ -15,5 +65,12 @@ Main :: () -> int {
     assert(process_id() != 0, "a loaded function runs");
     closed := windows.CloseLibrary(module);
     assert(closed, "the owned loader reference is released");
+    arguments := windows.Arguments();
+    if (length(arguments) == 2) {
+        Images(arguments[1], "plain", length(arguments));
+        Images(arguments[1], "context", length(arguments));
+    } else {
+        assert(length(arguments) == 1, "only an optional DLL fixture directory is accepted");
+    }
     return 0;
 }

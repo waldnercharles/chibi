@@ -12,7 +12,6 @@ void test_language_record_document();
 void test_language_record_compatibility();
 void test_language_execution();
 void test_language_execution_scope();
-void test_language_program_session();
 void test_language_capture();
 void test_numeric_ranges();
 void test_language_host_packages_compiler();
@@ -44,7 +43,6 @@ int main(int argc, char **argv)
     bool record_document = argc == 2 && !strcmp(argv[1], "--record-document");
     bool record_values = argc == 2 && !strcmp(argv[1], "--record-values");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
-    bool program_session = argc == 2 && !strcmp(argv[1], "--program-session");
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
     bool package_compiler_chibi_scalar = argc == 2 &&
                                          !strcmp(argv[1], "--package-compiler-chibi-scalar");
@@ -58,14 +56,14 @@ int main(int argc, char **argv)
                                   !strcmp(argv[1], "--host-packages-compiler");
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     if ((!execution && !execution_scope && !record_values && !record_document &&
-         !record_compatibility && !program && !program_session && !ranges &&
-         !package_compiler_chibi_scalar && !package_compiler_chibi_native && !native_census &&
+         !record_compatibility && !program && !ranges && !package_compiler_chibi_scalar &&
+         !package_compiler_chibi_native && !native_census &&
          !native_census_flattening && !host_packages_compiler && !text_format)) {
         fprintf(
             stderr,
             "Usage: %s --test-parallel | --execution | --execution-scope | "
             "--program | "
-            "--program-session | --ranges | --package-compiler-chibi-scalar | "
+            "--ranges | --package-compiler-chibi-scalar | "
             "--package-compiler-chibi-native | --native-census [report] | "
             "--native-census-flattening | --host-packages-compiler | "
             "--text-format | "
@@ -97,8 +95,6 @@ int main(int argc, char **argv)
         test_numeric_ranges();
     } else if (program) {
         test_language_capture();
-    } else if (program_session) {
-        test_language_program_session();
     } else if (execution_scope) {
         test_language_execution_scope();
     } else if (execution) {

@@ -18,6 +18,7 @@ trap 'rm -rf "$scratch"' EXIT HUP INT TERM
     cat "$root/test/native_aot/diagnostics/Probe.chibi"
     sed '/^package /d; /^import /d' "$root/tools/compiler/native_driver/Catalog.chibi"
     sed '/^package /d; /^import /d' "$root/tools/compiler/native_driver/Compile.chibi"
+    sed '/^package /d; /^import /d' "$root/tools/compiler/native_driver/Assertions.chibi"
 } > "$scratch/Main.chibi"
 "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$scratch/Main.chibi" --output "$scratch/probe" --llvm "$llvm" --target "$target" --jobs 2

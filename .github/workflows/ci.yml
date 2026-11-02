@@ -1,4 +1,4 @@
-# One automatic PR job. Full/Graph modes retain distinct platform and clean-machine proofs.
+# Explicit platform jobs call the existing build/test recipes. Full/Graph modes add clean-machine proofs.
 # The core45 + native90 phase bounds are enforced separately; job135 is only their sum.
 name: CI
 run-name: "CI · ${{ inputs.mode || github.event_name }} · ${{ github.ref_name }}"
@@ -14,7 +14,7 @@ run-name: "CI · ${{ inputs.mode || github.event_name }} · ${{ github.ref_name 
   workflow_dispatch:
     inputs:
       mode:
-        description: 'ci: canonical Linux; full: platform/recovery/SDK/no-C; graph: isolated Graph parity'
+        description: 'ci: Linux/macOS and native targets; full: recovery/SDK/no-C; graph: isolated Graph parity'
         type: choice
         default: ci
         options:
@@ -27,8 +27,6 @@ run-name: "CI · ${{ inputs.mode || github.event_name }} · ${{ github.ref_name 
         default: false
 permissions:
   contents: read
-  actions: read
-  pull-requests: read
 concurrency:
   group: ci-${{ github.ref }}-${{ github.event_name }}-${{ inputs.mode || 'ci' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -54,32 +52,16 @@ jobs:
     - uses: actions/checkout@v4
       timeout-minutes: 5
       with:
-        fetch-depth: 2
         persist-credentials: false
-    - name: Reuse only an exactly tested merged tree
-      id: receipt
-      uses: actions/github-script@v7
-      timeout-minutes: 5
-      with:
-        script: await require('./.github/ci-receipt.js').gate({github, context, core});
     - name: Format and static checks
       id: ccache-config
-      if: steps.receipt.outputs.skip != 'true'
       timeout-minutes: 45
-      env:
-        CHIBI_CI_PROFILE: ${{ steps.receipt.outputs.profile }}
       run: |-
         node .github/ci/budget.js "$CHIBI_CORE_DEADLINE" bash .github/ci/linux-setup.sh
-        case "$CHIBI_CI_PROFILE" in
-          static) ;;
-          native) node .github/ci/budget.js --reserve 120 "$CHIBI_CORE_DEADLINE" ;;
-          full) node .github/ci/budget.js --reserve 360 "$CHIBI_CORE_DEADLINE" ;;
-          *) echo 'Unknown CI profile' >&2; exit 2 ;;
-        esac
+        node .github/ci/budget.js --reserve 360 "$CHIBI_CORE_DEADLINE"
     # Preserve each existing store's path and key: cache versions include paths.
     - name: Restore compiler objects
       id: ccache
-      if: steps.receipt.outputs.skip != 'true' && steps.receipt.outputs.profile == 'full'
       uses: actions/cache/restore@v4
       timeout-minutes: 2
       with:
@@ -90,7 +72,6 @@ jobs:
           ${{ steps.ccache-config.outputs.compatibility-prefix }}-
     - name: Restore the compiled asset compiler
       id: asset-cache
-      if: steps.receipt.outputs.skip != 'true' && steps.receipt.outputs.profile == 'full'
       uses: actions/cache/restore@v4
       timeout-minutes: 2
       with:
@@ -98,52 +79,28 @@ jobs:
         key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
         restore-keys: asset-compiler-v2-${{ runner.os }}-
     - name: Restore recovered compilers
-      if: steps.receipt.outputs.skip != 'true' && (steps.receipt.outputs.profile == 'native' || steps.receipt.outputs.profile == 'full')
       uses: actions/cache/restore@v4
       timeout-minutes: 2
       with:
         path: .chibi/compiler-cache
         key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
         restore-keys: compiler-cache-${{ runner.os }}-
-    - name: Prepare native bootstrap
-      if: steps.receipt.outputs.skip != 'true' && steps.receipt.outputs.profile == 'native'
-      timeout-minutes: 45
-      run: |-
-        node .github/ci/budget.js "$CHIBI_CORE_DEADLINE" bash .github/ci/linux-native.sh
-        node .github/ci/budget.js "$CHIBI_CORE_DEADLINE"
     - name: Core functional tests
       id: core
-      if: steps.receipt.outputs.skip != 'true' && steps.receipt.outputs.profile == 'full'
       timeout-minutes: 45
       run: |-
         node .github/ci/budget.js "$CHIBI_CORE_DEADLINE" bash .github/ci/linux-core.sh
         node .github/ci/budget.js "$CHIBI_CORE_DEADLINE"
     - name: Native fixed-point proof
       id: fixedpoint
-      if: steps.receipt.outputs.skip != 'true' && (steps.receipt.outputs.profile == 'native' || steps.receipt.outputs.profile == 'full')
       timeout-minutes: 90
       env:
         CHIBI_FULL: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'full') }}
       run: |-
         deadline=$(($(date +%s) + 5400))
         node .github/ci/budget.js "$deadline" bash .github/ci/native-proof.sh
-    - name: Record tested tree
-      if: success() && github.event_name == 'pull_request'
-      uses: actions/github-script@v7
-      with:
-        script: await require('./.github/ci-receipt.js').record({github, context, core});
-    - name: Upload tested tree
-      if: success() && github.event_name == 'pull_request'
-      uses: actions/upload-artifact@v4
-      with:
-        name: ci-tested-tree
-        path: ${{ runner.temp }}/ci-tested-tree/receipt.json
-        if-no-files-found: error
-        overwrite: true
-        retention-days: 30
     - name: Keep native platform modules
-      if: always() && steps.core.outcome != 'skipped' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch'
-        && inputs.mode == 'full'))
+      if: always() && steps.core.outcome != 'skipped'
       uses: actions/upload-artifact@v4
       with:
         name: native-bundle
@@ -151,7 +108,7 @@ jobs:
         if-no-files-found: warn
         retention-days: 1
     - name: Preserve proof logs and timings
-      if: always() && steps.receipt.outputs.skip != 'true'
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: linux-proof-${{ github.run_id }}-${{ github.run_attempt }}
@@ -192,7 +149,7 @@ jobs:
         key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
   native-macos:
     name: Engine build and native tests (macOS)
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'full')
+    if: github.event_name != 'workflow_dispatch' || inputs.mode == 'ci' || inputs.mode == 'full'
     runs-on: macos-15
     timeout-minutes: 45
     env:
@@ -340,8 +297,7 @@ jobs:
   native-targets:
     name: Native scalar modules (${{ matrix.platform }})
     needs: native
-    if: always() && needs.native.result != 'cancelled' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch'
-      && inputs.mode == 'full'))
+    if: always() && needs.native.result != 'cancelled' && needs.native.result != 'skipped'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:

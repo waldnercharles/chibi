@@ -37,8 +37,7 @@ test('Linux restores and saves the three established path-version stores', () =>
   assert.doesNotMatch(linux, /ci-v1-/);
   const caps = restores.map(step => Number(field(step, 'timeout-minutes')));
   assert.deepEqual(caps, [2, 2, 2]);
-  assert.match(linux, new RegExp(`full\\) node .* --reserve ${caps.reduce((a, b) => a + b) * 60} `));
-  assert.match(linux, /native\) node .* --reserve 120 /);
+  assert.match(linux, new RegExp(`budget\\.js --reserve ${caps.reduce((a, b) => a + b) * 60} `));
 });
 
 test('cache writes require successful full validation on main, never PR or push', () => {
@@ -58,11 +57,5 @@ test('cache writes require successful full validation on main, never PR or push'
       }
     }
   }
-  for (const skip of ['true', 'false', '']) {
-    for (const profile of ['static', 'native', 'full']) {
-      assert.deepEqual(restores.map(step => condition(step, {steps: {receipt: {outputs: {skip, profile}}}})),
-        [skip !== 'true' && profile === 'full', skip !== 'true' && profile === 'full',
-          skip !== 'true' && profile !== 'static']);
-    }
-  }
+  for (const restore of restores) assert.doesNotMatch(restore, /^      if:/m);
 });

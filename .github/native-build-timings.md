@@ -1,6 +1,6 @@
 # Native build timing evidence
 
-The Linux core and scheduled/manual macOS jobs set `CHIBI_BUILD_TIMINGS` only
+The Linux core and macOS jobs set `CHIBI_BUILD_TIMINGS` only
 while building their Release helpers and selected-profile products. The directory
 is included in the `linux-proof-*` or macOS `native-profile-*` artifact, including
 successful builds. Tests

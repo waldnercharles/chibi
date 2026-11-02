@@ -5,11 +5,6 @@ node .github/ci/budget.js "$(($(date +%s) + 300))" bash .github/ci/format.sh
 mkdir -m 700 -p "$RUNNER_TEMP/build-timings" "$CHIBI_TEST_TIMINGS"
 test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 test -z "$(git status --porcelain --untracked-files=normal)"
-case "${CHIBI_CI_PROFILE:-full}" in
-  static) exit 0 ;;
-  native|full) ;;
-  *) echo 'Unknown CI profile' >&2; exit 2 ;;
-esac
 
 # Install build dependencies
 sudo apt-get update -q && sudo apt-get install -y -q ccache clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 \

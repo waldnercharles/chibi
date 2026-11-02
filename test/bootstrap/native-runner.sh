@@ -96,7 +96,7 @@ if "$scratch/driver" build test --build-host "$scratch/legacy-host" legacy; then
 printf 'seed tools/compiler/bootstrap\n' > "$scratch/expected-events"
 cmp "$scratch/expected-events" "$SEED_EVENTS"
 : > "$SEED_EVENTS"
-"$scratch/driver" build test --dry-run --build-host "$scratch/legacy-host" legacy > "$scratch/seed-plan"
+"$scratch/driver" build test --dry-run --build-host "$scratch/legacy-host" legacy > "$scratch/seed-plan" 2>&1
 grep -q 'legacy-seed: sh tools/bootstrap/seed.sh' "$scratch/seed-plan"
 test ! -s "$SEED_EVENTS"
 export LEGACY_SEED_STATUS=0

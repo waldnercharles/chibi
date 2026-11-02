@@ -324,15 +324,19 @@ Pieces :: (text: string) -> string[] {
     return pieces;
 }
 
-// The --jobs to compile with, else every processor online; 8 when getconf
-// cannot say, as the toolchain's own count.
+// The --jobs to compile with, else Windows' processor-count environment value
+// or getconf's online processors; 8 when the platform cannot supply a count.
 Jobs :: (arguments: string[]) -> int {
     chosen := Option(arguments, "--jobs", "");
     if (chosen == "") {
-        online := os.Capture(["getconf", "_NPROCESSORS_ONLN"]);
-        chosen = strings.TrimSpace(online.stdout);
-        if (online.status != 0) {
-            chosen = "";
+        if (os.Platform() == "Windows") {
+            chosen = os.Getenv("NUMBER_OF_PROCESSORS");
+        } else {
+            online := os.Capture(["getconf", "_NPROCESSORS_ONLN"]);
+            chosen = strings.TrimSpace(online.stdout);
+            if (online.status != 0) {
+                chosen = "";
+            }
         }
     }
     count := 0;

@@ -1168,6 +1168,7 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_LLVM_NATIVE_BYTES=bytes:tools/compiler/llvm_native/Emit.chibi",
             "CHIBI_LLVM_NATIVE_TASKS_BYTES=bytes:tools/compiler/llvm_native/Tasks.chibi",
             "CHIBI_LLVM_NATIVE_TASK_TIMING_BYTES=bytes:tools/compiler/llvm_native/TaskTiming.chibi",
+            "CHIBI_LLVM_NATIVE_FOREIGN_ARRAYS_BYTES=bytes:tools/compiler/llvm_native/ForeignArrays.chibi",
             "CHIBI_LLVM_NATIVE_ARRAYS_BYTES=bytes:tools/compiler/llvm_native/Arrays.chibi",
             "CHIBI_LLVM_NATIVE_VALUES_BYTES=bytes:tools/compiler/llvm_native/Values.chibi",
             "CHIBI_LLVM_NATIVE_TASK_RESULTS_BYTES=bytes:tools/compiler/llvm_native/TaskResults.chibi",
@@ -1185,9 +1186,11 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_PACKAGE_COMPILER_OPTIONAL_BYTES=bytes:tools/compiler/package_compiler/Optional.chibi",
             "CHIBI_PACKAGE_COMPILER_REFERENCES_BYTES=bytes:tools/compiler/package_compiler/References.chibi",
             "CHIBI_PACKAGE_COMPILER_POINTERS_BYTES=bytes:tools/compiler/package_compiler/Pointers.chibi",
+            "CHIBI_PACKAGE_COMPILER_SCALAR_FOREIGN_BYTES=bytes:tools/compiler/package_compiler/ScalarForeign.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALAR_BYTES=bytes:tools/compiler/package_compiler/Scalar.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALARARRAYS_BYTES=bytes:tools/compiler/package_compiler/ScalarArrays.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALAREFFECTS_BYTES=bytes:tools/compiler/package_compiler/ScalarEffects.chibi",
+            "CHIBI_PACKAGE_COMPILER_SCALARGENERATIONS_BYTES=bytes:tools/compiler/package_compiler/ScalarGenerations.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALARMAPS_BYTES=bytes:tools/compiler/package_compiler/ScalarMaps.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALARMATH_BYTES=bytes:tools/compiler/package_compiler/ScalarMath.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALARWASMABI_BYTES=bytes:tools/compiler/package_compiler/ScalarWasmABI.chibi",
@@ -1260,8 +1263,7 @@ pub Resources :: (target: string) -> string[] {
     if (target == "chibi-build-host") {
         return [
             "build/share/chibi/compiler=tools/compiler",
-            "build/share/chibi/core=packages/core",
-            "build/share/chibi/tools/native_aot=tools/native_aot"
+            "build/share/chibi/core=packages/core"
         ];
     }
     if (target == "chibi") {

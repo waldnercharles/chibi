@@ -103,7 +103,9 @@ package scalar_facts
 //   it is in, through any switch around it. It has no operands;
 // - a Return row is followed by its `count` operands, the returned value;
 // - an Assert row, with the range of its assert's call, is followed by its
-//   `count` condition operands. When the condition is false, the call from
+//   `count` condition operands. Its optional `text` is the ordinary checker's
+//   decoded diagnostic, which a program driver may prefix with source position.
+//   When the condition is false, the call from
 //   the VM ends with the failure the VM's assert at that range gives, and
 //   every call it is in ends with it.
 // A variable is visible from the end of its declaration to the end of the
@@ -375,6 +377,13 @@ pub MapSpan: int : 8;
 pub MapLiveAt: int : 9;
 pub MapKeyAt: int : 10;
 pub MapValueAt: int : 11;
+// Changes of an int[] entry. Operands are a map reference, key and argument;
+// MapArraySet additionally takes its element index before the incoming value.
+pub MapArrayPush: int : 12;
+pub MapArrayExtend: int : 13;
+pub MapArrayRemove: int : 14;
+pub MapArraySet: int : 15;
+pub MapArrayResize: int : 16;
 
 // Compare operators: the source's <, <=, >, >=, == and !=, signed or
 // unsigned as their operands' type is. On floats, each is false when an
@@ -446,6 +455,9 @@ pub ArrayBytes: int : 14;
 pub ArrayText: int : 15;
 // A new array without the int-indexed element; an invalid index copies all elements.
 pub ArrayWithout: int : 16;
+// A foreign argument loan, consuming a numeric array or a reference to its
+// writable descriptor. It keeps the evaluated value alive until the C call.
+pub ArrayLoan: int : 17;
 // A Local row whose `literal` is SwitchSubject holds the union a switch is on
 // when the switch is not on a variable, so each arm's bindings can read it
 // again. It has the switch statement's range, a Switch row of the same range

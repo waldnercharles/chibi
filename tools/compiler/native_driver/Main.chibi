@@ -23,7 +23,8 @@ import facts "project:scalar_facts"
 // objects. Without --entry the program starts at
 // the first function of its first file; with it, at the function NAME of that
 // file, as the build host's --entry does. Exit 0 succeeded, 1 the sources were rejected,
-// 2 the arguments or the machine were unusable. The first stderr line of a
+// 2 the arguments or the machine were unusable; a failed LLVM process keeps
+// its exit status (128 + signal on POSIX). The first stderr line of a
 // rejection is `native: rejected FUNCTION: MESSAGE`.
 //
 // Its inputs are independent files and its passes are transforms, so reading
@@ -128,8 +129,16 @@ Build :: (arguments: string[]) -> int {
     if (root != "") {
         folder = root;
     }
+    diagnostic_project := os.RealPath(project);
+    if (diagnostic_project == "") { diagnostic_project = project; }
+    diagnostic_source := "";
+    if (source != "") {
+        diagnostic_source = os.RealPath(source);
+        if (diagnostic_source == "") { diagnostic_source = source; }
+    }
     options: DriverOptions = {level: level, lines: lines, static_link: Flag(arguments, "--static"),
-                               shared: shared, folder: folder, keep_module: root != "", emit_llvm: emit_llvm};
+                               shared: shared, folder: folder, project: diagnostic_project, source: diagnostic_source,
+                               keep_module: root != "", emit_llvm: emit_llvm, cli_errors: false};
     if (root != "") {
         return CachedBuild(root, collections, directories, gathered, triple, chosen, llvm, Jobs(arguments), options, source);
     }
@@ -145,10 +154,16 @@ DriverOptions :: struct {
     static_link: bool;
     shared: bool;
     folder: string;
+    // Source identity is independent of the entry folder used for archives.
+    project: string;
+    source: string;
     keep_module: bool;
     // Emits the ordinary program module bundle for an external target linker.
     // Each `; chibi-piece` boundary begins an independent LLVM module.
     emit_llvm: bool;
+    // Public run commands report a source assertion as command failure 1;
+    // raw native programs retain their typed failure status 134.
+    cli_errors: bool;
 }
 
 SharedTarget :: (triple: string) -> bool {
@@ -164,7 +179,7 @@ HostTarget :: (triple: string) -> bool {
 Emit :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
          chosen: string, llvm: string, output: string, jobs: int) -> int {
     return EmitOptions(collections, directories, paths, sources, triple, chosen, llvm, output, jobs,
-                       {level: "2", lines: false, static_link: false, shared: false, folder: ".", keep_module: false, emit_llvm: false});
+                       {level: "2", lines: false, static_link: false, shared: false, folder: ".", project: ".", source: "", keep_module: false, emit_llvm: false, cli_errors: false});
 }
 
 // Emits into the caller's work directory; only a successful link replaces
@@ -212,9 +227,11 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     for (directory in directories) {
         visible.append(route.Visible(directory));
     }
+    origins: DiagnosticOrigins = {root: options.project, source: options.source, directories: directories, entry: chosen,
+                                  runtime_assertions: options.cli_errors};
     compiled: Output = Output.Rejected("");
     if (length(rows) > 0) {
-        compiled = CollectedModule(collections, visible, paths, sources, triple, rows, directory);
+        compiled = CollectedModule(collections, visible, paths, sources, triple, rows, directory, origins);
     } else if (shared) {
         if (chosen != "") {
             os.Print("native: a shared generation takes no --entry");
@@ -225,12 +242,12 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
                 os.Print("native: a library declaration takes one source");
                 return 1;
             }
-            compiled = LibraryModule(paths[0], sources[0], triple);
+            compiled = LibraryModule(paths[0], sources[0], triple, origins);
         } else {
-            compiled = ModuleShared(collections, visible, paths, sources, triple, "", directory);
+            compiled = ModuleWith(collections, visible, paths, sources, triple, "", directory, true, origins);
         }
     } else {
-        compiled = Module(collections, visible, paths, sources, triple, chosen, directory);
+        compiled = ModuleWith(collections, visible, paths, sources, triple, chosen, directory, false, origins);
     }
     pieces: string[] = [];
     switch compiled {
@@ -299,6 +316,9 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     // The entry is the first piece's, defined as `@chibi_scalar(ptr %ctx)`
     // when it takes the context (the other functions are `@chibi_scalar.N`).
     // Definitions start a line; a text constant never does.
+    // A formatter used in any body piece needs the context callback.
+    formatting := Contains(markers, "; chibi-format");
+    numeric_formatting := Contains(markers, "; chibi-format-numbers");
     context := strings.Contains(pieces[0], "\ndefine i32 @chibi_scalar(ptr %ctx)");
     if (shared) {
         context = strings.Contains(pieces[0], "\n@chibi_context = external global ");
@@ -337,23 +357,27 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     if (options.level == "0") {
         optimization = 0;
     }
-    if (host.Objects(llvm, files, objects, optimization, jobs) != nil) {
-        os.Print("native: opt or llc could not emit an object");
-        return 2;
+    object_error := host.Objects(llvm, files, objects, optimization, jobs);
+    if (object_error != nil) {
+        return ToolFailure(object_error.kind, object_error.code, "LLVM object emission failed");
     }
     files.extend(objects);
     start := "";
     if (shared) {
         start = link.SharedContext(triple, context);
+    } else if (options.cli_errors) {
+        start = link.RunStart(triple, static, context, formatting, numeric_formatting);
     } else {
-        start = link.Start(triple, static, context);
+        start = link.ProgramStart(triple, static, context, formatting, numeric_formatting);
     }
     if (start != "") {
-        if (os.WriteText(strings.Concatenate([output, ".start.ll"]), start) != nil ||
-            host.Object(llvm, strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"]),
-                        optimization) != nil) {
-            os.Print("native: cannot emit the start object");
+        if (os.WriteText(strings.Concatenate([output, ".start.ll"]), start) != nil) {
+            os.Print("native: cannot write the start module");
             return 2;
+        }
+        start_error := host.Object(llvm, strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"]), optimization);
+        if (start_error != nil) {
+            return ToolFailure(start_error.kind, start_error.code, "LLVM start object emission failed");
         }
         objects.append(strings.Concatenate([output, ".start.o"]));
         files.extend([strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"])]);
@@ -367,14 +391,25 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     if (link.TargetOf(triple) == link.LinuxX64) {
         for (imported in plan.imports) { plan.libraries.append(imported.name); }
     }
-    if (host.Link(plan) != nil) {
-        os.Print("native: the link failed");
-        return 2;
+    link_error := host.Link(plan);
+    if (link_error != nil) {
+        return ToolFailure(link_error.kind, link_error.code, "LLVM link failed");
     }
     for (name in files) {
         removed := os.Remove(name);
     }
     return 0;
+}
+
+// core:os returns a negative signal number on POSIX. Preserve the child's
+// portable exit status; report other native statuses without truncating them.
+ToolFailure :: (kind: int, code: int, message: string) -> int {
+    os.Print(format_text("native: {} (kind {}, status {})", message, kind, code));
+    if (kind == link.ToolFailed) {
+        if (code > 0 && code <= 255) { return code; }
+        if (code < 0 && code >= -127 && os.Platform() != "Windows") { return 128 - code; }
+    }
+    return 2;
 }
 
 // The modules of a text llvm_native split into pieces: a `; chibi-piece` line
@@ -546,8 +581,8 @@ GatherWith :: (project: string, collections: string[], directories: string[], pa
             }
             prefixes[0] = "";
         } else if (next == 0) {
-            // The entry file is first, as the producer reads the first file's
-            // first function as the module's entry.
+            // Prefer Main.chibi for the default entry. An explicit entry name
+            // is selected from this root package after all its files are read.
             if (Contains(files, "Main.chibi")) {
                 ordered: string[] = ["Main.chibi"];
                 for (file in files) {
@@ -556,9 +591,6 @@ GatherWith :: (project: string, collections: string[], directories: string[], pa
                     }
                 }
                 files = ordered;
-            } else if (length(files) != 1) {
-                found.problem = strings.Concatenate(["package directory needs one source or Main.chibi: ", folders[next]]);
-                return found;
             }
         }
         if (length(files) == 0) {

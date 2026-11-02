@@ -14,7 +14,7 @@ import strings "core:strings"
 Main :: () -> int {
     arguments := os.Arguments();
     if (length(arguments) != 4) {
-        os.Print("usage: probe WORK LLVM RUNTIME positive|tombstone-key|tombstone-value|facts|readonly|array-readonly|source");
+        os.Print("usage: probe WORK LLVM RUNTIME positive|tombstone-key|tombstone-value|facts|readonly|array-readonly|missing-address-N|source");
         return 2;
     }
     work := arguments[0];
@@ -25,6 +25,13 @@ Main :: () -> int {
         return 2;
     }
     mode := arguments[3];
+    missing_kind := 0;
+    missing_prefix := "missing-address-";
+    if (strings.HasPrefix(mode, missing_prefix)) {
+        if (strings.ByteLength(mode) != strings.ByteLength(missing_prefix) + 1) { return 2; }
+        missing_kind = int(strings.ByteAt(mode, strings.ByteLength(missing_prefix))) - 48;
+        if (missing_kind < 1 || missing_kind > 7) { return 2; }
+    }
     test: Test = {code: [], slots: [], locals: [], texts: [], checks: 0};
     Emit(&test, native.Check, 0, 0, 0, 0, 0, 0);
     expected_index := "false";
@@ -50,6 +57,12 @@ Main :: () -> int {
         type := native.MapOf(abi.IntStorage, native.ArrayType + abi.IntStorage);
         map := Constant(&test, type, 0);
         returned = Read(&test, native.MapLength, abi.IntStorage, map, 0, type);
+    } else if (missing_kind != 0) {
+        array := native.ArrayType + abi.IntStorage;
+        type := native.MapOf(abi.IntStorage, array);
+        map := Constant(&test, type, 0);
+        key := Constant(&test, abi.IntStorage, 0);
+        Read(&test, native.MapValueAddress, native.RefType + array, map, key, type);
     } else if (mode == "facts" || mode == "source") {
         // The independent facts consumer is emitted after choosing its target.
     } else {
@@ -86,6 +99,7 @@ Main :: () -> int {
     names: string[] = [];
     source: native.Source = {file: "", directory: ""};
     text := "";
+    if (mode == "positive" && !AddressRejections(target)) { return 1; }
     if (mode == "source") {
         read := os.ReadText(format_text("{}/source.ll", work));
         if (read.error) { return 2; }
@@ -110,6 +124,14 @@ Main :: () -> int {
                 return 1;
             case .Emitted(emitted):
                 text = emitted;
+        }
+    } else if (missing_kind != 0) {
+        switch native.EmitProgram(target, functions, parameters, test.slots, test.locals, test.code, empty, records, empty,
+                                 test.texts, source, names, empty, empty) {
+            case .Rejected(instruction, message):
+                os.Print(format_text("map address probe rejected at {}: {}", instruction, message));
+                return 1;
+            case .Emitted(emitted): text = emitted;
         }
     } else {
         switch native.Emit(target, functions, parameters, test.slots, test.locals, test.code, empty, records, empty,
@@ -153,6 +175,21 @@ Main :: () -> int {
         runtime_text = strings.ReplaceAll(runtime_text, "call i32 @chibi_scalar(ptr @map_test.context)",
                                          "call i32 @chibi_scalar()");
     }
+    modules := [module];
+    if (missing_kind != 0) {
+        if (strings.Contains(text, "@chibi_scalar(ptr %ctx)")) { return 1; }
+        text = strings.ReplaceAll(text, "@chibi_scalar(", "@map_address_missing(");
+        text = strings.Concatenate([text,
+            "\ndeclare i32 @chibi_native_test_begin()\ndeclare i32 @chibi_native_test_expect(i32)\n",
+            "define i32 @chibi_scalar() {\n",
+            "  %begun = call i32 @chibi_native_test_begin()\n",
+            format_text("  %armed = call i32 @chibi_native_test_expect(i32 {})\n", missing_kind),
+            "  %result = call i32 @map_address_missing()\n  ret i32 %result\n}\n"]);
+        runtime_text = "";
+        start := format_text("{}/missing-start.ll", work);
+        if (os.WriteText(start, link.Start(target.triple, false, false)) != nil) { return 2; }
+        modules.append(start);
+    }
     written := os.WriteText(module, strings.Concatenate([text, globals, runtime_text]));
     if (written) {
         os.Print("native maps: the test module did not write");
@@ -161,20 +198,31 @@ Main :: () -> int {
     for (level in [int(0), 2]) {
         object := format_text("{}/maps-{}-O{}.o", work, mode, level);
         output := format_text("{}/maps-{}-O{}", work, mode, level);
-        compiled := host.Objects(llvm, [module], [object], level, 1);
+        objects := [object];
+        if (missing_kind != 0) { objects.append(format_text("{}/maps-{}-O{}-start.o", work, mode, level)); }
+        compiled := host.Objects(llvm, modules, objects, level, 1);
         if (compiled) {
             os.Print("native maps: LLVM did not compile the map module");
             return 1;
         }
-        plan := link.Program(target.triple, llvm, [object], [], [], [], output, "", false);
+        plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", false);
         if (os.Platform() == "Darwin") {
-            libsystem: link.Import = {name: "System", symbols: ["malloc", "free", "printf", "abort", "exit"]};
+            libsystem: link.Import = {name: "System", symbols: ["malloc", "free", "printf", "abort", "exit", "write", "_exit", "memset"]};
             plan.imports = [libsystem];
         }
         linked := host.Link(plan);
         if (linked) {
             os.Print("native maps: the map program did not link");
             return 1;
+        }
+        if (missing_kind != 0) {
+            result := os.Capture([output]);
+            if (result.status != 134 || !strings.HasSuffix(result.stderr, ", but it failed with another failure\n")) {
+                os.Print(format_text("map address expected kind {} at O{}: status {}, {}", missing_kind, level,
+                                     result.status, result.stderr));
+                return 1;
+            }
+            continue;
         }
         status := os.Run([output]);
         if (status != 0) {
@@ -251,6 +299,50 @@ Boolean :: (test: ^Test, actual: int, expected: bool) {
     Equal(test, actual, literal, abi.BoolStorage);
 }
 
+// Public native IR must reject a nonarray payload, wrong key or pointer
+// type, and unused target slots rather than allowing an invalid entry borrow.
+AddressRejections :: (target: abi.Target) -> bool {
+    array := native.ArrayType + abi.IntStorage;
+    for (which in 0..<4) {
+        test: Test = {code: [], slots: [], locals: [], texts: [], checks: 0};
+        payload := array;
+        if (which == 0) { payload = abi.IntStorage; }
+        mapped := native.MapOf(abi.IntStorage, payload);
+        map := Constant(&test, mapped, 0);
+        key_type := abi.IntStorage;
+        if (which == 1) { key_type = abi.BoolStorage; }
+        key := Constant(&test, key_type, 0);
+        pointer := native.RefType + array;
+        if (which == 2) { pointer = native.RefType + abi.IntStorage; }
+        Read(&test, native.MapValueAddress, pointer, map, key, mapped);
+        if (which == 3) {
+            changed := test.code[length(test.code) - 1];
+            changed.target = key;
+            test.code[length(test.code) - 1] = changed;
+        }
+        returned := Constant(&test, abi.IntStorage, 0);
+        Emit(&test, native.Publish, abi.IntStorage, 0, returned, 0, 0, 0);
+        Emit(&test, native.Return, 0, 0, 0, 0, 0, 0);
+        function: native.Function = {result: abi.IntStorage, first_parameter: 0, parameters: 0, first_slot: 0,
+            slots: length(test.slots), first_local: 0, locals: 0, first_code: 0, code: length(test.code),
+            first_argument: 0, arguments: 0};
+        empty: int[] = [];
+        records: native.Record[] = [];
+        names: string[] = [];
+        source: native.Source = {file: "", directory: ""};
+        switch native.Emit(target, [function], empty, test.slots, empty, test.code, empty, records, empty,
+                           names, source, names, empty, empty, false, 1) {
+            case .Emitted(text): return false;
+            case .Rejected(instruction, message):
+                if (message != "native map operation differs from its operands") {
+                    os.Print(format_text("map address rejection {}: {}", which, message));
+                    return false;
+                }
+        }
+    }
+    return true;
+}
+
 // Array payload owners outlive either map, and changes write their resulting
 // descriptor back without changing another map's value.
 ArrayPayloads :: (test: ^Test) {
@@ -266,14 +358,21 @@ ArrayPayloads :: (test: ^Test) {
     map := Constant(test, mapped, 0);
     map = Set(test, map, one, payload, mapped);
     copy := Value(test, native.MapCopy, mapped, map, 0, 0, 0);
-    borrowed := Read(test, native.MapGet, array, copy, one, mapped);
-    changed := Value(test, native.ValueCopy, array, borrowed, 0, 0, 0);
-    changed = Value(test, native.ArraySet, array, changed, zero, nine, 0);
-    copy = Set(test, copy, one, changed, mapped);
+    address := Read(test, native.MapValueAddress, native.RefType + array, copy, one, mapped);
+    borrowed := Value(test, native.Deref, array, address, 0, 0, 0);
+    changed := Value(test, native.ArraySet, array, borrowed, zero, nine, 0);
+    Emit(test, native.Poke, array, 0, address, changed, 0, 0);
+    // The entry address is ephemeral: resolve it again for the next update.
+    address = Read(test, native.MapValueAddress, native.RefType + array, copy, one, mapped);
+    borrowed = Value(test, native.Deref, array, address, 0, 0, 0);
+    changed = Value(test, native.ArrayPush, array, borrowed, seven, 0, 1);
+    Emit(test, native.Poke, array, 0, address, changed, 0, 0);
     original := Read(test, native.MapGet, array, map, one, mapped);
     Integer(test, Value(test, native.ArrayGet, abi.IntStorage, original, zero, 0, 0), 7);
     replacement := Read(test, native.MapGet, array, copy, one, mapped);
     Integer(test, Value(test, native.ArrayGet, abi.IntStorage, replacement, zero, 0, 0), 9);
+    Integer(test, Value(test, native.ArrayLength, abi.IntStorage, replacement, 0, 0, 0), 2);
+    Integer(test, Value(test, native.ArrayGet, abi.IntStorage, replacement, one, 0, 0), 7);
     missing := Read(test, native.MapGet, array, copy, seven, mapped);
     Integer(test, Value(test, native.ArrayLength, abi.IntStorage, missing, 0, 0, 0), 0);
     escaped := Read(test, native.MapValueAt, array, copy, zero, mapped);

@@ -82,19 +82,21 @@ the compiler host, the build host and the value-only consumers all use it.
 The bootstrap seed is compiled for that catalog, so adding a native means a
 new runtime pin, first build host and seed.
 
-[`Generate.chibi`](../tools/graph/asset_compiler/Generate.chibi) takes compiler
-implementation inputs from `CompilerSources.txt`. Source bytes captured for the
-compile still participate in the final consistency check. The packaged
-resource holds only the compiled artifact; the public core snapshot and the
+The optional [`Wasm SDK builder`](../tools/graph/asset_wasm/Build.chibi) compiles
+the authored asset service through LLVM and packages its public C facade in
+plain and pthread archives. Its source and tool identities must match before
+and after compilation. The browser service uses the same request and package
+compiler as the native desktop companion. The public core snapshot and the
 `ExplainCosts` facade from
 [#788](https://github.com/waldnercharles/chibi/pull/788) went to `archive/`
 with the asset-source code.
 
-[`Driver.chibi`](../tools/native_aot/driver/Driver.chibi) compiles the private scalar
-emitter with its four compiler packages and `core:strings`. Compilation and
-emitter cache identity share the same explicit core source list. Documentation
-generation prepares the complete public core with the standalone catalog; its
-parser capability stays private to the generator's separate catalog.
+The [native driver](../tools/compiler/native_driver/Main.chibi) compiles the
+scalar emitter with its source closure directly. Source/tool identities and
+exclusive publication are checked by the
+[native cache regressions](../test/native_aot/native_driver/README.md).
+Documentation generation prepares the complete public core with the standalone
+catalog; its parser stays private to the generator's separate catalog.
 
 No compiler language source, prepared ABI, bootstrap closure/manifest or
 consistency/recovery guard change is required by these packages. They add no

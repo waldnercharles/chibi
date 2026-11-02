@@ -49,8 +49,8 @@ pub Import :: struct {
 // so dyld binds them in that library, and a Windows import library is written
 // from them. `libpaths` add folders the Windows linker searches. `work` is a
 // folder this plan may write stubs into; `libc` and `interpreter` (Linux, not
-// static) come from Discover. `shared` links a Linux shared library or macOS
-// dylib of the objects instead of a program.
+// static) come from Discover. `shared` links a Linux shared library, macOS
+// dylib or Windows DLL of the objects instead of a program.
 pub Plan :: struct {
     triple: string;
     llvm: string;
@@ -531,7 +531,9 @@ pub Command :: (plan: Plan, to: string) -> string[] {
         // The reserve is address space; pages are committed as the stack grows.
         command := [linker, "-flavor", "link", "/nologo", "/subsystem:console", "/machine:x64", "/opt:ref", "/Brepro",
                     "/stack:67108864", Join(["/out:", to])];
-        if (plan.static) {
+        if (plan.shared) {
+            command.extend(["/dll", "/noentry", "/noimplib", "/nodefaultlib"]);
+        } else if (plan.static) {
             command.extend(["/nodefaultlib", "/entry:mainCRTStartup"]);
         }
         for (folder in plan.libpaths) {

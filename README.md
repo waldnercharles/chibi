@@ -62,16 +62,17 @@ Every program source needs a `package` header. Running a file compiles that
 file and the core library. To include sibling source files and local package
 imports, run the package directory with `chibi .`.
 
-To keep a program running while you edit it, add a `Frame :: ()` function and
-use `chibi --watch Hello.chibi`. The runner calls `Main` once and `Frame` every
-frame; each valid save patches the running code, keeps `retain` state, and does
-not call `Main` again. Invalid edits report diagnostics and keep the last valid
-code running. See [program reload](docs/guide/toolchain.md#reload-a-program)
-for a complete example.
+To keep a program running while you edit it, use `chibi --watch Hello.chibi`.
+A watched program provides `Main`, `Frame`, or both. The runner calls `Main`
+once at startup and `Frame` every frame when present. Each valid save patches
+the running code, keeps `retain` state, and does not call `Main` again. Invalid
+edits report diagnostics and keep the last valid code running. See
+[program reload](docs/guide/toolchain.md#reload-a-program) for a complete example.
 
-The CLI is itself an ordinary Chibi program in
-[apps/chibi/Main.chibi](apps/chibi/Main.chibi). The native launcher locates the
-SDK and starts its `Main`; command parsing and reload policy live in Chibi.
+The CLI is compiled from
+[tools/compiler/native_driver](tools/compiler/native_driver). It finds core and
+graph packages beside the installed SDK, compiles programs natively, and runs
+them. Command parsing and reload policy live in Chibi.
 
 ## Run a project
 

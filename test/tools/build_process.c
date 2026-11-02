@@ -116,15 +116,12 @@ TEST_CASE(build_timings_classify_without_recording_arguments)
     char *link[] = { "/usr/bin/clang++", "-o", "private-output", NULL };
     char *archive[] = { "/usr/bin/llvm-ar", "rcs", "private-output", NULL };
     char *reflect[] = { "/build/reflect", NULL };
-    char *generator[] = { "/build/chibi-build-host",
-                          "--source",
-                          "tools/toolchain/AssetCompiler.chibi",
-                          NULL };
+    char *build[] = { "/build/chibi", "--source", "tools/graph/asset_wasm/Build.chibi", NULL };
     REQUIRE(!strcmp(build_timing_category(compile, true), "compile"));
     REQUIRE(!strcmp(build_timing_category(link, true), "link"));
     REQUIRE(!strcmp(build_timing_category(archive, true), "archive"));
     REQUIRE(!strcmp(build_timing_category(reflect, true), "reflection"));
-    REQUIRE(!strcmp(build_timing_category(generator, true), "generator"));
+    REQUIRE(!strcmp(build_timing_category(build, true), "build-child"));
     REQUIRE(!strcmp(build_timing_category(compile, false), "probe"));
     FILE *file = tmpfile();
     REQUIRE(file);

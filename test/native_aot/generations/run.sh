@@ -59,8 +59,12 @@ mkdir -p "$work/package first" "$work/package edited" "$work/host"
 cp "$root/test/native_aot/generations/First.chibi" "$work/package first/Main.chibi"
 cp "$root/test/native_aot/generations/Edited.chibi" "$work/package edited/Main.chibi"
 must_build "$work/package first" shared
-cp "$root/apps/host/Host.chibi" "$work/host/Main.chibi"
-must_build "$work/host" ''
+if ! "$compiler" --compiler "$root/apps/host" --core "$root/packages/core" \
+    --source "$root/apps/host/Host.chibi" --entry Main --output "$work/host/host" \
+    --llvm "$llvm" --target "$triple" --level "$level" > "$work/host/build.log" 2>&1; then
+    cat "$work/host/build.log" >&2
+    exit 1
+fi
 host=$(output "$work/host")
 
 wait_marker() {
@@ -189,10 +193,8 @@ rejected() {
     fi
     cmp "$prior" "$work/prior.so"
 }
-printf 'package loop\nMain :: () -> int { return 0; }\n' > "$project/Main.chibi"
-rejected 'native package generations require Main and Frame'
-printf 'package loop\nFrame :: () -> int { return 0; }\n' > "$project/Main.chibi"
-rejected 'native package generations require Main and Frame'
+printf 'package loop\nHelper :: () -> int { return 0; }\n' > "$project/Main.chibi"
+rejected 'native package generations require Main or Frame'
 printf 'package loop\nFrame :: () -> int { return 0; }\nMain :: (x: int) -> int { return x; }\n' > "$project/Main.chibi"
 rejected 'Main and Frame with a zero-argument int ABI'
 printf 'package loop\nFrame :: () -> int { return 0; }\nMain :: () -> f64 { return 0.0; }\n' > "$project/Main.chibi"
@@ -364,8 +366,8 @@ echo 'native generations: retired task failure propagated'
 prior=$(output "$project")
 cp "$prior" "$work/prior.so"
 
-# Distinct imported functions with the same short name cannot silently share
-# a host wrapper or retained-state key. Existing library uniqueness rejects.
+# Distinct imported functions with the same short name retain their package
+# identity, so their host wrappers and retained-state keys stay separate.
 mkdir -p "$(dirname "$project")/a" "$(dirname "$project")/b"
 cat > "$project/Main.chibi" <<'SOURCE'
 package loop
@@ -374,9 +376,9 @@ import b "project:b"
 Main :: () -> int { return 0; }
 Frame :: () -> int { return a.Value() + b.Value(); }
 SOURCE
-printf 'package a\npub Value :: () -> int { return 3; }\n' > "$(dirname "$project")/a/A.chibi"
-printf 'package b\npub Value :: () -> int { return 4; }\n' > "$(dirname "$project")/b/B.chibi"
-rejected 'native library names each function once'
+printf 'package a\npub Value :: () -> int { count: retain int = 3; return count; }\n' > "$(dirname "$project")/a/A.chibi"
+printf 'package b\npub Value :: () -> int { count: retain int = 4; return count; }\n' > "$(dirname "$project")/b/B.chibi"
+expect_status 7
 
 # Producer-rejected library rows have no DocumentRow. Their existing located
 # rejection must survive the shared diagnostic dispatch, without an ABI error.

@@ -103,3 +103,23 @@ MalformedTypedFailuresAndReservedInstructionsAreRejected :: () {
             "native typed failure has no valid failure kind");
     Rejects(TypedFailureModule(Code(83, 0, 0, 0, 0, 0, 7), true), "unsupported native scalar instruction");
 }
+
+@test
+LegacyFailuresRejectDiagnosticPayload :: () {
+    for (target in [int(-1), 1]) {
+        code := Failures();
+        code[7] = Code(native.Fail, 0, 0, 3, 9, target, 77);
+        Rejects(FailureModule(code, false), "native assertion has invalid diagnostic metadata");
+    }
+}
+
+@test
+ProgramFailuresValidateImmutableDiagnosticIndex :: () {
+    source: native.Source = {file: "", directory: ""};
+    for (target in [int(-1), 2]) {
+        item := Code(native.Fail, 0, 0, 3, 9, target, 77);
+        Rejects(native.EmitProgram(abi.LinuxX64(), [Function(abi.IntStorage, 0, 0, 0, 0, 1, 0, 0)],
+                [], [], [], [item], [], [], [], ["diagnostic"], source, [], [], []),
+                "native assertion has invalid diagnostic metadata");
+    }
+}

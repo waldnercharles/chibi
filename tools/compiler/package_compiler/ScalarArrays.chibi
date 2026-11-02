@@ -103,6 +103,14 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         }
         return none;
     }
+    if (Is(forest, value, syntax.IndexExpression)) {
+        read := ScalarMapRead(forest, text, callables, names, types, package, value);
+        record := ScalarMapShape(forest, text, callables, names, types, package, read.object);
+        if (read.operator == facts.MapGet && ScalarMapArrayValue(types, record)) {
+            return {storage: IntStorage, container: ArrayContainer, record: -1};
+        }
+        return none;
+    }
     // An array field of a record.
     if (Is(forest, value, syntax.MemberExpression)) {
         field := ScalarMember(forest, text, callables, params, names, types, members, package, value);
@@ -376,7 +384,7 @@ ScalarElementValue :: (forest: snapshot.SnapshotNode[], text: string, callables:
         return ScalarArrayStored(forest, text, callables, params, callable, names, types, members, constants, node, shape,
                                  true, rows);
     }
-    if (shape.storage == StructStorage || (shape.storage == UnionStorage && ScalarOptional(types, shape.record))) {
+    if (shape.storage == StructStorage || shape.storage == UnionStorage) {
         return ScalarRecordValue(forest, text, callables, params, callable, names, types, members, constants, node,
                                  shape.record, rows);
     }
@@ -399,7 +407,8 @@ ScalarArrayValue :: (forest: snapshot.SnapshotNode[], text: string, callables: C
                                0, ""));
         return ScalarOperands.Built(output);
     }
-    if ((Is(forest, node, syntax.CallExpression) || Is(forest, node, syntax.MemberExpression)) && held != 0) {
+    if ((Is(forest, node, syntax.CallExpression) || Is(forest, node, syntax.MemberExpression) ||
+         Is(forest, node, syntax.IndexExpression)) && held != 0) {
         return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, node, 0, rows);
     }
     if (!Is(forest, node, syntax.ArrayExpression) || array == 0) {
@@ -431,7 +440,11 @@ ScalarArrayStored :: (forest: snapshot.SnapshotNode[], text: string, callables: 
             return ScalarOperands.Failed(diagnostic);
         case .Built(built):
             output := built;
-            if (copied && ScalarBorrowed(forest, Unparenthesized(forest, operand))) {
+            node := Unparenthesized(forest, operand);
+            mapped := ScalarMapRead(forest, text, callables, names, types, callable.package, node);
+            // A map array read already owns its evaluated value. Keeping it
+            // transfers that reference without copying its backing again.
+            if (copied && ScalarBorrowed(forest, node) && mapped.operator != facts.MapGet) {
                 output.append(ScalarAt(forest, operand, facts.ArrayRow, ScalarArrayType(types, shape.storage, shape.record),
                                        facts.ArrayCopy, 1, ""));
             }

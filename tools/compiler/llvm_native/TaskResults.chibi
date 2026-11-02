@@ -1,0 +1,69 @@
+package llvm_native
+
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Numeric task frames may also hold task observers and plain result unions.
+// Owning records need the shared per-type lifecycle before this gate opens.
+TaskFrameValue :: (records: Record[], fields: int[], type: int, observer: bool) -> bool {
+    if (abi.ScalarType(type) != "") { return true; }
+    if (type == TaskType) { return observer; }
+    record := type - RecordType;
+    if (record < 0 || record >= length(records)) { return false; }
+    shape := records[record];
+    for (index in 0..<shape.count) {
+        if (!TaskFrameValue(records, fields, fields[shape.first + index], false)) { return false; }
+    }
+    return true;
+}
+TaskResultValid :: (records: Record[], fields: int[], slots: int[], item: Instruction) -> bool {
+    record := item.type - RecordType;
+    if (!Typed(slots, item.left, TaskType) || record < 0 || record >= length(records) ||
+        item.literal != 0 || item.target < 0 || item.target > 1) { return false; }
+    shape := records[record];
+    count := 1;
+    if (item.right != 0) { count = 2; }
+    return shape.count == count && fields[shape.first] == abi.IntStorage &&
+           (item.right == 0 || (abi.ScalarType(item.right) != "" &&
+                               fields[shape.first + 1] == item.right));
+}
+// The pending wait owns an observer until the scheduler has resumed this
+// continuation, so a successful promise remains live throughout its read.
+TaskResultInstruction :: (item: Instruction, pc: int) -> string {
+    type := TypeName(item.type);
+    out := format_text("p{}:\n", pc);
+    out = format_text("{}{}", out, Load(format_text("h{}", pc), TaskType, "s", item.left));
+    out = format_text("{}  %done{} = call i1 @chibi_tasks.finished(i64 %h{})\n", out, pc, pc);
+    out = format_text("{}  br i1 %done{}, label %p{}.result, label %p{}.wait\np{}.wait:\n", out, pc, pc, pc, pc);
+    out = format_text("{}  call void @chibi_tasks.wait(i64 %h{})\n", out, pc);
+    out = format_text("{}  %suspend{} = call i8 @llvm.coro.suspend(token none, i1 false)\n", out, pc);
+    out = format_text("{}  switch i8 %suspend{}, label %coro.suspend [ i8 0, label %p{}.result\n                                      i8 1, label %coro.cleanup ]\n", out, pc, pc);
+    out = format_text("{}p{}.result:\n  %frame{} = call ptr @chibi_tasks.result_frame(i64 %h{}, i32 {})\n", out, pc, pc, pc, item.right);
+    out = format_text("{}  %success{} = icmp ne ptr %frame{}, null\n  br i1 %success{}, label %p{}.success, label %p{}.cancelled\n", out, pc, pc, pc, pc, pc);
+    out = format_text("{}p{}.cancelled:\n  %cancelled{} = insertvalue {} zeroinitializer, i32 {}, 0\n", out, pc, pc, type, 1 - item.target);
+    out = format_text("{}{}  br label %p{}\n", out, Store(format_text("%cancelled{}", pc), item.type, "s", item.output), pc + 1);
+    out = format_text("{}p{}.success:\n  %tagged{} = insertvalue {} zeroinitializer, i32 {}, 0\n", out, pc, pc, type, item.target);
+    value := format_text("%tagged{}", pc);
+    if (item.right != 0) {
+        out = format_text("{}  %promise{} = call ptr @llvm.coro.promise(ptr %frame{}, i32 8, i1 false)\n", out, pc, pc);
+        out = format_text("{}  %payload{} = load {}, ptr %promise{}\n", out, pc, TypeName(item.right), pc);
+        out = format_text("{}  %joined{} = insertvalue {} %tagged{}, {} %payload{}, 1\n", out, pc, type, pc, TypeName(item.right), pc);
+        value = format_text("%joined{}", pc);
+    }
+    return format_text("{}{}  br label %p{}\n", out, Store(value, item.type, "s", item.output), pc + 1);
+}
+// All owning observer locations are initialized to zero. Moving or dropping
+// one clears it, making the same cleanup safe on normal and cancelled exits.
+TaskFrameCleanup :: (shape: Function, locals: int[], code: Instruction[], prefix: string) -> string {
+    out: string[] = [];
+    for (index in 0..<shape.locals) {
+        if (locals[shape.first_local + index] != TaskType) { continue; }
+        out.append(format_text("  %{}.l{} = load i64, ptr %l{}\n  store i64 0, ptr %l{}\n  call void @chibi_tasks.release(i64 %{}.l{})\n", prefix, index, index, index, prefix, index));
+    }
+    for (pc in 0..<shape.code) {
+        item := code[shape.first_code + pc];
+        if (item.type != TaskType || (item.op != TaskCopy && item.op != Call)) { continue; }
+        out.append(format_text("  %{}.s{} = load i64, ptr %s{}\n  store i64 0, ptr %s{}\n  call void @chibi_tasks.release(i64 %{}.s{})\n", prefix, item.output, item.output, item.output, prefix, item.output));
+    }
+    return strings.Join(out, "");
+}

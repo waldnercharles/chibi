@@ -1,0 +1,62 @@
+package llvm_native
+
+import abi "project:native_abi"
+import strings "core:strings"
+
+// These helpers currently count scalar/string aggregates. Array backing joins
+// this same lifecycle once its copy-on-write mutation barriers are available.
+ValueOwned :: (type: int, owners: bool[]) -> bool {
+    if (type == abi.TextStorage) { return true; }
+    return type >= RecordType && type < ArrayType && owners[type - RecordType];
+}
+// Count fields in their destination storage. Array ranges and native value
+// slots already hold the copied bytes, so neither needs another record copy.
+ValueRecordAt :: (type: int, records: Record[], fields: int[], owners: bool[], keep: bool) -> string {
+    operation := "drop";
+    if (keep) { operation = "keep"; }
+    out := [format_text("define internal void @chibi_value.{}.{}_at(ptr %ctx, ptr %value) {{\nentry:\n", type, operation)];
+    record := records[type - RecordType];
+    for (index in 0..<record.count) {
+        member := fields[record.first + index];
+        if (!ValueOwned(member, owners)) { continue; }
+        out.append(format_text("  %field{} = getelementptr inbounds {}, ptr %value, i32 0, i32 {}\n", index, TypeName(type), index));
+        if (member == abi.TextStorage) {
+            out.append(format_text("  %owner.at{} = getelementptr inbounds {}, ptr %field{}, i32 0, i32 2\n  %owner{} = load ptr, ptr %owner.at{}\n", index, abi.TextType(), index, index, index));
+            if (keep) { out.append(format_text("  call void @chibi_scalar.retain(ptr %owner{})\n", index)); }
+            else { out.append(format_text("  call void @chibi_scalar.free(ptr %ctx, ptr %owner{})\n", index)); }
+        } else {
+            out.append(format_text("  call void @chibi_value.{}.{}_at(ptr %ctx, ptr %field{})\n", member, operation, index));
+        }
+    }
+    out.append("  ret void\n}\n");
+    return strings.Join(out, "");
+}
+// By-value users such as map payload calls share the same field operations.
+ValueRecordCopy :: (type: int) -> string {
+    name := TypeName(type);
+    return strings.Concatenate([
+        format_text("define internal {} @chibi_value.{}.copy(ptr %ctx, {} %value) {{\nentry:\n", name, type, name),
+        format_text("  %result = alloca {}\n  store {} %value, ptr %result\n", name, name),
+        format_text("  call void @chibi_value.{}.keep_at(ptr %ctx, ptr %result)\n", type),
+        format_text("  %copied = load {}, ptr %result\n  ret {} %copied\n}\n", name, name)
+    ]);
+}
+ValueRecordDrop :: (type: int) -> string {
+    name := TypeName(type);
+    return strings.Concatenate([
+        format_text("define internal void @chibi_value.{}.drop(ptr %ctx, {} %value) {{\nentry:\n", type, name),
+        format_text("  %held = alloca {}\n  store {} %value, ptr %held\n", name, name),
+        format_text("  call void @chibi_value.{}.drop_at(ptr %ctx, ptr %held)\n  ret void\n}\n", type)
+    ]);
+}
+ValueRecordRange :: (type: int, copy: bool) -> string {
+    operation := "drop";
+    field_operation := "drop";
+    if (copy) { operation = "copy"; field_operation = "keep"; }
+    out := [format_text("define internal void @chibi_value.{}.{}_range(ptr %ctx, ptr %data, i32 %count) {{\nentry:\n  br label %head\n", type, operation)];
+    out.append("head:\n  %index = phi i32 [ 0, %entry ], [ %next, %body ]\n  %done = icmp eq i32 %index, %count\n  br i1 %done, label %exit, label %body\nbody:\n  %offset = zext i32 %index to i64\n");
+    out.append(format_text("  %at = getelementptr inbounds {}, ptr %data, i64 %offset\n", TypeName(type)));
+    out.append(format_text("  call void @chibi_value.{}.{}_at(ptr %ctx, ptr %at)\n", type, field_operation));
+    out.append("  %next = add i32 %index, 1\n  br label %head\nexit:\n  ret void\n}\n");
+    return strings.Join(out, "");
+}

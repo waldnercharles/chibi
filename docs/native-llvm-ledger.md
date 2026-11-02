@@ -1,5 +1,24 @@
 # Native LLVM ledger
 
+## Current integration, 2 November 2026
+
+The native-default change series is in [PR #1331](https://github.com/waldnercharles/chibi/pull/1331).
+The compiler now self-hosts natively, and the default build and installed tools
+use the verified native compiler. The combined compiler at `975dbd72d`
+reproduces identical bytes on macOS arm64; cross-platform CI for that revision
+is still in progress. The direct native compiler test inventory passes 403 of
+408 tests, with five unit-algebra tests awaiting array operations.
+
+Native desktop asset compilation, task timing, map iteration, retained string
+records, optional values and typed failures have implementation and focused
+tests. Task results, broader managed ownership, complete test-runner parity and
+remaining platform coverage are still being integrated. Program/application
+runtime APIs and browser execution still use the VM. See [PLAN.md](../PLAN.md)
+for current commits, validation and deletion gates.
+
+The milestone tables and census below preserve the earlier rollout's evidence
+and main-branch status; they do not describe the current integration branch.
+
 This ledger tracks how far ordinary Chibi source reaches native code through
 LLVM. Each feature lists the code that owns its meaning, what is still missing
 natively, the runtime it needs, any open decision, and the selector that

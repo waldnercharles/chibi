@@ -52,6 +52,7 @@ Main :: () -> int {
     assert(text_byte_at(values[1].message, 2) == 3);
     returned := ReturnArray()[0];
     assert(text_byte_at(returned.message, 2) == 5);
+    FunctionalArrays();
     choice := Choose(6);
     other := choice;
     choice = Choice.Empty;
@@ -61,6 +62,55 @@ Main :: () -> int {
     }
     return 0;
 }
+FunctionalArrays :: () {
+    numbers := [int(1), 2, 3];
+    removed := remove_index(numbers, 1);
+    assert(length(removed) == 2 && removed[1] == 3 && length(numbers) == 3);
+    removed[0] = 9;
+    assert(numbers[0] == 1);
+    invalid_negative := remove_index(numbers, -1);
+    invalid_end := remove_index(numbers, 3);
+    assert(length(invalid_negative) == 3 && length(invalid_end) == 3);
+    invalid_negative[0] = 8;
+    assert(numbers[0] == 1 && invalid_end[0] == 1);
+    sliced := numbers.slice(1, 2);
+    assert(length(sliced) == 2 && sliced[0] == 2 && sliced[1] == 3);
+    source := [int(1), 2, 3];
+    captured := remove_index(source, ReplaceArray(&source));
+    assert(length(source) == 1 && source[0] == 99);
+    assert(length(captured) == 2 && captured[0] == 1 && captured[1] == 3);
+    slice_source := [int(1), 2, 3];
+    captured_slice := slice_source.slice(0, ReplaceArray(&slice_source));
+    assert(length(captured_slice) == 1 && captured_slice[0] == 1);
+    assert(length(slice_source) == 1 && slice_source[0] == 99);
+    index_source := [int(1), 2, 3];
+    captured_item := index_source[ReplaceArray(&index_source)];
+    assert(captured_item == 2 && length(index_source) == 1 && index_source[0] == 99);
+    same_source := [int(1), 2, 3];
+    scoped_result := SliceAliased(&same_source, &same_source);
+    assert(scoped_result == 1);
+    empty: int[] = [];
+    without := remove_index(empty, 0);
+    assert(length(without) == 0);
+    words := [Text(1), Text(2), Text(3)];
+    kept := remove_index(words, 1);
+    words[0] = Text(7);
+    assert(text_byte_at(kept[0], 2) == 1 && text_byte_at(kept[1], 2) == 3);
+    taken := words.slice(1, 1);
+    assert(length(taken) == 1 && text_byte_at(taken[0], 2) == 2);
+    rows := [Make(1), Make(2), Make(3)];
+    omitted := remove_index(rows, 1);
+    rows[0] = Make(7);
+    assert(text_byte_at(omitted[0].message, 2) == 1);
+    assert(text_byte_at(omitted[1].nested.text, 2) == 3);
+    omitted[0] = Make(8);
+    assert(text_byte_at(rows[1].message, 2) == 2);
+    temporary := remove_index(ReturnArray(), 0);
+    assert(length(temporary) == 0);
+    surviving := remove_index(ReturnArray(), 99)[0];
+    assert(text_byte_at(surviving.message, 2) == 5);
+}
+
 Text :: (i: int) -> string { return text_from_bytes([u8(65), 0, u8(i)]); }
 Make :: (i: int) -> Value {
     return {message: Text(i), extra: Text(i), nested: {text: Text(i)}};
@@ -79,4 +129,9 @@ Replace :: (value: ^Value) -> string {
 SnapshotBeforeCall :: (value: Value, ignored: int) -> bool { return text_byte_at(value.message, 2) == 1; }
 
 ReturnArray :: () -> Value[] { return [Make(5)]; }
+ReplaceArray :: (values: ^(int[])) -> int { values^ = [int(99)]; return 1; }
+SliceAliased :: (values: ^(int[]), alias: ^(int[])) -> int {
+    part := values^.slice(0, ReplaceArray(alias));
+    return part[0];
+}
 Choose :: (i: int) -> Choice { return Choice.Some(Make(i)); }

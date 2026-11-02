@@ -197,7 +197,10 @@ package scalar_facts
 // of `f`, with ArrayPush before it, so the record takes back the changed array. ArrayWith
 // consumes an array and an element, and ArrayJoin two arrays of one type, to
 // give a new array of the first's elements and then the second's; neither
-// changes what it consumes, as `append(a, x)` and `extend(a, b)` do not. A For row with
+// changes what it consumes, as `append(a, x)` and `extend(a, b)` do not.
+// ArrayWithout consumes an array and an int index to give an independent array
+// without that element, or a copy of all elements for an index outside it.
+// A For row with
 // RangeArray declares variable `value`, of its element `type` and `name`,
 // and its one operand is the array it iterates, whose elements the body
 // cannot change. With RangeKeyed the variable after it is the int index of the
@@ -304,15 +307,24 @@ pub CancelRow: int : 43;
 // f64 duration and suspends until it expires. Both give int 0.
 pub CancelAfterRow: int : 46;
 pub DelayRow: int : 47;
+// A handle await gives its structural T | Cancelled union. `value` names
+// the waiting function and `literal` its success variant ordinal.
+pub AwaitResultRow: int : 49;
+pub TaskRunningRow: int : 51;
+// A source void waiting function has no success payload despite its internal int.
+pub FunctionVoid: int : 1;
 pub CallPlain: int : 0;
 pub CallAwaited: int : 1;
 pub CallSpawned: int : 2;
 // A postfix map operation. New consumes alternating key/value operands;
-// changes consume map, key and optionally value, and give the replacement map.
+// changes consume a map place, key and optionally value, and give the replacement map.
 // Reads use `literal` for their input map type and `type` for their result.
 // A map's assignment or declaration copies through MapCopy before sharing.
+// MapSet/MapDelete consume a reference to the target variable, then the key
+// and optional value. The operation reads that place after its arguments,
+// so a call in the key/value may replace the map before the change applies.
 pub MapRow: int : 50;
-// What a RefRow of `type` pushes on a call's operand stack, and so what a
+// What a RefRow of `type` pushes on the operand stack, and so what a
 // reference parameter of `type` takes: ReferenceType plus the type. A
 // parameter row whose literal is 1 is a reference parameter. Its variable is
 // of its `type` for every other row, and reading or writing it reads or
@@ -340,6 +352,8 @@ pub FloatType: int : 10;
 pub DoubleType: int : 11;
 // An immutable string of bytes.
 pub StringType: int : 12;
+// An owning observer of program-owned execution, never an integer value.
+pub TaskType: int : 13;
 // The d-th record or union of the module is type RecordType + d.
 pub RecordType: int : 32;
 // An array of type T is ArrayType + T.
@@ -422,6 +436,8 @@ pub ArrayJoin: int : 13;
 pub ArrayBytes: int : 14;
 // A string, the bytes of the array of bytes (u8) it consumes.
 pub ArrayText: int : 15;
+// A new array without the int-indexed element; an invalid index copies all elements.
+pub ArrayWithout: int : 16;
 // A Local row whose `literal` is SwitchSubject holds the union a switch is on
 // when the switch is not on a variable, so each arm's bindings can read it
 // again. It has the switch statement's range, a Switch row of the same range
@@ -481,6 +497,7 @@ pub Floating :: (type: int) -> bool {
 // integer type, any bits for a word or double, 32 bits for a float and 0 for
 // a string, whose value is its text.
 pub Fits :: (literal: i64, type: int) -> bool {
+    if (type == TaskType) { return literal == 0; }
     if (type == StringType) {
         return literal == 0;
     }

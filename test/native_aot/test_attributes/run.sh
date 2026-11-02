@@ -4,7 +4,7 @@ if [ "$#" -ne 2 ]; then
     echo 'usage: run.sh NATIVE_DRIVER LLVM_BIN' >&2
     exit 2
 fi
-root=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)
+root=$(CDPATH='' cd -- "$(dirname "$0")/../../.." && pwd)
 driver=$1
 llvm=$2
 case "$(uname -s)-$(uname -m)" in
@@ -145,6 +145,7 @@ reject Duplicate "Duplicate attribute '@test'"
 reject Parameters 'A @test function takes no parameters and returns nothing'
 reject Results 'A @test function takes no parameters and returns nothing'
 reject NamedResults 'A @test function takes no parameters and returns nothing'
+# shellcheck disable=SC2016 # The compiler diagnostic contains literal backticks.
 reject Malformed 'Expected a name, found `(`'
 
 # A selected void function uses the same zero-status entry adapter as Main.

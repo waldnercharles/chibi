@@ -3,6 +3,7 @@
 set -eu
 compiler=${1:?pass the native compiler}
 llvm=${2:?pass the LLVM tools directory}
+reference=${3:-}
 root=$(cd "$(dirname "$0")/../../.." && pwd -P)
 case "$compiler" in /*) ;; *) compiler=$(pwd -P)/$compiler ;; esac
 case "$llvm" in /*) ;; *) llvm=$(pwd -P)/$llvm ;; esac
@@ -39,3 +40,16 @@ for level in 0 2; do
     "$work/records-O$level"
     printf 'PASS native managed records, arrays and unions O%s, allocations balanced\n' "$level"
 done
+# The public native lifecycle operations also run directly, independently of
+# scalar lowering's current specialized record expansion.
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_aot/managed_values/Probe.chibi" --entry Main \
+    --output "$work/probe" --llvm "$llvm" --target "$triple" --level 2 --jobs 1
+"$work/probe" "$work" "$llvm" "$root/test/native_aot/managed_values/Audit.ll"
+if [ -n "$reference" ]; then
+    mkdir "$work/reference"
+    cp "$root/test/native_aot/managed_values/Records.chibi" "$work/reference/Records.chibi"
+    printf '%s\n' 'package managed_records' '@test' 'Calls :: () { FunctionalArrays(); }' > "$work/reference/Tests.chibi"
+    "$reference" --project-root "$work/reference" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
+    cat "$work/reference.log"
+fi

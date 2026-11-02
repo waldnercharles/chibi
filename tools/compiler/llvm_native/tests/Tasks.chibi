@@ -35,7 +35,7 @@ AwaitedCallsRequireACoroutine :: () {
 @test
 UnusedInstructionNumbersRemainRejected :: () {
     code := TaskCalls(native.CallPlain, false);
-    code[1] = Code(native.FieldAddress + 1, abi.IntStorage, 0, 0, 0, 0, 0);
+    code[1] = Code(native.Suspend - 1, abi.IntStorage, 0, 0, 0, 0, 0);
     Rejects(TaskCallModule(code), "unsupported native scalar instruction");
 }
 @test

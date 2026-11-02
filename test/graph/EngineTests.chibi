@@ -205,6 +205,7 @@ MirrorDropsDeletedFiles :: () {
 // The build host runs this entry; each case stops it on a failed assert.
 pub Run :: () -> int {
     NativeCompanionsUseCurrentCompiler();
+    NativeIdentityUsesAuthoredOwners();
     MirrorDropsDeletedFiles();
     DebugFlagsKeepInstrumentation();
     TestsKeepAssertions();
@@ -213,4 +214,90 @@ pub Run :: () -> int {
     ReflectionArgumentsAreValidated();
     NamedProgramsBuildWhatTheyRun();
     return 0;
+}
+
+
+IdentityWrite :: (path: string, text: string) {
+    failure := os.WriteText(path, text);
+    assert(failure == nil, "write a native identity input");
+}
+IdentityRead :: (path: string) -> string {
+    read := os.ReadText(path);
+    assert(read.error == nil, "read the identity");
+    return read.text;
+}
+
+// A native SDK identity needs no VM source/header tree. The package compiler's
+// prepared encoder remains the explicit compile-only artifact owner.
+NativeIdentityUsesAuthoredOwners :: () {
+    root := strings.Concatenate([os.Root(), "/.chibi/native-identity-test"]);
+    removed := os.Run(["/bin/rm", "-rf", root]);
+    assert(removed == 0, "remove an earlier identity fixture");
+    owner_folder := strings.Concatenate([root, "/tools/compiler/prepared_writer"]);
+    for (path in [strings.Concatenate([root, "/sdk"]), owner_folder]) {
+        made := os.MakeDirectory(path);
+        assert(made == nil, "make the identity inputs");
+    }
+    sdk := strings.Concatenate([root, "/sdk/VERSION"]);
+    project := strings.Concatenate([root, "/sdk/PROJECT_VERSION"]);
+    owner := strings.Concatenate([owner_folder, "/Writer.chibi"]);
+    output := strings.Concatenate([root, "/build"]);
+    metadata := strings.Concatenate([output, "/sdk/chibi_engine_metadata.json"]);
+    IdentityWrite(sdk, "9.8.7\n");
+    IdentityWrite(project, "39\n");
+    writer := "package prepared_writer\nVersion: int : 28;\n";
+    IdentityWrite(owner, writer);
+    written := engine.WriteNativeIdentity(root, output);
+    assert(written && !os.Exists(strings.Concatenate([root, "/src"])), "native identity has no C VM dependency");
+    text := IdentityRead(metadata);
+    assert(strings.Contains(text, "\"sdk_version\": \"9.8.7\"") && strings.Contains(text, "\"project_version\": 39"), "public version fields are preserved");
+    assert(strings.Contains(text, "\"backends\": [\"native\"]") && !strings.Contains(text, "\"events\""), "native metadata names its live backend and artifact");
+    assert(strings.Contains(text, "\"execution\": {\"version\": 28") && strings.Contains(text, "\"source\": \"tools/compiler/prepared_writer/Writer.chibi\""), "the prepared writer owns the execution format");
+    assert(strings.Contains(text, os.HashText(writer)) && !strings.Contains(text, "src/"), "the exact encoder bytes decide the format identity");
+    for (bad in ["", "0", "-1", "039", "39x", "1\n2", "2147483648"]) {
+        IdentityWrite(project, bad);
+        written = engine.WriteNativeIdentity(root, output);
+        assert(!written && IdentityRead(metadata) == text, "an invalid compatibility version preserves prior metadata");
+    }
+    failure := os.Remove(project);
+    assert(failure == nil, "remove the compatibility version input");
+    written = engine.WriteNativeIdentity(root, output);
+    assert(!written && IdentityRead(metadata) == text, "a missing compatibility version has no default");
+    IdentityWrite(project, "39\n");
+    for (bad in ["", "Version: int : 0;\n", "Version: int : 28;\nVersion: int : 29;\n", "Version: string : 28;\n"]) {
+        IdentityWrite(owner, bad);
+        written = engine.WriteNativeIdentity(root, output);
+        assert(!written && IdentityRead(metadata) == text, "an invalid encoder version preserves prior metadata");
+    }
+    writer = "package prepared_writer\nVersion : int : 29;\n// codec change\n";
+    IdentityWrite(owner, writer);
+    written = engine.WriteNativeIdentity(root, output);
+    text = IdentityRead(metadata);
+    assert(written && strings.Contains(text, "\"execution\": {\"version\": 29") && strings.Contains(text, os.HashText(writer)), "the encoder owns its version and identity together");
+    // Explicit VM reference builds retain their C codec identity, while the
+    // project compatibility field has the same single SDK owner.
+    for (directory in ["execution", "types", "runtime"]) {
+        made := os.MakeDirectory(strings.Concatenate([root, "/src/", directory]));
+        assert(made == nil, "make legacy identity input directories");
+    }
+    for (path in ["execution/prepared.c", "execution/prepared_function.c", "execution/prepared_record.c",
+                  "types/value_wire.c", "types/value_wire.h", "runtime/event_catalog.c"]) {
+        IdentityWrite(strings.Concatenate([root, "/src/", path]), "legacy codec owner\n");
+    }
+    IdentityWrite(strings.Concatenate([root, "/src/execution/prepared.h"]), "#define EXECUTION_PREPARED_VERSION 28\n");
+    IdentityWrite(strings.Concatenate([root, "/src/runtime/event_catalog.h"]), "#define EVENT_CATALOG_VERSION 3\n");
+    profile := Debug("", false, "");
+    profile.architecture = "fixture";
+    legacy := strings.Concatenate([root, "/legacy"]);
+    written = engine.WriteIdentity(root, legacy, profile);
+    assert(written, "the explicit VM identity remains available");
+    old := IdentityRead(strings.Concatenate([legacy, "/sdk/chibi_engine_metadata.json"]));
+    assert(strings.Contains(old, "\"backends\": [\"bytecode\", \"sljit\"]") && strings.Contains(old, "\"events\": {\"version\": 3"), "the explicit VM identity retains its codec records");
+    IdentityWrite(project, "40\n");
+    written = engine.WriteNativeIdentity(root, output);
+    assert(written && strings.Contains(IdentityRead(metadata), "\"project_version\": 40"), "native identity reads the SDK version authority");
+    written = engine.WriteIdentity(root, legacy, profile);
+    assert(written && strings.Contains(IdentityRead(strings.Concatenate([legacy, "/sdk/chibi_engine_metadata.json"])), "\"project_version\": 40"), "legacy identity derives the same compatibility version");
+    removed = os.Run(["/bin/rm", "-rf", root]);
+    assert(removed == 0, "remove the private identity fixture");
 }

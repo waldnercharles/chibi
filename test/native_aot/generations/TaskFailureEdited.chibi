@@ -1,0 +1,21 @@
+package task_failure
+
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fwrite :: (data: cstring, size: u64, count: u64, stream: rawptr) -> u64
+    fclose :: (stream: rawptr) -> i32
+}
+
+Main :: () -> int { return 91; }
+
+Frame :: () -> int {
+    announced: retain bool = false;
+    if !announced {
+        announced = true;
+        stream := fopen("task-edited", "wb");
+        written := fwrite("new", 1, 3, stream);
+        closed := fclose(stream);
+    }
+    return 0;
+}

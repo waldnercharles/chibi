@@ -1,34 +1,31 @@
-# Numeric package generations
+# Native package generations
 
-On Linux x86-64, run the isolated real-driver regression with existing hosts
-and LLVM tools (absolute paths):
+On Linux x86-64, run the real native compiler and host regression with LLVM 22
+or later, using absolute paths:
 
 ```sh
-CHIBI_COMPILER_CACHE=/path/to/cache sh test/native_aot/generations/run.sh \
-  /path/to/chibi-build-host /path/to/chibi-compiler-host /path/to/llvm/bin
+sh test/native_aot/generations/run.sh /path/to/chibi /path/to/llvm/bin
 ```
 
-The runner invokes `tools/native_aot/driver/Driver.chibi`'s actual `Native`
-entry, compiles `apps/host/Host.chibi`, and swaps actual shared objects. The
-build and compiler hosts remain C; this is not a no-C bootstrap or a test of
-the whole SDK launcher. LLVM's `opt`, `llc` and `ld.lld` are required.
+The runner compiles `apps/host/Host.chibi` and actual shared generations through
+the native compiler. It compiles edits while the original generation runs and
+publishes each edit by renaming `next.so`. No VM build or compiler host runs.
 
-The package swap inserts a function and a retained binding, preserves the old
-bindings by their `Function.variable` names rather than indices, converts an
-`int` count to `f64`, and clamps a retained `i64` to `int`. Exit status 7 proves
-the count survived, the new binding kept its initializer, the conversion
-worked, and the edited `Main` did not run. The same fixture in a `library`
-block checks the existing path. A first generation with typed `Main` and void
-`Frame` also swaps: existing scalar lowering adapts non-entry void results to int zero.
-A sibling import checks package collection.
+The package swaps check Main running once, numeric conversion, retained record
+fields surviving reordering, new fields keeping their initializers, and
+retained strings surviving the old mapping. Library and sibling-import cases
+exercise both shared compilation routes. Runtime cases cover arrays, formatted
+strings, assertions, recursive retained writes, and process arguments.
 
-Negative cases require meaningful diagnostics for missing or incompatible
-`Main`/`Frame`, runtime-dependent arrays, formatting and assertions, and
-duplicate function names across imports. Every rejected edit leaves the
-prior shared object byte-identical and publishes no new generation. This
-does not disable assertions: a generation needing the unavailable runtime
-context is rejected before publication.
+Invalid Main or Frame signatures and waiting entry functions must produce
+specific diagnostics while preserving the prior shared object byte for byte.
+An incompatible retained schema must leave the original generation running.
 
-The unchanged implementation fails at the first retained package build,
-before any host process starts. The script runs only these authored fixtures,
-not a broader native-build or language group.
+Tasks started by Main must advance before any edit arrives, and an active
+task assertion must propagate status 134.
+
+The task failure case keeps a worker suspended until the edited Frame signals
+that it is running. The worker then resumes an old-only helper that records a
+marker and fails an assertion. The host must return 134, proving that a retired
+generation's task failure reaches the caller. The CLI watch regression owns
+the corresponding successful old-generation continuation case.

@@ -148,6 +148,11 @@ printf 'package loop\nMain :: () -> int { return 0; }\nFrame :: (x: int) -> int 
 rejected 'Main and Frame with a zero-argument int ABI'
 printf 'package loop\nMain :: () -> int { return 0; }\nFrame :: () -> f64 { return 0.0; }\n' > "$project/Main.chibi"
 rejected 'Main and Frame with a zero-argument int ABI'
+printf 'package loop\nMain :: () -> int { yield\n return 0; }\nFrame :: () -> int { return 0; }\n' > "$project/Main.chibi"
+rejected 'native package generation Main and Frame cannot wait'
+printf 'package loop\nMain :: () -> int { return 0; }\nFrame :: () -> int { yield\n return 0; }\n' > "$project/Main.chibi"
+rejected 'native package generation Main and Frame cannot wait'
+
 # Runtime-backed generations keep assertions enabled and can allocate arrays
 # and format strings through their own libc-backed context.
 expect_status() {
@@ -160,6 +165,12 @@ expect_status() {
     (cd "$run" && timeout 30 "$host") || status=$?
     test "$status" -eq "$expected"
 }
+# A task started by Main must advance before any edit is published.
+cp "$root/test/native_aot/native_enc/ActiveTasks.chibi" "$project/Main.chibi"
+expect_status 7
+cp "$root/test/native_aot/native_enc/ActiveTaskFailure.chibi" "$project/Main.chibi"
+expect_status 134
+
 printf 'package loop\nMain :: () -> int { return 0; }\nFrame :: () -> int { values: int[] = [1, 2]; return length(values); }\n' > "$project/Main.chibi"
 expect_status 2
 printf 'package loop\nMain :: () -> int { return 0; }\nFrame :: () -> int { return text_byte_length(format_text("{}", int(7))); }\n' > "$project/Main.chibi"
@@ -269,12 +280,59 @@ if [ "$status" -ne 7 ]; then
     exit 1
 fi
 
+# A suspended task belongs to its old generation after a swap. Release it
+# only after the incoming Frame runs, then require its old-only helper failure
+# to stop the host with 134 rather than disappear when that generation retires.
+mkdir -p "$work/task first" "$work/task edited" "$work/task run"
+cp "$root/test/native_aot/generations/TaskFailureFirst.chibi" "$work/task first/Main.chibi"
+must_build "$work/task first" shared
+cp "$(output "$work/task first")" "$work/task run/live-0.so"
+(cd "$work/task run" && exec timeout 90 "$host") > "$work/task run/host.log" 2>&1 &
+child=$!
+wait_task_file() {
+    marker=$1
+    tries=0
+    while [ ! -f "$marker" ]; do
+        if ! kill -0 "$child" 2>/dev/null; then
+            cat "$work/task run/host.log" >&2
+            echo "task generation: host exited before $marker" >&2
+            exit 1
+        fi
+        tries=$((tries + 1))
+        if [ "$tries" -ge 1000 ]; then
+            cat "$work/task run/host.log" >&2
+            echo "task generation: missing $marker" >&2
+            exit 1
+        fi
+        sleep 0.01
+    done
+}
+wait_task_file "$work/task run/task-started"
+cp "$root/test/native_aot/generations/TaskFailureEdited.chibi" "$work/task edited/Main.chibi"
+must_build "$work/task edited" shared
+cp "$(output "$work/task edited")" "$work/task run/pending.so"
+mv "$work/task run/pending.so" "$work/task run/next.so"
+wait_task_file "$work/task run/task-edited"
+kill -0 "$child"
+test ! -e "$work/task run/task-failed-old"
+printf 'resume\n' > "$work/task run/task-release"
+status=0
+wait "$child" || status=$?
+child=
+if [ "$status" -ne 134 ] || [ ! -f "$work/task run/task-failed-old" ]; then
+    cat "$work/task run/host.log" >&2
+    echo "retired task failure: expected old task marker and status 134, got $status" >&2
+    exit 1
+fi
+test "$(cat "$work/task run/task-failed-old")" = old
+echo 'native generations: retired task failure propagated'
+
 prior=$(output "$project")
 cp "$prior" "$work/prior.so"
 
 # Distinct imported functions with the same short name cannot silently share
 # a host wrapper or retained-state key. Existing library uniqueness rejects.
-mkdir -p "$project/a" "$project/b"
+mkdir -p "$(dirname "$project")/a" "$(dirname "$project")/b"
 cat > "$project/Main.chibi" <<'SOURCE'
 package loop
 import a "project:a"
@@ -282,8 +340,8 @@ import b "project:b"
 Main :: () -> int { return 0; }
 Frame :: () -> int { return a.Value() + b.Value(); }
 SOURCE
-printf 'package a\npub Value :: () -> int { return 3; }\n' > "$project/a/A.chibi"
-printf 'package b\npub Value :: () -> int { return 4; }\n' > "$project/b/B.chibi"
+printf 'package a\npub Value :: () -> int { return 3; }\n' > "$(dirname "$project")/a/A.chibi"
+printf 'package b\npub Value :: () -> int { return 4; }\n' > "$(dirname "$project")/b/B.chibi"
 rejected 'native library names each function once'
 
 # Producer-rejected library rows have no DocumentRow. Their existing located

@@ -725,9 +725,22 @@ pub Start :: (triple: string, static: bool, context: bool) -> string {
 }
 
 // A shared generation has no process entry. Its host-call wrappers use the
-// same libc-backed runtime as an executable, held privately by this generation.
+// same platform runtime as an executable, held privately by this generation.
 pub SharedContext :: (triple: string, context: bool) -> string {
     target := TargetOf(triple);
+    if (target == WindowsX64) {
+        module := "";
+        if (context) { module = WindowsContextStart(); }
+        else { module = WindowsStart(); }
+        boundary := strings.Index(module, "define void @mainCRTStartup()");
+        assert(boundary > 0);
+        module = strings.Slice(module, 0, boundary);
+        module = strings.ReplaceAll(module, "@chibi_context = global", "@chibi_context = hidden global");
+        module = Join([module, FailureRuntime(true, context, false), WindowsArguments(),
+            "define dllexport i32 @chibi_host_set_process(i64 %count, ptr %arguments, ptr %environment) {\n",
+            "  %line = call ptr @GetCommandLineW()\n  store ptr %line, ptr @chibi_command_line\n  ret i32 0\n}\n"]);
+        return strings.ReplaceAll(module, "= dso_local global", "= hidden global");
+    }
     if (target != LinuxX64 && target != MacOSArm64) {
         return "";
     }

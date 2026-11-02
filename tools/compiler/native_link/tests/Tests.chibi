@@ -235,6 +235,26 @@ MacSharedLibrariesHaveNoProcessEntry :: () {
 }
 
 @test
+WindowsSharedLibrariesHaveNoProcessEntry :: () {
+    plan := Plan3("x86_64-pc-windows-msvc", [], [], true);
+    plan.shared = true;
+    command := link.Command(plan, "/w/generation.dll");
+    for (flag in ["/dll", "/noentry", "/noimplib", "/nodefaultlib"]) {
+        assert(command.contains(flag), "a DLL has no process entry or unused import library");
+    }
+    assert(!command.contains("/entry:mainCRTStartup"), "the executable entry is omitted");
+    for (context in [false, true]) {
+        module := link.SharedContext(plan.triple, context);
+        assert(strings.Contains(module, "define dllexport i32 @chibi_host_set_process("), "the host initializer is exported");
+        assert(strings.Contains(module, "store ptr %line, ptr @chibi_command_line"), "each DLL initializes its argument parser");
+        assert(!strings.Contains(module, "define void @mainCRTStartup()"), "a shared image has no process entry");
+        if (context) {
+            assert(strings.Contains(module, "@chibi_context = hidden global"), "the runtime belongs to its generation");
+        }
+    }
+}
+
+@test
 EveryStartModuleExportsTheArgumentFunctions :: () {
     for (triple in ["x86_64-unknown-linux-gnu", "arm64-apple-macosx11.0.0", "x86_64-pc-windows-msvc"]) {
         module := link.Start(triple, false, false);
@@ -303,6 +323,7 @@ LibraryLinesNameArchives :: () {
 // Source-only entry for the native formatting regression's import consumer.
 pub Run :: () -> int {
     MacSharedLibrariesHaveNoProcessEntry();
+    WindowsSharedLibrariesHaveNoProcessEntry();
     WindowsLibrariesExportWhatTheStartModulesImport();
     StartModulesKeepTheProcessArguments();
     return 0;

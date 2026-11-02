@@ -1476,6 +1476,9 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         // A local holding the union a switch is on, followed by that switch.
         subject := row.kind == facts.LocalRow && row.literal == i64(facts.SwitchSubject);
         retained := row.kind == facts.LocalRow && row.literal == i64(facts.Retained);
+        if (retained && identified && (!Scalar(row.type) || row.count != 1 || rows[at + 1].kind != facts.LiteralRow)) {
+            return "native library retained states require scalar literal initializers; use a package generation for other retained values";
+        }
         if (retained && row.type >= facts.RecordType && !Retainable(rows, records, row.type)) {
             return "native retained records hold only numbers and bools; retain strings separately";
         }
@@ -3014,6 +3017,15 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 type := NativeType(row.type);
                 lowered := RetainedValue(rows, declared, row.type, value, format_text("{}.{}", declaration.name, row.name),
                                          states, length(texts), slot, true);
+                if (rows[1].text != "") {
+                    // The legacy word manifest reads defaults before Frame.
+                    // Its validated scalar literal is an eager global, while
+                    // package generations keep per-key lazy initialization.
+                    load := lowered.code[0];
+                    load.left = 0;
+                    load.literal = rows[at + 1].literal;
+                    lowered.code[0] = load;
+                }
                 slots.extend(lowered.types);
                 body.extend(lowered.code);
                 texts.extend(lowered.texts);

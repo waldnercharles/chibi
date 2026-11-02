@@ -2262,8 +2262,7 @@ static const struct
     { "package scalar\nNamed :: union { Tag(items: [int: int]) }\nMain :: () "
       "-> int "
       "{ return 1; }\n",
-      "scalar proof requires number, bool, string, array, record and union "
-      "payloads",
+      "native map payloads require union ownership support",
       "items: [int: int]" },
     { "package scalar\nWrapped :: union { Of(p: ^int) }\n"
       "Main :: () -> int { return 1; }\n",
@@ -2399,8 +2398,8 @@ static bool scalar_collects_libraries()
     return true;
 }
 /* A retain local of a library function is a state of the library: a Local
- * row whose literal is Retained, then the state's global, loaded and stored
- * around the variable, and the manifest a host reads the states through. */
+ * row whose literal is Retained, then an eagerly initialized scalar global
+ * the legacy word manifest can read before the first function call. */
 static bool scalar_retains_library_states()
 {
     static const char source[] = "Tools :: library {\n"
@@ -3373,7 +3372,7 @@ static int library_child(const char *library, int count, char **specs)
  * them and built with the driver's opt and llc arguments into the bundle,
  * whose runner (test/native_aot/targets) links and runs it on that target.
  * Each has native_abi's function, the bundle's subdirectory, the triple and
- * the data layout LLVM 18 gives it, which the driver admits, and the
+ * the data layout LLVM 22 gives it, which the driver admits, and the
  * symbols its objects may leave undefined, which the bundle's runtime.o
  * defines from `runtime`, or none. Windows code that uses floating point
  * references _fltused, and a frame larger than a page calls __chkstk; the C
@@ -3392,7 +3391,7 @@ static const struct
     { "MacOSArm64",
       "macos-arm64",
       "arm64-apple-macosx11.0.0",
-      "e-m:o-i64:64-i128:128-n32:64-S128",
+      "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-n32:64-S128-Fn32",
       NULL,
       { NULL } },
     { "WindowsX64",

@@ -3415,11 +3415,18 @@ StateManifest :: (name: string, names: string[], ids: i64[], functions: Function
 // order and the names their NUL-ended names. `get` writes the states' values
 // as words to its result, and `set` reads them from its arguments, as an
 // export entry does, so a host moves them from one build of a library to the
-// next. A library with no states has no such manifest.
+// next. This legacy ABI exposes only eager numeric/bool globals. Lazy states
+// and strings use the native host's per-key API, never borrowed handles in
+// the bulk word manifest. A module outside that contract has no manifest.
 RetainedManifest :: (name: string, code: Instruction[], texts: string[]) -> string {
     states := RetainedStates(code);
     if (length(states) == 0) {
         return "";
+    }
+    for (item in states) {
+        if (item.left != 0 || abi.ScalarType(item.type) == "") {
+            return "";
+        }
     }
     types: string[] = [];
     names: string[] = [];
@@ -3429,24 +3436,15 @@ RetainedManifest :: (name: string, code: Instruction[], texts: string[]) -> stri
     for (item in states) {
         index := item.target;
         label := texts[item.right];
-        types.append(format_text("i8 {}", abi.ValueTag(item.type)));
+        types.append(format_text("i8 {}", abi.ExportType(item.type)));
         names.append(format_text("{}\\00", Escaped(label)));
         bytes += strings.ByteLength(label) + 1;
-        if (item.type == abi.TextStorage) {
-            get.append(format_text("  %w{} = ptrtoint ptr @{} to i64\n", index, StateSymbol(index)));
-        } else {
-            get.append(StateValue(format_text("g{}", index), item));
-            get.append(ToWord(format_text("w{}", index), format_text("%g{}", index), item.type));
-        }
+        get.append(StateValue(format_text("g{}", index), item));
+        get.append(ToWord(format_text("w{}", index), format_text("%g{}", index), item.type));
         get.append(format_text("  %o{}.at = getelementptr inbounds i64, ptr %out, i64 {}\n  store i64 %w{}, ptr %o{}.at\n",
                                index, index, index, index));
         set.append(format_text("  %i{}.at = getelementptr inbounds i64, ptr %in, i64 {}\n  %i{} = load i64, ptr %i{}.at\n",
                                index, index, index, index));
-        if (item.type == abi.TextStorage) {
-            set.append(format_text("  %source{} = inttoptr i64 %i{} to ptr\n  call void @chibi_scalar.retained.copy(ptr %ctx, ptr @{}, ptr %source{})\n", index, index, StateSymbol(index), index));
-            set.append(format_text("  store i1 true, ptr @{}.ready\n", StateSymbol(index)));
-            continue;
-        }
         set.append(FromWord(format_text("v{}", index), format_text("%i{}", index), item.type));
         value := format_text("%v{}", index);
         if (abi.Floating(item.type)) {

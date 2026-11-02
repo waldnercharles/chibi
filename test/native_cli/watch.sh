@@ -78,6 +78,13 @@ wait_file "$live/ready"
 printf 'package live\nMain :: () -> int { invalid }\n' >"$work/project/Main.chibi"
 wait_log 'native: rejected'
 kill -0 "$process" 2>/dev/null || fail 'the CLI exited after rejecting an edit'
+cat >"$work/project/Main.chibi" <<'SOURCE'
+package live
+Main :: (value: int) -> int { return value; }
+Frame :: () -> int { return 0; }
+SOURCE
+wait_log 'Main and Frame with a zero-argument int ABI'
+kill -0 "$process" 2>/dev/null || fail 'an invalid entry replaced the running program'
 cp "$root/test/native_cli/fixtures/watch_middle.chibi" "$work/project/Main.chibi"
 wait_file "$live/middle-ready"
 cp "$root/test/native_cli/fixtures/watch_second.chibi" "$work/project/Main.chibi"
@@ -86,7 +93,7 @@ finish 42
 [ "$(cat "$live/main-count")" = x ] || fail 'Main ran more than once'
 [ "$(cat "$live/task-done")" = old ] || fail 'a retired generation did not complete its task in the old code'
 [ ! -f "$live/cancelled-task-ran" ] || fail 'a cancelled task resumed'
-printf 'native watch: rejected edit, two accepted swaps, record/string migration, Main-once and retired/cancelled tasks passed\n'
+printf 'native watch: rejected source/entry, two accepted swaps, record/string migration, Main-once and retired/cancelled tasks passed\n'
 
 # Both import failures recover by adding a source inside an existing folder.
 # Main is left untouched while the missing source is restored or first created.

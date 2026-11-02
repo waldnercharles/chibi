@@ -1051,8 +1051,9 @@ pub Start :: (command: string[], piped: bool) -> int {
 
 // The caller owns the files, including cleanup after a failed launch. Empty
 // stdout inherits this process's stdout; stderr must name a distinct file.
-// Wait/Kill never report or remove redirected output.
-pub StartRedirected :: (command: string[], stdout_path: string, stderr_path: string) -> int {
+// Wait/Kill never report or remove redirected output. Windows already inherits
+// containing parent jobs, including when POSIX's attached group option is false.
+pub StartRedirected :: (command: string[], stdout_path: string, stderr_path: string, attached: bool = false) -> int {
     if stderr_path == "" || stdout_path == stderr_path { return -1; }
     return StartProcess(command, false, stdout_path, stderr_path);
 }

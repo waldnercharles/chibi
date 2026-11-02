@@ -289,7 +289,9 @@ pub Cancel: int : 82;
 pub CancelAfter: int : 85;
 // Suspends for the left f64 duration in the program's clock domain.
 pub Delay: int : 86;
-pub InstructionCount: int : 87;
+// output = sqrt(left), preserving the scalar f32 math contract.
+pub Sqrt: int : 87;
+pub InstructionCount: int : 88;
 // A Call's `literal`: an ordinary call, an awaited call (the callee is a waiting
 // function, run inline in the waiting caller, giving its result), or a spawn (the
 // callee is a waiting function, started as a task of its own, giving its handle, a
@@ -306,19 +308,19 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
 }
 Produces :: (op: int) -> bool {
     return op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
-           op == ForeignCall || op == StateLoad || op == FunctionAddress || (op >= MapLength && op <= MapLiveAt && op != MapDrop);
+           op == ForeignCall || op == StateLoad || op == FunctionAddress || op == Sqrt || (op >= MapLength && op <= MapLiveAt && op != MapDrop);
 }
 Comparison :: (op: int) -> bool {
     return op >= Lt && op <= Ne;
 }
 Unary :: (op: int) -> bool {
-    return op == Neg || op == BitNot;
+    return op == Neg || op == BitNot || op == Sqrt;
 }
 ReadsLeft :: (op: int) -> bool {
     return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
            (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText || op == ArrayDrop || op == TextRetain ||
            op == TextRelease || op == StateStore || op == Deref || op == Poke || op == AwaitHandle || op == Cancel ||
-           op == CancelAfter || op == Delay || (op >= MapLength && op <= MapLiveAt);
+           op == CancelAfter || op == Delay || op == Sqrt || (op >= MapLength && op <= MapLiveAt);
 }
 Integer :: (type: int) -> bool {
     return abi.IntegerBits(type) > 0;
@@ -944,6 +946,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
                                    (item.literal != 0 && item.literal != 1))) {
             return Result.Rejected(base + pc, "native conversion is not one the backend implements");
         }
+        if (item.op == Sqrt && (item.type != abi.FloatStorage || !Typed(slots, item.left, item.type))) {
+            return Result.Rejected(base + pc, "native square root requires an f32 operand");
+        }
         if (item.op == FieldAddress) {
             field := FieldType(records, fields, item.right, item.literal);
             held := item.right;
@@ -1449,7 +1454,9 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
     } else {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
         if (Unary(item.op)) {
-            if (item.op == Neg && abi.Floating(item.type)) {
+            if (item.op == Sqrt) {
+                out = format_text("{}  %v{} = call float @llvm.sqrt.f32(float %a{})\n", out, pc, pc);
+            } else if (item.op == Neg && abi.Floating(item.type)) {
                 // Flips the sign bit, as the VMs' negation does: -0.0 for 0.0.
                 out = format_text("{}{}", out, format_text("  %v{} = fneg {} %a{}\n", pc, type, pc));
             } else if (item.op == Neg) {
@@ -2834,10 +2841,17 @@ TextEqual :: () -> string {
     out = format_text("{}  br i1 %matches, label %head, label %differ\nequal:\n  ret i1 true\n", out);
     return format_text("{}differ:\n  ret i1 false\n}\n", out);
 }
-// The saturating conversion intrinsics `code` calls, each declared once.
+// The LLVM intrinsics `code` calls, each declared once.
 Declarations :: (code: Instruction[]) -> string {
     out: string[] = [];
     for (item in code) {
+        if (item.op == Sqrt) {
+            declaration := "declare float @llvm.sqrt.f32(float)\n";
+            if (!out.contains(declaration)) {
+                out.append(declaration);
+            }
+            continue;
+        }
         if (item.op != Convert || !abi.Floating(item.right) || !Integer(item.type)) {
             continue;
         }

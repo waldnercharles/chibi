@@ -390,6 +390,8 @@ pub ShiftRight: int : 10;
 pub Negate: int : 1;
 pub Complement: int : 2;
 pub Not: int : 3;
+// The scalar f32 built-in, with the same precision as ordinary math lowering.
+pub SquareRoot: int : 4;
 
 // Logical operators: the source's && and ||.
 pub LogicalAnd: int : 1;

@@ -853,6 +853,9 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
             shape := ProcShape(forest, text, callee_proc);
             return shape[length(shape) - 1];
         }
+        if (ScalarSquareRoot(forest, text, node)) {
+            return FloatStorage;
+        }
         if (ScalarLengthOf(forest, text, callables, params, names, types, members, callable.package, node) >= 0) {
             return IntStorage;
         }
@@ -1167,6 +1170,13 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (callee < 0 && ScalarTextOperator(forest, text, node) != 0) {
         return ScalarText(forest, text, callables, params, callable, names, types, members, constants, node, output);
     }
+    if (callee < 0 && ScalarSquareRoot(forest, text, node)) {
+        // EmitBody has checked the built-in's positional f32 argument.
+        argument := FirstMember(forest, Field(forest, node, syntax.FieldArguments));
+        row := ScalarAt(forest, node, facts.UnaryRow, facts.FloatType, facts.SquareRoot, 1, "");
+        return ScalarSides(forest, text, callables, params, callable, names, types, members, constants,
+                           node, [argument], [FloatStorage], FloatStorage, row, output);
+    }
     if ((!Is(forest, Field(forest, node, syntax.FieldFunction), syntax.Identifier) &&
          !Is(forest, Field(forest, node, syntax.FieldFunction), syntax.MemberExpression)) || callee < 0) {
         return ScalarOperands.Failed(Diagnose(forest, Field(forest, node, syntax.FieldFunction), 0,
@@ -1331,6 +1341,12 @@ ScalarReferenceArgument :: (forest: snapshot.SnapshotNode[], text: string, calla
     output := rows;
     output.append(ScalarAt(forest, argument, facts.RefRow, type, names[found].index, 0, ""));
     return ScalarOperands.Built(output);
+}
+// Called only after authored functions, foreign calls and procedure values
+// have been resolved, so their names can shadow the built-in.
+ScalarSquareRoot :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+    callee := Field(forest, node, syntax.FieldFunction);
+    return Is(forest, callee, syntax.Identifier) && Text(forest, text, callee) == "sqrt";
 }
 // The Text operator of `node` when it calls text_byte_length, text_byte_at,
 // text_slice or format_text by name, 0 otherwise. When no function of the

@@ -1,0 +1,21 @@
+package scalar_square_root
+
+Root :: (value: number) -> number { return sqrt(value); }
+
+Main :: () -> int {
+    assert(Root(81.0) == 9.0);
+    assert(Root(2.0) == 1.4142135623730951);
+    assert(Root(1.0e-38) > 0.0);
+    assert(Root(1.0e-38) < 1.1e-19);
+    zero := Root(-0.0);
+    assert(zero == 0.0);
+    assert(1.0 / zero < 0.0);
+    negative := Root(-1.0);
+    assert(negative != negative);
+    maximum: number = 3.4028234663852886e38;
+    infinity := Root(maximum * maximum);
+    assert(infinity > maximum);
+    widened: f64 = sqrt(2.0);
+    assert(widened == f64(Root(2.0)));
+    return 0;
+}

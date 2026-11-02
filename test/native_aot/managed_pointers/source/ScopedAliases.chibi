@@ -1,0 +1,16 @@
+package scoped_aliases
+Main :: () -> int {
+    value := 1;
+    after_value := ReadAfter(&value, &value);
+    assert(after_value == 9 && value == 9);
+    point: Point = {x: 1, y: 2};
+    field_after := ReadFieldAfter(&point.x, &point);
+    assert(field_after == 11 && point.x == 11);
+    forwarded := Forward(&point.x, &point);
+    assert(forwarded == 11);
+    return 0;
+}
+Point :: struct { x: int; y: int; }
+ReadAfter :: (read: ^int, changed: ^int) -> int { changed^ = 9; return read^; }
+ReadFieldAfter :: (read: ^int, changed: ^Point) -> int { changed^.x = 11; return read^; }
+Forward :: (read: ^int, changed: ^Point) -> int { return ReadFieldAfter(read, changed); }

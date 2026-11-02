@@ -1,0 +1,14 @@
+package managed_transfer
+Main :: () -> int {
+    total := 0;
+    for index in 0..<2500 { total += Consume(10, MakeArray()); }
+    assert(total == 27500);
+    return 0;
+}
+Make :: (value: int) -> ^int { return &value; }
+MakeArray :: () -> ^int[] { value := 1; return [&value]; }
+Consume :: (value: int, pointers: ^int[]) -> int {
+    held := &value;
+    pointers.append(Make(20));
+    return pointers[0]^ + held^;
+}

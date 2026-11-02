@@ -15,6 +15,11 @@ ArrayAllocate :: (type: int, prefix: int) -> string {
     out.append(format_text("  %count = zext i32 %capacity to i64\n  %bytes = mul i64 %count, %width\n  %total = add i64 %bytes, {}\n", prefix));
     out.append(Allocated("owner", "%total"));
     out.append(format_text("  store i64 1, ptr %owner\n  %data = getelementptr inbounds i8, ptr %owner, i64 {}\n", prefix));
+    if (type == ArrayType + PointerType) {
+        out.append(format_text("  %epoch.at = getelementptr i8, ptr %owner, i64 {}\n  store i64 0, ptr %epoch.at\n", abi.ManagedArrayEpochOffset));
+        out.append("  %heap = call ptr @chibi_managed.owner(ptr %ctx)\n");
+        out.append(format_text("  %heap.at = getelementptr i8, ptr %owner, i64 {}\n  store ptr %heap, ptr %heap.at\n", abi.ManagedArrayOwnerOffset));
+    }
     out.append(format_text("  %sized = insertvalue {} zeroinitializer, i32 %length, 0\n", array));
     out.append(format_text("  %capped = insertvalue {} %sized, i32 %capacity, 1\n", array));
     out.append(format_text("  %pointed = insertvalue {} %capped, ptr %data, 2\n", array));
@@ -25,6 +30,9 @@ ArrayClone :: (type: int, owners: bool[]) -> string {
     array := abi.ArrayType();
     out := [format_text("define internal {} @chibi_array.{}.clone(ptr %ctx, {} %value, i32 %capacity) {{\nentry:\n", array, type, array)];
     out.append(format_text("  %length = extractvalue {} %value, 0\n  %source = extractvalue {} %value, 2\n", array, array));
+    if (type == ArrayType + PointerType) {
+        out.append(format_text("  %source.owner = extractvalue {} %value, 3\n  call void @chibi_managed.array.owner(ptr %ctx, ptr %source.owner)\n", array));
+    }
     out.append(format_text("  %result = call {} @chibi_array.{}.allocate(ptr %ctx, i32 %length, i32 %capacity)\n", array, type));
     out.append(format_text("  %data = extractvalue {} %result, 2\n", array));
     out.append(Sized("width", type - ArrayType));
@@ -39,6 +47,7 @@ ArrayDropHelper :: (type: int, owners: bool[], backed: bool[]) -> string {
     out := [format_text("define internal void @chibi_array.{}.drop(ptr %ctx, {} %value) {{\nentry:\n", type, array)];
     out.append(format_text("  %owner = extractvalue {} %value, 3\n", array));
     out.append("  %owned = icmp ne ptr %owner, null\n  br i1 %owned, label %count, label %done\ncount:\n");
+    if (type == ArrayType + PointerType) { out.append("  call void @chibi_managed.array.owner(ptr %ctx, ptr %owner)\n"); }
     out.append("  %before = atomicrmw sub ptr %owner, i64 1 acq_rel\n  %last = icmp eq i64 %before, 1\n  br i1 %last, label %release, label %done\nrelease:\n");
     out.append(format_text("  %length = extractvalue {} %value, 0\n  %data = extractvalue {} %value, 2\n", array, array));
     out.append(ArrayRefs(owners, type, "%data", "%length", false));
@@ -48,9 +57,12 @@ ArrayDropHelper :: (type: int, owners: bool[], backed: bool[]) -> string {
 }
 ArrayShare :: (type: int) -> string {
     array := abi.ArrayType();
+    ownership := "";
+    if (type == ArrayType + PointerType) { ownership = "  call void @chibi_managed.array.owner(ptr %ctx, ptr %owner)\n"; }
     return strings.Concatenate([
         format_text("define internal {} @chibi_array.{}.copy(ptr %ctx, {} %value) {{\nentry:\n", array, type, array),
         format_text("  %owner = extractvalue {} %value, 3\n", array),
+        ownership,
         "  %owned = icmp ne ptr %owner, null\n  br i1 %owned, label %keep, label %import\nkeep:\n",
         "  call void @chibi_scalar.retain(ptr %owner)\n",
         format_text("  ret {} %value\nimport:\n  %length = extractvalue {} %value, 0\n", array, array),
@@ -64,6 +76,7 @@ ArrayUnique :: (type: int) -> string {
     array := abi.ArrayType();
     out := [format_text("define internal {} @chibi_array.{}.unique(ptr %ctx, {} %value, i32 %needed, i1 %consume) {{\nentry:\n", array, type, array)];
     out.append(format_text("  %owner = extractvalue {} %value, 3\n  %capacity = extractvalue {} %value, 1\n", array, array));
+    if (type == ArrayType + PointerType) { out.append("  call void @chibi_managed.array.owner(ptr %ctx, ptr %owner)\n"); }
     out.append("  %owned = icmp ne ptr %owner, null\n  br i1 %owned, label %count, label %clone\ncount:\n");
     out.append("  %references = load atomic i64, ptr %owner monotonic, align 8\n  %alone = icmp eq i64 %references, 1\n  br i1 %alone, label %unique, label %clone\nunique:\n");
     out.append("  %fits = icmp ule i32 %needed, %capacity\n  br i1 %fits, label %same, label %grow\ngrow:\n  br i1 %consume, label %move, label %clone\nsame:\n");
@@ -129,6 +142,7 @@ ArrayModule :: (used: int[], owners: bool[], backed: bool[]) -> string {
         type := ArrayType + index;
         prefix := 8;
         if (ArrayBacked(type, backed)) { prefix = 32; }
+        if (type == ArrayType + PointerType) { prefix = abi.ManagedArrayPrefix; }
         if ((flags & ArrayAllocation) != 0) { out.append(ArrayAllocate(type, prefix)); }
         if ((flags & ArrayCloning) != 0) { out.append(ArrayClone(type, owners)); }
         if ((flags & ArrayDropping) != 0) { out.append(ArrayDropHelper(type, owners, backed)); }

@@ -3990,7 +3990,7 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
     while (side < 2) {
         if (operands[side].storage == NumberStorage) {
             if (spelled) {
-                wanted = InferredNumberStorage(forest, text, operands[side].record);
+                wanted = ConstantExpressionStorage(forest, text, operands[side].record);
             }
             if (!Integer(wanted) && !Floating(wanted)) {
                 return Fail(forest, operands[side].record, document, "a number needs an integer type here");

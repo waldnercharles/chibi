@@ -1,0 +1,174 @@
+package package_compiler
+
+import facts "project:scalar_facts"
+import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
+
+// Managed cells keep their pointee's complete identity; storage alone is not
+// enough for a nominal type. This first domain is non-null numeric/bool cells.
+ScalarPointerElement :: (types: TypeDecl[], record: int) -> ValueType {
+    none: ValueType = {storage: 0, container: 0, record: -1};
+    if (record < 0 || record >= length(types)) { return none; }
+    declared := types[record];
+    if (declared.kind != PointerDecl || declared.key != 0 || declared.value_container != 0 || declared.value_record != -1) {
+        return none;
+    }
+    type := ScalarTypeOf(declared.value_storage);
+    if (type < facts.IntType || type > facts.DoubleType) { return none; }
+    return {storage: declared.value_storage, container: 0, record: -1};
+}
+ScalarPointerType :: (types: TypeDecl[], record: int) -> int {
+    if (ScalarPointerElement(types, record).storage == 0) { return 0; }
+    return facts.PointerType;
+}
+// A scoped reference already names the caller's target. Its explicit first
+// dereference reads that logical value, which may itself be a descriptor.
+ScalarScopedDereference :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node: int) -> bool {
+    if (!Is(forest, node, syntax.DereferenceExpression)) { return false; }
+    operand := Unparenthesized(forest, Field(forest, node, syntax.FieldOperand));
+    if (!Is(forest, operand, syntax.Identifier)) { return false; }
+    found := Lookup(names, Text(forest, text, operand));
+    return found >= 0 && names[found].place == ReferencePlace;
+}
+
+// Pointer values come from a local's address, an existing pointer, a function
+// result or a pointer-array element. Ordinary body checking interns the types.
+ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                        names: Name[], types: TypeDecl[], members: TypeMember[], package: int, operand: int) -> int {
+    node := Unparenthesized(forest, operand);
+    if (Is(forest, node, syntax.AddressExpression)) {
+        held := Unparenthesized(forest, Field(forest, node, syntax.FieldOperand));
+        if (ScalarScopedDereference(forest, text, names, held)) { return -1; }
+        if (Is(forest, held, syntax.DereferenceExpression)) {
+            return ScalarPointerRecord(forest, text, callables, params, names, types, members, package,
+                                        Field(forest, held, syntax.FieldOperand));
+        }
+        if (!Is(forest, held, syntax.Identifier)) { return -1; }
+        found := Lookup(names, Text(forest, text, held));
+        if (found < 0) { return -1; }
+        binding := names[found];
+        if (binding.place == ReferencePlace || binding.container != 0 || binding.record != -1 ||
+            ScalarTypeOf(binding.storage) < facts.IntType || ScalarTypeOf(binding.storage) > facts.DoubleType) { return -1; }
+        pointed: ValueType = {storage: binding.storage, container: binding.container, record: binding.record};
+        return FindPointer(types, pointed, false);
+    }
+    if (ScalarScopedDereference(forest, text, names, node)) {
+        named := Unparenthesized(forest, Field(forest, node, syntax.FieldOperand));
+        found := Lookup(names, Text(forest, text, named));
+        if (names[found].storage == PointerStorage && names[found].container == 0) { return names[found].record; }
+        return -1;
+    }
+    if (Is(forest, node, syntax.Identifier)) {
+        found := Lookup(names, Text(forest, text, node));
+        if (found >= 0 && names[found].storage == PointerStorage && names[found].container == 0) {
+            return names[found].record;
+        }
+        return -1;
+    }
+    if (Is(forest, node, syntax.CallExpression)) {
+        called := CalledFunction(forest, text, callables, [], names, package, node);
+        if (called >= 0 && callables[called].result == PointerStorage && callables[called].result_container == 0 &&
+            (!callables[called].waits || ImmediatelyAwaited(forest, node))) {
+            return callables[called].result_record;
+        }
+        return -1;
+    }
+    if (Is(forest, node, syntax.IndexExpression)) {
+        array := ScalarArrayShape(forest, text, callables, params, names, types, members, package,
+                                  Field(forest, node, syntax.FieldObject));
+        if (array.container == ArrayContainer && array.storage == PointerStorage) { return array.record; }
+    }
+    return -1;
+}
+ScalarManagedRow :: (forest: snapshot.SnapshotNode[], node: int, type: int, operator: int, count: int,
+                     types: TypeDecl[], record: int) -> facts.Row {
+    row := ScalarAt(forest, node, facts.ManagedRow, type, operator, count, "");
+    row.literal = i64(wrap: SemanticTag(types, ScalarPointerElement(types, record)));
+    return row;
+}
+ScalarPointerAddress :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                         callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                         constants: ConstDecl[], node: int, rows: facts.Row[]) -> ScalarOperands {
+    record := ScalarPointerRecord(forest, text, callables, params, names, types, members, callable.package, node);
+    if (ScalarPointerType(types, record) == 0) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native managed pointers require a non-null numeric or bool local"));
+    }
+    held := Unparenthesized(forest, Field(forest, node, syntax.FieldOperand));
+    if (Is(forest, held, syntax.DereferenceExpression)) {
+        return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants,
+                              Field(forest, held, syntax.FieldOperand), PointerStorage, rows);
+    }
+    found := Lookup(names, Text(forest, text, held));
+    if (found < 0 || names[found].place == ReferencePlace) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native managed pointers cannot capture a borrowed reference"));
+    }
+    output := rows;
+    address := ScalarAt(forest, node, facts.ManagedAddressRow, facts.PointerType, names[found].index, 0, "");
+    address.literal = i64(wrap: SemanticTag(types, ScalarPointerElement(types, record)));
+    output.append(address);
+    return ScalarOperands.Built(output);
+}
+// Read and scoped-borrow resolve the same descriptor identity; the latter
+// leaves a reference for an existing scoped call rather than loading a scalar.
+ScalarPointerAccess :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                        callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                        constants: ConstDecl[], operand: int, borrowed: bool, rows: facts.Row[]) -> ScalarOperands {
+    record := ScalarPointerRecord(forest, text, callables, params, names, types, members, callable.package, operand);
+    shape := ScalarPointerElement(types, record);
+    if (shape.storage == 0) {
+        return ScalarOperands.Failed(Diagnose(forest, operand, 0, "native managed pointer reads require a non-null numeric or bool pointee"));
+    }
+    output := rows;
+    switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants,
+                          operand, PointerStorage, output) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): output = built;
+    }
+    operator := facts.ManagedRead;
+    type := ScalarTypeOf(shape.storage);
+    if (borrowed) { operator = facts.ManagedBorrow; type += facts.ReferenceType; }
+    output.append(ScalarManagedRow(forest, operand, type, operator, 1, types, record));
+    return ScalarOperands.Built(output);
+}
+
+// The saved target is read before the incoming value. A compound assignment
+// reads the old pointee once before evaluating its right-hand side.
+ScalarPointerAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                          callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                          constants: ConstDecl[], statement: int, temporary: int, record: int) -> ScalarOperands {
+    value := Field(forest, statement, syntax.FieldValue);
+    shape := ScalarPointerElement(types, record);
+    type := ScalarTypeOf(shape.storage);
+    // These reads refer to the compiler's saved target, not a second source
+    // evaluation. The second hidden statement occupies the RHS expression.
+    output := [ScalarAt(forest, value, facts.ReadRow, facts.PointerType, temporary, 0, "")];
+    operator := ScalarArithmetic(CompoundOperator(Operator(forest, statement)));
+    if (CompoundOperator(Operator(forest, statement)) != NoOperator) {
+        if (operator == 0 || shape.storage == BoolStorage) {
+            return ScalarOperands.Failed(Diagnose(forest, statement, 0, "native pointer compound assignment requires a numeric operator"));
+        }
+        output.append(ScalarAt(forest, value, facts.ReadRow, facts.PointerType, temporary, 0, ""));
+        output.append(ScalarManagedRow(forest, value, type, facts.ManagedRead, 1, types, record));
+    }
+    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                          value, value, shape.storage, shape.storage, facts.Clamp, output) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): output = built;
+    }
+    if (operator != 0) { output.append(ScalarAt(forest, value, facts.ArithmeticRow, type, operator, 2, "")); }
+    output.append(ScalarManagedRow(forest, value, type, facts.ManagedWrite, 2, types, record));
+    return ScalarOperands.Built(output);
+}
+
+// These effects come from the checked managed-pointer operations. Other host
+// effects still pass through ScalarHosts and each source expression's lowering.
+ScalarPointerEffects :: (hosts: Host[]) -> int {
+    effects: int = 0;
+    for host in hosts {
+        intrinsic := host.intrinsic;
+        if (intrinsic >= InResult) { intrinsic -= InResult; }
+        if (intrinsic == PointerReadIntrinsic || intrinsic == PointerReferenceIntrinsic) { effects |= ReadEffect; }
+        if (intrinsic == PointerWriteIntrinsic) { effects |= WriteEffect; }
+    }
+    return effects;
+}

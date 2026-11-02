@@ -1270,8 +1270,8 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     }
     target := callables[callee];
     count: int = 0;
-    map_addresses: string[] = [];
-    map_addresses_read := false;
+    argument_changes: string[] = [];
+    argument_changes_read := false;
     // A float argument widens to a double parameter, as the call step widens
     // it, and a record argument is the record its parameter takes. Calling
     // ScalarOperand here for a call, not ScalarConvert or ScalarRecordValue,
@@ -1313,11 +1313,11 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             continue;
         }
         if (param.container == MapContainer) {
-            if (!map_addresses_read) {
-                map_addresses = EvaluationChanges(forest, text, callables, params, [], names, callable.package, node, true);
-                map_addresses_read = true;
+            if (!argument_changes_read) {
+                argument_changes = EvaluationChanges(forest, text, callables, params, [], names, callable.package, node, true);
+                argument_changes_read = true;
             }
-            copied := param.written || ScalarMapSnapshot(forest, text, params, callable, names, types, argument, map_addresses);
+            copied := param.written || ScalarMapSnapshot(forest, text, params, callable, names, types, argument, argument_changes);
             switch ScalarMapValue(forest, text, callables, params, callable, names, types, members, constants,
                                   argument, param.record, copied, output) {
                 case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
@@ -1327,11 +1327,16 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             continue;
         }
         if (param.container == ArrayContainer) {
-            // An array argument is lent, not copied, unless the callee changes
-            // it: that parameter is the callee's own, so the argument is a
-            // copy, or a value no one else holds.
+            // A readonly argument can be lent unless another argument or a
+            // scoped callee parameter may change its source. Capture that
+            // value before evaluating the next argument.
+            if (!param.written && !argument_changes_read) {
+                argument_changes = EvaluationChanges(forest, text, callables, params, [], names, callable.package, node, true);
+                argument_changes_read = true;
+            }
             lent: ValueType = {storage: param.storage, container: ArrayContainer, record: param.record};
-            if (param.written) {
+            copied := param.written || ScalarArraySnapshot(forest, text, params, callable, names, argument, argument_changes);
+            if (copied) {
                 switch ScalarArrayStored(forest, text, callables, params, callable, names, types, members, constants,
                                          argument, lent, true, output) {
                     case .Failed(diagnostic):

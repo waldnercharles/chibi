@@ -45,6 +45,9 @@ foreign kernel32 {
     CopyFileW :: (source: u16[], destination: u16[], no_replace: i32) -> i32
     CloseHandle :: (handle: u64) -> i32
     GetEnvironmentVariableW :: (name: u16[], buffer: u16[], size: u32) -> u32
+    GetEnvironmentStringsW :: () -> rawptr
+    FreeEnvironmentStringsW :: (environment: rawptr) -> i32
+    CompareStringOrdinal :: (left: rawptr, left_size: i32, right: u16[], right_size: i32, ignore_case: i32) -> i32
     FindFirstFileW :: (pattern: u16[], data: u16[]) -> u64
     FindNextFileW :: (handle: u64, data: u16[]) -> i32
     FindClose :: (handle: u64) -> i32
@@ -106,6 +109,7 @@ KilledExit: u32 : 4294967287; // The DWORD representation of exit status -9.
 WaitTimeout: u32 : 258;
 MaxPathUnits: int : 260;
 SystemPreferredRng: u32 : 2;
+OrdinalEqual: i32 : 2;
 
 // A zeroed block for a structure the program only passes along.
 Block :: (size: int) -> u8[] {
@@ -322,7 +326,30 @@ pub ReadText :: (path: string) -> string {
     return text_from_bytes(ReadBytes(path));
 }
 
-// The environment variable's value, "" when it is unset.
+// Inspect an owned OS snapshot so an empty value differs from a missing name,
+// without relying on GetEnvironmentVariable's ambiguous zero/last-error state.
+pub HasEnv :: (name: string) -> bool {
+    if name == "" { return false; }
+    environment := GetEnvironmentStringsW();
+    if environment == 0 { return false; }
+    wanted := Wide(strings.Concatenate([name, "="]));
+    size := length(wanted) - 1;
+    cursor := u64(environment);
+    found := false;
+    while true {
+        count := lstrlenW(cursor);
+        if count == 0 { break; }
+        if count >= size && CompareStringOrdinal(cursor, i32(size), wanted, i32(size), 1) == OrdinalEqual {
+            found = true;
+            break;
+        }
+        cursor += u64(count + 1) * 2;
+    }
+    freed := FreeEnvironmentStringsW(environment);
+    return found;
+}
+
+// The environment variable's value, "" when it is unset or empty.
 pub Getenv :: (name: string) -> string {
     none: u16[] = [];
     wide := Wide(name);

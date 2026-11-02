@@ -126,7 +126,7 @@ jobs:
       - name: Graph and native driver programs
         env:
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
-        run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" graph-engine graph-driver graph-evidence graph-discovery graph-wasm graph-os graph-c native-aot-driver
+        run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" graph-engine graph-driver graph-evidence graph-discovery graph-wasm graph-os graph-c
       # After `chibi build`, which builds the test drivers this step runs.
       - name: Build timing host regressions (ready drivers)
         env:
@@ -334,7 +334,7 @@ jobs:
           mkdir -m 700 -p "$CHIBI_TEST_TIMINGS"
           export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
           for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
-          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native native-aot-driver native-build
+          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native native-build
           sh tools/build.sh test --build-host build-release/sdk/chibi-build-host --jobs 2 chibi-cli language
       - name: Preserve build logs and timings
         if: always()

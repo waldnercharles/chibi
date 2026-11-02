@@ -15,7 +15,6 @@ on:
       - tools/compiler/**
       - tools/build.sh
       - .github/native-llvm.sh
-      - tools/native_aot/**
       - tools/toolchain/**
       - tools/bootstrap/**
       - tools/graph/**

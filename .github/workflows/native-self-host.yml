@@ -34,7 +34,6 @@ on:
       - test/bootstrap/**
       - test/native_cli/**
       - tools/build.sh
-      - tools/native_aot/**
       - test/native_aot/generations/**
       - test/native_aot/native_enc/**
       - tools/toolchain/Driver.chibi

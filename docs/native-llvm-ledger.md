@@ -3,18 +3,27 @@
 ## Current integration, 2 November 2026
 
 The native-default change series is in [PR #1331](https://github.com/waldnercharles/chibi/pull/1331).
-The compiler now self-hosts natively, and the default build and installed tools
-use the verified native compiler. The combined compiler at `975dbd72d`
-reproduces identical bytes on macOS arm64; cross-platform CI for that revision
-is still in progress. The direct native compiler test inventory passes 403 of
-408 tests, with five unit-algebra tests awaiting array operations.
+The verified native compiler drives the default build and installed tools.
+At `3c7d1d52e`, all 410 compiler tests pass directly through native execution
+in 22.05 seconds, including the original 408-test inventory. At `c32f5d6b6`,
+the pinned macOS seed builds the complete compiler in 40.93 seconds, and that
+compiler passes the native CLI suite in 6.44 seconds. Fresh combined
+cross-platform fixed-point and installed-product checks remain required.
 
-Native desktop asset compilation, task timing, map iteration, retained string
-records, optional values and typed failures have implementation and focused
-tests. Task results, broader managed ownership, complete test-runner parity and
-remaining platform coverage are still being integrated. Program/application
-runtime APIs and browser execution still use the VM. See [PLAN.md](../PLAN.md)
-for current commits, validation and deletion gates.
+The continuation includes numeric task results, typed nil-unwrap failures,
+scalar/string record maps, shared array backing, synchronous `print_string`,
+and typed test-effect collection. The array producer still copies eagerly;
+foreign mutation leases and broader managed ownership are not yet complete.
+Individual changes have focused O0/O2 and ownership checks; the latest combined
+source is awaiting its next execution pass. Native test-worker integration,
+macOS reload integration and the browser SDK compiler archive are in progress.
+
+Windows source `585e40829` reproduces identical stage-four/five binaries,
+SHA-256 `d9a56bde96fdce41d9b9c335f5120dc4ec659c8aad62ddf0641d4eb9e909f96f`.
+Its subsequent native asset-compiler build traps with `0xC000001D`; Windows
+acceptance and seed publication remain blocked on that diagnosis and the
+remaining runtime probes. Program/application APIs and browser execution
+still use the VM. See [PLAN.md](../PLAN.md) for evidence and deletion gates.
 
 The milestone tables and census below preserve the earlier rollout's evidence
 and main-branch status; they do not describe the current integration branch.

@@ -3959,12 +3959,20 @@ MapPlainValue :: (records: Record[], fields: int[], type: int) -> bool {
     }
     return true;
 }
+// The first container payload is int[]. Other nested containers stay closed
+// until their copy, mutable-place and foreign-buffer contracts are verified.
+MapArrayValue :: (type: int) -> bool {
+    return type == ArrayType + abi.IntStorage;
+}
+MapPayloadOwned :: (type: int, owners: bool[]) -> bool {
+    return MapArrayValue(type) || ValueOwned(type, owners);
+}
 MapShaped :: (records: Record[], type: int) -> bool {
     if (type < MapType || type >= RefType) {
         return false;
     }
     value := MapValue(type);
-    return MapKeyed(MapKey(type)) && (abi.ScalarType(value) != "" || value == abi.TextStorage ||
+    return MapKeyed(MapKey(type)) && (abi.ScalarType(value) != "" || value == abi.TextStorage || MapArrayValue(value) ||
                                     (value >= RecordType && value < ArrayType && value - RecordType < length(records)));
 }
 // The map type an instruction works on: a change gives it as its type, and a
@@ -3985,7 +3993,7 @@ MapCalls :: (op: int) -> bool {
 MapValid :: (records: Record[], fields: int[], slots: int[], item: Instruction) -> bool {
     used := MapUsed(item);
     if (!MapShaped(records, used) || !Typed(slots, item.left, used) ||
-        (MapValue(used) != abi.TextStorage && !MapPlainValue(records, fields, MapValue(used)))) {
+        (!MapArrayValue(MapValue(used)) && !MapPlainValue(records, fields, MapValue(used)))) {
         return false;
     }
     key := MapKey(used);
@@ -4111,11 +4119,13 @@ MapHelper :: (op: int) -> string {
 // them. `tag` makes the returned copied value unique within the helper.
 MapOwner :: (call: string, value: string, tag: string, type: int) -> string {
     if (type != abi.TextStorage) {
+        module := "chibi_value";
+        if (MapArrayValue(type)) { module = "chibi_array"; }
         if (call == "retain") {
-            return format_text("  %c.{} = call {} @chibi_value.{}.copy(ptr %ctx, {} {})\n", tag,
-                               TypeName(type), type, TypeName(type), value);
+            return format_text("  %c.{} = call {} @{}.{}.copy(ptr %ctx, {} {})\n", tag,
+                               TypeName(type), module, type, TypeName(type), value);
         }
-        return format_text("  call void @chibi_value.{}.drop(ptr %ctx, {} {})\n", type, TypeName(type), value);
+        return format_text("  call void @{}.{}.drop(ptr %ctx, {} {})\n", module, type, TypeName(type), value);
     }
     text := abi.TextType();
     out := format_text("  %o.{} = extractvalue {} {}, 2\n", tag, text, value);
@@ -4137,7 +4147,7 @@ MapEach :: (call: string, entries: string, prefix: string, key: int, value: int,
         out = format_text("{}  %{}kv = load $K, ptr %{}k\n{}", out, prefix, prefix,
                           MapOwner(call, format_text("%{}kv", prefix), format_text("{}k", prefix), key));
     }
-    if (ValueOwned(value, owners)) {
+    if (MapPayloadOwned(value, owners)) {
         out = format_text("{}  %{}v = getelementptr inbounds $E, ptr {}, i64 {}, i32 1\n", out, prefix, entries, offset);
         out = format_text("{}  %{}vv = load $V, ptr %{}v\n{}", out, prefix, prefix,
                           MapOwner(call, format_text("%{}vv", prefix), format_text("{}v", prefix), value));
@@ -4285,11 +4295,11 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[]) -> string {
     key := MapKey(type);
     value := MapValue(type);
     keyed := key == abi.TextStorage;
-    valued := ValueOwned(value, owners);
+    valued := MapPayloadOwned(value, owners);
     prehash := "  %wide = zext $K %key to i64";
     same := "  %same = icmp eq $K %a, %b";
     missing := "  ret $V zeroinitializer";
-    if (value >= RecordType) {
+    if (value >= RecordType && value < ArrayType) {
         missing = "  call void @llvm.trap()\n  unreachable";
         if (native_program) { missing = "  call void @chibi_native_failure(i32 2)\n  unreachable"; }
     }

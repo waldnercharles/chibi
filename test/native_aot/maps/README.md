@@ -47,5 +47,9 @@ exits must retain each live payload and release it once. Array-backed record
 values remain rejected until their recursive backing ownership is available.
 Borrowed string and record array elements also survive later literal callbacks
 that replace the source element before the map is constructed.
+The native emitter also checks int[] payload ownership, independent mapped
+array edits, missing-key empty arrays and values escaping a dropped map.
+Authored map array payloads remain rejected until foreign buffer writes and
+projected-place updates preserve the same ownership contract.
 
 A growth/shrink regression builds 4096 entries, deletes all but 64 and checks that logical entry/index capacity shrinks with the live map. Capacity planning near 2^30 is checked without allocating those buffers.

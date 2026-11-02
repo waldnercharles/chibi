@@ -12,8 +12,14 @@ case "$(uname -s)" in
     *) echo 'native-runner: unsupported test platform' >&2; exit 2 ;;
 esac
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
-    --source "$root/tools/toolchain/Driver.chibi" --entry Main --output "$scratch/driver" \
+    --source "$root/tools/toolchain/Driver.chibi" --collection "graph=$root/tools/graph" --entry Main --output "$scratch/driver" \
     --llvm "$llvm" --target "$target"
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/bootstrap/fixtures/InstallPaths.chibi" --collection "graph=$root/tools/graph" \
+    --entry Main --output "$scratch/sdk-paths" --llvm "$llvm" --target "$target"
+# POSIX realpath must not reinterpret a Windows drive as this relative folder.
+mkdir "$scratch/C:"
+(cd "$scratch" && ./sdk-paths)
 checkout=$scratch/'checkout with spaces'
 mkdir -p "$checkout/tools/toolchain" "$checkout/tools/graph" "$checkout/packages"
 ln -s "$root/tools/compiler" "$checkout/tools/compiler"

@@ -32,7 +32,7 @@ PrepareNativePlans :: () {
     }
 }
 Driver :: (host: string, arguments: string[]) -> os.Result {
-    command := ["--compiler", "tools/compiler", "--compiler-core", "packages/core", "--root", os.Root(), "--source", "tools/toolchain/Driver.chibi", "--core", "packages/core",
+    command := ["--compiler", "tools/compiler", "--compiler-core", "packages/core", "--root", os.Root(), "--source", "tools/toolchain/Driver.chibi", "--core", "packages/core", "--collection", "graph=tools/graph",
                 "--entry", "Main", "--timeout-ms", "200000", "--", "build"];
     full := [host];
     full.extend(command);
@@ -206,7 +206,7 @@ TestScheduling :: (host: string) {
     assert(os.WriteText(format_text("{}/tools/tests.tsv", scratch), strings.Join(rows, "\n")) == nil, "the scratch table");
     command := [host, "--compiler", format_text("{}/tools/compiler", source), "--compiler-core", format_text("{}/packages/core", source),
                 "--root", scratch, "--source", format_text("{}/tools/toolchain/Driver.chibi", source),
-                "--core", format_text("{}/packages/core", source), "--entry", "Main", "--timeout-ms", "200000", "--",
+                "--core", format_text("{}/packages/core", source), "--collection", format_text("graph={}/tools/graph", source), "--entry", "Main", "--timeout-ms", "200000", "--",
                 "build", "test", "--build-host", host, "--jobs", "3", "a", "b", "alone", "after", "slow"];
     result := os.Capture(command);
     log := Output(result);
@@ -234,7 +234,7 @@ NativeRunners :: (host: string) {
     arguments := ["build", "--dry-run", "--release", "--target", "chibi", "--host", host, "--llvm", format_text("{}/llvm", scratch)]
     command := [host, "--compiler", format_text("{}/tools/compiler", source), "--compiler-core", format_text("{}/packages/core", source),
                 "--root", scratch, "--source", format_text("{}/tools/toolchain/Driver.chibi", source),
-                "--core", format_text("{}/packages/core", source), "--entry", "Main", "--timeout-ms", "200000", "--"]
+                "--core", format_text("{}/packages/core", source), "--collection", format_text("graph={}/tools/graph", source), "--entry", "Main", "--timeout-ms", "200000", "--"]
     planned := os.Capture(extend(extend(command, arguments), ["--native-driver", good]))
     log := Output(planned)
     assert(planned.status == 0 && Has(log, "/.chibi/build-runner/") && Has(log, "Build-Build third-party") && Has(log, "Graph-Libraries --build"), "native programs")
@@ -305,7 +305,7 @@ Census :: (host: string) {
     assert(os.Run(["git", "-C", scratch, "init", "-q"]) == 0 && os.Run(["git", "-C", scratch, "add", "-A"]) == 0, "the scratch repository")
     command := [host, "--compiler", format_text("{}/tools/compiler", source), "--compiler-core", format_text("{}/packages/core", source),
                 "--root", scratch, "--source", format_text("{}/tools/toolchain/Driver.chibi", source),
-                "--core", format_text("{}/packages/core", source), "--entry", "Main", "--timeout-ms", "200000", "--", "build", "census"]
+                "--core", format_text("{}/packages/core", source), "--collection", format_text("graph={}/tools/graph", source), "--entry", "Main", "--timeout-ms", "200000", "--", "build", "census"]
     result := os.Capture(command)
     log := Output(result)
     assert(result.status == 0 && Has(log, "census: shim 1 b.mm\n") && Has(log, "1 first-party C files, 2 lines, 1 C++/Objective-C shims, 0 build tooling files"), "archived tooling is allowed");

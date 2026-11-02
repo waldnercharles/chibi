@@ -351,6 +351,10 @@ pub ExpectedValue :: (index: int) -> int {
     cases := Cases();
     return cases[index].value;
 }
+pub IsAccepted :: (index: int) -> bool {
+    cases := Cases();
+    return cases[index].accepted;
+}
 Excerpt :: (text: string, row: facts.Row) -> string {
     return strings.Slice(text, row.start, row.end - row.start);
 }

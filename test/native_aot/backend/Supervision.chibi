@@ -1,0 +1,63 @@
+package backend_supervision
+
+import os "core:os"
+import strings "core:strings"
+
+foreign import backend_libc "system:c"
+foreign backend_libc {
+    gettimeofday :: (output: u8[], timezone: rawptr) -> i32
+    raise :: (number: i32) -> i32
+    nanosleep :: (request: u8[], remaining: u8[]) -> i32
+}
+Word :: (bytes: u8[], first: int) -> i64 {
+    value: u64 = 0;
+    for (byte in 0..<8) { value |= u64(bytes[first + byte]) << u32(byte * 8); }
+    return i64(value);
+}
+Milliseconds :: () -> i64 {
+    bytes := resize([u8(0)], 16);
+    read := gettimeofday(bytes, 0);
+    assert(read == 0, "read the elapsed-test clock");
+    return Word(bytes, 0) * 1000 + Word(bytes, 8) / 1000;
+}
+Deadline :: (command: string[]) {
+    started := Milliseconds();
+    process := os.Start(command, os.Piped);
+    assert(process > 0, "start the owned deadline child");
+    waited := os.Wait(process, 500);
+    assert(waited == os.StillRunning, "a busy generated program reaches its deadline");
+    killed := os.Kill(process);
+    assert(killed == -9 && Milliseconds() - started < 10000, "deadline cleanup stops and reaps the owned child promptly");
+}
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) == 1 && arguments[0] == "signal") {
+        raised := raise(11);
+        return 99;
+    }
+    if (length(arguments) != 3) { return 2; }
+    pid_file := format_text("{}/descendant.pid", arguments[0]);
+    Deadline(["/bin/sh", "-c", "sleep 60 & echo $! >\"$1\"; wait", "deadline-child", pid_file]);
+    read := os.ReadText(pid_file);
+    assert(read.error == nil && strings.TrimSpace(read.text) != "", "the deadline child created a real descendant");
+    pid := strings.TrimSpace(read.text);
+    ended := false;
+    pause := resize([u8(0)], 16);
+    for (byte in 0..<8) { pause[8 + byte] = u8((u64(10000000) >> u32(byte * 8)) & 255); }
+    remaining: u8[] = [];
+    for (attempt in 0..<100) {
+        observed := os.Capture(["/bin/ps", "-o", "stat=", "-p", pid]);
+        if (observed.status == 1 || strings.HasPrefix(strings.TrimSpace(observed.stdout), "Z")) { ended = true; break; }
+        yielded := nanosleep(pause, remaining);
+    }
+    assert(ended, "the deadline kills the descendant group as well as its root");
+    removed := os.Remove(pid_file);
+    assert(removed == nil, "the caller removes its supervision file");
+    Deadline([arguments[1]]);
+    Deadline([arguments[2]]);
+    signal := os.Capture([os.ProgramPath(), "signal"]);
+    assert(signal.status == -11 && !strings.Contains(signal.stderr, "stack overflow"),
+           "a native process preserves the default unrelated-fault signal behavior");
+    os.Print("PASS tool/descendant and O0/O2 native-call deadlines, default fault signal");
+    return 0;
+}

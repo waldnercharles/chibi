@@ -344,8 +344,8 @@ pub StringType: int : 12;
 pub RecordType: int : 32;
 // An array of type T is ArrayType + T.
 pub ArrayType: int : 1024;
-// A map from scalar/string K to scalar/string V is MapType + V * 16 + K.
-// Records and nested containers need their ownership rules before admission.
+// A map from scalar/string K to scalar/string/record V is MapType + V * 16 + K.
+// Lowering checks whether the record's fields have supported ownership.
 pub MapType: int : 2048;
 pub MapNew: int : 1;
 pub MapLength: int : 2;

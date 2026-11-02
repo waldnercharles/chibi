@@ -1,5 +1,7 @@
 package map_iteration_ownership
 
+Point :: struct { x: int; y: int; }
+
 Make :: () -> [string: string] {
     key := text_from_bytes([u8(107), 0, 121]);
     value := text_from_bytes([u8(118), 97, 108, 117, 101]);
@@ -35,5 +37,14 @@ Main :: () -> int {
     numbers[2] = 20;
     delete numbers[1];
     assert(numbers[2] == 20);
+    records: [string: Point] = ["point": {x: 3, y: 4}];
+    record_alias := records;
+    records["point"] = {x: 7, y: 8};
+    assert(record_alias["point"].x == 3);
+    for (key, point in record_alias) {
+        delete record_alias[key];
+        assert(point.x == 3 && point.y == 4);
+    }
+    assert(records["point"].y == 8);
     return 0;
 }

@@ -66,7 +66,10 @@ Main :: () -> int {
     if (mode == "source") {
         read := os.ReadText(format_text("{}/source.ll", work));
         if (read.error) { return 2; }
-        text = read.text;
+        // Standalone source uses typed process failures. This ownership-only
+        // harness arms no quotas, and every failure must fail the probe.
+        text = strings.ReplaceAll(read.text, "declare void @chibi_native_step()\n", "");
+        text = strings.ReplaceAll(text, "declare void @chibi_native_failure(i32) noreturn\n", "");
     } else if (mode == "facts") {
         rows := FactModule();
         for (row in rows) {
@@ -98,6 +101,11 @@ Main :: () -> int {
     module := format_text("{}/maps-{}.ll", work, mode);
     globals := format_text("\n@map_test.expected_index = internal constant i1 {}\n", expected_index);
     runtime_text := runtime.text;
+    if (mode == "source") {
+        runtime_text = strings.Concatenate([runtime_text,
+            "\ndefine void @chibi_native_step() { ret void }\n",
+            "define void @chibi_native_failure(i32 %kind) noreturn { call void @exit(i32 134)\n unreachable }\n"]);
+    }
     if (!strings.Contains(text, "@chibi_scalar(ptr %ctx)")) {
         runtime_text = strings.ReplaceAll(runtime_text, "call i32 @chibi_scalar(ptr @map_test.context)",
                                          "call i32 @chibi_scalar()");

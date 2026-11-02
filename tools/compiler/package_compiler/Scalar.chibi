@@ -593,6 +593,8 @@ ScalarRecordOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     }
     // An element of an array of records.
     if (Is(forest, value, syntax.IndexExpression)) {
+        mapped := ScalarMapShape(forest, text, callables, names, types, package, Field(forest, value, syntax.FieldObject));
+        if (mapped >= 0 && types[mapped].value_storage == StructStorage) { return types[mapped].value_record; }
         element := ScalarArrayShape(forest, text, callables, params, names, types, members, package, Field(forest, value, syntax.FieldObject));
         if (element.storage == StructStorage) {
             return element.record;
@@ -2729,7 +2731,8 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 if (map_iterated >= 0) {
                     map := types[map_iterated];
                     element = map.value_storage;
-                    if (keyed) { element = map.key; }
+                    element_record = map.value_record;
+                    if (keyed) { element = map.key; element_record = -1; }
                     row.type = ScalarMapType(types, map_iterated);
                     row.literal = i64(facts.RangeMap);
                     if (keyed) { row.literal += i64(facts.RangeKeyed); }
@@ -2758,9 +2761,13 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 variables += 1;
                 if (keyed) {
                     keyed_storage := IntStorage;
-                    if (map_iterated >= 0) { keyed_storage = types[map_iterated].value_storage; }
+                    keyed_record := -1;
+                    if (map_iterated >= 0) {
+                        keyed_storage = types[map_iterated].value_storage;
+                        keyed_record = types[map_iterated].value_record;
+                    }
                     index: Name = {owned: false, name: Text(forest, text, Field(forest, statement, syntax.FieldName)), place: LocalPlace,
-                                   index: variables, storage: keyed_storage, container: 0, record: -1, writable: false,
+                                   index: variables, storage: keyed_storage, container: 0, record: keyed_record, writable: false,
                                    node: Field(forest, statement, syntax.FieldName)};
                     names.append(index);
                     variables += 1;

@@ -79,7 +79,8 @@ Valued :: (records: int[], type: int) -> bool {
         key := (type - facts.MapType) % 16;
         value := (type - facts.MapType) / 16;
         return (Integer(key) || key == facts.BoolType || key == facts.StringType) &&
-               value >= facts.IntType && value <= facts.StringType;
+               ((value >= facts.IntType && value <= facts.StringType) ||
+                (value >= facts.RecordType && value < facts.ArrayType && value - facts.RecordType < length(records)));
     }
     if (type >= facts.ArrayType) {
         return Element(records, type) != 0;
@@ -1012,7 +1013,7 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
     changed := operand.value == facts.MapSet || operand.value == facts.MapDelete;
     mapped := operand.type;
     if (operand.value != facts.MapNew && operand.value != facts.MapCopy && !changed) {
-        if (operand.literal < i64(facts.MapType) || operand.literal >= i64(facts.MapType + (facts.StringType + 1) * 16)) {
+        if (operand.literal < i64(facts.MapType) || operand.literal >= i64(facts.ReferenceType)) {
             return mismatch;
         }
         mapped = int(operand.literal);

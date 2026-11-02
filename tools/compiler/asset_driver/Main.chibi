@@ -1,0 +1,51 @@
+package asset_driver
+
+import compiler "project:package_compiler"
+import request "project:asset_request"
+import syntax "project:syntax_diagnostics"
+import os "core:os"
+import strings "core:strings"
+
+// The packaged compiler service takes the runtime's reflected catalog request
+// unchanged. A successful output is the same prepared closure the runtime
+// already reads. Rejections are one diagnostic, not a second compile.
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 3) {
+        os.Print("usage: chibi-asset-compiler REQUEST OUTPUT DIAGNOSTIC");
+        return 2;
+    }
+    input := os.ReadText(arguments[0]);
+    if (input.error != nil) {
+        os.Print(format_text("asset compiler: cannot read {}", arguments[0]));
+        return 2;
+    }
+    value := request.Parse(input.text);
+    if (!value.valid) {
+        os.Print(format_text("asset compiler: invalid catalog request {}", arguments[0]));
+        return 2;
+    }
+    switch compiler.CompileCatalogResult(value.project, value.collections, value.roots, value.paths, value.sources,
+        value.debug, value.target, value.abi, value.names, value.natives, value.ports, value.identities,
+        value.types, value.fields, value.entity, value.os, value.arch, value.effects) {
+        case .Rejected(diagnostic):
+            if (!WriteDiagnostic(diagnostic, arguments[2])) {
+                os.Print(format_text("asset compiler: cannot write {}", arguments[2]));
+                return 2;
+            }
+            return 1;
+        case .Compiled(module, bytes):
+            partial := format_text("{}.partial", arguments[1]);
+            if (os.WriteBytes(partial, bytes) != nil || os.Rename(partial, arguments[1]) != nil) {
+                if (os.Remove(partial) != nil) { os.Print(format_text("asset compiler: cannot remove {}", partial)); }
+                os.Print(format_text("asset compiler: cannot publish {}", arguments[1]));
+                return 2;
+            }
+            return 0;
+    }
+}
+
+WriteDiagnostic :: (diagnostic: syntax.Diagnostic, path: string) -> bool {
+    text := strings.Concatenate([format_text("{}\n{}\n{}\n", diagnostic.document, diagnostic.line, diagnostic.column), diagnostic.message]);
+    return os.WriteText(path, text) == nil;
+}

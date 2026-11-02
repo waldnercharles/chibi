@@ -69,20 +69,21 @@ entry of capacity, and about 16 bytes per live entry in a map that has just grow
 
 ## Keys and values
 
-Keys: ints of every width, bool, string; floats are not keys (NaN). Values in this slice: scalars and strings. Records and arrays as values
-(`[string: int[]]`) need recursive value drop and copy before the native lane admits them. A map owns its strings:
+Keys: ints of every width, bool, string; floats are not keys (NaN). Values are scalars, strings and records whose leaves are numbers or bools.
+Records with owning fields and containers as values (`[string: int[]]`) need recursive value drop and copy before admission. A map owns its strings:
 `MapSet` consumes one reference of a string key and of a string value (a repeated key's new key is released, the replaced
 value is released), `MapDelete` releases the entry's strings, `MapCopy` retains them, `MapDrop` releases them (D10).
-A read of a missing key gives the value type's zero; reads borrow. Writing through a missing key (`m[a][b] = v`) ends the call.
+A read of a missing scalar or string key gives the value type's zero; a missing record key fails with `MapKeyAbsent`.
+Reads borrow. Writing through a missing key (`m[a][b] = v`) ends the call.
 
 ## Plan and state
 
-Implemented on `codex/native-maps`, still unmerged:
+Implemented:
 - The 32-byte compact header and live-entry hashes, Robin Hood index, amortized constant-time deletion and stable insertion order.
 - Native ABI and map instructions, including `MapSpan` and `MapLiveAt` for iteration over live positions. Key/value position reads reject dead entries.
 - `scalar_facts.MapRow` and `scalar_llvm` validation/lowering for literals, reads, changes, copies and drops. Scalar and string keys/values have explicit reference ownership; copies own independent entries and preserve live order.
 - C-free behavioral tests in `test/native_aot/maps`. They compile the actual emitter and lower actual fact tables, then run both O0 and O2 programs. Cases cover 64-entry churn against ordered lists, deletion/reinsertion, copies, binary string keys and values, balanced allocations, dead positions and malformed facts.
 
-The authored producer admits typed literals, variable copies, indexing, assignment, `in`/`not in`, `has`, deletion, parameters and results. Read-only parameters borrow; changed by-value parameters receive a private copy. `test/native_aot/map_programs` runs these as real source programs, including reference replacement and a string read from a temporary returned map. Compound writes reject with a diagnostic until their lowering exists.
+The authored producer admits typed literals, variable copies, indexing, assignment, `in`/`not in`, `has`, deletion, parameters, results and insertion-order iteration. Read-only parameters borrow; changed by-value parameters receive a private copy. Iteration snapshots a map when the body can change it. `test/native_aot/map_programs` runs these as real source programs, including reference replacement, numeric record values and string reads from temporary returned maps.
 
-Gate 7 remains open for authored map iteration, equality, compound writes, inferred map literals, records, nested containers and cross-platform runtime coverage. The VM must remain until those cases have native equivalents.
+Remaining native parity work includes owning record values, nested containers and cross-platform runtime coverage. Map equality, compound writes and inferred map literal types are rejected by the ordinary authored compiler too; they are not native-only parity gaps. Host and VM retirement still requires migrating their remaining consumers.

@@ -298,6 +298,7 @@ EmitOptions :: (collections: string[], directories: string[], paths: string[], s
     // Only a Windows program takes system libraries by name: lld-link needs an
     // import library for each, which the macOS and Linux links do without.
     if (windows) {
+        markers.extend(Markers(start));
         plan.imports = link.SystemImports(markers);
     }
     if (host.Link(plan) != nil) {

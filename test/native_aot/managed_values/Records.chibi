@@ -1,0 +1,72 @@
+package managed_records
+Inner :: struct { text: string; }
+Value :: struct { message: string; extra: string; nested: Inner; }
+Wrapped :: struct { inner: Inner; flag: bool; }
+Choice :: union { Some(value: Value) | Empty }
+Main :: () -> int {
+    original := Make(1);
+    snapshot := original;
+    original.message = Text(2);
+    original.nested = {text: Text(2)};
+    assert(text_byte_at(snapshot.message, 2) == 1);
+    assert(text_byte_at(snapshot.nested.text, 2) == 1);
+    copied := Identity(snapshot);
+    assert(text_byte_at(copied.message, 2) == 1);
+    changed := Change(&original);
+    assert(changed == 0 && text_byte_at(original.message, 2) == 7);
+    assert(text_byte_at(snapshot.message, 2) == 1);
+    borrowed := Addressed(snapshot);
+    assert(text_byte_at(borrowed.message, 2) == 7);
+    assert(text_byte_at(snapshot.message, 2) == 1);
+    from_temporary := Make(3).message;
+    assert(text_byte_at(from_temporary, 2) == 3);
+    assert(Check(Make(4)) == 4);
+    for i in 0..<20 {
+        local := Make(i);
+        if i == 7 { continue; }
+        if i == 9 { break; }
+        local.message = Text(i);
+    }
+    // A skipped RHS must not release the prior loop iteration's temporary.
+    for i in 0..<20 {
+        assert(i % 2 == 1 || text_byte_at(Make(i).message, 2) == i);
+        assert(i % 2 == 0 || text_byte_at(Make(i).nested.text, 2) == i);
+        assert(i % 2 == 1 || CheckWrapped({inner: MakeInner(i), flag: true}, i));
+        assert(i % 2 == 0 || CheckWrapped({flag: true, inner: MakeInner(i)}, i));
+    }
+    values: Value[] = [Make(1), Make(2)];
+    alias := values;
+    values[0] = Make(7);
+    values[0] = values[0];
+    assert(text_byte_at(values[0].message, 2) == 7);
+    assert(text_byte_at(alias[0].message, 2) == 1);
+    values.append(Make(3));
+    clipped := slice(values, 1, 2);
+    expanded := resize(clipped, 4);
+    assert(text_byte_at(expanded[0].message, 2) == 2);
+    values.remove_index(1);
+    assert(text_byte_at(values[1].message, 2) == 3);
+    returned := ReturnArray()[0];
+    assert(text_byte_at(returned.message, 2) == 5);
+    choice := Choose(6);
+    other := choice;
+    choice = Choice.Empty;
+    switch other {
+        case .Some(value): assert(text_byte_at(value.message, 2) == 6);
+        case .Empty: assert(false);
+    }
+    return 0;
+}
+Text :: (i: int) -> string { return text_from_bytes([u8(65), 0, u8(i)]); }
+Make :: (i: int) -> Value {
+    return {message: Text(i), extra: Text(i), nested: {text: Text(i)}};
+}
+Identity :: (value: Value) -> Value { return value; }
+Change :: (value: ^Value) -> int { value.message = Text(7); return 0; }
+Addressed :: (value: Value) -> Value { result := Change(&value); return value; }
+Check :: (value: Value) -> int { assert(text_byte_at(value.message, 2) == 4); return 4; }
+MakeInner :: (i: int) -> Inner { return {text: Text(i)}; }
+CheckWrapped :: (value: Wrapped, i: int) -> bool { return value.flag && text_byte_at(value.inner.text, 2) == i; }
+
+ReturnArray :: () -> Value[] { return [Make(5)]; }
+Choose :: (i: int) -> Choice { return Choice.Some(Make(i)); }

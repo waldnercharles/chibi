@@ -1,6 +1,8 @@
 package loop
+Progress :: struct { text: int; }
 Main :: () -> int { return 9; }
 Frame :: () -> int {
     note: retain int = 0;
+    progress: retain Progress = {text: 0};
     return 8;
 }

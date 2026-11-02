@@ -6,6 +6,8 @@ on:
     branches: [main]
     paths:
       - tools/compiler/**
+      - test/native_aot/diagnostics/**
+      - test/native_aot/test_attributes/**
       - tools/native_aot/**
       - tools/toolchain/Driver.chibi
       - tools/toolchain/Graph.chibi
@@ -62,6 +64,12 @@ jobs:
       - name: Check native driver options
         timeout-minutes: 5
         run: sh test/native_aot/native_driver/run.sh "$PWD/build-native-self-host/stage3/chibi" /usr/lib/llvm-18/bin
+      - name: Check native diagnostic coordinates
+        timeout-minutes: 5
+        run: sh test/native_aot/diagnostics/run.sh "$PWD/build-native-self-host/stage3/chibi" /usr/lib/llvm-18/bin
+      - name: Check native test attributes
+        timeout-minutes: 5
+        run: sh test/native_aot/test_attributes/run.sh "$PWD/build-native-self-host/stage3/chibi" /usr/lib/llvm-18/bin
       - name: Keep stage two for Windows
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

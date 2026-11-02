@@ -147,6 +147,7 @@ jobs:
       # recovery with the Release test_tools, starts first and overlaps the rest.
       - name: Native, material, project and language selectors
         env:
+          CHIBI_TEST_TIMINGS: ${{ runner.temp }}/case-timings
           UBSAN_OPTIONS: halt_on_error=1
           # native-build cross-links the macOS and Windows programs and lists
           # them in programs.txt there; native-targets runs them.
@@ -154,6 +155,7 @@ jobs:
         shell: bash
         run: |
           set -e
+          mkdir -m 700 -p "$CHIBI_TEST_TIMINGS"
           export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
           for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
           sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native
@@ -326,9 +328,12 @@ jobs:
       # Keep groups sequential: they share fixtures and build outputs. Within the
       # last invocation, --jobs 2 fits the 3-core, 7 GB runner.
       - name: Native, material, project and language selectors
+        env:
+          CHIBI_TEST_TIMINGS: ${{ runner.temp }}/case-timings
         shell: bash
         run: |
           set -e
+          mkdir -m 700 -p "$CHIBI_TEST_TIMINGS"
           export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
           for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
           sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native native-aot-driver native-build

@@ -43,15 +43,22 @@ FunctionAt :: (text: string, at: int) -> string {
 
 // The file and line byte `at` of the joined sources lies in; each source is
 // followed by a newline when it lacks one, as the producer joins them.
-Where :: (paths: string[], sources: string[], at: int) -> string {
+// source_size ends at the last retained document when parsing stopped early.
+Where :: (collections: string[], directories: string[], paths: string[], sources: string[],
+          os: int, arch: int, source_size: int, at: int) -> string {
     offset := 0;
     for (index in 0..<length(paths)) {
-        size := strings.ByteLength(sources[index]);
-        if (!strings.HasSuffix(sources[index], "\n")) {
+        text := sources[index];
+        if (compiler.TargetPackagePath(collections, directories, paths[index])) {
+            // Match the producer's actual source, not the on-disk target template.
+            text = compiler.TargetPackageText(os, arch, TargetFacts().pointer_size * 8, 1);
+        }
+        size := strings.ByteLength(text);
+        if (!strings.HasSuffix(text, "\n")) {
             size += 1;
         }
-        if (at < offset + size) {
-            line := strings.Count(strings.Slice(sources[index], 0, at - offset), "\n") + 1;
+        if (at < offset + size || (at == source_size && at == offset + size)) {
+            line := strings.Count(strings.Slice(text, 0, at - offset), "\n") + 1;
             return format_text("{}:{}", paths[index], line);
         }
         offset += size;
@@ -77,22 +84,26 @@ pub Module :: (collections: string[], directories: string[], paths: string[], so
     }
     rows := compiler.CollectScalarProgram("/project", collections, directories, paths, sources, TargetFacts(), Names(),
                                           Natives(), Ports(), Identities(), os, arch, chosen);
-    return EmitRows(paths, sources, rows, Target(triple), directory);
+    return EmitRows(collections, directories, paths, sources, os, arch, rows, Target(triple), directory);
 }
 
 // The existing single-source library producer; package libraries and line
 // tables are not supported here. The driver admits only Linux x86-64.
 LibraryModule :: (path: string, source: string) -> Output {
     rows := compiler.CollectScalar("/project", path, source, TargetFacts(), Names(), Natives(), Ports(), Identities());
-    return EmitRows([path], [source], rows, abi.LinuxX64(), "");
+    return EmitRows([], [], [path], [source], 1, 1, rows, abi.LinuxX64(), "");
 }
 
-// Both producers return the same facts rows and rejection contract.
-EmitRows :: (paths: string[], sources: string[], rows: facts.Row[], target: abi.Target, directory: string) -> Output {
+// Both producers return the same facts rows and rejection contract. A
+// rejection names its file and line in the closure the producer read, with
+// the target `os` and `arch` (core:target's numbers) that chose its text.
+EmitRows :: (collections: string[], directories: string[], paths: string[], sources: string[], os: int, arch: int,
+             rows: facts.Row[], target: abi.Target, directory: string) -> Output {
     if (length(rows) < 2 || rows[1].kind == facts.RejectionRow) {
         rejected := rows[length(rows) - 1];
         return Output.Rejected(strings.Concatenate(["rejected ", FunctionAt(rows[0].text, rejected.start), ": ",
-                                                    rejected.text, " (", Where(paths, sources, rejected.start), ")"]));
+                                                    rejected.text, " (", Where(collections, directories, paths, sources, os, arch,
+                                                                              strings.ByteLength(rows[0].text), rejected.start), ")"]));
     }
     emitted: scalar.Result = scalar.Result.Invalid("");
     if (directory == "") {

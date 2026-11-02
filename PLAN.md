@@ -310,3 +310,40 @@ from 35.02 s to 31.49 s and mean CPU time from 63.93 s to 60.69 s; all eight
 outputs matched the frozen compiler. The focused commit is `7d798d802` in
 PR #1333, composed as `aa2affbea` with the task type-compatibility fix. These are
 compiler measurements, not complete installed-toolchain equivalence results.
+
+## Native integration checkpoint: 921c56bd0
+
+The combined compiler built on macOS arm64 in 56.35 seconds. Its exact-source
+checks passed: all 414 compiler tests (14.09 s), CLI workers, waiting tests and
+assertion diagnostics (13.33 s), native maps and string lifetimes at O0/O2 with
+poisoned frees and balanced allocations (24.58 s), and C/native product receipt
+checks (2.08 s). Five Wasm foreign pointer-width rejection cases preserve the
+existing output (0.12 s). These are ambient-load elapsed times.
+
+This checkpoint also integrates counted Windows UTF-8 command conversion,
+cleanup after failed LLVM object production, portable float-format fixtures,
+macOS shared generations/watch, owned Windows library handles, complete native
+product source receipts, and the native graph-test runner. The graph runner's
+eight selectors passed from the actual pinned seed in 62.73 seconds at
+`7cd5cfbd5`; the subsequent evidence changes passed the receipt checks above.
+Managed arrays and map payload preparation passed together in 12.85 and
+24.57 seconds at `8f15d4457`. Source-level array map payload admission remains
+closed pending projected writeback support.
+
+The earlier compiler source at `1a7a1002f` reproduced identical macOS stage-two
+and stage-three executables, SHA-256
+`76a2d9e55610ce9f5f50bd73a69c1408b0167752e32b01c833f9dfbcc500f4a7`.
+That fixed-point result does not certify this newer checkpoint. Hosted Linux,
+Windows and SDK checks must validate the new combined revision. The Windows
+long-path old-versus-fixed regression is also still running.
+
+The integration owner carries PR #1331 through independent review, exact-head
+validation and merge, and then reconciles #1330/#1334 against the settled
+source. The fixes in #1332/#1333/#1335/#1336 are incorporated here; their drafts
+will be closed after complete supersession is verified. The owners of
+#1315/#1319–#1325 continue their remaining implementation under this integration;
+each older draft needs a final diff audit before closure. None is waiting on a
+new owner decision. Ordinary CI does not replace full sanitizer and clean
+bootstrap acceptance. Further cache work is stopped; performance work targets
+measured compiler-code costs. The latest matched hosted comparison showed no
+overall CI speedup.

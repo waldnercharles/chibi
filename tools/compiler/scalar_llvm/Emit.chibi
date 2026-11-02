@@ -2054,6 +2054,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
             answers: int[] = [];
             escapes: int[] = [];
             outputs: int[] = [];
+            // Fresh strings in a conditional RHS are released on that path,
+            // before its skip target joins. Nested RHSs own suffixes here.
+            logical_strings: int[] = [];
+            logical_first: int[] = [];
             first := at + 1;
             for (index in first..<first + row.count + 1) {
                 while (length(closes) > 0 && closes[length(closes) - 1] == index) {
@@ -2061,6 +2065,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     right := stack[length(stack) - 1];
                     stack = slice(stack, 0, length(stack) - 1);
                     body.append(Op(native.Save, abi.BoolStorage, 0, right, 0, answers[open]));
+                    for (temporary in logical_first[open]..<length(logical_strings)) {
+                        body.append(Op(native.TextRelease, abi.TextStorage, 0, logical_strings[temporary], 0, 0));
+                    }
+                    logical_strings = slice(logical_strings, 0, logical_first[open]);
+                    logical_first = slice(logical_first, 0, open);
                     body = Patched(body, escapes[open]);
                     body.append(Op(native.Local, abi.BoolStorage, outputs[open], answers[open], 0, 0));
                     stack.append(outputs[open]);
@@ -2089,6 +2098,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                         body.append(Op(native.Branch, 0, 0, left, 0, 0));
                     }
                     closes.append(index + operand.count + 1);
+                    logical_first.append(length(logical_strings));
                     answers.append(local);
                     outputs.append(slot);
                     local += 1;
@@ -2097,6 +2107,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                 }
                 item: native.Instruction = {op: native.Constant, type: type, output: slot, left: 0, right: 0,
                                             target: 0, literal: operand.literal};
+                retained_element := false;
                 if (operand.kind == facts.LiteralRow && operand.type == facts.StringType) {
                     // A repeated literal or default shares one entry.
                     item.literal = i64(length(texts));
@@ -2292,6 +2303,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                         op == facts.ArrayJoin || op == facts.ArrayCopy || op == facts.ArrayText) {
                         if (Holds(fresh, stack[base])) {
                             pending.append(stack[base]);
+                            // Keep a string result before dropping its temporary array.
+                            retained_element = op == facts.ArrayGet && type == abi.TextStorage;
                         }
                     }
                     if ((op == facts.ArrayJoin || op == facts.ArrayExtend) && Holds(fresh, stack[base + 1])) {
@@ -2386,15 +2399,19 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                 }
                 stored = [];
                 body.append(item);
+                if (retained_element) {
+                    body.append(Op(native.TextRetain, abi.TextStorage, 0, slot, 0, 0));
+                }
                 for (spent in pending) {
                     held_type := slots[shape.first_slot + spent];
                     body.append(Op(native.ArrayDrop, held_type, 0, spent, 0, 0));
                     fresh = Without(fresh, spent);
                 }
                 pending = [];
-                // A string made on the right of && or || exists on some paths
-                // only, so it is not tracked: it stays unreleased.
-                if (FreshArray(operand) && (length(closes) == 0 || type != abi.TextStorage)) {
+                fresh_value := FreshArray(operand) || retained_element;
+                if (fresh_value && length(closes) > 0 && type == abi.TextStorage) {
+                    logical_strings.append(slot);
+                } else if (fresh_value) {
                     fresh.append(slot);
                 } else if ((operand.kind == facts.CallRow || operand.kind == facts.MakeRow) &&
                            HoldsArrays(rows, declared, type)) {

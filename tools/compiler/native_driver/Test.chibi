@@ -244,8 +244,8 @@ Joined :: (sources: string[]) -> string {
 }
 
 // What a failed assert's report says, as `PATH:LINE:COL: Assertion failed: MESSAGE`. The report
-// is `assertion failed in function N at source bytes A to B`; the message is the last string
-// of the assert's own text.
+// is `assertion failed in function N at source bytes A to B`; the parsed call
+// supplies its message or the condition text, as the compiler's intrinsic does.
 AssertionFailure :: (report: string, paths: string[], sources: string[]) -> string {
     // The child runtime has already decided success or failure. Keep its
     // expectation diagnostic when adding the assertion's source location.
@@ -270,13 +270,7 @@ AssertionFailure :: (report: string, paths: string[], sources: string[]) -> stri
     message := "";
     if (start >= 0 && end > start && end <= strings.ByteLength(joined)) {
         call := strings.Slice(joined, start, end - start);
-        quote := strings.LastIndex(call, "\"");
-        if (quote > 0) {
-            opening := strings.LastIndex(strings.Slice(call, 0, quote), "\"");
-            if (opening >= 0) {
-                message = strings.Slice(call, opening + 1, quote - opening - 1);
-            }
-        }
+        message = AssertionMessage(call);
     }
     if (message == "") {
         return format_text("{}: {}Assertion failed", Place(paths, sources, start), expectation);
@@ -317,17 +311,10 @@ RejectedAsExpected :: (label: string, relative: string, file: string, expected: 
         }
         message = strings.Slice(expected, colon + 1, strings.ByteLength(expected) - colon - 1);
     }
-    triple := HostTriple();
-    os := 1;
-    arch := 1;
-    if (strings.HasPrefix(triple, "aarch64-apple")) {
-        os = 2;
-        arch = 2;
-    } else if (strings.HasPrefix(triple, "x86_64-pc-windows")) {
-        os = 3;
-    }
-    rows := compiler.CollectScalarProgram("/project", ["core"], [route.Visible(core)], inputs.paths, inputs.sources, TargetFacts(),
-                                           Names(), Natives(), Ports(), Identities(), os, arch, "");
+    target := Target(HostTriple());
+    platform := PlatformFor(target);
+    rows := compiler.CollectScalarProgram("/project", ["core"], [route.Visible(core)], inputs.paths, inputs.sources, PointerFacts(target),
+                                           Names(), Natives(), Ports(), Identities(), platform.os, platform.arch, "");
     actual := "it compiled";
     passed := false;
     if (length(rows) < 2 || rows[1].kind == facts.RejectionRow) {
@@ -348,14 +335,12 @@ RejectedAsExpected :: (label: string, relative: string, file: string, expected: 
 // byte ranges for rejection/assertion locations in subsequent source files.
 TestSources :: (paths: string[], sources: string[], core: string, triple: string) -> string[] {
     normalized := sources;
-    os := 1;
-    arch := 1;
-    if (strings.HasPrefix(triple, "aarch64-apple")) { os = 2; arch = 2; }
-    else if (strings.HasPrefix(triple, "x86_64-pc-windows")) { os = 3; }
+    target := Target(triple);
+    platform := PlatformFor(target);
     target_path := strings.Concatenate([route.Visible(core), "/target/Target.chibi"]);
     for (index in 0..<length(paths)) {
         if (paths[index] == target_path) {
-            normalized[index] = compiler.TargetPackageText(os, arch, TargetFacts().pointer_size * 8, 1);
+            normalized[index] = compiler.TargetPackageText(platform.os, platform.arch, target.pointer_bits, 1);
         }
     }
     return normalized;
@@ -487,14 +472,12 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
     program := strings.Concatenate([scratch, "/program"]);
     options: DriverOptions = {level: invocation.mode, lines: invocation.debug, static_link: false, shared: false,
                              folder: project, keep_module: false, emit_llvm: false};
-    os := 1;
-    arch := 1;
-    if (strings.HasPrefix(triple, "aarch64-apple")) { os = 2; arch = 2; }
-    else if (strings.HasPrefix(triple, "x86_64-pc-windows")) { os = 3; }
+    target := Target(triple);
+    platform := PlatformFor(target);
     visible: string[] = [];
     for (directory in directories) { visible.append(route.Visible(directory)); }
     collected := compiler.CollectScalarProgramWithEffects("/project", collections, visible, gathered.paths, gathered.sources,
-        TargetFacts(), Names(), Natives(), Ports(), Identities(), os, arch, main_name);
+        PointerFacts(target), Names(), Natives(), Ports(), Identities(), platform.os, platform.arch, main_name);
     prepared: TestProgram = {rows: collected.rows, effects: []};
     if (length(collected.effects) > 0) {
         prepared = TestProgramRows(collected, gathered.paths, gathered.sources, names, main_name, dispatcher);
@@ -566,7 +549,7 @@ TestCommand :: (invocation: CliInvocation) -> int {
         return 2;
     }
     triple := Default(invocation.target, HostTriple());
-    if (triple != HostTriple()) {
+    if (!HostTarget(triple)) {
         Complain("test requires the host target; use build --native to cross-compile");
         return 2;
     }

@@ -1,6 +1,7 @@
 package evidence
 
 import files "graph:files"
+import engine "graph:engine"
 import os "core:os"
 import strings "core:strings"
 
@@ -8,8 +9,8 @@ import strings "core:strings"
 // build left (the commands in each output's `.chibi-record`, the stamps of its
 // inputs, the sanitizer symbols `nm` finds) rather than the planned command
 // databases, which only say what would run. A record can describe a cache hit
-// instead of a fresh compile, and only a few outputs are checked: three objects
-// and five links, not every translation unit.
+// instead of a fresh compile. C profile checks cover representative objects and
+// required links; native products have their own compiler command checks.
 //
 // Every check returns "" when it holds, else what failed.
 
@@ -66,6 +67,28 @@ pub CheckSanitizers :: (arguments: string[], sanitizers: bool) -> string {
     }
     if (!sanitizers && length(selected) != 0) {
         return "expected ASan+UBSan exactly when requested, without disabling flags";
+    }
+    return "";
+}
+
+// Native products are O2 compiler programs, independent of the C profile. Use
+// the graph's product recipe to bind their source, entry, target and output.
+pub CheckNative :: (arguments: string[], root: string, build: string, target: string) -> string {
+    llvm := Place(arguments, "--llvm");
+    jobs := Place(arguments, "--jobs");
+    if (length(arguments) == 0 || llvm < 0 || llvm + 1 >= length(arguments) ||
+        jobs < 0 || jobs + 1 >= length(arguments)) {
+        return "unexpected native product command";
+    }
+    expected := engine.NativeCommand(arguments[0], arguments[llvm + 1], os.RealPath(root), os.RealPath(build), target, 1);
+    if (length(expected) == 0 || length(arguments) != length(expected)) {
+        return "unexpected native product command";
+    }
+    for (index in 0..<length(expected)) {
+        // Worker count changes compile time, not the selected product/profile.
+        if (index != jobs + 1 && arguments[index] != expected[index]) {
+            return "unexpected native product command";
+        }
     }
     return "";
 }
@@ -156,9 +179,54 @@ Footer :: (record: string) -> string[] {
     return footer;
 }
 
-// Whether `output`'s record holds the command that built it: its `-o` names the
-// output, its input (the `-c` source, or the objects and absolute libraries of a
-// link) is among the stamped files, and every stamped file is unchanged since.
+// String arrays keep this check compatible with the pinned producer. Sort once,
+// then use logarithmic membership rather than scanning the entire receipt for
+// every compiler/core source.
+InputsBound :: (inputs: string[], recorded: string[]) -> bool {
+    ordered := recorded;
+    width := 1;
+    while (width < length(ordered)) {
+        merged: string[] = [];
+        start := 0;
+        while (start < length(ordered)) {
+            middle := start + width;
+            if (middle > length(ordered)) { middle = length(ordered); }
+            end := middle + width;
+            if (end > length(ordered)) { end = length(ordered); }
+            left := start;
+            right := middle;
+            while (left < middle && right < end) {
+                if (strings.Compare(ordered[left], ordered[right]) <= 0) {
+                    merged.append(ordered[left]);
+                    left += 1;
+                } else {
+                    merged.append(ordered[right]);
+                    right += 1;
+                }
+            }
+            while (left < middle) { merged.append(ordered[left]); left += 1; }
+            while (right < end) { merged.append(ordered[right]); right += 1; }
+            start = end;
+        }
+        ordered = merged;
+        width *= 2;
+    }
+    for (path in inputs) {
+        first := 0;
+        end := length(ordered);
+        while (first < end) {
+            middle := first + (end - first) / 2;
+            if (strings.Compare(ordered[middle], path) < 0) { first = middle + 1; }
+            else { end = middle; }
+        }
+        if (first == length(ordered) || ordered[first] != path) { return false; }
+    }
+    return true;
+}
+
+// Whether `output`'s record binds its command, inputs and output to live stamps.
+// Native records bind the compiler, source roots and LLVM tools; C records bind
+// the `-c` source or the objects and absolute libraries of a link.
 // ccache rebases depfile inputs against the checkout, so inputs compare by real
 // path.
 pub ReadRecord :: (output: string) -> string {
@@ -173,12 +241,14 @@ pub ReadRecord :: (output: string) -> string {
         return format_text("{}: missing output binding or malformed stamps", output);
     }
     place := -1;
+    native := false;
     for (index in 0..<length(arguments)) {
-        if (arguments[index] == "-o") {
+        if (arguments[index] == "-o" || arguments[index] == "--output") {
             if (place >= 0) {
-                return format_text("{}: more than one -o", output);
+                return format_text("{}: more than one output option", output);
             }
             place = index;
+            native = arguments[index] == "--output";
         }
     }
     if (place < 0 || place + 1 >= length(arguments) || os.RealPath(arguments[place + 1]) != os.RealPath(output)) {
@@ -186,7 +256,36 @@ pub ReadRecord :: (output: string) -> string {
     }
     inputs: string[] = [];
     at := Place(arguments, "-c");
-    if (at >= 0) {
+    if (native) {
+        inputs.append(arguments[0]);
+        for (option in ["--compiler", "--core", "--source"]) {
+            index := Place(arguments, option);
+            if (index < 0 && option == "--source") { continue; }
+            if (index < 0 || index + 1 >= length(arguments)) {
+                return format_text("{}: unexpected native command", output);
+            }
+            if (option == "--source") {
+                inputs.append(arguments[index + 1]);
+            } else {
+                inventory := engine.NativeInputs(arguments[index + 1]);
+                if (length(inventory) == 0) {
+                    return format_text("{}: cannot read native source inventory", output);
+                }
+                inputs.extend(inventory);
+            }
+        }
+        index := Place(arguments, "--llvm");
+        if (index < 0 || index + 1 >= length(arguments)) {
+            return format_text("{}: unexpected native command", output);
+        }
+        linker := "ld.lld";
+        suffix := "";
+        if (os.Platform() == "Darwin") { linker = "ld64.lld"; }
+        if (os.Platform() == "Windows") { linker = "lld-link"; suffix = ".exe"; }
+        for (tool in ["opt", "llc", linker]) {
+            inputs.append(format_text("{}/{}{}", arguments[index + 1], tool, suffix));
+        }
+    } else if (at >= 0) {
         if (at + 1 >= length(arguments)) {
             return format_text("{}: unexpected compile command", output);
         }
@@ -212,10 +311,10 @@ pub ReadRecord :: (output: string) -> string {
     if (length(inputs) == 0) {
         return format_text("{}: missing command input binding", output);
     }
-    for (input in inputs) {
-        if (!recorded.contains(os.RealPath(input))) {
-            return format_text("{}: missing command input binding", output);
-        }
+    canonical: string[] = [];
+    for (input in inputs) { canonical.append(os.RealPath(input)); }
+    if (!InputsBound(canonical, recorded)) {
+        return format_text("{}: missing command input binding", output);
     }
     for (index in 0..<length(footer) / 2) {
         path := footer[index * 2];
@@ -262,25 +361,29 @@ Place :: (arguments: string[], value: string) -> int {
     return -1;
 }
 
-// What is checked of one output: a representative object or a required link.
+// A source names a representative C object; a target names a native product.
+// Rows with neither are C links.
 Output :: struct {
     path: string;
-    compiled: bool;
     source: string;
     test: bool;
+    target: string;
 }
 
 Outputs :: () -> Output[] {
-    return [
-        {path: "objects/chibi_support/src/support/arena.c.o", compiled: true, source: "src/support/arena.c", test: false},
-        {path: "objects/test_tools/test/tools/main.c.o", compiled: true, source: "test/tools/main.c", test: true},
-        {path: "objects/test_language/test/language/main.c.o", compiled: true, source: "test/language/main.c", test: true},
-        {path: "sdk/chibi", compiled: false, source: "", test: false},
-        {path: "sdk/chibi-compile", compiled: false, source: "", test: false},
-        {path: "sdk/chibi-build-host", compiled: false, source: "", test: false},
-        {path: "test/tools/test_tools", compiled: false, source: "", test: false},
-        {path: "test/language/test_language", compiled: false, source: "", test: false}
+    outputs: Output[] = [
+        {path: "objects/chibi_support/src/support/arena.c.o", source: "src/support/arena.c", test: false, target: ""},
+        {path: "objects/test_tools/test/tools/main.c.o", source: "test/tools/main.c", test: true, target: ""},
+        {path: "objects/test_language/test/language/main.c.o", source: "test/language/main.c", test: true, target: ""},
+        {path: "sdk/chibi-compile", source: "", test: false, target: ""},
+        {path: "sdk/chibi-build-host", source: "", test: false, target: ""},
+        {path: "test/tools/test_tools", source: "", test: false, target: ""},
+        {path: "test/language/test_language", source: "", test: false, target: ""}
     ];
+    for (target in engine.NativeProducts()) {
+        outputs.append({path: strings.TrimPrefix(engine.Executable("", target), "/"), source: "", test: false, target: target});
+    }
+    return outputs;
 }
 
 // What CI selected and ran, as the workflow passes it: the build host reads no
@@ -347,13 +450,17 @@ Verify :: (root: string, build: string, output: string, nm: string, selected: Se
             return {problem: format_text("cannot copy the record of {}", path), checked: checked};
         }
         problem := "";
-        if (row.compiled) {
+        compiled := row.source != "";
+        native := row.target != "";
+        if (compiled) {
             at := Place(arguments, "-c");
             wanted := os.RealPath(format_text("{}/{}", root, row.source));
             if (at < 0 || at + 1 != length(arguments) - 1 || os.RealPath(arguments[at + 1]) != wanted) {
                 return {problem: format_text("wrong representative source for {}", path), checked: checked};
             }
             problem = CheckFlags(arguments, sanitizers, row.test);
+        } else if (native) {
+            problem = CheckNative(arguments, root, build, row.target);
         } else {
             problem = CheckSanitizers(arguments, sanitizers);
         }
@@ -379,7 +486,7 @@ Verify :: (root: string, build: string, output: string, nm: string, selected: Se
         if (os.WriteText(format_text("{}.symbols.txt", destination), format_text("{}\n", strings.Join(lines, "\n"))) != nil) {
             return {problem: format_text("cannot write the symbols of {}", path), checked: checked};
         }
-        problem = CheckSymbols(listed.stdout, sanitizers, row.compiled);
+        problem = CheckSymbols(listed.stdout, sanitizers && !native, compiled);
         if (problem != "") {
             return {problem: format_text("{}: {}", path, problem), checked: checked};
         }
@@ -387,11 +494,13 @@ Verify :: (root: string, build: string, output: string, nm: string, selected: Se
             return {problem: format_text("output changed during capture: {}", path), checked: checked};
         }
         names: string[] = [];
-        for (name in Symbols(listed.stdout, row.compiled)) {
+        for (name in Symbols(listed.stdout, compiled)) {
             names.append(Quote(name));
         }
-        checked.append(format_text("{{\"output\":{},\"sha256\":{},\"stamp\":{},\"symbols\":[{}]}}", Quote(path), Quote(digest),
-                                   Quote(before), strings.Join(names, ",")));
+        toolchain := "C";
+        if (native) { toolchain = "native"; }
+        checked.append(format_text("{{\"output\":{},\"toolchain\":{},\"sha256\":{},\"stamp\":{},\"symbols\":[{}]}}", Quote(path),
+                                   Quote(toolchain), Quote(digest), Quote(before), strings.Join(names, ",")));
     }
     header := format_text("{}/test/tools/testing/include/export_compiler.h", build);
     if (os.Copy(header, format_text("{}/export_compiler.h", output)) != nil) {
@@ -431,7 +540,7 @@ pub Capture :: (root: string, build: string, output: string, nm: string, selecte
         error = format_text(",\"error\":{}", Quote(problem));
     }
     receipt := format_text("{{\"environment\":{{{}}},\"status\":{},\"scope\":{},\"checked\":[{}]{}}}\n", strings.Join(environment, ","),
-                           Quote(status), Quote("three representative objects and five required links; not every translation unit"),
+                           Quote(status), Quote("representative C objects, required C links and registered native programs; not every translation unit"),
                            strings.Join(checked, ","), error);
     if (os.WriteText(format_text("{}/receipt.json", output), receipt) != nil) {
         os.Print("evidence: cannot write receipt.json");

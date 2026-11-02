@@ -319,13 +319,6 @@ ScalarKeptRead :: (forest: snapshot.SnapshotNode[], text: string, names: Name[],
     found := Lookup(names, Text(forest, text, node));
     return found >= 0 && (names[found].place == ParameterPlace || !names[found].writable);
 }
-// Whether `value`, the array a loop visits, is a variable that the loop's
-// `body` changes, so the loop visits a copy of it.
-ScalarIterationCopies :: (forest: snapshot.SnapshotNode[], text: string, body: int, value: int) -> bool {
-    node := Unparenthesized(forest, value);
-    return Is(forest, node, syntax.Identifier) &&
-           NamePosition(MutatedNames(forest, text, body, []), Text(forest, text, node)) >= 0;
-}
 // The array a loop visits, `node`: ScalarArrayShape's, or for a literal whose
 // first element it cannot type, such as a package constant or a bare number,
 // the storage that element has where it is written, as a local declaration of

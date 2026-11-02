@@ -14,13 +14,13 @@ esac
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$root/test/native_aot/maps/Probe.chibi" --entry Main \
     --output "$work/probe" --llvm "$llvm" --target "$triple" --jobs 2
-for mode in positive tombstone-key tombstone-value facts readonly; do
+for mode in positive tombstone-key tombstone-value facts readonly array-readonly; do
     "$work/probe" "$work" "$llvm" "$root/test/native_aot/maps/Runtime.ll" "$mode"
 done
 sh "$root/test/native_aot/map_programs/run.sh" "$compiler" "$llvm" "$work/programs"
 # Compile authored source once, then run its emitted module through the same
 # poisoned allocator and zero-outstanding-allocation check as the facts probes.
-for name in Ownership Effects Receivers ManagedRecords; do
+for name in Ownership Effects Receivers ManagedRecords StringEffects; do
     project=$work/source-project/$name
     mkdir -p "$project"
     cp "$root/test/native_aot/map_programs/$name.chibi" "$project/$name.chibi"

@@ -38,7 +38,7 @@ tool	graph-c	@program@	test/graph/CTests.chibi	Run	@compiler@	@llvm@
 tool	graph-build	@program@	test/graph/BuildTests.chibi	Run	@compiler@	@llvm@
 tool	graph-asset-cache	@program@	test/graph/AssetCompilerCacheTests.chibi	Run
 tool	graph-os	@program@	test/graph/OsTests.chibi	Run
-tool	graph-sdk-install	@native@	run	--core	@root@/packages/core	--llvm	@llvm@	--root	@root@	--collection	graph=@root@/tools/graph	--entry	Run	@root@/test/graph/SDKInstallTests.chibi	--	@native@	@release@	@llvm@
+tool	graph-sdk-install	@release@/sdk/chibi	run	--core	@root@/packages/core	--llvm	@llvm@	--root	@root@	--collection	graph=@root@/tools/graph	--entry	Run	@root@/test/graph/SDKInstallTests.chibi	--	@release@/sdk/chibi	@release@	@llvm@
 tool	collab	@build@/test/tools/test_tools	--collab
 tool	whole-integer	@build@/test/tools/test_tools	--whole-integer
 tool	whole-select	@build@/test/tools/test_tools	--whole-select

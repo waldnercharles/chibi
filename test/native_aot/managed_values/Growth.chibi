@@ -3,6 +3,8 @@ package managed_growth
 foreign { chibi_value_test_allocations :: () -> u64 }
 Buffer :: struct { values: int[]; }
 Main :: () -> int {
+    snapshot_allocations := ReadonlySnapshots();
+    assert(snapshot_allocations == 0, "readonly array snapshots share backing");
     initial_allocations := chibi_value_test_allocations();
     count := BuildLocal();
     final_allocations := chibi_value_test_allocations();
@@ -17,6 +19,16 @@ Main :: () -> int {
     buffer.values.resize(0);
     assert(length(buffer.values) == 0);
     return 0;
+}
+ReadonlySnapshots :: () -> u64 {
+    values := resize([int(7)], 4096);
+    initial := chibi_value_test_allocations();
+    for i in 0..<4096 {
+        snapshot := values;
+        assert(length(snapshot) == 4096 && snapshot[i] == values[i]);
+    }
+    final := chibi_value_test_allocations();
+    return final - initial;
 }
 BuildLocal :: () -> int {
     buffer: Buffer = {values: []};

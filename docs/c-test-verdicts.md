@@ -27,7 +27,7 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/language/host_packages_compiler.c` | 3 | `src/host/clock_package`, grants, the compiler host | goes |
 | `test/language/native_census.c`, `census_tree.h` | 3 | the C census flattener over CollectScalar | goes; the census is obsolete once the compiler runs natively |
 | `test/language/program_session.c` | 11 | `src/authoring/program.c` sessions | goes, except 3 Edit-and-Continue cases |
-| `test/language/package_compiler_chibi.c`, `scalar_host.c` | 6, 0 | remaining native backend execution through the C compiler host | scalar producer rows, validation, packages, libraries and corpus now run natively; six backend cases remain |
+| `test/language/package_compiler_chibi.c`, `scalar_host.c` | 6, 0 | native backend execution through the C compiler host | six backend cases retired through `test/native_aot/backend`, retained generations and process supervision; `scalar_host.c` remains only for the C census |
 | `test/language/parallel.c`, `main.c`, `backend.h`, `compiler_cache.h` | 9, 0 | the C test runner | goes |
 | `test/runtime/whole_integer.c`, `whole_conversion.c`, `whole_math.c` | 3, 1, 2 | hand-built IR, bytecode against SLJIT | goes; the conversion, negation and comparison rules are ported, and integer `abs`/`min`/`max`/`clamp` and the math specials wait on owner decisions |
 | `test/runtime/persistent_store.c` | 1 | `execution_program_set_state` | goes, except retained records across a swap |
@@ -184,7 +184,11 @@ character suite proves selector `2` acceptance and runtime failures.
 
 The native emitter's C transport test was already covered by authored call and
 invalid-callee tests; its transport wrapper and the C oracle-helper self-test
-were harness code. The six backend execution cases in that C file remain.
+were harness code. The six backend execution cases are now retired through
+[the native backend fixture](../test/native_aot/backend/README.md), retained
+generations and process supervision. The native bounds callback preserves the
+original index/length diagnostic and status134 without allocating. The C census
+still owns `scalar_host.c`; it is not a native toolchain dependency.
 
 ## Owner decisions
 

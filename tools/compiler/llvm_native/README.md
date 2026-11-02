@@ -75,12 +75,10 @@ interface, or the complete allocation/memory/output/free native island.
   calls, which the program defines. A frame larger than a page touches each
   page in turn and running out of stack always faults in the guard page below
   it rather than past it. That makes an overflow a fault, never a silent write
-  past the stack. What the fault prints is up to the process. A host that has
-  called `stack_overflow_init` (`src/host/stack_overflow.c`) on the thread
-  running native code writes `stack overflow` and aborts. So far only the
-  native test host does that, on Linux. A standalone native program installs no handler, so an overflow there ends with the
-  system's default fault (SIGSEGV). Installing the report in production hosts
-  is open (D4).
+  past the stack. What the fault prints is up to the process. Native programs
+  install no fault handler, so an overflow follows the system's default fault
+  policy. The retired C test harness's optional report handler had no product
+  caller and is removed with that harness.
 - Scalar locals, branches, comparisons, bitwise operations, integer and
   floating arithmetic, and conversions. Comparisons, division, remainders and
   `>>` are unsigned for an unsigned type. `bool` has `==`, `!=` and `BitNot`,

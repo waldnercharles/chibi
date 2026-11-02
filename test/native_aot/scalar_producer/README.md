@@ -31,4 +31,5 @@ semantics remain covered by `test/native_aot/characters`.
 The C native emitter transport check was already covered by the authored
 `llvm_native/tests` call and invalid-callee tests. Its transport wrapper and the
 C oracle-helper self-test are removed with the producer selector. The separate
-six native backend C cases remain until their own replacements are complete.
+six native backend C cases are retired through `test/native_aot/backend` and
+the existing retained-generation and process-supervision fixtures.

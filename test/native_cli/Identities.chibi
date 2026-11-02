@@ -1,0 +1,50 @@
+package native_test_identity
+
+import os "core:os"
+import strings "core:strings"
+
+Write :: (path: string, text: string) {
+    written := os.WriteText(path, text);
+    assert(written == nil, "write test identity fixture");
+}
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 3) { return 2; }
+    chibi := arguments[0];
+    llvm := arguments[1];
+    root := strings.Concatenate([arguments[2], "/test identities"]);
+    for (folder in [root, strings.Concatenate([root, "/tests"]), strings.Concatenate([root, "/bridge"]),
+                   strings.Concatenate([root, "/helper"]), strings.Concatenate([root, "/empty"])]) {
+        made := os.MakeDirectory(folder);
+        assert(made == nil, "make test identity fixture");
+    }
+    root = os.RealPath(root);
+    tests := strings.Concatenate([root, "/tests"]);
+    Write(strings.Concatenate([tests, "/ChibiTestEntry.chibi"]), "package tests\nMain :: () -> int { return 99; }\n");
+    Write(strings.Concatenate([tests, "/ChibiTestDispatch.chibi"]), "package tests\nChibiTestMain :: () -> int { return 88; }\nChibiRunTest :: () -> int { return 77; }\n");
+    Write(strings.Concatenate([tests, "/Tests.chibi"]), "package tests\nimport bridge \"project:bridge\"\nimport target \"core:target\"\nimport os \"core:os\"\nChibiTestMain1: int : 1;\n@test\nNamesAndImports :: () {\n    assert(Main() == 99 && ChibiTestMain() == 88 && ChibiRunTest() == 77 && ChibiTestMain1 == 1, \"authored names remain intact\");\n    assert(bridge.Value() == 42 && target.Native == 1, \"rooted project imports\");\n    os.WriteOutput(\"a test prints as it runs\\n\");\n}\n@test\nFailsInHelper :: () { bridge.Fail(); }\n");
+    Write(strings.Concatenate([root, "/bridge/Bridge.chibi"]), "package bridge\nimport helper \"project:helper\"\npub Fail :: () { helper.Fail(); }\npub Value :: () -> int { return helper.Value(); }\n");
+    Write(strings.Concatenate([root, "/helper/Helper.chibi"]), "package helper\n\npub Fail :: () {\n    assert(false, \"helper failure\");\n}\n\npub Value :: () -> int { return 42; }\n");
+    report := os.Capture([chibi, "test", "-O0", "--llvm", llvm, "--root", root, tests]);
+    if (report.status != 1 || !strings.Contains(report.stdout, "PASS project.NamesAndImports")) { os.Print(report.stdout); os.Print(report.stderr); }
+    assert(report.status == 1 && strings.HasPrefix(report.stdout, "a test prints as it runs\nPASS project.NamesAndImports\nFAIL project.FailsInHelper\n"), "same-package tests retain names, imports and stdout");
+    assert(strings.Contains(report.stdout, strings.Concatenate([root, "/helper/Helper.chibi:4:5: Assertion failed: helper failure"])), "an imported failure names the physical source after generated target constants");
+    assert(strings.Contains(report.stdout, "2 tests, 1 failed"), "isolated test totals");
+
+    empty := strings.Concatenate([root, "/empty"]);
+    Write(strings.Concatenate([empty, "/Empty.chibi"]), "package empty_tests\n@test\nNothing :: () {}\n");
+    passed := os.Capture([chibi, "test", "-O0", "--llvm", llvm, "--root", root, empty]);
+    assert(passed.status == 0 && passed.stdout == "PASS project.Nothing\n1 tests, 0 failed\n", "a test with no core imports and no runtime context passes");
+    if (os.Platform() != "Windows") {
+        for (value in ["", "0", "33", "-1", "+2", " 2", "2x", "9999999999999999999999999999"]) {
+            invalid := os.Capture(["/usr/bin/env", strings.Concatenate(["CHIBI_TEST_WORKERS=", value]), chibi,
+                                   "test", "--llvm", llvm, empty]);
+            assert(invalid.status == 1 && invalid.stdout == "" && invalid.stderr == "CHIBI_TEST_WORKERS must be an integer from 1 to 32\n", "strict worker diagnostic before preparing a package");
+        }
+        help := os.Capture(["/usr/bin/env", "CHIBI_TEST_WORKERS=", chibi, "test", "--help"]);
+        assert(help.status == 0 && strings.HasPrefix(help.stdout, "Usage: chibi"), "help ignores worker settings");
+    }
+    os.Print("native test identity: package names, declarations, core routes, stdout and worker settings passed");
+    return 0;
+}

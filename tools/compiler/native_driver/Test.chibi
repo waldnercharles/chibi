@@ -12,9 +12,9 @@ import strings "core:strings"
 // whose last file ends with `// error: LINE:COL: MESSAGE`, is compiled on its own,
 // as Go builds one test binary per package.
 //
-// A package's tests compile into one native program: a root package that imports
-// the package under test, and a dispatcher file added to the package itself, so a
-// test sees the package's private names. The program runs one test, named by its
+// A package's tests compile into one native program with a generated entry and
+// dispatcher in that same package, so a test sees the package's private names.
+// The program runs one test, named by its
 // index on the command line, and exits 0 when it passes; a failed assert ends it with
 // its report on the standard error. Every test is a process of its own, so one
 // failure takes no other test down.
@@ -84,6 +84,7 @@ ExpectedError :: (text: string) -> string {
 TestScan :: struct {
     package: string;
     names: string[];
+    declarations: string[];
     attributed: bool;
     problem: string;
 }
@@ -103,7 +104,7 @@ TestAttribute :: (nodes: syntax.Node[], fields: int[], text: string, attribute: 
 // The compiler's parser owns attribute syntax. Comments and whitespace between
 // an attribute and its declaration do not change which function is a test.
 ScanTests :: (text: string) -> TestScan {
-    found: TestScan = {package: "", names: [], attributed: false, problem: ""};
+    found: TestScan = {package: "", names: [], declarations: [], attributed: false, problem: ""};
     switch raw.Parse(text) {
         case .Rejected(diagnostic):
             found.problem = format_text("{}:{}: {}", diagnostic.line, diagnostic.column, diagnostic.message);
@@ -121,6 +122,10 @@ ScanTests :: (text: string) -> TestScan {
                         }
                         member = nodes[member].next_sibling;
                     }
+                }
+                if (fields[index] == syntax.FieldName) {
+                    node := nodes[index];
+                    found.declarations.append(strings.Slice(text, node.start, node.end - node.start));
                 }
                 if (nodes[index].kind != syntax.FunctionDeclaration) {
                     continue;
@@ -146,25 +151,37 @@ ScanTests :: (text: string) -> TestScan {
     return found;
 }
 
-// The file the dispatcher goes in, and its text: ChibiRunTest(index) calls the index'th test.
-DispatcherName :: () -> string {
-    return "ChibiTestDispatch.chibi";
+// Private generated declarations and files cannot shadow authored names.
+// The parsed name set makes every probe constant time, including packages
+// that deliberately declare many of the generated-name candidates.
+TestPrivateName :: (known: [string: bool], prefix: string, ending: string) -> string {
+    candidate := strings.Concatenate([prefix, ending]);
+    suffix := 0;
+    while (known[candidate]) {
+        suffix += 1;
+        candidate = format_text("{}{}{}", prefix, suffix, ending);
+    }
+    return candidate;
 }
 
-Dispatcher :: (package: string, names: string[]) -> string {
-    text := strings.Concatenate(["package ", package, "\n\npub ChibiRunTest :: (index: int) {\n"]);
+Dispatcher :: (package: string, dispatcher: string, names: string[]) -> string {
+    text := strings.Concatenate(["package ", package, "\n\n", dispatcher, " :: (index: int) {\n"]);
     for (index in 0..<length(names)) {
         text = strings.Concatenate([text, format_text("    if (index == {}) {{\n        {}();\n    }}\n", index, names[index])]);
     }
     return strings.Concatenate([text, "}\n"]);
 }
 
-// The root program of one package's tests: runs the test named by its first argument.
-RootProgram :: (relative: string) -> string {
-    return strings.Concatenate(["package tests\n\nimport tested \"project:", relative, "\"\nimport os \"core:os\"\nimport strings \"core:strings\"\n\n",
-        "foreign {\n    chibi_native_test_begin :: () -> int\n    chibi_native_test_end :: () -> int\n}\n\n",
-        "Main :: () -> int {\n    arguments := os.Arguments();\n    index := 0;\n    for (byte in strings.Bytes(arguments[0])) {\n        index = index * 10 + byte - 48;\n    }\n",
-        "    chibi_native_test_begin();\n    tested.ChibiRunTest(index);\n    return chibi_native_test_end();\n}\n"]);
+// No core imports: when testing core:os, strings or their dependencies, importing
+// os from inside the tested package would create a self/circular dependency.
+RootProgram :: (package: string, main_name: string, dispatcher: string, count: int) -> string {
+    return strings.Concatenate(["package ", package, "\n\nforeign {\n",
+        "    chibi_native_test_index :: () -> int\n",
+        "    chibi_native_test_begin :: () -> int\n",
+        "    chibi_native_test_end :: () -> int\n}\n\n",
+        main_name, " :: () -> int {\n    index := chibi_native_test_index();\n",
+        format_text("    if (index < 0 || index >= {}) {{ return 2; }}\n", count),
+        "    chibi_native_test_begin();\n    ", dispatcher, "(index);\n    return chibi_native_test_end();\n}\n"]);
 }
 
 // The file, line and column of byte `at` of the sources joined as the producer joins them,
@@ -268,7 +285,7 @@ Decimal :: (text: string) -> int {
 RejectedAsExpected :: (label: string, relative: string, file: string, expected: string, inputs: Inputs, core: string) -> bool {
     parent := Directory(relative);
     failing := strings.Concatenate([relative, "/", file]);
-    if (relative == ".") {
+    if (relative == "." || relative == "") {
         failing = file;
     }
     message := expected;
@@ -308,8 +325,51 @@ RejectedAsExpected :: (label: string, relative: string, file: string, expected: 
     return false;
 }
 
+// Match the producer's replaced core:target document before using joined
+// byte ranges for rejection/assertion locations in subsequent source files.
+TestSources :: (paths: string[], sources: string[], core: string, triple: string) -> string[] {
+    normalized := sources;
+    os := 1;
+    arch := 1;
+    if (strings.HasPrefix(triple, "aarch64-apple")) { os = 2; arch = 2; }
+    else if (strings.HasPrefix(triple, "x86_64-pc-windows")) { os = 3; }
+    target_path := strings.Concatenate([route.Visible(core), "/target/Target.chibi"]);
+    for (index in 0..<length(paths)) {
+        if (paths[index] == target_path) {
+            normalized[index] = compiler.TargetPackageText(os, arch, TargetFacts().pointer_size * 8, 1);
+        }
+    }
+    return normalized;
+}
+
+// Compiler routing uses project-relative paths and visible core paths. The
+// test report names the physical files the user supplied, including on Windows.
+TestDiagnosticPaths :: (paths: string[], project: string, core: string) -> string[] {
+    displayed: string[] = [];
+    visible_core := strings.Concatenate([route.Visible(core), "/"]);
+    for (path in paths) {
+        if (strings.HasPrefix(path, visible_core)) {
+            displayed.append(strings.Concatenate([core, "/", strings.TrimPrefix(path, visible_core)]));
+        } else if (strings.HasPrefix(path, "/")) {
+            displayed.append(path);
+        } else {
+            displayed.append(strings.Concatenate([project, "/", path]));
+        }
+    }
+    return displayed;
+}
+
+// Each command owns a reserved directory. Concurrent or interrupted test
+// commands never delete each other's executable/output.
+TestScratch :: (base: string) -> string {
+    if (!MakeFolders(base)) { return ""; }
+    reserved := os.TemporaryDirectory(base);
+    if (reserved.error != nil) { return ""; }
+    return reserved.path;
+}
+
 // Compiles and runs the tests of one package, printing each outcome and adding to `tally`.
-TestPackage :: (root: string, relative: string, core: string, llvm: string, triple: string, scratch: string,
+TestPackage :: (root: string, relative: string, project: string, core: string, llvm: string, triple: string, scratch_base: string,
                 invocation: CliInvocation, tally: Tally) -> Tally {
     result := tally;
     folder := root;
@@ -325,7 +385,9 @@ TestPackage :: (root: string, relative: string, core: string, llvm: string, trip
     names: string[] = [];
     attributed := false;
     package := "";
+    known: [string: bool] = [:];
     for (file in TestFiles(folder)) {
+        known[file] = true;
         read := os.ReadText(strings.Concatenate([folder, "/", file]));
         if (read.error != nil) {
             Complain(strings.Concatenate(["cannot read ", folder, "/", file]));
@@ -346,48 +408,77 @@ TestPackage :: (root: string, relative: string, core: string, llvm: string, trip
             result.compiled = false;
             return result;
         }
+        for (name in scanned.declarations) { known[name] = true; }
         names.extend(scanned.names);
         attributed = attributed || scanned.attributed;
     }
     if (rejected == "" && !attributed) {
         return result;
     }
+    // A parser rejection may have no header to retain. Its authored file
+    // still reports first; the generated files need valid syntax meanwhile.
+    if (package == "") { package = "chibi_unparsed_test"; }
     collections: string[] = ["core"];
     directories: string[] = [core];
-    extra: Extra = {folder: strings.Concatenate([root, "/", relative]), name: DispatcherName(), text: Dispatcher(package, names),
-                    entry_name: "Main.chibi", entry_text: RootProgram(relative)};
-    gathered := GatherWith(root, collections, directories, "__tests__", "", extra);
+    collection := "project";
+    package_root := project;
+    if (folder == core || strings.HasPrefix(folder, strings.Concatenate([core, "/"]))) {
+        collection = "core";
+        package_root = core;
+    }
+    package_path := ".";
+    if (folder != package_root) {
+        prefix := strings.Concatenate([package_root, "/"]);
+        if (!strings.HasPrefix(folder, prefix)) {
+            Complain("test: the package must be under --root or core");
+            result.compiled = false;
+            return result;
+        }
+        package_path = strings.TrimPrefix(folder, prefix);
+    }
+    main_name := TestPrivateName(known, "ChibiTestMain", "");
+    known[main_name] = true;
+    dispatcher := TestPrivateName(known, "ChibiRunTest", "");
+    known[dispatcher] = true;
+    entry_file := TestPrivateName(known, "ChibiTestEntry", ".chibi");
+    known[entry_file] = true;
+    dispatch_file := TestPrivateName(known, "ChibiTestDispatch", ".chibi");
+    extra: Extra = {folder: folder, collection: collection, name: dispatch_file, text: Dispatcher(package, dispatcher, names),
+                    entry_name: entry_file, entry_text: RootProgram(package, main_name, dispatcher, length(names))};
+    gathered := GatherWith(project, collections, directories, package_path, "", extra);
     if (gathered.problem != "") {
         Complain(strings.Concatenate(["native: ", gathered.problem]));
         result.compiled = false;
         return result;
     }
+    gathered.sources = TestSources(gathered.paths, gathered.sources, core, triple);
     if (rejected != "") {
         result.total += 1;
-        if (!RejectedAsExpected(label, relative, rejected_file, rejected, gathered, core)) {
+        if (!RejectedAsExpected(label, Directory(gathered.paths[0]), rejected_file, rejected, gathered, core)) {
             result.failed += 1;
         }
         return result;
     }
-    program := strings.Concatenate([scratch, "/program"]);
-    if (os.Exists(scratch)) {
-        CacheDiscard(scratch);
-    }
-    if (os.Exists(scratch) || !MakeFolders(scratch)) {
-        Complain(strings.Concatenate(["cannot make ", scratch]));
+    scratch := TestScratch(scratch_base);
+    if (scratch == "") {
+        Complain(strings.Concatenate(["cannot make ", scratch_base]));
         result.compiled = false;
         return result;
     }
+    program := strings.Concatenate([scratch, "/program"]);
     options: DriverOptions = {level: invocation.mode, lines: invocation.debug, static_link: false, shared: false,
                              folder: root, keep_module: false};
-    built := EmitOptions(collections, directories, gathered.paths, gathered.sources, triple, "Main", llvm, program, Jobs([]), options);
+    built := EmitOptions(collections, directories, gathered.paths, gathered.sources, triple, main_name, llvm, program, Jobs([]), options);
     if (built != 0) {
         Complain(strings.Concatenate(["test: cannot compile ", label]));
+        CacheDiscard(scratch);
         result.compiled = false;
         return result;
     }
+    diagnostic_paths := TestDiagnosticPaths(gathered.paths, project, core);
     for (index in 0..<length(names)) {
         ran := os.Capture([program, format_text("{}", index)]);
+        if (ran.stdout != "") { os.WriteOutput(ran.stdout); }
         result.total += 1;
         if (ran.status == 0) {
             Say(format_text("PASS {}.{}", label, names[index]));
@@ -395,13 +486,37 @@ TestPackage :: (root: string, relative: string, core: string, llvm: string, trip
         }
         result.failed += 1;
         Say(format_text("FAIL {}.{}", label, names[index]));
-        Say(strings.Concatenate(["  ", AssertionFailure(ran.stderr, gathered.paths, gathered.sources)]));
+        Say(strings.Concatenate(["  ", AssertionFailure(ran.stderr, diagnostic_paths, gathered.sources)]));
     }
+    CacheDiscard(scratch);
     return result;
+}
+
+// The same strict setting as the shared test operation. Presence matters:
+// an unset value chooses the normal worker count; an empty value is invalid.
+TestWorkers :: () -> int {
+    if (!os.HasEnv("CHIBI_TEST_WORKERS")) {
+        workers := Jobs([]);
+        if (workers > 32) { return 32; }
+        return workers;
+    }
+    value := os.Getenv("CHIBI_TEST_WORKERS");
+    if (value == "") { return 0; }
+    workers := 0;
+    for (byte in strings.Bytes(value)) {
+        if (byte < 48 || byte > 57) { return 0; }
+        workers = workers * 10 + byte - 48;
+        if (workers > 32) { return 0; }
+    }
+    return workers;
 }
 
 // `chibi test [ROOT]`.
 TestCommand :: (invocation: CliInvocation) -> int {
+    if (TestWorkers() == 0) {
+        Complain("CHIBI_TEST_WORKERS must be an integer from 1 to 32");
+        return 1;
+    }
     llvm := LlvmFolder(invocation.llvm);
     if (llvm == "") {
         Complain(strings.Concatenate(["test needs LLVM: ", NeedsLlvm()]));
@@ -417,6 +532,12 @@ TestCommand :: (invocation: CliInvocation) -> int {
         Complain(format_text("test: cannot find {}", Default(invocation.path, ".")));
         return 1;
     }
+    project := root;
+    if (invocation.root != "") { project = os.RealPath(invocation.root); }
+    if (project == "" || !os.IsDirectory(project)) {
+        Complain("test: --root must name an existing project directory");
+        return 2;
+    }
     triple := Default(invocation.target, HostTriple());
     if (triple != HostTriple()) {
         Complain("test requires the host target; use build --native to cross-compile");
@@ -427,7 +548,7 @@ TestCommand :: (invocation: CliInvocation) -> int {
     for (relative in TestFolders(root, ".")) {
         scratch := strings.Concatenate([root, "/build/native/test/", format_text("{}", number)]);
         number += 1;
-        tally = TestPackage(root, relative, core, llvm, triple, scratch, invocation, tally);
+        tally = TestPackage(root, relative, project, core, llvm, triple, scratch, invocation, tally);
     }
     if (!tally.compiled) {
         return 1;

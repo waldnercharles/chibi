@@ -178,8 +178,10 @@ ModuleRuns :: (directory: string, linker: string, module: Module, bundle: ^Bundl
     if (linked != nil) { return Invalid(object, 0, format_text("link failure kind {} status {}", linked.kind, linked.code)); }
     opened := loader.Open(image);
     if (opened == 0) {
+        Invalid(image, 0, "cannot load module image");
         removed := os.Remove(image);
-        return Invalid(image, 0, "cannot load module image");
+        if (removed != nil) { Invalid(image, 0, "cannot remove the failed module image"); }
+        return false;
     }
     addresses: rawptr[] = [];
     agreed := true;
@@ -222,7 +224,8 @@ ModuleRuns :: (directory: string, linker: string, module: Module, bundle: ^Bundl
     }
     closed := loader.Close(opened);
     removed := os.Remove(image);
-    if (!closed || removed != nil) { return Invalid(image, 0, "cannot close or remove module image"); }
+    if (removed != nil) { return Invalid(image, 0, "cannot remove module image"); }
+    if (!closed) { return Invalid(image, 0, "cannot close module image"); }
     return agreed;
 }
 

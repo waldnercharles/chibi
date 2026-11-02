@@ -14,8 +14,9 @@ Coverage equivalence to the retired C cases of `test/language/package_compiler_c
 | `native_rejects_floats` | Four named rejection tests: 33-bit float literal, remainder, int-to-float and bool-to-double; float negation is accepted and checked by `FloatNegationKeepsItsIEEEWidth` |
 
 `Tasks.chibi` checks plain and awaited call modes against coroutine functions,
-rejects coroutine function addresses and unused instruction numbers, and checks
-the same call contracts in scalar facts before lowering.
+and rejects coroutine function addresses and unused instruction numbers. The
+scalar facts call contracts live in `test/native_aot/scalar/Tests.chibi`, whose
+representation tests run on bytecode and SLJIT through the strict scalar proof.
 
 Each test owns its module tables and result. No shared writable fixture, process,
 file, timing loop or benchmark is involved. Purity is inferred through the real

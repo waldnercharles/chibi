@@ -597,6 +597,13 @@ WriteSourceLists :: (source_root: string, build_dir: string, target: string) -> 
 // Installs a target's resources into the build tree (Resources).
 Install :: (source_root: string, build_dir: string, third_party: string, target: string) -> bool {
     for (resource in Resources(target)) {
+        // This tree is a runnable legacy compiler distribution. Prepare its
+        // pinned bytecode before copying, including host-only SDK builds.
+        if (strings.Partition(resource, "=").tail == "tools/compiler" &&
+            os.Run(["sh", Join([source_root, "/tools/bootstrap/seed.sh"])]) != 0) {
+            os.Print("graph: preparing the legacy compiler resources failed");
+            return false;
+        }
         if (!CopyChanged(Resolve(source_root, build_dir, third_party, strings.Partition(resource, "=").tail),
                          Resolve(source_root, build_dir, third_party, strings.Partition(resource, "=").head))) {
             return false;
@@ -755,12 +762,6 @@ Substituted :: (source_root: string, build_dir: string, profile: Profile, target
 // same whichever build's hosts generate it. Sibling outputs are tracked
 // inputs so deleting one regenerates the resource.
 AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string) -> int {
-    // The generator still runs through the VM host. Prepare its seed before
-    // building the hosts, whose installed compiler resources copy that seed.
-    if (os.Run(["sh", Join([root, "/tools/bootstrap/seed.sh"])]) != 0) {
-        os.Print("asset compiler: preparing the legacy compiler seed failed");
-        return -1;
-    }
     prerequisites: string[] = [];
     for (target in Targets()) {
         if (target == "chibi-build-host" || target == "chibi-compiler-host" ||

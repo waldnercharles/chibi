@@ -143,13 +143,36 @@ if "$scratch/driver" build native-self-host --llvm "$llvm" --stage-one "$scratch
 printf 'seed tools/compiler/bootstrap\n' > "$scratch/expected-events"
 cmp "$scratch/expected-events" "$SEED_EVENTS"
 
-# Exercise the engine's real asset prerequisite, not only the command runner.
+# Host-only SDK builds package compiler resources even when no asset generator
+# runs. Prepare their seed before copying so later test preparation cannot
+# make the source and staged compiler trees differ.
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
-    --source "$root/test/bootstrap/fixtures/AssetSeed.chibi" --entry Main \
-    --collection "graph=$root/tools/graph" --output "$scratch/asset-seed" --llvm "$llvm" --target "$target"
+    --source "$root/test/bootstrap/fixtures/CompilerResources.chibi" --entry Main \
+    --collection "graph=$root/tools/graph" --output "$scratch/compiler-resources" --llvm "$llvm" --target "$target"
+resources=$scratch/'resource source'
+mkdir -p "$resources/tools/bootstrap" "$resources/tools/compiler/bootstrap" \
+    "$resources/packages/core" "$resources/tools/native_aot"
+ln -s "$root/src" "$resources/src"
+ln -s "$root/sdk" "$resources/sdk"
+cat > "$resources/tools/bootstrap/seed.sh" <<'SEED'
+#!/bin/sh
+printf 'seed default\n' >> "$SEED_EVENTS"
+if [ "${LEGACY_SEED_STATUS:-0}" != 0 ]; then exit "$LEGACY_SEED_STATUS"; fi
+printf 'checked seed\n' > "$SEED_RESOURCE_ROOT/tools/compiler/bootstrap/compiler.chibip"
+SEED
+export SEED_RESOURCE_ROOT=$resources
 : > "$SEED_EVENTS"
-if "$scratch/asset-seed" "$checkout" "$scratch/asset-output"; then exit 1; else test "$?" = 1; fi
+if "$scratch/compiler-resources" "$resources" "$scratch/resource-output"; then exit 1; else test "$?" = 1; fi
 printf 'seed default\n' > "$scratch/expected-events"
 cmp "$scratch/expected-events" "$SEED_EVENTS"
-test ! -e "$scratch/asset-output"
-printf 'legacy seed: native-only routes skip it; host consumers prepare it and stop on failure\n'
+test ! -e "$scratch/resource-output/share/chibi/compiler"
+
+# The controlled compiler tools are absent, so the host build still fails.
+# Its resource phase must nevertheless copy the seed it just prepared.
+export LEGACY_SEED_STATUS=0
+: > "$SEED_EVENTS"
+if "$scratch/compiler-resources" "$resources" "$scratch/resource-output"; then exit 1; else test "$?" = 1; fi
+cmp "$scratch/expected-events" "$SEED_EVENTS"
+cmp "$resources/tools/compiler/bootstrap/compiler.chibip" \
+    "$scratch/resource-output/share/chibi/compiler/bootstrap/compiler.chibip"
+printf 'legacy seed: native routes skip it; host resources prepare it before copying\n'

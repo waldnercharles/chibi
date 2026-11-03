@@ -46,9 +46,9 @@ TestReport :: (label: string, name: string, ran: os.Result, paths: string[], sou
 }
 
 // Runs adjacent pure tests on a bounded pool. Effectful tests execute alone,
-// after the preceding pure span has drained. Every report stays in source
-// order, even when workers finish out of order; output files belong to scratch.
-TestRuns :: (label: string, names: string[], effects: int[], program: string, scratch: string,
+// after the preceding pure span has drained. Every report stays in selected
+// export order, even when workers finish out of order; output files belong to scratch.
+TestRuns :: (labels: string[], names: string[], effects: int[], program: string, scratch: string,
              workers: int, paths: string[], sources: string[], tally: Tally) -> Tally {
     result := tally;
     first := 0;
@@ -66,7 +66,7 @@ TestRuns :: (label: string, names: string[], effects: int[], program: string, sc
             }
             if (process <= 0) { message = "cannot start the native test process"; }
             ran: os.Result = {status: status, stdout: "", stderr: message};
-            result = TestReport(label, names[first], ran, paths, sources, result);
+            result = TestReport(labels[first], names[first], ran, paths, sources, result);
             first += 1;
             continue;
         }
@@ -116,7 +116,7 @@ TestRuns :: (label: string, names: string[], effects: int[], program: string, sc
                 }
                 if (processes[reported - first] < 0) { message = "cannot start the native test process"; }
                 ran: os.Result = {status: status, stdout: output.text, stderr: message};
-                result = TestReport(label, names[reported], ran, paths, sources, result);
+                result = TestReport(labels[reported], names[reported], ran, paths, sources, result);
                 reported += 1;
             }
         }

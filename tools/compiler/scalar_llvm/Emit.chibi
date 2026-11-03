@@ -1469,8 +1469,8 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
         } else if (operand.kind == facts.ManagedAddressRow) {
             if (operand.name != "" || operand.type != facts.PointerType || operand.literal == 0 ||
                 !Holds(visible, operand.value) || !ManagedValue(rows, records, variables[operand.value], operand.literal) ||
-                (Scalar(variables[operand.value]) && operand.count != 0) ||
-                (!Scalar(variables[operand.value]) && operand.count != variables[operand.value])) {
+                ((Scalar(variables[operand.value]) || variables[operand.value] == facts.StringType) && operand.count != 0) ||
+                (!Scalar(variables[operand.value]) && variables[operand.value] != facts.StringType && operand.count != variables[operand.value])) {
                 return "managed address differs from its scalar variable";
             }
         } else if (operand.kind == facts.ManagedFieldRow) {
@@ -2848,7 +2848,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 deferred_values.append(slot);
             } else { body.append(Op(native.Save, type, 0, slot, 0, local)); }
             places.append(local);
-            if ((type == abi.TextStorage || TrackedRecord(managed, type)) && (addressed_parameters[index] || waiting_function)) {
+            if (!boxed && (type == abi.TextStorage || TrackedRecord(managed, type)) && (addressed_parameters[index] || waiting_function)) {
                 if (type == abi.TextStorage) { body.append(Op(native.TextRetain, type, 0, slot, 0, 0)); }
                 else {
                     glue := KeepValue(managed, type, slot, slot + 1);
@@ -3510,11 +3510,20 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         slots[length(slots) - 1] = native.RefType + target;
                         body.append(address);
                         if (operand.value == facts.ManagedWrite) {
-                            if (target >= native.ArrayType && target < native.MapType) {
+                            if (target == abi.TextStorage || (target >= native.ArrayType && target < native.MapType)) {
                                 // Acquire the incoming owner before releasing
                                 // the old backing, including self-assignment.
                                 incoming := stack[base + 1];
-                                if (Holds(fresh, incoming)) { fresh = Without(fresh, incoming); }
+                                if (target == abi.TextStorage) {
+                                    slots.append(target);
+                                    body.append(Op(native.ValueCopy, target, slot + 1 + extra, incoming, 0, 0));
+                                    if (Holds(fresh, incoming)) {
+                                        body.append(Giving(target, incoming));
+                                        fresh = Without(fresh, incoming);
+                                    }
+                                    incoming = slot + 1 + extra;
+                                    extra += 1;
+                                } else if (Holds(fresh, incoming)) { fresh = Without(fresh, incoming); }
                                 else {
                                     slots.append(target);
                                     body.append(Op(native.ValueCopy, target, slot + 1 + extra, incoming, 0, 0));
@@ -4564,6 +4573,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 } else if (!name_only) { body.append(item); }
                 produced := slot;
                 if ((operand.kind == facts.ManagedRow && operand.value != facts.ManagedBorrow ||
+                    operand.kind == facts.ReadRow && ManagedVariable(pointer_boxes.boxed, operand.value)) && type == abi.TextStorage) {
+                    retained_element = true;
+                }
+                if ((operand.kind == facts.ManagedRow && operand.value != facts.ManagedBorrow ||
                     operand.kind == facts.ReadRow && ManagedVariable(pointer_boxes.boxed, operand.value)) &&
                     type >= native.ArrayType && type < native.MapType) {
                     // The cell may be replaced by a later operand. Keep this
@@ -4575,7 +4588,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     produced = kept.value;
                     fresh.append(produced);
                 }
-                if (operand.kind == facts.ReadRow && type == abi.TextStorage && length(string_references) > 0 &&
+                if (!retained_element && operand.kind == facts.ReadRow && type == abi.TextStorage && length(string_references) > 0 &&
                     (string_references[operand.value] || (scoped_string_reference && Referenced(rows, head, operand.value)))) {
                     body.append(Op(native.TextRetain, abi.TextStorage, 0, slot, 0, 0));
                     if (length(closes) > 0) { logical_strings.append(slot); }
@@ -5151,9 +5164,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                 }
                 if (keeps || record_keeps) {
-                    owned_vars.append(row.value);
-                    owned_types.append(type);
-                    body.extend(ManagedOwnerLocal(type, places[row.value], true));
+                    if (boxed && type == abi.TextStorage) { body.append(Giving(type, value)); }
+                    else {
+                        owned_vars.append(row.value);
+                        owned_types.append(type);
+                        body.extend(ManagedOwnerLocal(type, places[row.value], true));
+                    }
                 }
                 // A variable holding a fresh union that holds arrays owns it, unless it is
                 // read for more than its tag and payloads or addressed; a discarded one is
@@ -5221,7 +5237,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 address := Op(native.ManagedAddress, native.RefType + type, slot + 1, slot, 0, 0);
                 address.literal = pointer_boxes.tags[row.value];
                 body.append(address);
-                if (type >= native.ArrayType && type < native.MapType) {
+                if (type == abi.TextStorage) {
+                    slots.extend([type, type]);
+                    body.extend([Op(native.ValueCopy, type, slot + 2, value, 0, 0), Giving(type, value),
+                        Op(native.Deref, type, slot + 3, slot + 1, 0, 0), Giving(type, slot + 3),
+                        Op(native.Poke, type, 0, slot + 1, slot + 2, 0)]);
+                    slot += 4;
+                } else if (type >= native.ArrayType && type < native.MapType) {
                     incoming := value;
                     next := slot + 2;
                     if (Holds(fresh, incoming)) { fresh = Without(fresh, incoming); }
@@ -5253,7 +5275,15 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     body.extend(dropped.code);
                     body.append(Op(native.Poke, type, 0, pointer, value, 0));
                     slot += 2 + length(dropped.slot_types);
-                } else if (type == abi.TextStorage || (ArrayTyped(type) && Holds(fresh, value))) {
+                } else if (type == abi.TextStorage) {
+                    // A scoped destination may be a cell from an older image.
+                    // Import borrowed literal bytes before publishing there.
+                    slots.extend([type, type]);
+                    body.extend([Op(native.ValueCopy, type, slot + 1, value, 0, 0), Giving(type, value),
+                        Op(native.Deref, type, slot + 2, slot, 0, 0), Giving(type, slot + 2),
+                        Op(native.Poke, type, 0, slot, slot + 1, 0)]);
+                    slot += 3;
+                } else if (ArrayTyped(type) && Holds(fresh, value)) {
                     // A replacement owns fresh allocations. The old container must
                     // be dropped after the value has finished reading it.
                     // In-place MapSet/Delete results are consumed descriptors,

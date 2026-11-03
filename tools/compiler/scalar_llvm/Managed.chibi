@@ -54,7 +54,7 @@ ManagedOptional :: (rows: facts.Row[], records: int[], type: int) -> bool {
     return true;
 }
 ManagedValue :: (rows: facts.Row[], records: int[], type: int, tag: i64) -> bool {
-    if (Scalar(type) || type == facts.PointerType) { return tag != 0; }
+    if (Scalar(type) || type == facts.StringType || type == facts.PointerType) { return tag != 0; }
     if (type >= facts.ArrayType && type < facts.MapType &&
         (Scalar(type - facts.ArrayType) || type - facts.ArrayType == facts.StringType ||
          (type - facts.ArrayType >= facts.RecordType && type - facts.ArrayType - facts.RecordType < length(records)))) { return tag != 0; }

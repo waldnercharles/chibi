@@ -1,0 +1,55 @@
+package text_cell_images_host
+import os "core:os"
+import target "core:target"
+foreign import libc "system:c"
+foreign libc {
+    dlopen :: (path: cstring, flags: i32) -> rawptr
+    dlsym :: (image: rawptr, name: cstring) -> rawptr
+    dlclose :: (image: rawptr) -> i32
+    calloc :: (count: u64, width: u64) -> rawptr
+    free :: (memory: rawptr)
+}
+Required :: (image: rawptr, name: string) -> rawptr { address := dlsym(image, name); assert(address != 0); return address; }
+when target.Os == target.Darwin { Open :: (path: string) -> rawptr { return dlopen(path, 262); } }
+else { Open :: (path: string) -> rawptr { return dlopen(path, 2); } }
+Main :: () -> int {
+    args := os.Arguments(); if (length(args) != 2) { return 2; }
+    old := Open(args[0]); updated := Open(args[1]); assert(old != 0 && updated != 0);
+    size: fn() -> i64 = Required(old, "chibi_host_family_size");
+    size_new: fn() -> i64 = Required(updated, "chibi_host_family_size");
+    adopt_old: fn(heap: rawptr) -> i32 = Required(old, "chibi_host_set_family");
+    adopt_new: fn(heap: rawptr) -> i32 = Required(updated, "chibi_host_set_family");
+    create: fn(pointer: rawptr) -> i32 = Required(old, "text_cell_create");
+    read: fn() -> i32 = Required(old, "text_cell_read");
+    write: fn(pointer: rawptr) -> i32 = Required(updated, "text_cell_write");
+    clobber: fn() -> i32 = Required(updated, "text_cell_clobber");
+    release: fn() -> i32 = Required(old, "text_cell_release");
+    pending: fn() -> i64 = Required(old, "chibi_host_cells_pending");
+    pending_new: fn() -> i64 = Required(updated, "chibi_host_cells_pending");
+    collect: fn() -> i32 = Required(old, "chibi_host_family_collect");
+    bytes := size(); new_bytes := size_new(); assert(bytes > 0 && bytes <= 4096 && bytes == new_bytes);
+    heap := calloc(1, u64(bytes)); address := calloc(1, 24); assert(heap != 0 && address != 0);
+    adopted_old := adopt_old(heap); adopted_new := adopt_new(heap); assert(adopted_old == 0 && adopted_new == 0);
+    created := create(address); assert(created == 0);
+    before := pending(); assert(before == 1);
+    written := write(address); assert(written == 0);
+    copied := read(); assert(copied == 110, "source Literal result replaced the old cell");
+    changed := clobber(); assert(changed == 0);
+    imported := read();
+    writer_cells := pending_new(); assert(writer_cells == 0);
+    closed_new := dlclose(updated); assert(closed_new == 0);
+    if (imported == 110) {
+        after_close := read(); assert(after_close == 110, "the writer image can unload before the old cell dies");
+    }
+    collected := collect(); assert(collected == 0);
+    rooted := pending(); assert(rooted == 1);
+    released := release(); assert(released == 0);
+    collected = collect(); assert(collected == 0);
+    remaining := pending(); assert(remaining == 0, "last text release finishes before its callback image lease ends");
+    closed_old := dlclose(old); assert(closed_old == 0);
+    free(address); free(heap);
+    // A broken import still releases both images and the root before reporting
+    // its distinct control status. Its borrowed bytes are never read unmapped.
+    if (imported != 110) { return 33; }
+    return 0;
+}

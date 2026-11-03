@@ -1814,7 +1814,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
             return "native library retained states require scalar literal initializers; use a package generation for other retained values";
         }
         if (retained && row.type >= facts.RecordType && !Retainable(rows, records, row.type)) {
-            return "native retained values require scalars, strings, plain records or numeric/bool arrays";
+            return "native retained values require owned scalars, strings, records, unions or arrays";
         }
         if (retained && !RetainedInitializer(rows, at)) {
             return "native retained initializers require constant values and empty arrays";
@@ -2024,24 +2024,31 @@ SortedIndex :: (items: int[], wanted: int) -> int {
     return -1;
 }
 
-// Retained records migrate by named leaves, so adding or reordering fields
-// preserves existing fields and leaves new fields at their initializer.
+// Follow value edges once, including array recursion. Pointer, view, task and
+// map storage remains outside retained snapshot ownership.
 Retainable :: (rows: facts.Row[], records: int[], type: int) -> bool {
-    if (Scalar(type) || type == facts.StringType) {
-        return true;
+    if (Scalar(type) || type == facts.StringType) { return true; }
+    root := type;
+    if (root >= facts.ArrayType && root < facts.MapType) {
+        root -= facts.ArrayType;
+        if (Scalar(root) || root == facts.StringType) { return true; }
     }
-    if (type >= facts.ArrayType && type < facts.MapType) { return Scalar(type - facts.ArrayType); }
-    if (type < facts.RecordType || type >= facts.ArrayType) {
-        return false;
-    }
-    head := records[type - facts.RecordType];
-    if (rows[head].kind != facts.RecordRow) {
-        return false;
-    }
-    for (field in head + 1..<After(rows, head)) {
-        if (rows[field].kind == facts.MemberRow &&
-            !Retainable(rows, records, rows[field].type)) {
-            return false;
+    if (root < facts.RecordType || root >= facts.ArrayType || root - facts.RecordType >= length(records)) { return false; }
+    pending := [type];
+    seen := resize([false], facts.MapType);
+    at := 0;
+    while (at < length(pending)) {
+        current := pending[at];
+        at += 1;
+        if (current <= 0 || current >= facts.MapType) { return false; }
+        if (seen[current]) { continue; }
+        seen[current] = true;
+        if (Scalar(current) || current == facts.StringType) { continue; }
+        if (current >= facts.ArrayType) { pending.append(current - facts.ArrayType); continue; }
+        if (current < facts.RecordType || current - facts.RecordType >= length(records)) { return false; }
+        head := records[current - facts.RecordType];
+        for (field in head + 1..<After(rows, head)) {
+            if (rows[field].kind == facts.MemberRow) { pending.append(rows[field].type); }
         }
     }
     return true;
@@ -2052,7 +2059,7 @@ RetainedInitializer :: (rows: facts.Row[], at: int) -> bool {
     for (index in at + 1..<at + 1 + rows[at].count) {
         kind := rows[index].kind;
         if (kind == facts.ArrayRow && rows[index].value == facts.ArrayNew && rows[index].count == 0) { continue; }
-        if (kind != facts.LiteralRow && kind != facts.ZeroRow && kind != facts.UpdateRow && kind != facts.ConvertRow) {
+        if (kind != facts.LiteralRow && kind != facts.ZeroRow && kind != facts.UpdateRow && kind != facts.MakeRow && kind != facts.ConvertRow) {
             return false;
         }
     }
@@ -2087,7 +2094,8 @@ RetainedValue :: (rows: facts.Row[], records: int[], type: int, value: int, name
                   state_index: int, text: int, slot: int, read: bool, character: bool = false) -> RetainedCode {
     lowered: RetainedCode = {types: [], code: [], texts: [], value: value, states: 0, array_fields: [], array_states: [], characters: []};
     native_type := NativeType(type);
-    if (type < facts.RecordType || (type >= facts.ArrayType && type < facts.MapType)) {
+    opaque := type >= facts.RecordType && type < facts.ArrayType && rows[records[type - facts.RecordType]].kind == facts.UnionRow;
+    if (type < facts.RecordType || (type >= facts.ArrayType && type < facts.MapType) || opaque) {
         if (read) {
             lowered.types.append(native_type);
             lowered.code.append(Op(native.StateLoad, native_type, slot, value + 1, text, state_index));
@@ -4721,7 +4729,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         if (generation) {
             library_name = "generation";
         }
-        if (family) {
+        shapes := RetainedShapeGraph(rows, declared, code, states, state_characters);
+        snapshots := false;
+        for (root in shapes.roots) { snapshots = snapshots || root >= 0; }
+        if (snapshots && family) {
+            emitted = native.EmitFamilySnapshotLibrary(target, library_name, names, ids, functions, parameters, slots, locals,
+                code, arguments, records, fields, field_tags, texts, 1, field_names, entries, state_characters, shapes);
+        } else if (snapshots) {
+            emitted = native.EmitSnapshotLibrary(target, library_name, names, ids, functions, parameters, slots, locals,
+                code, arguments, records, fields, texts, 1, field_names, entries, state_characters, shapes);
+        } else if (family) {
             emitted = native.EmitFamilyLibraryStates(target, library_name, names, ids, functions, parameters, slots, locals,
                 code, arguments, records, fields, field_tags, texts, 1, field_names, entries, state_characters);
         } else {

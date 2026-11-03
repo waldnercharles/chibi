@@ -2789,14 +2789,6 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], statement: int,
                   mutated: string[], stored: string[]) -> ScalarPlan {
     value := Field(forest, statement, syntax.FieldValue);
-    if (Is(forest, statement, syntax.StateDeclaration)) {
-        table := types;
-        declared := StateType(forest, text, &table, 0, statement);
-        if (!ScalarRetainedArrays(table, members, declared.storage, declared.container, declared.record)) {
-            return ScalarPlan.Failed(Diagnose(forest, statement, 0,
-                "native retained arrays require non-nominal numeric/bool elements"));
-        }
-    }
     map_change := ScalarMapChange(forest, text, callables, names, types, callable.package, statement);
     if (map_change.operator != 0) { return ScalarPlan.MapEdited(map_change); }
     if (Is(forest, statement, syntax.ReturnStatement)) {
@@ -3764,10 +3756,9 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             type := ScalarValueType(types, storage, container, record);
             row = ScalarAt(forest, statement, facts.LocalRow, type, variables, count, name);
             if (retained) {
-                scalar_array := container == ArrayContainer && (Numeric(storage) || storage == BoolStorage);
-                if ((container != 0 && !scalar_array) || storage == UnionStorage || Field(forest, statement, syntax.FieldValue) < 0) {
+                if (!ScalarRetainedValues(types, members, storage, container, record) || Field(forest, statement, syntax.FieldValue) < 0) {
                     return ScalarOperands.Failed(Diagnose(forest, statement, 0,
-                                                          "a retained local is a number, bool, string, plain record or numeric/bool array with a value"));
+                                                          "native retained values require owned scalars, strings, records, unions and non-nominal arrays with an initializer"));
                 }
                 row.literal = i64(facts.Retained);
                 written := Field(forest, statement, syntax.FieldType);
@@ -4006,29 +3997,44 @@ ScalarHosts :: (hosts: Host[], roots: Root[]) -> string {
     }
     return "";
 }
-// Array schemas describe scalar storage, not nominal element constraints such
-// as char's Unicode range. Keep those arrays closed before facts erase names.
-ScalarRetainedArrays :: (types: TypeDecl[], members: TypeMember[], storage: int, container: int, record: int) -> bool {
-    if (container == ArrayContainer) { return (Numeric(storage) || storage == BoolStorage) && record < 0; }
-    if (container != 0) { return false; }
-    if (storage != StructStorage) { return true; }
+// Snapshot schemas preserve source record/union identity and field metadata.
+// Nominal scalar array constraints remain closed before facts erase them.
+ScalarRetainedValues :: (types: TypeDecl[], members: TypeMember[], storage: int, container: int, record: int) -> bool {
+    if (container != 0 && container != ArrayContainer) { return false; }
+    if (container == ArrayContainer && record >= 0 && types[record].kind == BuiltinScalarDecl) { return false; }
+    if (Numeric(storage) || storage == BoolStorage || storage == TextStorage) { return true; }
+    if ((storage != StructStorage && storage != UnionStorage) || record < 0) { return false; }
+    pending: ValueType[] = [{storage: storage, container: container, record: record}];
     visited := resize([false], length(types));
-    pending := [record];
-    visited[record] = true;
     at := 0;
     while (at < length(pending)) {
-        parent := types[pending[at]];
-        for (field in parent.first..<parent.first + parent.count) {
-            member := members[field];
-            if (member.container != 0) {
-                if (member.container != ArrayContainer || member.record >= 0 ||
-                    (!Numeric(member.storage) && member.storage != BoolStorage)) { return false; }
-            } else if (member.storage == StructStorage && !visited[member.record]) {
-                visited[member.record] = true;
-                pending.append(member.record);
-            }
-        }
+        value := pending[at];
         at += 1;
+        if (value.container != 0 && value.container != ArrayContainer) { return false; }
+        if (value.container == ArrayContainer && value.record >= 0 && types[value.record].kind == BuiltinScalarDecl) { return false; }
+        if (Numeric(value.storage) || value.storage == BoolStorage || value.storage == TextStorage) { continue; }
+        if ((value.storage != StructStorage && value.storage != UnionStorage) || value.record < 0) { return false; }
+        if (visited[value.record]) { continue; }
+        visited[value.record] = true;
+        declared := types[value.record];
+        if (declared.kind == MathDecl) { continue; }
+        if (declared.kind == OptionalDecl || declared.kind == TaskResultDecl || ScalarNestedCollection(declared)) {
+            pending.append({storage: declared.value_storage, container: declared.value_container, record: declared.value_record});
+            continue;
+        }
+        if (declared.kind == UnionDecl) {
+            for (variant in declared.first..<declared.first + declared.count) {
+                for (field in types[variant].first..<types[variant].first + types[variant].count) {
+                    member := members[field];
+                    pending.append({storage: member.storage, container: member.container, record: member.record});
+                }
+            }
+        } else if (declared.kind == RecordDecl) {
+            for (field in declared.first..<declared.first + declared.count) {
+                member := members[field];
+                pending.append({storage: member.storage, container: member.container, record: member.record});
+            }
+        } else { return false; }
     }
     return true;
 }

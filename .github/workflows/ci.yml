@@ -605,6 +605,9 @@ jobs:
       - name: Check native Windows host clocks
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: ./test/native_aot/host_clock/Run.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -LLVM $env:CHIBI_WINDOWS_LLVM
+      - name: Check native Windows directory errors and source inventories
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
+        run: ./test/native_aot/directories/Run.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
       - name: Check native Windows built-in math
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |

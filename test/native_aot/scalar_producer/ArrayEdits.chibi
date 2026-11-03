@@ -149,6 +149,20 @@ InlineArrayPlacesProjection :: () {
     RejectChanged(rows, [Changed(change - 1, KindField, i64(facts.LiteralRow)), Changed(change - 1, ValueField, 0)], mismatch);
 }
 
+ArrayResizeProjection :: () {
+    rows := Produced("package resize\nItem::struct{x:int;}\nMain::()->int{items:Item[]=[];items.resize(0);nested:int[][]=[];nested.resize(1);return length(items);}");
+    ValidateRows(rows, "");
+    authored := 0;
+    synthetic := 0;
+    for (row in rows) {
+        if (row.kind != facts.RecordRow) { continue; }
+        if (row.name == "Item") { assert(row.value == 0); authored += 1; }
+        else { assert(row.value == facts.ZeroArrayGrowth); synthetic += 1; }
+    }
+    // The ordinary catalog interns other primitive nested collections too.
+    assert(authored == 1 && synthetic > 0);
+}
+
 MapForeignPlacesProjection :: () {
     rows := Produced("package places\nforeign import libc \"system:c\"\nforeign libc {memset::(data:u8[],value:i32,count:u64)->rawptr}\nMain::()->int{values:[int:u8[]]=[1:[u8(65)]];written:=memset(values[1],9,1);return 0;}");
     ValidateRows(rows, "");

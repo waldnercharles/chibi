@@ -1,0 +1,5 @@
+package resize_shared_failure
+Value :: struct { text: string; }
+Main :: () -> int { return 0; }
+Bad :: () -> int { values: Value[] = [{text: "held"}]; values.resize(2); return 7; }
+Frame :: () -> int { return Bad() + 1; }

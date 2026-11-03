@@ -93,6 +93,8 @@ OpenExisting: u32 : 3;
 ReplaceExisting: u32 : 1;
 ReadChunk: int : 65536;
 FindDataUnits: int : 296;
+ErrorFileNotFound: u32 : 2;
+ErrorNoMoreFiles: u32 : 18;
 FindNameUnit: int : 22;
 FindNameUnits: int : 260;
 Infinite: u32 : 4294967295;
@@ -397,10 +399,9 @@ pub Getenv :: (name: string) -> string {
     return Narrow(buffer, int(count));
 }
 
-// The names in the directory, in the order the system gives them and without
-// "." and "..". Empty when it cannot be opened (Kind tells a missing directory
-// from an empty one).
-pub List :: (path: string) -> string[] {
+// A completed search differs from an open/read/close failure. Capture the
+// native error before converting names or making any other OS call.
+pub ListChecked :: (path: string) -> (names: string[], complete: bool) {
     names: string[] = [];
     data: u16[] = [];
     for index in 0..<FindDataUnits {
@@ -412,9 +413,13 @@ pub List :: (path: string) -> string[] {
     pattern.append(0);
     handle := FindFirstFileW(pattern, data);
     if ~handle == 0 {
-        return names;
+        error := GetLastError();
+        // A valid empty directory can have no wildcard match. A vanished or
+        // inaccessible directory must still fail instead of becoming empty.
+        return (names, error == ErrorFileNotFound && Kind(path) == KindDirectory);
     }
     more := true;
+    error: u32 = 0;
     while more {
         count := 0;
         while count < FindNameUnits && data[FindNameUnit + count] != 0 {
@@ -429,9 +434,17 @@ pub List :: (path: string) -> string[] {
             names.append(text);
         }
         more = FindNextFileW(handle, data) != 0;
+        if (!more) { error = GetLastError(); }
     }
     closed := FindClose(handle);
-    return names;
+    if (error != ErrorNoMoreFiles || closed == 0) { return ([], false); }
+    return (names, true);
+}
+
+// Preserve the raw platform API's empty-on-failure behavior. Fallible callers
+// use ListChecked so an incomplete inventory is never accepted as empty.
+pub List :: (path: string) -> string[] {
+    return ListChecked(path).names;
 }
 
 // The program's arguments, the first being how it was started, split from the

@@ -22,6 +22,7 @@ moves, discarded results and cancellation with a completed promise still held.
 `PromiseFailure.chibi` checks propagated failure after copying and changing an
 owned result. Generation tests keep a completed owned promise across the edit
 and read it again through its original image.
+`NamedPromises.chibi` preserves direct async named outputs with a dynamic string.
 
 The standalone allocator audit preserves the real context and formatter, poisons
 freed storage and requires zero outstanding allocations at return. An imbalance

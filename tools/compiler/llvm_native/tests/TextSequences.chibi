@@ -1,0 +1,45 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+
+TextSequenceCode :: () -> native.Instruction[] {
+    return [Code(native.Constant, abi.TextStorage, 0, 0, 0, 0, 0),
+            Code(native.Constant, abi.IntStorage, 1, 0, 0, 0, 0),
+            Code(native.Constant, abi.IntStorage, 2, 0, 0, 0, 1),
+            Code(native.TextRange, native.RecordType, 3, 0, 1, 2, 0),
+            Code(native.TextClone, abi.TextStorage, 4, 0, 0, 0, 0),
+            Code(native.TextRelease, abi.TextStorage, 0, 4, 0, 0, 0),
+            Code(native.Publish, abi.IntStorage, 0, 1, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+TextSequenceIR :: (code: native.Instruction[]) -> native.Result {
+    source: native.Source = {file: "", directory: ""};
+    records: native.Record[] = [{first: 0, count: 2, identity: 0}, {first: 2, count: 2, identity: 0}];
+    return native.Emit(abi.LinuxX64(), [Function(abi.IntStorage, 0, 0, 5, 0, 8, 0, 0)], [],
+                       [abi.TextStorage, abi.IntStorage, abi.IntStorage, code[3].type, code[4].type], [], code, [], records,
+                       [abi.IntStorage, abi.TextStorage, abi.IntStorage, abi.DoubleStorage], ["ab"], source, [], [], [], false, 1);
+}
+@test
+StrictTextSequencesRejectMalformedOperands :: () {
+    valid := TextSequenceCode();
+    text := Emitted(TextSequenceIR(valid));
+    for (invalid in 0..<8) {
+        code := TextSequenceCode();
+        row := 3;
+        if (invalid >= 5) { row = 4; }
+        item := code[row];
+        switch invalid {
+            case 0: item.left = 1;
+            case 1: item.right = 0;
+            case 2: item.target = 0;
+            case 3: item.literal = 2;
+            case 4: item.type += 1;
+            case 5: item.left = 1;
+            case 6: item.right = 1;
+            case 7: item.type = abi.IntStorage;
+        }
+        code[row] = item;
+        Rejects(TextSequenceIR(code), "native text sequence differs from its operands");
+    }
+}

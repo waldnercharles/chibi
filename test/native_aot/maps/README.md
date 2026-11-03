@@ -16,6 +16,13 @@ by copied maps. The allocator counts all outstanding allocations after the maps,
 temporary arrays and strings are dropped. Freed bytes are poisoned to expose
 borrowed string reads after their temporary map has been dropped.
 
+Raw nested payloads use the existing record layout as a one-field descriptor
+carrier. The ownership graph closes map, record and array dependencies once,
+including empty containers whose child helpers have no direct instruction use.
+Copies share their counted children; final release drains nested owners without
+recursive map teardown. The positive program drops shared originals before
+checking physical copies of map-valued payloads and arrays of map carriers.
+
 A second program lowers canonical `scalar_facts` rows through `scalar_llvm` for
 map literals, copies, mutation, missing keys and owned strings, including nested
 short-circuit paths. Six malformed
@@ -39,6 +46,11 @@ Authored union values use the same ownership closure for their active string,
 record and array payloads. Their missing keys also report `MapKeyAbsent`.
 `Unions` covers copied/temporary reads, tag replacement, duplicate keys,
 iteration and growth; `UnionMissing` checks the failure at O0 and O2.
+Optional map values preserve missing-key nil separately from a stored nil
+entry. `Optionals` checks presence, numeric/string/record/union payloads,
+copies, temporary results, iteration, growth and guarded string ownership.
+The same aggregate get helper takes an explicit zero-default mode; ordinary
+record and union lookups retain their required-key failure.
 Evaluation-effect cases also require a read-only argument to survive a later
 argument replacing the same map. Set/delete capture their target's address
 and reload it after key/value evaluation. These run under the poisoned allocator.

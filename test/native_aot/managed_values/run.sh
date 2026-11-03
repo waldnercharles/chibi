@@ -55,14 +55,15 @@ entry:
 LIVE
 cat "$root/test/native_aot/managed_values/Audit.ll" "$root/test/native_aot/managed_values/OwnerCalls.ll" > "$work/width-audit.ll"
 for level in 0 2; do
-    for source in Records Foreign ForeignPlaces ForeignRecord ForeignPath DeepArrayFields DeepArrayGrowth DeepArrayWidth MapCopies Backed Growth Fields Clock Hash ConditionalOptionals NestedMath MathScopes Patterns PatternLeases TextFormat TextFormatMain TextFormatStrings TextFormatFamily; do
+    for source in Records Foreign ForeignVoid ForeignPlaces ForeignRecord ForeignPath DeepArrayFields DeepArrayGrowth DeepArrayWidth Backed Growth Fields Clock Hash ConditionalOptionals NestedMath MathScopes Patterns PatternLeases TextFormat TextFormatMain TextFormatStrings TextFormatFamily TextFormatRecords TextFormatOptionalRecords MapCopies; do
         input=$root/test/native_aot/managed_values/$source.chibi
+        project=$root/tools/compiler
         export CHIBI_VALUE_ENTRY=chibi_value_test_entry CHIBI_VALUE_AUDIT=$root/test/native_aot/managed_values/Audit.ll CHIBI_VALUE_OWNER_AUDIT=0
         if [ "$source" = DeepArrayWidth ]; then export CHIBI_VALUE_OWNER_AUDIT=1 CHIBI_VALUE_AUDIT=$work/width-audit.ll; fi
         if [ "$source" = Records ]; then input=$records_source; fi
         if [ "$source" = NestedMath ]; then input=$root/test/native_aot/math_builtin/Nested.chibi; fi
         if [ "$source" = MathScopes ]; then input=$root/test/native_aot/math_builtin/Scopes.chibi; fi
-        if [ "$source" = ConditionalOptionals ] || [ "$source" = Patterns ] || [ "$source" = PatternLeases ] || [ "$source" = TextFormat ] || [ "$source" = TextFormatMain ] || [ "$source" = TextFormatStrings ] || [ "$source" = TextFormatFamily ]; then
+        if [ "$source" = ConditionalOptionals ] || [ "$source" = Patterns ] || [ "$source" = PatternLeases ] || [ "$source" = TextFormat ] || [ "$source" = TextFormatMain ] || [ "$source" = TextFormatStrings ] || [ "$source" = TextFormatFamily ] || [ "$source" = TextFormatRecords ] || [ "$source" = TextFormatOptionalRecords ]; then
             case "$source" in
                 Patterns) input=$root/test/native_aot/patterns/Main.chibi ;;
                 PatternLeases) input=$root/test/native_aot/patterns/Leases.chibi ;;
@@ -71,10 +72,12 @@ for level in 0 2; do
                 TextFormatMain) input=$root/test/native_aot/text_format/Main.chibi ;;
                 TextFormatStrings) input=$root/test/native_aot/text_format/Strings.chibi ;;
                 TextFormatFamily) input=$root/test/native_aot/text_format/Family.chibi ;;
+                TextFormatRecords) input=$root/test/native_aot/text_format/Records.chibi; project=$root/test/native_aot/text_format ;;
+                TextFormatOptionalRecords) input=$root/test/native_aot/text_format/OptionalRecords.chibi ;;
             esac
             export CHIBI_VALUE_ENTRY=managed_source.entry CHIBI_VALUE_AUDIT=$work/conditional-audit.ll
         fi
-        "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+        "$compiler" --compiler "$project" --core "$root/packages/core" \
             --source "$input" --entry Main \
             --output "$work/$source-O$level" --llvm "$work/llvm" --target "$triple" --level "$level" --jobs 1
         "$work/$source-O$level"

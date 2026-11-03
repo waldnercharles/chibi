@@ -162,7 +162,7 @@ ArrayUses :: (code: Instruction[], promises: int[]) -> int[] {
         }
         if (ViewOperation(item.op)) {
             type = ArrayType + ViewElement(item);
-            if (item.op == ViewClone || item.op == ViewSlice) { flags = ArrayAllocation; }
+            if (item.op == ViewClone || item.op == ViewSlice) { flags = ArrayAllocation | ArrayCloning; }
             if (item.op == ViewSet) { flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation; }
         } else if (item.op == ArrayValueAddress) {
             type = item.target;

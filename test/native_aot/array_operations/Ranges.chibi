@@ -1,0 +1,61 @@
+package strict_array_ranges
+
+Entry :: struct { text: string; values: int[]; }
+Fallback :: (calls: ^int, values: ^(int[])) -> int[] {
+    calls^ += 1;
+    values^ = [int(9), 11];
+    return [int(7), 13];
+}
+Bound :: (calls: ^int, values: ^(int[]), value: int) -> int {
+    calls^ = calls^ * 10 + value;
+    values^ = [int(90), 91, 92, 93];
+    return value;
+}
+Sized :: (first: int, last: int) -> int {
+    values: int[] = [1, 2, 3];
+    selected := values[first..<last];
+    if selected { return selected.length() + 1; }
+    return 0;
+}
+Main :: () -> int {
+    assert(Sized(0, 3) == 4 && Sized(3, 3) == 1 && Sized(0, 0) == 1);
+    assert(Sized(-1, 2) == 0 && Sized(2, 1) == 0 && Sized(0, 4) == 0);
+    assert(Sized(-2147483648, 2147483647) == 0 && Sized(2147483647, 2147483647) == 0);
+    empty: int[] = [];
+    selected_empty := empty.slice(0..<0);
+    assert(selected_empty != nil);
+    calls := 0;
+    values: int[] = [10, 20, 30, 40];
+    selected := values[Bound(&calls, &values, 1)..<Bound(&calls, &values, 3)];
+    assert(calls == 13 && values[0] == 90);
+    if selected { assert(selected[0] == 20 && selected[1] == 30); }
+    else { return 1; }
+    values = [int(1), 2, 3];
+    present := values.slice(0..<2);
+    chosen := present ?? Fallback(&calls, &values);
+    assert(calls == 13 && values[0] == 1);
+    chosen[0] = 8;
+    if present { assert(present[0] == 1); }
+    absent := values[0..<4];
+    chosen = absent ?? Fallback(&calls, &values);
+    assert(calls == 14 && values[0] == 9 && chosen[0] == 7);
+    for index in 0..<64 {
+        words := [text_from_bytes([u8(120)]), "tail"];
+        portion := words[0..<1];
+        other := portion ?? [text_from_bytes([u8(121)])];
+        other[0] = "changed";
+        if portion { assert(portion[0] == "x"); }
+        entries: Entry[] = [{text: text_from_bytes([u8(122)]), values: [int(5), 7]}];
+        slice := entries.slice(0..<1);
+        copy := slice ?? [{text: "fallback", values: []}];
+        copy[0].text = "changed";
+        row := copy[0].values;
+        row[0] = 99;
+        assert(entries[0].values[0] == 5 && entries[0].text == "z");
+        if slice { assert(slice[0].values[0] == 5 && slice[0].text == "z"); }
+        missing := entries[1..<0];
+        replacement := missing ?? [{text: text_from_bytes([u8(119)]), values: [int(11)]}];
+        assert(replacement[0].text == "w" && replacement[0].values[0] == 11);
+    }
+    return 0;
+}

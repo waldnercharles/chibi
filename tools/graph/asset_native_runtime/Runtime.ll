@@ -73,6 +73,17 @@ define void @chibi_native_failure(i32 %kind) noreturn {
   call void @abort()
   unreachable
 }
+; Authored logical-place operations use the same generic failure policy as
+; every other compiler-runtime invariant, including the Wasm recovery path.
+define void @chibi_native_reference_unavailable() noreturn {
+  call void @chibi_native_failure(i32 0)
+  unreachable
+}
+define void @chibi_native_array_mutation_unavailable() noreturn {
+  call void @chibi_native_failure(i32 0)
+  unreachable
+}
+
 define void @chibi_native_step() { ret void }
 
 define ptr @chibi_allocate(ptr %call, i64 %size) {

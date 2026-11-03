@@ -171,7 +171,7 @@ entry:
   %cell.bytes = ptrtoint ptr getelementptr (%chibi.managed.cell, ptr null, i32 1) to i64
   %root.bytes = ptrtoint ptr getelementptr (%chibi.managed.root, ptr null, i32 1) to i64
   %pointer.bytes = ptrtoint ptr getelementptr ({ ptr, i64, i64 }, ptr null, i32 1) to i64
-  %heap.sized = icmp eq i64 %heap.bytes, 56
+  %heap.sized = icmp eq i64 %heap.bytes, 64
   %cell.sized = icmp eq i64 %cell.bytes, 64
   %root.sized = icmp eq i64 %root.bytes, 24
   %pointer.sized = icmp eq i64 %pointer.bytes, 24

@@ -118,6 +118,12 @@ Build :: (mode: int) -> Program {
     if (mode == 5) {
         ignored := Put(&program, native.ViewLength, abi.IntStorage, view, abi.DoubleStorage, 0, 0);
     }
+    if (mode == 6) {
+        ignored := Put(&program, native.ViewGet, abi.TextStorage, view, zero, 0, 0);
+    }
+    if (mode == 7) {
+        ignored := Put(&program, native.ViewMake, native.RecordType, cell, Range(&program, zero, first), abi.TextStorage, -880);
+    }
     shorter := Array(&program, [9]);
     Replace(&program, cell, shorter);
     absent := Put(&program, native.ViewSlice, native.RecordType + 1, view, Range(&program, zero, first), abi.IntStorage, 0);
@@ -147,7 +153,7 @@ Main :: () -> int {
             item := program.code[index];
             if (item.op != native.ViewMake) { continue; }
             if (invalid == 0) { item.right = length(program.arguments) - 1; }
-            if (invalid == 1) { item.target = abi.TextStorage; }
+            if (invalid == 1) { item.target = 0; }
             if (invalid == 2) { item.left = 0; }
             if (invalid == 3) { item.type += 1; program.slots[item.output] = item.type; }
             program.code[index] = item;
@@ -159,7 +165,7 @@ Main :: () -> int {
                 if (!strings.Contains(message, "view operation differs")) { os.Print(message); return 1; }
         }
     }
-    for (mode in 0..<6) {
+    for (mode in 0..<8) {
         program := Build(mode);
         text := "";
         switch Emit(target, program) {

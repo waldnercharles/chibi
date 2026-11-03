@@ -94,8 +94,9 @@ TaskDropValue :: (type: int, prefix: string, value: string) -> string {
     return format_text("  call void @chibi_value.{}.drop(ptr %ctx, {} {})\n", type, TypeName(type), value);
 }
 
-TaskOwnerBoundary :: (op: int) -> bool {
-    return op == ClockSample || op == Call || op == ForeignCall || op == ManagedNew || op == Format ||
+TaskOwnerBoundary :: (item: Instruction) -> bool {
+    op := item.op;
+    return (op == ArrayResize && item.literal == i64(ArrayResizeInitialized)) || op == ClockSample || op == Call || op == ForeignCall || op == ManagedNew || op == Format ||
            op == Suspend || op == Delay || op == AwaitHandle || op == AwaitResult || op == Fail;
 }
 TaskOwnersValid :: (code: Instruction[], slots: int[], locals: int[], records: Record[], layout: ValueLayout) -> string {
@@ -146,7 +147,7 @@ TaskOwnersValid :: (code: Instruction[], slots: int[], locals: int[], records: R
                 if (last == 0) { called = false; }
             }
         } else if (active_count > 0) {
-            if (called || !TaskOwnerBoundary(item.op)) { return "native frame owners must bracket one fallible or waiting call"; }
+            if (called || !TaskOwnerBoundary(item)) { return "native frame owners must bracket one fallible or waiting call"; }
             called = true;
         }
     }

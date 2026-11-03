@@ -1,0 +1,9 @@
+package text_format_direct_record_pointer
+
+Box :: struct { pointer: ^int; }
+Main :: () -> int {
+    value := 7;
+    box: Box = {pointer: &value};
+    result := format_text("{}", box);
+    return text_byte_length(result);
+}

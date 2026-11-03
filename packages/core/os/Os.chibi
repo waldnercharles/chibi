@@ -205,7 +205,9 @@ when target.Native == 1 {
             empty: string[] = [];
             return (empty, Failure(NotFound));
         }
-        return (Sorted(sys.List(path)), nil);
+        listed := sys.ListChecked(path);
+        if (!listed.complete) { return ([], Failure(Failed)); }
+        return (Sorted(listed.names), nil);
     }
 
     pub Run :: (command: string[]) -> int {

@@ -17,7 +17,7 @@ ValidView :: (rows: facts.Row[], records: int[], row: facts.Row, stack: int[], b
     op := facts.ViewOperation(row.value);
     element := facts.ViewElement(row.value);
     count := ViewOperands(row);
-    if (!Scalar(element) || count < 0 || row.count != count || row.name != "" ||
+    if ((!Scalar(element) && element != facts.StringType) || count < 0 || row.count != count || row.name != "" ||
         base < 0 || base > length(stack) - count) { return false; }
     first := facts.ViewType;
     if (op == facts.ViewMake) { first = facts.PointerType; }

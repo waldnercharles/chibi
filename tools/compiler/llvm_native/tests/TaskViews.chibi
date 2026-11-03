@@ -36,9 +36,7 @@ WaitingWindowsUseOnlyTheClosedFrameRootShapes :: () {
             "native managed pointer aggregate roots require scalar or pointer-only inline records");
 }
 @test
-WindowFramesDoNotAdmitWindowPromises :: () {
-    Rejects(WindowFrame(native.ViewType, true),
-            "native waiting results require a pointer-free value and program-owned cleanup");
-    Rejects(WindowFrame(native.RecordType, true),
-            "native waiting results require a pointer-free value and program-owned cleanup");
+WindowPromisesUseTheirOwnPersistentRoot :: () {
+    Emitted(WindowFrame(native.ViewType, true));
+    Emitted(WindowFrame(native.RecordType, true));
 }

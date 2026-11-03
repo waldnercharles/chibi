@@ -92,6 +92,11 @@ ScalarViewShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
         binding := names[found];
         shape: ValueType = {storage: binding.storage, container: binding.container, record: binding.record};
         if (ScalarViewType(types, shape) != 0) { return shape; }
+        if (binding.storage == UnionStorage && binding.container == 0 && binding.record >= 0 &&
+            types[binding.record].kind == TaskResultDecl && TaskResultPresent(forest, text, binding, node)) {
+            payload := TaskResultSuccess(types, binding.record);
+            if (ScalarViewType(types, payload) != 0) { return payload; }
+        }
         if (binding.container != 0 || binding.storage != UnionStorage || !ScalarOptional(types, binding.record)) {
             return absent;
         }
@@ -105,6 +110,31 @@ ScalarViewShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
         if (ScalarViewType(types, payload) != 0) { return payload; }
     }
     return absent;
+}
+
+// A call contributes its result only when it runs inline. An unawaited
+// waiting call produces a task observer, never the eventual window.
+ScalarViewCallShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                        names: Name[], types: TypeDecl[], package: int, value: int) -> ValueType {
+    node := Unparenthesized(forest, value);
+    if (Is(forest, node, syntax.AwaitExpression)) { node = Unparenthesized(forest, Field(forest, node, syntax.FieldValue)); }
+    if (Is(forest, node, syntax.CallExpression)) {
+        called := CalledFunction(forest, text, callables, [], names, package, node);
+        if (called >= 0 && (!callables[called].waits || ImmediatelyAwaited(forest, node))) {
+            shape := TaskSuccessValue(callables[called], params);
+            if (ScalarViewType(types, shape) != 0) { return shape; }
+        }
+    }
+    return {storage: 0, container: 0, record: -1};
+}
+// A direct window local preserves its checked element type. Optional and
+// task-result bindings contribute a window only inside their success proof.
+ScalarViewBindingShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                           names: Name[], types: TypeDecl[], members: TypeMember[], package: int, statement: int) -> ValueType {
+    value := Field(forest, statement, syntax.FieldValue);
+    shape := ScalarViewShape(forest, text, callables, params, names, types, members, package, value);
+    if (shape.storage != 0) { return shape; }
+    return ScalarViewCallShape(forest, text, callables, params, names, types, package, value);
 }
 
 ScalarViewCall :: struct { operation: int; object: int; range: int; shape: ValueType; }
@@ -170,6 +200,9 @@ ScalarViewValue :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
                     callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
                     operand: int, rows: facts.Row[]) -> ScalarOperands {
     node := Unparenthesized(forest, operand);
+    if (Is(forest, node, syntax.CallExpression) || Is(forest, node, syntax.AwaitExpression)) {
+        return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, node, IntStorage, rows);
+    }
     shape := ScalarViewShape(forest, text, callables, params, names, types, members, callable.package, node);
     if (ScalarViewType(types, shape) == 0) {
         return ScalarOperands.Failed(Diagnose(forest, node, 0, "native views require a checked owned-element window"));

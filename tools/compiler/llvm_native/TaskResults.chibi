@@ -209,9 +209,9 @@ TaskBackingReferencesValid :: (slots: int[], locals: int[], code: Instruction[],
     }
     return "";
 }
-TaskPromiseValue :: (records: Record[], layout: ValueLayout, managed: ManagedRecordLayout, type: int, owned: bool) -> bool {
+TaskPromiseValue :: (records: Record[], fields: int[], layout: ValueLayout, managed: ManagedRecordLayout, type: int, owned: bool) -> bool {
     return TaskFramePlain(layout, type) || (owned && (type == ArrayType + PointerType ||
-           TaskOwnedType(records, layout, type) || TaskFrameTraced(managed, type)));
+           TaskOwnedType(records, layout, type) || TaskFrameRoot(records, fields, managed, type)));
 }
 TaskResultValid :: (records: Record[], fields: int[], slots: int[], layout: ValueLayout, managed: ManagedRecordLayout, owned: bool, item: Instruction) -> bool {
     record := item.type - RecordType;
@@ -221,7 +221,7 @@ TaskResultValid :: (records: Record[], fields: int[], slots: int[], layout: Valu
     count := 1;
     if (item.right != 0) { count = 2; }
     return shape.count == count && fields[shape.first] == abi.IntStorage &&
-           (item.right == 0 || (TaskPromiseValue(records, layout, managed, item.right, owned) &&
+           (item.right == 0 || (TaskPromiseValue(records, fields, layout, managed, item.right, owned) &&
                                fields[shape.first + 1] == item.right));
 }
 // The pending wait owns an observer until the scheduler has resumed this

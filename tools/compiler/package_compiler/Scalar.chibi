@@ -4761,6 +4761,9 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
             if (attributes.fault >= 0) {
                 return ScalarOperands.Failed(Diagnose(forest, attributes.fault, 0, attributes.message));
             }
+            if (summary.collect_tests && attributes.test && callable.package == callables[0].package) {
+                summary.tests.append(index);
+            }
         }
     }
     if (length(seen) == 0) {
@@ -5205,7 +5208,7 @@ ScalarLibrary :: (path: string, text: string, ops: Ops, target: Target, natives:
     }
     members: TypeMember[] = [];
     constants: ConstDecl[] = [];
-    summary: ScalarEffectSummary = {wanted: false, natives: [], direct: [], waiting: [], calls: []};
+    summary: ScalarEffectSummary = {wanted: false, collect_tests: false, tests: [], natives: [], direct: [], waiting: [], calls: []};
     switch ScalarModule(forest, text, path, callables, params, empty_types, members, constants, ops, target, natives,
                         ports, identities, true, [], [], [], &summary) {
         case .Failed(diagnostic):
@@ -5359,7 +5362,7 @@ pub CollectScalarGeneration :: (project: string, collection_names: string[], col
 ScalarCollect :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                   sources: string[], target: Target, names: string[], natives: Native[], ports: Port[],
                   identities: u64[], packaged: bool, os: int, arch: int, chosen: string, generation: bool) -> facts.Row[] {
-    summary: ScalarEffectSummary = {wanted: false, natives: [], direct: [], waiting: [], calls: []};
+    summary: ScalarEffectSummary = {wanted: false, collect_tests: false, tests: [], natives: [], direct: [], waiting: [], calls: []};
     return ScalarCollectWithEffects(project, collection_names, collection_paths, paths, sources, target, names,
                                     natives, ports, identities, packaged, os, arch, chosen, generation, &summary);
 }

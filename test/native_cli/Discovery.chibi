@@ -1,0 +1,118 @@
+package native_test_discovery
+
+import os "core:os"
+import strings "core:strings"
+
+Write :: (path: string, text: string) {
+    written := os.WriteText(path, text);
+    assert(written == nil, "write discovery source");
+}
+
+Folder :: (parent: string, name: string) -> string {
+    path := strings.Concatenate([parent, "/", name]);
+    made := os.MakeDirectory(path);
+    assert(made == nil, "make discovery directory");
+    return os.RealPath(path);
+}
+
+Check :: (actual: os.Result, expected: string) {
+    if (actual.status != 0 || actual.stdout != expected || actual.stderr != "") {
+        os.Print(actual.stdout);
+        os.Print(actual.stderr);
+    }
+    assert(actual.status == 0 && actual.stdout == expected && actual.stderr == "", "exact discovered test report");
+}
+
+GenericReport :: (actual: os.Result, failed: int) {
+    status := 0;
+    if (failed > 0) { status = 1; }
+    if (actual.status != status) { os.Print(actual.stdout); os.Print(actual.stderr); }
+    assert(actual.status == status && actual.stderr == "", "concrete generic test status");
+    assert(strings.HasSuffix(actual.stdout, format_text("102 tests, {} failed\n", failed)), "every specialization is selected");
+    headers := 0;
+    specialized := 0;
+    for (line in strings.SplitLines(actual.stdout)) {
+        if (strings.HasPrefix(line, "PASS project.") || strings.HasPrefix(line, "FAIL project.")) { headers += 1; }
+        if (strings.HasPrefix(line, "PASS project.__generic_") || strings.HasPrefix(line, "FAIL project.__generic_")) { specialized += 1; }
+    }
+    assert(headers == 102 && specialized == 101, "concrete names come from compiler facts");
+}
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 3) { return 2; }
+    chibi := arguments[0];
+    llvm := arguments[1];
+    root := Folder(arguments[2], "discovery cases");
+    tested := Folder(root, "tested");
+    helper := Folder(root, "helper");
+    source := strings.Concatenate([tested, "/Facts.chibi"]);
+    Write(strings.Concatenate([helper, "/ValueTests.chibi"]),
+        "package helper\npub Enabled: int : 1\npub Value :: () -> int { return 42; }\n@test Before :: () { assert(false); }\n");
+    Write(source, strings.Concatenate([
+        "package facts\nimport helper \"project:helper\"\nimport target \"core:target\"\n",
+        "@test Before :: () { assert(helper.Value() == 42); }\n",
+        "when false { @test Inactive :: (bad: int) { Missing(); } }\n",
+        "when helper.Enabled == 1 {\n    when target.Os == 99 { @test WrongTarget :: () { assert(false); } }\n",
+        "    else { @test Selected :: () { assert(true); } }\n}\n",
+        "when false { @test SameName :: () { assert(false); } }\n",
+        "else { @test SameName :: () { assert(true); } }\n",
+        "@test // the parser owns the attribute\nAfter :: () { assert(true); }\n"]));
+    command := [chibi, "test", "-O0", "--llvm", llvm, "--root", root, tested];
+    Check(os.Capture(command), "PASS project.Before\nPASS project.Selected\nPASS project.SameName\nPASS project.After\n4 tests, 0 failed\n");
+    command[2] = "-O2";
+    Check(os.Capture(command), "PASS project.Before\nPASS project.Selected\nPASS project.SameName\nPASS project.After\n4 tests, 0 failed\n");
+    command[2] = "-O0";
+
+    // More concrete entries than declarations, crossing both ordinal-width
+    // boundaries. The imported assertion lives after the expanded virtual file.
+    generic := "package facts\nimport helper \"project:helper\"\n@test\nGeneric :: ($Count: int) { assert(Count > 0); }\n@test\nCalls :: () { assert(helper.Value() == 42);\n";
+    calls: string[] = [generic];
+    for (index in 1..101) { calls.append(format_text("    Generic({});\n", index)); }
+    calls.append("}\n");
+    generic = strings.Concatenate(calls);
+    Write(source, generic);
+    GenericReport(os.Capture(command), 0);
+    Write(strings.Concatenate([helper, "/ValueTests.chibi"]),
+        "package helper\npub Enabled: int : 1\npub Value :: () -> int { assert(false, \"imported after dispatcher\"); return 42; }\n@test Before :: () { assert(false); }\n");
+    imported_failure := os.Capture(command);
+    GenericReport(imported_failure, 1);
+    assert(strings.Contains(imported_failure.stdout, strings.Concatenate([helper,
+        "/ValueTests.chibi:3:26: Assertion failed: imported after dispatcher"])), "imported assertion keeps its physical span after dispatcher growth");
+    Write(source, strings.ReplaceAll(generic, "Count > 0", "Count % 2 == 0"));
+    GenericReport(os.Capture(command), 52);
+    command[2] = "-O2";
+    GenericReport(os.Capture(command), 52);
+    command[2] = "-O0";
+
+    Write(source, "package facts\nwhen false { @test Inactive :: () { assert(false); } }\n");
+    Check(os.Capture(command), "0 tests, 0 failed\n");
+    Write(source, "package facts\nwhen true { @test @test Duplicate :: () {} }\n");
+    invalid := os.Capture(command);
+    assert(invalid.status == 1 && strings.Contains(invalid.stderr, "Duplicate attribute '@test'"), "selected malformed attributes still reject");
+
+    // Exact compile-error comparison remains project-relative internally. A
+    // failed expectation reports both physical files, as ordinary tests do.
+    rejected := Folder(root, "rejected");
+    rejection_source := strings.Concatenate([rejected, "/Facts.chibi"]);
+    invalid_array := "package facts\nBuild :: () -> int[] { xs: int[] = []; xs = xs.append(1); return xs; }\n\n";
+    Write(rejection_source, strings.Concatenate([invalid_array,
+        "// error: 2:45: append changes the array; call it as a statement on a name\n"]));
+    rejection_command := [chibi, "test", "-O0", "--llvm", llvm, rejected];
+    Check(os.Capture(rejection_command), "PASS ..compile_error\n1 tests, 0 failed\n");
+    Write(rejection_source, strings.Concatenate([invalid_array, "// error: 2:45: deliberately wrong\n"]));
+    mismatch := os.Capture(rejection_command);
+    expected := strings.Concatenate(["FAIL ..compile_error\n  ", rejection_source,
+        ": expected 2:45: deliberately wrong, got ", rejection_source,
+        ":2:45: append changes the array; call it as a statement on a name\n1 tests, 1 failed\n"]);
+    if (mismatch.stdout != expected) { os.Print(mismatch.stdout); }
+    assert(mismatch.status == 1 && mismatch.stdout == expected && mismatch.stderr == "", "root rejection reports preserve the exact label and physical paths");
+
+    nested := Folder(root, "nested");
+    child := Folder(nested, "child");
+    Write(strings.Concatenate([child, "/Facts.chibi"]), strings.Concatenate([invalid_array,
+        "// error: 2:45: append changes the array; call it as a statement on a name\n"]));
+    Check(os.Capture([chibi, "test", "-O0", "--llvm", llvm, nested]), "PASS child.compile_error\n1 tests, 0 failed\n");
+    os.Print("native test discovery: selected declarations, imported helpers and rejection reports passed");
+    return 0;
+}

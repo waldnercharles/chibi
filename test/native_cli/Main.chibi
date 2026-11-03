@@ -67,7 +67,7 @@ Main :: () -> int {
     assert(malformed.status == 1 && strings.Contains(malformed.stderr, "A @test function takes no parameters and returns nothing"), "invalid test attributes are rejected");
     Write(test_source, "package facts\nBuild :: () -> int[] { xs: int[] = []; xs = xs.append(1); return xs; }\n\n// error: 2:45: append changes the array; call it as a statement on a name\n");
     expected := os.Capture([chibi, "test", "-O0", "--llvm", llvm, tests]);
-    assert(expected.status == 0 && strings.Contains(expected.stdout, "PASS project.compile_error"), "compile-error tests compare native source coordinates");
+    assert(expected.status == 0 && strings.Contains(expected.stdout, "PASS ..compile_error"), "compile-error tests compare native source coordinates");
 
     Write(test_source, "package checks\n@test\nMissingTest :: () { Missing(); }\n");
     bad_test := os.Capture([chibi, "test", "-O0", "--llvm", llvm, tests]);

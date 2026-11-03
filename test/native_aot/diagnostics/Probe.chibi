@@ -77,7 +77,7 @@ Main :: () -> int {
 // A typed scheduling summary follows actual calls, including recursive and
 // imported calls. An unrelated function with the same name stays independent.
 TypedEffects :: () {
-    source := "package main\nimport other \"project:other\"\nforeign { External :: () -> int }\nMain :: () -> int { return 0; }\nPure :: () -> int { values: int[] = [1, 2]; values[0] = 3; return length(values); }\nCallsPure :: () -> int { return Pure(); }\nLeaf :: () -> int { return External(); }\nMid :: () -> int { return Leaf(); }\nCycleA :: (n: int) -> int { if (n > 0) { return CycleB(n - 1); } return Leaf(); }\nCycleB :: (n: int) -> int { return CycleA(n); }\nImported :: () -> int { return other.Value(); }\n";
+    source := "package main\nimport other \"project:other\"\nforeign { External :: () -> int }\nMain :: () -> int { return 0; }\nPure :: () -> int { values: int[] = [1, 2]; values[0] = 3; return length(values); }\nCallsPure :: () -> int { return Pure(); }\nLeaf :: () -> int { return External(); }\nMid :: () -> int { return Leaf(); }\nCycleA :: (n: int) -> int { if (n > 0) { return CycleB(n - 1); } return Leaf(); }\nCycleB :: (n: int) -> int { return CycleA(n); }\nImported :: () -> int { return other.Value(); }\n@test MetadataIsOptional :: () {}\n";
     other := "package other\nforeign { ExternalOther :: () -> int }\npub Value :: () -> int { return ExternalOther(); }\nPure :: () -> int { return 1; }\n";
     collected := compiler.CollectScalarProgramWithEffects("/project", [], [], ["Main.chibi", "other/Other.chibi"],
         [source, other], TargetFacts(), Names(), Natives(), Ports(), Identities(), 1, 1, "Main");
@@ -94,12 +94,13 @@ TypedEffects :: () {
         }
     }
     assert(at == length(collected.effects), "one mask per function, no facts payload overload");
+    assert(length(collected.tests) == 0, "ordinary effects callers do not request test metadata");
     assert(masks["Main"] == 0 && masks["Pure"] == 0 && masks["CallsPure"] == 0, "local mutation and pure calls stay pure");
     assert(masks["Leaf"] == 3 && masks["Mid"] == 3 && masks["CycleA"] == 3 && masks["CycleB"] == 3 &&
            masks["Imported"] == 3, "foreign read/write effects close across calls and cycles");
     rejected := compiler.CollectScalarProgramWithEffects("/project", [], [], ["Main.chibi"],
-        ["package main\nMain :: () -> int { return Missing(); }\n"], TargetFacts(), Names(), Natives(), Ports(), Identities(), 1, 1, "Main");
-    assert(length(rejected.effects) == 0 && rejected.rows[1].kind == facts.RejectionRow, "rejection publishes no partial masks");
+        ["package main\nMain :: () -> int { return Missing(); }\n@test Good :: () {}\n"], TargetFacts(), Names(), Natives(), Ports(), Identities(), 1, 1, "Main", true);
+    assert(length(rejected.effects) == 0 && length(rejected.tests) == 0 && rejected.rows[1].kind == facts.RejectionRow, "rejection publishes no partial masks or selected tests");
 }
 
 Collect :: (paths: string[], sources: string[]) -> facts.Row[] {

@@ -375,7 +375,7 @@ jobs:
           if ($LASTEXITCODE) { throw 'cannot inspect the Windows bootstrap producer' }
           if ($run.repository.full_name -ne $env:GITHUB_REPOSITORY -or
               ($run.path -ne '.github/workflows/native-self-host.yml' -and $run.path -ne '.github/workflows/ci.yml') -or
-              $run.head_sha -ne $env:BOOTSTRAP_COMMIT -or $run.status -ne 'completed') {
+              $run.head_sha -ne $env:BOOTSTRAP_COMMIT -or $run.status -ne 'completed' -or $run.conclusion -ne 'success') {
             throw 'Windows bootstrap producer identity differs from its pin'
           }
           $producerName = if ($run.path -eq '.github/workflows/ci.yml') { 'Engine build and native tests' } else { 'Native self-host (Linux)' }

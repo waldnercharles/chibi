@@ -173,6 +173,26 @@ test('pinned Windows bootstrap keeps canonical modes and validates producer iden
   assert.ok(windows.indexOf('name: Cache the verified LLVM tools after Windows validation') > windows.indexOf('foreach ($case in $cases)'));
 });
 
+test('pinned Windows bootstrap requires a wholly successful producer run', () => {
+  const windows = source.slice(source.indexOf('\n  native-self-host-windows:\n'));
+  const condition = /if \((\$run\.repository\.full_name[\s\S]*?)\) \{\n\s+throw 'Windows bootstrap producer identity differs from its pin'/.exec(windows);
+  assert.ok(condition, 'exercise the actual producer identity gate');
+  const expression = condition[1].replace(/\$run\./g, 'run.').replace(/\$env:([A-Z_]+)/g, 'env.$1')
+    .replace(/\s+-ne\s+/g, ' !== ').replace(/\s+-or\s+/g, ' || ').replace(/\s+-and\s+/g, ' && ');
+  const env = {GITHUB_REPOSITORY: 'waldnercharles/chibi', BOOTSTRAP_COMMIT: 'a'.repeat(40)};
+  const producer = {repository: {full_name: env.GITHUB_REPOSITORY}, path: '.github/workflows/native-self-host.yml',
+    head_sha: env.BOOTSTRAP_COMMIT, status: 'completed', conclusion: 'success'};
+  const rejected = run => vm.runInNewContext(expression, {run, env}, {timeout: 100});
+  for (const producerPath of ['.github/workflows/native-self-host.yml', '.github/workflows/ci.yml']) {
+    assert.equal(rejected({...producer, path: producerPath}), false);
+    for (const conclusion of ['failure', 'cancelled', 'timed_out', 'action_required', 'neutral', 'skipped', null]) {
+      assert.equal(rejected({...producer, path: producerPath, conclusion}), true, `${producerPath}: ${conclusion}`);
+    }
+  }
+  for (const change of [{status: 'in_progress'}, {head_sha: 'b'.repeat(40)}, {path: '.github/workflows/other.yml'},
+    {repository: {full_name: 'other/repository'}}]) assert.equal(rejected({...producer, ...change}), true);
+});
+
 test('Windows runs the complete compiler root after its fixed point and before products', () => {
   const windows = source.slice(source.indexOf('\n  native-self-host-windows:\n'), source.indexOf('\n  native-targets:\n'));
   const marker = '      - name: Run complete native Windows compiler tests\n';

@@ -1,0 +1,57 @@
+package managed_view_tasks
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fwrite :: (data: cstring, size: u64, count: u64, stream: rawptr) -> u64
+    fclose :: (stream: rawptr) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+}
+Pair :: union { Row(xs: int[]) | None }
+Owner :: (number: int) -> view Pair[]? {
+    values: Pair[] = [Pair.Row([number, 5])]; pointer := &values;
+    return pointer.view(0..<1);
+}
+Churn :: () { for index in 0..<3000 { discarded := Owner(index); } }
+Mark :: (path: string, text: string) {
+    stream := fopen(path, "wb"); assert(stream != 0);
+    written := fwrite(text, 1, u64(text_byte_length(text)), stream); closed := fclose(stream);
+    assert(written == u64(text_byte_length(text)) && closed == 0);
+}
+Allowed :: () -> bool { return access("allow-managed-view", 0) == 0; }
+Promise :: () -> view Pair[] {
+    if false { yield }
+    selected := Owner(61);
+    if selected { return selected; }
+    assert(false, "the fixed view range is valid");
+    return await Promise();
+}
+Worker :: () -> int {
+    selected := Owner(37);
+    promised := Promise();
+    while !Allowed() { yield }
+    Churn();
+    if selected {
+        pair := selected[0];
+        switch pair { case .Row(xs): assert(xs[0] + xs[1] == 42, "old view resumes in its original schema"); case: assert(false); }
+    } else { assert(false); }
+    joined := await promised;
+    if joined is Cancelled { return 1; }
+    else {
+        window := joined; Churn(); pair := window[0];
+        switch pair { case .Row(xs): assert(xs[0] + xs[1] == 66, "old view promise keeps its schema through reload"); case: assert(false); }
+    }
+    Mark("managed-view-done", "old42");
+    return 0;
+}
+Child :: (window: view Pair[]) -> int { while true { yield } }
+Cancelled :: () -> int {
+    selected := Owner(19);
+    if selected { return await Child(selected); }
+    return -1;
+}
+Main :: () -> int {
+    worker := Worker(); cancelled := Cancelled(); cancel cancelled
+    Mark("managed-view-ready", "ready");
+    return 0;
+}
+Frame :: () -> int { Churn(); return 0; }

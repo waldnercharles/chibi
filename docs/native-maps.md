@@ -147,3 +147,25 @@ allocations for 4,096 unique compound writes, for both all-map and mixed paths.
 The producer growth check emits 126,910 / 251,046 / 499,786 / 998,374 bytes at map
 depths 4 / 8 / 16 / 32, with exactly depth minus one canonical projections.
 Malformed variable arities and intermediate non-carrier records remain rejected.
+
+Mapped-array bracket writes also follow deeper typed paths through maps and
+arrays. Operator 15 preserves its existing four-operand path and accepts longer
+captured-key paths that cross a map and end at an array. The complete initial
+place is checked before the RHS; unlike a map leaf, a missing array place cannot
+be repaired by that RHS. The final store resolves the current owners again.
+`DeepArrays` checks this distinction, key callbacks, scoped aliases and owned
+record/map elements. `DeepArrayCopies` requires exactly three detach allocations
+for shared map/map/array and array/map/array paths, then zero allocations across
+4,096 further unique writes. Bounds and owner failures remain unclassified.
+
+The mapped-array methods append, extend, remove_index and resize use the same
+long typed paths. Their existing three-operand forms keep their original path.
+Keys are captured once, arguments finish before canonical lookup, and no initial
+bounds read is inserted for a method. Extend holds its argument descriptor
+through publication, including self-extension; resize publishes its independent
+result before releasing the previous leaf. Method path keys are borrowed.
+`DeepMethods` covers root replacement, binary keys, owned records and missing
+owners. Growing an authored-record array without initialized rows remains a
+failure; shrinking is covered. `DeepMethodCopies` checks three detach allocations
+for shared append, self-extend and resize, with zero allocations for 4,096
+append/remove cycles that stay within the leaf array's capacity.

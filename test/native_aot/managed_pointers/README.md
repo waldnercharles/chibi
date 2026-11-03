@@ -82,8 +82,11 @@ whole-variable and pointer assignments acquire or transfer the incoming value
 before dropping the old one; evaluated reads keep independent value owners.
 The source proof covers escaped array cells, pointer-array owners, scoped
 aliases, value copies, variable element writes/append and canonical foreign
-byte-buffer writes. Inline pointer-bearing record arrays and array-backed
-record cells still need their respective tracing and place lowering.
+byte-buffer writes. Arrays of pointer-bearing records use typed backing tracers
+and the same active-owner table, including nested record-owned arrays and task
+results. Each backing is scanned once per collection epoch. Collector-valued
+inline/array type cycles are rejected; pointer-linked runtime cycles use the
+iterative cell queue. Array-backed record cells retain their separate gate.
 
 Pointer-backed views use a 32-byte cell/start/count descriptor.
 They follow replacement and growth of that cell while retaining a fixed window;
@@ -119,8 +122,32 @@ The two-image proof checks compatible access, changed-schema rejection and old
 callback-image leases at O0/O2. Source ownership proofs include the original
 nested-array/union lending cases, view-only roots and callback collection.
 Ordinary source already rejects view fields in records. GC-bearing elements,
-view containers, retained views and suspended view frames remain outside this
-admission.
+view containers and retained views remain outside this admission.
+
+Waiting functions keep direct windows and their exact optional/authored-union
+wrappers in persistent frame roots. Each slot/local uses the same 32-byte root
+node as existing collector frames and traces the window's cell. Completion and
+cancellation unlink these nodes before freeing the frame. The source proof
+covers primitive and owned aggregate views, reads/writes after suspension,
+optional and union parameters, a returning spawning caller, nested cancellation,
+and collection requested by allocator/release callbacks. The reload proof changes
+the incoming element schema while an old worker keeps its original view/code.
+View promises keep a separate persistent root through final suspension until
+its last observer is released. Direct windows use the window tracer; exact
+optional/authored-union results use the existing inline tracer. Observer copies
+refer to the same cell, so writes through one window remain visible through
+another. Promise proofs cover late and repeated joins, immediate optional
+results, completed handles, cancellation, callback collection and failed tasks.
+The reload worker also holds a completed view promise from the old schema.
+
+Ordinary source also accepts direct-view results and handles for those results;
+a handle for an optional-view result retains the ordinary union-result rejection.
+The retained ordinary test runner forbids scheduling, so the async acceptance
+probes compile calls under a false branch, with an invalid-after-yield body as
+a control. They establish source acceptance, not resumed-runtime behavior.
+Synchronous ordinary probes execute views over pointer elements and records
+containing pointer or pointer-array fields. Those GC-bearing element forms are
+remaining native parity work, separate from frame and promise roots for admitted views.
 
 Optional numeric/bool values and flat numeric/bool record payloads can share
 managed cells. The optional tag and payload move together; nil replacement
@@ -131,6 +158,17 @@ keeps the existing flat-record rule. Backing owners and pointer/view edges
 inside optional cells remain outside this slice. The original four fallible
 pointer cases run at O0/O2, and the poisoned source proof checks escaped cells,
 early returns and forced collection with bounded peak allocation.
+
+Scalar string cells own an immutable text descriptor. Copies retain counted
+owners and import borrowed bytes; replacing through a pointer, boxed variable
+or scoped reference acquires the incoming owner before dropping the old one.
+Evaluated reads survive later replacements. The cell's validator and final text
+release carry the same image lease as other managed payload callbacks. Source
+and raw probes cover dynamic NULs, returned cells, borrowed-byte clobbering,
+scoped aliases, empty replacement, and precise tag/storage rejection. The
+image proof writes a returned literal through actual source lowering into an
+older cell, clobbers the writer bytes, unloads that image, and reads the old cell
+before its final owner release. Bypassing only that source copy fails at O0/O2.
 
 String-array cells use the same descriptor and backing lifecycle as numeric
 array cells. Last cell release drops the backing and its owned text values;
@@ -210,5 +248,12 @@ The source proof includes completed-before-join collection, repeated joins,
 copy-on-write mutation, nested pointer and text fields, cancellation and both
 caller and child failures with poisoned zero-live-allocation checks. Reload
 keeps an old completed array promise alive and preserves independent joins.
-Arrays/maps whose elements contain collector edges and view promises remain
-outside this result domain.
+Record arrays whose elements contain collector edges now use typed backing
+tracers in this result domain. Map payloads retain their rootless restrictions;
+view promises remain separate.
+
+Value-only records may combine direct pointer fields with pointer-array and
+text owners. Their structural root metadata does not make them cell layouts.
+`InlineOwners.chibi` checks synchronous copies, repeated promise joins, by-value
+waiting parameters and cancellation under collection. Taking the address of an
+owned record remains rejected until its cell layout owns and traces those fields.

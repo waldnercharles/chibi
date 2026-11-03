@@ -38,8 +38,7 @@ ScalarPointerElement :: (types: TypeDecl[], record: int) -> ValueType {
     }
     if (declared.value_record != -1) { return none; }
     type := ScalarTypeOf(declared.value_storage);
-    text_array := type == facts.StringType && declared.value_container == ArrayContainer;
-    if ((type < facts.IntType || type > facts.DoubleType) && !text_array) { return none; }
+    if ((type < facts.IntType || type > facts.DoubleType) && type != facts.StringType) { return none; }
     return {storage: declared.value_storage, container: declared.value_container, record: -1};
 }
 ScalarPointerType :: (types: TypeDecl[], record: int) -> int {
@@ -161,7 +160,8 @@ ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables
         found := Lookup(names, Text(forest, text, held));
         if (found < 0) { return -1; }
         binding := names[found];
-        scalar := binding.record == -1 && ScalarTypeOf(binding.storage) >= facts.IntType && ScalarTypeOf(binding.storage) <= facts.DoubleType;
+        scalar := binding.record == -1 && ((ScalarTypeOf(binding.storage) >= facts.IntType &&
+                  ScalarTypeOf(binding.storage) <= facts.DoubleType) || binding.storage == TextStorage);
         record := binding.storage == StructStorage && binding.record >= 0 && types[binding.record].kind == RecordDecl;
         array := (scalar || (binding.storage == TextStorage && binding.record == -1)) && binding.container == ArrayContainer;
         if (binding.container == ArrayContainer && binding.record >= 0) {
@@ -316,17 +316,23 @@ ScalarPointerEffects :: (hosts: Host[]) -> int {
     return effects;
 }
 
-// Tag only records whose managed address or inline pointer fields are used.
-// Ordinary record facts keep their existing literals, including char flags.
+ScalarManagedPointee :: (row: facts.Row) -> int {
+    type := 0;
+    if (row.kind == facts.ManagedAddressRow) { type = row.count; }
+    if (row.kind == facts.ManagedFieldRow || row.kind == facts.ManagedRow) { type = row.type; }
+    if (type >= facts.ReferenceType) { type -= facts.ReferenceType; }
+    if (type >= facts.RecordType && type < facts.ArrayType) { return type; }
+    return 0;
+}
+// Only actual record cell accesses need nominal layout and field identities.
+// Inline value roots keep zero structural identity, including records with owners.
+// Ordinary record facts retain their literals, including char flags.
 // The pass is linear in rows, type declarations and the selected fields.
 ScalarManagedRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: TypeMember[],
                          rows: facts.Row[]) -> ScalarOperands {
     managed := false;
-    for (at in 0..<length(rows)) {
-        kind := rows[at].kind;
-        managed = kind == facts.ManagedAddressRow || kind == facts.ManagedFieldRow ||
-                  kind == facts.ManagedRow || (kind == facts.MemberRow && rows[at].type == facts.PointerType);
-        if (managed) { break; }
+    for (row in rows) {
+        if (ScalarManagedPointee(row) != 0) { managed = true; break; }
     }
     if (!managed) { return ScalarOperands.Built(rows); }
     heads: int[] = [];
@@ -343,16 +349,9 @@ ScalarManagedRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], mem
         declarations[ordinal] = index;
         ordinal += 1;
     }
-    owner := -1;
     for (row in rows) {
-        if (row.kind == facts.RecordRow || row.kind == facts.UnionRow) { owner += 1; }
-        if (row.kind == facts.FunctionRow) { owner = -1; }
-        type := 0;
-        if (row.kind == facts.MemberRow && row.type == facts.PointerType && owner >= 0) { wanted[owner] = true; }
-        if (row.kind == facts.ManagedAddressRow) { type = row.count; }
-        if (row.kind == facts.ManagedFieldRow || row.kind == facts.ManagedRow) { type = row.type; }
-        if (type >= facts.ReferenceType) { type -= facts.ReferenceType; }
-        if (type >= facts.RecordType && type < facts.ArrayType && type - facts.RecordType < length(wanted)) {
+        type := ScalarManagedPointee(row);
+        if (type != 0 && type - facts.RecordType < length(wanted)) {
             wanted[type - facts.RecordType] = true;
         }
     }

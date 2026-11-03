@@ -1,0 +1,24 @@
+package deep_method_copies
+foreign { chibi_value_test_allocations :: () -> i64 }
+Main :: () -> int {
+    values: [int:[int:int[]]] = [1:[2:[0]]];
+    changed := values;
+    before := chibi_value_test_allocations();
+    changed[1][2].append(1);
+    detached := chibi_value_test_allocations();
+    assert(detached - before == 3, "method detaches each shared immediate owner once");
+    for (index in 0..<4096) { changed[1][2].append(2); changed[1][2].remove_index(2); }
+    completed := chibi_value_test_allocations();
+    assert(completed == detached && length(changed[1][2]) == 2 && length(values[1][2]) == 1);
+    extended := values;
+    extend_before := chibi_value_test_allocations();
+    extended[1][2].extend(extended[1][2]);
+    extend_done := chibi_value_test_allocations();
+    assert(extend_done - extend_before == 3 && length(extended[1][2]) == 2 && length(values[1][2]) == 1);
+    resized := values;
+    resize_before := chibi_value_test_allocations();
+    resized[1][2].resize(3);
+    resize_done := chibi_value_test_allocations();
+    assert(resize_done - resize_before == 3 && length(resized[1][2]) == 3 && resized[1][2][2] == 0);
+    return 0;
+}

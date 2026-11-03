@@ -1,0 +1,89 @@
+package native_test_exports
+
+import os "core:os"
+import strings "core:strings"
+
+ExportCase :: struct { name: string; source: string; expected: string; }
+
+Write :: (path: string, text: string) {
+    written := os.WriteText(path, text);
+    assert(written == nil, "write export source");
+}
+Folder :: (parent: string, name: string) -> string {
+    path := strings.Concatenate([parent, "/", name]);
+    made := os.MakeDirectory(path);
+    assert(made == nil, "make export directory");
+    return os.RealPath(path);
+}
+Check :: (result: os.Result, expected: string) {
+    if (result.status != 0 || result.stdout != expected || result.stderr != "") { os.Print(result.stdout); os.Print(result.stderr); }
+    assert(result.status == 0 && result.stdout == expected && result.stderr == "", "exact ordinary export selection and package order");
+}
+Headers :: (text: string) -> string[] {
+    names: string[] = [];
+    for (line in strings.SplitLines(text)) {
+        if (strings.HasPrefix(line, "PASS ") || strings.HasPrefix(line, "FAIL ")) { names.append(line); }
+    }
+    return names;
+}
+
+Main :: () -> int {
+    args := os.Arguments();
+    if (length(args) != 3) { return 2; }
+    root := Folder(args[2], "export cases");
+    helper := "package helper\npub Value :: () -> int { return 42; }\n@test\nHelper :: () {}\n";
+    cases: ExportCase[] = [
+        {name: "unused", source: "package facts\n@test\nRoot :: () { assert(true); }\n",
+         expected: "PASS project.Root\nPASS helper.Helper\n2 tests, 0 failed\n"},
+        {name: "used", source: "package facts\nimport helper \"project:helper\"\n@test\nRoot :: () { assert(helper.Value() == 42); }\n",
+         expected: "PASS helper.Helper\nPASS project.Root\nPASS helper.Helper\n3 tests, 0 failed\n"},
+        {name: "inactive", source: "package facts\nwhen false {\n    import helper \"project:helper\"\n}\n@test\nRoot :: () { assert(true); }\n",
+         expected: "PASS helper.Helper\nPASS project.Root\nPASS helper.Helper\n3 tests, 0 failed\n"},
+        {name: "no-root-tests", source: "package facts\nimport helper \"project:helper\"\nValue :: () -> int { return helper.Value(); }\n",
+         expected: "PASS helper.Helper\n1 tests, 0 failed\n"}];
+    for (mode in ["-O0", "-O2"]) {
+        suite := Folder(root, mode);
+        for (item in cases) {
+            folder := Folder(suite, item.name);
+            dependency := Folder(folder, "helper");
+            Write(strings.Concatenate([folder, "/Facts.chibi"]), item.source);
+            Write(strings.Concatenate([dependency, "/ValueTests.chibi"]), helper);
+            Check(os.Capture([args[0], "test", mode, "--llvm", args[1], folder]), item.expected);
+            if (item.name == "used") {
+                Write(strings.Concatenate([dependency, "/ValueTests.chibi"]),
+                    "package helper\npub Value :: () -> int { return 42; }\n@test\nHelper :: () { assert(false, \"exported import executed\"); }\n");
+                failed := os.Capture([args[0], "test", mode, "--llvm", args[1], folder]);
+                assert(failed.status == 1 && failed.stderr == "", "an imported failure fails the command");
+                assert(strings.Count(failed.stdout, "FAIL helper.Helper\n") == 2 &&
+                       strings.Count(failed.stdout, "Assertion failed: exported import executed") == 2 &&
+                       strings.HasSuffix(failed.stdout, "3 tests, 2 failed\n"), "imported exports execute in each selected closure");
+                assert(strings.Contains(failed.stdout, strings.Concatenate([dependency, "/ValueTests.chibi:4:"])), "an imported failure names its physical source");
+            }
+        }
+        nested := Folder(suite, "nested");
+        alpha := Folder(nested, "alpha");
+        zed := Folder(nested, "zed");
+        Write(strings.Concatenate([nested, "/Facts.chibi"]), "package facts\nimport zed \"project:zed\"\n@test\nRoot :: () { assert(zed.Value() == 42); }\n");
+        Write(strings.Concatenate([alpha, "/Facts.chibi"]), "package alpha\npub Value :: () -> int { return 42; }\n@test\nAlpha :: () {}\n");
+        Write(strings.Concatenate([zed, "/Facts.chibi"]), "package zed\nimport alpha \"project:alpha\"\npub Value :: () -> int { return alpha.Value(); }\n@test\nZed :: () { assert(alpha.Value() == 42); }\n");
+        Check(os.Capture([args[0], "test", mode, "--llvm", args[1], nested]),
+            "PASS alpha.Alpha\nPASS project.Root\nPASS zed.Zed\nPASS alpha.Alpha\nPASS alpha.Alpha\nPASS zed.Zed\n6 tests, 0 failed\n");
+
+        generic := Folder(suite, "generic");
+        dependency := Folder(generic, "helper");
+        Write(strings.Concatenate([generic, "/Facts.chibi"]), "package facts\nimport helper \"project:helper\"\n@test\nCalls :: () { helper.Generic(1); helper.Generic(2); }\n");
+        Write(strings.Concatenate([dependency, "/ValueTests.chibi"]), "package helper\n@test\npub Generic :: ($Count: int) { assert(Count > 0); }\n@test\nNoop :: () {}\n");
+        result := os.Capture([args[0], "test", mode, "--llvm", args[1], generic]);
+        names := Headers(result.stdout);
+        if (result.status != 0) { os.Print(result.stdout); os.Print(result.stderr); }
+        assert(result.status == 0 && result.stderr == "" && strings.HasSuffix(result.stdout, "5 tests, 0 failed\n"), "concrete imported test entries are retained");
+        assert(length(names) == 5 && names[0] == "PASS helper.Noop" && names[3] == "PASS project.Calls" && names[4] == "PASS helper.Noop" &&
+               strings.HasPrefix(names[1], "PASS helper.__generic_") && strings.HasPrefix(names[2], "PASS helper.__generic_") && names[1] != names[2], "private concrete names and recursive duplicates preserve ordinary order");
+
+        core := Folder(suite, "core-import");
+        Write(strings.Concatenate([core, "/Facts.chibi"]), "package facts\nimport math \"core:math\"\n@test\nRoot :: () { assert(math.Lerp(2, 6, 0.5) == 4); }\n");
+        Check(os.Capture([args[0], "test", mode, "--llvm", args[1], core]), "PASS project.Root\n1 tests, 0 failed\n");
+    }
+    os.Print("native test exports: project imports, concrete entries, recursive duplicates and core exclusion passed at O0/O2");
+    return 0;
+}

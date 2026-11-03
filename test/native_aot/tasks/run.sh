@@ -120,6 +120,8 @@ for folder in "$root"/test/native_aot/tasks/rejected/*; do
         task_array) grep -q "array item differs from the array's type" "$work/rejection" ;;
         task_array_parameter) grep -Eq 'scalar proof|native task parameters require cancellation unwind support' "$work/rejection" ;;
         numeric_handle) grep -q 'conversion needs a number' "$work/rejection" ;;
+        optional_view_handle) grep -Fq 'task handles with a union result are not supported yet' "$work/rejection" ;;
+        view_result_write) grep -Fq 'indexed mutation requires a writable array or map' "$work/rejection" ;;
         task_parameter) grep -Fq 'await needs a task handle or authored call' "$work/rejection" ;;
         different_result_producers|void_result) grep -q 'assigned value differs from its local' "$work/rejection" ;;
     esac

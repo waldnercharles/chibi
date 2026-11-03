@@ -1,0 +1,8 @@
+package optional_view_handle_rejection
+Window :: () -> view int[]? {
+    values: int[] = [7]; pointer := &values;
+    selected := pointer.view(0..<1);
+    yield
+    return selected;
+}
+Main :: () -> int { pending := Window(); return 0; }

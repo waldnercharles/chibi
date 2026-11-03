@@ -1,0 +1,3 @@
+package method_place_failure
+Arg::(values:^([int:int[]][]))->int{values^ = [];return 9;}
+Main::()->int{values:[int:int[]][]=[[1:[1]]];values[0][1].append(Arg(&values));return 0;}

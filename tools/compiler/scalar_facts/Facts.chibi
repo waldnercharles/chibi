@@ -488,12 +488,17 @@ pub MapSpan: int : 8;
 pub MapLiveAt: int : 9;
 pub MapKeyAt: int : 10;
 pub MapValueAt: int : 11;
-// Changes of an array entry. Operands are a map reference, key and argument;
-// MapArraySet additionally takes its element index before the incoming value.
+// Changes of a mapped array. The one-key form takes RefMap, key and argument.
+// Longer method paths take RefRoot, all captured keys and the argument; the
+// descriptor graph must cross a map and end at an array. No per-hop runtime
+// table is carried. MapArraySet additionally includes its final element index.
 pub MapArrayPush: int : 12;
 pub MapArrayExtend: int : 13;
 pub MapArrayRemove: int : 14;
-// The producer checks the initial logical place before RHS effects. Missing
+// A mapped array bracket write: RefRoot, all path keys, then the incoming
+// element, count at least 4. A deeper path may start at an array but must cross
+// a map and end at an array. The producer checks the complete initial place
+// before RHS effects, then resolves its current canonical owner again. Missing
 // final keys or indices report an unclassified unavailable-place failure.
 pub MapArraySet: int : 15;
 pub MapArrayResize: int : 16;
@@ -651,6 +656,9 @@ pub ArrayWithoutItem: int : 27;
 // A strict half-open copy: array,start,end -> optional array. Invalid bounds
 // produce Nil without allocation; an empty valid range produces Some(empty).
 pub ArrayRange: int : 28;
+// Replace one canonical inline array descriptor. Only ArrayReferencePlace
+// uses this operation; inputs are RefArray and the new owning array value.
+pub ArrayAssign: int : 29;
 // An immediate nested-array place adds its saved outer index after the
 // canonical RefRow. Existing mutating operators still end the root assignment.
 pub NestedArrayPlace: int : -1;

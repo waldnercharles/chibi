@@ -1,0 +1,68 @@
+package managed_view_promises
+
+Pair :: union { Row(xs: int[]) | None }
+Window :: union { Missing | Present(window: view int[]) }
+Owner :: (number: int) -> view int[]? {
+    values: int[] = [number, number + 1]; pointer := &values;
+    return pointer.view(0..<2);
+}
+Owned :: (number: int) -> view Pair[]? {
+    values: Pair[] = [Pair.Row([number, number + 1])]; pointer := &values;
+    return pointer.view(0..<1);
+}
+Churn :: () { for index in 0..<3000 { discarded := Owned(index); } }
+Worker :: (number: int) -> view int[] { selected := Owner(number); yield; return selected!; }
+Ready :: () -> view int[] { if false { yield } return Owner(31)!; }
+OwnedWorker :: (number: int) -> view Pair[] { selected := Owned(number); yield; return selected!; }
+Optional :: () -> view int[]? { selected := Owner(23); yield; return selected; }
+Missing :: () -> view int[]? { yield; return nil; }
+Tagged :: () -> Window { selected := Owner(41); yield; return Window.Present(selected!); }
+Pass :: (window: view int[]) -> view int[] { yield; Churn(); return window; }
+Same :: (window: view int[]) -> view int[] { return window; }
+Nested :: () -> view int[] { selected := await Worker(17); return await Pass(selected); }
+ReadOwned :: (window: view Pair[]) -> int {
+    pair := window[0]; switch pair { case .Row(xs): return xs[0] * 10 + xs[1]; case: return -1; }
+}
+Main :: () -> int {
+    pending := Worker(7); alias := pending;
+    yield; yield; Churn();
+    first := await pending;
+    if first is Cancelled { return 1; }
+    else { window := first; window[0] = 19; assert(window[0] == 19 && window[1] == 8); }
+    again := await alias;
+    if again is Cancelled { return 2; }
+    else { window := again; Churn(); assert(window[0] == 19, "promise observers keep the same window cell"); }
+    completed := Ready(); Churn();
+    immediate := await completed;
+    if immediate is Cancelled { return 3; }
+    else { assert(immediate[0] == 31); }
+    owned := OwnedWorker(5); yield; yield; Churn();
+    owned_result := await owned;
+    if owned_result is Cancelled { return 4; }
+    else { window := owned_result; assert(ReadOwned(window) == 56); window[0] = Pair.Row([9, 10]); }
+    direct_owned := await OwnedWorker(3); Churn(); assert(ReadOwned(direct_owned) == 34);
+    direct: view int[] = await Worker(11); Churn(); assert(direct[0] == 11);
+    saved := Same(direct); direct = await Worker(13); Churn();
+    assert(saved[0] == 11 && direct[0] == 13);
+    optional := await Optional(); Churn();
+    if optional { assert(optional[0] == 23); } else { return 5; }
+    missing := await Missing(); assert(!missing);
+    tagged := await Tagged(); Churn();
+    switch tagged { case .Present(window): assert(window[0] == 41); case: return 6; }
+    nested := await Nested(); Churn(); assert(nested[0] == 17);
+    cancelled := Nested(); cancel cancelled
+    gone := await cancelled; assert(gone is Cancelled);
+    for index in 0..<32 {
+        task := OwnedWorker(index); yield; Churn();
+        joined := await task;
+        if joined is Cancelled { return 7; }
+        else { assert(ReadOwned(joined) == index * 10 + index + 1); }
+    }
+    return 0;
+}
+Broken :: () -> view int[] {
+    selected := await Worker(53); yield;
+    assert(selected[0] == 0, "view promise failure preserves roots");
+    return selected;
+}
+Failure :: () -> int { failed := Broken(); yield; await failed; return 0; }

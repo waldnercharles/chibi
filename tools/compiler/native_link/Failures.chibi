@@ -65,6 +65,13 @@ FailureRuntime :: (windows: bool, context: bool, static_linux: bool, cli_errors:
         "  call void @chibi_failure_write(ptr %name, i32 %length)\n",
         "  ret void\n",
         "}\n",
+        // Shared images report before returning through their context failure
+        // path. The host then releases every image's roots before unloading.
+        "define void @chibi_native_failure_report(i32 %kind) {\n",
+        "  call void @chibi_failure_write(ptr @chibi_failure_failure, i32 16)\n",
+        "  call void @chibi_failure_name(i32 %kind)\n",
+        "  call void @chibi_failure_write(ptr @chibi_failure_newline, i32 1)\n",
+        "  ret void\n}\n",
         "define void @chibi_native_failure(i32 %kind) noreturn {\n",
         "entry:\n",
         "  %expected = load i32, ptr @chibi_test_expected\n",

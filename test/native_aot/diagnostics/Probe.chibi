@@ -49,13 +49,13 @@ Main :: () -> int {
     Rejected(["Main.chibi", "lib/Lib.chibi"], [root_source, unsupported], strings.Concatenate([root_source, unsupported]),
              "p", "Native calls cannot retain managed pointer arguments", 6, 104);
 
-    // Ordinary source supports string cells; native scalar cells remain gated.
-    // This passes ordinary body checking before the facts producer rejects it.
-    late := "package lib\npub Value :: () -> int { value := \"text\"; pointer := &value; return text_byte_length(pointer^) - 3; }\n";
+    // String cells are supported; an optional string payload still needs its
+    // own owned-cell layout. Ordinary checking accepts this before projection.
+    late := "package lib\npub Value :: () -> int { value: string? = \"text\"; pointer := &value; observed := pointer^; if observed { return text_byte_length(observed) - 3; } return 0; }\n";
     Rejected(["Main.chibi"], [late], late, "pointer := &value;",
-             "scalar proof supports only number, bool and string values", 2, 43);
+             "scalar proof supports only number, bool and string values", 2, 51);
     Rejected(["Main.chibi", "lib/Lib.chibi"], [root_source, late], strings.Concatenate([root_source, late]),
-             "pointer := &value;", "scalar proof supports only number, bool and string values", 5, 43);
+             "pointer := &value;", "scalar proof supports only number, bool and string values", 5, 51);
 
     // The on-disk target is deliberately a different length from its replacement.
     uses_target := "package main\nimport target \"core:target\"\nimport lib \"project:lib\"\nMain :: () -> int { return lib.Value() + target.Native; }\n";
@@ -94,13 +94,13 @@ TypedEffects :: () {
         }
     }
     assert(at == length(collected.effects), "one mask per function, no facts payload overload");
-    assert(length(collected.tests) == 0, "ordinary effects callers do not request test metadata");
+    assert(length(collected.tests) == 0 && length(collected.test_packages) == 0, "ordinary effects callers do not request test metadata");
     assert(masks["Main"] == 0 && masks["Pure"] == 0 && masks["CallsPure"] == 0, "local mutation and pure calls stay pure");
     assert(masks["Leaf"] == 3 && masks["Mid"] == 3 && masks["CycleA"] == 3 && masks["CycleB"] == 3 &&
            masks["Imported"] == 3, "foreign read/write effects close across calls and cycles");
     rejected := compiler.CollectScalarProgramWithEffects("/project", [], [], ["Main.chibi"],
         ["package main\nMain :: () -> int { return Missing(); }\n@test Good :: () {}\n"], TargetFacts(), Names(), Natives(), Ports(), Identities(), 1, 1, "Main", true);
-    assert(length(rejected.effects) == 0 && length(rejected.tests) == 0 && rejected.rows[1].kind == facts.RejectionRow, "rejection publishes no partial masks or selected tests");
+    assert(length(rejected.effects) == 0 && length(rejected.tests) == 0 && length(rejected.test_packages) == 0 && rejected.rows[1].kind == facts.RejectionRow, "rejection publishes no partial masks or selected tests");
 }
 
 Collect :: (paths: string[], sources: string[]) -> facts.Row[] {

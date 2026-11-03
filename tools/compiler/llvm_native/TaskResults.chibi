@@ -17,8 +17,14 @@ TaskFramePlain :: (layout: ValueLayout, type: int) -> bool {
 TaskFrameTraced :: (layout: ManagedRecordLayout, type: int) -> bool {
     return type == PointerType || (ManagedTraced(type, layout.traced) && layout.traceable[type - RecordType]);
 }
-TaskFrameValue :: (records: Record[], layout: ValueLayout, managed: ManagedRecordLayout, type: int, observer: bool, owned: bool) -> bool {
-    if (owned && TaskFrameTraced(managed, type)) { return true; }
+// A frame may keep a window independently of task promise admission. Exact
+// optional/authored-union windows reuse their existing tag/window tracer.
+TaskFrameRoot :: (records: Record[], fields: int[], managed: ManagedRecordLayout, type: int) -> bool {
+    return TaskFrameTraced(managed, type) || type == ViewType || ViewOptional(records, fields, type, ViewType);
+}
+TaskFrameValue :: (records: Record[], fields: int[], layout: ValueLayout, managed: ManagedRecordLayout,
+                    type: int, observer: bool, owned: bool) -> bool {
+    if (owned && TaskFrameRoot(records, fields, managed, type)) { return true; }
     if (owned && TaskOwnedType(records, layout, type)) { return true; }
     if (owned && observer && type >= RefType && TaskOwnedType(records, layout, type - RefType) &&
         !ValueCollectorOwner(layout, type - RefType)) { return true; }
@@ -203,9 +209,9 @@ TaskBackingReferencesValid :: (slots: int[], locals: int[], code: Instruction[],
     }
     return "";
 }
-TaskPromiseValue :: (records: Record[], layout: ValueLayout, managed: ManagedRecordLayout, type: int, owned: bool) -> bool {
+TaskPromiseValue :: (records: Record[], fields: int[], layout: ValueLayout, managed: ManagedRecordLayout, type: int, owned: bool) -> bool {
     return TaskFramePlain(layout, type) || (owned && (type == ArrayType + PointerType ||
-           TaskOwnedType(records, layout, type) || TaskFrameTraced(managed, type)));
+           TaskOwnedType(records, layout, type) || TaskFrameRoot(records, fields, managed, type)));
 }
 TaskResultValid :: (records: Record[], fields: int[], slots: int[], layout: ValueLayout, managed: ManagedRecordLayout, owned: bool, item: Instruction) -> bool {
     record := item.type - RecordType;
@@ -215,7 +221,7 @@ TaskResultValid :: (records: Record[], fields: int[], slots: int[], layout: Valu
     count := 1;
     if (item.right != 0) { count = 2; }
     return shape.count == count && fields[shape.first] == abi.IntStorage &&
-           (item.right == 0 || (TaskPromiseValue(records, layout, managed, item.right, owned) &&
+           (item.right == 0 || (TaskPromiseValue(records, fields, layout, managed, item.right, owned) &&
                                fields[shape.first + 1] == item.right));
 }
 // The pending wait owns an observer until the scheduler has resumed this

@@ -1,0 +1,57 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+TextCellModule :: (tag: i64, embedded: bool, family: bool) -> native.Result {
+    text := abi.TextStorage;
+    slots := [text, native.PointerType, native.RefType + text, text, text, abi.IntStorage];
+    code := [Code(native.Constant, text, 0, 0, 0, 0, 0),
+        Code(native.ManagedNew, native.PointerType, 1, 0, text, 0, tag),
+        Code(native.ManagedAddress, native.RefType + text, 2, 1, 0, 0, tag),
+        Code(native.Deref, text, 3, 2, 0, 0, 0), Code(native.ValueCopy, text, 4, 3, 0, 0, 0),
+        Code(native.ValueDrop, text, 0, 4, 0, 0, 0),
+        Code(native.Constant, abi.IntStorage, 5, 0, 0, 0, 0),
+        Code(native.Publish, abi.IntStorage, 0, 5, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    shape := Function(abi.IntStorage, 0, 0, length(slots), 0, length(code), 0, 0);
+    source: native.Source = {file: "", directory: ""};
+    if (embedded) { return native.Emit(abi.LinuxX64(), [shape], [], slots, [], code, [], [], [], ["text"], source, [], [], [], false, 1); }
+    if (family) {
+        return native.EmitFamilyLibraryStates(abi.LinuxX64(), "TextCell", ["Value"], [i64(1)], [shape], [], slots, [],
+            code, [], [], [], [], ["text"], 1, [], -1, []);
+    }
+    return native.EmitProgramTyped(abi.LinuxX64(), [shape], [], slots, [], code, [], [], [], [], ["text"], source, [], [], []);
+}
+@test
+TextCellsOwnTheirDescriptorAndUseExactTypedMetadata :: () {
+    text := Emitted(TextCellModule(-880, false, false));
+    assert(strings.Contains(text, "@chibi_managed.layout.text-880 = private constant %chibi.managed.layout { ptr null, ptr @chibi_managed.validate.text-880, ptr null }"));
+    assert(strings.Contains(text, "call { ptr, i32, ptr } @chibi_text.share("));
+    assert(strings.Contains(text, "define internal void @chibi_managed.drop.text("));
+    assert(strings.Contains(text, "%storage.ok = icmp eq i32 %storage, 13"));
+    assert(strings.Contains(text, "%tag.ok = icmp eq i64 %tag, -880"));
+    assert(strings.Contains(text, "%offset.ok = icmp eq i64 %offset, 0"));
+}
+@test
+SharedTextCellsKeepTheOriginImageLeased :: () {
+    text := Emitted(TextCellModule(-880, false, true));
+    assert(strings.Contains(text, "ptr @chibi_managed.validate.text-880, ptr @chibi_generation_cells }"));
+}
+@test
+TextCellsPreserveTheExistingOwnerAndIdentityBoundaries :: () {
+    Rejects(TextCellModule(0, false, false), "native managed pointer identity is invalid");
+    Rejects(TextCellModule(-880, true, false), "native managed pointers require a standalone collector owner");
+}
+@test
+OwnedTextCopiesKeepTheGenericFiveCallbackAbi :: () {
+    text := abi.TextStorage;
+    code := [Code(native.Constant, text, 0, 0, 0, 0, 0), Code(native.ValueCopy, text, 1, 0, 0, 0, 0),
+        Code(native.TextLength, abi.IntStorage, 2, 1, 0, 0, 0), Code(native.ValueDrop, text, 0, 1, 0, 0, 0),
+        Code(native.Publish, abi.IntStorage, 0, 2, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    source: native.Source = {file: "", directory: ""};
+    module := Emitted(native.Emit(abi.LinuxX64(), [Function(abi.IntStorage, 0, 0, 3, 0, length(code), 0, 0)],
+        [], [text, text, abi.IntStorage], [], code, [], [], [], ["copy"], source, [], [], [], false, 1));
+    assert(strings.Contains(module, "define internal { ptr, i32, ptr } @chibi_text.share("));
+    assert(!strings.Contains(module, "%chibi.managed.heap = type"));
+}

@@ -96,9 +96,9 @@ pub ValueLayouts :: (records: Record[], fields: int[]) -> ValueLayout {
                 }
                 supported := child == abi.TextStorage || abi.ScalarType(child) != "";
                 if (child >= RecordType && child < ArrayType) {
-                    // Container payloads keep their rootless domain. Inline
-                    // children instead propagate this collector domain below.
-                    supported = !container || found.valid[child - RecordType];
+                    // Arrays in a collector-owned value carry typed backing
+                    // roots. Map payloads retain their rootless domain.
+                    supported = !container || (type >= ArrayType && type < MapType) || found.valid[child - RecordType];
                 }
                 if (!supported) { found.collector_copyable[parent] = false; pending.append(parent); break; }
             }
@@ -136,13 +136,22 @@ pub ValueLayouts :: (records: Record[], fields: int[]) -> ValueLayout {
 pub ValueCollectorCopyable :: (layout: ValueLayout, type: int) -> bool {
     if (type == PointerType || type == ArrayType + PointerType) { return true; }
     if (type < RecordType) { return type == abi.TextStorage || abi.ScalarType(type) != ""; }
+    if (type >= ArrayType && type < MapType) { return ValueCollectorCopyable(layout, type - ArrayType); }
     index := type - RecordType;
     return type < ArrayType && Index(index, length(layout.collector_copyable)) && layout.collector_copyable[index];
+}
+// A traced array owns backing whose elements contain collector edges. Its
+// canonical owner is registered separately from borrowed descriptor reads.
+pub ValueCollectorArray :: (layout: ValueLayout, type: int) -> bool {
+    if (type == ArrayType + PointerType) { return true; }
+    index := type - ArrayType - RecordType;
+    return type >= ArrayType && type < MapType && Index(index, length(layout.valid)) &&
+           !layout.valid[index] && layout.collector_copyable[index];
 }
 // These values own backing that a collector trace may read. Register actual
 // owning locations, not borrowed snapshots whose backing can be replaced.
 pub ValueCollectorOwner :: (layout: ValueLayout, type: int) -> bool {
-    if (type == ArrayType + PointerType) { return true; }
+    if (ValueCollectorArray(layout, type)) { return true; }
     index := type - RecordType;
     return type < ArrayType && Index(index, length(layout.valid)) && !layout.valid[index] &&
            layout.collector_copyable[index] && layout.collector_owned[index];

@@ -115,3 +115,50 @@ NestedMapCarrierField :: (rows: facts.Row[], wanted: int) -> int {
     }
     return -1;
 }
+
+DeepMappedArraysProjection :: () {
+    sources := ["package deep_arrays\nMain::()->int{values:[int:[int:int[]]]=[1:[2:[3]]];old:=values;values[1][2][0]=4;return 0;}\n",
+                "package deep_arrays\nMain::()->int{values:[int:int[]][]=[[1:[3]]];old:=values;values[0][1][0]=4;return 0;}\n"];
+    mismatch := "scalar map operation differs from its operands";
+    for (source in sources) {
+        rows := Produced(source);
+        assert(rows[1].kind == facts.DocumentRow);
+        ValidateRows(rows, "");
+        change := -1;
+        for (row, index in rows) { if (row.kind == facts.MapRow && row.value == facts.MapArraySet) { change = index; } }
+        assert(change >= 0 && rows[change].count == 5);
+        for (count in [int(-1),0,3,4,6,2147483647]) { RejectChanged(rows, [Changed(change, CountField, i64(count))], mismatch); }
+        RejectChanged(rows, [Changed(change, LiteralField, 1)], mismatch);
+        RejectChanged(rows, [Changed(change, TypeField, i64(facts.IntType))], mismatch);
+        RejectChanged(rows, [Changed(change, ValueField, i64(facts.NestedMapSet))], mismatch);
+        assign := change - 1;
+        while (rows[assign].kind != facts.AssignRow) { assign -= 1; }
+        assert(rows[assign].value == 0 && rows[assign + 1].kind == facts.RefRow && rows[assign + 1].value == 0);
+        RejectChanged(rows, [Changed(assign, ValueField, 1)], "scalar nested map change is not the assignment of its collection");
+    }
+}
+
+DeepMappedMethodsProjection :: () {
+    sources := ["package deep_methods\nMain::()->int{values:[int:[int:int[]]]=[1:[2:[0,1]]];old:=values;values[1][2].append(2);values[1][2].extend([3]);values[1][2].remove_index(0);values[1][2].resize(3);return 0;}\n",
+                "package deep_methods\nMain::()->int{values:[int:int[]][]=[[1:[0,1]]];old:=values;values[0][1].append(2);values[0][1].extend([3]);values[0][1].remove_index(0);values[0][1].resize(3);return 0;}\n"];
+    mismatch := "scalar map operation differs from its operands";
+    for (source in sources) {
+        rows := Produced(source);
+        assert(rows[1].kind == facts.DocumentRow);
+        ValidateRows(rows, "");
+        found := 0;
+        for (row, index in rows) {
+            if (row.kind != facts.MapRow || row.value < facts.MapArrayPush || row.value > facts.MapArrayResize || row.value == facts.MapArraySet) { continue; }
+            assert(row.count == 4);
+            found += 1;
+            for (count in [int(0),2,3,5,2147483647]) { RejectChanged(rows, [Changed(index, CountField, i64(count))], mismatch); }
+            RejectChanged(rows, [Changed(index, LiteralField, 1)], mismatch);
+            RejectChanged(rows, [Changed(index, TypeField, i64(facts.IntType))], mismatch);
+            RejectChanged(rows, [Changed(index, ValueField, i64(facts.MapArraySet))], mismatch);
+            assign := index - 1;
+            while (rows[assign].kind != facts.AssignRow) { assign -= 1; }
+            RejectChanged(rows, [Changed(assign, ValueField, 1)], "scalar nested map change is not the assignment of its collection");
+        }
+        assert(found == 4);
+    }
+}

@@ -7,3 +7,12 @@ ElementPlaceIsNotAReadBoundsFailure :: () {
     rows: Entry[] = [];
     rows[0].values[0] = 9;
 }
+
+Inner :: struct { values:int[]; }
+Nested :: struct { inner:Inner; }
+@test
+FieldReplacementIsNotAnExpressionReadBoundsFailure :: () {
+    testing.ExpectFailure(testing.Failure.IndexOutOfRange);
+    rows:Nested[]=[];
+    rows[0].inner.values=[int(2)];
+}

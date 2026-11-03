@@ -1,0 +1,3 @@
+package method_place_failure
+Item::struct{word:string;values:int[];}
+Main::()->int{values:[int:[int:Item[]]]=[1:[2:[]]];values[1][2].resize(1);return 0;}

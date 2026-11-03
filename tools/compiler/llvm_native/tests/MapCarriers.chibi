@@ -1,0 +1,42 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+
+MapCarrierPlace :: (kind: int) -> native.Result {
+    mapped := native.MapOf(abi.IntStorage, abi.IntStorage);
+    if (kind == 3) { mapped = native.MapOf(abi.IntStorage, native.ArrayType + native.PointerType); }
+    array := native.ArrayType + native.RecordType;
+    result := native.RefType + mapped;
+    if (kind == 1) { result = native.RefType + abi.IntStorage; }
+    address := Code(native.ArrayValueAddress, result, 3, 1, 2, array, 0);
+    if (kind == 2) { address.literal = 3; }
+    if (kind == 4) { address.left = 0; }
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0),
+             Code(native.Constant, array, 0, 0, 0, 0, 0),
+             Code(native.Save, array, 0, 0, 0, 0, 0),
+             Code(native.LocalAddress, native.RefType + array, 1, 0, 0, 0, 0),
+             Code(native.Constant, abi.IntStorage, 2, 0, 0, 0, 0), address,
+             Code(native.Publish, abi.IntStorage, 0, 2, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    function: native.Function = {result: abi.IntStorage, first_parameter: 0, parameters: 0,
+        first_slot: 0, slots: 4, first_local: 0, locals: 1, first_code: 0, code: length(code), first_argument: 0, arguments: 0};
+    empty: int[] = [];
+    texts: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}];
+    return native.Emit(abi.LinuxX64(), [function], empty, [array, native.RefType + array, abi.IntStorage, result],
+                       [array], code, empty, records, [mapped], texts, source, texts, empty, empty, false, 1);
+}
+
+@test
+ArrayMapCarrierPlacesUseTheExistingDescriptorProjection :: () {
+    text := Emitted(MapCarrierPlace(0));
+    assert(text != "");
+}
+
+@test
+ArrayMapCarrierPlacesRejectWrongTypesModesAndGcPayloads :: () {
+    for (kind in 1..<5) {
+        Rejects(MapCarrierPlace(kind), "native nested array reference differs from its wrapper");
+    }
+}

@@ -123,12 +123,12 @@ WrappedRecordFieldCountsAreRejected :: () {
 
 @test
 SharedInlineRecordGraphKeepsFiniteLayout :: () {
-    records: native.Record[] = [{first: 0, count: 2}];
+    records: native.Record[] = [{first: 0, count: 2, identity: 0}];
     fields := [abi.IntStorage, abi.FloatStorage];
     // Thirty shared layers have 31 nodes and 62 fields. Traversing every
     // root-to-leaf path would revisit the same child over two billion times.
     for (layer in 0..<30) {
-        records.append({first: length(fields), count: 2});
+        records.append({first: length(fields), count: 2, identity: 0});
         fields.extend([native.RecordType + layer, native.RecordType + layer]);
     }
     text := Emitted(RecordModule(RecordCode(), records, fields));

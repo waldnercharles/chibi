@@ -3568,6 +3568,14 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                                            value, record, copied, operands);
                 }
             case .MapEdited(change):
+                if (change.operator == facts.MapSet && Operator(forest, statement) != tk.Eq) {
+                    switch ScalarMapCompound(forest, text, callables, params, callable, names, types, members, constants,
+                                              statement, change, &variables) {
+                        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                        case .Built(assigned): rows.extend(assigned);
+                    }
+                    continue;
+                }
                 appended = change.object;
                 built = ScalarMapChanged(forest, text, callables, params, callable, names, types, members, constants,
                                          statement, change, operands);

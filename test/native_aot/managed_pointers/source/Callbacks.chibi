@@ -1,0 +1,52 @@
+package managed_callback_safe_points
+
+Owner :: (value: int) -> ^int { return &value; }
+Make :: () -> ^int[] { value := 7; return [&value]; }
+Early :: (first: bool) -> ^int[] {
+    values := Make();
+    if first { return values; }
+    scratch: int[] = [1];
+    scratch = [];
+    return values;
+}
+// The allocator audit creates a dead cell for each backing allocation.
+// No source managed allocation occurs here. Loop/statement polls must drain
+// deferred requests instead of retaining all 4096 callback-created cells.
+Pointerless :: () -> int {
+    total := 0;
+    for index in 0..<4096 {
+        scratch: int[] = [index];
+        total += length(scratch);
+        scratch = [];
+        if index % 3 == 0 { continue; }
+        if index == 4095 { break; }
+    }
+    return total;
+}
+Main :: () -> int {
+    values := Make();
+    for index in 0..<8 { values.append(Owner(7)); }
+    scratch: int[] = [1];
+    scratch = [];
+    assert(values[0]^ == 7 && values[8]^ == 7);
+    first := Early(true);
+    other := Early(false);
+    assert(first[0]^ == 7 && other[0]^ == 7);
+    count := Pointerless();
+    assert(count == 4096 && values[4]^ == 7);
+    return length(scratch);
+}
+Failure :: () -> int {
+    values := Make();
+    scratch: int[] = [1];
+    scratch = [];
+    assert(false, "callback-safe failure cleanup");
+    return values[0]^;
+}
+// Entry with no source managed-pointer roots. Its callbacks still share the
+// program collector and must make progress before the entry's final cleanup.
+Progress :: () -> int {
+    count := Pointerless();
+    assert(count == 4096);
+    return 0;
+}

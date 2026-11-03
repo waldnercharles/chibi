@@ -7,7 +7,7 @@ import strings "core:strings"
 // cancelled rows remain only while observed, then return to the generation
 // free list. Owners and phase fill the old entry-flag padding: rows remain
 // 72 bytes, or 96 with timing. The kind/free field is a success type while live.
-TaskScheduler :: (timed: bool) -> string {
+TaskScheduler :: (timed: bool, guarded: bool = false) -> string {
     fields := "";
     sample := "";
     started := "";
@@ -38,7 +38,8 @@ TaskScheduler :: (timed: bool) -> string {
         "  ret ptr %row\nnone:\n  ret ptr null\n}\n\n",
         "define internal void @chibi_tasks.grow(ptr %ctx) #1 {\nentry:\n  %capacity = load i32, ptr @chibi_tasks.capacity\n  %doubled = shl i32 %capacity, 1\n  %empty = icmp eq i32 %capacity, 0\n",
         "  %next = select i1 %empty, i32 16, i32 %doubled\n  %room = icmp ugt i32 %next, %capacity\n  br i1 %room, label %allocate, label %trap\nallocate:\n  %wide = zext i32 %next to i64\n",
-        "  %end = getelementptr %chibi.task, ptr null, i64 %wide\n  %bytes = ptrtoint ptr %end to i64\n  %allocate.at = getelementptr { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 2\n  %allocate.fn = load ptr, ptr %allocate.at\n  %table = call ptr %allocate.fn(ptr %ctx, i64 %bytes)\n",
+        "  %end = getelementptr %chibi.task, ptr null, i64 %wide\n  %bytes = ptrtoint ptr %end to i64\n",
+        Allocated("table", "%bytes", guarded),
         "  %allocated = icmp ne ptr %table, null\n  br i1 %allocated, label %copy.start, label %trap\ncopy.start:\n  %old = load ptr, ptr @chibi_tasks.table\n  br label %copy\n",
         "copy:\n  %i = phi i32 [ 0, %copy.start ], [ %i.next, %copy.row ]\n  %more = icmp ult i32 %i, %capacity\n  br i1 %more, label %copy.row, label %initialize\ncopy.row:\n",
         "  %i.wide = zext i32 %i to i64\n  %from = getelementptr inbounds %chibi.task, ptr %old, i64 %i.wide\n  %to = getelementptr inbounds %chibi.task, ptr %table, i64 %i.wide\n  %value = load %chibi.task, ptr %from\n  store %chibi.task %value, ptr %to\n",
@@ -47,7 +48,8 @@ TaskScheduler :: (timed: bool) -> string {
         "  %j.next = add i32 %j, 1\n  %following = add i32 %j, 2\n  %last = icmp eq i32 %j.next, %next\n  %link = select i1 %last, i32 0, i32 %following\n  %link.at = getelementptr inbounds %chibi.task, ptr %row, i32 0, i32 4\n",
         "  store i32 %link, ptr %link.at\n  br label %initialize\npublish:\n  store ptr %table, ptr @chibi_tasks.table\n  store i32 %next, ptr @chibi_tasks.capacity\n",
         "  %first = add i32 %capacity, 1\n  store i32 %first, ptr @chibi_tasks.free\n  store ptr %ctx, ptr @chibi_tasks.owner\n  %had = icmp ne ptr %old, null\n  br i1 %had, label %release, label %exit\n",
-        "release:\n  %release.at = getelementptr { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 4\n  %release.fn = load ptr, ptr %release.at\n  call void %release.fn(ptr %ctx, ptr %old)\n  br label %exit\n",
+        "release:\n", ContextCall("release.fn", 4, guarded),
+        "  call void %release.fn(ptr %ctx, ptr %old)\n  br label %exit\n",
         "exit:\n  ret void\ntrap:\n  call void @llvm.trap()\n  unreachable\n",
         "}\n\ndefine internal i64 @chibi_tasks.begin(ptr %ctx, i32 %kind) #0 {\nentry:\n$sample  %available = load i32, ptr @chibi_tasks.free\n",
         "  %empty = icmp eq i32 %available, 0\n  br i1 %empty, label %grow, label %take\ngrow:\n  call void @chibi_tasks.grow(ptr %ctx)\n  br label %take\n",
@@ -111,12 +113,14 @@ TaskScheduler :: (timed: bool) -> string {
         "  br i1 %done, label %complete, label %queue\ncomplete:\n  call void @chibi_tasks.complete(i64 %handle, i1 false)\n  ret void\nqueue:\n",
         "  %count = load i64, ptr @chibi_tasks.ready_count\n  %capacity = load i64, ptr @chibi_tasks.ready_capacity\n  %room = icmp ult i64 %count, %capacity\n  br i1 %room, label %append, label %grow\ngrow:\n",
         "  %ctx.at = getelementptr inbounds %chibi.task, ptr %row, i32 0, i32 5\n  %ctx = load ptr, ptr %ctx.at\n  %empty = icmp eq i64 %capacity, 0\n  %doubled = shl i64 %capacity, 1\n  %next.capacity = select i1 %empty, i64 16, i64 %doubled\n",
-        "  %bytes = shl i64 %next.capacity, 3\n  %allocate.at = getelementptr { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 2\n  %allocate.fn = load ptr, ptr %allocate.at\n  %new = call ptr %allocate.fn(ptr %ctx, i64 %bytes)\n  %old = load ptr, ptr @chibi_tasks.ready\n",
+        "  %bytes = shl i64 %next.capacity, 3\n", Allocated("new", "%bytes", guarded),
+        "  %old = load ptr, ptr @chibi_tasks.ready\n",
         "  br label %copy\ncopy:\n  %i = phi i64 [ 0, %grow ], [ %i.next, %copy.row ]\n  %more = icmp ult i64 %i, %count\n  br i1 %more, label %copy.row, label %publish\n",
         "copy.row:\n  %from = getelementptr inbounds i64, ptr %old, i64 %i\n  %to = getelementptr inbounds i64, ptr %new, i64 %i\n  %value = load i64, ptr %from\n  store i64 %value, ptr %to\n",
         "  %i.next = add i64 %i, 1\n  br label %copy\npublish:\n  store ptr %new, ptr @chibi_tasks.ready\n  store i64 %next.capacity, ptr @chibi_tasks.ready_capacity\n",
-        "  store ptr %ctx, ptr @chibi_tasks.ready_owner\n  %had = icmp ne ptr %old, null\n  br i1 %had, label %free, label %append\nfree:\n  %release.at = getelementptr { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 4\n",
-        "  %release.fn = load ptr, ptr %release.at\n  call void %release.fn(ptr %ctx, ptr %old)\n  br label %append\nappend:\n  %ready = load ptr, ptr @chibi_tasks.ready\n",
+        "  store ptr %ctx, ptr @chibi_tasks.ready_owner\n  %had = icmp ne ptr %old, null\n  br i1 %had, label %free, label %append\nfree:\n",
+        ContextCall("release.fn", 4, guarded),
+        "  call void %release.fn(ptr %ctx, ptr %old)\n  br label %append\nappend:\n  %ready = load ptr, ptr @chibi_tasks.ready\n",
         "  %at = getelementptr inbounds i64, ptr %ready, i64 %count\n  store i64 %handle, ptr %at\n  %next = add i64 %count, 1\n  store i64 %next, ptr @chibi_tasks.ready_count\n  ret void\n",
         "}\n\ndefine internal void @chibi_tasks.cancel(i64 %handle) #0 {\nentry:\n  %done = call i1 @chibi_tasks.finished(i64 %handle)\n",
         "  br i1 %done, label %exit, label %start\nstart:\n  br label %visit\nvisit:\n  %current = phi i64 [ %handle, %start ], [ %child, %descend ], [ %parent, %advance ]\n",
@@ -150,9 +154,11 @@ TaskScheduler :: (timed: bool) -> string {
         "  %frame = load ptr, ptr %row\n  %has = icmp ne ptr %frame, null\n  br i1 %has, label %destroy, label %advance\ndestroy:\n  store ptr null, ptr %row\n",
         "  call void @llvm.coro.destroy(ptr %frame)\n  br label %advance\nadvance:\n  %next = add i32 %i, 1\n  br label %loop\n",
         "table:\n  %has.rows = icmp ne ptr %rows, null\n  br i1 %has.rows, label %table.free, label %ready.check\ntable.free:\n  %ctx = load ptr, ptr @chibi_tasks.owner\n",
-        "  %release.at = getelementptr { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 4\n  %release.fn = load ptr, ptr %release.at\n  call void %release.fn(ptr %ctx, ptr %rows)\n  br label %ready.check\nready.check:\n",
+        ContextCall("release.fn", 4, guarded),
+        "  call void %release.fn(ptr %ctx, ptr %rows)\n  br label %ready.check\nready.check:\n",
         "  %ready = load ptr, ptr @chibi_tasks.ready\n  %has.ready = icmp ne ptr %ready, null\n  br i1 %has.ready, label %ready.free, label %exit\nready.free:\n  %ready.ctx = load ptr, ptr @chibi_tasks.ready_owner\n",
-        "  %ready.release.at = getelementptr { ptr, ptr, ptr, ptr, ptr }, ptr %ready.ctx, i32 0, i32 4\n  %ready.release.fn = load ptr, ptr %ready.release.at\n  call void %ready.release.fn(ptr %ready.ctx, ptr %ready)\n  br label %exit\nexit:\n",
+        strings.ReplaceAll(ContextCall("ready.release.fn", 4, guarded), "%ctx", "%ready.ctx"),
+        "  call void %ready.release.fn(ptr %ready.ctx, ptr %ready)\n  br label %exit\nexit:\n",
         "  store ptr null, ptr @chibi_tasks.table\n  store i32 0, ptr @chibi_tasks.capacity\n  store i32 0, ptr @chibi_tasks.free\n  store ptr null, ptr @chibi_tasks.ready\n  store i64 0, ptr @chibi_tasks.ready_count\n",
         "  store i64 0, ptr @chibi_tasks.ready_capacity\n  store i64 0, ptr @chibi_tasks.current\n  store i64 0, ptr @chibi_tasks.pending\n  store i1 false, ptr @chibi_tasks.stopping\n  ret i32 0\n",
         "}\n",

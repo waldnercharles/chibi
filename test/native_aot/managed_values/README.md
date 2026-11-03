@@ -77,3 +77,11 @@ other live array fields remain unchanged. It permits at most 64 entries across
 4,096 leaf appends, independently of backing allocation counts.
 Direct retained deep array places remain closed until retained leases carry the
 full field path.
+
+`MapCopies.chibi` requires 4,096 readonly source map snapshots to allocate no
+backing, then mutates one array payload through append, extend, assignment,
+removal and resize while its original map remains unchanged. Each mutation
+starts from a newly shared copy. Source map copies
+share counted entries. Explicit native `MapCopy` retains its physical-clone
+contract; mapped mutation detaches and publishes the canonical map before
+borrowing its current array entry.

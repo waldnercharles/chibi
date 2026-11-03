@@ -5,7 +5,7 @@ import strings "core:strings"
 // A migration-local memo owns only its bucket storage. Callers own every
 // mapped value and keep source addresses stable until migration ends.
 // Half-full open addressing gives constant expected lookup; growth doubles.
-SnapshotMemoRuntime :: () -> string {
+SnapshotMemoRuntime :: (guarded: bool = false) -> string {
     return strings.Join([
         "%chibi.snapshot.memo = type { ptr, i32, i32 }\n",
         "%chibi.snapshot.entry = type { ptr, i64, i64 }\n",
@@ -77,8 +77,7 @@ SnapshotMemoRuntime :: () -> string {
         "  %capacity = select i1 %first, i32 16, i32 %doubled\n",
         "  %end = getelementptr %chibi.snapshot.entry, ptr null, i32 %capacity\n",
         "  %bytes = ptrtoint ptr %end to i64\n",
-        "  %allocate.at = getelementptr { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 2\n",
-        "  %allocate = load ptr, ptr %allocate.at\n",
+        ContextCall("allocate", 2, guarded),
         "  %entries = call ptr %allocate(ptr %ctx, i64 %bytes)\n",
         "  br label %clear\n",
         "clear:\n",
@@ -115,8 +114,7 @@ SnapshotMemoRuntime :: () -> string {
         "  %has.previous = icmp ne ptr %previous, null\n",
         "  br i1 %has.previous, label %free, label %publish\n",
         "free:\n",
-        "  %release.at = getelementptr { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 4\n",
-        "  %give = load ptr, ptr %release.at\n",
+        ContextCall("give", 4, guarded),
         "  call void %give(ptr %ctx, ptr %previous)\n",
         "  br label %publish\n",
         "publish:\n",
@@ -168,8 +166,7 @@ SnapshotMemoRuntime :: () -> string {
         "  %present = icmp ne ptr %entries, null\n",
         "  br i1 %present, label %free, label %done\n",
         "free:\n",
-        "  %release.at = getelementptr { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 4\n",
-        "  %give = load ptr, ptr %release.at\n",
+        ContextCall("give", 4, guarded),
         "  call void %give(ptr %ctx, ptr %entries)\n",
         "  br label %done\n",
         "done:\n",

@@ -1,0 +1,3 @@
+package map_array_place_negative
+Rhs :: () -> int { assert(false, "RHS must not run"); return 9; }
+Main :: () -> int { values: [int: int[]] = [1: [1]]; values[1][-1] = Rhs(); return 0; }

@@ -74,13 +74,13 @@ entry of capacity, and about 16 bytes per live entry in a map that has just grow
 - At most 2^30 entries (`count`, `used` and slot numbers are 32 bits; the slot count must stay a 32-bit power of two).
   Growth past it ends the call (to do: the `MapFull` failure).
 - Insert O(1) amortized (doubling); lookup O(1) expected, with the index at most 75% occupied by live entries and
-  tombstones together (`used <= capacity`); replace O(1); delete O(1) amortized above 8 entries and O(8) below; copy O(n). Iteration visits `used` positions, at most 1.5 times the live entries after any delete.
+  tombstones together (`used <= capacity`); replace O(1); delete O(1) amortized above 8 entries and O(8) below; source copy O(1), with O(n) detachment on its first write. Explicit native `MapCopy` is O(n). Iteration visits `used` positions, at most 1.5 times the live entries after any delete.
 - Allocation failure aborts, as everywhere.
 
 ## Keys and values
 
-Keys: ints of every width, bool, string; floats are not keys (NaN). Authored values are scalars, strings, int[] arrays and records whose leaves are numbers, bools or strings. Record values use the shared value copy/drop helpers.
-Int[] payloads use the shared array lifecycle. Reads acquire an owned descriptor, map copies retain their payload backing, and projected writes make that backing unique after their callback arguments finish. Other container payloads and array-backed records remain rejected. A map owns its strings:
+Keys: ints of every width, bool, string; floats are not keys (NaN). Authored values include scalars, strings, supported pointer-free arrays and records or authored unions with native value layouts. Aggregate values use the shared value copy/drop helpers.
+Array payloads use the shared array lifecycle. Reads acquire an owned descriptor; source map copies share entries, and projected writes detach shared entries and array backing after their callback arguments finish. Other nested containers remain gated by their type and ownership proofs. A map owns its strings:
 `MapSet` consumes one reference of a string key and of a string value (a repeated key's new key is released, the replaced
 value is released), `MapDelete` releases the entry's strings, `MapCopy` retains them, `MapDrop` releases them (D10).
 A read of a missing scalar or string key gives the value type's zero; a native int[] read gives an empty array. A missing record key fails with `MapKeyAbsent`.
@@ -97,9 +97,13 @@ mutation-place failure rather than a typed `MapKeyAbsent`. This address cannot b
 Implemented:
 - The 32-byte compact header and live-entry hashes, Robin Hood index, amortized constant-time deletion and stable insertion order.
 - Native ABI and map instructions, including `MapSpan` and `MapLiveAt` for iteration over live positions. Key/value position reads reject dead entries.
-- `scalar_facts.MapRow` and `scalar_llvm` validation/lowering for literals, reads, changes, copies and drops. Scalar and string keys/values have explicit reference ownership; copies own independent entries and preserve live order.
+- `scalar_facts.MapRow` and `scalar_llvm` validation/lowering for literals, reads, changes, copies and drops. Scalar and string keys/values have explicit reference ownership; source copies share counted entries and preserve live order. Explicit native `MapCopy` clones the immediate entries.
 - C-free behavioral tests in `test/native_aot/maps`. They compile the actual emitter and lower actual fact tables, then run both O0 and O2 programs. Cases cover 64-entry churn against ordered lists, deletion/reinsertion, copies, binary string keys and values, balanced allocations, dead positions and malformed facts.
 
 The authored producer admits typed literals, variable copies, indexing, assignment, `in`/`not in`, `has`, deletion, parameters, results and insertion-order iteration. Read-only parameters borrow; changed by-value parameters receive a private copy. Iteration snapshots a map when the body can change it. `test/native_aot/map_programs` runs these as real source programs, including reference replacement, numeric record values and string reads from temporary returned maps.
 
-Projected int[] updates support append, extend, remove_index, resize and element assignment. Compound mapped-array element assignments and projected foreign buffers remain rejected. Remaining native parity work includes those forms, array-backed record values, other nested containers and cross-platform runtime coverage. Map equality, compound writes and inferred map literal types are rejected by the ordinary authored compiler too; they are not native-only parity gaps. Host and VM retirement still requires migrating their remaining consumers.
+Projected array updates support append, extend, remove_index, resize and element assignment. Numeric array entries can also supply writable foreign buffers. A foreign loan captures the evaluated array and immutable key before later arguments run. Before C executes, it compares the captured descriptor with the current entry. Matching entries detach through the canonical map reference; replaced or deleted entries keep an independent historical loan. Missing value-read keys supply an empty array without adding a key. Repeated arguments finish all comparisons before any detachment. String keys remain owned until final lookup completes.
+
+`managed_values/MapCopies.chibi` checks zero backing allocations for 4,096 readonly source copies, then each of the five mapped-array mutations from a newly shared copy with an unchanged original. `map_programs/ForeignLoans.chibi` covers scoped writes, by-value isolation, repeated buffers, key callbacks, map growth, replacement and deletion with balanced allocations at O0/O2.
+
+Numeric mapped-array compound assignments save the key, index and old leaf before the RHS. Bracket writes check the initial place before the RHS and resolve its current entry again afterward. Both unavailable-place checks stay unclassified; ordinary expression indexing still reports `IndexOutOfRange`. The `array_places` fixtures keep that distinction and the different post-argument lookup order of methods. Other nested containers and cross-platform runtime coverage have separate gates. Map equality and inferred map literal types retain the ordinary authored compiler's limitations. Host and VM retirement still requires migrating their remaining consumers.

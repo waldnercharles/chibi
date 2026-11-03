@@ -43,6 +43,8 @@ Main :: () -> int {
     }
     start := link.SharedContext(triple, true);
     if (start == "") { return 2; }
+    if (strings.Contains(module, "; chibi-family\n")) { start = link.ManagedFamilyContext(start, true); }
+    else if (strings.Contains(module, "; chibi-managed\n")) { start = link.ManagedProgramContext(start); }
     source_path := strings.Concatenate([output, ".ll"]);
     object := strings.Concatenate([output, ".o"]);
     start_path := strings.Concatenate([output, ".start.ll"]);

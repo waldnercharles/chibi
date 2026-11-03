@@ -25,6 +25,14 @@ pub ValueLayouts :: (records: Record[], fields: int[]) -> ValueLayout {
                 child = ElementType(records, type);
                 if (!found.owned[parent]) { found.owned[parent] = true; owned.append(parent); }
                 if (!found.backed[parent]) { found.backed[parent] = true; backed.append(parent); }
+            } else if (type >= MapType && type < RefType) {
+                if (!MapShaped(records, type)) { child = 0; }
+                else {
+                    child = MapValue(type);
+                    if (MapArrayValue(child)) { child = ElementType(records, child); }
+                }
+                if (!found.owned[parent]) { found.owned[parent] = true; owned.append(parent); }
+                if (!found.backed[parent]) { found.backed[parent] = true; backed.append(parent); }
             } else if (type == abi.TextStorage && !found.owned[parent]) {
                 found.owned[parent] = true;
                 owned.append(parent);
@@ -71,7 +79,7 @@ ValueValid :: (layout: ValueLayout, type: int) -> bool {
 }
 
 ValueOwned :: (type: int, owners: bool[]) -> bool {
-    if (type == abi.TextStorage || (type >= ArrayType && type < MapType)) { return true; }
+    if (type == abi.TextStorage || (type >= ArrayType && type < RefType)) { return true; }
     return type >= RecordType && type < ArrayType && owners[type - RecordType];
 }
 // Count fields in their destination storage. Array ranges and native value
@@ -93,6 +101,15 @@ ValueRecordAt :: (type: int, records: Record[], fields: int[], layout: ValueLayo
             out.append(format_text("  %owner.at{} = getelementptr inbounds {}, ptr %field{}, i32 0, i32 2\n  %owner{} = load ptr, ptr %owner.at{}\n", index, abi.TextType(), index, index, index));
             if (keep) { out.append(format_text("  call void @chibi_scalar.retain(ptr %owner{})\n", index)); }
             else { out.append(format_text("  call void @chibi_scalar.free(ptr %ctx, ptr %owner{})\n", index)); }
+        } else if (member >= MapType && member < RefType) {
+            out.append(format_text("  %map{} = load {}, ptr %field{}\n", index, abi.MapType(), index));
+            if (keep) {
+                out.append(format_text("  %kept{} = call {} @chibi_map.share({} %map{})\n", index, abi.MapType(), abi.MapType(), index));
+            } else if (queued) {
+                out.append(format_text("  call void @chibi_map.{}.drop_into(ptr %ctx, {} %map{}, ptr %pending)\n", member, abi.MapType(), index));
+            } else {
+                out.append(format_text("  call void @chibi_map.{}.drop(ptr %ctx, {} %map{})\n", member, abi.MapType(), index));
+            }
         } else if (member >= ArrayType && member < MapType) {
             out.append(format_text("  %array{} = load {}, ptr %field{}\n", index, abi.ArrayType(), index));
             if (keep) {

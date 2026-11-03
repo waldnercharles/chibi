@@ -1,0 +1,16 @@
+package void_callback
+foreign import callbacks "libcallbacks.a"
+foreign callbacks {
+    callback_visit :: (visit: fn(value: i8, flag: bool), value: i8, flag: bool) -> i32
+    callback_record :: (value: i32, flag: bool)
+}
+Visit :: (value: i8, flag: bool) {
+    text := text_from_bytes([u8(118), 105, 115, 105, 116]);
+    assert(text == "visit");
+    callback_record(i32(value), flag);
+}
+Main :: () -> int {
+    assert(callback_visit(Visit, i8(-7), true) == 93);
+    assert(callback_visit(Visit, i8(9), false) == 9);
+    return 0;
+}

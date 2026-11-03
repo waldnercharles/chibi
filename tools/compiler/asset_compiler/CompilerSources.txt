@@ -56,4 +56,5 @@ prepared_writer/Writer.chibi
 math_types/Types.chibi
 math_types/Functions.chibi
 scalar_facts/Facts.chibi
+native_abi/Abi.chibi
 native_schema/Schema.chibi

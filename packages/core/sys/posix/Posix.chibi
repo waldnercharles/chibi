@@ -33,6 +33,7 @@ foreign libc {
     getenv :: (name: cstring) -> rawptr
     strlen :: (text: rawptr) -> u64
     memcpy :: (destination: u8[], source: rawptr, count: u64) -> rawptr
+    memccpy :: (destination: rawptr, source: u8[], stop: i32, count: u64) -> rawptr
     opendir :: (path: cstring) -> rawptr
     readdir :: (directory: rawptr) -> rawptr
     closedir :: (directory: rawptr) -> i32
@@ -299,23 +300,30 @@ pub Getenv :: (name: string) -> string {
     return text_from_bytes(buffer);
 }
 
-// The names in the directory, in the order the system gives them and without "."
-// and "..". Empty when it cannot be opened (Kind tells a missing directory from
-// an empty one).
-pub List :: (path: string) -> string[] {
+// Failed enumeration never exposes a partial inventory. The errno copy buffer
+// is allocated before readdir so an allocation cannot overwrite its error.
+pub ListChecked :: (path: string) -> (names: string[], complete: bool) {
     names: string[] = [];
     directory := opendir(path);
     if directory == 0 {
-        return names;
+        return (names, false);
     }
-    record_at := readdir(directory);
-    while record_at != 0 {
+    error_address := ErrnoAddress();
+    error_bytes := Block(4);
+    head := Block(RecordLengthOffset + 2);
+    error := 0;
+    while true {
+        // The four zero bytes contain no 1, so memccpy copies all four. Its
+        // actual pointer return keeps this boundary compatible with old seeds.
+        cleared := memccpy(error_address, error_bytes, 1, 4);
+        record_at := readdir(directory);
+        if record_at == 0 {
+            copied := memcpy(error_bytes, error_address, 4);
+            error = Word32(error_bytes, 0);
+            break;
+        }
         // The record length is read from a copy of the entry's head, then
         // exactly that many bytes are copied, so nothing past the entry is read.
-        head: u8[] = [];
-        for index in 0..<RecordLengthOffset + 2 {
-            head.append(0);
-        }
         moved := memcpy(head, record_at, u64(RecordLengthOffset + 2));
         size := int(head[RecordLengthOffset]) + int(head[RecordLengthOffset + 1]) * 256;
         record: u8[] = [];
@@ -333,10 +341,16 @@ pub List :: (path: string) -> string[] {
         if text != "." && text != ".." {
             names.append(text);
         }
-        record_at = readdir(directory);
     }
     status := closedir(directory);
-    return names;
+    if (error != 0 || status != 0) { return ([], false); }
+    return (names, true);
+}
+
+// Raw platform compatibility: an unsuccessful listing remains empty. Fallible
+// callers use ListChecked to distinguish it from a successful empty directory.
+pub List :: (path: string) -> string[] {
+    return ListChecked(path).names;
 }
 
 // A finished child process (named Output so the record does not share a name with core:os's Result: the native lane keys records by name): its exit status (the negative signal number when a
@@ -1026,7 +1040,7 @@ when target.Os == target.Darwin {
     ForegroundStop: int : 17;
     ForegroundContinue: int : 19;
     ForegroundClock: int : 6;
-    ForegroundErrno :: () -> rawptr { return __error(); }
+    ErrnoAddress :: () -> rawptr { return __error(); }
 } else {
     ForegroundBlock: int : 0;
     ForegroundSetMask: int : 2;
@@ -1038,14 +1052,14 @@ when target.Os == target.Darwin {
     ForegroundStop: int : 19;
     ForegroundContinue: int : 18;
     ForegroundClock: int : 1;
-    ForegroundErrno :: () -> rawptr { return __errno_location(); }
+    ErrnoAddress :: () -> rawptr { return __errno_location(); }
 }
 
 // Thread-local errno from the last failed libc call. Read it immediately,
 // before another OS call can replace it on this thread.
 pub ErrorNumber :: () -> int {
     bytes := Block(4);
-    copied := memcpy(bytes, ForegroundErrno(), 4);
+    copied := memcpy(bytes, ErrnoAddress(), 4);
     return Word32(bytes, 0);
 }
 

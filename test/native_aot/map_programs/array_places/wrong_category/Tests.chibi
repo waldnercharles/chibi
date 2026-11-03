@@ -1,0 +1,8 @@
+package map_array_place_category
+import testing "core:testing"
+@test
+PlaceIsNotAReadBoundsFailure :: () {
+    testing.ExpectFailure(testing.Failure.IndexOutOfRange);
+    values: [int: int[]] = [1: [1]];
+    values[1][3] = 9;
+}

@@ -85,13 +85,40 @@ TypedFailureModule :: (item: native.Instruction, program: bool) -> native.Result
     return native.Emit(abi.LinuxX64(), functions, [], [], [], [item], [], [], [], [], source, [], [], [], false, 1);
 }
 @test
-TypedFailuresUseOnlyTheStandaloneRuntime :: () {
+StandaloneTypedFailuresExitAndLegacyObjectsRejectThem :: () {
     for (kind in 1..7) {
         text := Emitted(TypedFailureModule(Code(native.TypedFail, 0, 0, 0, 0, 0, i64(kind)), true));
         assert(strings.Contains(text, format_text("call void @chibi_native_failure(i32 {})\n  unreachable", kind)));
     }
     Rejects(TypedFailureModule(Code(native.TypedFail, 0, 0, 0, 0, 0, 7), false),
             "typed failures require a standalone native program");
+}
+TypedFamilyModule :: (item: native.Instruction) -> native.Result {
+    functions := [Function(abi.IntStorage, 0, 0, 0, 0, 1, 0, 0)];
+    return native.EmitFamilyLibraryStates(abi.LinuxX64(), "Typed", ["Failing"], [i64(1)], functions,
+        [], [], [], [item], [], [], [], [], [], 1000, [], -1, []);
+}
+@test
+FamilyTypedFailuresReturnThroughTheContext :: () {
+    for (kind in 1..7) {
+        text := Emitted(TypedFamilyModule(Code(native.TypedFail, 0, 0, 0, 0, 0, i64(kind))));
+        assert(strings.Contains(text, format_text("call void @chibi_native_failure_report(i32 {})", kind)));
+        assert(strings.Contains(text, "store ptr @chibi_scalar.failure.0.0, ptr %fail0.at\n  br label %failed"));
+    }
+}
+@test
+MalformedFamilyTypedFailuresAreRejected :: () {
+    for (kind in [int(-1), 0, 8]) {
+        Rejects(TypedFamilyModule(Code(native.TypedFail, 0, 0, 0, 0, 0, i64(kind))),
+            "native typed failure has no valid failure kind");
+    }
+    for (item in [Code(native.TypedFail, abi.IntStorage, 0, 0, 0, 0, 7),
+                 Code(native.TypedFail, 0, 1, 0, 0, 0, 7),
+                 Code(native.TypedFail, 0, 0, 1, 0, 0, 7),
+                 Code(native.TypedFail, 0, 0, 0, 1, 0, 7),
+                 Code(native.TypedFail, 0, 0, 0, 0, 1, 7)]) {
+        Rejects(TypedFamilyModule(item), "native typed failure has no valid failure kind");
+    }
 }
 @test
 MalformedTypedFailuresAndReservedInstructionsAreRejected :: () {

@@ -4785,8 +4785,11 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
             if (attributes.fault >= 0) {
                 return ScalarOperands.Failed(Diagnose(forest, attributes.fault, 0, attributes.message));
             }
-            if (summary.collect_tests && attributes.test && callable.package == callables[0].package) {
-                summary.tests.append(index);
+            if (summary.collect_tests && attributes.test &&
+                (callable.owner_package == summary.test_root ||
+                 strings.HasPrefix(summary.test_packages[callable.owner_package], "project:"))) {
+                selected: ScalarTest = {function: index, package: callable.owner_package};
+                summary.tests.append(selected);
             }
         }
     }
@@ -5232,7 +5235,7 @@ ScalarLibrary :: (path: string, text: string, ops: Ops, target: Target, natives:
     }
     members: TypeMember[] = [];
     constants: ConstDecl[] = [];
-    summary: ScalarEffectSummary = {wanted: false, collect_tests: false, tests: [], natives: [], direct: [], waiting: [], calls: []};
+    summary: ScalarEffectSummary = {wanted: false, collect_tests: false, tests: [], test_packages: [], test_root: 0, natives: [], direct: [], waiting: [], calls: []};
     switch ScalarModule(forest, text, path, callables, params, empty_types, members, constants, ops, target, natives,
                         ports, identities, true, [], [], [], &summary) {
         case .Failed(diagnostic):
@@ -5386,7 +5389,7 @@ pub CollectScalarGeneration :: (project: string, collection_names: string[], col
 ScalarCollect :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                   sources: string[], target: Target, names: string[], natives: Native[], ports: Port[],
                   identities: u64[], packaged: bool, os: int, arch: int, chosen: string, generation: bool) -> facts.Row[] {
-    summary: ScalarEffectSummary = {wanted: false, collect_tests: false, tests: [], natives: [], direct: [], waiting: [], calls: []};
+    summary: ScalarEffectSummary = {wanted: false, collect_tests: false, tests: [], test_packages: [], test_root: 0, natives: [], direct: [], waiting: [], calls: []};
     return ScalarCollectWithEffects(project, collection_names, collection_paths, paths, sources, target, names,
                                     natives, ports, identities, packaged, os, arch, chosen, generation, &summary);
 }
@@ -5516,6 +5519,10 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
                         for (listed in packages) {
                             roots_named.append(documents[files_of[listed.member_start]].identity);
                         }
+                    }
+                    if (summary.collect_tests) {
+                        summary.test_packages = roots_named;
+                        summary.test_root = file_packages[0];
                     }
                     // The foreign functions and procedure types the sources declare are
                     // natives to the body check. A native build owns its effects, so the

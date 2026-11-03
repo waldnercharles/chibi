@@ -1,0 +1,7 @@
+package unguarded_map_result
+Worker :: () -> [int: string] { yield; return [1: "word"]; }
+Main :: () -> int {
+    pending := Worker();
+    joined := await pending;
+    return text_byte_length(joined[1]);
+}

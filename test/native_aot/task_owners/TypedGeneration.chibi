@@ -1,0 +1,72 @@
+package owned_typed_generation
+
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fclose :: (stream: rawptr) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+}
+Payload :: struct { words: string[]; numbers: int[]; }
+Exists :: (path: string) -> bool { return access(path, 0) == 0; }
+Mark :: (path: string) {
+    stream := fopen(path, "wb");
+    assert(stream != 0);
+    closed := fclose(stream);
+    assert(closed == 0);
+}
+Text :: (count: int) -> string { return text_from_bytes(resize([u8(120)], count)); }
+Optional :: (present: bool) -> int? { if present { return 42; } return nil; }
+Use :: (text: string, value: int) -> int { assert(text_byte_length(text) == 19); return value; }
+Read :: (present: bool) -> int {
+    words := [Text(3), Text(5)];
+    assert(text_byte_length(words[0]) + text_byte_length(words[1]) == 8);
+    // The first argument is still owned when the second argument fails.
+    return Use(Text(19), Optional(present)!);
+}
+Caller :: (present: bool) -> int {
+    payload: Payload = {words: [Text(7), Text(11)], numbers: [int(11), 31]};
+    alias := payload;
+    assert(text_byte_length(alias.words[1]) == 11);
+    for row in [payload] {
+        assert(row.numbers[0] == 11);
+        value := Read(present);
+        Mark("after-unwrap");
+        return value;
+    }
+    return 1;
+}
+Worker :: () -> int {
+    owned := [Text(13), Text(17)];
+    while !Exists("allow-old") { yield; }
+    assert(text_byte_length(owned[0]) == 13);
+    if Exists("unwrap-await-case") || Exists("unwrap-immediate-case") { return await Parent(); }
+    return Caller(false);
+}
+Child :: () -> int {
+    owned := [Text(23), Text(29)];
+    if !Exists("unwrap-immediate-case") && !Exists("spawn-immediate-case") { yield; }
+    assert(text_byte_length(owned[0]) == 23);
+    return Caller(false);
+}
+Parent :: () -> int {
+    owned := [Text(31), Text(37)];
+    value := await Child();
+    Mark("after-await");
+    return value + text_byte_length(owned[0]);
+}
+Main :: () -> int {
+    if Exists("positive-case") { return Caller(true); }
+    if Exists("sync-case") { return Caller(false); }
+    if Exists("spawn-immediate-case") {
+        child := Child();
+        Mark("after-spawn");
+        return 0;
+    }
+    if !Exists("frame-case") { worker := Worker(); }
+    Mark("owner-ready");
+    return 0;
+}
+Frame :: () -> int {
+    if Exists("frame-case") { return Caller(false); }
+    return 0;
+}

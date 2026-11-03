@@ -520,10 +520,7 @@ ManagedFrame :: (shape: Function, slots: int[], locals: int[], records: Record[]
     if (TaskFrameRoot(records, fields, layout, shape.result) || ValueCollectorOwner(values, shape.result)) {
         // One 32-byte persistent node. Unlike local snapshots, the promise
         // remains a root through final suspension until its last observer.
-        trace := "pointer";
-        if (shape.result == ViewType) { trace = "view"; }
-        else if (shape.result == ArrayType + PointerType) { trace = "array"; }
-        else if (shape.result != PointerType) { trace = format_text("record{}", shape.result - RecordType); }
+        trace := ManagedTraceName(shape.result);
         prologue.append("  %managed.promise = alloca %chibi.managed.persistent\n  store %chibi.managed.persistent zeroinitializer, ptr %managed.promise\n");
         attach.append(format_text("  call void @chibi_managed.hold(ptr %managed.heap, ptr %managed.promise, ptr %result0, ptr @chibi_managed.trace.{})\n", trace));
         destroy = format_text("  store {} zeroinitializer, ptr %result0\n  call void @chibi_managed.unhold(ptr %managed.promise)\n", TypeName(shape.result));
@@ -647,8 +644,25 @@ ManagedTraceRuntime :: () -> string {
         "  unreachable\n",
         "exit:\n",
         "  ret void\n",
-        "}\n",
-        "define internal void @chibi_managed.trace.array(ptr %heap, ptr %slot) {\n",
+        "}\n"
+    ], "");
+    text = strings.ReplaceAll(text, "$P", abi.ManagedPointerType());
+    text = strings.ReplaceAll(text, "$O", format_text("{}", abi.ManagedArrayOwnerOffset));
+    return strings.Concatenate([text, ManagedArrayTraceRuntime(ArrayType + PointerType)]);
+}
+
+// Backing edges descend through the validated acyclic value-type graph.
+// Pointer edges only queue cells, so runtime cycles never recurse here.
+ManagedTraceName :: (type: int) -> string {
+    if (type == PointerType) { return "pointer"; }
+    if (type == ViewType) { return "view"; }
+    if (type == ArrayType + PointerType) { return "array"; }
+    if (type >= ArrayType && type < MapType) { return format_text("array{}", type - ArrayType - RecordType); }
+    return format_text("record{}", type - RecordType);
+}
+ManagedArrayTraceRuntime :: (type: int) -> string {
+    text := strings.Join([
+        "define internal void @chibi_managed.trace.$N(ptr %heap, ptr %slot) {\n",
         "entry:\n",
         "  %value = load $A, ptr %slot\n",
         "  %data = extractvalue $A %value, 2\n",
@@ -680,7 +694,7 @@ ManagedTraceRuntime :: () -> string {
         "trace:\n",
         "  %wide = zext i32 %index to i64\n",
         "  %at = getelementptr $P, ptr %data, i64 %wide\n",
-        "  call void @chibi_managed.trace.pointer(ptr %heap, ptr %at)\n",
+        "  call void @chibi_managed.trace.$T(ptr %heap, ptr %at)\n",
         "  %next = add i32 %index, 1\n",
         "  br label %items\n",
         "bad:\n",
@@ -690,8 +704,10 @@ ManagedTraceRuntime :: () -> string {
         "  ret void\n",
         "}\n"
     ], "");
+    text = strings.ReplaceAll(text, "$N", ManagedTraceName(type));
+    text = strings.ReplaceAll(text, "$T", ManagedTraceName(type - ArrayType));
     text = strings.ReplaceAll(text, "$A", abi.ArrayType());
-    text = strings.ReplaceAll(text, "$P", abi.ManagedPointerType());
+    text = strings.ReplaceAll(text, "$P", TypeName(type - ArrayType));
     text = strings.ReplaceAll(text, "$O", format_text("{}", abi.ManagedArrayOwnerOffset));
     return strings.ReplaceAll(text, "$E", format_text("{}", abi.ManagedArrayEpochOffset));
 }
@@ -726,7 +742,7 @@ ManagedPinsValid :: (code: Instruction[], slots: int[]) -> string {
             // Frame cleanup memberships can surround the same collecting call.
         } else if (length(active) > 0) {
             composite_find := item.op == ArrayContains && item.target > 0 && item.literal >= i64(RecordType);
-            if (called || (!composite_find && item.op != ClockSample && item.op != Call && item.op != ForeignCall && item.op != Format && item.op != ManagedNew && item.op != Suspend && item.op != Delay && item.op != AwaitHandle && item.op != AwaitResult && item.op != Fail)) {
+            if (called || (!composite_find && item.op != ClockSample && item.op != Call && item.op != ForeignCall && item.op != Format && item.op != ManagedNew && item.op != Suspend && item.op != Delay && item.op != AwaitHandle && item.op != AwaitResult && item.op != Fail && item.op != TypedFail)) {
                 return "native collector pins must bracket one collecting call";
             }
             called = true;

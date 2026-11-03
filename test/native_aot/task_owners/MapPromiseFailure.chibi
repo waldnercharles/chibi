@@ -1,0 +1,16 @@
+package owned_map_promise_failure
+
+Text :: (count: int) -> string { return text_from_bytes(resize([u8(120)], count)); }
+Ready :: () -> [int: string] { if false { yield } return [1: Text(19)]; }
+Broken :: (value: [int: string]) -> [int: string] {
+    yield;
+    assert(text_byte_length(value[1]) == 19);
+    assert(false, "map promise failure releases parameter and completed result");
+    return value;
+}
+Main :: () -> int {
+    completed := Ready();
+    joined := await completed;
+    if joined is Cancelled { return 1; }
+    else { value := joined; failed := await Broken(value); return text_byte_length(failed[1]); }
+}

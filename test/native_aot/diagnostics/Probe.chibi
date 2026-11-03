@@ -94,13 +94,13 @@ TypedEffects :: () {
         }
     }
     assert(at == length(collected.effects), "one mask per function, no facts payload overload");
-    assert(length(collected.tests) == 0, "ordinary effects callers do not request test metadata");
+    assert(length(collected.tests) == 0 && length(collected.test_packages) == 0, "ordinary effects callers do not request test metadata");
     assert(masks["Main"] == 0 && masks["Pure"] == 0 && masks["CallsPure"] == 0, "local mutation and pure calls stay pure");
     assert(masks["Leaf"] == 3 && masks["Mid"] == 3 && masks["CycleA"] == 3 && masks["CycleB"] == 3 &&
            masks["Imported"] == 3, "foreign read/write effects close across calls and cycles");
     rejected := compiler.CollectScalarProgramWithEffects("/project", [], [], ["Main.chibi"],
         ["package main\nMain :: () -> int { return Missing(); }\n@test Good :: () {}\n"], TargetFacts(), Names(), Natives(), Ports(), Identities(), 1, 1, "Main", true);
-    assert(length(rejected.effects) == 0 && length(rejected.tests) == 0 && rejected.rows[1].kind == facts.RejectionRow, "rejection publishes no partial masks or selected tests");
+    assert(length(rejected.effects) == 0 && length(rejected.tests) == 0 && length(rejected.test_packages) == 0 && rejected.rows[1].kind == facts.RejectionRow, "rejection publishes no partial masks or selected tests");
 }
 
 Collect :: (paths: string[], sources: string[]) -> facts.Row[] {

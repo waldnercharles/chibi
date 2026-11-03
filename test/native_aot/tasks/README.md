@@ -56,7 +56,7 @@ NaN or infinity returns 1 and leaves time and tasks unchanged. Without explicit
 host time, the scheduler uses the platform monotonic clock. These optional
 exports preserve the existing no-argument polling ABI.
 
-Promises contain pointer-free numeric, bool, string, array or record values.
+Promises contain pointer-free numeric, bool, string, array, map or record values.
 Program-owned collector contexts also support pointer and nullable-pointer
 promises, pointer-only nested record promises, pointer-array promises and
 copyable inline records containing pointer-array owners. `managed_pointers/run.sh`
@@ -66,6 +66,8 @@ helpers. Its observer keeps the completed frame alive until that read finishes.
 Inline awaits move the value and clear the child promise before destruction.
 Destroying a frame drops its owned promise once, including completion without
 observers. `task_owners/run.sh` covers cancellation, failure and reload balance.
+Map results retain the existing supported key/payload domain; joins copy their
+counted descriptors, and old-generation results keep independent map values.
 
 This is a tested subset, not the VM deletion gate. Task-valued parameters and
 task-observer arrays remain closed. The source producer

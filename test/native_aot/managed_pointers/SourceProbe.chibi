@@ -105,11 +105,11 @@ Main :: () -> int {
             }
             module := format_text("{}/source-audit-{}-{}.ll", work, index, forced);
             checked_audit := audit.text;
-            // Records keeps 10000 96-byte Link cells live. A later threshold
+            // Records and RecordArrays keep 10000 96-byte Link cells live. A later threshold
             // can retain twice those bytes in smaller 68-byte numeric cells:
             // fewer than 29000 cells, plus the few independently owned arrays.
             // Other fixtures retain the tighter dead-allocation bound.
-            if (strings.HasSuffix(args[index], "/Records.ll")) {
+            if ((strings.HasSuffix(args[index], "/Records.ll") || strings.HasSuffix(args[index], "/RecordArrays.ll"))) {
                 checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %peak, 30000");
             }
             if (strings.HasSuffix(args[index], "/StringArrays.ll") || strings.HasSuffix(args[index], "/ViewStrings.ll") || strings.HasSuffix(args[index], "/ViewOwned.ll") || strings.HasSuffix(args[index], "/TaskViews.ll") || strings.HasSuffix(args[index], "/TaskViewPromises.ll")) {

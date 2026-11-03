@@ -157,3 +157,15 @@ be repaired by that RHS. The final store resolves the current owners again.
 record/map elements. `DeepArrayCopies` requires exactly three detach allocations
 for shared map/map/array and array/map/array paths, then zero allocations across
 4,096 further unique writes. Bounds and owner failures remain unclassified.
+
+The mapped-array methods append, extend, remove_index and resize use the same
+long typed paths. Their existing three-operand forms keep their original path.
+Keys are captured once, arguments finish before canonical lookup, and no initial
+bounds read is inserted for a method. Extend holds its argument descriptor
+through publication, including self-extension; resize publishes its independent
+result before releasing the previous leaf. Method path keys are borrowed.
+`DeepMethods` covers root replacement, binary keys, owned records and missing
+owners. Growing an authored-record array without initialized rows remains a
+failure; shrinking is covered. `DeepMethodCopies` checks three detach allocations
+for shared append, self-extend and resize, with zero allocations for 4,096
+append/remove cycles that stay within the leaf array's capacity.

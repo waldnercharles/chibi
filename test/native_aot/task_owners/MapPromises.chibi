@@ -1,0 +1,62 @@
+package owned_map_promises
+
+Text :: (count: int) -> string { return text_from_bytes(resize([u8(120)], count)); }
+Make :: (count: int) -> [int: string] { return [1: Text(count), 2: Text(count + 1)]; }
+Size :: (value: [int: string]) -> int { count := 0; for (key, text in value) { count += 1; } return count; }
+Worker :: (count: int) -> [int: string] { saved := Make(count); yield; return saved; }
+Ready :: () -> [int: string] { if false { yield } return Make(31); }
+Pass :: (value: [int: string]) -> [int: string] { yield; return value; }
+Nested :: () -> [int: string] { return await Worker(23); }
+Empty :: () -> [int: string] { yield; return [:]; }
+Tables :: () -> [int: string][] { yield; return [Make(11), Make(13)]; }
+NestedMaps :: () -> [int: [string: string]] { yield; return [1: ["key": Text(17)]]; }
+Keep :: (value: [int: string]) -> int { while true { yield } }
+Count :: (add: int) -> int { total: retain int = 0; total += add; return total; }
+Detached :: (value: [int: string]) -> int { yield; Count(text_byte_length(value[1])); return 0; }
+Spawn :: () { value := Make(3); pending := Detached(value); }
+Main :: () -> int {
+    pending := Worker(19);
+    alias := pending;
+    yield; yield;
+    joined := await pending;
+    if joined is Cancelled { return 1; }
+    else {
+        value := joined;
+        value[1] = Text(99);
+        value[3] = Text(100);
+        assert(text_byte_length(value[1]) == 99 && text_byte_length(value[2]) == 20);
+    }
+    again := await alias;
+    if again is Cancelled { return 2; }
+    else { value := again; assert(Size(value) == 2 && text_byte_length(value[1]) == 19); }
+    ready := Ready();
+    yield;
+    immediate := await ready;
+    if immediate is Cancelled { return 3; }
+    else { value := immediate; assert(text_byte_length(value[1]) == 31); }
+    direct: [int: string] = await Worker(7);
+    assert(text_byte_length(direct[1]) == 7);
+    nested := await Nested();
+    assert(text_byte_length(nested[1]) == 23);
+    empty := await Empty();
+    assert(Size(empty) == 0);
+    tables := await Tables();
+    assert(text_byte_length(tables[0][1]) == 11 && text_byte_length(tables[1][1]) == 13);
+    nested_maps := await NestedMaps();
+    assert(text_byte_length(nested_maps[1]["key"]) == 17);
+    offered := Make(41);
+    independent := Pass(offered);
+    offered = Make(51);
+    copied := await independent;
+    if copied is Cancelled { return 4; }
+    else { value := copied; assert(text_byte_length(value[1]) == 41); }
+    assert(text_byte_length(offered[1]) == 51);
+    cancelled := Keep(offered);
+    yield; cancel cancelled
+    gone := await cancelled;
+    assert(gone is Cancelled);
+    for index in 0..<64 { orphan := Ready(); }
+    Spawn(); yield; yield;
+    counted := Count(0); assert(counted == 3);
+    return 0;
+}

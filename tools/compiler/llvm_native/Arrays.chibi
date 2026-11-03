@@ -114,6 +114,11 @@ ArrayUses :: (code: Instruction[]) -> int[] {
     for (item in code) {
         type := item.type;
         flags := 0;
+        if (ViewOperation(item.op)) {
+            type = ArrayType + ViewElement(item);
+            if (item.op == ViewClone || item.op == ViewSlice) { flags = ArrayAllocation; }
+            if (item.op == ViewSet) { flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation; }
+        }
         if (item.op == ManagedNew && ManagedArray(item.right)) {
             type = item.right;
             flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArraySharing;

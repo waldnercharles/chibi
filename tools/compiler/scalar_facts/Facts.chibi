@@ -296,6 +296,8 @@ pub ArrayReferencePlace: int : -3;
 // to ForeignReversed: evaluation stays in source order, then the two consumed
 // argument slots are passed in reverse order. All other foreign calls use 0.
 pub ForeignRow: int : 38;
+// Value uses native_abi's direct/indirect scalar/void call modes. A void
+// action's internal IntType zero is only statement plumbing, not its C ABI.
 pub ForeignReversed: int : 1;
 // A call operand that passes the variable `value`, of its `type`, by
 // reference: the callee's reference parameter reads and writes that variable.
@@ -609,6 +611,9 @@ pub ArrayPlaceCheck: int : 25;
 // A functional value with its first structurally equal element removed.
 // An absent element returns an independent array value. Inputs are array,item.
 pub ArrayWithoutItem: int : 27;
+// A strict half-open copy: array,start,end -> optional array. Invalid bounds
+// produce Nil without allocation; an empty valid range produces Some(empty).
+pub ArrayRange: int : 28;
 // An immediate nested-array place adds its saved outer index after the
 // canonical RefRow. Existing mutating operators still end the root assignment.
 pub NestedArrayPlace: int : -1;

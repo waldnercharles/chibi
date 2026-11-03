@@ -1,0 +1,6 @@
+package native_scope_void_rejection
+foreign { chibi_native_scope_begin :: (steps: u64) }
+Main :: () -> int {
+    chibi_native_scope_begin(1000);
+    return 0;
+}

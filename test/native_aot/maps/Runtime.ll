@@ -7,6 +7,7 @@ declare void @exit(i32) noreturn
 declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)
 
 @map_test.active = internal global i64 0
+@map_test.total = internal global i64 0
 @map_test.failure = private constant [25 x i8] c"map assertion %d failed\0A\00"
 @map_test.leak = private constant [28 x i8] c"map allocations left: %lld\0A\00"
 @map_test.context = internal global { ptr, ptr, ptr, ptr, ptr } {
@@ -28,6 +29,9 @@ count:
   %before = load i64, ptr @map_test.active
   %after = add i64 %before, 1
   store i64 %after, ptr @map_test.active
+  %total = load i64, ptr @map_test.total
+  %allocated = add i64 %total, 1
+  store i64 %allocated, ptr @map_test.total
   ret ptr %memory
 }
 
@@ -64,6 +68,81 @@ bad:
 ; Check logical space bounds after a map shrinks. The actual map helpers
 ; build and delete 4096 entries; the final64 must not keep clearing an index
 ; sized for the historical peak during later churn.
+; Sharing a wide map fans out in constant work per descriptor, with no
+; entry clones. Nonconsuming raw mutations keep their old share live, but
+; must release any replaced allocation of the newly detached clone.
+define internal i1 @map_test.sharing(ptr %ctx) {
+entry:
+  %copies = alloca [4096 x { i32, i32, i32, i32, ptr, ptr }]
+  br label %build
+build:
+  %i = phi i32 [ 0, %entry ], [ %next, %put ]
+  %map = phi { i32, i32, i32, i32, ptr, ptr } [ zeroinitializer, %entry ], [ %added, %put ]
+  %full = icmp eq i32 %i, 64
+  br i1 %full, label %built, label %put
+put:
+  %added = call { i32, i32, i32, i32, ptr, ptr } @chibi_map.2150.set(ptr %ctx, { i32, i32, i32, i32, ptr, ptr } %map, i32 %i, i32 %i, i1 true)
+  %next = add i32 %i, 1
+  br label %build
+built:
+  %before = load i64, ptr @map_test.total
+  br label %share
+share:
+  %s = phi i32 [ 0, %built ], [ %snext, %shared ]
+  %all = icmp eq i32 %s, 4096
+  br i1 %all, label %mutate, label %shared
+shared:
+  %copy = call { i32, i32, i32, i32, ptr, ptr } @chibi_map.share({ i32, i32, i32, i32, ptr, ptr } %map)
+  %at = getelementptr [4096 x { i32, i32, i32, i32, ptr, ptr }], ptr %copies, i32 0, i32 %s
+  store { i32, i32, i32, i32, ptr, ptr } %copy, ptr %at
+  %snext = add i32 %s, 1
+  br label %share
+mutate:
+  %after = load i64, ptr @map_test.total
+  %allocation_free = icmp eq i64 %before, %after
+  ; The entries prefix has a fixed40-byte budget, reused as a release node.
+  %data = extractvalue { i32, i32, i32, i32, ptr, ptr } %map, 4
+  %owner = getelementptr i8, ptr %data, i64 -40
+  %references = load i64, ptr %owner
+  %prefix_valid = icmp eq i64 %references, 4097
+  %first = load { i32, i32, i32, i32, ptr, ptr }, ptr %copies
+  %changed = call { i32, i32, i32, i32, ptr, ptr } @chibi_map.2150.set(ptr %ctx, { i32, i32, i32, i32, ptr, ptr } %first, i32 1, i32 99, i1 true)
+  store { i32, i32, i32, i32, ptr, ptr } %changed, ptr %copies
+  %detached = load i64, ptr @map_test.total
+  %cost = sub i64 %detached, %after
+  %one_clone = icmp eq i64 %cost, 2
+  %old_value = call i32 @chibi_map.2150.get({ i32, i32, i32, i32, ptr, ptr } %map, i32 1)
+  %new_value = call i32 @chibi_map.2150.get({ i32, i32, i32, i32, ptr, ptr } %changed, i32 1)
+  %old_ok = icmp eq i32 %old_value, 1
+  %new_ok = icmp eq i32 %new_value, 99
+  %missing = call { i32, i32, i32, i32, ptr, ptr } @chibi_map.2150.delete(ptr %ctx, { i32, i32, i32, i32, ptr, ptr } %map, i32 999, i1 true)
+  %after_missing = load i64, ptr @map_test.total
+  %missing_free = icmp eq i64 %detached, %after_missing
+  %retained = call { i32, i32, i32, i32, ptr, ptr } @chibi_map.share({ i32, i32, i32, i32, ptr, ptr } %missing)
+  %raw = call { i32, i32, i32, i32, ptr, ptr } @chibi_map.2150.set(ptr %ctx, { i32, i32, i32, i32, ptr, ptr } %retained, i32 1000, i32 4, i1 false)
+  call void @chibi_map.2150.drop(ptr %ctx, { i32, i32, i32, i32, ptr, ptr } %raw)
+  call void @chibi_map.2150.drop(ptr %ctx, { i32, i32, i32, i32, ptr, ptr } %retained)
+  call void @chibi_map.2150.drop(ptr %ctx, { i32, i32, i32, i32, ptr, ptr } %missing)
+  br label %drop
+drop:
+  %d = phi i32 [ 0, %mutate ], [ %dnext, %dropped ]
+  %done = icmp eq i32 %d, 4096
+  br i1 %done, label %check, label %dropped
+dropped:
+  %dat = getelementptr [4096 x { i32, i32, i32, i32, ptr, ptr }], ptr %copies, i32 0, i32 %d
+  %value = load { i32, i32, i32, i32, ptr, ptr }, ptr %dat
+  call void @chibi_map.2150.drop(ptr %ctx, { i32, i32, i32, i32, ptr, ptr } %value)
+  %dnext = add i32 %d, 1
+  br label %drop
+check:
+  %values = and i1 %old_ok, %new_ok
+  %costs = and i1 %allocation_free, %one_clone
+  %valid = and i1 %values, %costs
+  %result = and i1 %valid, %missing_free
+  %all_valid = and i1 %result, %prefix_valid
+  ret i1 %all_valid
+}
+
 define internal i1 @map_test.bounds(ptr %ctx) {
 entry:
   br label %insert
@@ -106,7 +185,9 @@ check:
   %planning_valid = and i1 %small_valid, %slots_valid
   %capacity_valid = and i1 %large_valid, %planning_valid
   %valid = and i1 %bounded, %capacity_valid
-  ret i1 %valid
+  %sharing = call i1 @map_test.sharing(ptr %ctx)
+  %result = and i1 %valid, %sharing
+  ret i1 %result
 }
 
 define i32 @main() {

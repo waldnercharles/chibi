@@ -195,6 +195,15 @@ pub ValueTag :: (storage: int) -> int {
 pub ContextType :: () -> string {
     return "{ ptr, ptr, ptr, ptr, ptr }";
 }
+// Foreign calls keep an internal zero int for a discarded void action;
+// these modes select its actual C signature, never a fabricated C result.
+pub ForeignDirect: int : 0;
+pub ForeignIndirect: int : 1;
+pub ForeignDirectVoid: int : 2;
+pub ForeignIndirectVoid: int : 3;
+pub ForeignCallMode :: (mode: int) -> bool { return mode >= ForeignDirect && mode <= ForeignIndirectVoid; }
+pub ForeignIsIndirect :: (mode: int) -> bool { return mode == ForeignIndirect || mode == ForeignIndirectVoid; }
+pub ForeignIsVoid :: (mode: int) -> bool { return mode == ForeignDirectVoid || mode == ForeignIndirectVoid; }
 // Standalone managed execution extends the legacy prefix with one stable
 // execution-family heap owner. Generic C-bundle/library admission stays
 // separate until its embedding contract supplies this owner explicitly.

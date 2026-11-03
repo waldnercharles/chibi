@@ -9,6 +9,14 @@ pinned; both platforms reproduce its compiler byte for byte. Windows has
 self-reproduction evidence but no published native seed yet. [PLAN.md](../PLAN.md)
 records exact revisions, test results and remaining deletion gates.
 
+Direct foreign calls and calls through procedure values support a void C
+result. Their LLVM declarations and calls use `void`; the compiler's discarded
+statement value does not cross the foreign ABI. Native tests exercise sorting
+shared buffers, temporary-buffer cleanup, receiver replacement during argument
+evaluation, and indirect file-position changes. Program-owned quota/test
+helpers retain their exact signatures. Authored void callback adapters remain
+a separate admission gap.
+
 The `85b37934c` compiler passes 442 compiler tests, including source-ordered
 named callback arguments, primitive optionals, generic bool constants and empty
 switch arms. Native maps, array copy-on-write, owned records/unions, tasks and

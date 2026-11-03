@@ -193,8 +193,9 @@ pub ArrayBytes: int : 48;
 // the instruction's type. It passes no context and never fails. A small
 // integer or bool carries the extension the C ABI asks of its caller. An
 // argument may be a string, passed as the pointer to its NUL-ended bytes. With
-// `left` 1 it calls the address in its first argument instead, and its symbol
-// text is empty.
+// `left` selects native_abi.ForeignDirect/Indirect or their Void modes.
+// An indirect call consumes its first argument as the address and has empty
+// symbol text. Void calls emit the true C ABI and produce an internal zero int.
 pub ForeignCall: int : 49;
 // A module's retained states: scalars that outlive a call, which a host that
 // replaces the module reads out and sets in the new one. StateLoad declares
@@ -251,7 +252,7 @@ pub TextRelease: int : 59;
 // Its key is a bool, an integer or a string; values are scalars, strings or
 // records with scalar leaves. Its zero,
 // the Constant of literal 0, is the empty map, which owns no memory. A map is a
-// value, so a producer copies with MapCopy where it would share, and every
+// value, so a producer acquires another owner with ValueCopy, and every
 // instruction that changes a map consumes the one it reads. The instructions
 // that read a map name its type: in `type` when they give a map, in `literal`
 // when they do not.
@@ -270,14 +271,16 @@ pub MapHas: int : 62;
 // `target`; type is the map type. A new key goes last, and an old one keeps its
 // place. The map takes one reference of a string key and one of a string value;
 // a key already present gives the new key's back. Literal 1 gives back the
-// allocations a growth replaces.
+// allocations a growth replaces and consumes the input owner. A shared
+// input detaches first; literal 0 retains its prior share when detaching.
 pub MapSet: int : 63;
 // output = the left slot's map without the right slot's key, or as it is
 // for a key it lacks. Indexed maps mark dead entries and compact amortized; it
 // borrows the key. Literal 1 gives back the allocations the removal replaces.
 pub MapDelete: int : 64;
 // output = a map of its own allocations equal to the left slot's; type is the
-// map type.
+// map type. It clones only the immediate entries and shares counted children;
+// ValueCopy instead shares the entries too.
 pub MapCopy: int : 65;
 // Gives the left slot's map's allocations, and each string it holds, back to the
 // context. It gives nothing; type is the map type.
@@ -299,7 +302,7 @@ pub MapLiveAt: int : 70;
 // and the reference lives as long as the local does.
 pub FieldAddress: int : 71;
 // An independent owned value in output: a managed aggregate or an
-// array of counted elements. Owned array backing can be shared until mutation;
+// array of counted elements, or a map. Owned backing can be shared until mutation;
 // a null-owner array imports its caller-owned storage. Use ArrayLoan before
 // exposing shared backing to a mutable foreign call; raw ForeignCall does not
 // supply uniqueness or write a replaced descriptor back to its source.
@@ -312,9 +315,10 @@ pub ValueDrop: int : 73;
 // repeat left in right. The C call makes matching places unique only after
 // all arguments have finished, preserving aliases and replaced places.
 pub ArrayLoan: int : 74;
-// Borrows the existing int[] entry at left map/right key; literal is its map
-// type. Resolve after argument callbacks, then consume/update the descriptor
-// immediately. Map mutation or replacement invalidates this address.
+// Borrows an existing array entry at left map/right key; literal is its map
+// type. Target 0 observes a map value; target 1 takes a RefMap and detaches
+// and publishes its canonical owner before borrowing the entry. Resolve after
+// callbacks and immediately update the descriptor. Map mutation invalidates it.
 pub MapValueAddress: int : 75;
 // A new scalar managed cell initialized from left, whose value type is right.
 // The result is PointerType, literal its stable semantic pointee identity.
@@ -1046,8 +1050,8 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             return Result.Rejected(-1, "native scalar local cannot hold a managed value or pointer");
         }
     }
-    if (waiting[function] && !TaskFramePlain(lifecycle, result)) {
-        return Result.Rejected(-1, "native waiting results require numbers, bools, or records without owners");
+    if (waiting[function] && !TaskPromiseValue(records, lifecycle, result, ProgramMode(mode) || family)) {
+        return Result.Rejected(-1, "native waiting results require a pointer-free value and program-owned cleanup");
     }
     definitions: int[] = [];
     loan_uses: bool[] = [];
@@ -1217,6 +1221,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             (!Typed(slots, item.left, item.type) ||
              (ElementType(records, item.type) != 0 && item.type != ArrayType + PointerType && !ValueValid(lifecycle, item.type - ArrayType)) ||
              (ElementType(records, item.type) == 0 &&
+              !MapPayloadValid(records, lifecycle, item.type) &&
               (item.type < RecordType || item.type >= ArrayType || !ValueValid(lifecycle, item.type) || !lifecycle.owned[item.type - RecordType])) ||
              item.right != 0 || item.target != 0 || item.literal != 0 || (item.op == ValueDrop && item.output != 0))) {
             return Result.Rejected(base + pc, "native value lifecycle requires an array or managed aggregate operand");
@@ -1261,7 +1266,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             if (foreign_abi == InvalidForeignABI) {
                 return Result.Rejected(base + pc, "native foreign call differs from its operands");
             }
-            if (!ProgramMode(mode) && item.left == 0 && ClockFactorySymbol(texts[int(item.literal)])) {
+            if (!ProgramMode(mode) && !abi.ForeignIsIndirect(item.left) && ClockFactorySymbol(texts[int(item.literal)])) {
                 return Result.Rejected(base + pc, "native clock grant factories belong to the embedding executable");
             }
         }
@@ -1299,7 +1304,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if (((item.op == TaskCopy || item.op == TaskDrop) && item.type != TaskType) ||
             (item.op == TaskRunning && item.type != abi.BoolStorage) ||
-            (item.op == AwaitResult && !TaskResultValid(records, fields, slots, lifecycle, item))) {
+            (item.op == AwaitResult && !TaskResultValid(records, fields, slots, lifecycle, ProgramMode(mode) || family, item))) {
             return Result.Rejected(base + pc, "native task observer or result differs from its type");
         }
         if ((item.op == CancelAfter && !Typed(slots, item.right, abi.DoubleStorage)) ||
@@ -1778,7 +1783,10 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         }
     } else if (item.op == ValueCopy) {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
-        if (item.type >= ArrayType && item.type < MapType) {
+        if (item.type >= MapType && item.type < RefType) {
+            out = format_text("{}  %copied{} = call {} @chibi_map.share({} %a{})\n", out, pc, type, type, pc);
+            out = format_text("{}{}", out, Store(format_text("%copied{}", pc), item.type, "s", item.output));
+        } else if (item.type >= ArrayType && item.type < MapType) {
             out = format_text("{}  %copied{} = call {} @chibi_array.{}.copy(ptr %ctx, {} %a{})\n", out, pc, type, item.type, type, pc);
             out = format_text("{}{}", out, Store(format_text("%copied{}", pc), item.type, "s", item.output));
         } else {
@@ -1786,7 +1794,10 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
             out = format_text("{}  call void @chibi_value.{}.keep_at(ptr %ctx, ptr %s{})\n", out, item.type, item.output);
         }
     } else if (item.op == ValueDrop) {
-        if (item.type >= ArrayType && item.type < MapType) {
+        if (item.type >= MapType && item.type < RefType) {
+            out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
+            out = format_text("{}  call void @chibi_map.{}.drop(ptr %ctx, {} %a{})\n", out, item.type, type, pc);
+        } else if (item.type >= ArrayType && item.type < MapType) {
             out = format_text("{}{}", out, ArrayDropped(item, pc));
         } else {
             out = format_text("{}  call void @chibi_value.{}.drop_at(ptr %ctx, ptr %s{})\n", out, item.type, item.left);
@@ -1912,17 +1923,25 @@ ArrayRefs :: (record_owners: bool[], type: int, data: string, count: string, kee
 // A piece's helper closure: ownership instructions, container payloads and
 // recursively owned fields. One worklist serves both value and array modules.
 ValueUse :: struct { records: bool[]; ranges: bool[]; by_value: bool[]; arrays: int[]; }
-ValueUses :: (code: Instruction[], records: Record[], fields: int[], owners: bool[]) -> ValueUse {
+ValueUses :: (code: Instruction[], records: Record[], fields: int[], owners: bool[], promises: int[]) -> ValueUse {
     used: ValueUse = {records: resize([false], length(records)), ranges: resize([false], length(records)),
-                      by_value: resize([false], length(records)), arrays: ArrayUses(code)};
+                      by_value: resize([false], length(records)), arrays: ArrayUses(code, promises)};
     pending: int[] = [];
+    for (type in promises) {
+        if (type < RecordType || type >= ArrayType || !owners[type - RecordType]) { continue; }
+        index := type - RecordType;
+        used.by_value[index] = true;
+        if (!used.records[index]) { used.records[index] = true; pending.append(index); }
+    }
     for (item in code) {
         type := 0;
         if (item.op == OwnerPin || item.op == ValueCopy || item.op == ValueDrop || item.op == StateLoad || item.op == StateStore) { type = item.type; }
-        if (MapOperation(item.op)) { type = MapValue(MapUsed(item)); }
+        if (item.op == AwaitResult) { type = item.right; }
+        mapped := MapInstructionType(item);
+        if (mapped != 0) { type = MapValue(mapped); }
         if (type < RecordType || type >= ArrayType || !owners[type - RecordType]) { continue; }
         index := type - RecordType;
-        if (item.op == OwnerPin || MapOperation(item.op)) { used.by_value[index] = true; }
+        if (item.op == OwnerPin || item.op == AwaitResult || mapped != 0) { used.by_value[index] = true; }
         if (!used.records[index]) { used.records[index] = true; pending.append(index); }
     }
     for (index in 0..<length(used.arrays)) {
@@ -1949,7 +1968,7 @@ ValueUses :: (code: Instruction[], records: Record[], fields: int[], owners: boo
     }
     return used;
 }
-ValueModule :: (used: ValueUse, records: Record[], fields: int[], layout: ValueLayout) -> string {
+ValueModule :: (used: ValueUse, records: Record[], fields: int[], layout: ValueLayout, drain: bool = true) -> string {
     out: string[] = [];
     queued := false;
     for (index in 0..<length(records)) {
@@ -1967,7 +1986,7 @@ ValueModule :: (used: ValueUse, records: Record[], fields: int[], layout: ValueL
             out.append(ValueRecordRange(type, false, layout.backed[index]));
         }
     }
-    if (queued) { out.append(ValueDrain()); }
+    if (queued && drain) { out.append(ValueDrain()); }
     return strings.Join(out, "");
 }
 // The helpers a module that counts references calls: one reference added to or
@@ -1997,6 +2016,10 @@ TextHelpers :: () -> string {
 // Whether `code` counts references, so the module has the helpers.
 Counts :: (code: Instruction[]) -> bool {
     for (item in code) {
+        if ((item.op == ValueCopy || item.op == ValueDrop) && item.type >= MapType && item.type < RefType) {
+            if (MapHolds(item.type)) { return true; }
+            continue;
+        }
         if (TextSequenceOperation(item.op) || item.op == ArrayValueAddress || item.op == OwnerPin || item.op == TextRetain || item.op == TextRelease || item.op == ValueCopy || item.op == ValueDrop || item.op == ArrayDrop || Holding(item.type) ||
             ((item.op == StateLoad || item.op == StateStore) && (item.type == abi.TextStorage || item.type >= RecordType))) {
             return true;
@@ -2382,7 +2405,7 @@ RuntimeScopeTest: int : 2;
 ProgramScope :: (code: Instruction[], texts: string[]) -> int {
     found := RuntimeScopeNone;
     for (item in code) {
-        if (item.op != ForeignCall || item.left != 0) { continue; }
+        if (item.op != ForeignCall || abi.ForeignIsIndirect(item.left)) { continue; }
         name := texts[int(item.literal)];
         if (name == "chibi_native_test_begin") { return RuntimeScopeTest; }
         if (name == "chibi_native_scope_begin") { found = RuntimeScopeBudget; }
@@ -2468,8 +2491,8 @@ ForeignABI :: (slots: int[], arguments: int[], texts: string[], item: Instructio
         return InvalidForeignABI;
     }
     symbol := texts[int(item.literal)];
-    indirect := item.left == 1;
-    if (item.left != 0 && !indirect) {
+    indirect := abi.ForeignIsIndirect(item.left);
+    if (!abi.ForeignCallMode(item.left) || (abi.ForeignIsVoid(item.left) && item.type != abi.IntStorage)) {
         return InvalidForeignABI;
     }
     if (indirect && symbol != "") {
@@ -2487,8 +2510,21 @@ ForeignABI :: (slots: int[], arguments: int[], texts: string[], item: Instructio
     // These program-owned helpers have a fixed ABI, regardless of the caller's
     // frame. A source declaration cannot change their result or add arguments.
     if (!indirect && (symbol == "chibi_native_test_index" || symbol == "chibi_native_test_begin" ||
-                      symbol == "chibi_native_test_end") && (item.type != abi.IntStorage || item.target != 0)) {
+                      symbol == "chibi_native_test_end" || symbol == "chibi_native_scope_end") &&
+        (abi.ForeignIsVoid(item.left) || item.type != abi.IntStorage || item.target != 0)) {
         return InvalidForeignABI;
+    }
+    if (!indirect && (symbol == "chibi_native_scope_begin" || symbol == "chibi_native_test_expect")) {
+        parameter := abi.IntStorage;
+        if (symbol == "chibi_native_scope_begin") { parameter = abi.WordStorage; }
+        if (abi.ForeignIsVoid(item.left) || item.type != abi.IntStorage || item.target != 1 ||
+            !Typed(slots, arguments[item.right], parameter)) { return InvalidForeignABI; }
+    }
+    if (!indirect && (symbol == "chibi_native_test_busy" || symbol == "chibi_native_step")) {
+        count := 0;
+        if (symbol == "chibi_native_test_busy") { count = 1; }
+        if (!abi.ForeignIsVoid(item.left) || item.target != count ||
+            (count == 1 && !Typed(slots, arguments[item.right], abi.IntStorage))) { return InvalidForeignABI; }
     }
     capability := ScalarForeignABI;
     for (index in 0..<item.target) {
@@ -2508,14 +2544,17 @@ ForeignDeclarations :: (functions: Function[], first: int, last: int, slots: int
         shape := functions[function];
         for (pc in 0..<shape.code) {
             item := code[shape.first_code + pc];
-            if (item.op != ForeignCall || item.left == 1) {
+            if (item.op != ForeignCall || abi.ForeignIsIndirect(item.left)) {
                 continue;
             }
             listed: string[] = [];
             for (index in 0..<item.target) {
                 listed.append(ForeignType(slots[shape.first_slot + arguments[shape.first_argument + item.right + index]]));
             }
-            declaration := format_text("declare{} {} @{}({})\n", CExtension(item.type), TypeName(item.type),
+            result := TypeName(item.type);
+            extension := CExtension(item.type);
+            if (abi.ForeignIsVoid(item.left)) { result = "void"; extension = ""; }
+            declaration := format_text("declare{} {} @{}({})\n", extension, result,
                                        texts[int(item.literal)], strings.Join(listed, ", "));
             if (!out.contains(declaration)) {
                 out.append(declaration);
@@ -2582,7 +2621,7 @@ ForeignInstruction :: (slots: int[], arguments: int[], texts: string[], code: In
         type := slots[slot];
         name := format_text("c{}_{}", pc, index);
         out = format_text("{}{}", out, Load(name, type, "s", slot));
-        if (item.left == 1 && index == 0) {
+        if (abi.ForeignIsIndirect(item.left) && index == 0) {
             callee = format_text("%callee{}", pc);
             out = format_text("{}  {} = inttoptr i64 %{} to ptr\n", out, callee, name);
             // A missing symbol is a null address, which traps instead of jumping to 0.
@@ -2609,9 +2648,14 @@ ForeignInstruction :: (slots: int[], arguments: int[], texts: string[], code: In
         }
         listed.append(format_text("{}{} %{}", TypeName(type), CExtension(type), name));
     }
-    out = format_text("{}  %v{} = call{} {} {}({})\n", out, pc, CExtension(item.type), TypeName(item.type), callee,
-                      strings.Join(listed, ", "));
-    out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    if (abi.ForeignIsVoid(item.left)) {
+        out = format_text("{}  call void {}({})\n{}", out, callee, strings.Join(listed, ", "),
+                          Store("0", abi.IntStorage, "s", item.output));
+    } else {
+        out = format_text("{}  %v{} = call{} {} {}({})\n", out, pc, CExtension(item.type), TypeName(item.type), callee,
+                          strings.Join(listed, ", "));
+        out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    }
     return format_text("{}  br label %p{}\n", out, pc + 1);
 }
 // Fail names its failure in the context, then the function fails.
@@ -2710,7 +2754,7 @@ RampCall :: (functions: Function[], parameters: int[], arguments: int[], item: I
 // caller waits for it, resuming it each time it is resumed itself. Destroying
 // the caller destroys F's frame first.
 AwaitedCallInstruction :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int,
-                           mode: int, testing: bool) -> string {
+                           mode: int, testing: bool, owners: bool[]) -> string {
     out := RampCall(functions, parameters, arguments, item, pc, mode, false, testing);
     out = format_text("{}  br label %p{}.test\np{}.test:\n", out, pc, pc);
     out = format_text("{}  %done{} = call i1 @llvm.coro.done(ptr %v{})\n", out, pc, pc);
@@ -2722,8 +2766,11 @@ AwaitedCallInstruction :: (functions: Function[], parameters: int[], arguments: 
     out = format_text("{}p{}.resume:\n  call void @llvm.coro.resume(ptr %v{})\n  br label %p{}.test\n", out, pc, pc, pc);
     out = format_text("{}p{}.destroy:\n  call void @llvm.coro.destroy(ptr %v{})\n  br label %coro.cleanup\n", out, pc, pc);
     out = format_text("{}p{}.finished:\n  %promise{} = call ptr @llvm.coro.promise(ptr %v{}, i32 8, i1 false)\n", out, pc, pc, pc);
-    out = format_text("{}  %result{} = load {}, ptr %promise{}\n  call void @llvm.coro.destroy(ptr %v{})\n", out, pc,
-                      TypeName(item.type), pc, pc);
+    out = format_text("{}  %result{} = load {}, ptr %promise{}\n", out, pc, TypeName(item.type), pc);
+    if (ValueOwned(item.type, owners)) {
+        out = format_text("{}  store {} zeroinitializer, ptr %promise{}\n", out, TypeName(item.type), pc);
+    }
+    out = format_text("{}  call void @llvm.coro.destroy(ptr %v{})\n", out, pc);
     out = format_text("{}{}", out, Store(format_text("%result{}", pc), item.type, "s", item.output));
     return format_text("{}  br label %p{}\n", out, pc + 1);
 }
@@ -2868,13 +2915,13 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
             returned := EmitInstruction(item, pc, result, records, fields, texts, coroutine, ProgramMode(mode), scoped, record_owners);
             out.append(strings.ReplaceAll(returned, "  ret ", strings.Concatenate([ManagedUnroots(function == 0 && mode == ProgramEntry), "  ret "])));
         } else if (item.op == Call && item.literal == i64(CallAwaited)) {
-            out.append(AwaitedCallInstruction(functions, parameters, own, item, pc, mode, testing));
+            out.append(AwaitedCallInstruction(functions, parameters, own, item, pc, mode, testing, record_owners));
         } else if (item.op == Call && (item.literal == i64(CallSpawned) || item.literal == i64(CallSpawnedVoid))) {
             out.append(SpawnedCallInstruction(functions, parameters, own, item, pc, mode, testing));
         } else if (item.op == Suspend) {
             out.append(SuspendInstruction(pc, testing));
         } else if (item.op == AwaitResult) {
-            out.append(TaskResultInstruction(item, pc, testing));
+            out.append(TaskResultInstruction(item, pc, testing, record_owners));
         } else if (item.op == TaskCopy || item.op == TaskDrop || item.op == TaskRunning) {
             out.append(format_text("p{}:\n", pc));
             if (item.op == TaskRunning) { out.append(TaskTestGuard(testing, TaskWaitEffect)); }
@@ -2937,7 +2984,8 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     }
     if (coroutine) {
         out.append(CoroutineEpilogue(strings.Concatenate([TaskOwnerCleanup(owner_locations, "final"), TaskFrameCleanup(shape, locals, code, "final"), ManagedFramePins(shape, code, "final"), frame_roots.cleanup]),
-                                     strings.Concatenate([TaskOwnerCleanup(owner_locations, "cancel"), TaskFrameCleanup(shape, locals, code, "cancel"), ManagedFramePins(shape, code, "cancel"), frame_roots.cleanup])));
+                                     strings.Concatenate([TaskOwnerCleanup(owner_locations, "cancel"), TaskFrameCleanup(shape, locals, code, "cancel"), ManagedFramePins(shape, code, "cancel"), frame_roots.cleanup,
+                                                          TaskPromiseCleanup(result, ValueOwned(result, record_owners))])));
     }
     out.append("trap:\n  call void @llvm.trap()\n  unreachable\n}\n");
     return strings.Join(out, "");
@@ -2989,7 +3037,7 @@ pub Runtime :: (code: Instruction[]) -> bool {
         return true;
     }
     for (item in code) {
-        if (item.op == OwnerPin || item.op == ClockSample || item.op == ManagedProject || item.op == ManagedNew || item.op == ManagedAddress || item.op == ManagedPin || item.op == ManagedUnpin || item.op == Print || item.op == Format || item.op == Fail || item.op == ValueCopy || item.op == ValueDrop || ArrayCalls(item.op) || MapCalls(item.op) ||
+        if (item.op == OwnerPin || item.op == ClockSample || item.op == ManagedProject || item.op == ManagedNew || item.op == ManagedAddress || item.op == ManagedPin || item.op == ManagedUnpin || item.op == Print || item.op == Format || item.op == Fail || item.op == ValueCopy || item.op == ValueDrop || ArrayCalls(item.op) || MapCalls(item) ||
             ((item.op == StateLoad || item.op == StateStore) && (item.type == abi.TextStorage || item.type >= RecordType))) {
             return true;
         }
@@ -3399,12 +3447,19 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     }
     waiting := WaitingFunctions(functions, code);
     lifecycle := ValueLayouts(records, fields);
+    promises: int[] = [];
+    text_promise := false;
     for (function in 0..<length(functions)) {
         switch Validate(functions, function, parameters, slots, locals, code, arguments, records, fields, field_tags, texts,
                         mode, waiting, lifecycle, managed_records, family, snapshots, clock_owner || !abi.Same(target, abi.WebAssembly32()), value_shapes) {
             case .Rejected(instruction, message):
                 return Result.Rejected(instruction, message);
             case .Emitted(text):
+                result := functions[function].result;
+                if (waiting[function] && TaskOwnedType(records, lifecycle, result)) {
+                    promises.append(result);
+                    text_promise = text_promise || result == abi.TextStorage;
+                }
                 continue;
         }
     }
@@ -3645,7 +3700,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             }
             out.append(format_text("\n{}", text));
         }
-        value_uses := ValueUses(held, records, fields, record_owners);
+        value_uses := ValueUses(held, records, fields, record_owners, promises);
         array_helpers := ArrayModule(value_uses.arrays, record_owners, lifecycle.backed);
         out.append(array_helpers);
         value_comparisons := piece == 0 && length(comparison_roots) > 0;
@@ -3659,7 +3714,8 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             // the same freestanding helper as array operations.
             for (retained in states) { copies = copies || retained.type == abi.TextStorage; }
         }
-        out.append(MapModule(held, ProgramMode(mode), record_owners));
+        map_helpers := MapModule(held, ProgramMode(mode), record_owners, lifecycle.backed);
+        out.append(map_helpers);
         out.append(TextSequenceModule(held));
         if (copies) {
             out.append(format_text("\n{}", ArrayCopyHelper()));
@@ -3667,8 +3723,8 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         if (Zeroes(held) || value_comparisons) {
             out.append(format_text("\n{}", ArrayZeroHelper()));
         }
-        value_helpers := ValueModule(value_uses, records, fields, lifecycle);
-        if (Counts(held) || value_helpers != "" || array_helpers != "") {
+        value_helpers := ValueModule(value_uses, records, fields, lifecycle, map_helpers == "");
+        if (Counts(held) || text_promise || value_helpers != "" || array_helpers != "") {
             out.append(format_text("\n{}{}", TextHelpers(), value_helpers));
         }
         cstrings := Cstrings(functions, first, last, slots, code, arguments);
@@ -4862,23 +4918,37 @@ MapUsed :: (item: Instruction) -> int {
     }
     return int(item.literal);
 }
+// Both dedicated map operations and generic value ownership name the same
+// typed helper dependency. Only the latter carries it directly in type.
+MapInstructionType :: (item: Instruction) -> int {
+    if (MapOperation(item.op)) { return MapUsed(item); }
+    if ((item.op == ValueCopy || item.op == ValueDrop) && item.type >= MapType && item.type < RefType) { return item.type; }
+    return 0;
+}
 // Whether an instruction names the context: it allocates, gives back, or ends
 // the program on an index outside the map.
-MapCalls :: (op: int) -> bool {
-    return op == MapSet || op == MapDelete || op == MapCopy || op == MapDrop || op == MapKeyAt || op == MapValueAt;
+MapCalls :: (item: Instruction) -> bool {
+    op := item.op;
+    return op == MapSet || op == MapDelete || op == MapCopy || op == MapDrop || op == MapKeyAt || op == MapValueAt ||
+           (op == MapValueAddress && item.target == 1);
+}
+MapPayloadValid :: (records: Record[], lifecycle: ValueLayout, type: int) -> bool {
+    if (!MapShaped(records, type)) { return false; }
+    element := MapValue(type);
+    if (MapArrayValue(element)) { element -= ArrayType; }
+    return ValueValid(lifecycle, element);
 }
 // Whether a map instruction reads the operands of its type: the map in the left
 // slot, a key or an index in the right, and MapSet's value in slot `target`.
 MapValid :: (records: Record[], lifecycle: ValueLayout, slots: int[], item: Instruction) -> bool {
     used := MapUsed(item);
-    if (!MapShaped(records, used) || !Typed(slots, item.left, used)) {
+    input := used;
+    if (item.op == MapValueAddress && item.target == 1) { input += RefType; }
+    if (!MapPayloadValid(records, lifecycle, used) || !Typed(slots, item.left, input)) {
         return false;
     }
     key := MapKey(used);
     value := MapValue(used);
-    element := value;
-    if (MapArrayValue(value)) { element -= ArrayType; }
-    if (!ValueValid(lifecycle, element)) { return false; }
     if (item.op == MapLength || item.op == MapSpan) {
         return item.type == abi.IntStorage;
     }
@@ -4887,7 +4957,8 @@ MapValid :: (records: Record[], lifecycle: ValueLayout, slots: int[], item: Inst
                (item.target == 0 || (item.target == MapGetZero && value >= RecordType && value < ArrayType));
     }
     if (item.op == MapValueAddress) {
-        return MapArrayValue(value) && item.type == RefType + value && Typed(slots, item.right, key) && item.target == 0;
+        return MapArrayValue(value) && item.type == RefType + value && Typed(slots, item.right, key) &&
+               (item.target == 0 || item.target == 1);
     }
     if (item.op == MapHas) {
         return item.type == abi.BoolStorage && Typed(slots, item.right, key);
@@ -4913,9 +4984,8 @@ MapValid :: (records: Record[], lifecycle: ValueLayout, slots: int[], item: Inst
 MapTypes :: (code: Instruction[]) -> int[] {
     used: int[] = [];
     for (item in code) {
-        if (MapOperation(item.op) && !used.contains(MapUsed(item))) {
-            used.append(MapUsed(item));
-        }
+        type := MapInstructionType(item);
+        if (type != 0 && !used.contains(type)) { used.append(type); }
     }
     return used;
 }
@@ -4936,6 +5006,12 @@ MapRead :: (item: Instruction, pc: int) -> string {
         owns = "true";
     }
     out := Load(format_text("m{}", pc), used, "s", item.left);
+    if (item.op == MapValueAddress && item.target == 1) {
+        out = Load(format_text("owner{}", pc), RefType + used, "s", item.left);
+        out = format_text("{}{}", out, Load(format_text("k{}", pc), key, "s", item.right));
+        out = format_text("{}  %v{} = call ptr @chibi_map.{}.reference(ptr %ctx, ptr %owner{}, {} %k{})\n", out, pc, used, pc, TypeName(key), pc);
+        return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    }
     if (item.op == MapLength || item.op == MapSpan) {
         field := 0;
         if (item.op == MapSpan) {
@@ -4945,7 +5021,8 @@ MapRead :: (item: Instruction, pc: int) -> string {
     } else if (item.op == MapGet || item.op == MapHas || item.op == MapValueAddress) {
         out = format_text("{}{}", out, Load(format_text("k{}", pc), key, "s", item.right));
         fallback := "";
-        if (item.op == MapGet && value >= RecordType && value < ArrayType) {
+        if (item.op == MapValueAddress) { fallback = ", i1 true"; }
+        else if (item.op == MapGet && value >= RecordType && value < ArrayType) {
             fallback = ", i1 false";
             if (item.target == MapGetZero) { fallback = ", i1 true"; }
         }
@@ -5008,13 +5085,16 @@ MapHelper :: (op: int) -> string {
 
 // A copied payload acquires its owned leaves before another map can drop
 // them. `tag` makes the returned copied value unique within the helper.
-MapOwner :: (call: string, value: string, tag: string, type: int) -> string {
+MapOwner :: (call: string, value: string, tag: string, type: int, pending: bool = false) -> string {
     if (type != abi.TextStorage) {
         module := "chibi_value";
         if (MapArrayValue(type)) { module = "chibi_array"; }
         if (call == "retain") {
             return format_text("  %c.{} = call {} @{}.{}.copy(ptr %ctx, {} {})\n", tag,
                                TypeName(type), module, type, TypeName(type), value);
+        }
+        if (pending) {
+            return format_text("  call void @{}.{}.drop_into(ptr %ctx, {} {}, ptr %pending)\n", module, type, TypeName(type), value);
         }
         return format_text("  call void @{}.{}.drop(ptr %ctx, {} {})\n", module, type, TypeName(type), value);
     }
@@ -5027,7 +5107,7 @@ MapOwner :: (call: string, value: string, tag: string, type: int) -> string {
 }
 // The reference changes for the live entry just copied or being dropped.
 // Copy's `ymove` block ends in `yretained`, which its loop's phi names.
-MapEach :: (call: string, entries: string, prefix: string, key: int, value: int, owners: bool[]) -> string {
+MapEach :: (call: string, entries: string, prefix: string, key: int, value: int, owners: bool[], backed: bool[], pending: bool) -> string {
     offset := "%xoff";
     if (call == "retain") {
         offset = "%woff";
@@ -5040,8 +5120,19 @@ MapEach :: (call: string, entries: string, prefix: string, key: int, value: int,
     }
     if (MapPayloadOwned(value, owners)) {
         out = format_text("{}  %{}v = getelementptr inbounds $E, ptr {}, i64 {}, i32 1\n", out, prefix, entries, offset);
-        out = format_text("{}  %{}vv = load $V, ptr %{}v\n{}", out, prefix, prefix,
-                          MapOwner(call, format_text("%{}vv", prefix), format_text("{}v", prefix), value));
+        queued := false;
+        if (pending && length(backed) > 0) {
+            if (MapArrayValue(value)) { queued = ArrayBacked(value, backed); }
+            else if (value >= RecordType && value < ArrayType) { queued = backed[value - RecordType]; }
+        }
+        if (queued && value >= RecordType && value < ArrayType) {
+            // Record drop_into borrows its in-place fields; unlike an array
+            // descriptor it takes an address, not a copied record argument.
+            out = format_text("{}  call void @chibi_value.{}.drop_into(ptr %ctx, ptr %{}v, ptr %pending)\n", out, value, prefix);
+        } else {
+            out = format_text("{}  %{}vv = load $V, ptr %{}v\n{}", out, prefix, prefix,
+                              MapOwner(call, format_text("%{}vv", prefix), format_text("{}v", prefix), value, queued));
+        }
         if (value != abi.TextStorage && call == "retain") {
             out = format_text("{}  store $V %c.{}v, ptr %{}v\n", out, prefix, prefix);
         }
@@ -5182,7 +5273,7 @@ MapShared :: () -> string {
 
 // The helpers of map type `type`, named `@chibi_map.<type>.<helper>`: hash,
 // same, find, get, has, set, delete, copy and drop.
-MapHelpers :: (type: int, native_program: bool, owners: bool[]) -> string {
+MapHelpers :: (type: int, native_program: bool, owners: bool[], backed: bool[]) -> string {
     key := MapKey(type);
     value := MapValue(type);
     keyed := key == abi.TextStorage;
@@ -5221,7 +5312,7 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[]) -> string {
         unavailable := "  call void @llvm.trap()\n  unreachable";
         if (native_program) { unavailable = "  call void @chibi_native_failure(i32 0)\n  unreachable"; }
         address = strings.Join([
-            "define internal ptr @chibi_map.$N.address($M %m, $K %wanted) {",
+            "define internal ptr @chibi_map.$N.address($M %m, $K %wanted, i1 %required) {",
             "entry:",
             "  %used = extractvalue $M %m, 1",
             "  %slots = extractvalue $M %m, 3",
@@ -5235,7 +5326,8 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[]) -> string {
             "  %off = zext i32 %at to i64",
             "  %ve = getelementptr inbounds $E, ptr %entries, i64 %off, i32 1",
             "  ret ptr %ve",
-            "miss:", unavailable, "}"
+            "miss:", "  br i1 %required, label %failure, label %absent",
+            "absent:", "  ret ptr null", "failure:", unavailable, "}"
         ], "\n");
     }
     text := strings.Join([
@@ -5378,7 +5470,7 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[]) -> string {
         "done:",
         "  ret ptr %fresh",
         "}",
-        "define internal $M @chibi_map.$N.set(ptr %ctx, $M %m, $K %key, $V %value, i1 %owns) {",
+        "define internal $M @chibi_map.$N.set_unique(ptr %ctx, $M %m, $K %key, $V %value, i1 %owns) {",
         "entry:",
         "  %count = extractvalue $M %m, 0",
         "  %used = extractvalue $M %m, 1",
@@ -5411,9 +5503,7 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[]) -> string {
         "  %newcap = call i32 @chibi_map.capacity(i32 %count)",
         "  %wat = getelementptr $E, ptr null, i32 1",
         "  %width = ptrtoint ptr %wat to i64",
-        "  %cn = zext i32 %newcap to i64",
-        "  %bytes = mul i64 %cn, %width",
-        "  %fresh = call ptr @chibi_map.allocate(ptr %ctx, i64 %bytes)",
+        "  %fresh = call ptr @chibi_map.entries(ptr %ctx, i32 %newcap, i64 %width)",
         "  br label %ghead",
         "ghead:",
         "  %r = phi i32 [ 0, %grow ], [ %rnext, %gstep ]",
@@ -5443,7 +5533,7 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[]) -> string {
         "  %freeold = and i1 %had, %owns",
         "  br i1 %freeold, label %giveback, label %regrown",
         "giveback:",
-        "  call void @chibi_map.give(ptr %ctx, ptr %entries)",
+        "  call void @chibi_map.entries_give(ptr %ctx, ptr %entries)",
         "  br label %regrown",
         "regrown:",
         "  %hasindex = icmp ne ptr %index, null",
@@ -5490,7 +5580,7 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[]) -> string {
         "  %m6 = insertvalue $M %m5, ptr %final, 5",
         "  ret $M %m6",
         "}",
-        "define internal $M @chibi_map.$N.delete(ptr %ctx, $M %m, $K %wanted, i1 %owns) {",
+        "define internal $M @chibi_map.$N.delete_unique(ptr %ctx, $M %m, $K %wanted, i1 %owns) {",
         "entry:",
         "  %count = extractvalue $M %m, 0",
         "  %used = extractvalue $M %m, 1",
@@ -5617,9 +5707,7 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[]) -> string {
         "clone:",
         "  %wat = getelementptr $E, ptr null, i32 1",
         "  %width = ptrtoint ptr %wat to i64",
-        "  %used64 = zext i32 %count to i64",
-        "  %bytes = mul i64 %used64, %width",
-        "  %fresh = call ptr @chibi_map.allocate(ptr %ctx, i64 %bytes)",
+        "  %fresh = call ptr @chibi_map.entries(ptr %ctx, i32 %count, i64 %width)",
         "  br label %yhead",
         "yhead:",
         "  %r = phi i32 [ 0, %clone ], [ %rnext, %ystep ]",
@@ -5662,35 +5750,11 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[]) -> string {
         "  %m5 = insertvalue $M %m4, ptr %fresh, 4",
         "  %m6 = insertvalue $M %m5, ptr %final, 5",
         "  ret $M %m6",
-        "}",
-        "define internal void @chibi_map.$N.drop(ptr %ctx, $M %m) {",
-        "entry:",
-        "  %used = extractvalue $M %m, 1",
-        "  %entries = extractvalue $M %m, 4",
-        "  %index = extractvalue $M %m, 5",
-        "  br label %xhead",
-        "xhead:",
-        "  %xi = phi i32 [ 0, %entry ], [ %xnext, %xstep ]",
-        "  %xend = icmp eq i32 %xi, %used",
-        "  br i1 %xend, label %xd, label %xlook",
-        "xlook:",
-        "  %xoff = zext i32 %xi to i64",
-        "  %xhe = getelementptr inbounds $E, ptr %entries, i64 %xoff, i32 2",
-        "  %xeh = load i32, ptr %xhe",
-        "  %xalive = icmp ne i32 %xeh, 0",
-        "  br i1 %xalive, label %xbody, label %xstep",
-        "xbody:",
-        "$RELEASED",
-        "  br label %xstep",
-        "xstep:",
-        "  %xnext = add i32 %xi, 1",
-        "  br label %xhead",
-        "xd:",
-        "  call void @chibi_map.give(ptr %ctx, ptr %entries)",
-        "  call void @chibi_map.give(ptr %ctx, ptr %index)",
-        "  ret void",
         "}"
     ], "\n");
+    released := MapEach("release", "%entries", "x", key, value, owners, backed, true);
+    text = strings.Concatenate([text, "\n", MapOwnedDrop(type, released), "\n", MapUnique(type)]);
+    if (MapArrayValue(value)) { text = strings.Concatenate([text, "\n", MapReference(type)]); }
     text = strings.ReplaceAll(text, "$ADDRESS", address);
     text = strings.ReplaceAll(text, "$SCANNED", format_text("{}", MapScanned));
     text = strings.ReplaceAll(text, "$LIMIT", format_text("{}", MapLimit));
@@ -5700,8 +5764,7 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[]) -> string {
     text = strings.ReplaceAll(text, "$GET_DEFAULT", fallback);
     text = strings.ReplaceAll(text, "$REPLACED", strings.TrimSuffix(strings.Join(replaced, ""), "\n"));
     text = strings.ReplaceAll(text, "$DELETED", strings.TrimSuffix(strings.Join(deleted, ""), "\n"));
-    text = strings.ReplaceAll(text, "$RETAINED", strings.TrimSuffix(MapEach("retain", "%fresh", "r", key, value, owners), "\n"));
-    text = strings.ReplaceAll(text, "$RELEASED", strings.TrimSuffix(MapEach("release", "%entries", "x", key, value, owners), "\n"));
+    text = strings.ReplaceAll(text, "$RETAINED", strings.TrimSuffix(MapEach("retain", "%fresh", "r", key, value, owners, backed, false), "\n"));
     text = strings.ReplaceAll(text, "$M", abi.MapType());
     text = strings.ReplaceAll(text, "$E", format_text("{ {}, {}, i32 }", TypeName(key), TypeName(value)));
     text = strings.ReplaceAll(text, "$K", TypeName(key));
@@ -5709,14 +5772,14 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[]) -> string {
     return format_text("{}\n", strings.ReplaceAll(text, "$N", format_text("{}", type)));
 }
 // The helpers of the map types `code` works on, once each.
-MapModule :: (code: Instruction[], native_program: bool, owners: bool[]) -> string {
+MapModule :: (code: Instruction[], native_program: bool, owners: bool[], backed: bool[]) -> string {
     types := MapTypes(code);
     if (length(types) == 0) {
         return "";
     }
-    out: string[] = [MapShared()];
+    out: string[] = [MapShared(), MapOwnersRuntime(), ValueDrain()];
     for (type in types) {
-        out.append(MapHelpers(type, native_program, owners));
+        out.append(MapHelpers(type, native_program, owners, backed));
     }
     return format_text("\n{}", strings.Join(out, "\n"));
 }

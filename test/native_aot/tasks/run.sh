@@ -113,7 +113,7 @@ for folder in "$root"/test/native_aot/tasks/rejected/*; do
         exit 1
     fi
     case "$name" in
-        owned_result) grep -q 'waiting results require numbers, bools, or records without owners' "$work/rejection" ;;
+        pointer_result) grep -q 'native managed records require a stable authored layout' "$work/rejection" ;;
         unguarded_record) grep -Fq "Unknown field 'value'" "$work/rejection" ;;
         unguarded_argument) grep -Fq 'argument differs from its parameter type' "$work/rejection" ;;
         task_array) grep -q "array item differs from the array's type" "$work/rejection" ;;

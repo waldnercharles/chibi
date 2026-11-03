@@ -168,6 +168,7 @@ Main :: () -> int {
     TextArgumentsProjection();
     CallArgumentsProjection();
     ArrayEditsProjection();
+    ArrayResizeProjection();
     ArrayPlacesProjection();
     ForeignPlacesProjection();
     InlineArrayPlacesProjection();

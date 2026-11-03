@@ -1,0 +1,7 @@
+package resize_growth
+Value :: struct { text: string; }
+Holder :: struct { values: Value[]; }
+Method :: () -> int { values: Value[] = [{text: "held"}]; values.resize(2); return 0; }
+Functional :: () -> int { values: Value[] = [{text: "held"}]; result := resize(values, 2); return length(result); }
+Field :: () -> int { holder: Holder = {values: [{text: "held"}]}; holder.values.resize(2); return 0; }
+Map :: () -> int { values: [int: Value[]] = [1: [{text: "held"}]]; values[1].resize(2); return 0; }

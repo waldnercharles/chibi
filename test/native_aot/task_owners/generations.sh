@@ -20,16 +20,18 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 for level in 0 2; do
-    for source in Generation Edited; do
+    for source in Generation Edited ResizeGeneration; do
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$root/test/native_aot/task_owners/$source.chibi" --shared \
             --output "$work/$source-$level.so" --llvm "$audit_llvm" --target "$target" --level "$level" --jobs 1
     done
-    for mode in complete cancel failure; do
+    for mode in complete cancel failure resize resize-functional; do
         run="$work/$mode-O$level"
         mkdir "$run"
         if [ "$mode" != complete ]; then touch "$run/$mode-case"; fi
-        cp "$work/Generation-$level.so" "$run/live-0.so"
+        source=Generation
+        case "$mode" in resize*) source=ResizeGeneration ;; esac
+        cp "$work/$source-$level.so" "$run/live-0.so"
         (cd "$run" && exec timeout 90 "$work/host") > "$run/host.log" 2>&1 &
         child=$!
         attempts=0
@@ -45,7 +47,7 @@ for level in 0 2; do
         wait "$child" || result=$?
         child=
         expected=7
-        if [ "$mode" = failure ]; then expected=134; fi
+        case "$mode" in failure|resize*) expected=134 ;; esac
         if [ "$result" -ne "$expected" ]; then cat "$run/host.log"; echo "owned generation $mode O$level status$result"; exit 1; fi
         if [ "$mode" = complete ]; then [ "$(cat "$run/old-done")" = old:48 ]; fi
         printf 'PASS owned old generation %s O%s, image close balanced\n' "$mode" "$level"

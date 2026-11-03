@@ -86,3 +86,14 @@ FrameOwnerRegionsRejectOverlapReverseCloseAndEntry :: () {
     entered.insert(7, Code(native.Branch, 0, 0, 3, 0, 6, 0));
     Rejects(OwnerModule(entered, abi.TextStorage, true), "native control flow cannot enter a frame owner region");
 }
+
+@test
+FrameOwnerResizeBoundaryNeedsItsFailurePolicy :: () {
+    array := native.ArrayType + abi.IntStorage;
+    code := OwnerCode(array);
+    code[4] = Code(native.Constant, abi.IntStorage, 2, 0, 0, 0, 0);
+    code[7] = Code(native.ArrayResize, array, 1, 0, 2, 0, 0);
+    code[9] = Code(native.Suspend, 0, 0, 0, 0, 0, 0);
+    code[11] = Code(native.Check, 0, 0, 0, 0, 0, 0);
+    Rejects(OwnerModule(code, array), "native frame owners must bracket one fallible or waiting call");
+}

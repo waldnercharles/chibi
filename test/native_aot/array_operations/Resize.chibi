@@ -1,0 +1,36 @@
+package resize_values
+Value :: struct { text: string; numbers: int[]; }
+Holder :: struct { values: Value[]; }
+Choice :: union { First(value: int) | Empty }
+Owned :: union { First(text: string, values: int[]) | Empty }
+Text :: () -> string { return text_from_bytes([u8(65), 0, 66]); }
+Main :: () -> int {
+    values: Value[] = [{text: Text(), numbers: [int(7)]}, {text: Text(), numbers: [int(9)]}];
+    saved := values;
+    values.resize(1);
+    same := resize(values, 1);
+    assert(same[0].text == Text() && same[0].numbers[0] == 7);
+    assert(length(saved) == 2 && saved[1].numbers[0] == 9);
+    values.resize(-1);
+    assert(length(values) == 0);
+    holder: Holder = {values: saved};
+    holder.values.resize(1);
+    assert(length(holder.values) == 1 && length(saved) == 2);
+    mapped: [int: Value[]] = [1: saved];
+    mapped[1].resize(1);
+    assert(length(mapped[1]) == 1 && mapped[1][0].numbers[0] == 7);
+    choices: Choice[] = [Choice.First(8)];
+    choices.resize(3);
+    switch choices[1] { case .First(n): assert(n == 0); case .Empty: assert(false); }
+    functional := resize(choices, 5);
+    switch functional[4] { case .First(n): assert(n == 0); case .Empty: assert(false); }
+    owned: Owned[] = [Owned.First(Text(), [int(3)])];
+    owned.resize(2);
+    switch owned[1] { case .First(text, numbers): assert(text == "" && length(numbers) == 0); case .Empty: assert(false); }
+    nested: int[][] = [];
+    nested.resize(3);
+    assert(length(nested) == 3 && length(nested[0]) == 0);
+    nested[0].append(9);
+    assert(nested[0][0] == 9 && length(nested[1]) == 0);
+    return 0;
+}

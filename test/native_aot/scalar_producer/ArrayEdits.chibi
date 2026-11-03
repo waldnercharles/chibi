@@ -148,3 +148,17 @@ InlineArrayPlacesProjection :: () {
     RejectChanged(rows, [Changed(change - 4, ValueField, 1)], mismatch);
     RejectChanged(rows, [Changed(change - 1, KindField, i64(facts.LiteralRow)), Changed(change - 1, ValueField, 0)], mismatch);
 }
+
+ArrayResizeProjection :: () {
+    rows := Produced("package resize\nItem::struct{x:int;}\nMain::()->int{items:Item[]=[];items.resize(0);nested:int[][]=[];nested.resize(1);return length(items);}");
+    ValidateRows(rows, "");
+    authored := 0;
+    synthetic := 0;
+    for (row in rows) {
+        if (row.kind != facts.RecordRow) { continue; }
+        if (row.name == "Item") { assert(row.value == 0); authored += 1; }
+        else { assert(row.value == facts.ZeroArrayGrowth); synthetic += 1; }
+    }
+    // The ordinary catalog interns other primitive nested collections too.
+    assert(authored == 1 && synthetic > 0);
+}

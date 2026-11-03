@@ -159,6 +159,8 @@ RecordsRows :: () -> facts.Row[] {
     RejectChanged(rows, [Changed(2, CountField, 2147483647)], "invalid scalar record row");
     RejectChanged(rows, [Named(2, NameField, "")], "invalid scalar record row");
     RejectChanged(rows, [Changed(2, TypeField, 1)], "invalid scalar record row");
+    RejectChanged(rows, [Changed(2, ValueField, -1)], "invalid scalar record row");
+    RejectChanged(rows, [Changed(2, ValueField, i64(facts.ZeroArrayGrowth + 1))], "invalid scalar record row");
     RejectChanged(rows, [Changed(4, TypeField, 32)], "invalid scalar record row");
     RejectChanged(rows, [Changed(4, TypeField, 12)], "scalar field write differs from its record");
     RejectChanged(rows, [Changed(3, ValueField, 1)], "invalid scalar record member row");

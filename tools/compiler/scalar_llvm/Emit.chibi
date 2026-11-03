@@ -368,7 +368,7 @@ ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) ->
             continue;
         }
         if (record.count < 1 || record.count >= length(rows) - head - 1 ||
-            record.name == "" || record.text != "" || record.type != 0 || record.value != 0 ||
+            record.name == "" || record.text != "" || record.type != 0 || (record.value != 0 && record.value != facts.ZeroArrayGrowth) ||
             !Located(record, starts, size)) {
             return "invalid scalar record row";
         }
@@ -2415,6 +2415,18 @@ Frame :: struct {
     held_type: int;
     pattern_first: int;
 }
+// Only authored records lack default rows. Unions have their zero variant;
+// synthetic nested-array records explicitly admit zero-initialized rows.
+ArrayResizePolicy :: (rows: facts.Row[], records: int[], array: int) -> i64 {
+    element := Element(records, array);
+    if (element >= facts.RecordType && element < facts.ArrayType) {
+        head := rows[records[element - facts.RecordType]];
+        if (head.kind == facts.RecordRow && head.value != facts.ZeroArrayGrowth) {
+            return i64(native.ArrayResizeInitialized);
+        }
+    }
+    return 0;
+}
 // The native array instruction of `operand`, an Array row other than
 // ArrayNew, over the operand slots stack[base...].
 ArrayLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: int) -> native.Instruction {
@@ -3678,7 +3690,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         change.literal = 1;
                         if (op == facts.MapArrayExtend) { change.op = native.ArrayExtend; }
                         else if (op == facts.MapArrayRemove) { change.op = native.ArrayRemove; change.literal = 0; }
-                        else if (op == facts.MapArrayResize) { change.op = native.ArrayResize; change.literal = 0; }
+                        else if (op == facts.MapArrayResize) { change.op = native.ArrayResize; change.literal = ArrayResizePolicy(rows, declared, array_type); }
                         else if (op == facts.MapArraySet) {
                             change.op = native.ArraySet;
                             change.right = stack[base + 2];
@@ -3863,7 +3875,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     mutation.literal = 1;
                     if (op == facts.ArrayExtend) { mutation.op = native.ArrayExtend; }
                     if (op == facts.ArrayRemove) { mutation.op = native.ArrayRemove; mutation.literal = 0; }
-                    if (op == facts.ArrayResize) { mutation.op = native.ArrayResize; mutation.literal = 0; }
+                    if (op == facts.ArrayResize) { mutation.op = native.ArrayResize; mutation.literal = ArrayResizePolicy(rows, declared, member); }
                     if (op == facts.ArraySet) {
                         mutation = Op(native.ArraySet, array, changed, current, stack[first_argument], argument);
                         mutation.literal = i64(native.ArraySetPlace);
@@ -3893,7 +3905,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                             Op(native.StateStore, state_type, 0, changed + 1, 0, state_index)]);
                         extra += 1;
                     }
-                    body.append(mutation);
+                    if (waiting_function && mutation.op == native.ArrayResize && mutation.literal == i64(native.ArrayResizeInitialized)) {
+                        owners := TaskOwnerPins(owned_vars, owned_types, places, frames, fresh, slots, shape.first_slot, records, value_layout);
+                        body.extend(owners.before);
+                        body.append(mutation);
+                        body.extend(owners.after);
+                    } else { body.append(mutation); }
                     // Resize returns an independent backing rather than
                     // consuming its input, unlike the in-place operations.
                     if (op == facts.ArrayResize) { body.append(Giving(array, current)); }
@@ -4111,6 +4128,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                             }
                         }
                         item = ArrayLowered(operand, type, slot, stack, base);
+                        if (op == facts.ArrayResize) { item.literal = ArrayResizePolicy(rows, declared, operand.type); }
                         if (moving >= 0) {
                             item = Op(native.Local, type, slot, places[moving], 0, 0);
                         }
@@ -4242,6 +4260,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     body.extend(glue.before);
                     body.append(item);
                     body.extend(glue.after);
+                } else if (waiting_function && item.op == native.ArrayResize && item.literal == i64(native.ArrayResizeInitialized)) {
+                    owners := TaskOwnerPins(owned_vars, owned_types, places, frames, fresh, slots, shape.first_slot, records, value_layout);
+                    body.extend(owners.before);
+                    body.append(item);
+                    body.extend(owners.after);
                 } else if (!name_only) { body.append(item); }
                 produced := slot;
                 if ((operand.kind == facts.ManagedRow && operand.value != facts.ManagedBorrow ||

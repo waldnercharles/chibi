@@ -170,8 +170,10 @@ pub ArrayExtend: int : 43;
 // clamped to the array.
 pub ArraySlice: int : 44;
 // output = a new array of the right slot's int length, 0 if it is negative:
-// the first elements of the left slot's array, then zeros.
+// the first elements of the left slot's array, then zeros. Literal0 admits
+// zero growth; ArrayResizeInitialized rejects growth of record elements.
 pub ArrayResize: int : 45;
+pub ArrayResizeInitialized: int : 1;
 // BoolStorage output gives membership; IntStorage gives the first equal
 // index or -1. Literal is the element type. Numbers/bool/strings require
 // target0; records/unions require target=1+their validated value-shape index.
@@ -1429,7 +1431,11 @@ ArrayValid :: (records: Record[], slots: int[], item: Instruction, nodes: Snapsh
     if (item.op == ArraySlice) {
         return Typed(slots, item.right, abi.IntStorage) && Typed(slots, item.target, abi.IntStorage);
     }
-    if (item.op == ArrayResize || item.op == ArrayRemove) {
+    if (item.op == ArrayResize) {
+        return Typed(slots, item.right, abi.IntStorage) && item.target == 0 &&
+               (item.literal == 0 || (item.literal == i64(ArrayResizeInitialized) && element >= RecordType));
+    }
+    if (item.op == ArrayRemove) {
         return Typed(slots, item.right, abi.IntStorage);
     }
     return true;
@@ -2011,7 +2017,7 @@ ArrayRead :: (item: Instruction, pc: int, record_owners: bool[], program: bool) 
         return format_text("{}{}", out, ArraySliced(item, pc, record_owners));
     }
     if (item.op == ArrayResize) {
-        return format_text("{}{}", out, ArrayResized(item, pc, record_owners));
+        return format_text("{}{}", out, ArrayResized(item, pc, record_owners, program));
     }
     if (item.op == ArrayContains) {
         return format_text("{}{}", out, ArrayFound(item, pc));
@@ -2149,13 +2155,24 @@ ArraySliced :: (item: Instruction, pc: int, record_owners: bool[]) -> string {
 }
 // A new array of the length in the right slot, 0 if it is negative: the first
 // elements of the array loaded as %a<pc>, then zeros.
-ArrayResized :: (item: Instruction, pc: int, record_owners: bool[]) -> string {
+ArrayResized :: (item: Instruction, pc: int, record_owners: bool[], program: bool) -> string {
     array := abi.ArrayType();
     element := item.type - ArrayType;
     out := Load(format_text("b{}", pc), abi.IntStorage, "s", item.right);
     out = format_text("{}  %data{} = extractvalue {} %a{}, 2\n", out, pc, array, pc);
     out = format_text("{}  %below{} = icmp slt i32 %b{}, 0\n  %n{} = select i1 %below{}, i32 0, i32 %b{}\n", out, pc, pc,
                       pc, pc, pc);
+    beginning := format_text("p{}", pc);
+    if (item.literal == i64(ArrayResizeInitialized)) {
+        out = format_text("{}  %fits{} = icmp ule i32 %n{}, %length{}\n  br i1 %fits{}, label %resize_valid{}, label %resize_invalid{}\nresize_invalid{}:\n", out, pc, pc, pc, pc, pc, pc, pc);
+        if (program) { out = format_text("{}  call void @chibi_native_failure(i32 0)\n", out); }
+        else {
+            out = format_text("{}  %resize.failure{} = getelementptr inbounds {}, ptr %ctx, i32 0, i32 1\n  store ptr @chibi_scalar.resize_failure, ptr %resize.failure{}\n  br label %failed\n", out, pc, abi.ContextType(), pc);
+        }
+        if (program) { out = format_text("{}  unreachable\n", out); }
+        out = format_text("{}resize_valid{}:\n", out, pc);
+        beginning = format_text("resize_valid{}", pc);
+    }
     out = format_text("{}  %none{} = icmp eq i32 %n{}, 0\n", out, pc, pc);
     out = format_text("{}  br i1 %none{}, label %done{}, label %make{}\nmake{}:\n", out, pc, pc, pc, pc);
     out = format_text("{}{}", out, Sized(format_text("width{}", pc), element));
@@ -2172,7 +2189,7 @@ ArrayResized :: (item: Instruction, pc: int, record_owners: bool[]) -> string {
     out = format_text("{}  %fill{} = sub i64 %bytes{}, %held{}\n", out, pc, pc, pc);
     out = format_text("{}  call void @chibi_scalar.zero(ptr %rest{}, i64 %fill{})\n", out, pc, pc);
     out = format_text("{}  br label %done{}\ndone{}:\n", out, pc, pc);
-    out = format_text("{}  %v{} = phi {} [ zeroinitializer, %p{} ], [ %allocated{}, %make{} ]\n", out, pc, array, pc, pc, pc);
+    out = format_text("{}  %v{} = phi {} [ zeroinitializer, %{} ], [ %allocated{}, %make{} ]\n", out, pc, array, beginning, pc, pc);
     return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
 }
 // A new int array of the bytes of the left slot's string, none when it is
@@ -2986,7 +3003,8 @@ Fallible :: (functions: Function[], code: Instruction[]) -> bool[] {
         for (function in 0..<length(functions)) {
             shape := functions[function];
             for (item in Codes(code, shape.first_code, shape.code)) {
-                if (!fallible[function] && (item.op == Fail || (item.op == Call && item.literal == i64(CallPlain) && fallible[item.left]))) {
+                if (!fallible[function] && (item.op == Fail || (item.op == ArrayResize && item.literal == i64(ArrayResizeInitialized)) ||
+                    (item.op == Call && item.literal == i64(CallPlain) && fallible[item.left]))) {
                     fallible[function] = true;
                     changed = true;
                 }
@@ -2999,10 +3017,12 @@ Fallible :: (functions: Function[], code: Instruction[]) -> bool[] {
 // and its source range.
 Failures :: (functions: Function[], code: Instruction[], texts: string[], first: int, last: int, program: bool) -> string {
     out: string[] = [];
+    resize_failure := false;
     for (function in first..<last) {
         shape := functions[function];
         for (pc in 0..<shape.code) {
             item := code[shape.first_code + pc];
+            if (!program && item.op == ArrayResize && item.literal == i64(ArrayResizeInitialized)) { resize_failure = true; }
             if (item.op == Fail) {
                 type := abi.FailureType();
                 metadata := "";
@@ -3020,6 +3040,9 @@ Failures :: (functions: Function[], code: Instruction[], texts: string[], first:
                                        FailureSymbol(function, pc), type, item.literal, item.left, item.right, metadata));
             }
         }
+    }
+    if (resize_failure) {
+        out.append(format_text("@chibi_scalar.resize_failure = private constant {} zeroinitializer\n", abi.FailureType()));
     }
     return strings.Join(out, "");
 }

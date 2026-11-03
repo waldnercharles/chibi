@@ -289,6 +289,13 @@ ArrayResizeRejectsArrayLength :: () {
     Rejects(NativesModule(Changed(ArrayNatives(), 11, Code(native.ArrayResize, 1030, 10, 8, 8, 0, 0))), ArrayOperands());
 }
 @test
+ArrayResizePolicyIsClosed :: () {
+    for (mode in [i64(-1), i64(native.ArrayResizeInitialized), i64(2)]) {
+        Rejects(NativesModule(Changed(ArrayNatives(), 11, Code(native.ArrayResize, 1030, 10, 8, 9, 0, mode))), ArrayOperands());
+    }
+    Rejects(NativesModule(Changed(ArrayNatives(), 11, Code(native.ArrayResize, 1030, 10, 8, 9, 1, 0))), ArrayOperands());
+}
+@test
 ArrayContainsNamesItsElementType :: () {
     Rejects(NativesModule(Changed(ArrayNatives(), 14, Code(native.ArrayContains, 1, 13, 12, 1, 0, 13))), ArrayOperands());
 }

@@ -1003,7 +1003,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (type == TaskType || type == RefType + TaskType) {
             return Result.Rejected(-1, "native task parameters require cancellation unwind support");
         }
-        if (waiting[function] && !TaskFrameValue(records, fields, lifecycle, type, false, ProgramMode(mode) || family)) {
+        if (waiting[function] && !TaskFrameValue(records, lifecycle, type, false, ProgramMode(mode) || family)) {
             return Result.Rejected(-1, "native waiting parameters need scalar values; managed values and dependencies are not supported yet");
         }
         if (!Held(records, type) || (exported && abi.ScalarType(type) == "")) {
@@ -1011,7 +1011,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
     }
     for (type in slots) {
-        if (waiting[function] && !TaskFrameValue(records, fields, lifecycle, type, true, ProgramMode(mode) || family)) {
+        if (waiting[function] && !TaskFrameValue(records, lifecycle, type, true, ProgramMode(mode) || family)) {
             return Result.Rejected(-1, "native waiting frames cannot own managed values or pointers yet");
         }
         if (!Held(records, type)) {
@@ -1019,15 +1019,15 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
     }
     for (type in locals) {
-        if (waiting[function] && !TaskFrameValue(records, fields, lifecycle, type, true, ProgramMode(mode) || family)) {
+        if (waiting[function] && !TaskFrameValue(records, lifecycle, type, true, ProgramMode(mode) || family)) {
             return Result.Rejected(-1, "native waiting frames cannot own managed values or pointers yet");
         }
         if (!Held(records, type)) {
             return Result.Rejected(-1, "native scalar local cannot hold a managed value or pointer");
         }
     }
-    if (waiting[function] && abi.ScalarType(result) == "") {
-        return Result.Rejected(-1, "native waiting results require numeric or bool values yet");
+    if (waiting[function] && !TaskFramePlain(lifecycle, result)) {
+        return Result.Rejected(-1, "native waiting results require numbers, bools, or records without owners");
     }
     definitions: int[] = [];
     loan_uses: bool[] = [];
@@ -1272,7 +1272,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if (((item.op == TaskCopy || item.op == TaskDrop) && item.type != TaskType) ||
             (item.op == TaskRunning && item.type != abi.BoolStorage) ||
-            (item.op == AwaitResult && !TaskResultValid(records, fields, slots, item))) {
+            (item.op == AwaitResult && !TaskResultValid(records, fields, slots, lifecycle, item))) {
             return Result.Rejected(base + pc, "native task observer or result differs from its type");
         }
         if ((item.op == CancelAfter && !Typed(slots, item.right, abi.DoubleStorage)) ||

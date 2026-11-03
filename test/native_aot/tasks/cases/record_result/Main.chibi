@@ -1,0 +1,51 @@
+package task_record_results
+Pair :: struct { left: int; right: bool; }
+Result :: struct { pair: Pair; word: u64; real: f64; }
+Worker :: (value: int) -> Result {
+    yield
+    return {pair: {left: value, right: true}, word: 9007199254740993, real: 2.5};
+}
+Other :: () -> Result {
+    yield
+    return {pair: {left: 23, right: true}, word: 9007199254740993, real: 2.5};
+}
+Check :: (value: Result, expected: int) {
+    assert(value.pair.left == expected && value.pair.right);
+    assert(value.word == 9007199254740993 && value.real == 2.5);
+}
+Main :: () -> int {
+    direct := await Worker(17);
+    Check(direct, 17);
+    typed: Result = await Worker(19);
+    Check(typed, 19);
+    field := (await Worker(21)).pair.left;
+    assert(field == 21);
+    for index in 0..<1024 {
+        pending := Worker(index);
+        alias := pending;
+        joined := await pending;
+        if joined is Cancelled { return 1; }
+        else {
+            if joined.pair.left != index { return 5; }
+            Check(joined, index);
+        }
+        // Changing one joined record cannot change the completed promise.
+        if joined is not Cancelled {
+            copy := joined;
+            copy.pair.left = -1;
+        }
+        again := await alias;
+        if again is Cancelled { return 2; }
+        else { Check(again, index); }
+        pending = Other();
+        replacement := await pending;
+        if replacement is Cancelled { return 3; }
+        else { Check(replacement, 23); }
+        stopped := Worker(99);
+        copy := stopped;
+        cancel stopped
+        absent := await copy;
+        if absent is not Cancelled { return 4; }
+    }
+    return 0;
+}

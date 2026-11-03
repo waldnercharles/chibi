@@ -6,28 +6,24 @@ import strings "core:strings"
 TaskWaitEffect: int : 0;
 TaskSpawnEffect: int : 1;
 
-// Plain result records contain no owners. Direct pointer cells and their arrays
-// have separate frame roots; aggregate pointer tracing remains a closed domain.
-TaskFramePlain :: (records: Record[], fields: int[], type: int) -> bool {
+// The existing lifecycle graph excludes collector edges and propagates owners
+// once. Its table lookup also bounds shared record DAGs without expanding every
+// root-to-leaf path. Pointer cells and arrays use separate persistent roots.
+TaskFramePlain :: (layout: ValueLayout, type: int) -> bool {
     if (abi.ScalarType(type) != "") { return true; }
-    record := type - RecordType;
-    if (record < 0 || record >= length(records)) { return false; }
-    shape := records[record];
-    for (index in 0..<shape.count) {
-        if (!TaskFramePlain(records, fields, fields[shape.first + index])) { return false; }
-    }
-    return true;
+    index := type - RecordType;
+    return type < ArrayType && Index(index, length(layout.valid)) && layout.valid[index] && !layout.owned[index];
 }
-TaskFrameValue :: (records: Record[], fields: int[], layout: ValueLayout, type: int, observer: bool, owned: bool) -> bool {
+TaskFrameValue :: (records: Record[], layout: ValueLayout, type: int, observer: bool, owned: bool) -> bool {
     if (owned && TaskOwnedType(records, layout, type)) { return true; }
     if (owned && observer && type >= RefType && TaskOwnedType(records, layout, type - RefType)) { return true; }
     if (type == TaskType) { return observer; }
     if (type == PointerType || type == ArrayType + PointerType) { return true; }
     if (observer && type >= RefType &&
         (abi.ScalarType(type - RefType) != "" || type == RefType + PointerType || type == RefType + ArrayType + PointerType)) { return true; }
-    return TaskFramePlain(records, fields, type);
+    return TaskFramePlain(layout, type);
 }
-TaskResultValid :: (records: Record[], fields: int[], slots: int[], item: Instruction) -> bool {
+TaskResultValid :: (records: Record[], fields: int[], slots: int[], layout: ValueLayout, item: Instruction) -> bool {
     record := item.type - RecordType;
     if (!Typed(slots, item.left, TaskType) || record < 0 || record >= length(records) ||
         item.literal != 0 || item.target < 0 || item.target > 1) { return false; }
@@ -35,7 +31,7 @@ TaskResultValid :: (records: Record[], fields: int[], slots: int[], item: Instru
     count := 1;
     if (item.right != 0) { count = 2; }
     return shape.count == count && fields[shape.first] == abi.IntStorage &&
-           (item.right == 0 || (abi.ScalarType(item.right) != "" &&
+           (item.right == 0 || (TaskFramePlain(layout, item.right) &&
                                fields[shape.first + 1] == item.right));
 }
 // The pending wait owns an observer until the scheduler has resumed this

@@ -2663,7 +2663,7 @@ ArgumentReadEffects :: (types: TypeDecl[], members: TypeMember[], arguments: Val
             return ReadEffect;
         }
         declared := types[value.record];
-        if (declared.kind == OptionalDecl || declared.kind == CollectionDecl) {
+        if (declared.kind == OptionalDecl || declared.kind == CollectionDecl || declared.kind == TaskResultDecl) {
             pending.append({storage: declared.value_storage, container: declared.value_container,
                             record: declared.value_record});
         } else if (declared.kind == UnionDecl) {

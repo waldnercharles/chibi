@@ -1,0 +1,4 @@
+package owned_promise_rejection
+Payload :: struct { text: string; }
+Worker :: () -> Payload { yield; return {text: text_from_bytes([u8(120)])}; }
+Main :: () -> int { pending := Worker(); await pending; return 0; }

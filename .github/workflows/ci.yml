@@ -602,6 +602,7 @@ jobs:
             if ([IO.File]::ReadAllText($output) -ne 'preserved') { throw 'Windows rejected remove_item replaced the prior output' }
             "PASS native Windows remove_item rejection O$level" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
           }
+          exit 0
       - name: Check native Windows host clocks
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: ./test/native_aot/host_clock/Run.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -LLVM $env:CHIBI_WINDOWS_LLVM

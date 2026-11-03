@@ -14,7 +14,7 @@ esac
     --source "$root/test/native_aot/managed_pointers/Probe.chibi" --entry Main \
     --output "$work/probe" --llvm "$llvm" --target "$triple" --jobs 1
 "$work/probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/Collector.ll"
-for name in Cells ScopedAliases Transfer; do
+for name in Cells ScopedAliases Transfer Tasks TaskFailure; do
     "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
         --source "$root/test/native_aot/managed_pointers/source/$name.chibi" --entry Main \
         --output "$work/$name.ll" --emit-llvm --target "$triple"
@@ -23,7 +23,17 @@ done
     --source "$root/test/native_aot/managed_pointers/SourceProbe.chibi" --entry Main \
     --output "$work/source-probe" --llvm "$llvm" --target "$triple" --jobs 1
 "$work/source-probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
-    "$work/Cells.ll" "$work/ScopedAliases.ll" "$work/Transfer.ll"
+    "$work/Cells.ll" "$work/ScopedAliases.ll" "$work/Transfer.ll" "$work/Tasks.ll"
+"$work/source-probe" --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/TaskFailure.ll"
+set +e
+"$compiler" run --root "$root/tools/compiler" --core "$root/packages/core" --llvm "$llvm" \
+    "$root/test/native_aot/managed_pointers/source/TaskFailure.chibi" > "$work/task-failure.log" 2>&1
+failure_status=$?
+set -e
+[ "$failure_status" -eq 1 ] || { cat "$work/task-failure.log"; exit 1; }
+grep -F 'TaskFailure.chibi:13:5:' "$work/task-failure.log"
+grep -F 'Assertion failed: waiting task assertion preserves cleanup' "$work/task-failure.log"
+
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$root/test/native_aot/managed_pointers/NativeProbe.chibi" --entry Main \
     --output "$work/native-probe" --llvm "$llvm" --target "$triple" --jobs 1

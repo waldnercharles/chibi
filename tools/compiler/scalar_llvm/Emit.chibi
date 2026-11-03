@@ -1957,6 +1957,10 @@ RetainedValue :: (rows: facts.Row[], records: int[], type: int, value: int, name
 // Validate, or for `shared` the rows of a package that a shared library holds:
 // every function is a library function, though the rows are a package's, which
 // name no library and carry no stable IDs.
+WaitingOperand :: (row: facts.Row) -> bool {
+    return row.kind == facts.YieldRow || row.kind == facts.AwaitRow || row.kind == facts.AwaitResultRow || row.kind == facts.DelayRow ||
+           (row.kind == facts.CallRow && row.literal == i64(facts.CallAwaited));
+}
 ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
     if (length(rows) < 2) {
         return "scalar module row count is out of bounds";
@@ -2003,8 +2007,7 @@ ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
         head := heads[function];
         for (at in head + rows[head].count + 1..<Last(rows, heads, function)) {
             row := rows[at];
-            waits = waits || row.kind == facts.YieldRow || row.kind == facts.AwaitRow || row.kind == facts.AwaitResultRow || row.kind == facts.DelayRow ||
-                    (row.kind == facts.CallRow && row.literal == i64(facts.CallAwaited));
+            waits = waits || WaitingOperand(row);
             task_calls = task_calls || (row.kind == facts.CallRow && row.literal == i64(facts.CallSpawned));
         }
         if (waits && !Scalar(rows[head].type)) {
@@ -2348,8 +2351,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         // passed to a mutating callee. Promote those parameters once at entry,
         // so reference assignment may replace/release their local descriptor.
         addressed_parameters := resize([false], declaration.count);
+        waiting_function := false;
         for (index in head + declaration.count + 1..<Last(rows, heads, function)) {
             operand := rows[index];
+            waiting_function = waiting_function || WaitingOperand(operand);
             if ((operand.kind == facts.RefRow || operand.kind == facts.AssignRow) && operand.value < declaration.count) {
                 addressed_parameters[operand.value] = true;
             }
@@ -2380,6 +2385,17 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     body.append(Op(native.Save, type, 0, glue.value, 0, local));
                     slot += length(glue.slot_types);
                 }
+                owned_vars.append(index);
+                owned_types.append(type);
+            }
+            if (waiting_function && type == native.ArrayType + native.PointerType && rows[head + 1 + index].literal != 2) {
+                // A suspended callee owns its value parameter independently of
+                // the caller's lifetime, including discarded task observers.
+                kept := KeepValue(managed, rows[head + 1 + index].type, slot, slot + 1);
+                slots.extend(kept.slot_types);
+                body.extend(kept.code);
+                body.append(Op(native.Save, type, 0, kept.value, 0, local));
+                slot += length(kept.slot_types);
                 owned_vars.append(index);
                 owned_types.append(type);
             }
@@ -2879,14 +2895,32 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     item = Op(native.FunctionAddress, type, slot, operand.value, 0, 0);
                 } else if (operand.kind == facts.YieldRow) {
                     // The turn is given up first; the row gives int 0, the constant.
-                    body.append(Op(native.Suspend, 0, 0, 0, 0, 0));
+                    if (pointer_program) {
+                        glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
+                            fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root);
+                        next_root = glue.next;
+                        slots.extend(glue.types);
+                        extra += length(glue.types);
+                        body.extend(glue.before);
+                        body.append(Op(native.Suspend, 0, 0, 0, 0, 0));
+                        body.extend(glue.after);
+                    } else { body.append(Op(native.Suspend, 0, 0, 0, 0, 0)); }
                 } else if (operand.kind == facts.CancelAfterRow) {
                     base := length(stack) - 2;
                     body.append(Op(native.CancelAfter, 0, 0, stack[base], stack[base + 1], 0));
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.DelayRow) {
                     base := length(stack) - 1;
-                    body.append(Op(native.Delay, 0, 0, stack[base], 0, 0));
+                    if (pointer_program) {
+                        glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
+                            fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root);
+                        next_root = glue.next;
+                        slots.extend(glue.types);
+                        extra += length(glue.types);
+                        body.extend(glue.before);
+                        body.append(Op(native.Delay, 0, 0, stack[base], 0, 0));
+                        body.extend(glue.after);
+                    } else { body.append(Op(native.Delay, 0, 0, stack[base], 0, 0)); }
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.AwaitRow || operand.kind == facts.CancelRow) {
                     base := length(stack) - 1;
@@ -2894,7 +2928,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     if (operand.kind == facts.AwaitRow) {
                         task_op = native.AwaitHandle;
                     }
-                    body.append(Op(task_op, 0, 0, stack[base], 0, 0));
+                    if (pointer_program && task_op == native.AwaitHandle) {
+                        glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
+                            fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root);
+                        next_root = glue.next;
+                        slots.extend(glue.types);
+                        extra += length(glue.types);
+                        body.extend(glue.before);
+                        body.append(Op(task_op, 0, 0, stack[base], 0, 0));
+                        body.extend(glue.after);
+                    } else { body.append(Op(task_op, 0, 0, stack[base], 0, 0)); }
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.TaskRunningRow || operand.kind == facts.AwaitResultRow) {
                     base := length(stack) - 1;
@@ -3445,7 +3488,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                 }
                 stored = [];
-                if (pointer_program && (item.op == native.Call || item.op == native.ForeignCall)) {
+                if (pointer_program && (item.op == native.Call || item.op == native.ForeignCall || item.op == native.AwaitResult)) {
                     glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
                         fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root);
                     next_root = glue.next;
@@ -3849,7 +3892,17 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     texts.append(row.text);
                     fail.target = length(texts);
                 }
-                body.extend([Op(native.Branch, 0, 0, value, 0, length(body) + 2), fail]);
+                if (pointer_program && waiting_function) {
+                    glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
+                        fresh, slots, shape.first_slot, frames, slot, next_root);
+                    next_root = glue.next;
+                    slots.extend(glue.types);
+                    slot += length(glue.types);
+                    body.append(Op(native.Branch, 0, 0, value, 0, length(body) + length(glue.before) + length(glue.after) + 2));
+                    body.extend(glue.before);
+                    body.append(fail);
+                    body.extend(glue.after);
+                } else { body.extend([Op(native.Branch, 0, 0, value, 0, length(body) + 2), fail]); }
             } else if (row.kind == facts.LocalRow && row.literal == i64(facts.Retained)) {
                 type := NativeType(row.type);
                 lowered := RetainedValue(rows, declared, row.type, value, format_text("{}.{}", declaration.name, row.name),

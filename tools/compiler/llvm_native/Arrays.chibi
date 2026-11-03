@@ -114,6 +114,10 @@ ArrayUses :: (code: Instruction[]) -> int[] {
     for (item in code) {
         type := item.type;
         flags := 0;
+        if (item.op == ManagedPin) {
+            if (type >= RefType) { type -= RefType; }
+            flags = ArrayDropping;
+        }
         if (MapOperation(item.op)) {
             type = MapValue(MapUsed(item));
             if (MapArrayValue(type)) {

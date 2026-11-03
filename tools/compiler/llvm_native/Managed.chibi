@@ -391,6 +391,47 @@ ManagedRoots :: (shape: Function, slots: int[], locals: int[]) -> string {
     }
     return strings.Join(output, "");
 }
+// The nodes and their slots are used by attach and release across suspension,
+// so coroutine lowering puts them in the stable heap frame, not the ramp stack.
+ManagedFrameRoots :: struct { prologue: string; attach: string; cleanup: string; }
+ManagedFrame :: (shape: Function, slots: int[], locals: int[]) -> ManagedFrameRoots {
+    prologue: string[] = ["  %managed.heap = call ptr @chibi_managed.owner(ptr %ctx)\n"];
+    attach: string[] = [];
+    cleanup: string[] = [];
+    for (part in [int(0), 1]) {
+        first := shape.first_slot;
+        count := shape.slots;
+        prefix := "s";
+        types := slots;
+        if (part == 1) { first = shape.first_local; count = shape.locals; prefix = "l"; types = locals; }
+        for (index in 0..<count) {
+            if (types[first + index] != PointerType) { continue; }
+            prologue.append(Store(Zero(PointerType), PointerType, prefix, index));
+            prologue.append(format_text("  %managed.{}{} = alloca %chibi.managed.persistent\n  store %chibi.managed.persistent zeroinitializer, ptr %managed.{}{}\n", prefix, index, prefix, index));
+            attach.append(format_text("  call void @chibi_managed.hold(ptr %managed.heap, ptr %managed.{}{}, ptr %{}{}, ptr @chibi_managed.trace.pointer)\n", prefix, index, prefix, index));
+            cleanup.append(format_text("  call void @chibi_managed.unhold(ptr %managed.{}{})\n", prefix, index));
+        }
+    }
+    return {prologue: strings.Join(prologue, ""), attach: strings.Join(attach, ""), cleanup: strings.Join(cleanup, "")};
+}
+// A cancelled/failed continuation can bypass unpin. Each active pin names
+// exactly one owned array descriptor; clear it before dropping that owner.
+ManagedFramePins :: (shape: Function, code: Instruction[], prefix: string) -> string {
+    output: string[] = [];
+    array := ArrayType + PointerType;
+    for (pc in 0..<shape.code) {
+        item := code[shape.first_code + pc];
+        if (item.op != ManagedPin) { continue; }
+        id := item.right;
+        output.append(format_text("  %{}.back{} = getelementptr %chibi.managed.persistent, ptr %managed.pin{}, i32 0, i32 1\n", prefix, id, id));
+        output.append(format_text("  %{}.held{} = load ptr, ptr %{}.back{}\n  %{}.active{} = icmp ne ptr %{}.held{}, null\n", prefix, id, prefix, id, prefix, id, prefix, id));
+        output.append(format_text("  br i1 %{}.active{}, label %{}.drop{}, label %{}.next{}\n{}.drop{}:\n", prefix, id, prefix, id, prefix, id, prefix, id));
+        output.append(format_text("  %{}.slot.at{} = getelementptr %chibi.managed.persistent, ptr %managed.pin{}, i32 0, i32 2\n  %{}.slot{} = load ptr, ptr %{}.slot.at{}\n", prefix, id, id, prefix, id, prefix, id));
+        output.append(format_text("  %{}.value{} = load {}, ptr %{}.slot{}\n  store {} zeroinitializer, ptr %{}.slot{}\n", prefix, id, TypeName(array), prefix, id, TypeName(array), prefix, id));
+        output.append(format_text("  call void @chibi_managed.unhold(ptr %managed.pin{})\n  call void @chibi_array.{}.drop(ptr %ctx, {} %{}.value{})\n  br label %{}.next{}\n{}.next{}:\n", id, array, TypeName(array), prefix, id, prefix, id, prefix, id));
+    }
+    return strings.Join(output, "");
+}
 ManagedUnroots :: (is_entry: bool) -> string {
     // Restoring the frame boundary also removes transient pins when a failed
     // call bypassed its normal unpin instructions.
@@ -398,7 +439,7 @@ ManagedUnroots :: (is_entry: bool) -> string {
     if (is_entry) { output = strings.Concatenate([output, "  call void @chibi_managed.collect(ptr %ctx, ptr %managed.heap)\n"]); }
     return output;
 }
-ManagedInstruction :: (item: Instruction, pc: int) -> string {
+ManagedInstruction :: (item: Instruction, pc: int, persistent: bool) -> string {
     out := format_text("p{}:\n", pc);
     if (item.op == ManagedNew) {
         out = format_text("{}  call void @chibi_managed.safepoint(ptr %ctx, ptr %managed.heap)\n", out);
@@ -423,10 +464,13 @@ ManagedInstruction :: (item: Instruction, pc: int) -> string {
             out = format_text("{}{}", out, Load(format_text("pin{}", pc), item.type, "s", item.left));
             address = format_text("%pin{}", pc);
         }
-        out = format_text("{}  call void @chibi_managed.push(ptr %managed.heap, ptr %managed.pin{}, ptr {}, ptr @chibi_managed.trace.array)\n",
-                          out, item.right, address);
+        operation := "push";
+        if (persistent) { operation = "hold"; }
+        out = format_text("{}  call void @chibi_managed.{}(ptr %managed.heap, ptr %managed.pin{}, ptr {}, ptr @chibi_managed.trace.array)\n",
+                          out, operation, item.right, address);
     } else {
-        out = format_text("{}  call void @chibi_managed.pop(ptr %managed.heap, ptr %managed.pin{})\n", out, item.right);
+        if (persistent) { out = format_text("{}  call void @chibi_managed.unhold(ptr %managed.pin{})\n", out, item.right); }
+        else { out = format_text("{}  call void @chibi_managed.pop(ptr %managed.heap, ptr %managed.pin{})\n", out, item.right); }
     }
     return format_text("{}  br label %p{}\n", out, pc + 1);
 }
@@ -531,7 +575,7 @@ ManagedPinsValid :: (code: Instruction[], slots: int[]) -> string {
             active = slice(active, 0, length(active) - 1);
             if (length(active) == 0) { called = false; }
         } else if (length(active) > 0) {
-            if (called || (item.op != Call && item.op != ForeignCall && item.op != ManagedNew)) {
+            if (called || (item.op != Call && item.op != ForeignCall && item.op != ManagedNew && item.op != Suspend && item.op != Delay && item.op != AwaitHandle && item.op != AwaitResult && item.op != Fail)) {
                 return "native collector pins must bracket one collecting call";
             }
             called = true;

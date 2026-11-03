@@ -1,0 +1,98 @@
+package managed_waiting_frames
+
+Make :: (value: int) -> ^int { return &value; }
+Cells :: (count: int) -> ^int[] {
+    values: ^int[] = [];
+    for index in 0..<count { values.append(Make(index + 1)); }
+    return values;
+}
+Churn :: () { for index in 0..<3000 { discarded := Make(index); } }
+Count :: (add: int) -> int {
+    total: retain int = 0;
+    total += add;
+    return total;
+}
+// The former waiting-pointer rejection kernel, now a real accepted program.
+LocalCell :: () -> int {
+    value := 1;
+    pointer := &value;
+    yield
+    Churn();
+    return pointer^;
+}
+Owner :: (value: int) -> int {
+    pointer := Make(value);
+    yield
+    Churn();
+    yield
+    return pointer^;
+}
+ArrayOwner :: (values: ^int[]) -> int {
+    yield
+    Churn();
+    yield
+    total := 0;
+    for pointer in values { total += pointer^; }
+    return total;
+}
+Detached :: () -> int {
+    values := Cells(3);
+    yield
+    Count(values[0]^ + values[1]^ + values[2]^);
+    return 0;
+}
+Inline :: () -> int {
+    values := Cells(4);
+    return await ArrayOwner(values);
+}
+Parent :: () -> int {
+    values := Cells(5);
+    child := ArrayOwner(values);
+    yield
+    joined := await child;
+    if joined is Cancelled { return -1; }
+    else { return joined; }
+}
+Main :: () -> int {
+    original := await LocalCell();
+    assert(original == 1);
+    worker := Owner(42);
+    Churn();
+    result := await worker;
+    if result is Cancelled { return 1; }
+    else { assert(result == 42); }
+
+    values := Cells(3);
+    reader := ArrayOwner(values);
+    values = [];
+    Churn();
+    read := await reader;
+    if read is Cancelled { return 2; }
+    else { assert(read == 6); }
+
+    // Program ownership preserves the roots after the last observer drops.
+    if true { orphan := Detached(); }
+    Churn();
+    yield
+    yield
+    assert(Count(0) == 6);
+
+    inline_task := Inline();
+    Churn();
+    cancel inline_task
+    tree := Parent();
+    Churn();
+    cancel tree
+    yield
+    gone := await inline_task;
+    gone_tree := await tree;
+    assert(gone is Cancelled && gone_tree is Cancelled);
+
+    // Reuse cancelled scheduler slots and persistent roots without growth.
+    for index in 0..<64 {
+        pending := Inline();
+        cancel pending
+    }
+    Churn();
+    return 0;
+}

@@ -6,18 +6,24 @@ import strings "core:strings"
 TaskWaitEffect: int : 0;
 TaskSpawnEffect: int : 1;
 
-// Numeric task frames may also hold task observers and plain result unions.
-// Owning records need the shared per-type lifecycle before this gate opens.
-TaskFrameValue :: (records: Record[], fields: int[], type: int, observer: bool) -> bool {
+// Plain result records contain no owners. Direct pointer cells and their arrays
+// have separate frame roots; aggregate pointer tracing remains a closed domain.
+TaskFramePlain :: (records: Record[], fields: int[], type: int) -> bool {
     if (abi.ScalarType(type) != "") { return true; }
-    if (type == TaskType) { return observer; }
     record := type - RecordType;
     if (record < 0 || record >= length(records)) { return false; }
     shape := records[record];
     for (index in 0..<shape.count) {
-        if (!TaskFrameValue(records, fields, fields[shape.first + index], false)) { return false; }
+        if (!TaskFramePlain(records, fields, fields[shape.first + index])) { return false; }
     }
     return true;
+}
+TaskFrameValue :: (records: Record[], fields: int[], type: int, observer: bool) -> bool {
+    if (type == TaskType) { return observer; }
+    if (type == PointerType || type == ArrayType + PointerType) { return true; }
+    if (observer && type >= RefType &&
+        (abi.ScalarType(type - RefType) != "" || type == RefType + PointerType || type == RefType + ArrayType + PointerType)) { return true; }
+    return TaskFramePlain(records, fields, type);
 }
 TaskResultValid :: (records: Record[], fields: int[], slots: int[], item: Instruction) -> bool {
     record := item.type - RecordType;

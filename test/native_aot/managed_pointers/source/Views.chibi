@@ -1,0 +1,141 @@
+package pointer_views
+Owner :: () -> ^(int[]) { values: int[] = [4, 5]; return &values; }
+Touch :: (window: view int[]) { window[0] = 7; }
+ReadWindow :: (window: view int[]) -> int { return window.length() * 100 + window[0]; }
+Follow :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { selected[0] = 8; previous := values[1]; pointer^ = [4, 5, 6, 7]; selected[1] = 9; return previous * 1000 + values[1] * 100 + values[2] * 10 + selected.length(); } return -1; }
+OrdinaryCopy :: () -> int { values: int[] = [1, 2]; copied := values; pointer := &values; selected := pointer.view(0..<2); if selected { selected[1] = 7; return values[1] * 100 + copied[1] * 10 + selected[1]; } return -1; }
+Grow :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { pointer.append(4); } if selected { selected[0] = 8; return values[1] * 100 + selected.length() * 10 + values.length(); } return -1; }
+Cloned :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(0..<2); if selected { copied := selected.clone(); copied[0] = 9; return values[0] * 100 + selected[0] * 10 + copied[0]; } return -1; }
+Sliced :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(0..<2); if selected { copied := selected[0..<1]; if copied { copied[0] = 7; return values[0] * 100 + selected[0] * 10 + copied[0]; } } return -1; }
+Empty :: () -> int { values: int[] = []; pointer := &values; selected := pointer.view(0..<0); if selected { return selected.length() + 1; } return -1; }
+Escaped :: () -> int { pointer := Owner(); selected := pointer.view(0..<2); if selected { selected[0] = 8; return pointer^[0] * 10 + selected[1]; } return -1; }
+InvalidRange :: () -> int { values: int[] = [1]; pointer := &values; selected := pointer.view(2..<2); if selected { return 1; } return 0; }
+Shrunk :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { pointer^ = [9]; return selected.length(); } return -1; }
+Parameter :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { Touch(selected); } if selected { return values[1] * 100 + ReadWindow(selected); } return -1; }
+
+// The caller keeps only the optional window. No pointer to its owner escapes
+// separately, so collection must trace the window payload itself.
+OwnedWindow :: () -> view int[]? {
+    values: int[] = [4, 5];
+    pointer := &values;
+    return pointer.view(0..<2);
+}
+ChurnOwner :: (value: int) -> ^(int[]) { values: int[] = [value]; return &values; }
+ViewOnlyRoot :: () -> int {
+    selected := OwnedWindow();
+    for (index in 0..<4096) {
+        temporary := ChurnOwner(index);
+        assert(temporary^[0] == index);
+    }
+    if selected { selected[0] = 7; return selected[0] * 10 + selected[1]; }
+    return -1;
+}
+ReplaceRight :: (owner: ^(int[])) -> int { owner^ = [10, 20, 30]; return 7; }
+WriteAfterRight :: () -> int {
+    values: int[] = [1, 2, 3];
+    pointer := &values;
+    selected := pointer.view(1..<3);
+    if selected { selected[0] = ReplaceRight(pointer); return values[0] * 100 + values[1]; }
+    return -1;
+}
+CompoundAfterRight :: () -> int {
+    values: int[] = [1, 2, 3];
+    pointer := &values;
+    selected := pointer.view(1..<3);
+    if selected { selected[0] += ReplaceRight(pointer); return values[0] * 100 + values[1]; }
+    return -1;
+}
+AppendAfterRight :: () -> int {
+    values: int[] = [1];
+    pointer := &values;
+    pointer.append(ReplaceRight(pointer));
+    return values[0] * 100 + values[3];
+}
+FloatRight :: (owner: ^(f32[])) -> f32 {
+    owner^ = [f32(100), f32(7)];
+    return f32(f64(16777217));
+}
+FloatCompound :: () -> bool {
+    values: f32[] = [f32(-16777216), f32(0)];
+    pointer := &values;
+    selected := pointer.view(0..<2);
+    if selected {
+        // The old f32 value is captured before FloatRight replaces the cell.
+        // The explicit f64-to-f32 conversion finishes before the f32 addition.
+        selected[0] += FloatRight(pointer);
+        return selected[0] == f32(0) && values[0] == f32(0) && values[1] == f32(7);
+    }
+    return false;
+}
+SliceShrunk :: () -> bool {
+    values: int[] = [1, 2, 3]; owner := &values; window := owner.view(1..<3);
+    if window { owner^ = [9]; copied := window[0..<1]; return !copied; }
+    return false;
+}
+AppendLoop :: () -> bool {
+    values: int[] = [11];
+    pointer := &values;
+    selected := pointer.view(0..<1);
+    for (index in 0..<4096) { pointer.append(index); }
+    if selected {
+        return values.length() == 4097 && values[4096] == 4095 && selected.length() == 1 && selected[0] == 11;
+    }
+    return false;
+}
+AppendStress :: () -> int {
+    good := AppendLoop();
+    if good { return 0; }
+    return 99;
+}
+MarkIndex :: (owner: ^(int[])) -> int {
+    assert(owner^[0] == 100);
+    owner^ = [200, 3, 4];
+    return 0;
+}
+MarkRight :: (owner: ^(int[])) -> int {
+    assert(owner^[0] == 200);
+    owner^ = [300, 5, 6];
+    return 9;
+}
+IndexBeforeRight :: () -> int {
+    values: int[] = [100, 1, 2]; owner := &values; selected := owner.view(1..<3);
+    if selected { selected[MarkIndex(owner)] = MarkRight(owner); return values[0] * 10 + values[1]; }
+    return -1;
+}
+Main :: () -> int {
+    result_Follow := Follow();
+    assert(result_Follow == 8592);
+    result_OrdinaryCopy := OrdinaryCopy();
+    assert(result_OrdinaryCopy == 727);
+    result_Grow := Grow();
+    assert(result_Grow == 824);
+    result_Cloned := Cloned();
+    assert(result_Cloned == 119);
+    result_Sliced := Sliced();
+    assert(result_Sliced == 117);
+    result_Empty := Empty();
+    assert(result_Empty == 1);
+    result_Escaped := Escaped();
+    assert(result_Escaped == 85);
+    result_InvalidRange := InvalidRange();
+    assert(result_InvalidRange == 0);
+    result_Parameter := Parameter();
+    assert(result_Parameter == 907);
+    result_ViewOnlyRoot := ViewOnlyRoot();
+    assert(result_ViewOnlyRoot == 75);
+    result_WriteAfterRight := WriteAfterRight();
+    assert(result_WriteAfterRight == 1007);
+    result_CompoundAfterRight := CompoundAfterRight();
+    assert(result_CompoundAfterRight == 1009);
+    result_AppendAfterRight := AppendAfterRight();
+    assert(result_AppendAfterRight == 1007);
+    float_compound := FloatCompound();
+    assert(float_compound);
+    sliced_shrunk := SliceShrunk();
+    assert(sliced_shrunk);
+    appended := AppendLoop();
+    assert(appended);
+    indexed := IndexBeforeRight();
+    assert(indexed == 3009);
+    return 0;
+}

@@ -107,6 +107,45 @@ ArrayCloning: int : 2;
 ArrayDropping: int : 4;
 ArraySharing: int : 8;
 ArrayMutation: int : 16;
+
+NestedArrayElement :: (records: Record[], fields: int[], type: int) -> int {
+    wrapper := ElementType(records, type);
+    if (wrapper < RecordType || wrapper >= ArrayType || !Index(wrapper - RecordType, length(records))) { return 0; }
+    record := records[wrapper - RecordType];
+    if (record.count != 1) { return 0; }
+    inner := fields[record.first];
+    element := ElementType(records, inner);
+    if (element == 0 || (!Integer(element) && !abi.Floating(element) &&
+        element != abi.BoolStorage && element != abi.TextStorage)) { return 0; }
+    return inner;
+}
+
+// The owner is canonical and already evaluated. No source code runs between
+// this address and its consuming inner mutation, so outer backing stays put.
+ArrayValueReference :: (item: Instruction, pc: int, program: bool) -> string {
+    array := abi.ArrayType();
+    wrapper := item.target - ArrayType;
+    out := Load(format_text("outer_ref{}", pc), RefType + item.target, "s", item.left);
+    out = format_text("{}  %outer_value{} = load {}, ptr %outer_ref{}\n", out, pc, array, pc);
+    out = format_text("{}  %outer_length{} = extractvalue {} %outer_value{}, 0\n", out, pc, array, pc);
+    out = format_text("{}{}", out, Load(format_text("outer_index{}", pc), abi.IntStorage, "s", item.right));
+    out = format_text("{}  %outer_inside{} = icmp ult i32 %outer_index{}, %outer_length{}\n", out, pc, pc, pc);
+    out = format_text("{}  br i1 %outer_inside{}, label %outer_present{}, label %outer_absent{}\nouter_absent{}:\n", out, pc, pc, pc, pc);
+    if (program) {
+        failure := "chibi_native_reference_unavailable";
+        if (item.literal == i64(ArrayAddressMethod)) { failure = "chibi_native_array_mutation_unavailable"; }
+        out = format_text("{}  call void @{}()\n", out, failure);
+    } else { out = format_text("{}  call void @llvm.trap()\n", out); }
+    out = format_text("{}  unreachable\nouter_present{}:\n", out, pc);
+    out = format_text("{}  %outer_unique{} = call {} @chibi_array.{}.unique(ptr %ctx, {} %outer_value{}, i32 %outer_length{}, i1 true)\n",
+        out, pc, array, item.target, array, pc, pc);
+    out = format_text("{}  store {} %outer_unique{}, ptr %outer_ref{}\n", out, array, pc, pc);
+    out = format_text("{}  %outer_data{} = extractvalue {} %outer_unique{}, 2\n", out, pc, array, pc);
+    out = format_text("{}  %outer_offset{} = zext i32 %outer_index{} to i64\n", out, pc, pc);
+    out = format_text("{}  %outer_at{} = getelementptr inbounds {}, ptr %outer_data{}, i64 %outer_offset{}\n", out, pc, TypeName(wrapper), pc, pc);
+    out = format_text("{}  %inner_at{} = getelementptr inbounds {}, ptr %outer_at{}, i32 0, i32 0\n", out, pc, TypeName(wrapper), pc);
+    return format_text("{}{}", out, Store(format_text("%inner_at{}", pc), item.type, "s", item.output));
+}
 // The native array domain has 1024 possible element storage IDs. One scan
 // records which operations each used type needs; unused helpers are not emitted.
 ArrayUses :: (code: Instruction[]) -> int[] {
@@ -118,12 +157,15 @@ ArrayUses :: (code: Instruction[]) -> int[] {
             type = ArrayType + ViewElement(item);
             if (item.op == ViewClone || item.op == ViewSlice) { flags = ArrayAllocation; }
             if (item.op == ViewSet) { flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation; }
+        } else if (item.op == ArrayValueAddress) {
+            type = item.target;
+            flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation;
         }
         if (item.op == ManagedNew && ManagedArray(item.right)) {
             type = item.right;
             flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArraySharing;
         }
-        if (item.op == ManagedPin) {
+        if (item.op == ManagedPin || item.op == OwnerPin) {
             if (type >= RefType) { type -= RefType; }
             flags = ArrayDropping;
         }

@@ -18,7 +18,7 @@ for level in 0 2; do
         CHIBI_CORE="$root/packages/core" "$compiler" test --llvm "$llvm" -O"$level" \
             --root "$root/test/compiler/samples/$suite" "$root/test/compiler/samples/$sample/facts"
     done
-    for source in Main Waiting Rows; do
+    for source in Main Waiting OwnedWaiting Rows; do
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$root/test/native_aot/patterns/$source.chibi" --entry Main \
             --output "$work/$source" --llvm "$llvm" --target "$target" --level "$level"
@@ -33,10 +33,7 @@ for source in "$root"/test/native_aot/patterns/rejected/*.chibi; do
         > "$work/rejected.log" 2>&1; then
         echo "native patterns accepted invalid scope: $source" >&2; exit 1
     fi
-    case "$source" in
-        */OwnedWaiting.chibi) grep -q 'native waiting frames cannot own managed values or pointers yet' "$work/rejected.log" ;;
-        *) grep -q 'Pattern bindings require a matching if, while or switch arm' "$work/rejected.log" ;;
-    esac
+    grep -q 'Pattern bindings require a matching if, while or switch arm' "$work/rejected.log"
     test "$(cat "$work/rejected")" = preserved
 done
 if [ -n "$reference" ]; then

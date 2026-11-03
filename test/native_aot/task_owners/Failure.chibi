@@ -1,0 +1,23 @@
+package task_owner_failure
+
+Payload :: struct { title: string; words: string[]; }
+Text :: (count: int) -> string { return text_from_bytes(resize([u8(120)], count)); }
+Broken :: (changed: ^Payload) {
+    changed^.title = Text(19);
+    changed^.words = [Text(23)];
+    assert(false, "owned task failure");
+}
+Worker :: () -> int {
+    saved: Payload = {title: Text(4), words: [Text(7), Text(11)]};
+    yield;
+    Broken(&saved);
+    return text_byte_length(saved.title);
+}
+Main :: () -> int {
+    text := Text(17);
+    worker := Worker();
+    yield;
+    joined := await worker;
+    if joined is Cancelled { return 1; }
+    else { return joined + text_byte_length(text); }
+}

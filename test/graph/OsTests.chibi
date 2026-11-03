@@ -4,7 +4,7 @@ import bytes "core:bytes"
 import os "core:os"
 import strings "core:strings"
 
-// core:os over the build host's natives: bytes cross files unchanged.
+// Native core:os preserves file bytes and reports filesystem failures.
 
 BytesRoundTripIncludingNulAndInvalidUtf8 :: () {
     made := os.TemporaryDirectory(os.Root());
@@ -27,9 +27,10 @@ BytesRoundTripIncludingNulAndInvalidUtf8 :: () {
 
 TemporaryDirectoriesAreDistinctAndFallible :: () {
     first := os.TemporaryDirectory(os.Root());
+    assert(first.error == nil, "create the first private directory");
     second := os.TemporaryDirectory(os.Root());
-    assert(first.error == nil && second.error == nil && first.path != second.path,
-           "each caller owns a distinct directory");
+    assert(second.error == nil, "create the second private directory");
+    assert(first.path != second.path, "each caller owns a distinct directory");
     published := format_text("{}.published", first.path);
     moved := os.Publish(first.path, published);
     assert(moved == nil && os.IsDirectory(published) && !os.Exists(first.path),

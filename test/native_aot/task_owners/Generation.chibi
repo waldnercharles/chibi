@@ -1,0 +1,42 @@
+package owned_generation
+
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fwrite :: (data: cstring, size: u64, count: u64, stream: rawptr) -> u64
+    fclose :: (stream: rawptr) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+}
+Payload :: struct { text: string; words: string[]; numbers: int[]; }
+Text :: (count: int) -> string { return text_from_bytes(resize([u8(120)], count)); }
+Exists :: (path: string) -> bool { return access(path, 0) == 0; }
+Mark :: (path: string, text: string) {
+    stream := fopen(path, "wb");
+    assert(stream != 0);
+    written := fwrite(text, 1, u64(text_byte_length(text)), stream);
+    closed := fclose(stream);
+    assert(written == u64(text_byte_length(text)) && closed == 0);
+}
+Broken :: (changed: ^Payload) {
+    changed^.text = Text(17);
+    changed^.words = [Text(19)];
+    assert(false, "old owned generation failure");
+}
+Finish :: (payload: Payload) {
+    size := text_byte_length(payload.text) + text_byte_length(payload.words[0]) +
+            text_byte_length(payload.words[1]) + payload.numbers[1];
+    Mark("old-done", format_text("old:{}", size));
+}
+Worker :: () -> int {
+    payload: Payload = {text: text_from_bytes([u8(111), 108, 100]), words: [Text(3), Text(5)], numbers: [int(11), 37]};
+    while !Exists("allow-old") { yield; }
+    if Exists("failure-case") { Broken(&payload); }
+    Finish(payload);
+    return 0;
+}
+Main :: () -> int {
+    worker := Worker();
+    Mark("owner-ready", "ready");
+    return 0;
+}
+Frame :: () -> int { return 0; }

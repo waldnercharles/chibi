@@ -18,7 +18,9 @@ TaskFramePlain :: (records: Record[], fields: int[], type: int) -> bool {
     }
     return true;
 }
-TaskFrameValue :: (records: Record[], fields: int[], type: int, observer: bool) -> bool {
+TaskFrameValue :: (records: Record[], fields: int[], layout: ValueLayout, type: int, observer: bool, owned: bool) -> bool {
+    if (owned && TaskOwnedType(records, layout, type)) { return true; }
+    if (owned && observer && type >= RefType && TaskOwnedType(records, layout, type - RefType)) { return true; }
     if (type == TaskType) { return observer; }
     if (type == PointerType || type == ArrayType + PointerType) { return true; }
     if (observer && type >= RefType &&

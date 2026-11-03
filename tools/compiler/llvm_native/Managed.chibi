@@ -647,8 +647,10 @@ ManagedPinsValid :: (code: Instruction[], slots: int[]) -> string {
             }
             active = slice(active, 0, length(active) - 1);
             if (length(active) == 0) { called = false; }
+        } else if (item.op == OwnerPin || item.op == OwnerUnpin) {
+            // Frame cleanup memberships can surround the same collecting call.
         } else if (length(active) > 0) {
-            if (called || (item.op != ClockSample && item.op != Call && item.op != ForeignCall && item.op != ManagedNew && item.op != Suspend && item.op != Delay && item.op != AwaitHandle && item.op != AwaitResult && item.op != Fail)) {
+            if (called || (item.op != ClockSample && item.op != Call && item.op != ForeignCall && item.op != Format && item.op != ManagedNew && item.op != Suspend && item.op != Delay && item.op != AwaitHandle && item.op != AwaitResult && item.op != Fail)) {
                 return "native collector pins must bracket one collecting call";
             }
             called = true;

@@ -261,7 +261,7 @@ Files :: (target: string) -> string[] {
             "src/host/process.c", "third_party/yyjson/yyjson.c",
             "test/tools/build_process.c",
             "test/tools/compiler_bootstrap.c",
-            "src/host/native_libraries.c", "test/support/fmt.c", "test/tools/box3d.c", "test/runtime/reference_cave.c"
+            "src/host/native_libraries.c", "test/support/fmt.c", "test/tools/box3d.c"
         ];
     }
     return [];

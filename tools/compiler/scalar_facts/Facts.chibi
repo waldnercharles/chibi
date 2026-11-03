@@ -24,7 +24,9 @@ package scalar_facts
 // name for a native library source. Then each record and union the source declares
 // follows in declaration order:
 // - a record is a Record row, its `name`, `count` fields and declaration
-//   range, then `count` Member rows: `name`, `type`, ordinal `value`
+//   range, with value ZeroArrayGrowth for synthetic zero-initializable records
+//   and 0 for authored records, then `count` Member rows: `name`, `type`,
+//   ordinal `value`
 //   and name range. A member's `type` is a scalar, a string, an array, or
 //   a record or union of the module, though not one that holds itself by
 //   value, as an array holds its elements apart;
@@ -162,7 +164,8 @@ package scalar_facts
 // string format_text makes of them, which the runtime allocates. The
 // indexes, starts, counts and byte counts are ints. A fixed text row's
 // `literal` selects its source operand permutation through TextArgument;
-// TextFormat keeps literal 0 and its format first. A record
+// TextFormat keeps its format first; literal bits 1..12 mark record-summary
+// text arguments, whose modifiers are ignored. Other bits are zero. A record
 // literal is a Zero row with the literal's range, then each
 // field's value in source order and its Update, with the field's range. An
 // assignment to a field, `v.f = x`, is an Assign of `v` whose operands read
@@ -185,8 +188,9 @@ package scalar_facts
 // start and count to give a new array of the count elements from the start,
 // each clamped to the array; ArrayResize consumes an array and an int length,
 // 0 for a negative one, to give a new array of its first elements, or all of
-// them, and then as many zeros (false, 0, the empty string, a record of
-// zeros) as that length needs; ArrayContains consumes an array of numbers,
+// them, and then as many zeros as that length needs. Authored record
+// elements reject growth; synthetic ZeroArrayGrowth records and unions may
+// grow. ArrayContains consumes an array of numbers,
 // bools or strings and an element of its type to give a bool, whether an
 // element equals it, a string by its bytes and a float as IEEE does; and
 // ArrayRemove consumes an array and an int index to give the array without
@@ -279,6 +283,9 @@ pub ArrayRow: int : 37;
 // ArraySet's canonical Nil | Some(scalar/text array) payload place. Its type
 // is the union, literal this marker, and the first operand a root reference.
 pub OptionalArrayPlace: int : -2;
+// A canonical inline record field reference chain followed by captured argument reads.
+// The array mutation gives the original root record after updating its leaf.
+pub ArrayReferencePlace: int : -3;
 // A call of a C function the source declares in a foreign block, an operand
 // row that consumes its `count` argument operands, numbers, bools or string
 // literals a C function reads as NUL-ended bytes. `name` is the C symbol,
@@ -370,6 +377,10 @@ pub ClockSampleRow: int : 60;
 // operand arity. Make carries the full array-cell identity in literal;
 // Get/Set use literal1 for a mutable place check, otherwise literal0.
 pub ViewRow: int : 61;
+// Borrow an inline record field from one reference operand. Type is the
+// selected value type, value is its field ordinal, and count is one. The
+// address stays valid only while its enclosing canonical variable is live.
+pub FieldReferenceRow: int : 62;
 pub ViewMake: int : 1;
 pub ViewLength: int : 2;
 pub ViewGet: int : 3;
@@ -465,6 +476,9 @@ pub MapArrayExtend: int : 13;
 pub MapArrayRemove: int : 14;
 pub MapArraySet: int : 15;
 pub MapArrayResize: int : 16;
+// Like MapGet, but a missing key returns the optional value's Nil variant.
+// The result must have the checked Nil/Some optional layout.
+pub MapGetOptional: int : 18;
 
 // Compare operators: the source's <, <=, >, >=, == and !=, signed or
 // unsigned as their operands' type is. On floats, each is false when an
@@ -536,6 +550,10 @@ pub TextSlice: int : 3;
 pub TextFormat: int : 4;
 // Consume one string, print its bytes and a newline; internal result is int 0.
 pub TextPrint: int : 5;
+// Evaluate one record, then replace its operand with this row's text: the
+// ordinary qualified type name, truncated to 63 bytes. Format's literal marks
+// these text arguments in bits 1..12 so their modifiers remain ignored.
+pub TextRecordSummary: int : 6;
 // TextView and TextRange consume string/start/end in source order and give
 // Nil | Some(string), absent unless 0 <= start <= end <= byte length. View
 // acquires the existing owner or imports uncounted bytes; Range and Clone
@@ -556,6 +574,9 @@ pub ArrayCopy: int : 6;
 pub ArrayExtend: int : 7;
 pub ArraySlice: int : 8;
 pub ArrayResize: int : 9;
+// RecordRow.value policy: nested-array wrappers may grow with zero rows;
+// ordinary records require explicitly initialized rows.
+pub ZeroArrayGrowth: int : 1;
 pub ArrayContains: int : 10;
 pub ArrayRemove: int : 11;
 pub ArrayWith: int : 12;
@@ -585,6 +606,9 @@ pub ArrayReplaced: int : 23;
 pub ArrayReplace: int : 24;
 // Check a logical array place before RHS evaluation, producing only bool.
 pub ArrayPlaceCheck: int : 25;
+// A functional value with its first structurally equal element removed.
+// An absent element returns an independent array value. Inputs are array,item.
+pub ArrayWithoutItem: int : 27;
 // An immediate nested-array place adds its saved outer index after the
 // canonical RefRow. Existing mutating operators still end the root assignment.
 pub NestedArrayPlace: int : -1;

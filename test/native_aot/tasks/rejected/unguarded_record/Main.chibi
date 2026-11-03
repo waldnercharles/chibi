@@ -1,0 +1,8 @@
+package unguarded_record_promise
+Pair :: struct { value: int; }
+Worker :: () -> Pair { yield; return {value: 7}; }
+Main :: () -> int {
+    pending := Worker();
+    joined := await pending;
+    return joined.value;
+}

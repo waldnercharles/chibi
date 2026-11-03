@@ -48,7 +48,7 @@ Main :: () -> int {
         if (compiled != nil) { return 1; }
         plan := link.Program(triple, llvm, [object], [], [], [], output, "", true);
         plan.shared = true;
-        plan.imports = link.SystemImports(strings.SplitLines(module));
+        plan.imports = link.SystemImports(strings.SplitLines(module), plan.triple);
         linked := host.Link(plan);
         if (linked != nil) { return 1; }
     }

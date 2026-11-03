@@ -142,7 +142,8 @@ Ordered :: (entries: Entry[]) -> Entry[] {
     count := length(entries);
     values := entries;
     empty: Entry = {key: "", stamp: 0};
-    scratch := resize([empty], count);
+    scratch: Entry[] = [];
+    for (index in 0..<count) { scratch.append(empty); }
     width := 1;
     while width < count {
         base := 0;

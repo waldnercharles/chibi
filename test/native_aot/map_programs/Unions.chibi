@@ -1,0 +1,50 @@
+package map_unions
+
+Value :: struct { name: string; items: int[]; }
+Choice :: union { Empty | Some(value: Value) | Words(value: string[]) }
+Text :: (value: int) -> string { return text_from_bytes([u8(65), 0, u8(value)]); }
+Make :: (value: int) -> Choice { return Choice.Some({name: Text(value), items: [value]}); }
+Map :: () -> [int: Choice] { values: [int: Choice] = [1: Make(1)]; return values; }
+Reset :: (values: ^([int: Choice])) -> int { values^ = [9: Make(9)]; return 1; }
+Copied :: (values: [int: Choice], ignored: int) -> Choice { return values[1]; }
+Check :: (value: Choice, wanted: int) { switch value {
+    case .Some(item): assert(item.name == Text(wanted) && item.items[0] == wanted);
+    case .Empty: assert(false);
+    case .Words(words): assert(false);
+} }
+Main :: () -> int {
+    values := Map();
+    copied := values;
+    values[1] = values[1];
+    values[1] = Choice.Words([Text(2), Text(3)]);
+    switch values[1] {
+        case .Words(words): assert(words[0] == Text(2) && words[1] == Text(3));
+        case .Some(item): assert(false);
+        case .Empty: assert(false);
+    }
+    Check(copied[1], 1);
+    Check(Map()[1], 1);
+    values[1] = Choice.Empty;
+    switch values[1] {
+        case .Empty: {}
+        case .Some(item): assert(false);
+        case .Words(words): assert(false);
+    }
+    incoming := Make(4);
+    repeats: [string: Choice] = [Text(4): incoming, Text(4): incoming];
+    incoming = Choice.Empty;
+    Check(repeats[Text(4)], 4);
+    saved := repeats;
+    delete repeats[Text(4)];
+    Check(saved[Text(4)], 4);
+    for (key, value in copied) { delete copied[key]; Check(value, key); }
+    growing: [int: Choice] = [:];
+    for (index in 0..<96) { growing[index] = Make(index); }
+    snapshot := growing;
+    for (index in 0..<96) { delete growing[index]; }
+    Check(snapshot[95], 95);
+    values = Map();
+    Check(Copied(values, Reset(&values)), 1);
+    Check(values[9], 9);
+    return 0;
+}

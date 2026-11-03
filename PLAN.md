@@ -644,3 +644,53 @@ new owner decision. Ordinary CI does not replace full sanitizer and clean
 bootstrap acceptance. Further cache work is stopped; performance work targets
 measured compiler-code costs. The latest matched hosted comparison showed no
 overall CI speedup.
+
+
+## Native integration checkpoint: 41ff027d9
+
+The native compiler now supports owned task frames across suspension, plain
+optional managed cells, primitive views in authored unions, retained nested
+array mutation, array-backed record map values and generic owned array map
+payloads. String-array managed cells use the existing typed array copy/drop
+helpers. Inline record fields preserve their canonical place through foreign
+buffer calls. The Linux logical-place failure path now keeps program ownership
+separate from an armed instruction-budget scope.
+
+The exact compiler source at `16ccee98e` reproduces identical macOS stages two,
+three and four, SHA-256
+`07a5532a09e669a0cda04029343375053687274f8a6bc407215e7e1e9e6706af`.
+Builds took 20.56, 21.61 and 24.23 seconds under shared load. All 463 compiler
+tests passed in 22.93 seconds. Its combined managed pointer/view source,
+collector and boundary proofs passed in 89.57 seconds; owned task lifetime
+proofs passed in 33.41 seconds. Full generation, retained snapshot/source and
+image-unload proofs passed at O0 in 51.64 seconds and O2 in 52.18 seconds.
+Evidence is in `/private/tmp/chibi-16cc-proof`.
+
+The subsequent `41ff027d9` compiler builds in 19.45 seconds and passes all 466
+compiler tests in 21.93 seconds (`/private/tmp/chibi-41ff-proof`). This includes
+inline record foreign places and the Windows linker mapping of explicit
+`system:c` imports to UCRT. Windows SDK-relative compiler discovery resolves the
+loader's original executable spelling before adding parent segments; the C
+consumer now runs with an explicit extended-length path. Actual Windows
+execution of these fixes remains required. The preceding hosted run
+`41574174752` failed SDK-relative discovery, the Host's unresolved `memchr`,
+clock source path handling, public watch readiness and the O0 math edge case.
+The clock path is fixed; math now reports the actual signed and hexadecimal
+exit status. No failing assertion or product check was removed.
+
+The target jobs' missing program manifests were downstream of Linux's graph-os
+failure: that stopped before the projects/language selectors that publish the
+native-build/native-link manifests. The exit trap still published arithmetic
+modules. The graph-os fixture's ignored fallible result is corrected. Successful
+acceptance must produce and execute all existing module and program lists.
+
+Remaining work includes owned task results, deeper projected collection places,
+string/composite views, deep composite comparison/removal and exact ordinary
+record-array resize failures. A stress test has also reproduced collection
+reentry during pointer-array backing allocation; its root/lifetime fix is a
+required retirement gate. The final C/VM/recovery deletion candidate stays held
+until these behaviors and supported-platform products pass. Driver and Graph
+command equivalence must survive removal of their obsolete VM oracle through
+independent expected fixture data, including complete command inventories.
+Neither deletion of that comparison nor the current fixed point completes the
+full self-hosting goal.

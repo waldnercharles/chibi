@@ -1,0 +1,6 @@
+package remove_rejected
+Main :: () -> int {
+    values: int[] = [1, 2];
+    wrong := remove_item(values, "not an element");
+    return length(wrong);
+}

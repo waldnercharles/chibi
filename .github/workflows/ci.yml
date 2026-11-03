@@ -575,6 +575,9 @@ jobs:
             @{ name = 'waiting-kernels'; source = 'test/native_aot/math_scalar/KernelWaiting.chibi' },
             @{ name = 'patterns'; source = 'test/native_aot/patterns/Main.chibi' },
             @{ name = 'waiting-patterns'; source = 'test/native_aot/patterns/Waiting.chibi' },
+            @{ name = 'remove-values'; source = 'test/native_aot/remove_item/Values.chibi' },
+            @{ name = 'remove-ordering'; source = 'test/native_aot/remove_item/Ordering.chibi' },
+            @{ name = 'remove-shadow'; source = 'test/native_aot/remove_item/Shadow.chibi' },
             @{ name = 'sdk-paths'; source = 'test/bootstrap/fixtures/InstallPaths.chibi' },
             @{ name = 'library-loader'; source = 'test/native_aot/loader/Windows.chibi' }
           )
@@ -587,6 +590,17 @@ jobs:
               if ($LASTEXITCODE) { throw "Windows $($case.name) failed at O$level" }
               "PASS native Windows $($case.name) O$level" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
             }
+          }
+          foreach ($level in 0, 2) {
+            $output = "$work/rejected-remove-O$level.exe"
+            [IO.File]::WriteAllText($output, 'preserved')
+            $reported = @(& "$work/stage4/chibi.exe" --compiler "$root/tools/compiler" --core "$root/packages/core" --source "$root/test/native_aot/remove_item/Rejected.chibi" --entry Main --output $output --llvm $env:CHIBI_WINDOWS_LLVM --target x86_64-pc-windows-msvc --level $level --jobs 2 2>&1)
+            if ($LASTEXITCODE -ne 1 -or ($reported -join "`n") -notmatch 'argument differs from its parameter type') {
+              $reported | Write-Host
+              throw "Windows remove_item type rejection differs at O$level"
+            }
+            if ([IO.File]::ReadAllText($output) -ne 'preserved') { throw 'Windows rejected remove_item replaced the prior output' }
+            "PASS native Windows remove_item rejection O$level" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
           }
       - name: Check native Windows host clocks
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}

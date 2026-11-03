@@ -107,8 +107,30 @@ try {
         Write-Host 'Run the relocated native service and C consumer without runtime build tools'
         & "$Work/verify.exe" $asset "$root/test/native_aot/asset_compiler/catalog.json" $Work
         if ($LASTEXITCODE) { throw "The native service verifier failed ($LASTEXITCODE)" }
-        & $consumer $asset "$Work/simple.json" "$Work/source-error.json" "$Work/cache" "$Work/crash.exe" "$Work/simple.chibip"
-        if ($LASTEXITCODE) { throw "The C asset consumer failed ($LASTEXITCODE)" }
+        # Preserve an extended-length loader spelling, which GetModuleFileNameW
+        # may return even for a short path. SDK discovery must canonicalize it
+        # before using parent segments, while all UTF-8 argv stay unchanged.
+        $nativeConsumer = $consumer.Replace('/', '\')
+        if ($nativeConsumer.StartsWith('\\')) { $nativeConsumer = '\\?\UNC\' + $nativeConsumer.Substring(2) }
+        else { $nativeConsumer = '\\?\' + $nativeConsumer }
+        $invoke = [Diagnostics.ProcessStartInfo]::new()
+        $invoke.FileName = $nativeConsumer
+        $invoke.UseShellExecute = $false
+        foreach ($argument in @($asset, "$Work/simple.json", "$Work/source-error.json", "$Work/cache", "$Work/crash.exe", "$Work/simple.chibip")) {
+            $invoke.ArgumentList.Add($argument)
+        }
+        $process = [Diagnostics.Process]::new()
+        $process.StartInfo = $invoke
+        $started = $false
+        try {
+            $started = $process.Start()
+            if (!$started) { throw 'Could not start the C asset consumer' }
+            $process.WaitForExit()
+            if ($process.ExitCode) { throw "The C asset consumer failed ($($process.ExitCode))" }
+        } finally {
+            if ($started -and !$process.HasExited) { $process.Kill($true); $process.WaitForExit() }
+            $process.Dispose()
+        }
         if (@(Get-ChildItem -LiteralPath "$Work/temp" -Force).Count) { throw 'The native compiler left temporary files' }
     } finally {
         foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }

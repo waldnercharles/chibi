@@ -16,7 +16,7 @@ ScalarNestedCollection :: (declared: TypeDecl) -> bool {
 // heap wrapper or additional public type encoding is needed.
 ScalarCollectionRows :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], declared: TypeDecl) -> facts.Row[] {
     inner := ScalarValueType(types, declared.value_storage, declared.value_container, declared.value_record);
-    return [ScalarAt(forest, 0, facts.RecordRow, 0, 0, 1, declared.type_name),
+    return [ScalarAt(forest, 0, facts.RecordRow, 0, facts.ZeroArrayGrowth, 1, declared.type_name),
             ScalarAt(forest, 0, facts.MemberRow, inner, 0, 0, "value")];
 }
 ScalarMakeArray :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],

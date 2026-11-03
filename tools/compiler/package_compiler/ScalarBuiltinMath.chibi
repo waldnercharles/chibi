@@ -366,6 +366,12 @@ ScalarBuiltinKernels :: (forest: snapshot.SnapshotNode[], text: string, types: T
             remaining -= 1;
             continue;
         }
+        if (call.kind == facts.OperandBindRow) {
+            assert(top > 0);
+            top -= 1;
+            remaining -= 1;
+            continue;
+        }
         base := top - call.count;
         assert(base >= 0);
         parameter_types: int[] = [];

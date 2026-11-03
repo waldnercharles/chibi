@@ -344,9 +344,16 @@ pub OptionalFieldRow: int : 56;
 // `count` are depths below the top, 0 <= value < count; type and literal are 0.
 // Named calls evaluate arguments in source order, then arrange their slots.
 pub OperandSwapRow: int : 57;
+// Store one typed value in a PatternStorage local without leaving an operand.
+// The local was declared in the enclosing Scope; count is one, value its index.
+pub OperandBindRow: int : 58;
 // A lexical scope without operands. Its header has type/value/count/literal 0
 // and empty names/text; End repeats its located range and releases its owners.
 pub ScopeRow: int : 59;
+pub PatternStorage: int : 16;
+// A While immediately after PatternStorage declarations in a Scope. Its
+// captures are released/cleared after each pass, before its next test.
+pub PatternLoop: int : 32;
 // A source void waiting function has no success payload despite its internal int.
 pub FunctionVoid: int : 1;
 pub CallPlain: int : 0;

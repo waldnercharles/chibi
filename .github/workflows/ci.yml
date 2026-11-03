@@ -598,6 +598,7 @@ jobs:
             @{ name = 'task-timing'; source = 'test/native_aot/tasks/cases/timing/Main.chibi' },
             @{ name = 'gc-array-promises'; source = 'test/native_aot/managed_pointers/source/TaskArrayPromises.chibi' },
             @{ name = 'task-view-roots'; source = 'test/native_aot/managed_pointers/source/TaskViews.chibi' },
+            @{ name = 'view-promises'; source = 'test/native_aot/managed_pointers/source/TaskViewPromises.chibi' },
             @{ name = 'square-root'; source = 'test/native_aot/math_scalar/SquareRoot.chibi' },
             @{ name = 'shadow-root'; source = 'test/native_aot/math_scalar/Shadow.chibi' },
             @{ name = 'math-kernels'; source = 'test/native_aot/math_scalar/Kernels.chibi' },

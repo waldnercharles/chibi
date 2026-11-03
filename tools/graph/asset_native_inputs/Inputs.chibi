@@ -1,0 +1,37 @@
+package asset_native_inputs
+
+import os "core:os"
+import strings "core:strings"
+
+// The builder and SDK compare the same complete content inventory. Relative
+// names allow an unchanged checkout or source-only distribution to relocate.
+Tree :: (root: string, relative: string, chunks: ^(string[])) -> bool {
+    listed := os.List(strings.Concatenate([root, "/", relative]));
+    if (listed.error != nil) { return false; }
+    for (name in listed.names) {
+        child := strings.Concatenate([relative, "/", name]);
+        path := strings.Concatenate([root, "/", child]);
+        kind := os.Kind(path);
+        if (kind == os.KindLink) { return false; }
+        if (kind == os.KindDirectory) {
+            if (!Tree(root, child, chunks)) { return false; }
+        } else if (strings.HasSuffix(name, ".chibi") ||
+                   (strings.HasPrefix(relative, "tools/graph/") && strings.HasSuffix(name, ".ll"))) {
+            if (kind != os.KindFile) { return false; }
+            hash := os.HashFile(path);
+            if (hash.error != nil) { return false; }
+            chunks.append(format_text("{}:{}{}", strings.ByteLength(child), child, hash.digest));
+        }
+    }
+    return true;
+}
+
+pub Sources :: (root: string) -> string {
+    chunks: string[] = [];
+    for (folder in ["tools/compiler", "packages/core", "tools/graph/asset_native", "tools/graph/asset_native_inputs",
+                   "tools/graph/asset_native_runtime", "tools/graph/asset_io_runtime", "tools/graph/install", "tools/graph/files"]) {
+        previous := length(chunks);
+        if (!Tree(root, folder, &chunks) || length(chunks) == previous) { return ""; }
+    }
+    return os.HashText(strings.Concatenate(chunks));
+}

@@ -11,8 +11,9 @@ run it with `chibi`. Game projects add scenes, components and resources.
 ## Install
 
 The native compiler and CLI need LLVM/LLD 22 or newer. Set
-`CHIBI_LLVM_BIN` to the directory containing `opt`, `llc` and the platform linker,
-then run these commands from the engine checkout:
+`CHIBI_LLVM_BIN` to the directory containing `opt`, `llc`, `llvm-link`,
+`llvm-ar` and the platform linker. Windows uses `llvm-lib` for archives. Run
+these commands from the engine checkout:
 
 ```sh
 sh tools/build.sh install
@@ -23,12 +24,13 @@ chibi doctor
 The default install directory is `~/.local`. Use
 `chibi build install --prefix /absolute/prefix` to select another directory.
 The SDK includes the native `chibi` compiler and CLI, authored core and graph
-packages, the native asset compiler, and their resources. Installed tools find
+packages, the native asset compiler, its compile-only C API archive and header,
+and their resources. Installed tools find
 these resources beside their prefix, so the prefix can move.
 
 For a development build, use `sh tools/build.sh build`. Once `chibi` is installed,
 `chibi build` inside the checkout does the same. The default products are the
-native CLI/compiler and asset compiler; `--target chibi` builds the CLI/compiler
+native CLI/compiler, asset compiler and compile-only archive; `--target chibi` builds the CLI/compiler
 alone. Run it as `build/sdk/chibi`. Explicit C engine and test targets still
 require a C23 compiler and libclang for reflection.
 

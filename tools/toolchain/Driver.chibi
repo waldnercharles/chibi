@@ -170,11 +170,13 @@ Build :: (arguments: string[]) -> int {
     directory := Option(arguments, "--build", DefaultDirectory(profile))
     jobs := Jobs(arguments)
     targets := Values(arguments, "--target")
-    if (length(targets) == 0) { targets = engine.NativeProducts() }
+    if (length(targets) == 0) { targets = engine.NativeToolchain() }
     needs_archive := engine.NeedsThirdParty(targets)
     native_only := true
+    native_archives := engine.NativeArchives()
+    web_products := engine.WebAssemblyProducts()
     for (target in targets) {
-        native_only = native_only && (length(engine.NativeArguments(target)) != 0 || engine.WebAssemblyProducts().contains(target))
+        native_only = native_only && (length(engine.NativeArguments(target)) != 0 || native_archives.contains(target) || web_products.contains(target))
         for (resource in engine.Resources(target)) {
             needs_archive = needs_archive || strings.HasPrefix(strings.Partition(resource, "=").tail, "third-party/")
         }
@@ -638,7 +640,7 @@ ReleaseBuild :: (arguments: string[], targets: string[], dry: bool) -> int {
 Install :: (arguments: string[]) -> int {
     dry := Flag(arguments, "--dry-run")
     releases := Absolute(Option(arguments, "--release-build", "build-release"))
-    targets := engine.NativeProducts()
+    targets := engine.NativeToolchain()
     with_wasm := Flag(arguments, "--with-wasm")
     if (with_wasm) { targets = extend(targets, engine.WebAssemblyProducts()) }
     status := ReleaseBuild(arguments, targets, dry)

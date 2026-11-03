@@ -3078,8 +3078,9 @@ ScalarAsserted :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
 ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], callables: Callable[],
                    params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], function: int, ops: Ops,
                    target: Target, aliases: Name[], changed_fields: string[], assertions: ScalarAssertion[],
-                   first_assertion: int, last_assertion: int, math_values: bool) -> ScalarOperands {
+                   first_assertion: int, last_assertion: int, math_values: bool, clock_sites: int[], clock_record: int) -> ScalarOperands {
     callable := callables[function];
+    next_clock := 0;
     result := ScalarValueType(types, callable.result, callable.result_container, callable.result_record);
     rows: facts.Row[] = [ScalarAt(forest, callable.node, facts.FunctionRow, result, 0, callable.count, callable.name)];
     for (index in 0..<callable.count) {
@@ -3409,6 +3410,18 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 case .Built(assigned):
                     if (length(assigned) > 0) { rows.extend(assigned); continue; }
             }
+        }
+        if (next_clock < length(clock_sites) && clock_sites[next_clock] == statement) {
+            declared := Field(forest, statement, syntax.FieldName);
+            name := Text(forest, text, declared);
+            type := ScalarRecordType(types, clock_record);
+            rows.extend([ScalarAt(forest, statement, facts.LocalRow, type, variables, 1, name),
+                         ScalarAt(forest, Field(forest, statement, syntax.FieldValue), facts.ClockSampleRow, type, 0, 0, "")]);
+            names.append({owned: false, name: name, place: LocalPlace, index: variables, storage: StructStorage,
+                          container: 0, record: clock_record, writable: false, node: declared});
+            variables += 1;
+            next_clock += 1;
+            continue;
         }
         first := length(operands);
         pattern_scope := false;
@@ -3897,7 +3910,7 @@ ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], semantic: Sem
 NativePrintEffect: int : 8;
 // The text, output, array and scalar math natives this producer lowers.
 ScalarTextNative :: (native: ResolvedNative) -> bool {
-    return ScalarMathNative(native) || NativeNameMatches(native, "make_array") || NativeNameMatches(native, "text_equal") || NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
+    return native.qualified_name == ClockNativeName() || ScalarMathNative(native) || NativeNameMatches(native, "make_array") || NativeNameMatches(native, "text_equal") || NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
            NativeNameMatches(native, "text_slice") || NativeNameMatches(native, "format_text") ||
            NativeNameMatches(native, "print_string") ||
            NativeNameMatches(native, "length") || NativeNameMatches(native, "append") ||
@@ -4064,7 +4077,7 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], authored: snapshot.SnapshotNode
                 table: ^(TypeDecl[]), body_optionals: ^(int[]), members: TypeMember[], constants: ConstDecl[], solid: int[], function: int,
                 ops: Ops, target: Target, natives: ResolvedNative[], ports: ResolvedPort[],
                 identities: u64[], aliases: Name[], retained: Name[], summary: ^ScalarEffectSummary,
-                assertions: ^(ScalarAssertion[]), math_values: ^bool) -> syntax.Diagnostic {
+                assertions: ^(ScalarAssertion[]), math_values: ^bool, clock: ^ScalarClockSites) -> syntax.Diagnostic {
     operators: NumericOperator[] = [];
     makes: NativeMake[] = [];
     indices: int[] = [];
@@ -4079,7 +4092,9 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], authored: snapshot.SnapshotNode
         referenced = ReferencedNames(forest, text, callables, params, natives, aliases, callables[function].package, body);
     }
     mutated := MutatedNames(forest, text, body, referenced);
-    switch EmitBody(forest, text, callables[function].document, callables, params, table, members, constants, natives, ports, identities,
+    body_natives := natives;
+    if (length(documents) > 0) { body_natives = PackageNatives(natives, documents[callables[function].document].identity); }
+    switch EmitBody(forest, text, callables[function].document, callables, params, table, members, constants, body_natives, ports, identities,
                     operators, makes, indices, extend(aliases, retained), key, solid, 0, 0, function, referenced,
                     mutated, indices, BodyContext.Known(writes), indices, ops, target) {
         case .Failed(diagnostic):
@@ -4096,6 +4111,25 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], authored: snapshot.SnapshotNode
             // pointer syntax; error ownership uses the original authored syntax.
             problems := FallibleBody(authored, documents, callables, params, table^, callables[function], facts);
             if (length(problems) > 0) { return problems[0]; }
+            first_clock := length(clock.nodes);
+            for (host in hosts) {
+                if (host.linked < 0 || natives[host.linked].qualified_name != ClockNativeName()) { continue; }
+                if (host.linked != clock.capability) {
+                    return Diagnose(forest, host.syntax_node, 0, "native clock sampling requires the canonical private host capability");
+                }
+                local := ScalarClockLocal(forest, host.syntax_node);
+                if (local < 0) { return Diagnose(forest, host.syntax_node, 0, "native clock sampling requires a result local"); }
+                if (clock.record < 0) {
+                    clock.record = FindType(table^, callables[function].package, "NativeClockSample");
+                    if (!ScalarClockRecord(table^, members, clock.record)) {
+                        return Diagnose(forest, host.syntax_node, 0, "native clock sampling requires its four-field private transport record");
+                    }
+                }
+                // Zero-argument hosts occur in source order. Repeated generic
+                // bodies have separate function spans, never duplicate sites.
+                assert(length(clock.nodes) == first_clock || clock.nodes[length(clock.nodes) - 1] < local);
+                clock.nodes.append(local);
+            }
             if (summary.wanted) { ScalarBodyEffects(summary, function, callables[function].waits, effects, ops, code, hosts, calls); }
             while (length(body_optionals^) < length(table^)) { body_optionals.append(0); }
             for (cell in cells) {
@@ -4480,7 +4514,7 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
                  params: Param[], input_types: TypeDecl[], input_members: TypeMember[], constants: ConstDecl[], ops: Ops,
                  target: Target, natives: ResolvedNative[], ports: ResolvedPort[], identities: u64[],
                  is_library: bool, generic_bindings: GenericBinding[], documents: snapshot.Document[],
-                 links: graph.Binding[], summary: ^ScalarEffectSummary) -> ScalarOperands {
+                 links: graph.Binding[], summary: ^ScalarEffectSummary, clock_catalog_valid: bool = true) -> ScalarOperands {
     types := input_types;
     members := input_members;
     // Native collection does not use Link, which normally adds these unions.
@@ -4534,6 +4568,9 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
     body_optionals: int[] = [];
     assertions: ScalarAssertion[] = [];
     assertion_offsets: int[] = [0];
+    clock: ScalarClockSites = {capability: ScalarClockCapability(natives, ports, identities), record: -1, nodes: []};
+    if (!clock_catalog_valid) { clock.capability = -2; }
+    clock_offsets: int[] = [0];
     // DeclareMath always provides every built-in type. Only actual values and
     // authored fields need logical math-write analysis, not that catalog.
     math_values := false;
@@ -4553,9 +4590,10 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         }
         emitted := ScalarEmits(scoped, forest, documents, text, key, callables, marked, &checked, &body_optionals, members, used, solid, function,
                                ops, target, natives, ports, identities, aliases,
-                               ScalarRetainedNames(scoped, text, checked, callables[function]), summary, &assertions, &math_values);
+                               ScalarRetainedNames(scoped, text, checked, callables[function]), summary, &assertions, &math_values, &clock);
         if (emitted.message != "") { return ScalarOperands.Failed(emitted); }
         assertion_offsets.append(length(assertions));
+        clock_offsets.append(length(clock.nodes));
     }
     switch ScalarSynchronous(forest, callables, generic_bindings, summary^) {
         case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
@@ -4634,7 +4672,8 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         }
         switch ScalarFunction(scoped, text, key, solid, seen, marked, records, fields, used,
                               function, ops, target, aliases, changed_fields, assertions,
-                              assertion_offsets[function], assertion_offsets[function + 1], math_values) {
+                              assertion_offsets[function], assertion_offsets[function + 1], math_values,
+                              slice(clock.nodes, clock_offsets[function], clock_offsets[function + 1] - clock_offsets[function]), clock.record) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
             case .Built(function_rows):
@@ -5095,6 +5134,8 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
     if (!NativeInputValid(resolved, resolved_ports, identities, resize([int(0)], length(natives)))) {
         return ScalarFailure(path, text, ScalarStart("scalar proof requires a complete native catalog"));
     }
+    // Reserve identities before unsupported catalog rows are filtered out.
+    clock_catalog_valid := ScalarClockCapability(resolved, resolved_ports, identities) != -2;
     text_natives := ScalarTextNatives(resolved);
     text_ports := ScalarTextPorts(resolved, resolved_ports);
     text_identities := ScalarTextIdentities(resolved, identities);
@@ -5291,7 +5332,7 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
                                     }
                                     switch ScalarModule(scalar_nodes, scalar_text, document.key, entered, concrete_params, table,
                                                         members, constants, ops, target, text_natives, text_ports, text_identities,
-                                                        generation, entered_bindings, scalar_documents, module_links, summary) {
+                                                        generation, entered_bindings, scalar_documents, module_links, summary, clock_catalog_valid) {
                                         case .Failed(diagnostic):
                                             // The native check already used joined nodes; its range
                                             // must not receive the document offset a second time.

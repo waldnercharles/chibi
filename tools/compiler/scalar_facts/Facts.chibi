@@ -359,6 +359,8 @@ pub OperandBindRow: int : 58;
 // A lexical scope without operands. Its header has type/value/count/literal 0
 // and empty names/text; End repeats its located range and releases its owners.
 pub ScopeRow: int : 59;
+// One private clock transport value: zero operands and metadata, exact i64/u64/int/int record.
+pub ClockSampleRow: int : 60;
 pub PatternStorage: int : 16;
 // A While immediately after PatternStorage declarations in a Scope. Its
 // captures are released/cleared after each pass, before its next test.

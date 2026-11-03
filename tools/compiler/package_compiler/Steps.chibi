@@ -3705,7 +3705,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         index += 1;
     }
     if (linked) {
-        host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: 0, linked: chosen, first: at.cell, result_first: at.cell + total,
+        host: Host = {owned_arguments: false, command: 0, syntax_node: item.node, intrinsic: 0, linked: chosen, first: at.cell, result_first: at.cell + total,
                       result_count: result_count, written: false};
         hosts.append(host);
         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));

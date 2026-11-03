@@ -3,6 +3,31 @@ package llvm_native
 import abi "project:native_abi"
 import strings "core:strings"
 
+ClockRecord :: (records: Record[], fields: int[], type: int) -> bool {
+    if (type < RecordType || type >= ArrayType || !Index(type - RecordType, length(records))) { return false; }
+    record := records[type - RecordType];
+    return record.count == 4 && fields[record.first] == 8 && fields[record.first + 1] == abi.WordStorage &&
+           fields[record.first + 2] == abi.IntStorage && fields[record.first + 3] == abi.IntStorage;
+}
+HasClockSample :: (code: Instruction[]) -> bool {
+    for (item in code) { if (item.op == ClockSample) { return true; } }
+    return false;
+}
+ClockInstruction :: (item: Instruction, pc: int) -> string {
+    out := [format_text("p{}:\n  %clock{} = call {} @chibi_clock_raw(ptr %ctx)\n", pc, pc, abi.ClockSampleType())];
+    types: int[] = [8, abi.WordStorage, abi.IntStorage, abi.IntStorage];
+    for (type, field in types) {
+        out.append(format_text("  %clockfield{}.{} = extractvalue {} %clock{}, {}\n", pc, field, abi.ClockSampleType(), pc, field));
+        previous := "zeroinitializer";
+        if (field > 0) { previous = format_text("%clockvalue{}.{}", pc, field - 1); }
+        out.append(format_text("  %clockvalue{}.{} = insertvalue {} {}, {} %clockfield{}.{}, {}\n",
+                               pc, field, TypeName(item.type), previous, TypeName(type), pc, field, field));
+    }
+    out.append(Store(format_text("%clockvalue{}.3", pc), item.type, "s", item.output));
+    out.append(format_text("  br label %p{}\n", pc + 1));
+    return strings.Join(out, "");
+}
+
 // Sampling owns only stack scratch. The embedding host borrows a validated
 // immutable grant into this context; the provider state may change per call.
 ClockRuntime :: () -> string {

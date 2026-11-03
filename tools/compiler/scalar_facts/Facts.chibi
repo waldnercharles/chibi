@@ -506,12 +506,14 @@ pub MapGetOptional: int : 18;
 // A missing nested-map key gives an empty descriptor in its one-field carrier.
 // Generic record MapGet keeps its absent-key failure.
 pub MapGetWrapped: int : 19;
-// Canonical changes in an array's one-map-field collection carrier: RefArray,
-// index, key and (for set) value. Type is the assigned outer array.
+// Canonical map changes through an array root: RefArray, all path keys in
+// source order and (for set) the incoming value. Each intermediate collection
+// descriptor follows its checked array or map carrier; the final owner is a map.
+// count is at least 4 for set, 3 for delete. Type is the assigned outer array.
 pub ArrayMapSet: int : 20;
 pub ArrayMapDelete: int : 21;
-// The same changes through a map-valued map payload: RefMap, outer key,
-// inner key and (for set) value. Type is the assigned outer map.
+// The same captured-key path through a map root, starting with RefMap.
+// Type is the assigned outer map; count has the same set/delete minima.
 pub NestedMapSet: int : 22;
 pub NestedMapDelete: int : 23;
 

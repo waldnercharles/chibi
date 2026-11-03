@@ -131,3 +131,19 @@ recovered ordinary compiler. Six abrupt-failure controls distinguish RHS
 assertions from a missing final owner and preserve the unclassified category.
 `NestedMapCopies` additionally requires exactly two detach allocations for the
 first shared nested write and zero allocations for 4,096 further unique writes.
+
+Canonical map writes also support deeper mixed index paths rooted at a map or
+array variable. Facts 20–23 carry every captured key in source order; validation
+follows the existing descriptor/carrier type graph before lowering any reads.
+Lowering resolves and publishes each current owner through the existing map or
+array address helper, then mutates the leaf map. It copies no whole root and
+retains no interior address across authored callbacks. Intermediate old-value
+reads close before the RHS, including when an absent owner is repaired by it.
+
+`DeepPlaces` covers three-level map and mixed map/array paths, multiline source,
+owned leaves and a 32-level runtime path. `DeepMapCopies` requires exactly four
+allocations for the first shared write through four immediate owners, then zero
+allocations for 4,096 unique compound writes, for both all-map and mixed paths.
+The producer growth check emits 126,910 / 251,046 / 499,786 / 998,374 bytes at map
+depths 4 / 8 / 16 / 32, with exactly depth minus one canonical projections.
+Malformed variable arities and intermediate non-carrier records remain rejected.

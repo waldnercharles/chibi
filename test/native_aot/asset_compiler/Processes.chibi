@@ -1,0 +1,28 @@
+package asset_process_probe
+import os "core:os"
+import children "project:asset_process"
+import strings "core:strings"
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 1) { return 2; }
+    folder := os.RealPath(arguments[0]);
+    before := os.Root();
+    child := children.Start(["/bin/sh", "-c", "pwd > cwd; echo discarded; echo discarded >&2; (/bin/sleep 0.3; /usr/bin/touch escaped) & exit 7"], folder);
+    if (child.id <= 0) { os.Print("cannot start process probe"); return 1; }
+    status := os.StillRunning;
+    while status == os.StillRunning { status = children.Wait(&child, 10); }
+    if (status != 7 || os.Root() != before) { os.Print("child group status or caller cwd changed"); return 1; }
+    read := os.ReadText(strings.Concatenate([folder, "/cwd"]));
+    if (read.error != nil) { return 1; }
+    if (strings.TrimSpace(read.text) != folder) { os.Print("child cwd differs"); return 1; }
+    paused := os.Run(["/bin/sleep", "0.5"]);
+    if (paused != 0 || os.Exists(strings.Concatenate([folder, "/escaped"]))) { os.Print("normal exit left a descendant"); return 1; }
+    child = children.Start(["/bin/sh", "-c", "(/bin/sleep 0.3; /usr/bin/touch cancelled) & wait"], folder);
+    if (child.id <= 0) { return 1; }
+    cancelled := os.Kill(child.id);
+    if (cancelled != -9) { return 1; }
+    paused = os.Run(["/bin/sleep", "0.5"]);
+    if (paused != 0 || os.Exists(strings.Concatenate([folder, "/cancelled"]))) { return 1; }
+    os.WriteOutput("PASS quiet service cwd, caller isolation, normal-exit and cancellation group retirement\n");
+    return 0;
+}

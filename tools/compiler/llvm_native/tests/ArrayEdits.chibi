@@ -1,0 +1,32 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+
+EditedArray :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, 1030, 0, 0, 0, 0, 0),
+            Code(native.Constant, 6, 1, 0, 0, 0, -1),
+            Code(native.Constant, 6, 2, 0, 0, 0, 7),
+            Code(native.ArrayInsert, 1030, 3, 0, 1, 2, 0),
+            Code(native.ArrayReverse, 1030, 4, 3, 0, 0, 0),
+            Code(native.ArrayLength, 6, 5, 4, 0, 0, 0),
+            Code(native.Publish, 6, 0, 5, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+EditedArrayModule :: (code: native.Instruction[]) -> native.Result {
+    return Emit([Function(6, 0, 0, 6, 0, length(code), 0, 0)], [], [1030, 6, 6, 1030, 1030, 6], code, []);
+}
+@test
+ArrayInsertionAndReversalUseTypedInputs :: () {
+    Emitted(EditedArrayModule(EditedArray()));
+    Rejects(EditedArrayModule(Changed(EditedArray(), 4, Code(native.ArrayInsert, 1030, 3, 1, 1, 2, 0))), ArrayOperands());
+    Rejects(EditedArrayModule(Changed(EditedArray(), 4, Code(native.ArrayInsert, 1030, 3, 0, 0, 2, 0))), ArrayOperands());
+    Rejects(EditedArrayModule(Changed(EditedArray(), 4, Code(native.ArrayInsert, 1030, 3, 0, 1, 0, 0))), ArrayOperands());
+}
+@test
+ArrayEditsRejectReservedMetadata :: () {
+    Rejects(EditedArrayModule(Changed(EditedArray(), 4, Code(native.ArrayInsert, 1030, 3, 0, 1, 2, 1))), ArrayOperands());
+    Rejects(EditedArrayModule(Changed(EditedArray(), 5, Code(native.ArrayReverse, 1030, 4, 3, 1, 0, 0))), ArrayOperands());
+    Rejects(EditedArrayModule(Changed(EditedArray(), 5, Code(native.ArrayReverse, 1030, 4, 3, 0, 1, 0))), ArrayOperands());
+    Rejects(EditedArrayModule(Changed(EditedArray(), 5, Code(native.ArrayReverse, 1030, 4, 3, 0, 0, 1))), ArrayOperands());
+}

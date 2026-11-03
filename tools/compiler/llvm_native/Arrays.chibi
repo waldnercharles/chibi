@@ -129,7 +129,7 @@ ArrayUses :: (code: Instruction[]) -> int[] {
             flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation;
             if (item.target != 1) { flags |= ArraySharing; }
         }
-        if (item.op == ArrayPush || item.op == ArrayExtend || item.op == ArraySet || item.op == ArrayRemove) { flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation; }
+        if (item.op == ArrayInsert || item.op == ArrayReverse || item.op == ArrayPush || item.op == ArrayExtend || item.op == ArraySet || item.op == ArrayRemove) { flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation; }
         if (item.op == ArraySlice || item.op == ArrayResize || item.op == ArrayBytes) { flags = ArrayAllocation; }
         used[type - ArrayType] |= flags;
     }
@@ -180,4 +180,39 @@ ArrayQueuedDrop :: (type: int) -> string {
         format_text("  call void @chibi_array.{}.drop_into(ptr %ctx, {} %value, ptr %pending)\n", type, array),
         "  call void @chibi_value.drain(ptr %pending)\n  ret void\n}\n"
     ]);
+}
+
+// Uniqueness acquires a shared backing once. The shift moves initialized
+// element bytes backward, never retaining or releasing the values it moves.
+ArrayInserted :: (item: Instruction, pc: int) -> string {
+    array := abi.ArrayType();
+    element := TypeName(item.type - ArrayType);
+    out := [Load(format_text("b{}", pc), abi.IntStorage, "s", item.right),
+            Load(format_text("c{}", pc), item.type - ArrayType, "s", item.target)];
+    out.append(format_text("  %negative{} = icmp slt i32 %b{}, 0\n  %low{} = select i1 %negative{}, i32 0, i32 %b{}\n", pc, pc, pc, pc, pc));
+    out.append(format_text("  %over{} = icmp ugt i32 %low{}, %length{}\n  %index{} = select i1 %over{}, i32 %length{}, i32 %low{}\n", pc, pc, pc, pc, pc, pc, pc));
+    out.append(format_text("  %next{} = add i32 %length{}, 1\n  %unique{} = call {} @chibi_array.{}.unique(ptr %ctx, {} %a{}, i32 %next{}, i1 true)\n", pc, pc, pc, array, item.type, array, pc, pc));
+    out.append(format_text("  %data{} = extractvalue {} %unique{}, 2\n  %first{} = zext i32 %index{} to i64\n  %end{} = zext i32 %length{} to i64\n  br label %shift{}\nshift{}:\n", pc, array, pc, pc, pc, pc, pc, pc, pc));
+    out.append(format_text("  %cursor{} = phi i64 [ %end{}, %p{} ], [ %previous{}, %move{} ]\n  %more{} = icmp ugt i64 %cursor{}, %first{}\n  br i1 %more{}, label %move{}, label %insert{}\nmove{}:\n", pc, pc, pc, pc, pc, pc, pc, pc, pc, pc, pc, pc));
+    out.append(format_text("  %previous{} = sub i64 %cursor{}, 1\n  %from{} = getelementptr inbounds {}, ptr %data{}, i64 %previous{}\n  %to{} = getelementptr inbounds {}, ptr %data{}, i64 %cursor{}\n", pc, pc, pc, element, pc, pc, pc, element, pc, pc));
+    out.append(format_text("  %moved{} = load {}, ptr %from{}\n  store {} %moved{}, ptr %to{}\n  br label %shift{}\ninsert{}:\n", pc, element, pc, element, pc, pc, pc, pc));
+    out.append(format_text("  %at{} = getelementptr inbounds {}, ptr %data{}, i64 %first{}\n  store {} %c{}, ptr %at{}\n", pc, element, pc, pc, element, pc, pc));
+    out.append(format_text("  %v{} = insertvalue {} %unique{}, i32 %next{}, 0\n", pc, array, pc, pc));
+    out.append(Store(format_text("%v{}", pc), item.type, "s", item.output));
+    return strings.Join(out, "");
+}
+// Swapping moves two complete initialized values. Their reference counts do
+// not change, including strings and recursively owned records or arrays.
+ArrayReversed :: (item: Instruction, pc: int) -> string {
+    array := abi.ArrayType();
+    element := TypeName(item.type - ArrayType);
+    out := [format_text("  %unique{} = call {} @chibi_array.{}.unique(ptr %ctx, {} %a{}, i32 %length{}, i1 true)\n", pc, array, item.type, array, pc, pc)];
+    out.append(format_text("  %data{} = extractvalue {} %unique{}, 2\n  %count{} = zext i32 %length{} to i64\n  %half{} = lshr i64 %count{}, 1\n  br label %reverse{}\nreverse{}:\n", pc, array, pc, pc, pc, pc, pc, pc, pc));
+    out.append(format_text("  %cursor{} = phi i64 [ 0, %p{} ], [ %next{}, %swap{} ]\n  %more{} = icmp ult i64 %cursor{}, %half{}\n  br i1 %more{}, label %swap{}, label %reversed{}\nswap{}:\n", pc, pc, pc, pc, pc, pc, pc, pc, pc, pc, pc));
+    out.append(format_text("  %last{} = sub i64 %count{}, 1\n  %other{} = sub i64 %last{}, %cursor{}\n", pc, pc, pc, pc, pc));
+    out.append(format_text("  %front{} = getelementptr inbounds {}, ptr %data{}, i64 %cursor{}\n  %back{} = getelementptr inbounds {}, ptr %data{}, i64 %other{}\n", pc, element, pc, pc, pc, element, pc, pc));
+    out.append(format_text("  %ahead{} = load {}, ptr %front{}\n  %behind{} = load {}, ptr %back{}\n  store {} %behind{}, ptr %front{}\n  store {} %ahead{}, ptr %back{}\n", pc, element, pc, pc, element, pc, element, pc, pc, element, pc, pc));
+    out.append(format_text("  %next{} = add i64 %cursor{}, 1\n  br label %reverse{}\nreversed{}:\n", pc, pc, pc, pc));
+    out.append(Store(format_text("%unique{}", pc), item.type, "s", item.output));
+    return strings.Join(out, "");
 }

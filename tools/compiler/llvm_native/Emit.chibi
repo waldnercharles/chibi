@@ -342,7 +342,12 @@ pub Print: int : 92;
 // output = left(bool) ? right : target, all operands already evaluated.
 // The selected values share type and are numeric or bool, never managed.
 pub Select: int : 93;
-pub InstructionCount: int : 94;
+// Consume one array descriptor, clamp the int index in right to 0..length,
+// and insert target's element. Existing elements move without changing owners.
+pub ArrayInsert: int : 95;
+// Consume one array descriptor and reverse its elements without changing owners.
+pub ArrayReverse: int : 96;
+pub InstructionCount: int : 97;
 // A Call's `literal`: an ordinary call, an awaited call (the callee is a waiting
 // function, run inline in the waiting caller, giving its result), or a spawn (the
 // callee is a waiting function, started as a task of its own, giving an owning
@@ -360,7 +365,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
     return Index(slot, length(slots)) && slots[slot] == type;
 }
 Produces :: (op: int) -> bool {
-    return op == Select || op == ManagedNew || op == ManagedAddress || op == Print || op == TaskCopy || op == TaskRunning || op == AwaitResult || op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
+    return op == ArrayInsert || op == ArrayReverse || op == Select || op == ManagedNew || op == ManagedAddress || op == Print || op == TaskCopy || op == TaskRunning || op == AwaitResult || op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
            op == ForeignCall || op == StateLoad || op == FunctionAddress || op == Sqrt || op == ValueCopy || op == ArrayLoan || (MapOperation(op) && op != MapDrop);
 }
 Comparison :: (op: int) -> bool {
@@ -370,7 +375,7 @@ Unary :: (op: int) -> bool {
     return op == Neg || op == BitNot || op == Sqrt;
 }
 ReadsLeft :: (op: int) -> bool {
-    return op == Select || op == ManagedNew || op == ManagedAddress || op == ManagedPin || op == Print || op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
+    return op == ArrayInsert || op == ArrayReverse || op == Select || op == ManagedNew || op == ManagedAddress || op == ManagedPin || op == Print || op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
            (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText || op == ArrayDrop || op == TextRetain ||
            op == TextRelease || op == StateStore || op == Deref || op == Poke || op == ValueCopy || op == ValueDrop || op == ArrayLoan || op == AwaitHandle || op == Cancel ||
            op == CancelAfter || op == Delay || op == Sqrt || (op >= TaskCopy && op <= AwaitResult) || MapOperation(op);
@@ -409,19 +414,19 @@ ReadsRight :: (op: int) -> bool {
 // Whether an array instruction reads a right slot: an index, an element,
 // another array or a length.
 ArrayReadsRight :: (op: int) -> bool {
-    return op >= ArrayGet && op <= ArrayRemove && op != ArrayCopy;
+    return op == ArrayInsert || (op >= ArrayGet && op <= ArrayRemove && op != ArrayCopy);
 }
 // Whether an instruction reads the slot its target names: an array store's
 // value or a slice's count.
 ReadsTarget :: (op: int) -> bool {
-    return op == Select || op == ArraySet || op == ArraySlice || op == MapSet;
+    return op == ArrayInsert || op == Select || op == ArraySet || op == ArraySlice || op == MapSet;
 }
 // Whether an array instruction calls the runtime context: an index check, or
 // an allocation.
 ArrayCalls :: (op: int) -> bool {
     return op == ArrayGet || op == ArraySet || op == ArrayPush || op == ArrayCopy || op == ArrayExtend ||
            op == ArraySlice || op == ArrayResize || op == ArrayBytes || op == ArrayText || op == ArrayDrop ||
-           op == TextRelease || op == ArrayRemove || op == ArrayLoan;
+           op == TextRelease || op == ArrayRemove || op == ArrayLoan || op == ArrayInsert || op == ArrayReverse;
 }
 // Whether an instruction reads argument slots: a call's or a format's.
 ReadsArguments :: (op: int) -> bool {
@@ -970,7 +975,8 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     while (pc < length(code)) {
         item := code[pc];
         pins = pins || item.op == ManagedPin || item.op == ManagedUnpin;
-        if (item.op < Constant || item.op >= InstructionCount ||
+        // Managed-field projection 94 remains closed until its owner is integrated.
+        if (item.op < Constant || item.op >= InstructionCount || item.op == 94 ||
             (item.op > Cancel && item.op < CancelAfter && item.op != TypedFail)) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
@@ -1101,7 +1107,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if ((item.op == ArrayPush || item.op == ArrayExtend) && item.literal != 0 && item.literal != 1) {
             return Result.Rejected(base + pc, "native array growth ownership is not 0 or 1");
         }
-        if (((item.op >= ArrayLength && item.op <= ArrayBytes) || item.op == ArrayText) && !ArrayValid(records, slots, item)) {
+        if (((item.op >= ArrayLength && item.op <= ArrayBytes) || item.op == ArrayText || item.op == ArrayInsert || item.op == ArrayReverse) && !ArrayValid(records, slots, item)) {
             return Result.Rejected(base + pc, "native array operation differs from its operands");
         }
         if (MapOperation(item.op) && !MapValid(records, fields, slots, item)) {
@@ -1272,6 +1278,10 @@ ArrayValid :: (records: Record[], slots: int[], item: Instruction) -> bool {
     if (element == 0 || held != item.type) {
         return false;
     }
+    if (item.op == ArrayInsert) {
+        return item.literal == 0 && Typed(slots, item.right, abi.IntStorage) && Typed(slots, item.target, element);
+    }
+    if (item.op == ArrayReverse) { return item.literal == 0 && item.right == 0 && item.target == 0; }
     if (item.op == ArraySet) {
         return Typed(slots, item.right, abi.IntStorage) && Typed(slots, item.target, element);
     }
@@ -1630,7 +1640,7 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, ArrayTextRead(item, pc));
     } else if MapOperation(item.op) {
         out = format_text("{}{}", out, MapRead(item, pc));
-    } else if (item.op >= ArrayLength && item.op <= ArrayRemove) {
+    } else if ((item.op >= ArrayLength && item.op <= ArrayRemove) || item.op == ArrayInsert || item.op == ArrayReverse) {
         out = format_text("{}{}", out, ArrayRead(item, pc, record_owners));
     } else if (item.op == Select) {
         out = format_text("{}{}", out, Load(format_text("c{}", pc), abi.BoolStorage, "s", item.left));
@@ -1872,6 +1882,8 @@ ArrayRead :: (item: Instruction, pc: int, record_owners: bool[]) -> string {
     if (item.op == ArrayRemove) {
         return format_text("{}{}", out, ArrayRemoved(item, pc, record_owners));
     }
+    if (item.op == ArrayInsert) { return format_text("{}{}", out, ArrayInserted(item, pc)); }
+    if (item.op == ArrayReverse) { return format_text("{}{}", out, ArrayReversed(item, pc)); }
     element := item.type;
     if (item.op == ArraySet) {
         element = item.type - ArrayType;
@@ -2945,7 +2957,7 @@ StatesNumbered :: (code: Instruction[]) -> bool {
 // Whether `code` moves array elements, which the module's copy does.
 Copies :: (code: Instruction[]) -> bool {
     for (item in code) {
-        if (item.op == ArrayPush || item.op == ArrayCopy || (item.op >= ArrayExtend && item.op <= ArrayRemove && item.op != ArrayContains) ||
+        if (item.op == ArrayInsert || item.op == ArrayReverse || item.op == ArrayPush || item.op == ArrayCopy || (item.op >= ArrayExtend && item.op <= ArrayRemove && item.op != ArrayContains) ||
             MapOperation(item.op)) {
             return true;
         }

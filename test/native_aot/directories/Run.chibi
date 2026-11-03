@@ -1,0 +1,127 @@
+package directory_enumeration_runner
+
+import engine "graph:engine"
+import host "project:native_link_host"
+import link "project:native_link"
+import os "core:os"
+import paths "graph:install"
+import programs "graph:programs"
+import strings "core:strings"
+
+Text :: (path: string) -> string {
+    read := os.ReadText(path);
+    assert(read.error == nil, "the fixture source reads");
+    return read.text;
+}
+Write :: (path: string, text: string) {
+    error := os.WriteText(path, text);
+    assert(error == nil, "the owned fixture file writes");
+}
+Make :: (path: string) {
+    error := os.MakeDirectory(path);
+    assert(error == nil, "the owned fixture directory exists");
+}
+
+// Only these three OS calls are replaced in the private core copy. All actual
+// native handles still close; errors never depend on permissions or timing.
+Stage :: (source: string, archive: string, windows: bool) -> string {
+    package := "posix";
+    declarations := ["opendir :: (path: cstring) -> rawptr", "readdir :: (directory: rawptr) -> rawptr",
+                     "closedir :: (directory: rawptr) -> i32"];
+    calls := ["opendir", "readdir", "closedir"];
+    signatures := ["chibi_directory_open :: (path: cstring) -> rawptr",
+                   "chibi_directory_read :: (directory: rawptr) -> rawptr",
+                   "chibi_directory_close :: (directory: rawptr) -> i32"];
+    if (windows) {
+        package = "windows";
+        declarations = ["FindFirstFileW :: (pattern: u16[], data: u16[]) -> u64",
+                        "FindNextFileW :: (handle: u64, data: u16[]) -> i32", "FindClose :: (handle: u64) -> i32"];
+        calls = ["FindFirstFileW", "FindNextFileW", "FindClose"];
+        signatures = ["chibi_directory_open :: (pattern: u16[], data: u16[]) -> u64",
+                      "chibi_directory_read :: (handle: u64, data: u16[]) -> i32",
+                      "chibi_directory_close :: (handle: u64) -> i32"];
+    }
+    text := source;
+    names := ["chibi_directory_open", "chibi_directory_read", "chibi_directory_close"];
+    for (index in 0..<3) {
+        assert(strings.Count(text, declarations[index]) == 1, "the native call's exact ABI is pinned");
+        text = strings.Replace(text, declarations[index], "", 1);
+        text = strings.ReplaceAll(text, strings.Concatenate([calls[index], "("]), strings.Concatenate([names[index], "("]));
+    }
+    prefix := strings.Concatenate(["package ", package, "\n"]);
+    added := strings.Concatenate([prefix, "foreign import directory_faults \"", archive, "\"\nforeign directory_faults {\n",
+                                  strings.Join(signatures, "\n"), "\n}\n"]);
+    return strings.Replace(text, prefix, added, 1);
+}
+Run :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 2, "the native compiler and LLVM tools");
+    root := os.Root();
+    compiler := os.RealPath(arguments[0]);
+    llvm := os.RealPath(arguments[1]);
+    windows := os.Platform() == "Windows";
+    suffix := "";
+    if (windows) { suffix = ".exe"; }
+    fixture := strings.Concatenate([root, "/test/native_aot/directories"]);
+    parent := strings.Concatenate([root, "/.chibi/directory-errors"]);
+    Make(parent);
+    work := os.TemporaryDirectory(parent);
+    assert(work.error == nil && work.path != "", "the runner owns its private workspace");
+    core := strings.Concatenate([work.path, "/core"]);
+    copied := engine.NativeSources(strings.Concatenate([root, "/packages/core"]), core);
+    assert(copied, "the private core source tree is copied");
+    triple := programs.HostTriple();
+    template := Text(strings.Concatenate([fixture, "/Posix.ll"]));
+    errno := "__errno_location";
+    if (os.Platform() == "Darwin") { errno = "__error"; }
+    template = strings.ReplaceAll(template, "@ERRNO@", errno);
+    if (windows) { template = Text(strings.Concatenate([fixture, "/Windows.ll"])); }
+    source := strings.Concatenate([work.path, "/fault.ll"]);
+    Write(source, strings.Concatenate(["target triple = \"", triple, "\"\n", template]));
+    object := strings.Concatenate([work.path, "/fault.o"]);
+    compiled := host.ObjectResult(llvm, source, object, 2);
+    assert(compiled.kind == 0, "the LLVM-only failure provider compiles");
+    archive := strings.Concatenate([work.path, "/fault.a"]);
+    command := [strings.Concatenate([llvm, "/llvm-ar", suffix]), "rcs", archive, object];
+    platform_source := strings.Concatenate([core, "/sys/posix/Posix.chibi"]);
+    if (windows) {
+        archive = strings.Concatenate([work.path, "/fault.lib"]);
+        platform_source = strings.Concatenate([core, "/sys/windows/Windows.chibi"]);
+        plan := link.Program(triple, llvm, [], [], [], [], strings.Concatenate([work.path, "/unused.exe"]), "", true);
+        plan.work = work.path;
+        Write(link.ImportPath(plan, "kernel32"), link.Definition("kernel32", ["FindFirstFileW", "FindNextFileW", "FindClose", "SetLastError"]));
+        imported := os.Run(link.ImportCommand(plan, "kernel32"));
+        assert(imported == 0, "the private test import library builds without an SDK");
+        command = [strings.Concatenate([llvm, "/llvm-lib.exe"]), strings.Concatenate(["/out:", archive]), object,
+                   link.ImportLibrary(plan, "kernel32")];
+    }
+    archived := os.Run(command);
+    assert(archived == 0, "the owned failure provider archive builds");
+    Write(platform_source, Stage(Text(platform_source), archive, windows));
+    probe := strings.Concatenate([work.path, "/Probe.chibi"]);
+    Write(probe, strings.ReplaceAll(Text(strings.Concatenate([fixture, "/Probe.chibi"])), "@ARCHIVE@", archive));
+    files := strings.Concatenate([work.path, "/files"]);
+    empty := strings.Concatenate([work.path, "/empty"]);
+    project := strings.Concatenate([work.path, "/project"]);
+    Make(files); Make(empty); Make(strings.Concatenate([project, "/tools/toolchain"])); Make(strings.Concatenate([project, "/tools/graph"]));
+    for (name in ["a", "b", "c", "d", "e"]) { Write(strings.Concatenate([files, "/", name, ".chibi"]), "package input\n"); }
+    copied = engine.NativeSources(core, strings.Concatenate([project, "/packages/core"]));
+    assert(copied, "the cache consumer has the same private core");
+    Write(strings.Concatenate([project, "/Main.chibi"]), "package cached\nMain :: () -> int { return 42; }\n");
+    os.Print(strings.Concatenate(["directory failure evidence: ", work.path]));
+    for (level in ["0", "2"]) {
+        output := strings.Concatenate([work.path, "/probe-", level, suffix]);
+        status := os.Run([compiler, "--compiler", strings.Concatenate([root, "/tools/compiler"]), "--core", core,
+                          "--source", probe, "--entry", "Main", "--collection", strings.Concatenate(["graph=", root, "/tools/graph"]),
+                          "--output", output, "--llvm", llvm, "--target", triple, "--level", level, "--jobs", "2"]);
+        if (status != 0) { return 1; }
+        child := os.Start([output, files, empty, project, compiler, llvm], os.Inherited);
+        if (child <= 0) { return 1; }
+        status = os.Wait(child, 30000);
+        if (status == os.StillRunning) { killed := os.Kill(child); return 1; }
+        if (status != 0) { return 1; }
+    }
+    removed := paths.RemoveTree(work.path);
+    assert(removed, "successful fixtures remove only their owned workspace");
+    return 0;
+}

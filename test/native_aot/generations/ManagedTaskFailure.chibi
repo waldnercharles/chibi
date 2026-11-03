@@ -1,0 +1,24 @@
+package managed_task_failure
+
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fclose :: (stream: rawptr) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+}
+Make :: (value: int) -> ^int { return &value; }
+Ready :: () {
+    stream := fopen("managed-ready", "wb");
+    assert(stream != 0);
+    closed := fclose(stream);
+    assert(closed == 0);
+}
+Allowed :: () -> bool { return access("allow-managed-task", 0) == 0; }
+Worker :: () -> int {
+    pointer := Make(42);
+    while !Allowed() { yield }
+    assert(pointer^ != 42, "retired managed task fails in its original generation");
+    return 0;
+}
+Main :: () -> int { worker := Worker(); Ready(); return 0; }
+Frame :: () -> int { return 0; }

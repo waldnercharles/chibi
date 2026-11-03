@@ -917,7 +917,7 @@ CallValid :: (functions: Function[], parameters: int[], slots: int[], arguments:
 }
 Validate :: (functions: Function[], function: int, module_parameters: int[], module_slots: int[],
              module_locals: int[], module_code: Instruction[], module_arguments: int[], records: Record[],
-             fields: int[], texts: string[], mode: int, waiting: bool[], lifecycle: ValueLayout) -> Result {
+             fields: int[], texts: string[], mode: int, waiting: bool[], lifecycle: ValueLayout, family: bool) -> Result {
     shape := functions[function];
     parameters := Part(module_parameters, shape.first_parameter, shape.parameters);
     slots := Part(module_slots, shape.first_slot, shape.slots);
@@ -999,7 +999,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             return Result.Rejected(base + pc, "native argument type differs from its signature");
         }
         if (item.op == ManagedNew || item.op == ManagedAddress) {
-            if (!ProgramMode(mode)) {
+            if (!ProgramMode(mode) && !family) {
                 return Result.Rejected(base + pc, "native managed pointers require a standalone collector owner");
             }
             if (item.literal == 0 || item.target != 0) {
@@ -1170,7 +1170,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         // C calls complete synchronously. Scalar arguments/results live in the
         // coroutine's existing scalar slots; borrowed strings/array buffers
         // retain the separate lifetime gate. Typed source effects are unchanged.
-        if (waiting[function] && ((item.op == Fail && !ProgramMode(mode)) || item.op == Format ||
+        if (waiting[function] && ((item.op == Fail && !ProgramMode(mode) && !family) || item.op == Format ||
             (item.op == ForeignCall && foreign_abi != ScalarForeignABI))) {
             return Result.Rejected(base + pc, "native waiting function cannot fail, format or borrow foreign buffers yet");
         }
@@ -3075,7 +3075,7 @@ Declarations :: (code: Instruction[]) -> string {
 }
 Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
            code: Instruction[], arguments: int[], records: Record[], fields: int[], field_tags: i64[], texts: string[], source: Source,
-           names: string[], lines: int[], columns: int[], mode: int, step_budget: int) -> Result {
+           names: string[], lines: int[], columns: int[], mode: int, step_budget: int, family: bool = false) -> Result {
     if (step_budget <= 0) {
         return Result.Rejected(-1, "native CHECK budget must be positive");
     }
@@ -3103,10 +3103,10 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     if (managed && abi.Same(target, abi.WebAssembly32())) {
         return Result.Rejected(-1, "native WebAssembly managed pointers have no collector owner yet");
     }
-    if (managed && !ProgramMode(mode)) {
+    if (managed && !ProgramMode(mode) && !family) {
         return Result.Rejected(-1, "native managed pointers require a standalone collector owner");
     }
-    if (managed && ManagedStorage(functions[0].result)) {
+    if (managed && !family && ManagedStorage(functions[0].result)) {
         return Result.Rejected(-1, "a standalone entry cannot export managed pointers");
     }
     if (source.file != "" && abi.DebugFormat(target) == "") {
@@ -3119,7 +3119,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     lifecycle := ValueLayouts(records, fields);
     for (function in 0..<length(functions)) {
         switch Validate(functions, function, parameters, slots, locals, code, arguments, records, fields, texts,
-                        mode, waiting, lifecycle) {
+                        mode, waiting, lifecycle, family) {
             case .Rejected(instruction, message):
                 return Result.Rejected(instruction, message);
             case .Emitted(text):
@@ -3201,6 +3201,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         // raw pointer or foreign ABI is admitted yet, and records stay internal.
         out.append(format_text("target triple = \"{}\"\n\n", target.triple));
         if (piece == 0 && managed) { out.append("; chibi-managed\n"); }
+        if (piece == 0 && family) { out.append("; chibi-family\n"); }
         if (piece == 0 && formatting) { out.append("; chibi-format\n"); }
         if (piece == 0 && numeric_formatting) { out.append("; chibi-format-numbers\n"); }
         if (managed) {
@@ -3245,6 +3246,8 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         }
         if (ProgramMode(mode)) {
             out.append("declare void @chibi_native_step()\ndeclare void @chibi_native_failure(i32) noreturn\n");
+        } else if (family && managed) {
+            out.append("declare void @chibi_native_failure(i32) noreturn\n");
         }
         out.append(MathImports(target, held));
         printed := false;
@@ -4191,6 +4194,21 @@ pub EmitLibraryStates :: (target: abi.Target, name: string, names: string[], ids
                           parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
                           records: Record[], fields: int[], texts: string[], step_budget: int, field_names: string[], entries: int,
                           state_characters: bool[]) -> Result {
+    return LibraryStates(target, name, names, ids, functions, parameters, slots, locals, code, arguments,
+        records, fields, [], texts, step_budget, field_names, entries, state_characters, false);
+}
+// A shared program supplies one execution-family owner before calling exports.
+pub EmitFamilyLibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
+                                parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
+                                records: Record[], fields: int[], field_tags: i64[], texts: string[], step_budget: int, field_names: string[], entries: int,
+                                state_characters: bool[]) -> Result {
+    return LibraryStates(target, name, names, ids, functions, parameters, slots, locals, code, arguments,
+        records, fields, field_tags, texts, step_budget, field_names, entries, state_characters, true);
+}
+LibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
+                          parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
+                          records: Record[], fields: int[], field_tags: i64[], texts: string[], step_budget: int, field_names: string[], entries: int,
+                          state_characters: bool[], family: bool) -> Result {
     windows := abi.Same(target, abi.WindowsX64());
     if (!abi.Same(target, abi.LinuxX64()) && !abi.Same(target, abi.MacOSArm64()) && !windows) {
         return Result.Rejected(-1, "native libraries require Linux x86-64, macOS arm64 or Windows x86-64");
@@ -4239,8 +4257,8 @@ pub EmitLibraryStates :: (target: abi.Target, name: string, names: string[], ids
     // A library has no line tables yet.
     source: Source = {file: "", directory: ""};
     no_positions: int[] = [];
-    switch Module(target, functions, parameters, slots, locals, code, arguments, records, fields, [], texts, source,
-                  names, no_positions, no_positions, NoEntry, step_budget) {
+    switch Module(target, functions, parameters, slots, locals, code, arguments, records, fields, field_tags, texts, source,
+                  names, no_positions, no_positions, NoEntry, step_budget, family) {
         case .Rejected(instruction, message):
             return Result.Rejected(instruction, message);
         case .Emitted(text):
@@ -4317,7 +4335,17 @@ pub EmitLibraryStates :: (target: abi.Target, name: string, names: string[], ids
     out.append(retained_manifest);
     if (windows && retained_manifest != "") { dll_exports.append(format_text("chibi_retained_{},data", name)); }
     if (runtime && !strings.Contains(module, "@chibi_context = external global")) {
-        out.append(format_text("\n@chibi_context = external global {}\n", abi.ContextType()));
+        context_type := abi.ContextType();
+        if (family) { context_type = abi.ManagedContextType(); }
+        out.append(format_text("\n@chibi_context = external global {}\n", context_type));
+    }
+    if (family) {
+        managed := strings.Contains(module, "; chibi-managed\n");
+        out.append(ManagedFamilySymbols(runtime, managed));
+        if (windows) {
+            dll_exports.extend(["chibi_host_family_abi", "chibi_host_family_size", "chibi_host_set_family",
+                                "chibi_host_cells_pending", "chibi_host_family_collect"]);
+        }
     }
     out.append(HostSymbols(names, functions, parameters, code, texts, runtime, waiting, state_characters));
     if (windows) { out.append(WindowsLibraryExports(dll_exports)); }

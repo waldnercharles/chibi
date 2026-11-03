@@ -10,11 +10,14 @@ import strings "core:strings"
 Op :: (op: int, type: int, output: int, left: int, right: int, literal: i64) -> native.Instruction {
     return {op: op, type: type, output: output, left: left, right: right, target: 0, literal: literal};
 }
-Emit :: (target: abi.Target, slots: int[], code: native.Instruction[], embedded: bool,
-         records: native.Record[], fields: int[]) -> native.Result {
-    shape: native.Function = {result: abi.IntStorage, first_parameter: 0, parameters: 0,
+Shape :: (slots: int[], code: native.Instruction[]) -> native.Function {
+    return {result: abi.IntStorage, first_parameter: 0, parameters: 0,
         first_slot: 0, slots: length(slots), first_local: 0, locals: 0, first_code: 0, code: length(code),
         first_argument: 0, arguments: 0};
+}
+Emit :: (target: abi.Target, slots: int[], code: native.Instruction[], embedded: bool,
+         records: native.Record[], fields: int[]) -> native.Result {
+    shape := Shape(slots, code);
     source: native.Source = {file: "", directory: ""};
     empty: int[] = [];
     if (embedded) {
@@ -66,9 +69,21 @@ Main :: () -> int {
         Op(native.Publish, number, 0, 9, 0, 0), Op(native.Return, 0, 0, 0, 0, 0)];
     no_records: native.Record[] = [];
     empty: int[] = [];
+    metadata: native.Record[] = [{first: 0, count: 1, identity: -700}];
+    source: native.Source = {file: "", directory: ""};
+    for (valid in [true, false]) {
+        tags: i64[] = [];
+        if (valid) { tags.append(-123); }
+        switch native.EmitProgramTyped(target, [Shape(slots, code)], empty, slots, empty, code, empty,
+                                        metadata, [number], tags, [], source, [], empty, empty) {
+            case .Emitted(text): if (!valid) { os.Print("accepted an incomplete field identity table"); return 1; }
+            case .Rejected(instruction, message):
+                if (valid || !strings.Contains(message, "identities differ from the field table")) { os.Print(message); return 1; }
+        }
+    }
     if (!Rejected(target, slots, code, true, no_records, empty, "standalone collector owner") ||
         !Rejected(abi.WebAssembly32(), slots, code, false, no_records, empty, "WebAssembly managed pointers") ||
-        !Rejected(target, slots, code, false, [{first: 0, count: 1}], [pointer], "aggregate roots")) { return 1; }
+        !Rejected(target, slots, code, false, [{first: 0, count: 1, identity: 0}], [pointer], "aggregate roots")) { return 1; }
     invalid := code;
     wrong := invalid[1];
     wrong.literal = 0;

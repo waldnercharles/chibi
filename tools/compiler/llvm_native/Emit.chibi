@@ -42,6 +42,9 @@ pub Result :: union {
 pub Record :: struct {
     first: int;
     count: int;
+    // Stable nominal-and-layout identity for managed payloads; zero for an
+    // untagged ordinary value. Local record ordinals never identify a cell.
+    identity: i64;
 }
 pub RecordType: int : 32;
 // An owning generational task observer, spelled i64 but never a numeric scalar.
@@ -3083,7 +3086,7 @@ Declarations :: (code: Instruction[]) -> string {
     return strings.Join(out, "");
 }
 Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
-           code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[], source: Source,
+           code: Instruction[], arguments: int[], records: Record[], fields: int[], field_tags: i64[], texts: string[], source: Source,
            names: string[], lines: int[], columns: int[], mode: int, step_budget: int) -> Result {
     if (step_budget <= 0) {
         return Result.Rejected(-1, "native CHECK budget must be positive");
@@ -3099,6 +3102,10 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     }
     if (!RecordLayout(records, fields)) {
         return Result.Rejected(-1, "native records differ from their field table");
+    }
+    // All later metadata indexing uses this same canonical flat field extent.
+    if (length(field_tags) != 0 && length(field_tags) != length(fields)) {
+        return Result.Rejected(-1, "native managed field identities differ from the field table");
     }
     if (ManagedTypes(fields)) {
         return Result.Rejected(-1, "native managed pointer aggregate roots are not implemented yet");
@@ -3541,7 +3548,7 @@ pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots
     if (main) {
         mode = MainEntry;
     }
-    return Module(target, functions, parameters, slots, locals, code, arguments, records, fields, texts, source, names,
+    return Module(target, functions, parameters, slots, locals, code, arguments, records, fields, [], texts, source, names,
                   lines, columns, mode, step_budget);
 }
 
@@ -3550,8 +3557,20 @@ pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots
 pub EmitProgram :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
              code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[],
              source: Source, names: string[], lines: int[], columns: int[]) -> Result {
-    return Module(target, functions, parameters, slots, locals, code, arguments, records, fields, texts, source, names,
+    return Module(target, functions, parameters, slots, locals, code, arguments, records, fields, [], texts, source, names,
                   lines, columns, ProgramEntry, 1);
+}
+
+// Managed record programs retain stable pointee and field identities in a
+// parallel immutable table. Ordinary scalar/record callers need no metadata.
+pub EmitProgramTyped :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
+             code: Instruction[], arguments: int[], records: Record[], fields: int[], field_tags: i64[], texts: string[],
+             source: Source, names: string[], lines: int[], columns: int[]) -> Result {
+    if (length(field_tags) != length(fields)) {
+        return Result.Rejected(-1, "native managed field identities differ from the field table");
+    }
+    return Module(target, functions, parameters, slots, locals, code, arguments, records, fields, field_tags, texts, source,
+                  names, lines, columns, ProgramEntry, 1);
 }
 
 // Whether `name` can end a C symbol: an ASCII letter or `_`, then letters,
@@ -4232,7 +4251,7 @@ pub EmitLibraryStates :: (target: abi.Target, name: string, names: string[], ids
     // A library has no line tables yet.
     source: Source = {file: "", directory: ""};
     no_positions: int[] = [];
-    switch Module(target, functions, parameters, slots, locals, code, arguments, records, fields, texts, source,
+    switch Module(target, functions, parameters, slots, locals, code, arguments, records, fields, [], texts, source,
                   names, no_positions, no_positions, NoEntry, step_budget) {
         case .Rejected(instruction, message):
             return Result.Rejected(instruction, message);

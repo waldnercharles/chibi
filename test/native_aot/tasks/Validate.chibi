@@ -156,7 +156,7 @@ NativeRejections :: (target: abi.Target) {
         if (which == 1) { parameters = [native.RefType + native.TaskType]; }
         if (which == 2) { slots = [native.ArrayType + native.TaskType, abi.IntStorage]; first.type = slots[0]; }
         if (which == 3) {
-            record: native.Record = {first: 0, count: 1};
+            record: native.Record = {first: 0, count: 1, identity: 0};
             records = [record];
             fields = [native.TaskType];
         }

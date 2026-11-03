@@ -4496,14 +4496,14 @@ ScalarWritten :: (scoped: snapshot.SnapshotNode[], text: string, callables: Call
             eligible := false;
             for (index in 0..<callable.count) {
                 param := marked[callable.first + index];
-                eligible = eligible || (!param.written && (param.reference || param.container == ArrayContainer));
+                eligible = eligible || (!param.written && (param.reference || param.container == ArrayContainer || param.container == MapContainer));
             }
             if (!eligible) { continue; }
             body := Field(scoped, callable.node, syntax.FieldBody);
             names := ScalarForeignNames(scoped, text, body, foreign_buffers);
             for (index in 0..<callable.count) {
                 param := marked[callable.first + index];
-                if ((param.reference || param.container == ArrayContainer) && Holds(names, param.name)) {
+                if ((param.reference || param.container == ArrayContainer || param.container == MapContainer) && Holds(names, param.name)) {
                     param.written = true;
                     marked[callable.first + index] = param;
                 }

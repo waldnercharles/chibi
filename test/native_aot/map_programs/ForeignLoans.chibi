@@ -1,0 +1,80 @@
+package map_foreign_loans
+foreign import libc "system:c"
+foreign libc {
+    memset :: (data: u8[], value: i32, count: u64) -> rawptr
+    memcmp :: (left: u8[], right: u8[], count: u64) -> i32
+    write :: (file: i32, data: u8[], count: u64) -> i64
+}
+Buffer :: (value: u8) -> u8[] { return [value, u8(0), u8(66)]; }
+MakeMap :: () -> [int:u8[]] { return [1:Buffer(65)]; }
+MissingCount :: (values: ^[int:u8[]], calls: ^int) -> u64 {
+    calls^ += 1; values^[7] = Buffer(88); return 0;
+}
+Key :: (value: u8) -> string { return text_from_bytes([u8(65), u8(0), value]); }
+FillCopy :: (values: [int: u8[]]) -> int {
+    changed := memset(values[1], 9, 1);
+    return int(values[1][0]);
+}
+FillScoped :: (values: ^[int: u8[]]) { changed := memset(values^[1], 7, 1); }
+Replace :: (values: ^[int: u8[]]) -> u64 { values^ = [1: Buffer(88)]; return 3; }
+Delete :: (values: ^[int: u8[]]) -> u64 { values^.delete(1); return 3; }
+Grow :: (values: ^[int: u8[]]) -> u64 {
+    for index in 2..<258 { values^[index] = Buffer(u8(wrap: index)); }
+    return 1;
+}
+ChangeKey :: (key: ^string) -> u64 { key^ = Key(9); return 1; }
+ReplaceKey :: (values: ^[int: u8[]]) -> int { values^ = [1: Buffer(88)]; return 1; }
+AliasedKey :: (changed: ^[int: u8[]]) -> int { changed^ = [1: Buffer(88)]; return 1; }
+ReadAliased :: (read: ^[int: u8[]], changed: ^[int: u8[]]) -> int {
+    return memcmp(read^[AliasedKey(changed)], Buffer(65), 3);
+}
+DeleteKey :: (values: ^[string: u8[]], key: ^string) -> u64 {
+    delete values^[key^]; key^ = Key(9); return 3;
+}
+Main :: () -> int {
+    flags: [bool:u8[]] = [true:Buffer(65)];
+    flag_write := memset(flags[true], 9, 1);
+    assert(flags[true][0] == 9);
+    temporary := memcmp(MakeMap()[1], Buffer(65), 3);
+    assert(temporary == 0);
+    absent: [int:u8[]] = [:];
+    calls := 0;
+    empty := write(-1, absent[7], MissingCount(&absent, &calls));
+    assert(empty == -1 && calls == 1 && absent[7][0] == 88);
+    values: [int: u8[]] = [1: Buffer(65)];
+    alias := values;
+    written := memset(values[1], 9, 1);
+    assert(values[1][0] == 9 && alias[1][0] == 65);
+    copied := FillCopy(alias);
+    assert(copied == 9 && alias[1][0] == 65);
+    FillScoped(&alias);
+    assert(alias[1][0] == 7);
+    repeated := memcmp(values[1], values[1], 3);
+    assert(repeated == 0);
+    historical: [int: u8[]] = [1: Buffer(65)];
+    replaced := memcmp(historical[1], Buffer(65), Replace(&historical));
+    assert(replaced == 0 && historical[1][0] == 88);
+    observed: [int: u8[]] = [1: Buffer(65)];
+    early := memcmp(observed[ReplaceKey(&observed)], Buffer(65), 3);
+    assert(early == 0 && observed[1][0] == 88);
+    observed = [1: Buffer(65)];
+    forwarded := ReadAliased(&observed, &observed);
+    assert(forwarded == 0 && observed[1][0] == 88);
+    historical = [1: Buffer(65)];
+    deleted := memcmp(historical[1], Buffer(65), Delete(&historical));
+    assert(deleted == 0 && !historical.has(1));
+    grown: [int: u8[]] = [1: Buffer(65)];
+    grown_alias := grown;
+    grown_write := memset(grown[1], 9, Grow(&grown));
+    assert(grown.has(257) && !grown.has(258) && grown[1][0] == 9 && grown_alias[1][0] == 65);
+    key := Key(1);
+    text_keys: [string: u8[]] = [key: Buffer(65)];
+    old_key := key;
+    key_write := memset(text_keys[key], 9, ChangeKey(&key));
+    assert(text_keys[old_key][0] == 9 && key == Key(9));
+    discarded_key := Key(3);
+    discarded: [string: u8[]] = [discarded_key: Buffer(65)];
+    key_deleted := memcmp(discarded[discarded_key], Buffer(65), DeleteKey(&discarded, &discarded_key));
+    assert(key_deleted == 0 && !discarded.has(Key(3)) && discarded_key == Key(9));
+    return 0;
+}

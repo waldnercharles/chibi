@@ -184,7 +184,7 @@ ForeignBufferLoansValidateTypePlaceModeAndLiteral :: () {
     Rejects(LoanModule(array, Changed(code, 2, bad)), expected);
     bad = code[2]; bad.left = 2;
     Rejects(LoanModule(array, Changed(code, 2, bad)), expected);
-    bad = code[2]; bad.target = 3;
+    bad = code[2]; bad.target = native.ArrayLoanMap + 1;
     Rejects(LoanModule(array, Changed(code, 2, bad)), expected);
     bad = code[2]; bad.literal = 1;
     Rejects(LoanModule(array, Changed(code, 2, bad)), expected);

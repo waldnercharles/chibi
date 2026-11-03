@@ -10,7 +10,7 @@ case "$(uname -s)-$(uname -m)" in
     Linux-x86_64) triple=x86_64-unknown-linux-gnu ;;
     *) echo 'native map programs: unsupported test host' >&2; exit 2 ;;
 esac
-for name in Values Strings Iteration Records Effects Receivers ManagedRecords StringEffects ArrayPayload ArrayForeign Compound ArrayBacked ArrayValues Unions; do
+for name in Values Strings Iteration Records Effects Receivers ManagedRecords StringEffects ArrayPayload ArrayForeign Compound ArrayBacked ArrayValues Unions ArrayForeignPlace ForeignLoans; do
     for level in 0 2; do
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$root/test/native_aot/map_programs/$name.chibi" --entry Main \
@@ -31,7 +31,7 @@ for name in MissingRecord UnionMissing ArrayMissing; do
         grep -F "$expected" "$work/$name-O$level.log" >/dev/null
     done
 done
-for name in ArrayCompound ArrayForeignPlace; do
+for name in ArrayCompound; do
     if "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
         --source "$root/test/native_aot/map_programs/$name.chibi" --entry Main \
         --output "$work/$name" --llvm "$llvm" --target "$triple" --jobs 2 > "$work/$name.log" 2>&1; then
@@ -39,7 +39,6 @@ for name in ArrayCompound ArrayForeignPlace; do
         exit 1
     fi
     expected='native mapped array elements currently assign only by ='
-    if [ "$name" = ArrayForeignPlace ]; then expected='native foreign array buffer needs a local or temporary value'; fi
     grep -F "$expected" "$work/$name.log" >/dev/null
 done
 echo 'native map programs passed'

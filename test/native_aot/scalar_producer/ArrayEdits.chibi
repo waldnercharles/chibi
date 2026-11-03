@@ -148,3 +148,17 @@ InlineArrayPlacesProjection :: () {
     RejectChanged(rows, [Changed(change - 4, ValueField, 1)], mismatch);
     RejectChanged(rows, [Changed(change - 1, KindField, i64(facts.LiteralRow)), Changed(change - 1, ValueField, 0)], mismatch);
 }
+
+MapForeignPlacesProjection :: () {
+    rows := Produced("package places\nforeign import libc \"system:c\"\nforeign libc {memset::(data:u8[],value:i32,count:u64)->rawptr}\nMain::()->int{values:[int:u8[]]=[1:[u8(65)]];written:=memset(values[1],9,1);return 0;}");
+    ValidateRows(rows, "");
+    loan := -1;
+    for (row, index in rows) { if (row.kind == facts.MapRow && row.value == facts.MapArrayLoan) { loan = index; } }
+    assert(loan >= 3 && rows[loan - 3].kind == facts.RefRow);
+    mismatch := "scalar map operation differs from its operands";
+    RejectChanged(rows, [Changed(loan, CountField, 2)], mismatch);
+    RejectChanged(rows, [Changed(loan, CountField, 4)], mismatch);
+    RejectChanged(rows, [Changed(loan, LiteralField, 0)], mismatch);
+    RejectChanged(rows, [Changed(loan, TypeField, i64(facts.ArrayType + facts.BoolType))], mismatch);
+    RejectChanged(rows, [Changed(loan - 2, KindField, i64(facts.RefRow))], mismatch);
+}

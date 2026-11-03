@@ -131,6 +131,45 @@ ScalarForeignArrayRows :: (forest: snapshot.SnapshotNode[], text: string, callab
     type := facts.ArrayType + ScalarTypeOf(element);
     place := Unparenthesized(forest, argument);
     found := -1;
+    mapped := ScalarMapRead(forest, text, callables, names, types, callable.package, place);
+    if (mapped.operator == facts.MapGet && Is(forest, Unparenthesized(forest, mapped.object), syntax.Identifier)) {
+        record := ScalarMapShape(forest, text, callables, names, types, callable.package, mapped.object);
+        map_type := ScalarMapType(types, record);
+        variable := ScalarVariable(names, Text(forest, text, Unparenthesized(forest, mapped.object)));
+        if (record < 0 || !ScalarMapArrayValue(types, record) ||
+            ScalarArrayType(types, types[record].value_storage, types[record].value_record) != type) {
+            return ScalarOperands.Failed(Diagnose(forest, argument, 0, "native foreign map buffer needs a numeric array entry"));
+        }
+        if (variable.place == LocalPlace && !variable.writable) {
+            // Traversal bindings borrow their parent's value. C gets an
+            // independent array loan, never a writable map-entry place.
+            lent: ValueType = {storage: element, container: ArrayContainer, record: -1};
+            switch ScalarArrayValue(forest, text, callables, params, callable, names, types, members, constants,
+                                   argument, lent, output) {
+                case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                case .Built(built): output = built;
+            }
+            output.append(ScalarAt(forest, argument, facts.ArrayRow, type, facts.ArrayLoan, 1, ""));
+            return ScalarOperands.Built(output);
+        }
+        output.append(ScalarAt(forest, argument, facts.RefRow, map_type, variable.index, 0, ""));
+        changed := EvaluationChanges(forest, text, callables, params, [], names, callable.package, mapped.key, true);
+        copied := ScalarMapSnapshot(forest, text, params, callable, names, types, mapped.object, changed);
+        switch ScalarMapValue(forest, text, callables, params, callable, names, types, members, constants,
+                               mapped.object, record, copied, output) {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): output = built;
+        }
+        key: ValueType = {storage: types[record].key, container: 0, record: -1};
+        switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants, mapped.key, key, output) {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): output = built;
+        }
+        loan := ScalarAt(forest, argument, facts.MapRow, type, facts.MapArrayLoan, 3, "");
+        loan.literal = i64(map_type);
+        output.append(loan);
+        return ScalarOperands.Built(output);
+    }
     if (Is(forest, place, syntax.MemberExpression)) {
         inline := ScalarInlineReference(forest, text, names, types, members, place);
         if (inline.variable < 0 || ScalarValueType(types, inline.shape.storage, inline.shape.container, inline.shape.record) != type) {

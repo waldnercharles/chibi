@@ -602,6 +602,7 @@ jobs:
             @{ name = 'pointer-view-tasks'; source = 'test/native_aot/managed_pointers/source/PointerViews.chibi'; entry = 'Tasks' },
             @{ name = 'view-promises'; source = 'test/native_aot/managed_pointers/source/TaskViewPromises.chibi' },
             @{ name = 'map-promises'; source = 'test/native_aot/task_owners/MapPromises.chibi' },
+            @{ name = 'task-observer-arrays'; source = 'test/native_aot/task_owners/TaskObservers.chibi' },
             @{ name = 'gc-record-arrays'; source = 'test/native_aot/managed_pointers/source/RecordArrays.chibi' },
             @{ name = 'optional-string-cells'; source = 'test/native_aot/managed_pointers/source/OptionalStrings.chibi' },
             @{ name = 'record-array-mutation'; source = 'test/native_aot/managed_pointers/source/RecordArrayMutation.chibi' },

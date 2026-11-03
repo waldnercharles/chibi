@@ -1,0 +1,31 @@
+package deterministic_trigonometry
+
+Named :: (code: int, flag: bool, value: number) -> number {
+    assert(code == 42 && flag);
+    return value;
+}
+Apply :: (op: fn(code: int, flag: bool, value: number) -> number) -> number {
+    return op(value: 4.0, flag: true, code: 42);
+}
+
+// Exact f32 results from the existing cos_sin_compute implementation with
+// contraction disabled. These distinguish its field approximation from libm.
+Main :: () -> int {
+    named := Apply(Named);
+    assert(named == 4.0, "math projection preserves mixed typed argument exchanges");
+    angles: number[] = [0.0, -0.0, 1.0, -1.0, 1.57079625, 3.14159274, 100.0, -100.0, 1e20, -1e20];
+    sines: number[] = [0.0, -0.0, 0.841241539, -0.841241539, 1.0, 0.0, -0.506846309, 0.506846309, -0.914293945, 0.914293945];
+    cosines: number[] = [1.0, 1.0, 0.540659428, 0.540659428, 1.54603853e-07, -1.0, 0.862036467, 0.862036467, -0.4050515, -0.4050515];
+    for (angle, index in angles) {
+        assert(sin(angle) == sines[index], "deterministic sine keeps exact f32 results");
+        assert(cos(angle) == cosines[index], "deterministic cosine keeps exact f32 results");
+    }
+    assert(1.0 / sin(angles[1]) < 0.0, "sine preserves negative zero");
+    assert(sin(vec3(angles[2], angles[4], angles[8])) == vec3(sines[2], sines[4], sines[8]));
+    assert(cos(vec4(angles[3], angles[5], angles[7], angles[9])) == vec4(cosines[3], cosines[5], cosines[7], cosines[9]));
+    infinity := f32(f64(1e300));
+    invalid_sine := sin(infinity);
+    invalid_cosine := cos(infinity);
+    assert(invalid_sine != invalid_sine && invalid_cosine != invalid_cosine, "nonfinite angles stay NaN");
+    return 0;
+}

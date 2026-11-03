@@ -967,6 +967,7 @@ Holds :: (values: int[], wanted: int) -> bool {
 // array, an array and an index, an element or another array, or an array and
 // two ints or an index and an element; 0 for no operator.
 ArrayOperands :: (operand: facts.Row) -> int {
+    if (operand.value == facts.ArrayPlaceGet) { return 2; }
     if (operand.value == facts.ArrayNew) {
         return operand.count;
     }
@@ -1124,7 +1125,7 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         }
         return "";
     }
-    if (operator == facts.ArrayGet) {
+    if (operator == facts.ArrayGet || operator == facts.ArrayPlaceGet) {
         if (operand.type >= facts.ArrayType || Element(records, stack[base]) != operand.type ||
             stack[base + 1] != facts.IntType) {
             return mismatch;
@@ -1249,6 +1250,19 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             floor = depths[length(depths) - 1];
         }
         operand := rows[row];
+        if (operand.kind == facts.OperandSwapRow) {
+            if (operand.type != 0 || operand.literal != 0 || operand.name != "" || operand.text != "" ||
+                !Located(operand, starts, size) || !Within(operand, scope) || operand.value < 0 ||
+                operand.count <= operand.value || operand.count >= length(stack) - floor) {
+                return "scalar operand exchange differs from its evaluation stack";
+            }
+            left := length(stack) - 1 - operand.value;
+            right := length(stack) - 1 - operand.count;
+            held := stack[left];
+            stack[left] = stack[right];
+            stack[right] = held;
+            continue;
+        }
         // Only a string literal has text, and a foreign call the library it links.
         // A reference's literal selects a record field; its type and index are checked below.
         texted := (operand.kind == facts.LiteralRow && operand.type == facts.StringType) ||
@@ -1257,7 +1271,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                           operand.type >= facts.ReferenceType && ManagedScalar(operand.type - facts.ReferenceType);
         if ((!texted && operand.text != "") || (!Valued(records, operand.type) && !managed_borrow) || !Located(operand, starts, size) ||
             !Within(operand, scope) ||
-            (operand.kind != facts.LiteralRow && operand.kind != facts.RefRow && operand.kind != facts.MapRow && operand.kind != facts.ArrayRow && operand.kind != facts.CallRow && operand.kind != facts.AwaitResultRow && operand.kind != facts.ForeignRow && operand.kind != facts.ManagedRow && operand.kind != facts.ManagedAddressRow && operand.literal != 0) ||
+            (operand.kind != facts.LiteralRow && operand.kind != facts.RefRow && operand.kind != facts.MapRow && operand.kind != facts.ArrayRow && operand.kind != facts.CallRow && operand.kind != facts.AwaitResultRow && operand.kind != facts.ForeignRow && operand.kind != facts.ManagedRow && operand.kind != facts.ManagedAddressRow && operand.kind != facts.TextRow && operand.literal != 0) ||
             (operand.kind == facts.CallRow && (operand.literal < 0 || operand.literal > i64(facts.CallSpawned)))) {
             return "invalid scalar operand row";
         }
@@ -1572,14 +1586,21 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             if (formats && operand.count >= 1) {
                 consumed = operand.count;
             }
+            orders := 1;
+            if (!formats && consumed == 2) { orders = 2; }
+            if (!formats && consumed == 3) { orders = 6; }
+            if (operand.literal < 0 || operand.literal >= i64(orders)) {
+                return "scalar text read differs from its operands";
+            }
             base := length(stack) - consumed;
             if (operand.name != "" || consumed == 0 || operand.count != consumed || operand.type != output ||
-                base < floor || stack[base] != facts.StringType) {
+                base < floor || stack[base + facts.TextArgument(consumed, int(operand.literal), 0)] != facts.StringType) {
                 return "scalar text read differs from its operands";
             }
             // format_text's arguments are numbers, bools and strings; the
             // other natives' are ints.
-            for (index in 1..<consumed) {
+            for (parameter in 1..<consumed) {
+                index := facts.TextArgument(consumed, int(operand.literal), parameter);
                 given := stack[base + index];
                 if ((formats && (given < facts.IntType || given > facts.StringType)) ||
                     (!formats && given != facts.IntType)) {
@@ -1700,6 +1721,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         mapped := MapIterated(row);
         // A local holding the union a switch is on, followed by that switch.
         subject := row.kind == facts.LocalRow && row.literal == i64(facts.SwitchSubject);
+        captured := row.kind == facts.LocalRow && row.literal == i64(facts.Captured);
         retained := row.kind == facts.LocalRow &&
                     (row.literal == i64(facts.Retained) || row.literal == i64(facts.Retained | facts.CharNominal));
         if (retained && ManagedVariable(boxes.boxed, row.value)) {
@@ -1725,7 +1747,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         }
         declares := row.kind == facts.LocalRow || ranged;
         typed := declares || row.kind == facts.AssignRow || row.kind == facts.SwitchRow || row.kind == facts.CaseRow;
-        if ((row.text != "" && row.kind != facts.AssertRow) || (row.literal != 0 && !ranged && !subject && !retained) || !Located(row, starts, size) ||
+        if ((row.text != "" && row.kind != facts.AssertRow) || (row.literal != 0 && !ranged && !subject && !retained && !captured) || !Located(row, starts, size) ||
             (row.kind != facts.EndRow && row.start < earliest) || (!declares && row.name != "") ||
             (!typed && row.type != 0) || (!declares && row.kind != facts.AssignRow && row.value != 0)) {
             return "invalid scalar statement row";
@@ -1844,7 +1866,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         // A switch's subject local shares its range with the switch, and the
         // copies of written array parameters share the one byte that opens the
         // body: no statement starts there but the next copy.
-        if (subject || (row.kind == facts.LocalRow && row.end - row.start == 1)) {
+        if (subject || captured || (row.kind == facts.LocalRow && row.end - row.start == 1)) {
             earliest = row.start;
         }
         if (row.kind == facts.LocalRow) {
@@ -2017,6 +2039,10 @@ RetainedValue :: (rows: facts.Row[], records: int[], type: int, value: int, name
 // Validate, or for `shared` the rows of a package that a shared library holds:
 // every function is a library function, though the rows are a package's, which
 // name no library and carry no stable IDs.
+WaitingOperand :: (row: facts.Row) -> bool {
+    return row.kind == facts.YieldRow || row.kind == facts.AwaitRow || row.kind == facts.AwaitResultRow || row.kind == facts.DelayRow ||
+           (row.kind == facts.CallRow && row.literal == i64(facts.CallAwaited));
+}
 ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
     if (length(rows) < 2) {
         return "scalar module row count is out of bounds";
@@ -2063,8 +2089,7 @@ ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
         head := heads[function];
         for (at in head + rows[head].count + 1..<Last(rows, heads, function)) {
             row := rows[at];
-            waits = waits || row.kind == facts.YieldRow || row.kind == facts.AwaitRow || row.kind == facts.AwaitResultRow || row.kind == facts.DelayRow ||
-                    (row.kind == facts.CallRow && row.literal == i64(facts.CallAwaited));
+            waits = waits || WaitingOperand(row);
             task_calls = task_calls || (row.kind == facts.CallRow && row.literal == i64(facts.CallSpawned));
         }
         if (waits && !Scalar(rows[head].type)) {
@@ -2170,8 +2195,10 @@ ArrayLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: i
     if (operand.value == facts.ArrayLength) {
         return Op(native.ArrayLength, type, slot, stack[base], 0, 0);
     }
-    if (operand.value == facts.ArrayGet) {
-        return Op(native.ArrayGet, type, slot, stack[base], stack[base + 1], 0);
+    if (operand.value == facts.ArrayGet || operand.value == facts.ArrayPlaceGet) {
+        item := Op(native.ArrayGet, type, slot, stack[base], stack[base + 1], 0);
+        if (operand.value == facts.ArrayPlaceGet) { item.literal = 1; }
+        return item;
     }
     if (operand.value == facts.ArraySet) {
         return Op(native.ArraySet, type, slot, stack[base], stack[base + 1], stack[base + 2]);
@@ -2328,6 +2355,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
     arguments: int[] = [];
     records: native.Record[] = [];
     fields: int[] = [];
+    field_tags: i64[] = [];
     field_names: string[] = [];
     texts: string[] = [];
     states: int = 0;
@@ -2337,15 +2365,17 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
     columns: int[] = [];
     declared := Records(rows);
     for (head in declared) {
-        record: native.Record = {first: length(fields), count: 0};
+        record: native.Record = {first: length(fields), count: 0, identity: rows[head].literal};
         if (rows[head].kind == facts.UnionRow) {
             fields.append(NativeType(facts.IntType));
+            if (pointer_program) { field_tags.append(0); }
             field_names.append("tag");
         }
         // A record's fields, or each of a union's variants and its payloads.
         for (field in head + 1..<After(rows, head)) {
             if (rows[field].kind == facts.MemberRow) {
                 fields.append(NativeType(rows[field].type));
+                if (pointer_program) { field_tags.append(rows[field].literal); }
                 field_names.append(rows[field].name);
             }
         }
@@ -2413,8 +2443,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         // passed to a mutating callee. Promote those parameters once at entry,
         // so reference assignment may replace/release their local descriptor.
         addressed_parameters := resize([false], declaration.count);
+        waiting_function := false;
         for (index in head + declaration.count + 1..<Last(rows, heads, function)) {
             operand := rows[index];
+            waiting_function = waiting_function || WaitingOperand(operand);
             if ((operand.kind == facts.RefRow || operand.kind == facts.AssignRow) && operand.value < declaration.count) {
                 addressed_parameters[operand.value] = true;
             }
@@ -2445,6 +2477,17 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     body.append(Op(native.Save, type, 0, glue.value, 0, local));
                     slot += length(glue.slot_types);
                 }
+                owned_vars.append(index);
+                owned_types.append(type);
+            }
+            if (waiting_function && type == native.ArrayType + native.PointerType && rows[head + 1 + index].literal != 2) {
+                // A suspended callee owns its value parameter independently of
+                // the caller's lifetime, including discarded task observers.
+                kept := KeepValue(managed, rows[head + 1 + index].type, slot, slot + 1);
+                slots.extend(kept.slot_types);
+                body.extend(kept.code);
+                body.append(Op(native.Save, type, 0, kept.value, 0, local));
+                slot += length(kept.slot_types);
                 owned_vars.append(index);
                 owned_types.append(type);
             }
@@ -2772,6 +2815,14 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     break;
                 }
                 operand := rows[index];
+                if (operand.kind == facts.OperandSwapRow) {
+                    left := length(stack) - 1 - operand.value;
+                    right := length(stack) - 1 - operand.count;
+                    held := stack[left];
+                    stack[left] = stack[right];
+                    stack[right] = held;
+                    continue;
+                }
                 type := NativeType(operand.type);
                 slots.append(type);
                 if (operand.kind == facts.LogicalRow) {
@@ -2962,14 +3013,32 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     item = Op(native.FunctionAddress, type, slot, operand.value, 0, 0);
                 } else if (operand.kind == facts.YieldRow) {
                     // The turn is given up first; the row gives int 0, the constant.
-                    body.append(Op(native.Suspend, 0, 0, 0, 0, 0));
+                    if (pointer_program) {
+                        glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
+                            fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root);
+                        next_root = glue.next;
+                        slots.extend(glue.types);
+                        extra += length(glue.types);
+                        body.extend(glue.before);
+                        body.append(Op(native.Suspend, 0, 0, 0, 0, 0));
+                        body.extend(glue.after);
+                    } else { body.append(Op(native.Suspend, 0, 0, 0, 0, 0)); }
                 } else if (operand.kind == facts.CancelAfterRow) {
                     base := length(stack) - 2;
                     body.append(Op(native.CancelAfter, 0, 0, stack[base], stack[base + 1], 0));
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.DelayRow) {
                     base := length(stack) - 1;
-                    body.append(Op(native.Delay, 0, 0, stack[base], 0, 0));
+                    if (pointer_program) {
+                        glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
+                            fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root);
+                        next_root = glue.next;
+                        slots.extend(glue.types);
+                        extra += length(glue.types);
+                        body.extend(glue.before);
+                        body.append(Op(native.Delay, 0, 0, stack[base], 0, 0));
+                        body.extend(glue.after);
+                    } else { body.append(Op(native.Delay, 0, 0, stack[base], 0, 0)); }
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.AwaitRow || operand.kind == facts.CancelRow) {
                     base := length(stack) - 1;
@@ -2977,7 +3046,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     if (operand.kind == facts.AwaitRow) {
                         task_op = native.AwaitHandle;
                     }
-                    body.append(Op(task_op, 0, 0, stack[base], 0, 0));
+                    if (pointer_program && task_op == native.AwaitHandle) {
+                        glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
+                            fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root);
+                        next_root = glue.next;
+                        slots.extend(glue.types);
+                        extra += length(glue.types);
+                        body.extend(glue.before);
+                        body.append(Op(task_op, 0, 0, stack[base], 0, 0));
+                        body.extend(glue.after);
+                    } else { body.append(Op(task_op, 0, 0, stack[base], 0, 0)); }
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.TaskRunningRow || operand.kind == facts.AwaitResultRow) {
                     base := length(stack) - 1;
@@ -3349,7 +3427,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                             moving = -1;
                         }
                     }
-                    if (op == facts.ArrayLength || op == facts.ArrayGet || op == facts.ArrayContains ||
+                    if (op == facts.ArrayLength || op == facts.ArrayGet || op == facts.ArrayPlaceGet || op == facts.ArrayContains ||
                         op == facts.ArraySlice || op == facts.ArrayResize || op == facts.ArrayWith ||
                         op == facts.ArrayJoin || op == facts.ArrayCopy || op == facts.ArrayText) {
                         if (Holds(fresh, stack[base])) {
@@ -3358,8 +3436,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                     // A later operand can replace even a borrowed element's
                     // array or slot, so acquire its value at the read.
-                    retained_element = op == facts.ArrayGet && type == abi.TextStorage;
-                    retained_record = op == facts.ArrayGet && TrackedRecord(managed, type);
+                    retained_element = (op == facts.ArrayGet || op == facts.ArrayPlaceGet) && type == abi.TextStorage;
+                    retained_record = (op == facts.ArrayGet || op == facts.ArrayPlaceGet) && TrackedRecord(managed, type);
                     // The record bytes are loaded before a temporary array drops.
                     // A scalar projection never owns or drops its managed siblings.
                     if (retained_record && index + 1 < first + row.count &&
@@ -3515,17 +3593,21 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.TextRow) {
                     base := length(stack) - operand.count;
-                    item = Op(native.TextLength, type, slot, stack[base], 0, 0);
+                    value := stack[base + facts.TextArgument(operand.count, int(operand.literal), 0)];
+                    item = Op(native.TextLength, type, slot, value, 0, 0);
                     if (operand.value == facts.TextPrint) { item.op = native.Print; }
                     if (operand.value == facts.TextByte) {
-                        item = Op(native.TextByte, type, slot, stack[base], stack[base + 1], 0);
+                        offset := stack[base + facts.TextArgument(operand.count, int(operand.literal), 1)];
+                        item = Op(native.TextByte, type, slot, value, offset, 0);
                     }
                     // A slice drops the bytes before its start, then takes its
                     // count of those after it.
                     if (operand.value == facts.TextSlice) {
                         slots.append(type);
-                        body.append(Op(native.TextDrop, type, slot, stack[base], stack[base + 1], 0));
-                        item = Op(native.TextTake, type, slot + 1, slot, stack[base + 2], 0);
+                        start := stack[base + facts.TextArgument(operand.count, int(operand.literal), 1)];
+                        count := stack[base + facts.TextArgument(operand.count, int(operand.literal), 2)];
+                        body.append(Op(native.TextDrop, type, slot, value, start, 0));
+                        item = Op(native.TextTake, type, slot + 1, slot, count, 0);
                         slot += 1;
                     }
                     stack = slice(stack, 0, base);
@@ -3592,7 +3674,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                 }
                 stored = [];
-                if (pointer_program && (item.op == native.Call || item.op == native.ForeignCall)) {
+                if (pointer_program && (item.op == native.Call || item.op == native.ForeignCall || item.op == native.AwaitResult)) {
                     glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
                         fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root);
                     next_root = glue.next;
@@ -4000,7 +4082,17 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     texts.append(row.text);
                     fail.target = length(texts);
                 }
-                body.extend([Op(native.Branch, 0, 0, value, 0, length(body) + 2), fail]);
+                if (pointer_program && waiting_function) {
+                    glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
+                        fresh, slots, shape.first_slot, frames, slot, next_root);
+                    next_root = glue.next;
+                    slots.extend(glue.types);
+                    slot += length(glue.types);
+                    body.append(Op(native.Branch, 0, 0, value, 0, length(body) + length(glue.before) + length(glue.after) + 2));
+                    body.extend(glue.before);
+                    body.append(fail);
+                    body.extend(glue.after);
+                } else { body.extend([Op(native.Branch, 0, 0, value, 0, length(body) + 2), fail]); }
             } else if (row.kind == facts.LocalRow && (row.literal == i64(facts.Retained) ||
                        row.literal == i64(facts.Retained | facts.CharNominal))) {
                 type := NativeType(row.type);
@@ -4290,8 +4382,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
     // manifest name, not a prepared artifact's stable library identity.
     emitted: native.Result = native.Result.Rejected(-1, "");
     if (rows[1].text == "" && !generation && program) {
-        emitted = native.EmitProgram(target, functions, parameters, slots, locals, code, arguments, records, fields, texts,
-                                     source, names, lines, columns);
+        if (pointer_program) {
+            emitted = native.EmitProgramTyped(target, functions, parameters, slots, locals, code, arguments, records, fields,
+                                             field_tags, texts, source, names, lines, columns);
+        } else {
+            emitted = native.EmitProgram(target, functions, parameters, slots, locals, code, arguments, records, fields, texts,
+                                         source, names, lines, columns);
+        }
     } else if (rows[1].text == "" && !generation) {
         emitted = native.Emit(target, functions, parameters, slots, locals, code, arguments, records, fields, texts,
                               source, names, lines, columns, false, 1);

@@ -39,7 +39,7 @@ export CHIBI_VALUE_LLVM=$llvm
 # Its printf report belongs to its standalone probe's explicit link imports.
 sed '/%printed = call /d' "$root/test/native_aot/managed_pointers/SourceAudit.ll" > "$work/conditional-audit.ll"
 for level in 0 2; do
-    for source in Records Foreign Backed Growth Fields Clock ConditionalOptionals; do
+    for source in Records Foreign Backed Growth Fields Clock Hash ConditionalOptionals; do
         input=$root/test/native_aot/managed_values/$source.chibi
         export CHIBI_VALUE_ENTRY=chibi_value_test_entry CHIBI_VALUE_AUDIT=$root/test/native_aot/managed_values/Audit.ll
         if [ "$source" = Records ]; then input=$records_source; fi

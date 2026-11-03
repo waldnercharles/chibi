@@ -224,7 +224,7 @@ Main :: () -> int {
     functions := [function, borrowed, loan, record_input];
     parameters := [array, array, record_type];
     native_locals := [array];
-    records: native.Record[] = [{first: 0, count: 1}, {first: 1, count: 1}];
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 1, identity: 0}];
     fields := [abi.TextStorage, array];
     source: native.Source = {file: "", directory: ""};
     empty: int[] = [];

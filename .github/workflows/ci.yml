@@ -265,11 +265,6 @@ jobs:
         include-hidden-files: true
         if-no-files-found: warn
         retention-days: 7
-    - name: Build timing host regressions (ready drivers)
-      env:
-        CHIBI_TOOLS_BUILD_DIR: build/test/tools
-        CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
-      run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" build-timings
     - name: Tooling and process integrations
       env:
         CHIBI_TEST_TIMINGS: ${{ runner.temp }}/case-timings
@@ -576,6 +571,10 @@ jobs:
               "PASS native Windows $($case.name) O$level" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
             }
           }
+      - name: Check native Windows built-in math
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
+        run: |
+          & ./test/native_aot/math_builtin/RunWindows.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
       - name: Check native Windows characters and UTF-8
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         env:

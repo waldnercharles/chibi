@@ -1,0 +1,36 @@
+package facts
+
+import testing "core:testing"
+
+Replace :: (values: ^(vec2[])) -> number { values^ = []; return 3.0; }
+Shrink :: (values: ^(vec2[])) -> number { values^.resize(0); return 3.0; }
+Never :: () -> number { assert(false, "the destination must be checked before RHS effects"); return 3.0; }
+Initial :: () { values: vec2[] = []; values[0].x = Never(); }
+Late :: () { values: vec2[] = [vec2(1, 2)]; values[0].x = Replace(&values); }
+LateShrink :: () { values: vec2[] = [vec2(1, 2)]; values[0].x = Shrink(&values); }
+Direct :: () -> number { values: vec2[] = []; return values[0].x; }
+
+@test
+DirectIndex :: () {
+    testing.ExpectFailure(testing.Failure.IndexOutOfRange);
+    value := Direct();
+    assert(value == 0.0);
+}
+
+// Both logical-place reads fail outside the seven typed categories. In the
+// AssertionFailed initial case, running Never would incorrectly pass.
+@test InitialIndex :: () { testing.ExpectFailure(testing.Failure.IndexOutOfRange); Initial(); }
+@test InitialMap :: () { testing.ExpectFailure(testing.Failure.MapKeyAbsent); Initial(); }
+@test InitialView :: () { testing.ExpectFailure(testing.Failure.ViewOutOfRange); Initial(); }
+@test InitialAssertion :: () { testing.ExpectFailure(testing.Failure.AssertionFailed); Initial(); }
+@test InitialBudget :: () { testing.ExpectFailure(testing.Failure.BudgetExhausted); Initial(); }
+@test InitialDepth :: () { testing.ExpectFailure(testing.Failure.DepthExceeded); Initial(); }
+@test InitialNil :: () { testing.ExpectFailure(testing.Failure.UnwrappedNil); Initial(); }
+@test LateIndex :: () { testing.ExpectFailure(testing.Failure.IndexOutOfRange); Late(); }
+@test LateMap :: () { testing.ExpectFailure(testing.Failure.MapKeyAbsent); Late(); }
+@test LateView :: () { testing.ExpectFailure(testing.Failure.ViewOutOfRange); Late(); }
+@test LateAssertion :: () { testing.ExpectFailure(testing.Failure.AssertionFailed); Late(); }
+@test LateBudget :: () { testing.ExpectFailure(testing.Failure.BudgetExhausted); Late(); }
+@test LateDepth :: () { testing.ExpectFailure(testing.Failure.DepthExceeded); Late(); }
+@test LateNil :: () { testing.ExpectFailure(testing.Failure.UnwrappedNil); Late(); }
+@test ShrunkIndex :: () { testing.ExpectFailure(testing.Failure.IndexOutOfRange); LateShrink(); }

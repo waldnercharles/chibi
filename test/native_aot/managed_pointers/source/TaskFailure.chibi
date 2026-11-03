@@ -1,0 +1,15 @@
+package managed_waiting_failure
+
+Make :: (value: int) -> ^int { return &value; }
+Main :: () -> int {
+    failed := Broken();
+    yield
+    await failed
+    return 0;
+}
+Broken :: () -> int {
+    values: ^int[] = [Make(1), Make(2)];
+    yield
+    assert(values[0]^ == 0, "waiting task assertion preserves cleanup");
+    return 0;
+}

@@ -27,6 +27,10 @@ allocations and a fixed peak bound, both at the normal collection threshold
 and with collection forced before every cell allocation. Native probes cover
 descriptor rejection, shared tracing once per backing/epoch, borrowed array
 imports, cross-heap rejection before epoch shortcuts and malformed pin CFGs.
+Persistent roots also survive a spawning function's stack-boundary restore.
+Real collection after middle, tail and head removal checks non-LIFO cleanup
+and the surviving value at O0/O2. The heap is 56 bytes; persistent nodes are
+32 bytes and unlink in constant time. Stack roots retain their 24-byte ABI.
 
 Raw native IR clients must pin each live pointer-array owning place or fresh
 descriptor around collecting calls and cell construction; borrowed Read slots
@@ -36,7 +40,24 @@ descriptor slots are initialized and rooted until their function returns.
 Generic embedded modules and Wasm require a collector-owner adapter before
 managed admission. Nominal char, record, nested and container cells remain
 closed in this slice, as do pointer buffers at the foreign boundary.
-Pointer-bearing suspended frames and retained values require scheduler roots,
-collector-family adoption and generation metadata retention before admission.
+Standalone waiting frames keep scalar pointer roots until completion and pin
+pointer-array owners across each suspension. A by-value array parameter owns
+its descriptor independently of its caller. Cancellation and failed assertions
+release active owner pins before freeing the coroutine frame. Source tests
+cover observer drops, inline awaits, parent-child cancellation and reuse under
+normal and forced collection; raw failure remains 134 and public run reports 1
+with its source and custom message.
+
+Shared pointer-bearing frames and retained values still require family-owner
+adoption and generation metadata retention before admission.
 Trace and drop callbacks must outlive their cells. Drop callbacks release
 external value owners without following managed pointer edges.
+
+Raw typed cells now carry immutable layout metadata (trace, address validation,
+and an optional per-image live-cell counter). Address validation follows owner,
+semantic identity and range checks. A counted cell pins its image before
+publication and releases that pin after its drop callback and last metadata
+access. The host must keep images mapped until execution is quiescent and
+both task and cell counts reach zero. Counter overflow/underflow traps.
+This is preparation for record/field source admission and shared-family
+adaptation; those source and generation gates above remain explicit.

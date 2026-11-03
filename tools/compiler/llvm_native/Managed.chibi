@@ -5,8 +5,9 @@ import strings "core:strings"
 
 // A nonmoving heap whose zero value is empty. Its owner supplies all live
 // roots and calls collection only with execution quiescent or roots spilled.
-// Cells retain typed payload trace/drop callbacks; callbacks must outlive them.
-// At 64-bit targets the heap is 48 bytes, each cell header 64 and root node 24.
+// Cells retain static typed layout metadata and drop callbacks. Their images
+// must outlive every cell; standalone executable images live for the process.
+// At 64-bit targets the heap is 56 bytes, each cell header 64, stack root 24 and persistent root 32.
 // Mark/sweep is O(roots + cells + edges), with no per-edge allocation/recursion.
 // This raw collector is a backend contract. Source admission additionally
 // validates typed descriptors and supplies roots around each safe point.
@@ -14,11 +15,36 @@ pub ManagedRuntime :: () -> string {
     return strings.Join([
         format_text("%chibi.managed.heap = type {}\n", abi.ManagedHeapType()),
         "%chibi.managed.cell = type { ptr, ptr, ptr, ptr, i64, i1, ptr, i32 }\n",
+        format_text("%chibi.managed.layout = type {}\n", abi.ManagedLayoutType()),
         "%chibi.managed.root = type { ptr, ptr, ptr }\n",
+        "%chibi.managed.persistent = type { ptr, ptr, ptr, ptr }\n",
         "\n",
         "; A heap's cells never move. Trace and drop callbacks receive payload storage.\n",
         "; Tracing only queues managed cells; dropping only releases external owners.\n",
-        "define internal ptr @chibi_managed.new(ptr %ctx, ptr %heap, i64 %bytes, ptr %trace, ptr %drop, i32 %storage) {\n",
+        "; A nullable per-image counter pins callback code until the last cell drops.\n",
+        "; The host may unload a zero-count image only after execution is quiescent.\n",
+        "define internal void @chibi_managed.code(ptr %layout, i64 %delta) {\n",
+        "entry:\n",
+        "  %described = icmp ne ptr %layout, null\n",
+        "  br i1 %described, label %find, label %exit\n",
+        "find:\n",
+        "  %counter.at = getelementptr %chibi.managed.layout, ptr %layout, i32 0, i32 2\n",
+        "  %counter = load ptr, ptr %counter.at\n",
+        "  %counted = icmp ne ptr %counter, null\n",
+        "  br i1 %counted, label %change, label %exit\n",
+        "change:\n",
+        "  %before = atomicrmw add ptr %counter, i64 %delta acq_rel\n",
+        "  %adding = icmp eq i64 %delta, 1\n",
+        "  %limit = select i1 %adding, i64 -1, i64 0\n",
+        "  %valid = icmp ne i64 %before, %limit\n",
+        "  br i1 %valid, label %exit, label %trap\n",
+        "trap:\n",
+        "  call void @llvm.trap()\n",
+        "  unreachable\n",
+        "exit:\n",
+        "  ret void\n",
+        "}\n",
+        "define internal ptr @chibi_managed.new(ptr %ctx, ptr %heap, i64 %bytes, ptr %layout, ptr %drop, i32 %storage) {\n",
         "entry:\n",
         "  %header = ptrtoint ptr getelementptr (%chibi.managed.cell, ptr null, i32 1) to i64\n",
         "  %room = sub i64 -1, %header\n",
@@ -28,7 +54,11 @@ pub ManagedRuntime :: () -> string {
         "  %total = add i64 %bytes, %header\n",
         "  %remaining = sub i64 -1, %used\n",
         "  %counts = icmp ule i64 %total, %remaining\n",
-        "  %valid = and i1 %fits, %counts\n",
+        "  %no.drop = icmp eq ptr %drop, null\n",
+        "  %has.layout = icmp ne ptr %layout, null\n",
+        "  %callbacks.owned = or i1 %no.drop, %has.layout\n",
+        "  %sized = and i1 %fits, %counts\n",
+        "  %valid = and i1 %sized, %callbacks.owned\n",
         "  br i1 %valid, label %allocate, label %trap\n",
         "allocate:\n",
         format_text("  %allocator.at = getelementptr {}, ptr %ctx, i32 0, i32 2\n", abi.ContextType()),
@@ -37,10 +67,10 @@ pub ManagedRuntime :: () -> string {
         "  store %chibi.managed.cell zeroinitializer, ptr %cell\n",
         "  %first = load ptr, ptr %heap\n",
         "  store ptr %first, ptr %cell\n",
-        "  %trace.at = getelementptr %chibi.managed.cell, ptr %cell, i32 0, i32 2\n",
+        "  %layout.at = getelementptr %chibi.managed.cell, ptr %cell, i32 0, i32 2\n",
         "  %drop.at = getelementptr %chibi.managed.cell, ptr %cell, i32 0, i32 3\n",
         "  %size.at = getelementptr %chibi.managed.cell, ptr %cell, i32 0, i32 4\n",
-        "  store ptr %trace, ptr %trace.at\n",
+        "  store ptr %layout, ptr %layout.at\n",
         "  store ptr %drop, ptr %drop.at\n",
         "  store i64 %total, ptr %size.at\n",
         "  %owner.at = getelementptr %chibi.managed.cell, ptr %cell, i32 0, i32 6\n",
@@ -49,6 +79,7 @@ pub ManagedRuntime :: () -> string {
         "  store i32 %storage, ptr %storage.at\n",
         "  %payload = getelementptr %chibi.managed.cell, ptr %cell, i32 1\n",
         "  call void @llvm.memset.p0.i64(ptr %payload, i8 0, i64 %bytes, i1 false)\n",
+        "  call void @chibi_managed.code(ptr %layout, i64 1)\n",
         "  store ptr %cell, ptr %heap\n",
         "  %next.used = add i64 %used, %total\n",
         "  store i64 %next.used, ptr %used.at\n",
@@ -118,6 +149,50 @@ pub ManagedRuntime :: () -> string {
         "  unreachable\n",
         "}\n",
         "\n",
+        "; Hold requires an unlinked node and an initialized stable slot until unhold.\n",
+        "; Backlinks name the previous link, including the heap head, for O(1) removal.\n",
+        "define internal void @chibi_managed.hold(ptr %heap, ptr %node, ptr %slot, ptr %trace) {\n",
+        "entry:\n",
+        "  %head.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 6\n",
+        "  %head = load ptr, ptr %head.at\n",
+        "  store ptr %head, ptr %node\n",
+        "  %back.at = getelementptr %chibi.managed.persistent, ptr %node, i32 0, i32 1\n",
+        "  %slot.at = getelementptr %chibi.managed.persistent, ptr %node, i32 0, i32 2\n",
+        "  %trace.at = getelementptr %chibi.managed.persistent, ptr %node, i32 0, i32 3\n",
+        "  store ptr %head.at, ptr %back.at\n",
+        "  store ptr %slot, ptr %slot.at\n",
+        "  store ptr %trace, ptr %trace.at\n",
+        "  %has.head = icmp ne ptr %head, null\n",
+        "  br i1 %has.head, label %link, label %publish\n",
+        "link:\n",
+        "  %head.back = getelementptr %chibi.managed.persistent, ptr %head, i32 0, i32 1\n",
+        "  store ptr %node, ptr %head.back\n",
+        "  br label %publish\n",
+        "publish:\n",
+        "  store ptr %node, ptr %head.at\n",
+        "  ret void\n",
+        "}\n",
+        "define internal void @chibi_managed.unhold(ptr %node) {\n",
+        "entry:\n",
+        "  %back.at = getelementptr %chibi.managed.persistent, ptr %node, i32 0, i32 1\n",
+        "  %back = load ptr, ptr %back.at\n",
+        "  %held = icmp ne ptr %back, null\n",
+        "  br i1 %held, label %remove, label %exit\n",
+        "remove:\n",
+        "  %next = load ptr, ptr %node\n",
+        "  store ptr %next, ptr %back\n",
+        "  %has.next = icmp ne ptr %next, null\n",
+        "  br i1 %has.next, label %link, label %clear\n",
+        "link:\n",
+        "  %next.back = getelementptr %chibi.managed.persistent, ptr %next, i32 0, i32 1\n",
+        "  store ptr %back, ptr %next.back\n",
+        "  br label %clear\n",
+        "clear:\n",
+        "  store %chibi.managed.persistent zeroinitializer, ptr %node\n",
+        "  br label %exit\n",
+        "exit:\n",
+        "  ret void\n",
+        "}\n",
         "; Only quiescent code with complete spilled roots may call collect/safepoint.\n",
         "; Callbacks never allocate or collect and drop never follows managed edges.\n",
         "define internal void @chibi_managed.collect(ptr %ctx, ptr %heap) {\n",
@@ -135,7 +210,7 @@ pub ManagedRuntime :: () -> string {
         "roots:\n",
         "  %root = phi ptr [ %first.root, %start ], [ %next.root, %trace.root ]\n",
         "  %roots.done = icmp eq ptr %root, null\n",
-        "  br i1 %roots.done, label %work, label %trace.root\n",
+        "  br i1 %roots.done, label %persistent.start, label %trace.root\n",
         "trace.root:\n",
         "  %next.root = load ptr, ptr %root\n",
         "  %slot.at = getelementptr %chibi.managed.root, ptr %root, i32 0, i32 1\n",
@@ -144,6 +219,22 @@ pub ManagedRuntime :: () -> string {
         "  %root.trace = load ptr, ptr %root.trace.at\n",
         "  call void %root.trace(ptr %heap, ptr %slot)\n",
         "  br label %roots\n",
+        "persistent.start:\n",
+        "  %persistent.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 6\n",
+        "  %first.persistent = load ptr, ptr %persistent.at\n",
+        "  br label %persistent\n",
+        "persistent:\n",
+        "  %held.root = phi ptr [ %first.persistent, %persistent.start ], [ %next.held, %trace.held ]\n",
+        "  %held.done = icmp eq ptr %held.root, null\n",
+        "  br i1 %held.done, label %work, label %trace.held\n",
+        "trace.held:\n",
+        "  %next.held = load ptr, ptr %held.root\n",
+        "  %held.slot.at = getelementptr %chibi.managed.persistent, ptr %held.root, i32 0, i32 2\n",
+        "  %held.trace.at = getelementptr %chibi.managed.persistent, ptr %held.root, i32 0, i32 3\n",
+        "  %held.slot = load ptr, ptr %held.slot.at\n",
+        "  %held.trace = load ptr, ptr %held.trace.at\n",
+        "  call void %held.trace(ptr %heap, ptr %held.slot)\n",
+        "  br label %persistent\n",
         "work:\n",
         "  %work.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 2\n",
         "  %cell = load ptr, ptr %work.at\n",
@@ -154,10 +245,14 @@ pub ManagedRuntime :: () -> string {
         "  %next = load ptr, ptr %next.at\n",
         "  store ptr %next, ptr %work.at\n",
         "  store ptr null, ptr %next.at\n",
-        "  %trace.at = getelementptr %chibi.managed.cell, ptr %cell, i32 0, i32 2\n",
-        "  %trace = load ptr, ptr %trace.at\n",
-        "  %leaf = icmp eq ptr %trace, null\n",
-        "  br i1 %leaf, label %work, label %trace.cell\n",
+        "  %layout.at = getelementptr %chibi.managed.cell, ptr %cell, i32 0, i32 2\n",
+        "  %layout = load ptr, ptr %layout.at\n",
+        "  %leaf = icmp eq ptr %layout, null\n",
+        "  br i1 %leaf, label %work, label %trace.layout\n",
+        "trace.layout:\n",
+        "  %trace = load ptr, ptr %layout\n",
+        "  %untraced = icmp eq ptr %trace, null\n",
+        "  br i1 %untraced, label %work, label %trace.cell\n",
         "trace.cell:\n",
         "  %payload = getelementptr %chibi.managed.cell, ptr %cell, i32 1\n",
         "  call void %trace(ptr %heap, ptr %payload)\n",
@@ -189,6 +284,9 @@ pub ManagedRuntime :: () -> string {
         "  call void %drop(ptr %ctx, ptr %value)\n",
         "  br label %release\n",
         "release:\n",
+        "  %discard.layout.at = getelementptr %chibi.managed.cell, ptr %current, i32 0, i32 2\n",
+        "  %discard.layout = load ptr, ptr %discard.layout.at\n",
+        "  call void @chibi_managed.code(ptr %discard.layout, i64 -1)\n",
         "  %size.at = getelementptr %chibi.managed.cell, ptr %current, i32 0, i32 4\n",
         "  %size = load i64, ptr %size.at\n",
         "  %used.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 3\n",
@@ -267,6 +365,8 @@ ManagedPointerRuntime :: () -> string {
         "  %storage.at = getelementptr %chibi.managed.cell, ptr %cell, i32 0, i32 7\n",
         "  %actual.storage = load i32, ptr %storage.at\n",
         "  %storage.ok = icmp eq i32 %actual.storage, %storage\n",
+        "  %layout.at = getelementptr %chibi.managed.cell, ptr %cell, i32 0, i32 2\n",
+        "  %layout = load ptr, ptr %layout.at\n",
         "  %size.at = getelementptr %chibi.managed.cell, ptr %cell, i32 0, i32 4\n",
         "  %allocation = load i64, ptr %size.at\n",
         "  %header = ptrtoint ptr getelementptr (%chibi.managed.cell, ptr null, i32 1) to i64\n",
@@ -277,9 +377,21 @@ ManagedPointerRuntime :: () -> string {
         "  %range = and i1 %fits, %inside\n",
         "  %identity.ok = and i1 %typed, %valid.identity\n",
         "  %typed.owner = and i1 %owned, %identity.ok\n",
-        "  %pointer.ok = and i1 %typed.owner, %storage.ok\n",
-        "  %valid = and i1 %pointer.ok, %range\n",
-        "  br i1 %valid, label %resolve, label %bad\n",
+        "  %valid = and i1 %typed.owner, %range\n",
+        "  br i1 %valid, label %layout.check, label %bad\n",
+        "layout.check:\n",
+        "  %plain = icmp eq ptr %layout, null\n",
+        "  br i1 %plain, label %scalar.check, label %typed.check\n",
+        "scalar.check:\n",
+        "  br i1 %storage.ok, label %resolve, label %bad\n",
+        "typed.check:\n",
+        "  %check.at = getelementptr %chibi.managed.layout, ptr %layout, i32 0, i32 1\n",
+        "  %check = load ptr, ptr %check.at\n",
+        "  %checked = icmp ne ptr %check, null\n",
+        "  br i1 %checked, label %validate.layout, label %bad\n",
+        "validate.layout:\n",
+        "  %permitted = call i1 %check(i64 %offset, i64 %wanted, i64 %bytes, i32 %storage)\n",
+        "  br i1 %permitted, label %resolve, label %bad\n",
         "resolve:\n",
         "  %payload = getelementptr %chibi.managed.cell, ptr %cell, i32 1\n",
         "  %address = getelementptr i8, ptr %payload, i64 %offset\n",
@@ -330,6 +442,47 @@ ManagedRoots :: (shape: Function, slots: int[], locals: int[]) -> string {
     }
     return strings.Join(output, "");
 }
+// The nodes and their slots are used by attach and release across suspension,
+// so coroutine lowering puts them in the stable heap frame, not the ramp stack.
+ManagedFrameRoots :: struct { prologue: string; attach: string; cleanup: string; }
+ManagedFrame :: (shape: Function, slots: int[], locals: int[]) -> ManagedFrameRoots {
+    prologue: string[] = ["  %managed.heap = call ptr @chibi_managed.owner(ptr %ctx)\n"];
+    attach: string[] = [];
+    cleanup: string[] = [];
+    for (part in [int(0), 1]) {
+        first := shape.first_slot;
+        count := shape.slots;
+        prefix := "s";
+        types := slots;
+        if (part == 1) { first = shape.first_local; count = shape.locals; prefix = "l"; types = locals; }
+        for (index in 0..<count) {
+            if (types[first + index] != PointerType) { continue; }
+            prologue.append(Store(Zero(PointerType), PointerType, prefix, index));
+            prologue.append(format_text("  %managed.{}{} = alloca %chibi.managed.persistent\n  store %chibi.managed.persistent zeroinitializer, ptr %managed.{}{}\n", prefix, index, prefix, index));
+            attach.append(format_text("  call void @chibi_managed.hold(ptr %managed.heap, ptr %managed.{}{}, ptr %{}{}, ptr @chibi_managed.trace.pointer)\n", prefix, index, prefix, index));
+            cleanup.append(format_text("  call void @chibi_managed.unhold(ptr %managed.{}{})\n", prefix, index));
+        }
+    }
+    return {prologue: strings.Join(prologue, ""), attach: strings.Join(attach, ""), cleanup: strings.Join(cleanup, "")};
+}
+// A cancelled/failed continuation can bypass unpin. Each active pin names
+// exactly one owned array descriptor; clear it before dropping that owner.
+ManagedFramePins :: (shape: Function, code: Instruction[], prefix: string) -> string {
+    output: string[] = [];
+    array := ArrayType + PointerType;
+    for (pc in 0..<shape.code) {
+        item := code[shape.first_code + pc];
+        if (item.op != ManagedPin) { continue; }
+        id := item.right;
+        output.append(format_text("  %{}.back{} = getelementptr %chibi.managed.persistent, ptr %managed.pin{}, i32 0, i32 1\n", prefix, id, id));
+        output.append(format_text("  %{}.held{} = load ptr, ptr %{}.back{}\n  %{}.active{} = icmp ne ptr %{}.held{}, null\n", prefix, id, prefix, id, prefix, id, prefix, id));
+        output.append(format_text("  br i1 %{}.active{}, label %{}.drop{}, label %{}.next{}\n{}.drop{}:\n", prefix, id, prefix, id, prefix, id, prefix, id));
+        output.append(format_text("  %{}.slot.at{} = getelementptr %chibi.managed.persistent, ptr %managed.pin{}, i32 0, i32 2\n  %{}.slot{} = load ptr, ptr %{}.slot.at{}\n", prefix, id, id, prefix, id, prefix, id));
+        output.append(format_text("  %{}.value{} = load {}, ptr %{}.slot{}\n  store {} zeroinitializer, ptr %{}.slot{}\n", prefix, id, TypeName(array), prefix, id, TypeName(array), prefix, id));
+        output.append(format_text("  call void @chibi_managed.unhold(ptr %managed.pin{})\n  call void @chibi_array.{}.drop(ptr %ctx, {} %{}.value{})\n  br label %{}.next{}\n{}.next{}:\n", id, array, TypeName(array), prefix, id, prefix, id, prefix, id));
+    }
+    return strings.Join(output, "");
+}
 ManagedUnroots :: (is_entry: bool) -> string {
     // Restoring the frame boundary also removes transient pins when a failed
     // call bypassed its normal unpin instructions.
@@ -337,7 +490,7 @@ ManagedUnroots :: (is_entry: bool) -> string {
     if (is_entry) { output = strings.Concatenate([output, "  call void @chibi_managed.collect(ptr %ctx, ptr %managed.heap)\n"]); }
     return output;
 }
-ManagedInstruction :: (item: Instruction, pc: int) -> string {
+ManagedInstruction :: (item: Instruction, pc: int, persistent: bool) -> string {
     out := format_text("p{}:\n", pc);
     if (item.op == ManagedNew) {
         out = format_text("{}  call void @chibi_managed.safepoint(ptr %ctx, ptr %managed.heap)\n", out);
@@ -362,10 +515,13 @@ ManagedInstruction :: (item: Instruction, pc: int) -> string {
             out = format_text("{}{}", out, Load(format_text("pin{}", pc), item.type, "s", item.left));
             address = format_text("%pin{}", pc);
         }
-        out = format_text("{}  call void @chibi_managed.push(ptr %managed.heap, ptr %managed.pin{}, ptr {}, ptr @chibi_managed.trace.array)\n",
-                          out, item.right, address);
+        operation := "push";
+        if (persistent) { operation = "hold"; }
+        out = format_text("{}  call void @chibi_managed.{}(ptr %managed.heap, ptr %managed.pin{}, ptr {}, ptr @chibi_managed.trace.array)\n",
+                          out, operation, item.right, address);
     } else {
-        out = format_text("{}  call void @chibi_managed.pop(ptr %managed.heap, ptr %managed.pin{})\n", out, item.right);
+        if (persistent) { out = format_text("{}  call void @chibi_managed.unhold(ptr %managed.pin{})\n", out, item.right); }
+        else { out = format_text("{}  call void @chibi_managed.pop(ptr %managed.heap, ptr %managed.pin{})\n", out, item.right); }
     }
     return format_text("{}  br label %p{}\n", out, pc + 1);
 }
@@ -470,7 +626,7 @@ ManagedPinsValid :: (code: Instruction[], slots: int[]) -> string {
             active = slice(active, 0, length(active) - 1);
             if (length(active) == 0) { called = false; }
         } else if (length(active) > 0) {
-            if (called || (item.op != Call && item.op != ForeignCall && item.op != ManagedNew)) {
+            if (called || (item.op != Call && item.op != ForeignCall && item.op != ManagedNew && item.op != Suspend && item.op != Delay && item.op != AwaitHandle && item.op != AwaitResult && item.op != Fail)) {
                 return "native collector pins must bracket one collecting call";
             }
             called = true;

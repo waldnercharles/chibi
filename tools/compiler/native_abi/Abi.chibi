@@ -189,7 +189,13 @@ pub ManagedContextType :: () -> string {
     return "{ ptr, ptr, ptr, ptr, ptr, ptr }";
 }
 pub ManagedHeapType :: () -> string {
-    return "{ ptr, ptr, ptr, i64, i64, i64 }";
+    // Cells, stack roots, work, used bytes, threshold, epoch, suspended roots.
+    return "{ ptr, ptr, ptr, i64, i64, i64, ptr }";
+}
+// Trace callback, typed address validator and nullable per-image cell counter.
+// A null counter denotes code that remains mapped for the whole process.
+pub ManagedLayoutType :: () -> string {
+    return "{ ptr, ptr, ptr }";
 }
 // Root cell, payload byte offset and complete semantic pointee identity.
 // None is all zero; local type-table ordinals never cross module boundaries.

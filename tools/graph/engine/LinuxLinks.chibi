@@ -5,14 +5,14 @@ package engine
 pub LinuxLinks :: (target: string) -> string[] {
     if (target == "chibi-compile") {
         return [
-            "chibi_behavior_runtime", "chibi_asset_json",
+            "chibi_source_catalog", "chibi_behavior_runtime", "chibi_asset_json",
             "chibi_asset_compiler_host",
             "chibi_compiler_host", "chibi_asset_json", "chibi_native_prepared",
             "chibi_host_native_default",
             "chibi_host_native_catalog", "chibi_native_bindings",
             "chibi_task_pool_runtime",
             "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lstdc++",
-            "chibi_source_catalog", "chibi_text_capabilities", "chibi_fmt", "chibi_array_capabilities", "chibi_core_capabilities",
+            "chibi_text_capabilities", "chibi_fmt", "chibi_array_capabilities", "chibi_core_capabilities",
             "chibi_selection_capabilities", "chibi_set_capabilities",
             "chibi_comparison_capabilities", "chibi_conversion_capabilities", "chibi_vector_capabilities",
             "chibi_math_capabilities", "chibi_arithmetic_capabilities", "chibi_value_document",

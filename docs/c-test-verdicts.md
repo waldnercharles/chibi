@@ -24,14 +24,14 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/language/execution_scope.c`, `capture.c`, `ranges.c` | 8, 6, 7 | VM scopes, budgets, intrinsics, the interval optimizer | goes |
 | `test/language/record_values.c`, `record_document.c`, `record_compatibility.c`, `record_prepared.c` | 15, 5, 1, 0 | `src/types` records, value documents, legacy array callbacks | goes (`text_keys_preserve_suffix_after_nul` is ported) |
 | `test/language/text_format.c` | 2 | `src/runtime/text_format.c`, `src/types/value_format.c` | goes, except the format specifiers (see "Owner decisions") |
-| `test/language/host_packages_compiler.c` | 3 | `src/host/clock_package`, grants, the compiler host | goes |
+| `test/language/host_packages_compiler.c` | 2 | `src/host/clock_package`, grants, the compiler host | the unused C program-service catalog case is retired; native formatting/target checks remain, and `base/unknown_parameter_type` preserves its missing-type rejection. Clock cases remain until authored `host:clock` behavior has a native replacement. |
 | `test/language/native_census.c`, `census_tree.h` | 3 | the C census flattener over CollectScalar | goes; the census is obsolete once the compiler runs natively |
 | `test/language/program_session.c` | 11 | `src/authoring/program.c` sessions | goes, except 3 Edit-and-Continue cases |
 | `test/language/package_compiler_chibi.c`, `scalar_host.c` | 6, 0 | native backend execution through the C compiler host | six backend cases retired through `test/native_aot/backend`, retained generations and process supervision; `scalar_host.c` remains only for the C census |
 | `test/language/parallel.c`, `main.c`, `backend.h`, `compiler_cache.h` | 9, 0 | the C test runner | goes |
 | `test/runtime/whole_integer.c`, `whole_conversion.c`, `whole_math.c` | 3, 1, 2 | hand-built IR, bytecode against SLJIT | goes; the conversion, negation and comparison rules are ported, and integer `abs`/`min`/`max`/`clamp` and the math specials wait on owner decisions |
 | `test/runtime/persistent_store.c` | 1 | `execution_program_set_state` | goes, except retained records across a swap |
-| `test/runtime/reference_cave.c` | 0 | a helper with no live caller | goes (dead) |
+| `test/runtime/reference_cave.c`, `reference_cave.h` (retired 2026-11-02) | 0 | a helper with no live caller | retired with its unused test-driver source entry |
 | `test/support/arena.c`, `asset_value.c`, `reflected_types.c` | 5, 3, 0 | `src/support` used only by the VM | goes |
 | `test/support/fmt.c` | 2 | `third_party/fmt` behind `src/runtime/text_format.c` | goes; `{}` holes are covered by `FormatsTextWithoutTheVM` |
 | `test/host/process.c`, `state_file.c`, `concurrent.c`, `main.c` (retired 2026-11-02) | 1, 1, 0, 0 | `src/host` | unselected utilities retired with their graph targets; unused `src/host/state_file.c/.h` retired with its only test caller |
@@ -39,10 +39,11 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/native_aot/targets/run.c` | 2 | LLVM-built bundles on macOS and Windows | survives, since no VM is in it; it is first-party C, so it becomes a native Chibi runner later |
 | `test/tools/types.c`, `native_values.c`, `program_consumer.c` | 42, 1, 2 | `src/types`, `src/runtime`, `src/authoring/program.h` | goes |
 | `test/tools/compiler_bootstrap.c` | 17 | the bytecode seed loader | goes with the bytecode seed |
-| `test/tools/wasm_browser.c` | 1 | the C VM built to wasm | goes |
-| `test/tools/case_timings_test.c`, `case_timings.c`, `fixture.c`, `policy_worker.c`, `main.c`, `browser.c` | 9, 0 | the C test runner and its workers | goes |
+| `test/tools/wasm_browser.c`, `browser.c`, `browser.h` (retired 2026-11-02) | 1 | the C VM built to wasm and its otherwise unused browser launcher | retired with the selector and graph sources; the live LLVM Wasm compile-only service has separate tests |
+| `test/tools/case_timings_test.c`, `case_timings.c`, `fixture.c`, `policy_worker.c`, `main.c` | 9, 0 | the C test runner and its workers | goes |
 | `test/tools/box3d.c` | 2 | the third-party box3d library | goes with the C engine build |
-| `test/tools/collab.c`, `web_storage.c` | 5, 19 | the Node collab server; chibi-studio's `web_storage.js` | not Chibi: these move to Node tests in their owners' repositories |
+| `test/tools/collab.c` (retired 2026-11-02) | 5 | the Node collab server | authority, readiness, logs and transport failures moved to `tools/collab/server/server.test.mjs`; `collab`, `short` and `native-tools` select them |
+| `test/tools/web_storage.c` | 19 | chibi-studio's `web_storage.js` | move to Node tests in its owning repository |
 | `test/tools/build_process.c` | 53 | the C build host's natives | goes, except 16 core:os cases |
 | `test/tools/chibi_cli.c` (retired 2026-11-02) | 24 | `apps/chibi` launched by the C apphost | native CLI behavior is covered by `ChibiCliTests.chibi` and `test/native_cli/foreground.py`; launcher/VM mechanics leave with the host |
 | `test/tools/native_workloads.c` | 2 | `chibi build --native` end to end | `native_workloads_build_and_run` survives |

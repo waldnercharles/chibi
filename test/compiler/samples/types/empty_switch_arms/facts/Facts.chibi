@@ -1,0 +1,36 @@
+package facts
+
+Choice :: union { Empty | Value(number: int) }
+
+UnionFirst :: (value: Choice) -> int {
+    switch value {
+        case .Empty:
+        case .Value(number): return number;
+    }
+    return 42;
+}
+
+UnionLast :: (value: Choice) -> int {
+    switch value {
+        case .Value(number): return number;
+        case .Empty:
+    }
+    return 42;
+}
+
+Scalar :: (value: int) -> int {
+    switch value {
+        case 0:
+        case 1: return 9;
+        case:
+    }
+    return 42;
+}
+
+Braced :: (value: Choice) -> int {
+    switch value {
+        case .Empty: {}
+        case .Value(number): return number;
+    }
+    return 42;
+}

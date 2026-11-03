@@ -24,6 +24,11 @@ Coverage from the eight producer behavior cases is preserved:
 - every authored scalar corpus case checks its own source oracle, validation
   and emitted/rejected result, including the formerly skipped deep operands.
 
+Named text arguments and `text_equal` now preserve the two original source
+inputs as accepted projections. Additional permutation and malformed-order
+checks cover their compact operand mapping; runtime source-order and ownership
+checks run in `test/native_aot/text_arguments`.
+
 The old invalid conversion selector `2` became the supported `CheckedChar`
 selector. Its unknown-mode test now uses `3`; character acceptance and failure
 semantics remain covered by `test/native_aot/characters`.

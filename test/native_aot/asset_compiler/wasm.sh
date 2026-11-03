@@ -88,6 +88,10 @@ if [ "$(uname -s)" = Darwin ]; then target=aarch64-apple-darwin; fi
 "$work/runtime" "$root" "$emcc" "$work" "$work/runtime.ll"
 "$wasm_llvm/opt" -passes=verify "$work/runtime.ll" -o "$work/runtime.bc"
 "$emcc" -O2 -sSUPPORT_LONGJMP=wasm -c "$work/runtime.bc" -o "$work/runtime.o"
+"$emcc" -O2 -std=gnu11 -Wall -Wextra -Werror -DCHIBI_ASSET_COMPILER_WASM_TEST -I"$root/src" \
+    -sSUPPORT_LONGJMP=wasm -sENVIRONMENT=node "$work/runtime.o" \
+    "$root/test/native_aot/asset_compiler/RuntimeHooks.c" -o "$work/runtime-hooks.js"
+"$node" "$work/runtime-hooks.js"
 compile_wasm "$root/test/native_aot/asset_compiler/WasmFormat.chibi" "$work/format"
 printf '[]' > "$work/empty.json"
 "$node" "$work/format/compiler.js" "$work/empty.json" "$work/format.bin" "$work/format.diagnostic"

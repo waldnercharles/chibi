@@ -1,0 +1,2 @@
+package string_scalar
+Main :: () -> int { value := "text"; pointer := &value; return 0; }

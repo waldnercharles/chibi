@@ -1,0 +1,45 @@
+{
+  "snapshot_utc": "2026-11-03T13:28:28.016999+00:00",
+  "source_root": "/Users/cwaldner/Personal/chibi/.coordination/compile-ci-costs-20261102/evidence",
+  "disposition_counts": {
+    "archived-text": 43968,
+    "local-generated-binary-or-media": 1017,
+    "local-machine-process-capture": 13,
+    "local-binary-artifact": 461,
+    "local-generated-large-ir-or-embedded-bytes": 170
+  },
+  "disposition_original_bytes": {
+    "archived-text": 455266773,
+    "local-generated-binary-or-media": 448862989,
+    "local-machine-process-capture": 490769,
+    "local-binary-artifact": 623124677,
+    "local-generated-large-ir-or-embedded-bytes": 616656830
+  },
+  "redacted_paths": [],
+  "archive_sha256": "e823e765a41705ad4f13da45fc53a90d2fe6a581b46fabc9a8ba598344c288e5",
+  "archive_parts": [
+    {
+      "path": "evidence-text.tar.gz.part-000",
+      "bytes": 45000000,
+      "sha256": "a27d832480ed7e27a6770706883fb8de646e7deae11b6f8ac20b6981e356cda7"
+    },
+    {
+      "path": "evidence-text.tar.gz.part-001",
+      "bytes": 45000000,
+      "sha256": "415bd93da1d6168b0981c34d0f1c600d2025f4bcdd3f684756d4b8413ceb3049"
+    },
+    {
+      "path": "evidence-text.tar.gz.part-002",
+      "bytes": 12970757,
+      "sha256": "533820f325494108623edf08c1c20f7ac14ff3f38e1b14a196d50b5232c8550f"
+    }
+  ],
+  "inventory": "evidence-inventory.jsonl.gz",
+  "inventory_sha256": "7cb97985225e72cdc6015e55e75df6bc2099d2da2352cc7be401a80dc755c37d",
+  "excluded_directory_names": [
+    ".git",
+    "__pycache__",
+    "node_modules"
+  ],
+  "preservation": "All original evidence remains intact locally. Reports, source fixtures, scripts and textual receipts are archived; generated products remain local and are inventoried. No compiler, test or fixture was executed."
+}

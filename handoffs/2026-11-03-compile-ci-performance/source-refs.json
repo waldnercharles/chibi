@@ -1,0 +1,133 @@
+{
+  "snapshot_utc": "2026-11-03T13:27:21.015786+00:00",
+  "repository": "waldnercharles/chibi",
+  "first_parent": "bc6d971d33be36a8d7f8dd32b86253d9fe7f46e5",
+  "refs": [
+    {
+      "branch": "codex/borrow-scalar-record-projections-20261102",
+      "commit": "1f86bd5a690c8c398d8d63d649c473cfecfceec9",
+      "tree": "d9ded03638f2320dcd614ec1f6b963f405eb2f6c",
+      "subject": "Avoid record ownership for primitive array field reads"
+    },
+    {
+      "branch": "codex/bound-pointer-construction-20261102",
+      "commit": "f11df26379b2250ab34d07fda140acfc546de353",
+      "tree": "38a468ea8f28fcbfccb783227bd030459d01a11c",
+      "subject": "Bound pointer constructors to required types"
+    },
+    {
+      "branch": "codex/call-type-table-reads-20261102",
+      "commit": "f247e2ef8f0042f513e578211f0dcc05b739cee9",
+      "tree": "d7e249a7cffb9ca41e0ca6dabdf02d93004f3c92",
+      "subject": "Read call types from the owned table without snapshots"
+    },
+    {
+      "branch": "codex/ci-detached-cleanup-20261102",
+      "commit": "06bd882d878a544d2b6272ade5f3c74130bfda34",
+      "tree": "050d34f9511cef73be7327b14d80228abe60a7b0",
+      "subject": "Reap detached CI worker groups on deadline and cancellation"
+    },
+    {
+      "branch": "codex/ci-native-proof-after-core-20261102",
+      "commit": "59003051314e81349abfb853d5c80c2cdbc77940",
+      "tree": "dd4459d04ea69e4803aa7b77f147c91938ae5863",
+      "subject": "Record combined native retirement evidence and remaining gates"
+    },
+    {
+      "branch": "codex/compile-ci-baseline-20261102",
+      "commit": "9934af8db17daf554993bba0bd5dbc6ef37c28ca",
+      "tree": "48534e78286e0442e4b2d54f0d86603c78b1b676",
+      "subject": "Reconcile frozen native toolchain and single-workflow CI"
+    },
+    {
+      "branch": "codex/compile-ci-control-20261102",
+      "commit": "94cf5fb9321bbfe7c6e0e60cee93fc3c790e4674",
+      "tree": "ab5bb010e88c46782cc380928e2190f670222027",
+      "subject": "Exercise generic array descriptors inferred by call results"
+    },
+    {
+      "branch": "codex/compiler-performance-comparison-20261102",
+      "commit": "c3e6f1cbe828a6e250ee84584ed5d6be3494341e",
+      "tree": "2869d9191fc410fc058a469ca0f07787734f6420",
+      "subject": "Document measured compiler costs and source comparisons"
+    },
+    {
+      "branch": "codex/compiler-type-table-reads-20261102",
+      "commit": "7d798d80219933275a1054258bdc09fdb1e44471",
+      "tree": "9a1a70fde1c6f49e631f1761dacc28f0e0da82b1",
+      "subject": "Read statement types from the owned table without snapshots"
+    },
+    {
+      "branch": "codex/graph-wasm-config-parity-20261102",
+      "commit": "56cc0e13042f11bb5e0a5a9a1c4387f54fa9ebba",
+      "tree": "fdff1a7d87629da4a5b890ae75c25f2da1f04bb9",
+      "subject": "Allow Wasm toolchain inputs in retained build host"
+    },
+    {
+      "branch": "codex/native-bundle-inventory-20261102",
+      "commit": "47bad09bce5f31ff42a238c175c69e2a041a9eeb",
+      "tree": "1100ba080abb8919abe8f4b857180a37279ea274",
+      "subject": "Preserve every target program when bundle producers overlap"
+    },
+    {
+      "branch": "codex/native-ci-integration-20261102",
+      "commit": "fbf1ee05477ed24a37c99588b21370a9e8918b36",
+      "tree": "5d249509b4ab91f7b23ef2b3edde36739549d68d",
+      "subject": "Keep Windows cache stubs valid under strict C11"
+    },
+    {
+      "branch": "codex/native-command-proof-20261103",
+      "commit": "4e5539676fb9d085b7bec26237114a45df9f9254",
+      "tree": "5a6ea654847b64ed45a3c273276063ece1cb502e",
+      "subject": "Make native command contracts mandatory in self-host proofs"
+    },
+    {
+      "branch": "codex/native-test-executable-cache-20261102",
+      "commit": "2ce2aef183b5c7310733afc20243615c2139c762",
+      "tree": "c042b86c0aeeeb983e1bdac82329fdbaca61969a",
+      "subject": "Record combined native ownership and reload acceptance"
+    },
+    {
+      "branch": "codex/native-windows-producer-20261103",
+      "commit": "36506138dab6e97ccd9ebc99cd36e8b5eb96dcb3",
+      "tree": "e389beee99626474142328773f28364ca5859ca8",
+      "subject": "Prepare a temporary Linux native Windows producer"
+    },
+    {
+      "branch": "codex/parity-b0f4dfa0b-20261102",
+      "commit": "b0f4dfa0b0a9c4e3da175ee1689a0998e51fa35f",
+      "tree": "57ada2aa405d4e76fbfcfcc9e9f2e1144177d8d9",
+      "subject": "Record reproducible native checkpoint and completed retirement proofs"
+    },
+    {
+      "branch": "codex/pinned-windows-ci-20261103",
+      "commit": "add9df19a1342f2c0347bb38b5ee4f78a0de3e5a",
+      "tree": "8e38b347ebe6c4a698b869a8ca1c86b942b806c3",
+      "subject": "ci: start pinned Windows proofs without Linux"
+    },
+    {
+      "branch": "codex/retained-readonly-publication-20261102",
+      "commit": "f20d6c7c0dc299a1b25c33217620290a1873ccc9",
+      "tree": "a89cb767cb2aa79ff6507a77d0d8e8f40e65bd6a",
+      "subject": "Preserve retained writes across readonly scoped calls"
+    },
+    {
+      "branch": "codex/reuse-release-native-compiler-20261103",
+      "commit": "bc6d971d33be36a8d7f8dd32b86253d9fe7f46e5",
+      "tree": "1b9aac2eec287c938ff6d1fcf38b8221e9a9448f",
+      "subject": "Reuse the Release native compiler throughout Linux core validation"
+    },
+    {
+      "branch": "codex/windows-compiler-ci-20261103",
+      "commit": "9eb7c7f013a595ec6fe9eda60dd6ff54d44873e3",
+      "tree": "259807aab7e3424262e8a12899231bc93b15241c",
+      "subject": "ci: validate the full compiler inventory on Windows"
+    },
+    {
+      "branch": "codex/windows-remove-fixture-20261102",
+      "commit": "48c0ef6540fcad72479011e98e3797f101913320",
+      "tree": "a67b44583ab4094a891890db1083aaeb5d77268f",
+      "subject": "Correct Windows removal fixture for idempotent missing paths"
+    }
+  ]
+}

@@ -80,19 +80,20 @@ ManagedOwnerLocations :: (shape: Function, code: Instruction[], records: int) ->
     }
     return found;
 }
-ManagedPollValid :: (item: Instruction, slots: int[], locals: int[]) -> bool {
+ManagedPollValid :: (item: Instruction, slots: int[], locals: int[], layout: ValueLayout) -> bool {
     if (item.op == ManagedPending) {
         return item.type == abi.BoolStorage && item.left == 0 && item.right == 0 && item.target == 0 && item.literal == 0;
     }
     if (item.op == ManagedPoll) {
         return item.type == 0 && item.output == 0 && item.left == 0 && item.right == 0 && item.target == 0 && item.literal == 0;
     }
-    array := ArrayType + PointerType;
     if (item.target < ManagedTrackSlot || item.target > ManagedClearLocal || item.output != 0 || item.right != 0 || item.literal != 0) { return false; }
     if ((item.target & ManagedTrackLocal) != 0) {
-        return (item.type == array || item.type == RefType + array) && Typed(locals, item.left, item.type);
+        type := item.type;
+        if (type >= RefType) { type -= RefType; }
+        return ValueCollectorOwner(layout, type) && Typed(locals, item.left, item.type);
     }
-    return item.type == array && Typed(slots, item.left, array);
+    return ValueCollectorOwner(layout, item.type) && Typed(slots, item.left, item.type);
 }
 // Root table storage follows the same coroutine lifetime as ordinary frame
 // roots. Empty functions allocate/register nothing. Initialize before

@@ -939,14 +939,14 @@ UnionDrop :: (payloads: Payloads, type: int, place: int, held: int, next: int, b
 // `slot`; with `held`, then the hidden array locals of the open loops that own
 // theirs. A variable of a union type drops the arrays its variant holds. Dropped
 // gives their slots' types, in the same order; `base` is where the code goes.
-DropAll :: (rows: facts.Row[], records: int[], managed: bool[], vars: int[], types: int[], places: int[], from: int, skips: int[],
+DropAll :: (rows: facts.Row[], records: int[], managed: bool[], value_layout: native.ValueLayout, vars: int[], types: int[], places: int[], from: int, skips: int[],
             frames: Frame[], held: bool, slot: int, base: int) -> Drops {
     found: Drops = {code: [], slot_types: []};
     at := length(vars) - 1;
     next := slot;
     while (at >= from) {
         if (types[at] != 0 && !Holds(skips, vars[at])) {
-            found.code.extend(ManagedOwnerLocal(types[at], places[vars[at]], false));
+            found.code.extend(ManagedOwnerLocal(types[at], places[vars[at]], false, value_layout));
             payloads := UnionPayloads(rows, records, types[at]);
             if (TrackedRecord(managed, types[at])) {
                 found.code.append(Op(native.Local, types[at], next, places[vars[at]], 0, 0));
@@ -977,7 +977,7 @@ DropAll :: (rows: facts.Row[], records: int[], managed: bool[], vars: int[], typ
     if (held) {
         for (frame in frames) {
             if (frame.held >= 0) {
-                found.code.extend(ManagedOwnerLocal(frame.held_type, frame.held, false));
+                found.code.extend(ManagedOwnerLocal(frame.held_type, frame.held, false, value_layout));
                 found.code.extend([Op(native.Local, frame.held_type, next, frame.held, 0, 0),
                                    Giving(frame.held_type, next)]);
                 found.slot_types.append(frame.held_type);
@@ -2795,7 +2795,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         records.append(record);
     }
     value_layout := native.ValueLayouts(records, fields);
-    managed := value_layout.owned;
+    managed := value_layout.collector_owned;
     comparison_sites: int[] = [];
     comparison_types: bool[] = [];
     heads := Heads(rows, Start(rows, declared));
@@ -2894,7 +2894,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 }
                 owned_vars.append(index);
                 owned_types.append(type);
-                body.extend(ManagedOwnerLocal(type, places[index], true));
+                body.extend(ManagedOwnerLocal(type, places[index], true, value_layout));
             }
             if (waiting_function && (type == native.ArrayType + native.PointerType ||
                 (ArrayTyped(type) && native.TaskOwnedType(records, value_layout, type))) &&
@@ -2908,13 +2908,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 slot += length(kept.slot_types);
                 owned_vars.append(index);
                 owned_types.append(type);
-                body.extend(ManagedOwnerLocal(type, places[index], true));
+                body.extend(ManagedOwnerLocal(type, places[index], true, value_layout));
             }
             if (rows[head + 1 + index].literal == i64(facts.ParameterOwnedArray) && !boxed) {
                 // A parameter the function changes is its own container.
                 owned_vars.append(index);
                 owned_types.append(type);
-                body.extend(ManagedOwnerLocal(type, places[index], true));
+                body.extend(ManagedOwnerLocal(type, places[index], true, value_layout));
             }
             slot += 1;
             local += 1;
@@ -3012,7 +3012,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             if (row.kind == facts.ElseRow) {
                 frame := frames[top];
                 if (!ends) {
-                    drops := DropAll(rows, declared, managed, owned_vars, owned_types, places, frame.owned, [], frames, false, slot, length(body));
+                    drops := DropAll(rows, declared, managed, value_layout, owned_vars, owned_types, places, frame.owned, [], frames, false, slot, length(body));
                     slots.extend(drops.slot_types);
                     slot += length(drops.slot_types);
                     body.extend(drops.code);
@@ -3034,7 +3034,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 // ends, and its failed test reaches the next.
                 frame := frames[top];
                 if (frame.armed && !ends) {
-                    drops := DropAll(rows, declared, managed, owned_vars, owned_types, places, frame.owned, [], frames, false, slot, length(body));
+                    drops := DropAll(rows, declared, managed, value_layout, owned_vars, owned_types, places, frame.owned, [], frames, false, slot, length(body));
                     slots.extend(drops.slot_types);
                     slot += length(drops.slot_types);
                     body.extend(drops.code);
@@ -3083,7 +3083,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 frames = slice(frames, 0, top);
                 at += 1;
                 if (!ends) {
-                    drops := DropAll(rows, declared, managed, owned_vars, owned_types, places, frame.owned, [], frames, false, slot, length(body));
+                    drops := DropAll(rows, declared, managed, value_layout, owned_vars, owned_types, places, frame.owned, [], frames, false, slot, length(body));
                     slots.extend(drops.slot_types);
                     slot += length(drops.slot_types);
                     body.extend(drops.code);
@@ -3115,7 +3115,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     // Continue edges converge here after dropping body locals.
                     // Clear captures before a side-effectful next subject read;
                     // the final false test is released by its enclosing Scope.
-                    drops := DropAll(rows, declared, managed, owned_vars, owned_types, places,
+                    drops := DropAll(rows, declared, managed, value_layout, owned_vars, owned_types, places,
                                      frame.pattern_first, [], frames, false, slot, length(body));
                     slots.extend(drops.slot_types);
                     body.extend(drops.code);
@@ -3172,7 +3172,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 jumps = slice(jumps, 0, frame.escape);
                 continuing = slice(continuing, 0, frame.escape);
                 if (frame.held >= 0) {
-                    body.extend(ManagedOwnerLocal(frame.held_type, frame.held, false));
+                    body.extend(ManagedOwnerLocal(frame.held_type, frame.held, false, value_layout));
                     slots.append(frame.held_type);
                     body.extend([Op(native.Local, frame.held_type, slot, frame.held, 0, 0),
                                  Giving(frame.held_type, slot)]);
@@ -3186,7 +3186,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 while (!Loop(frames[loop].kind)) {
                     loop -= 1;
                 }
-                drops := DropAll(rows, declared, managed, owned_vars, owned_types, places, frames[loop].owned, [], frames, false, slot, length(body));
+                drops := DropAll(rows, declared, managed, value_layout, owned_vars, owned_types, places, frames[loop].owned, [], frames, false, slot, length(body));
                 slots.extend(drops.slot_types);
                 slot += length(drops.slot_types);
                 body.extend(drops.code);
@@ -3341,7 +3341,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         slot += 1 + length(dropped.slot_types);
                     }
                     body.append(Op(native.Save, type, 0, held, 0, places[operand.value]));
-                    body.extend(ManagedOwnerLocal(type, places[operand.value], true));
+                    body.extend(ManagedOwnerLocal(type, places[operand.value], true, value_layout));
                     continue;
                 }
                 type := NativeType(operand.type);
@@ -4791,7 +4791,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             // Every operand has acquired its result ownership before a
             // callback's deferred request can observe the live owner set.
             if (polling && row.kind != facts.ForRow) {
-                body.extend(ManagedPollCode(slot, length(body), fresh, slots, shape.first_slot));
+                body.extend(ManagedPollCode(slot, length(body), fresh, slots, shape.first_slot, value_layout));
                 slots.append(abi.BoolStorage);
                 slot += 1;
             }
@@ -4804,7 +4804,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 for (taken in escaped) {
                     for (at_var in 0..<length(owned_vars)) {
                         if (owned_vars[at_var] == taken) {
-                            body.extend(ManagedOwnerLocal(owned_types[at_var], places[taken], false));
+                            body.extend(ManagedOwnerLocal(owned_types[at_var], places[taken], false, value_layout));
                             owned_types[at_var] = 0;
                         }
                     }
@@ -4928,7 +4928,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 slot += 1;
                 frame.head = length(body);
                 if (polling) {
-                    body.extend(ManagedPollCode(slot, length(body), fresh, slots, shape.first_slot));
+                    body.extend(ManagedPollCode(slot, length(body), fresh, slots, shape.first_slot, value_layout));
                     slots.append(abi.BoolStorage);
                     slot += 1;
                 }
@@ -4986,7 +4986,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     places.append(local + 1);
                 }
                 body.append(Op(native.Save, array, 0, stack[0], 0, local));
-                if (frame.held >= 0) { body.extend(ManagedOwnerLocal(array, frame.held, true)); }
+                if (frame.held >= 0) { body.extend(ManagedOwnerLocal(array, frame.held, true, value_layout)); }
                 if (reverse) {
                     // Length zero starts at the signed sentinel -1. The
                     // head rejects it before any element access.
@@ -5005,7 +5005,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 }
                 frame.head = length(body);
                 if (polling) {
-                    body.extend(ManagedPollCode(slot, length(body), fresh, slots, shape.first_slot));
+                    body.extend(ManagedPollCode(slot, length(body), fresh, slots, shape.first_slot, value_layout));
                     slots.append(abi.BoolStorage);
                     slot += 1;
                 }
@@ -5069,7 +5069,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                              Op(native.Save, integer, 0, stop, 0, frame.bound)]);
                 frame.head = length(body);
                 if (polling) {
-                    body.extend(ManagedPollCode(slot, length(body), fresh, slots, shape.first_slot));
+                    body.extend(ManagedPollCode(slot, length(body), fresh, slots, shape.first_slot, value_layout));
                     slots.append(abi.BoolStorage);
                     slot += 1;
                 }
@@ -5097,7 +5097,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         moved.append(read_vars[at_read]);
                     }
                 }
-                drops := DropAll(rows, declared, managed, owned_vars, owned_types, places, 0, moved, frames, true, slot, length(body));
+                drops := DropAll(rows, declared, managed, value_layout, owned_vars, owned_types, places, 0, moved, frames, true, slot, length(body));
                 slots.extend(drops.slot_types);
                 slot += length(drops.slot_types);
                 body.extend(drops.code);
@@ -5126,7 +5126,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     // arguments have finished before the owners are released.
                     skip_failure := length(body);
                     body.append(Op(native.Branch, 0, 0, value, 0, 0));
-                    drops := DropAll(rows, declared, managed, owned_vars, owned_types, places, 0, [], frames, true, slot, length(body));
+                    drops := DropAll(rows, declared, managed, value_layout, owned_vars, owned_types, places, 0, [], frames, true, slot, length(body));
                     slots.extend(drops.slot_types);
                     slot += length(drops.slot_types);
                     body.extend(drops.code);
@@ -5172,7 +5172,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     body.append(Op(native.TextRetain, type, 0, lowered.value, 0, 0));
                     owned_vars.append(row.value);
                     owned_types.append(type);
-                    body.extend(ManagedOwnerLocal(type, places[row.value], true));
+                    body.extend(ManagedOwnerLocal(type, places[row.value], true, value_layout));
                 } else if (TrackedRecord(managed, type) || (type >= native.ArrayType && type < native.MapType)) {
                     kept := KeepValue(managed, row.type, lowered.value, slot);
                     slots.extend(kept.slot_types);
@@ -5181,7 +5181,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     slot += length(kept.slot_types);
                     owned_vars.append(row.value);
                     owned_types.append(type);
-                    body.extend(ManagedOwnerLocal(type, places[row.value], true));
+                    body.extend(ManagedOwnerLocal(type, places[row.value], true, value_layout));
                 }
             } else if (row.kind == facts.LocalRow) {
                 type := NativeType(row.type);
@@ -5219,13 +5219,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     } else {
                         owned_vars.append(row.value);
                         owned_types.append(type);
-                        body.extend(ManagedOwnerLocal(type, places[row.value], true));
+                        body.extend(ManagedOwnerLocal(type, places[row.value], true, value_layout));
                     }
                 }
                 if (keeps || record_keeps) {
                     owned_vars.append(row.value);
                     owned_types.append(type);
-                    body.extend(ManagedOwnerLocal(type, places[row.value], true));
+                    body.extend(ManagedOwnerLocal(type, places[row.value], true, value_layout));
                 }
                 // A variable holding a fresh union that holds arrays owns it, unless it is
                 // read for more than its tag and payloads or addressed; a discarded one is
@@ -5240,7 +5240,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     } else if (!Holds(stale_unions, row.value) && !Referenced(rows, head, row.value)) {
                         owned_vars.append(row.value);
                         owned_types.append(type);
-                        body.extend(ManagedOwnerLocal(type, places[row.value], true));
+                        body.extend(ManagedOwnerLocal(type, places[row.value], true, value_layout));
                     }
                 }
                 // The arm that binds an array payload of an owned union takes it over when
@@ -5268,7 +5268,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     if (taken) {
                         owned_vars.append(row.value);
                         owned_types.append(type);
-                        body.extend(ManagedOwnerLocal(type, places[row.value], true));
+                        body.extend(ManagedOwnerLocal(type, places[row.value], true, value_layout));
                         union_type := owned_types[union_at];
                         slots.extend([union_type, type, union_type]);
                         empty := Op(native.Constant, type, slot + 1, 0, 0, 0);
@@ -5344,7 +5344,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 // An owning variable given a fresh array drops its old one,
                 // after the new one is made, so `a = f(a)` reads it first.
                 if (ArrayTyped(type) && Holds(owned_vars, row.value) && Holds(fresh, value)) {
-                    body.extend(ManagedOwnerLocal(type, places[row.value], false));
+                    body.extend(ManagedOwnerLocal(type, places[row.value], false, value_layout));
                     fresh = Without(fresh, value);
                     slots.append(type);
                     body.extend([Op(native.Local, type, slot, places[row.value], 0, 0),
@@ -5359,7 +5359,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     body.extend(glue.code);
                 }
                 body.append(Op(native.Save, type, 0, value, 0, places[row.value]));
-                if (Holds(owned_vars, row.value)) { body.extend(ManagedOwnerLocal(type, places[row.value], true)); }
+                if (Holds(owned_vars, row.value)) { body.extend(ManagedOwnerLocal(type, places[row.value], true, value_layout)); }
                 // A retained variable's state follows it.
                 for (retained in 0..<length(retained_variables)) {
                     if (retained_variables[retained] == row.value) {

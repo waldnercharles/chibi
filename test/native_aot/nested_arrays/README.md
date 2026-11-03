@@ -2,12 +2,15 @@
 
 `run.sh NATIVE_COMPILER LLVM_BIN [ORDINARY_REFERENCE]` runs the unchanged
 `generic_array_calls_after_descriptor_growth` acceptance test, unchanged
-`imports/native_values` and `collections/scoped_lent_locals` tests and real source
+`imports/native_values`, `collections/scoped_lent_locals` and `collections/ranges`
+tests and real source
 programs at O0/O2. Copies, element replacement, returned and temporary inner
 arrays, four array levels, and string payloads run with normal allocation
 and the existing poisoned-free/zero-live-allocation audit. Nested iteration
 covers keyed bindings, fresh receivers, break/continue/return, copied bindings,
 three array levels, and string elements while replacing the source array.
+Forward and reverse traversals preserve original indices; reverse cases also
+cover empty/one-element arrays and aliased scoped receivers.
 
 Each ordinary interned collection lowers to one synthetic record whose field
 is its immediate array descriptor. Outer arrays use the existing record type

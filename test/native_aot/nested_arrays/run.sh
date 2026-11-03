@@ -35,14 +35,14 @@ ln -s "$llvm/llc" "$work/llvm/llc"
 ln -s "$llvm/$linker" "$work/llvm/$linker"
 export CHIBI_VALUE_LLVM=$llvm CHIBI_VALUE_AUDIT=$root/test/native_aot/managed_values/Audit.ll
 for level in 0 2; do
-    for fixture in types/generic_array_calls_after_descriptor_growth imports/native_values collections/scoped_lent_locals; do
+    for fixture in types/generic_array_calls_after_descriptor_growth imports/native_values collections/scoped_lent_locals collections/ranges; do
         suite=${fixture%%/*}
         CHIBI_CORE="$root/packages/core" "$compiler" test --llvm "$llvm" -O"$level" \
             --root "$root/test/compiler/samples/$suite" \
             "$root/test/compiler/samples/$fixture/facts" > "$work/original.log" 2>&1 || { cat "$work/original.log"; exit 1; }
         grep -F 'PASS project.Calls' "$work/original.log" > /dev/null
     done
-    for source in Main Iteration; do
+    for source in Main Iteration Reverse; do
         for mode in ordinary audit; do
             tools=$llvm
             if [ "$mode" = audit ]; then tools=$work/llvm; fi
@@ -67,7 +67,7 @@ test "$status" -eq 1 || { cat "$work/rejected.log"; exit 1; }
 test "$(cat "$work/rejected")" = preserved
 grep -F 'Pointer.chibi:4:5: scalar proof supports only number, bool and string values' "$work/rejected.log" > /dev/null
 if [ -n "$reference" ]; then
-    for source in Main Iteration; do
+    for source in Main Iteration Reverse; do
         project=$work/reference-$source
         mkdir "$project"
         cp "$root/test/native_aot/nested_arrays/$source.chibi" "$project/Main.chibi"

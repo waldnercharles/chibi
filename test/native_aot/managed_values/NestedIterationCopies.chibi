@@ -1,0 +1,14 @@
+package nested_iteration_copies
+foreign { chibi_value_test_allocations :: () -> i64 }
+Main :: () -> int {
+    values:[int:[int:int]] = [1:[2:3],4:[2:5]];
+    before := chibi_value_test_allocations();
+    total:int=0;
+    for (index in 0..<4096) {
+        for (key,item in values) { total+=key+item[2]; }
+        for (item in values) { total+=item[2]; }
+    }
+    completed := chibi_value_test_allocations();
+    assert(completed==before && total==86016, "traversal borrows carriers and retains only immediate map owners");
+    return 0;
+}

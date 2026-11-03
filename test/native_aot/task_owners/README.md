@@ -38,6 +38,8 @@ and read it again through its original image.
 `NamedPromises.chibi` preserves direct async named outputs with a dynamic string.
 `MapPromises.chibi` covers direct and observed map results, repeated independent
 joins, returned parameters, empty/nested maps, arrays of maps and cancellation.
+`map_programs/TaskMaps.chibi` preserves the original direct/observed array-of-map
+promise fixture under the same poisoned allocation audit.
 `MapPromiseFailure.chibi` checks a failing child with an owned map parameter while
 the caller still holds a completed map result. Generation tests mutate one joined
 map and require the original completed promise to remain unchanged after reload.

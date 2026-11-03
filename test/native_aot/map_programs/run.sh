@@ -10,7 +10,7 @@ case "$(uname -s)-$(uname -m)" in
     Linux-x86_64) triple=x86_64-unknown-linux-gnu ;;
     *) echo 'native map programs: unsupported test host' >&2; exit 2 ;;
 esac
-for name in Values Strings Iteration Records Effects Receivers ManagedRecords StringEffects ArrayPayload ArrayForeign Compound ArrayBacked ArrayValues Unions Optionals ArrayForeignPlace ForeignLoans ArrayCompound ArrayPlaces NestedContainers NestedPlaces DeepPlaces DeepArrays DeepMethods; do
+for name in Values Strings Iteration Records Effects Receivers ManagedRecords StringEffects ArrayPayload ArrayForeign Compound ArrayBacked ArrayValues Unions Optionals ArrayForeignPlace ForeignLoans ArrayCompound ArrayPlaces NestedContainers NestedPlaces DeepPlaces DeepArrays DeepMethods NestedIteration TaskMaps; do
     for level in 0 2; do
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$root/test/native_aot/map_programs/$name.chibi" --entry Main \
@@ -33,10 +33,10 @@ for name in MissingRecord UnionMissing ArrayMissing; do
 done
 sh "$root/test/native_aot/map_programs/places.sh" "$compiler" "$llvm" "$work/places"
 sh "$root/test/native_aot/map_programs/nested_places.sh" "$compiler" "$llvm" "$work/nested-places"
-for name in RecordMap NestedPointer TaskMaps; do
+for name in RecordMap NestedPointer ReadonlyIteration; do
     expected='record fields require a scalar, pointer, record, union or array of those types'
     if [ "$name" = NestedPointer ]; then expected='scalar proof supports only number, bool and string values'; fi
-    if [ "$name" = TaskMaps ]; then expected='native waiting frames cannot own managed values or pointers yet'; fi
+    if [ "$name" = ReadonlyIteration ]; then expected='mutation requires a writable place'; fi
     for level in 0 2; do
         output=$work/rejected-$name-O$level
         printf 'preserved' > "$output"

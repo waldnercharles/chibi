@@ -169,3 +169,18 @@ owners. Growing an authored-record array without initialized rows remains a
 failure; shrinking is covered. `DeepMethodCopies` checks three detach allocations
 for shared append, self-extend and resize, with zero allocations for 4,096
 append/remove cycles that stay within the leaf array's capacity.
+
+Map-valued map traversal uses the same per-turn physical carrier projection as
+nested array traversal. Keyed loops keep the key ordinal and project only the
+value. The logical binding owns one immediate map reference until that turn
+exits; the receiver snapshot preserves insertion order when the source changes.
+`NestedIteration` checks nested loops, temporary receivers, binary string keys,
+source replacement, copied values and break/continue/return cleanup at O0/O2
+under poisoned allocation. Direct mutation of the readonly binding remains
+rejected. `NestedIterationCopies` requires zero allocations across 4,096 keyed
+and unkeyed passes.
+
+The original `TaskMaps` source is now an O0/O2 positive after counted map promises
+and collector-copyable record arrays composed. Its direct and observed joins
+keep independent array-of-map values. The task-owner audit preserves the real
+execution context and checks poisoned frees and zero live allocations.

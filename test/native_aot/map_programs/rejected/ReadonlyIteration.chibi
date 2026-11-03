@@ -1,0 +1,6 @@
+package readonly_map_iteration
+Main :: () -> int {
+    values:[int:[int:int]] = [1:[2:3]];
+    for (item in values) { item[2]=4; }
+    return 0;
+}

@@ -4074,6 +4074,12 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], authored: snapshot.SnapshotNode
                 ops: Ops, target: Target, natives: ResolvedNative[], ports: ResolvedPort[],
                 identities: u64[], aliases: Name[], retained: Name[], summary: ^ScalarEffectSummary,
                 assertions: ^(ScalarAssertion[]), math_values: ^bool, clock: ^ScalarClockSites) -> syntax.Diagnostic {
+    if (length(documents) > 0) {
+        document := callables[function].document;
+        if (!HostPackageAvailable(natives, documents[document].identity)) {
+            return Diagnose(forest, documents[document].root, document, "Host package is unavailable for this target");
+        }
+    }
     operators: NumericOperator[] = [];
     makes: NativeMake[] = [];
     indices: int[] = [];

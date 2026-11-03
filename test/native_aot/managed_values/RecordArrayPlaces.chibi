@@ -1,0 +1,56 @@
+package record_array_places
+Leaf :: struct { number: int; text: string; }
+Inner :: struct { words: string[]; items: Leaf[]; }
+Entry :: struct { text: string; values: int[]; inner: Inner; }
+Text :: (value: u8) -> string { return text_from_bytes([u8(65),u8(0),value]); }
+Make :: (value: int) -> Entry {
+    return {text:Text(u8(wrap:value)),values:[value,200],
+            inner:{words:[Text(u8(wrap:value))],items:[{number:value,text:Text(u8(wrap:value))}]}};
+}
+Outer :: (calls: ^int) -> int { calls^ += 1; return 0; }
+Index :: (calls: ^int) -> int { calls^ += 10; return 0; }
+Replace :: (rows: ^(Entry[])) -> int { rows^ = [Make(100),Make(300)]; return 5; }
+ReplaceIndex :: (rows: ^(Entry[])) -> int { rows^ = [Make(40)]; return 0; }
+ReplaceWords :: (rows: ^(Entry[])) -> string { rows^ = [Make(8)]; return Text(7); }
+Scoped :: (read: ^(Entry[]), changed: ^(Entry[])) { read^[0].values.append(Replace(changed)); }
+ByValue :: (rows: Entry[]) -> int {
+    rows[0].values[0] = 9;
+    rows[0].inner.words.append(Text(7));
+    return rows[0].values[0] + length(rows[0].inner.words);
+}
+Main :: () -> int {
+    original := [Make(1)];
+    copy := original;
+    copy[0].values[0] = 99;
+    assert(copy[0].values[0] == 99 && original[0].values[0] == 1);
+    calls := 0;
+    copy[Outer(&calls)].values[Index(&calls)] += Replace(&copy);
+    assert(calls == 11 && copy[0].values[0] == 104 && copy[0].text == Text(100));
+    assert(copy[1].values[0] == 300 && original[0].values[0] == 1);
+    copy[0].values[ReplaceIndex(&copy)] += 5;
+    assert(copy[0].values[0] == 45);
+    copy[0].values.append(Replace(&copy));
+    assert(length(copy[0].values) == 3 && copy[0].values[2] == 5 && copy[0].text == Text(100));
+    Scoped(&copy,&copy);
+    assert(length(copy[0].values) == 3 && copy[0].values[2] == 5 && copy[1].text == Text(u8(wrap:300)));
+    by_value := ByValue(original);
+    assert(by_value == 11 && original[0].values[0] == 1 && length(original[0].inner.words) == 1);
+    copy[0].inner.words[0] = ReplaceWords(&copy);
+    assert(copy[0].inner.words[0] == Text(7) && copy[0].text == Text(8));
+    copy[0].inner.items[0].number += Replace(&copy);
+    assert(copy[0].inner.items[0].number == 13 && copy[0].inner.items[0].text == Text(100));
+    assert(copy[1].values[0] == 300);
+    for index in 0..<64 {
+        copy = [Make(index)];
+        copy[0].values.insert(1,9);
+        copy[0].values.reverse();
+        copy[0].values.set_array_elem(0,index);
+        copy[0].values.remove_index(1);
+        copy[0].values.extend([7,8]);
+        copy[0].values.resize(3);
+        assert(length(copy[0].values) == 3 && copy[0].values[0] == index && copy[0].values[2] == 7);
+        copy[0].inner.words[0] = copy[0].text;
+        assert(copy[0].inner.words[0] == Text(u8(wrap:index)));
+    }
+    return 0;
+}

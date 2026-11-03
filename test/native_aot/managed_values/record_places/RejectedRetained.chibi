@@ -1,0 +1,3 @@
+package record_place_retained
+Entry :: struct { values: int[]; }
+Main :: () -> int { rows: retain Entry[] = [{values:[1]}]; rows[0].values.append(2); return 0; }

@@ -3719,7 +3719,8 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                     continue;
                 }
                 if (Is(forest, object, syntax.MemberExpression) &&
-                    Is(forest, Unparenthesized(forest, Field(forest, object, syntax.FieldObject)), syntax.MemberExpression)) {
+                    (Is(forest, Unparenthesized(forest, Field(forest, object, syntax.FieldObject)), syntax.MemberExpression) ||
+                     Is(forest, Unparenthesized(forest, Field(forest, object, syntax.FieldObject)), syntax.IndexExpression))) {
                     switch ScalarInlineArrayAssigned(forest, text, callables, params, callable, names, types, members, constants,
                                                        statement, object, &variables) {
                         case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);

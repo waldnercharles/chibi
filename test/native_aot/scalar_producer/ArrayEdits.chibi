@@ -198,3 +198,34 @@ MapArrayPlacesProjection :: () {
     RejectChanged(rows, [Changed(previous, CountField, 1)], "scalar array operation differs from its operands");
     RejectChanged(rows, [Changed(previous, TypeField, i64(facts.BoolType))], "scalar array operation differs from its operands");
 }
+
+RecordElementPlacesProjection :: () {
+    rows := Produced("package places\nEntry::struct{values:int[];}Main::()->int{other:Entry[]=[{values:[8]}];items:Entry[]=[{values:[1]}];flag:=false;items[0].values[0]=3;return items[0].values[0];}");
+    ValidateRows(rows, "");
+    observed := -1;
+    mutated := -1;
+    for (row, index in rows) {
+        if (row.kind != facts.ArrayElementReferenceRow) { continue; }
+        if (row.literal == i64(facts.ArrayElementObserve)) { observed = index; }
+        else { mutated = index; }
+    }
+    assert(observed >= 0 && mutated >= 0);
+    mismatch := "scalar array element reference differs from its record";
+    for target in [observed,mutated] {
+        RejectChanged(rows,[Changed(target,CountField,1)],mismatch);
+        RejectChanged(rows,[Changed(target,CountField,3)],mismatch);
+        RejectChanged(rows,[Changed(target,ValueField,1)],mismatch);
+        RejectChanged(rows,[Changed(target,TypeField,i64(facts.BoolType))],mismatch);
+        RejectChanged(rows,[Changed(target,LiteralField,-1)],mismatch);
+        RejectChanged(rows,[Changed(target,LiteralField,i64(facts.ArrayElementObserve + 1))],mismatch);
+        RejectChanged(rows,[Changed(target,LiteralField,2147483648)],mismatch);
+    }
+    RejectChanged(rows,[Changed(mutated - 1,TypeField,i64(facts.BoolType)),Changed(mutated - 1,ValueField,2)],mismatch);
+    RejectChanged(rows,[Changed(mutated - 2,ValueField,0)],"scalar array element reference is not its canonical mutation");
+    RejectChanged(rows,[Changed(mutated,LiteralField,i64(facts.ArrayElementObserve))],"scalar array observation is not a captured read");
+    RejectChanged(rows,[Changed(observed,LiteralField,i64(facts.ArrayElementUnique))],"scalar array element reference is not its canonical mutation");
+    RejectChanged(rows,[Changed(observed + 1,KindField,i64(facts.CallRow))],"scalar array observation outlives its captured read");
+    // The read result is not itself a writable container, and the failed
+    // public projections must not alter the original owned facts.
+    ValidateRows(rows, "");
+}

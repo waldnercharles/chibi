@@ -1,189 +1,76 @@
-# CI: one workflow, explicit platform validation
+# CI
 
-`.github/workflows/ci.yml` is the only workflow. Ordinary PRs, pushes to `main`,
-and manual `mode=ci` without complete Windows bootstrap pins run five jobs:
+`.github/workflows/ci.yml` is the only workflow. PRs, pushes to `main`, and
+manual `mode=ci` run the native Linux and macOS suites, the Windows compiler
+fixed point and runtime probes, and both consumers of the Linux cross-target
+bundle. Jobs test the actual checkout, including a PR's synthetic merge.
+Source identity is checked before and after the native proof. A manual `ci` run
+with all three Windows bootstrap pins selects only the Windows proof; partial
+pins preserve the canonical jobs, and `full` retains its broader coverage.
 
-1. **Engine build and native tests**: Linux core behavior and native fixed point.
-2. **Engine build and native tests (macOS)**: the existing macOS core suite.
-3. **Native scalar modules (macos-arm64)**: link and execute Linux-generated modules on macOS.
-4. **Native scalar modules (windows-x64)**: link and execute those modules on Windows.
-5. **Native self-host (Windows)**: verify the native fixed point, run the complete
-   compiler-unit root, then exercise native Windows products and runtime paths.
+## Native products and runtime checks
 
-PRs test the actual synthetic merge checkout. Main pushes validate again,
-including ordinary merges: there is no changed-path classifier, tested-tree
-receipt, or post-merge skip protocol. This intentionally trades repeated merge
-validation for simpler, unconditional coverage. Documentation-only changes use
-the same checks. Check names remain stable. The Linux job still rejects a changed HEAD or dirty
-tracked/untracked source after testing, without retaining a receipt subsystem.
+Linux and macOS build the native CLI/compiler, asset compiler and compile-only
+facade archive once into `build-release`. The registered Graph, native program,
+project and language selectors run through the native compiler. The native
+proof then checks compiler reproduction and the owning runtime suites, including
+processes, caches, diagnostics, failures, tasks, collections, math, formatting,
+retained generations, CLI execution and reload.
 
-## Reference architecture and adaptations
+The fixed point requires stages two and three to match byte for byte. An older
+pinned seed may require one additional stage, which must prove stages three and
+four equal. There is no retry loop or relaxed comparison. Windows cross-builds
+are executed on Windows, where the compiler reproduces itself with that runner's
+LLVM before runtime probes use the fresh compiler.
 
-The reference is Zig **0.15.1**, commit
-[`3db960767d12b6214bcf43f1966a037c7a586a12`](https://github.com/ziglang/zig/tree/3db960767d12b6214bcf43f1966a037c7a586a12),
-not a claim about today's Codeberg configuration. Its
-[workflow](https://github.com/ziglang/zig/blob/3db960767d12b6214bcf43f1966a037c7a586a12/.github/workflows/ci.yaml)
-uses explicit platform/configuration jobs on PRs and mainline pushes. Its
-[Linux release recipe](https://github.com/ziglang/zig/blob/3db960767d12b6214bcf43f1966a037c7a586a12/ci/x86_64-linux-release.sh)
-builds a candidate, runs behavioral suites through it, verifies a byte-identical
-self-build, and checks a fresh bootstrap seed. The build graph owns the test
-families; CI does not select correctness by changed filenames.
+After reproduction, the fixed compiler runs the mandatory Driver/Graph command
+contract. Independent fixtures check successful and rejected Driver statuses,
+complete stdout and stderr, and every ordered compile/link entry for five
+selected native and test-owned C targets in two private build roots. Only build
+root spelling is normalized. A changed-tool control must change both tables.
+Any failed contract stops the proof with its original status.
 
-Chibi follows that explicit build/test structure, using its existing scripts,
-registered selectors and platform runners. It does **not** copy Zig's runner
-fleet, nine-hour Linux ceiling, or local-cache reset policy. Chibi retains its
-own deadlines and three content-qualified caches. Clean bootstrap, SDK, no-C,
-Graph isolation and sanitizer certification remain scheduled/manual rather than
-expanding every PR into the complete matrix. That cadence is a deliberate Chibi
-adaptation, not identical Zig coverage.
+Windows runs the complete `tools/compiler` test root after its fixed point and
+before product checks. It preserves the native status and console log. The
+transitional 120-minute Windows job bound includes compiler tests and the
+runtime/product probes; it does not change individual process contracts.
 
-## Canonical build and tests
+Native profile evidence binds the clean source commit, recorded native product
+commands, source/tool fingerprints, output hashes, and facade archive receipt.
+It does not claim C sanitizer instrumentation on LLVM-generated code. Generic C
+flag and sanitizer handling are tested through the test-owned foreign-code
+Graph fixtures. C ABI consumers link the authored facade archive and exercise
+its public header without a C compiler host or VM.
 
-Linux builds the Release native CLI and retained C helpers once,
-then the selected Debug products/test drivers. The core suite uses those paths.
-Native self-host uses the native build entry and fixed compiler for its command
-contracts. Legacy VM comparison remains an explicit opt-in. The native phase then
-runs direct checks covering the driver, cache, minimum version, formatting,
-output, diagnostics, generations, test attributes, failures, Busy, optionals,
-build entry, runner, tasks, scalar math, managed values, maps, CLI and reload.
-macOS retains its Release-helper/Debug-product recipe and test selection.
+Normal CI job timeouts bound each job. Individual process regressions retain
+checks for deadlines, cancellation, exit status and descendant cleanup. Test
+selection follows the affected behavior and the registered suites, without a
+global test-duration admission policy.
 
-Native compilation uses `.github/native-llvm.sh` and `CHIBI_LLVM_BIN` with
-LLVM/LLD 22 or newer. Linux C compilation and the libclang bridge retain LLVM 18.
+## Cross-target bundle
 
-The canonical coverage includes:
+Linux emits the same arithmetic modules, function-call manifests and executable
+cases for the macOS and Windows consumers. Each consumer validates the manifest,
+links the modules with its native linker and runs every required call and
+program. The C reference runner remains beside the Chibi runner until both
+platforms' differential acceptance is recorded. Missing manifests remain errors.
 
-- clang-format 22.1.0, empty-operand rejection and selector/driver consistency;
-- CI infrastructure regressions and real launcher command-flow fixtures;
-- graph/driver programs, tooling/process integrations and case timing checks;
-- existing native, project and language selectors, preserving assertions,
-  selector deadlines, exclusivity and worker limits;
-- native scalar execution and cross-target object generation, then real
-  macOS/Windows linking and execution of the generated bundle;
-- native compiler fixed point, exact Driver streams and complete Graph
-  compile/link command contracts, diagnostics and test attributes.
+## Additional modes
 
-The native fixed point remains stage 2 equals stage 3; an older pinned seed may
-require exactly one additional stage, which must prove stage 3 equals stage 4.
-There is no retry loop or relaxed comparison. After the fixed-point comparison,
-both ordinary and full CI run the independent native command fixture. It compares successful
-and invalid Driver exit statuses, complete stdout and stderr, and every ordered
-compile/link entry for five selected Graph targets in two private build roots.
-Only the observed build-root spelling is normalized. A changed-tool negative
-control must change both complete tables. The expected recipes are checked-in
-data; they are not generated from the observed planner. This deliberately moves
-the command contract from the retired C compiler-host product to the current
-native products. It does not claim VM/native execution equality.
-
-The historical command comparator and VM compiler self-build remain opt-in
-through `--compare-vm`, using explicit Release comparison hosts.
-`--skip-vm-comparison` omits only that extra VM compiler self-build. The mandatory
-native Driver/Graph contract runs regardless of these comparison options.
-
-The VM/C behavioral suites are not replaced by a compiler compiling itself.
-The Release native `chibi test` compiles one executable per package and runs
-each test in an isolated process. Eligible pure tests use a bounded worker pool;
-effectful tests retain their ordering barriers and reports stay in source order.
-Native-build and recovery cases deliberately exercise clean outputs,
-invalidation and bootstrap paths. Candidate reuse preserves those behaviors.
-
-Linux core validation keeps its 45-minute budget, including checkout,
-formatting, installation and all cache restores. Formatting retains its own
-five-minute cap; three two-minute cache caps are reserved within the same core
-budget. Native proofs retain a separate 90-minute budget; diagnostics and
-attributes each retain five-minute caps, as do native generations. The Linux
-job's 135-minute ceiling is the sum of the old 45/90-minute jobs, not a larger
-allowance for either phase.
-macOS core retains 45 minutes; each target-module job retains 10 minutes.
-Windows native self-host has a transitional 120-minute bound and runs without
-sanitizers. An older pinned seed took 49m34s to build stage three, followed by
-94s and 57s self-builds; a later cold run exhausted the previous hour before
-reporting stage three. This Windows allowance includes the complete compiler
-tests and product checks. It does not change the other phase or test deadlines.
-Watchdog regressions cover expiration, status propagation and nested process
-cleanup, including external cancellation.
-
-The prior Linux-only checkpoint at `55cdf9be` completed in **27m26s** with all
-362 C compiler-cache requests hitting: core 22m35s and native proof 4m03s.
-That is an observed baseline, not a latency claim for this revised platform
-workflow. Removing orchestration does not remove the behavioral suites' cost.
-The earlier unexplained local 60-second infrastructure timeout is not claimed
-fixed by deleting the now-obsolete receipt subsystem.
-
-## Less frequent modes
-
-| Trigger/mode | Additional or distinct work |
+| Trigger or mode | Work |
 | --- | --- |
-| Daily schedule, 08:00 UTC | Linux/macOS ASan + UBSan; prepared recovery; clean default build; SDK; no-C proof |
-| Manual `mode=ci` | The same five canonical jobs as PR/main, without sanitizers; all three Windows bootstrap pins select only the explicitly labeled Windows proof |
-| Manual `mode=full` | Canonical jobs plus recovery/clean-build/SDK/no-C; `sanitizers=true` explicitly enables ASan + UBSan |
-| Manual `mode=graph` | Isolated Graph harness, Release host/record identity, generated resources, incremental/command checks, SDK relocation and functional suite |
-| Direct maintenance scripts | Bootstrap/runtime/native seed preparation and optional source bundle |
+| PR, main push, manual `ci` | Native platform builds, runtime suites, fixed points and cross-target consumers |
+| Daily schedule or manual `full` | Canonical suites plus clean default checkout build, SDK relocation/ABI checks and no-C compiler proof |
+| Manual `graph` | Native SDK products, generic C graph fixtures, discovery, incremental commands, SDK relocation and native selectors |
+| Maintenance scripts | Verified native seed preparation and optional exact-source bundle |
 
-Manual modes never imply authorization to dispatch, publish a release, change
-pins, or override a hold. Scheduled ownership checks remain nonadvisory.
-Failures must be diagnosed; moving them off PRs does not make them acceptable.
+The no-C job removes C compilers and uses the verified native seed, LLVM and
+native vendor program route. Prebuilt third-party archives remain supported.
+The installed `chibi-compile` alias is the native compiler executable. It is
+independent of the retired C program with that name.
 
-## Retirement map
-
-| Former workflow/job | Replacement |
-| --- | --- |
-| `ci.yml` Linux engine | Stable check name; core/native job on PR/main and canonical manual runs |
-| Separate format job | Bounded format/static phase in Linux job |
-| Separate Graph SDK PR job | Scheduled/manual-full Linux native phase, reusing its Release host; 20-minute cap and source-clean checks |
-| macOS engine | Canonical PR/main/manual job; same 45-minute limit; scheduled/explicit full instrumentation |
-| macOS/Windows native modules | Canonical real runners; same 10-minute limits; Linux bundle uploaded on ordinary runs too |
-| Clean default build | Scheduled/manual-full, separate clean checkout, 45-minute cap, tooling census, native `chibi`/asset-compiler products and private-host absence assertions |
-| `native-self-host.yml` | Canonical Linux native phase with its 90-minute bound; Windows compiler/product job has a transitional 120-minute allowance |
-| `compiler-recovery.yml` | Scheduled/manual-full, three isolated 30-minute platform jobs plus 5-minute comparison; compiler bytes and scalar evidence checked |
-| `no-c-compiler.yml` | Scheduled/manual-full, same 90-minute clean-machine proof and vendor sample |
-| `linux-graph.yml` | Manual `graph` mode, same 45-minute limit and distinct host/harness identity checks |
-| `bootstrap-host.yml` | Removed with its unused host downloader and pin table |
-| `compiler-runtime-seed.yml`, `native-seed.yml` | [Manual preparation and publication procedure](ci-maintenance.md); no automatic release/pin writer |
-| `source-bundle.yml` | On-demand source-bundle script, no automatic packaging on main |
-| `ci-control.yml` | Retired; native Actions controls replace label-driven privileged automation |
-
-Legacy prepared/VM recovery remains necessary because pinned C-built hosts and
-prepared artifacts still have active consumers. The no-C job removes C compilers
-from its machine and uses the pinned native seed, native build entry and native
-vendor build, with assertions that no VM hosts were fetched. Third-party
-archives remain; it is **not** a fully C-free bootstrap.
-
-## Caches and evidence
-
-PRs and main pushes restore only. Compiler objects, the asset compiler and
-recovered compilers retain their three separate path/key stores, preserving
-existing trusted snapshots. Bundling those paths would change the cache version
-and discard compatibility even with the old key prefixes.
-
-Linux cache publication requires successful Linux native/SDK validation on
-trusted `main`, scheduled or manually selected in full mode. OS, toolchain,
-profile and content identities remain checked. Unrelated platform failures do
-not invalidate those qualified Linux entries; saving them does not certify the
-whole matrix. macOS retains its trusted-full-main-only cache policy. Windows
-LLVM cache publication also requires successful trusted full-main validation;
-the downloaded archive is checksum-pinned. Clean
-recovery/no-C/default-build jobs do not restore these stores. Untrusted PR
-artifacts are never promoted into trusted caches.
-
-Logs, timings, native-profile evidence and recovery evidence remain downloadable.
-Profile-symbol evidence retains its informational status; functional,
-fixed-point and ownership assertions are not downgraded.
-
-## Windows native self-build
-
-The Linux native phase cross-links stage two and uploads it for the real
-Windows runner. Windows uses checksum-pinned LLVM 22.1.8 and builds stages three
-and four. Their bytes must match; an older compiler may require the existing
-single fallback, stage four equals stage five. Stage four then runs the complete
-`tools/compiler` test root at O0, using this checkout's core and the same LLVM.
-The existing runner keeps per-test process isolation and its default workers;
-the native exit status is preserved and console output is retained as an artifact.
-The asset compiler, object pipeline, build runner, formatting, output, task timing,
-math and SDK checks follow. This runs on the ordinary canonical cadence, without
-sanitizers and within the transitional 120-minute Windows allowance. A manual
-pinned-artifact input checks producer, source commit and compiler hash before
-reuse; it does not waive the fixed point or compiler tests. Fully pinned manual
-`ci` runs select this Windows proof alone; full mode keeps its broader coverage.
-The exact integrated head still needs fresh CI. Windows prepared recovery
-remains in full mode; the known prepared-target-ABI failure is not waived.
+C reflection, generated C registries, VM comparison/recovery hosts, prepared
+compiler-runtime seed jobs and their recovered-compiler caches are removed.
+The compile-only prepared encoder and native/Wasm public asset ABI remain.
+Windows keeps its checksum-verified LLVM tool cache. Seed publication is separate
+from routine CI and is described in [maintenance](ci-maintenance.md).

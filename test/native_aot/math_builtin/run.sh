@@ -2,7 +2,6 @@
 set -eu
 compiler=${1:?pass the native compiler}
 llvm=${2:?pass the LLVM tools directory}
-reference=${3:-}
 root=$(cd "$(dirname "$0")/../../.." && pwd -P)
 case "$(uname -s)-$(uname -m)" in
     Darwin-arm64) target=aarch64-apple-darwin ;;
@@ -46,10 +45,3 @@ for source in RejectedView RejectedRecursive; do
     [ "$(cat "$work/rejected")" = preserved ]
     grep -F "$expected" "$work/rejected.log" > /dev/null
 done
-if [ -n "$reference" ]; then
-    status=0
-    "$reference" --project-root "$work/failures" --test > "$work/reference.log" 2>&1 || status=$?
-    [ "$status" -eq 1 ] || { cat "$work/reference.log"; exit 1; }
-    awk '/^(PASS|FAIL) facts[.]/ { print }' "$work/reference.log" | LC_ALL=C sort > "$work/reference.results"
-    diff -u "$work/reference.results" "$work/failures.results"
-fi

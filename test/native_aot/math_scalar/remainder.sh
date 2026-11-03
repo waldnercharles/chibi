@@ -2,7 +2,6 @@
 set -eu
 compiler=${1:?pass the native compiler}
 llvm=${2:?pass the LLVM tools directory}
-reference=${3:-}
 root=$(cd "$(dirname "$0")/../../.." && pwd -P)
 case "$(uname -s)-$(uname -m)" in
     Darwin-arm64) target=aarch64-apple-darwin ;;
@@ -34,14 +33,6 @@ for source in RemainderEmpty RemainderBoolean; do
     grep -F "$expected" "$work/rejected.log" > /dev/null
     test ! -e "$work/rejected"
 done
-if [ -n "$reference" ]; then
-    mkdir "$work/reference"
-    cp "$root/test/native_aot/math_scalar/Remainder.chibi" "$work/reference/Remainder.chibi"
-    printf '%s\n' 'package scalar_remainder' '@test' 'Calls :: () { assert(Main() == 0); }' > "$work/reference/Tests.chibi"
-    "$reference" --project-root "$work/reference" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
-    grep -F 'PASS' "$work/reference.log" > /dev/null
-    cat "$work/reference.log"
-fi
 # The system-math dependency must not turn a requested freestanding program
 # into an environment-dependent link, nor overwrite a previous executable.
 if [ "$target" = x86_64-unknown-linux-gnu ]; then

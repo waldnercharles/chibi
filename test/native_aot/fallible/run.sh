@@ -3,7 +3,6 @@
 set -eu
 compiler=${1:?pass the native compiler}
 llvm=${2:?pass the LLVM tools directory}
-reference=${3:-}
 case $(uname -s)-$(uname -m) in
     Darwin-arm64) target=aarch64-apple-darwin ;;
     Linux-x86_64) target=x86_64-unknown-linux-gnu ;;
@@ -110,29 +109,3 @@ done
     --source "$root/test/native_aot/scalar_scope/Rows.chibi" --entry Main --output "$work/scope-rows" \
     --llvm "$llvm" --target "$target" --level 0
 "$work/scope-rows"
-if [ -n "$reference" ]; then
-    for name in $booleans; do
-        "$reference" --project-root "$samples/$name/facts" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
-        grep -F 'PASS' "$work/reference.log" > /dev/null
-    done
-    for name in fallible_tuple_aliases_preserve_checking \
-                fallible_shadowed_member_accepts_its_own_presence_guard \
-                fallible_sibling_assignments_permit_actual_error_handling; do
-        "$reference" --project-root "$samples/$name/facts" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
-        grep -F 'PASS' "$work/reference.log" > /dev/null
-    done
-    for name in optional_coalescing_and_nil_comparisons \
-                optional_member_reads_a_field_or_nil \
-                optional_locals_become_absent_and_present_again \
-                optional_locals_start_absent_and_become_present \
-                optional_parameters_take_optionals_and_nil \
-                optional_results_wrap_values_and_return_nil; do
-        "$reference" --project-root "$root/test/compiler/samples/imports/$name/facts" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
-        grep -F 'PASS' "$work/reference.log" > /dev/null
-    done
-    "$reference" --project-root "$root/test/compiler/samples/types/typed_optional_locals_after_descriptor_growth/facts" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
-    grep -F 'PASS' "$work/reference.log" > /dev/null
-    "$reference" --project-root "$root/test/native_aot/fallible" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
-    grep -F 'PASS' "$work/reference.log" > /dev/null
-    printf 'PASS ordinary optional bool and result-copy references\n'
-fi

@@ -152,16 +152,16 @@ TestSelectors :: (toolchain: Toolchain) {
     listed := Verb(toolchain, "test", ["--list"]);
     log := Output(listed);
     assert(listed.status == 0 && Has(log, "tool chibi-cli") && Has(log, "tool chibi-test-compiler"), "the list");
-    planned := Verb(toolchain, "test", ["--dry-run", "--build", "out", "--release-build", "rel", "chibi-cli", "projects", "types"]);
+    planned := Verb(toolchain, "test", ["--dry-run", "--build", "out", "--release-build", "rel", "chibi-cli", "projects", "collab"]);
     log = Output(planned);
-    assert(planned.status == 0 && Has(log, "types (600s): env "), "the default deadline");
-    assert(Has(log, "sh test/native_cli/survivors.sh ") && Has(log, "CHIBI_CLI=") && Has(log, "/rel/sdk/chibi "), "the native selector command");
-    native := Verb(toolchain, "test", ["--dry-run", "--native-driver", "/native driver", "--llvm", "/LLVM tools", "types"]);
-    assert(native.status == 0 && Has(Output(native), "types (600s): env "), "native entry options are not test selectors");
-    bounded := Verb(toolchain, "test", ["--dry-run", "--timeout", "30", "chibi-cli", "types"]);
-    assert(bounded.status == 0 && Has(Output(bounded), "types (30s): env "), "an explicit deadline");
+    assert(planned.status == 0 && Has(log, "collab (600s): node "), "the default deadline");
+    assert(Has(log, "sh test/native_cli/survivors.sh ") && Has(log, "/rel/sdk/chibi\n"), "the native selector command");
+    native := Verb(toolchain, "test", ["--dry-run", "--native-driver", "/native driver", "--llvm", "/LLVM tools", "collab"]);
+    assert(native.status == 0 && Has(Output(native), "collab (600s): node "), "native entry options are not test selectors");
+    bounded := Verb(toolchain, "test", ["--dry-run", "--timeout", "30", "chibi-cli", "collab"]);
+    assert(bounded.status == 0 && Has(Output(bounded), "collab (30s): node "), "an explicit deadline");
     heavy := Verb(toolchain, "test", ["--dry-run", "chibi-cli"]);
-    assert(heavy.status == 0 && Has(Output(heavy), "chibi-cli (900s): env "), "a selector's own deadline");
+    assert(heavy.status == 0 && Has(Output(heavy), "chibi-cli (900s): sh "), "a selector's own deadline");
     unknown := Verb(toolchain, "test", ["no-such-selector"]);
     assert(unknown.status != 0 && Has(Output(unknown), "unknown selector 'no-such-selector'"), "an unknown selector");
 }
@@ -340,78 +340,61 @@ NativeFixedPoint :: (toolchain: Toolchain) {
     assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch root is removed")
 }
 
-// Skipping the duplicate VM compiler build must not skip native graph parity.
-// Controlled stages and comparison hosts use the real native driver's dry run;
-// the graph rejects deliberately, so this checks selection rather than LLVM or VM execution.
-NativeComparisonMode :: (toolchain: Toolchain) {
-    for (flag in ["", "--skip-vm", "--skip-vm-comparison"]) {
-        options := ["--dry-run", "--llvm", "/llvm", "--stage-one", "/stage-one", "--compare-vm",
-                    "--build-host", toolchain.compiler, "--compiler-host", toolchain.compiler]
-        if (flag != "") {
-            options = extend(options, [flag])
-        }
-        planned := Verb(toolchain, "native-self-host", options)
-        log := Output(planned)
-        assert(planned.status == 0 && Has(log, "stage-two:") && Has(log, "stage-three:"), "native stages remain")
-        assert(Has(log, "vm-hosted-self-build:") == (flag == ""), "only the requested VM comparison is omitted")
+// Explicit LLVM selection reaches the installed native sample selectors even
+// when no ambient CHIBI_LLVM_BIN is supplied by the caller.
+SampleLLVM :: (toolchain: Toolchain) {
+    for (family in ["collections", "fallible", "imports", "types"]) {
+        planned := Verb(toolchain, "test", ["--dry-run", "--release-build", "rel", "--llvm", "/LLVM tools",
+                                           format_text("chibi-test-samples-{}", family)]);
+        assert(planned.status == 0 && Has(Output(planned), format_text("/rel/sdk/chibi test --llvm /LLVM tools test/compiler/samples/{}", family)),
+               "an installed sample selector receives its explicit LLVM directory");
     }
-    scratch := format_text("{}/.chibi/graph-native-comparison", os.Root())
-    removed := os.Run(["rm", "-rf", scratch])
-    made := os.MakeDirectory(scratch)
-    assert(made == nil, "the scratch root exists")
-    assert(removed == 0, "the previous scratch root was removed")
-    seed := format_text("{}/seed", scratch)
-    fake_host := format_text("{}/host", scratch)
-    for (path in [seed, fake_host]) {
-        copied := os.Run(["cp", "test/graph/fixtures/native-comparison.sh", path])
-        executable := os.Run(["chmod", "+x", path])
-        assert(copied == 0 && executable == 0, "the controlled executable")
-    }
-    real_driver := programs.Build(os.Root(), toolchain.compiler, toolchain.llvm,
-                                  "tools/toolchain/Driver.chibi", "Main", ["graph=tools/graph"])
-    assert(real_driver != "", "the real native driver")
-    written := os.WriteText(format_text("{}/real-driver", scratch), real_driver)
-    assert(written == nil, "the native comparison driver")
-    for (tool in ["opt", "llc", "ld.lld", "ld64.lld"]) {
-        written = os.WriteText(format_text("{}/{}", scratch, tool), "planner fixture\n")
-        assert(written == nil, "the planner's fingerprinted LLVM input")
-    }
-    for (flag in ["--skip-vm", "--skip-vm-comparison"]) {
-        result := Verb(toolchain, "native-self-host", ["--llvm", scratch, "--work", scratch, "--stage-one", seed,
-                                                "--build-host", fake_host, "--compiler-host", toolchain.compiler, "--compare-vm", flag])
-        log := Output(result)
-        if (flag == "--skip-vm") {
-            assert(result.status == 0 && !Has(log, "fixture reached graph comparison"), "explicit native-only mode remains")
-        } else {
-            assert(Has(log, "native runner: the dry-run commands match"), "driver parity still runs")
-            assert(result.status != 0 && Has(log, "fixture reached graph comparison"), "the graph proof still rejects")
-        }
-    }
-    removed = os.Run(["rm", "-rf", scratch])
-    assert(removed == 0, "the scratch root is removed")
 }
 
-// `census` fails on build tooling outside archive/ and counts the C that
-// remains, in a scratch repository of its own.
+// Actual tracked interfaces/interop fixtures pass, while reintroducing a
+// retired repository build or bytecode-recovery entry fails.
 Census :: (toolchain: Toolchain) {
-    source := os.Root()
-    scratch := format_text("{}/.chibi/graph-census", source)
-    assert(os.Run(["rm", "-rf", scratch]) == 0 && os.MakeDirectory(scratch) == nil, "the scratch root")
-    assert(os.MakeDirectory(format_text("{}/archive", scratch)) == nil, "the archive directory")
-    assert(os.WriteText(format_text("{}/a.c", scratch), "int a;\nint b;\n") == nil, "a C file")
-    assert(os.WriteText(format_text("{}/b.mm", scratch), "x\n") == nil, "a shim")
-    assert(os.WriteText(format_text("{}/archive/CMakeLists.txt", scratch), "x\n") == nil, "archived tooling")
-    assert(os.Run(["git", "-C", scratch, "init", "-q"]) == 0 && os.Run(["git", "-C", scratch, "add", "-A"]) == 0, "the scratch repository")
-    command := Command(toolchain, scratch)
-    command.extend(["build", "census"])
-    result := process.Capture(command, 200000)
-    log := Output(result)
-    assert(result.status == 0 && Has(log, "census: shim 1 b.mm\n") && Has(log, "1 first-party C files, 2 lines, 1 C++/Objective-C shims, 0 build tooling files"), "archived tooling is allowed");
-    assert(os.WriteText(format_text("{}/Makefile", scratch), "all:\n") == nil && os.Run(["git", "-C", scratch, "add", "-A"]) == 0, "a Makefile");
-    result = process.Capture(command, 200000)
-    log = Output(result)
-    assert(result.status != 0 && Has(log, "census: build tooling outside archive/: Makefile\n"), "a Makefile fails the census");
-    assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch root is removed");
+    scratch := format_text("{}/.chibi/graph-census", os.Root());
+    cleared := os.Run(["rm", "-rf", scratch]);
+    assert(cleared == 0, "the scratch root starts empty");
+    for (directory in ["archive", "sdk", "test/native_aot/asset_compiler/wasm_sdk", "test/native_cli", "cmake",
+                       "tools/bootstrap", "tools/compiler"]) {
+        made := os.MakeDirectory(format_text("{}/{}", scratch, directory));
+        assert(made == nil, "the census fixture directory");
+    }
+    written := os.WriteText(format_text("{}/a.c", scratch), "int a;\nint b;\n");
+    assert(written == nil, "a C interop fixture");
+    written = os.WriteText(format_text("{}/b.mm", scratch), "x\n");
+    assert(written == nil, "a foreign shim");
+    for (path in ["archive/CMakeLists.txt", "sdk/ChibiAssetCompilerWasmConfig.cmake",
+                  "test/native_aot/asset_compiler/wasm_sdk/CMakeLists.txt", "test/native_cli/foreground.py"]) {
+        written = os.WriteText(format_text("{}/{}", scratch, path), "fixture\n");
+        assert(written == nil, "an interface, interop test or historical source");
+    }
+    initialized := os.Run(["git", "-C", scratch, "init", "-q"]);
+    assert(initialized == 0, "the private census repository");
+    staged := os.Run(["git", "-C", scratch, "add", "-A"]);
+    assert(staged == 0, "the census fixture is tracked");
+    command := Command(toolchain, scratch);
+    command.extend(["build", "census"]);
+    result := process.Capture(command, 200000);
+    log := Output(result);
+    assert(result.status == 0 && Has(log, "census: shim 1 b.mm\n") &&
+           Has(log, "1 first-party C files, 2 lines, 1 C++/Objective-C shims, 0 build tooling files"),
+           "SDK interfaces and foreign-code tests are allowed");
+    for (path in ["Makefile", "CMakeLists.txt", "cmake/legacy.cmake", "tools/build.py", "tools/bootstrap/seed.sh", "tools/compiler/runtime.json"]) {
+        written = os.WriteText(format_text("{}/{}", scratch, path), "retired entry\n");
+        assert(written == nil, "a retired build entry");
+        staged = os.Run(["git", "-C", scratch, "add", "-A"]);
+        assert(staged == 0, "the retired entry is tracked");
+        result = process.Capture(command, 200000);
+        assert(result.status == 1 && Has(Output(result), format_text("census: build tooling outside archive/: {}\n", path)),
+               "a retired build or recovery entry fails the census");
+        removed := os.Run(["git", "-C", scratch, "rm", "-q", "-f", "--", path]);
+        assert(removed == 0, "the retired entry is removed");
+    }
+    cleared = os.Run(["rm", "-rf", scratch]);
+    assert(cleared == 0, "the census scratch is removed");
 }
 
 // The other verbs plan their own commands.
@@ -419,14 +402,10 @@ OtherVerbs :: (toolchain: Toolchain) {
     install := Verb(toolchain, "install", ["--dry-run", "--prefix", "/prefix"]);
     log := Output(install);
     assert(install.status == 0 && Has(log, "--profile release") && Has(log, "SDK-Install --build") && Has(log, "--prefix /prefix"), "install");
-    artifact := Verb(toolchain, "bootstrap-artifact", ["--dry-run", "--release-build", "rel"]);
-    log = Output(artifact);
-    assert(artifact.status == 0 && Has(log, "/rel/sdk/chibi-compiler-host --bootstrap tools/compiler/bootstrap") && Has(log, "--recover "), "bootstrap-artifact");
-    assert(Has(log, "/rel/bootstrap.artifact/compile.json") && Has(log, "--seed ") && Has(log, "--revision "), "bootstrap-artifact inputs");
-    assert(!Has(log, "test_language"), "bootstrap-artifact needs no stage-zero check");
-    reflect := Verb(toolchain, "sdk-reflect", ["--dry-run", "--libclang-root", "/llvm", "--", "-DFLAG=1"]);
-    log = Output(reflect);
-    assert(reflect.status == 0 && Has(log, "Graph-SDKReflect --build") && Has(log, "--libclang-root /llvm") && Has(log, "-- -DFLAG=1\n"), "sdk-reflect");
+    for (verb in ["sdk-reflect", "bootstrap-artifact", "bootstrap-recover", "publish-seed"]) {
+        retired := Verb(toolchain, verb, ["--dry-run"]);
+        assert(retired.status == 2, "a retired host tool verb is rejected");
+    }
     format := Verb(toolchain, "format", ["--dry-run", "--check"]);
     assert(format.status == 0 && Has(Output(format), "format: sh tools/clang-format.sh --check"), "format");
     clean := Verb(toolchain, "clean", ["--dry-run", "--build", "out"]);
@@ -451,10 +430,21 @@ pub Run :: () -> int {
     TestScheduling(toolchain);
     NativeRunners(toolchain);
     NativeFixedPoint(toolchain);
-    NativeComparisonMode(toolchain);
+    SampleLLVM(toolchain);
     Census(toolchain);
     OtherVerbs(toolchain);
     assert(os.Run(["rm", "-rf", format_text("{}/.chibi/graph-plan-native", os.Root())]) == 0,
            "the native planner fixture is removed");
+    return 0;
+}
+
+// The two default-entry regressions can run without the unrelated graph proofs.
+pub Entrypoints :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 2, "the native compiler and LLVM directory");
+    toolchain: Toolchain = {compiler: os.RealPath(arguments[0]), llvm: os.RealPath(arguments[1])};
+    assert(toolchain.compiler != "" && toolchain.llvm != "", "the native toolchain exists");
+    SampleLLVM(toolchain);
+    Census(toolchain);
     return 0;
 }

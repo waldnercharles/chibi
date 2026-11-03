@@ -29,7 +29,7 @@ interface, or the complete allocation/memory/output/free native island.
   `number` and `f64` as LLVM `float` and `double`) and returns one scalar result. Foreign bool ABI is not promised. Storage
   ordinals are backend-internal, not public semantic IDs.
 - `EmitLibrary` emits the same tables as the native library `name`, which
-  `execution_natives_bind` (`src/execution/native.h`) binds. Every function
+  native embedders bind through `native_abi`'s export layout. Every function
   is `internal`, and the object exports one symbol, `chibi_natives_<name>`,
   a `{ i32 abi, i32 count, ptr exports }` manifest at `native_abi.ExportAbi`.
   Each export is `{ ptr name, i64 id, ptr types, i32 parameters, i32 results,

@@ -8,7 +8,7 @@ case "$(uname -s):$(uname -m)" in
   Darwin:arm64) platform=macos-arm64 ;;
   *) echo 'Only Linux x64 and macOS arm64 seeds are supported' >&2; exit 2 ;;
 esac
-: "${LLVM_BIN:?Set LLVM_BIN to the LLVM tool directory}" "${LIBCLANG_ROOT:?Set LIBCLANG_ROOT}"
+: "${LLVM_BIN:?Set LLVM_BIN to the LLVM tool directory}"
 test -z "$(git status --porcelain --untracked-files=normal)"
 revision=$(git rev-parse HEAD)
 tree=$(git rev-parse 'HEAD^{tree}')
@@ -19,7 +19,7 @@ if awk -F '\t' -v platform="$platform" '$1 == platform { found=1 } END { exit !f
   sh tools/bootstrap/native-seed.sh "$platform" "$out/previous/chibi"
   stage_one=(--stage-one "$out/previous/chibi")
 fi
-sh tools/build.sh build native-self-host --llvm "$LLVM_BIN" --libclang-root "$LIBCLANG_ROOT" --jobs 4 --skip-vm "${stage_one[@]}" 2>&1 | tee "$out/native-seed.log"
+sh tools/build.sh build native-self-host --llvm "$LLVM_BIN" --jobs 4 "${stage_one[@]}" 2>&1 | tee "$out/native-seed.log"
 fixed=$(sed -n 's/^native-self-host: the fixed point is //p' "$out/native-seed.log")
 test -n "$fixed" && test -x "$fixed"
 asset="chibi-native-$platform"

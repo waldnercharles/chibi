@@ -9,7 +9,7 @@ test -z "$source_status"
 set -o pipefail
 stage_one=()
 windows=()
-if [ -z "${CHIBI_WINDOWS_BOOTSTRAP_RUN:-}" ]; then windows=(--windows "$RUNNER_TEMP/windows"); fi
+if [ "$(uname -s)" = Linux ] && [ -z "${CHIBI_WINDOWS_BOOTSTRAP_RUN:-}" ]; then windows=(--windows "$RUNNER_TEMP/windows"); fi
 if grep -q "^linux-x64	" tools/bootstrap/native-seed.tsv; then
   sh tools/bootstrap/native-seed.sh linux-x64 "$RUNNER_TEMP/native-seed/chibi"
   stage_one=(--stage-one "$RUNNER_TEMP/native-seed/chibi")
@@ -18,16 +18,19 @@ sh tools/build.sh build native-self-host --llvm "$CHIBI_LLVM_BIN" --jobs 4 "${wi
   | tee "$RUNNER_TEMP/native-self-host.log"
 
 driver="$PWD/build-native-self-host/stage3/chibi"
-sh test/native_aot/native_driver/run.sh "$driver" "$CHIBI_LLVM_BIN"
+# ELF interpreter and Linux line-table checks execute on their owning platform.
+if [ "$(uname -s)" = Linux ]; then
+  sh test/native_aot/native_driver/run.sh "$driver" "$CHIBI_LLVM_BIN"
+fi
 sh test/native_aot/native_driver/cache.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/native_driver/minimum.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/text_format/run.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/link/memory.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/directories/run.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/output/run.sh "$driver" "$CHIBI_LLVM_BIN"
-node .github/ci/budget.js "$(($(date +%s) + 300))" sh test/native_aot/diagnostics/run.sh "$driver" "$CHIBI_LLVM_BIN"
-node .github/ci/budget.js "$(($(date +%s) + 300))" sh test/native_aot/generations/run.sh "$driver" "$CHIBI_LLVM_BIN"
-node .github/ci/budget.js "$(($(date +%s) + 300))" sh test/native_aot/test_attributes/run.sh "$driver" "$CHIBI_LLVM_BIN"
+sh test/native_aot/diagnostics/run.sh "$driver" "$CHIBI_LLVM_BIN"
+sh test/native_aot/generations/run.sh "$driver" "$CHIBI_LLVM_BIN"
+sh test/native_aot/test_attributes/run.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/failures/run.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/task_busy/run.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/optionals/run.sh "$driver" "$CHIBI_LLVM_BIN"
@@ -51,13 +54,13 @@ sh test/native_aot/maps/run.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_cli/run.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_cli/watch.sh "$driver" "$CHIBI_LLVM_BIN"
 
-# Packaging uses the same Release host; do not build it again in another PR job.
+# Packaging uses the same native Release products.
 if [ "$CHIBI_FULL" = true ]; then
   test -z "$(git status --porcelain --untracked-files=normal)"
-  node .github/ci/budget.js "$(($(date +%s) + 1200))" bash -euo pipefail -s <<'SDK'
-sh tools/build.sh build --release --target chibi --target chibi-asset-compiler --target chibi_asset_compiler_host --libclang-root /usr/lib/llvm-18
+  bash -euo pipefail -s <<'SDK'
+sh tools/build.sh build --release --target chibi --target chibi-asset-compiler --target chibi_asset_compiler_host
 sh tools/build.sh test graph-sdk-install
-sh test/native_aot/asset_compiler/bridge.sh "$PWD/build-release/sdk/chibi-asset-compiler" "$PWD/build-release/sdk/chibi" "$CHIBI_LLVM_BIN" clang-18 "$PWD/build-release/lib/libchibi_asset_compiler_host.a"
+sh test/native_aot/asset_compiler/bridge.sh "$PWD/build-release/sdk/chibi-asset-compiler" "$PWD/build-release/sdk/chibi" "$CHIBI_LLVM_BIN" "${CC:-cc}" "$PWD/build-release/lib/libchibi_asset_compiler_host.a"
 sh test/native_aot/asset_compiler/archive.sh "$PWD/build-release/sdk/chibi" "$CHIBI_LLVM_BIN"
 SDK
 fi

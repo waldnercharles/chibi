@@ -1,15 +1,12 @@
-`run.sh NATIVE_COMPILER LLVM22 [ORDINARY_COMPILER]` executes scalar square
+`run.sh NATIVE_COMPILER LLVM22` executes scalar square
 root, precise sine/cosine, exponential, rounding, power and remainder at O0/O2.
 It covers f32/f64 overloads and defaults, named argument evaluation order,
 integer-width ranking, signed zero, infinities, NaNs, subnormals and authored
-shadowing. An optional retained ordinary compiler runs the same square-root,
-kernel and remainder programs against the owning C runtime catalog.
+shadowing. The source fixtures execute at both optimization levels.
 
-The owning definitions in `src/runtime/math_definition.h` explicitly map
-`sin_precise` and `cos_precise` to platform libm at the operand's precision.
-`src/runtime/math.c` calls the f32 functions for number and the f64 functions for
-f64. The separate deterministic `sin`/`cos` builtins are unchanged. The same
-runtime definitions own the exp/round/pow/sqrt overloads and numeric defaults.
+`tools/compiler/package_compiler/ScalarMath.chibi` owns precision/default
+selection. Precise operations use the operand-width platform math function;
+the separate deterministic `sin`/`cos` builtins retain their frozen f32 algorithm.
 The f32 square root remains an LLVM intrinsic.
 
 Floating remainder uses LLVM 22 `frem` without fast-math flags. LLVM defines it

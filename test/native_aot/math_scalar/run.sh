@@ -3,7 +3,6 @@
 set -eu
 compiler=${1:?pass the native compiler}
 llvm=${2:?pass the LLVM tools directory}
-reference=${3:-}
 root=$(cd "$(dirname "$0")/../../.." && pwd -P)
 case "$(uname -s)-$(uname -m)" in
     Darwin-arm64) target=aarch64-apple-darwin ;;
@@ -38,16 +37,4 @@ for source in "$root"/test/native_aot/math_scalar/rejected_waiting/*.chibi; do
     grep -F 'native waiting frames cannot own managed values or pointers yet' "$work/rejected.log" > /dev/null
     test ! -e "$work/rejected"
 done
-if [ -n "$reference" ]; then
-    for source in SquareRoot Kernels; do
-        mkdir "$work/reference-$source"
-        cp "$root/test/native_aot/math_scalar/$source.chibi" "$work/reference-$source/$source.chibi"
-        package=scalar_square_root
-        if [ "$source" = Kernels ]; then package=scalar_math_kernels; fi
-        printf '%s\n' "package $package" '@test' 'Calls :: () { result := Main(); assert(result == 0); }' > "$work/reference-$source/Tests.chibi"
-        "$reference" --project-root "$work/reference-$source" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
-        grep -F 'PASS' "$work/reference.log" > /dev/null
-        cat "$work/reference.log"
-    done
-fi
-sh "$root/test/native_aot/math_scalar/remainder.sh" "$compiler" "$llvm" "$reference"
+sh "$root/test/native_aot/math_scalar/remainder.sh" "$compiler" "$llvm"

@@ -2,7 +2,6 @@
 set -eu
 compiler=${1:?pass the native compiler}
 llvm=${2:?pass the LLVM directory}
-reference=${3:-}
 root=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd -P)
 work=$(mktemp -d "${TMPDIR:-/tmp}/chibi-text-arguments.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
@@ -46,14 +45,3 @@ for level in 0 2; do
     "$work/audited"
     printf 'PASS source-order native text arguments and balanced ownership O%s\n' "$level"
 done
-if [ -n "$reference" ]; then
-    for source in Main Shadow; do
-        mkdir "$work/$source-reference"
-        cp "$root/test/native_aot/text_arguments/$source.chibi" "$work/$source-reference/Main.chibi"
-        package=text_arguments
-        if [ "$source" = Shadow ]; then package=text_shadow; fi
-        printf '%s\n' "package $package" '@test' 'Values :: () { result := Main(); assert(result == 0); }' > "$work/$source-reference/Tests.chibi"
-        "$reference" --project-root "$work/$source-reference" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
-        cat "$work/reference.log"
-    done
-fi

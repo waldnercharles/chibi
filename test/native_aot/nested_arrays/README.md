@@ -1,6 +1,6 @@
 # Native nested arrays
 
-`run.sh NATIVE_COMPILER LLVM_BIN [ORDINARY_REFERENCE]` runs the unchanged
+`run.sh NATIVE_COMPILER LLVM_BIN` runs the unchanged
 `generic_array_calls_after_descriptor_growth` acceptance test, unchanged
 `imports/native_values`, `collections/scoped_lent_locals`, `collections/ranges`
 and `collections/value_sequence_copies` tests and real source

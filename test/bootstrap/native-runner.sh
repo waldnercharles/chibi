@@ -37,15 +37,9 @@ Libraries :: () -> int {
     return 0
 }
 GRAPH
-cat > "$scratch/host" <<'HOST'
-#!/bin/sh
-echo 'VM host must never run' >&2
-exit 91
-HOST
-chmod +x "$scratch/host"
 cd "$checkout"
 run() {
-    "$scratch/driver" build --release --target fixture --host "$scratch/host" \
+    "$scratch/driver" build --release --target fixture \
         --native-driver "$compiler" --llvm "$llvm"
 }
 run
@@ -102,41 +96,19 @@ run
 test "$(cat native-ran)" = ok
 printf 'native runner: execution, reuse, rejection, cleanup and in-flight edits passed\n'
 
-# Explicit recovery and VM comparison prepare their bytecode seed. Ordinary
-# native builds and test selectors never request it.
-mkdir -p tools/bootstrap
-cat > tools/bootstrap/seed.sh <<'SEED'
-#!/bin/sh
-printf 'seed %s\n' "${1:-default}" >> "$SEED_EVENTS"
-exit "${LEGACY_SEED_STATUS:-0}"
-SEED
+# Registered selectors execute natively without a recovery downloader.
 cat > "$scratch/native-tool" <<'TOOL'
 #!/bin/sh
-printf 'native\n' >> "$SEED_EVENTS"
+printf 'native\n' >> "$RUNNER_EVENTS"
 TOOL
-cat > "$scratch/legacy-host" <<'HOST'
-#!/bin/sh
-printf 'host\n' >> "$SEED_EVENTS"
-HOST
-chmod +x "$scratch/legacy-host"
 printf 'tool\tnative\tsh\t%s\n' "$scratch/native-tool" > tools/tests.tsv
-export SEED_EVENTS="$scratch/seed-events" LEGACY_SEED_STATUS=23
-: > "$SEED_EVENTS"
+export RUNNER_EVENTS="$scratch/runner-events"
+: > "$RUNNER_EVENTS"
 run
-test ! -s "$SEED_EVENTS"
+test ! -s "$RUNNER_EVENTS"
 "$scratch/driver" build test native
 printf 'native\n' > "$scratch/expected-events"
-cmp "$scratch/expected-events" "$SEED_EVENTS"
-
-# Bootstrap recovery prepares its selected artifact before invoking the host.
-mkdir -p "$scratch/releases/sdk"
-cp "$scratch/legacy-host" "$scratch/releases/sdk/chibi-compiler-host"
-: > "$SEED_EVENTS"
-export LEGACY_SEED_STATUS=23
-if "$scratch/driver" build bootstrap-recover --artifact 'artifact with spaces' \
-    --release-build "$scratch/releases" --native-driver "$compiler" --llvm "$llvm"; then exit 1; else test "$?" = 23; fi
-printf 'seed artifact with spaces\n' > "$scratch/expected-events"
-cmp "$scratch/expected-events" "$SEED_EVENTS"
+cmp "$scratch/expected-events" "$RUNNER_EVENTS"
 
 # The compiled driver must finish its stages and Windows output, then prepare
 # and execute the command contract without a bytecode seed or either VM host.
@@ -149,7 +121,7 @@ test "$PWD" = "$RUNNER_FIXTURE_ROOT"
 test "$#" = 2
 test "$1" = "$RUNNER_FIXTURE_FIXED"
 test "$2" = "$RUNNER_FIXTURE_LLVM"
-printf 'contract-run\n' >> "$SEED_EVENTS"
+printf 'contract-run\n' >> "$RUNNER_EVENTS"
 exit "${RUNNER_CONTRACT_STATUS:-0}"
 CONTRACT
 chmod +x "$scratch/command-contract"
@@ -187,7 +159,7 @@ if [ -n "$source" ]; then
     test "$llvm" = "$RUNNER_FIXTURE_LLVM_REAL"
     test "$target" = "$RUNNER_FIXTURE_TARGET"
     case "$output" in */CommandTests-Run) ;; *) exit 92 ;; esac
-    printf 'contract-compile\n' >> "$SEED_EVENTS"
+    printf 'contract-compile\n' >> "$RUNNER_EVENTS"
     cp "$RUNNER_FIXTURE_CONTRACT" "$output"
     chmod +x "$output"
     exit 0
@@ -210,7 +182,7 @@ case "$output" in
         event=stage-two-windows ;;
     *) echo "unexpected fake-stage output: $output" >&2; exit 92 ;;
 esac
-printf '%s\n' "$event" >> "$SEED_EVENTS"
+printf '%s\n' "$event" >> "$RUNNER_EVENTS"
 cp "$0" "$output"
 chmod +x "$output"
 STAGE
@@ -222,74 +194,26 @@ export RUNNER_FIXTURE_WORK="$scratch/stages" RUNNER_FIXTURE_WINDOWS="$scratch/wi
 export RUNNER_FIXTURE_FIXED="$RUNNER_FIXTURE_WORK/stage2/chibi" RUNNER_CONTRACT_STATUS=0
 
 # The stage-two-only boundary still returns before the mandatory command
-# contract, optional Windows stage, seed or comparison hosts.
-: > "$SEED_EVENTS"
+# contract or optional Windows stage.
+: > "$RUNNER_EVENTS"
 "$scratch/driver" build native-self-host --llvm "$llvm" --stage-one "$scratch/stage" \
-    --work "$scratch/stages" --stage-two-only --compare-vm --windows "$RUNNER_FIXTURE_WINDOWS" \
-    --build-host "$scratch/legacy-host" --compiler-host "$scratch/legacy-host"
+    --work "$scratch/stages" --stage-two-only --windows "$RUNNER_FIXTURE_WINDOWS"
 printf 'stage-two\n' > "$scratch/expected-events"
-cmp "$scratch/expected-events" "$SEED_EVENTS"
+cmp "$scratch/expected-events" "$RUNNER_EVENTS"
 
 export RUNNER_FIXTURE_WORK="$scratch/stages-default" RUNNER_FIXTURE_WINDOWS="$scratch/windows-default"
 export RUNNER_FIXTURE_FIXED="$RUNNER_FIXTURE_WORK/stage2/chibi"
-: > "$SEED_EVENTS"
+: > "$RUNNER_EVENTS"
 "$scratch/driver" build native-self-host --llvm "$llvm" --stage-one "$scratch/stage" \
-    --work "$RUNNER_FIXTURE_WORK" --windows "$RUNNER_FIXTURE_WINDOWS" \
-    --build-host "$scratch/legacy-host" --compiler-host "$scratch/legacy-host"
+    --work "$RUNNER_FIXTURE_WORK" --windows "$RUNNER_FIXTURE_WINDOWS"
 printf 'stage-two\nstage-three\nstage-two-windows\ncontract-compile\ncontract-run\n' > "$scratch/expected-events"
-cmp "$scratch/expected-events" "$SEED_EVENTS"
+cmp "$scratch/expected-events" "$RUNNER_EVENTS"
 
 # A failed mandatory contract retains its status and cannot fall back to
 # a VM seed/host. Separate stage paths keep its preparation independently cold.
 export RUNNER_FIXTURE_WORK="$scratch/stages-failed" RUNNER_FIXTURE_WINDOWS="$scratch/windows-failed"
 export RUNNER_FIXTURE_FIXED="$RUNNER_FIXTURE_WORK/stage2/chibi" RUNNER_CONTRACT_STATUS=7
-: > "$SEED_EVENTS"
+: > "$RUNNER_EVENTS"
 if "$scratch/driver" build native-self-host --llvm "$llvm" --stage-one "$scratch/stage" \
-    --work "$RUNNER_FIXTURE_WORK" --windows "$RUNNER_FIXTURE_WINDOWS" \
-    --build-host "$scratch/legacy-host" --compiler-host "$scratch/legacy-host"; then exit 1; else test "$?" = 7; fi
-cmp "$scratch/expected-events" "$SEED_EVENTS"
-
-# The optional comparator still prepares its seed before either comparison
-# host; seed status23 stops the route before contract/comparator execution.
-export RUNNER_FIXTURE_WORK="$scratch/stages" RUNNER_FIXTURE_FIXED="$scratch/stages/stage2/chibi"
-export RUNNER_CONTRACT_STATUS=0
-: > "$SEED_EVENTS"
-if "$scratch/driver" build native-self-host --llvm "$llvm" --stage-one "$scratch/stage" \
-    --work "$scratch/stages" --compare-vm --build-host "$scratch/legacy-host" \
-    --compiler-host "$scratch/legacy-host"; then exit 1; else test "$?" = 23; fi
-printf 'stage-two\nstage-three\nseed tools/compiler/bootstrap\n' > "$scratch/expected-events"
-cmp "$scratch/expected-events" "$SEED_EVENTS"
-
-# Host-only SDK builds package compiler resources even when no asset generator
-# runs. Prepare their seed before copying so later test preparation cannot
-# make the source and staged compiler trees differ.
-"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
-    --source "$root/test/bootstrap/fixtures/CompilerResources.chibi" --entry Main \
-    --collection "graph=$root/tools/graph" --output "$scratch/compiler-resources" --llvm "$llvm" --target "$target"
-resources=$scratch/'resource source'
-mkdir -p "$resources/tools/bootstrap" "$resources/tools/compiler/bootstrap" \
-    "$resources/packages/core"
-ln -s "$root/src" "$resources/src"
-ln -s "$root/sdk" "$resources/sdk"
-cat > "$resources/tools/bootstrap/seed.sh" <<'SEED'
-#!/bin/sh
-printf 'seed default\n' >> "$SEED_EVENTS"
-if [ "${LEGACY_SEED_STATUS:-0}" != 0 ]; then exit "$LEGACY_SEED_STATUS"; fi
-printf 'checked seed\n' > "$SEED_RESOURCE_ROOT/tools/compiler/bootstrap/compiler.chibip"
-SEED
-export SEED_RESOURCE_ROOT=$resources
-: > "$SEED_EVENTS"
-if "$scratch/compiler-resources" "$resources" "$scratch/resource-output"; then exit 1; else test "$?" = 1; fi
-printf 'seed default\n' > "$scratch/expected-events"
-cmp "$scratch/expected-events" "$SEED_EVENTS"
-test ! -e "$scratch/resource-output/share/chibi/compiler"
-
-# The controlled compiler tools are absent, so the host build still fails.
-# Its resource phase must nevertheless copy the seed it just prepared.
-export LEGACY_SEED_STATUS=0
-: > "$SEED_EVENTS"
-if "$scratch/compiler-resources" "$resources" "$scratch/resource-output"; then exit 1; else test "$?" = 1; fi
-cmp "$scratch/expected-events" "$SEED_EVENTS"
-cmp "$resources/tools/compiler/bootstrap/compiler.chibip" \
-    "$scratch/resource-output/share/chibi/compiler/bootstrap/compiler.chibip"
-printf 'legacy seed: native routes skip it; host resources prepare it before copying\n'
+    --work "$RUNNER_FIXTURE_WORK" --windows "$RUNNER_FIXTURE_WINDOWS"; then exit 1; else test "$?" = 7; fi
+cmp "$scratch/expected-events" "$RUNNER_EVENTS"

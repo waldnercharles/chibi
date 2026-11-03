@@ -1,5 +1,0 @@
-/* Use the configured native compiler and C flags, including sanitizers. */
-static const char *const export_compiler[] = {
-@CHIBI_EXPORT_COMPILER_ARGUMENTS@
-    NULL
-};

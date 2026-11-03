@@ -21,3 +21,9 @@ done
     --source "$work/Producer.chibi" --entry Main --collection "fixtures=$root/test/scalar_facts" \
     --output "$work/producer" --llvm "$llvm" --target "$target" --level 2 --jobs 2
 "$work/producer"
+
+# Retain the raw accepted/malformed facts checks formerly called by VM recovery.
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_aot/scalar/Tests.chibi" --entry Tests \
+    --output "$work/facts" --llvm "$llvm" --target "$target" --level 2 --jobs 2
+"$work/facts"

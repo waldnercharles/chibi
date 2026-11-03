@@ -1,6 +1,6 @@
 # Chibi
 
-Chibi is a game language with its own compiler, runtime, engine and SDK. The stage-one compiler (`tools/compiler`), build graph (`tools/toolchain`, `tools/graph`), CLI (`tools/compiler/native_driver`) and core packages (`packages/`) are written in Chibi. The runtime, VM, stage-zero compiler (`src/language`) and test drivers (`test/`) are C.
+Chibi is a game language with its own compiler, runtime, engine and SDK. The compiler and native runtime (`tools/compiler`), build graph (`tools/toolchain`, `tools/graph`), CLI (`tools/compiler/native_driver`) and core packages (`packages/`) are written in Chibi with LLVM runtime and OS boundaries. The verified native compiler is the build entry. C remains in test-owned foreign ABI fixtures and vendor libraries; there is no first-party C compiler host or VM.
 
 ## Engineering rules
 
@@ -102,9 +102,9 @@ Count each feature's uses over time, and remove one that real programs don't use
 - Names state the capability. Skip filler words such as `Manager`, `Data`, `Info`, `Util`, `Helper` and `Misc`, and don't repeat the package name. Wider scopes get longer names; short names stay local.
 - Comments state contracts and reasons: who owns, what allocates or invalidates, what is asserted, units, and what may be `none`. The code says what it does.
 
-### Chibi that stage one compiles
+### Bootstrap compatibility
 
-- The compiler, the `core:` packages and the build graph may use only what both compilers accept. `docs/language-friction.md` lists what stage one still lacks, and notes that `Build.chibi` must parse with the build host's own syntax.
+- Compiler, core and graph sources must compile with the pinned native bootstrap seed. Validate seed compatibility through the native fixed-point proof before using newer syntax in those sources.
 
 ## Tests
 

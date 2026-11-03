@@ -1,11 +1,10 @@
 #!/bin/sh
-# Usage: run.sh NATIVE_COMPILER LLVM_BIN [WORK] [ORDINARY_BUILD_HOST]
+# Usage: run.sh NATIVE_COMPILER LLVM_BIN [WORK]
 set -eu
 compiler=${1:?pass the native compiler}
 llvm=${2:?pass the LLVM tools directory}
 root=$(cd "$(dirname "$0")/../../.." && pwd -P)
 work=${3:-$root/.chibi/native-maps}
-reference=${4:-}
 mkdir -p "$work"
 case "$(uname -s)-$(uname -m)" in
     Darwin-arm64) triple=aarch64-apple-darwin ;;
@@ -40,11 +39,3 @@ for name in Ownership Effects Receivers ManagedRecords StringEffects ArrayPayloa
     cp "${source_program%/program}/source.ll" "$work/source.ll"
     "$work/probe" "$work" "$llvm" "$root/test/native_aot/maps/Runtime.ll" source
 done
-
-# Keep the existing bytecode consumer's receiver ownership in step during
-# retirement. The pure source fixture needs no optional host capabilities.
-if [ -n "$reference" ]; then
-    "$reference" --compiler "$root/tools/compiler" --compiler-core "$root/packages/core" \
-        --root "$root" --source "$root/test/native_aot/map_programs/ArrayPayload.chibi" \
-        --core "$root/packages/core" --entry Main --timeout-ms 120000
-fi

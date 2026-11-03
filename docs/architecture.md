@@ -1,12 +1,98 @@
 # Architecture
 
+The compiler, CLI, build graph and runtime policy are authored in Chibi. LLVM
+provides optimization, object generation and linking; emitted LLVM implements
+the allocator, OS and public ABI boundaries. Studio is a separate application.
+The compiler-tools SDK preserves its compile-only asset ABI and resources.
+
+## Compiler and execution
+
+`tools/compiler/native_driver` owns source discovery, command parsing,
+diagnostics, native compilation and the program cache. The package compiler
+resolves declarations, types, effects and reachable calls. `scalar_facts` holds
+the lowering facts; `scalar_llvm` lowers them to the validated `llvm_native`
+representation. `native_link` and `native_link_host` supply runtime modules and
+run LLVM's tools. Unsupported forms reject with a source diagnostic.
+
+A verified native seed compiles the current compiler. The current compiler then
+builds the asset service and compile-only facade. The authored build driver and
+Graph use the same native route. A failed compilation stops the command; no
+C compiler host, VM or bytecode bootstrap recovery participates in this path.
+See [the build runner](native-build-runner.md) for content keys and publication.
+
+The CLI compiles a program and runs the resulting native executable. `test`
+compiles the package's declared tests and runs their native harness. The native
+runtime owns managed values, collector roots, tasks, failure reporting and
+retained state. Source admission and runtime verification are separate gates;
+[the native ledger](native-llvm-ledger.md) records their coverage.
+
+## Reload generations
+
+`apps/host/Host.chibi` owns the live generation and its loaded image. A source
+edit first compiles a candidate image. Loading, entry validation and retained
+state migration must succeed before it becomes active. A rejected candidate is
+discarded without replacing the accepted generation.
+
+`Main` runs once if the first runnable generation provides it; later updates
+do not run it again. `Frame` runs when present. Removing an entry is an accepted update, distinct from an
+invalid entry signature. A restart resets state and cancels pending work.
+
+Suspended tasks keep their original generation and runtime context. The host
+retains that image until those tasks finish or are cancelled, then releases its
+resources. Retained state compatibility and migration use typed metadata rather
+than the loader's addresses. See [Edit and Continue](edit-and-continue.md) and
+the generation tests for the prepare, commit, discard and restart contracts.
+
+## Products and SDK boundaries
+
+| Product or package | Owner |
+| --- | --- |
+| Native compiler and CLI | `tools/compiler/native_driver` |
+| Asset compiler service | `tools/compiler/asset_driver` |
+| Compile-only facade | `tools/compiler/asset_desktop`, common asset packages and `tools/graph/asset_native_runtime` |
+| Optional browser compiler | `tools/compiler/asset_wasm`, `tools/graph/asset_wasm` and `asset_wasm_runtime` |
+| Build graph and installation | `tools/toolchain`, `tools/graph` |
+| Core and OS services | `packages/core`, `packages/core/sys` |
+
+The installed `bin/chibi` and `bin/chibi-compile` alias contain the same native
+executable. The asset service lives in `libexec/chibi`; compiler, core and graph
+sources live under `share/chibi`. Tools resolve resources relative to their
+executable so the prefix can move. Installation checks the source inventories,
+product receipts and output bytes before publication.
+
+The compile-only facade preserves the public asset header, caller-owned output,
+diagnostics, quotas, cancellation, cache policy and thread isolation. Its native
+archive and optional Wasm archives use the authored compiler; the prepared
+artifact writer is an encoder, not a VM execution path. The Wasm CMake package
+is a consumer adapter. Test-owned C/LLVM graph fixtures, public C ABI callers and
+vendor libraries exercise intentional foreign-code boundaries.
+
+Game-project compilation, the player and the former C runtime SDK are archived.
+They are not products of the current compiler-tools SDK. Their source and former
+contracts are described in [the archive](../archive/README.md) and the explicitly
+historical sections of [self-hosting history](self-hosting-build.md).
+
+## Acceptance
+
+A native compiler fixed point establishes compiler reproduction. It does not by
+itself establish program, reload, OS, browser or foreign ABI parity. Those paths
+have their own runtime suites and platform proofs. SDK relocation and integrity
+checks establish packaging boundaries; Studio and browser consumers retain
+separate acceptance in their owning repositories.
+
+## Historical C runtime architecture
+
+The following sections describe the former C engine, player and VM SDK. Their
+target names, product commands and runtime choices are historical contracts,
+not current build or recovery instructions. See the current package owners above.
+
 Chibi separates executable source, prepared definitions, live execution and
 authoring views. The engine repository owns their shared C implementations and
 SDK contracts. Studio is a separate application built against an installed SDK.
 Game repositories own composition, rules and tuning. Engine regression tests use
 focused fixtures, which double as the [examples](examples.md).
 
-## Source and execution authority
+### Source and execution authority
 
 Project format 10 uses `.chibi` as complete executable source for behaviors,
 callable libraries and systems. Declarative scenes, prototypes, events, shaders,
@@ -57,7 +143,7 @@ automatically; in-session layout, breakpoints and watches are editor state that
 projects never store. Native shader/model/field graphs have separate compilers.
 Their producer API rejects executable behavior domains and metadata-only nodes.
 
-## Package boundaries
+### Package boundaries
 
 Each SDK target owns its sources, public headers and explicit link dependencies.
 Build headers are scoped under `public/<owner>` and installed headers under
@@ -85,7 +171,7 @@ select which physics, material, particle, visibility, audio, UI, input and visua
 motion services are instantiated. Individual capability packages remain usable
 through explicit host composition.
 
-## Generations and runtime lifetimes
+### Generations and runtime lifetimes
 
 Source collections retain declaration snapshots, syntax, semantic records and
 finalized modules. Working drafts and applied collections remain separate.
@@ -113,7 +199,7 @@ serially, run prepared activations in workers, then finish serially after joinin
 Unsafe effects, mixed native/source phases, profiling and inspection retain serial
 execution. Runtime code does not infer parallel safety from a system name or role.
 
-## Transform hierarchy
+### Transform hierarchy
 
 Transform (with Orientation) and Transform3D place an entity relative to its
 nearest ChildOf ancestor that has one, or to the world. GlobalTransform2D and
@@ -129,7 +215,7 @@ of that body: it moves exactly with it, adds its mass (a sensor adds none), and
 what it hits pushes the body while contacts name the child. Otherwise the child
 teleports when its parents move.
 
-## Prepared artifacts and products
+### Prepared artifacts and products
 
 `chibi-compile` prepares executable modules, scenes and declared resources without
 a display host. `chibi-player` owns its loop and consumes prepared artifacts with
@@ -156,7 +242,7 @@ may have different engine IDs; their required runtime headers, formats, schemas
 and platform contracts must agree. See [native packages](native-package.md) and
 [runtime authoring](runtime-authoring.md) for the installed interfaces.
 
-## Acceptance limits
+### Acceptance limits
 
 These are implementation contracts, not a claim that every product path has
 passed functional acceptance. Installed-consumer builds establish dependency

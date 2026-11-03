@@ -1,5 +1,4 @@
-# Explicit platform jobs call the existing build/test recipes. Full/Graph modes add clean-machine proofs.
-# The core45 + native90 phase bounds are enforced separately; job135 is only their sum.
+# Native products and runtime proofs run on each platform. Full/Graph modes add clean-machine and foreign-code checks.
 name: CI
 run-name: >-
   CI · ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'ci' &&
@@ -17,7 +16,7 @@ run-name: >-
   workflow_dispatch:
     inputs:
       mode:
-        description: 'ci: Linux/macOS/native targets, or Windows proof with all bootstrap pins; full: recovery/SDK/no-C; graph: isolated Graph parity'
+        description: 'ci: native platforms, or Windows proof with all bootstrap pins; full: SDK/no-C; graph: generic C graph fixtures'
         type: choice
         default: ci
         options:
@@ -36,10 +35,6 @@ run-name: >-
         description: SHA-256 of the reused chibi.exe, checked before execution
         type: string
         default: ''
-      sanitizers:
-        description: ASan + UBSan for explicitly requested full/graph validation (nightly always uses them)
-        type: boolean
-        default: false
 permissions:
   contents: read
   actions: read
@@ -47,15 +42,11 @@ concurrency:
   group: ci-${{ github.ref }}-${{ github.event_name }}-${{ inputs.mode || 'ci' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
-  CHIBI_CI_SANITIZERS: ${{ (github.event_name == 'schedule' || (inputs.mode == 'full' && inputs.sanitizers == true) || (inputs.mode
-    == 'graph' && inputs.sanitizers == true)) && 'ON' || 'OFF' }}
   CC: clang-18
   CXX: clang++-18
   GH_TOKEN: ${{ github.token }}
   XDG_RUNTIME_DIR: /tmp/chibi-runtime
   SDL_AUDIODRIVER: dummy
-  CHIBI_COMPILER_CACHE: ${{ github.workspace }}/.chibi/compiler-cache
-  CHIBI_ASSET_COMPILER_CACHE: ${{ github.workspace }}/.chibi/asset-compiler-cache
 jobs:
   # Only fully pinned manual ci skips other platforms; full mode keeps all proofs.
   native:
@@ -66,60 +57,21 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 135
     steps:
-    - name: Start the original 45-minute core budget
-      run: echo "CHIBI_CORE_DEADLINE=$(($(date +%s) + 2700))" >> "$GITHUB_ENV"
     - uses: actions/checkout@v4
-      timeout-minutes: 5
       with:
         persist-credentials: false
     - name: Format and static checks
-      id: ccache-config
-      timeout-minutes: 45
-      run: |-
-        node .github/ci/budget.js "$CHIBI_CORE_DEADLINE" bash .github/ci/linux-setup.sh
-        node .github/ci/budget.js --reserve 360 "$CHIBI_CORE_DEADLINE"
-    # Preserve each existing store's path and key: cache versions include paths.
-    - name: Restore compiler objects
-      id: ccache
-      uses: actions/cache/restore@v4
-      timeout-minutes: 2
-      with:
-        path: ${{ env.CCACHE_DIR }}
-        key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
-        restore-keys: |
-          ${{ steps.ccache-config.outputs.prefix }}-
-          ${{ steps.ccache-config.outputs.compatibility-prefix }}-
-    - name: Restore the compiled asset compiler
-      id: asset-cache
-      uses: actions/cache/restore@v4
-      timeout-minutes: 2
-      with:
-        path: .chibi/asset-compiler-cache
-        key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
-        restore-keys: asset-compiler-v2-${{ runner.os }}-
-    - name: Restore recovered compilers
-      uses: actions/cache/restore@v4
-      timeout-minutes: 2
-      with:
-        path: .chibi/compiler-cache
-        key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
-        restore-keys: compiler-cache-${{ runner.os }}-
+      run: bash .github/ci/linux-setup.sh
     - name: Core functional tests
       id: core
-      timeout-minutes: 45
-      run: |-
-        node .github/ci/budget.js "$CHIBI_CORE_DEADLINE" bash .github/ci/linux-core.sh
-        node .github/ci/budget.js "$CHIBI_CORE_DEADLINE"
+      run: bash .github/ci/linux-core.sh
     - name: Native fixed-point proof
       id: fixedpoint
       if: ${{ !cancelled() && steps.core.outcome != 'skipped' }}
-      timeout-minutes: 90
       env:
         CHIBI_FULL: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'full') }}
         CHIBI_WINDOWS_BOOTSTRAP_RUN: ${{ inputs.windows_bootstrap_run }}
-      run: |-
-        deadline=$(($(date +%s) + 5400))
-        node .github/ci/budget.js "$deadline" bash .github/ci/native-proof.sh
+      run: bash .github/ci/native-proof.sh
     - name: Preserve Linux native seed candidates
       if: always() && steps.fixedpoint.outcome != 'skipped'
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -162,175 +114,43 @@ jobs:
         include-hidden-files: true
         if-no-files-found: warn
         retention-days: 7
-    - name: Prune unrefreshed recovered compilers
-      if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch'
-        && inputs.mode == 'full'))
-      run: find .chibi/compiler-cache -type f -mtime +3 -delete 2>/dev/null || true
-    - name: Warm trusted compiler objects after Linux full validation
-      if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch'
-        && inputs.mode == 'full')) && steps.ccache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
-      with:
-        path: ${{ env.CCACHE_DIR }}
-        key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
-    - name: Warm trusted asset compiler after Linux full validation
-      if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch'
-        && inputs.mode == 'full')) && steps.asset-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
-      with:
-        path: .chibi/asset-compiler-cache
-        key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
-    - name: Warm trusted recovered compilers after Linux full validation
-      if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch'
-        && inputs.mode == 'full'))
-      uses: actions/cache/save@v4
-      with:
-        path: .chibi/compiler-cache
-        key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
   native-macos:
     name: Engine build and native tests (macOS)
     if: (github.event_name != 'workflow_dispatch' || inputs.mode == 'ci' || inputs.mode == 'full') &&
       !(github.event_name == 'workflow_dispatch' && inputs.mode == 'ci' && inputs.windows_bootstrap_run != '' &&
       inputs.windows_bootstrap_commit != '' && inputs.windows_bootstrap_sha256 != '')
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 135
     env:
-      XDG_RUNTIME_DIR: /tmp/chibi-runtime
+      CC: clang
+      CXX: clang++
     steps:
     - uses: actions/checkout@v4
       with:
         persist-credentials: false
     - name: Install the native LLVM tools
       run: sh .github/native-llvm.sh
-    - name: Select CI native profile
-      run: sh .github/native-profile.sh
-    - name: Install build dependencies
-      run: |
-        brew install ccache
-        LLVM="$(brew --prefix llvm@22)"
-        {
-          echo "LLVM=$LLVM"
-          echo "CC=$LLVM/bin/clang"
-          echo "CXX=$LLVM/bin/clang++"
-        } >> "$GITHUB_ENV"
-        install -d -m 700 "$XDG_RUNTIME_DIR" "$RUNNER_TEMP/build-timings"
-    - name: Configure compiler cache
-      id: ccache-config
-      run: sh .github/native-ccache.sh
-    - name: Restore compiler objects
-      id: ccache
-      uses: actions/cache/restore@v4
-      with:
-        path: ${{ env.CCACHE_DIR }}
-        key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
-        restore-keys: |
-          ${{ steps.ccache-config.outputs.prefix }}-
-          ${{ steps.ccache-config.outputs.compatibility-prefix }}-
-    - name: Record compiler cache configuration and reset counters
-      run: |
-        ccache --show-config
-        ccache --zero-stats
-    - name: Restore the compiled asset compiler
-      id: asset-cache
-      uses: actions/cache/restore@v4
-      with:
-        path: .chibi/asset-compiler-cache
-        key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
-        restore-keys: asset-compiler-v2-${{ runner.os }}-
-    - name: Restore recovered compilers
-      uses: actions/cache/restore@v4
-      with:
-        path: .chibi/compiler-cache
-        key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
-        restore-keys: compiler-cache-${{ runner.os }}-
-    - name: Build an unsanitized chibi launcher (Release)
-      id: release-build
+    - name: Core functional tests
+      id: core
+      run: bash .github/ci/linux-core.sh
+    - name: Native fixed-point proof
+      if: ${{ !cancelled() && steps.core.outcome != 'skipped' }}
       env:
-        CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
-      run: sh tools/build.sh build --release --target chibi --target chibi-compile --target chibi-build-host --target chibi-compiler-host --libclang-root "$LLVM"
-    - name: Build products and test drivers (selected Debug profile)
-      id: native-build
-      env:
-        VERBOSE: '1'
-        CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
-      shell: bash
-      run: |
-        set -o pipefail
-        sh tools/build.sh build --build build --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --target chibi --target chibi-compile --target test_tools --target test_language --host "$PWD/build-release/sdk/chibi-build-host" --libclang-root "$LLVM" 2>&1 | tee "$RUNNER_TEMP/native-build.log"
-    - name: Verify and preserve native profile evidence
-      if: always() && steps.native-build.outcome != 'skipped'
-      continue-on-error: true
-      run: sh tools/build.sh native-evidence --sha "$GITHUB_SHA" --run "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" --job "$GITHUB_JOB"
-        --sanitizers "$CHIBI_CI_SANITIZERS" --profile "$BUILD_PROFILE" --optimization "$BUILD_DEBUG_OPTIMIZATION" --frame-pointers "$BUILD_DEBUG_FRAME_POINTERS"
-        --outcome "${{ steps.native-build.outcome }}" --host "$PWD/build-release/sdk/chibi-build-host" --build build --output "$RUNNER_TEMP/native-profile"
-        --nm "$LLVM/bin/llvm-nm"
-    - name: Preserve failed macOS Graph stage log
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: macos-graph-failure-${{ github.run_id }}-${{ github.run_attempt }}
-        path: .chibi/logs/*-graph.log
-        include-hidden-files: true
-        if-no-files-found: warn
-        retention-days: 7
-    - name: Tooling and process integrations
-      env:
-        CHIBI_TEST_TIMINGS: ${{ runner.temp }}/case-timings
-      run: |
-        install -d -m 700 "$CHIBI_TEST_TIMINGS"
-        sh tools/build.sh test short
-        build/test/tools/test_tools --case-timings
-    - name: Native, material, project and language selectors
-      env:
-        CHIBI_TEST_TIMINGS: ${{ runner.temp }}/case-timings
-      shell: bash
-      run: |
-        set -e
-        install -d -m 700 "$CHIBI_TEST_TIMINGS"
-        export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
-        for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
-        sh tools/build.sh test native native-build
-        sh tools/build.sh test --jobs 2 chibi-cli language
-    - name: Preserve build logs and timings
+        CHIBI_FULL: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'full') }}
+      run: bash .github/ci/native-proof.sh
+    - name: Preserve native proof evidence
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: native-profile-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+        name: native-macos-evidence
         path: |
-          ${{ runner.temp }}/native-build.log
-          ${{ runner.temp }}/native-profile/
-          ${{ runner.temp }}/build-timings/
-          ${{ runner.temp }}/case-timings/
+          ${{ runner.temp }}/native-profile
+          ${{ runner.temp }}/case-timings
+          .chibi/logs/*.log
+        include-hidden-files: true
         if-no-files-found: warn
         retention-days: 7
-    - name: Report compiler cache statistics
-      if: always() && steps.ccache-config.outcome == 'success'
-      run: ccache --show-stats --verbose
-    - name: Save compiler objects from successful main builds
-      if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch'
-        && inputs.mode == 'full')) && steps.ccache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
-      with:
-        path: ${{ env.CCACHE_DIR }}
-        key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
-    - name: Save the compiled asset compiler from successful main builds
-      if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch'
-        && inputs.mode == 'full')) && steps.asset-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
-      with:
-        path: .chibi/asset-compiler-cache
-        key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
-    - name: Prune old recovered compilers
-      if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch'
-        && inputs.mode == 'full'))
-      run: find .chibi/compiler-cache -type f -mtime +3 -delete 2>/dev/null || true
-    - name: Save recovered compilers from main builds
-      if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch'
-        && inputs.mode == 'full'))
-      uses: actions/cache/save@v4
-      with:
-        path: .chibi/compiler-cache
-        key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
+
   native-self-host-windows:
     # Goal item 8: the Windows stage two, cross-linked above with lld-link, the
     # import libraries and core:sys/windows, builds the compiler on windows-2022
@@ -346,8 +166,6 @@ jobs:
     # The older seed took 49m34s for stage three; another cold run exhausted
     # the old hour. Include subsequent self-builds, full tests and product probes.
     timeout-minutes: 120
-    env:
-      CHIBI_CI_SANITIZERS: 'OFF'
     defaults:
       run:
         shell: pwsh
@@ -749,8 +567,6 @@ jobs:
     name: chibi build alone (Linux)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    env:
-      LIBCLANG_ROOT: /usr/lib/llvm-18
     steps:
     - uses: actions/checkout@v4
       with:
@@ -758,16 +574,10 @@ jobs:
         persist-credentials: false
     - name: Install the native LLVM tools
       run: sh .github/native-llvm.sh
-    - name: Install LLVM and the platform libraries
-      run: |
-        sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends \
-          clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev lld-18 llvm-18 ccache \
-          libgl1-mesa-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
-          libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
     - name: No Make, CMake or Python build files outside archive/, and the C that remains
       run: sh tools/build.sh census
     - name: chibi build
-      run: sh tools/build.sh build --release --libclang-root "$LIBCLANG_ROOT"
+      run: sh tools/build.sh build --release
     - name: Default native products were built
       run: |
         for product in sdk/chibi sdk/chibi-asset-compiler; do
@@ -786,100 +596,6 @@ jobs:
         if-no-files-found: ignore
         retention-days: 7
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'full')
-  recover:
-    name: Compiler self-build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-        - os: ubuntu-24.04
-          platform: linux-x64
-          arch: X64
-        - os: macos-15
-          platform: macos-arm64
-          arch: ARM64
-        - os: windows-2022
-          platform: windows-x64
-          arch: X64
-    defaults:
-      run:
-        shell: pwsh
-    steps:
-    - name: Preserve the manifest's source bytes on checkout
-      run: git config --global core.autocrlf false
-    - uses: actions/checkout@v4
-      with:
-        persist-credentials: false
-    - name: Fetch the pinned bootstrap seed
-      shell: bash
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: sh tools/bootstrap/seed.sh
-    - name: Download the checksum-pinned native runtime
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: ./.github/ci/recover-runtime.ps1
-    - name: Build and execute both compiler stages
-      run: ./.github/ci/recover-stages.ps1
-    - name: Check authored scalar projection and portable LLVM emission
-      run: |
-        $ErrorActionPreference = 'Stop'
-        $proof = Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof'
-        & ./test/native_aot/scalar/Run.ps1 -Proof $proof -Platform '${{ matrix.platform }}'
-    - name: Upload both compiler stages and evidence
-      if: always()
-      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      with:
-        name: compiler-self-build-${{ matrix.os }}
-        if-no-files-found: error
-        path: |
-          ${{ runner.temp }}/compiler-recovery-proof/stage1/compiler.chibip
-          ${{ runner.temp }}/compiler-recovery-proof/stage1/bootstrap.json
-          ${{ runner.temp }}/compiler-recovery-proof/stage2/compiler.chibip
-          ${{ runner.temp }}/compiler-recovery-proof/compiler.sha256
-          ${{ runner.temp }}/compiler-recovery-proof/evidence.json
-          ${{ runner.temp }}/compiler-recovery-proof/stage1.stdout.txt
-          ${{ runner.temp }}/compiler-recovery-proof/stage1.stderr.txt
-          ${{ runner.temp }}/compiler-recovery-proof/stage2.stdout.txt
-          ${{ runner.temp }}/compiler-recovery-proof/stage2.stderr.txt
-          ${{ runner.temp }}/compiler-recovery-proof/scalar/evidence.json
-          ${{ runner.temp }}/compiler-recovery-proof/scalar/regression.chibip
-          ${{ runner.temp }}/compiler-recovery-proof/scalar/*.stdout
-          ${{ runner.temp }}/compiler-recovery-proof/scalar/*.stderr
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'full')
-    env:
-      CHIBI_CI_PLATFORM: ${{ matrix.platform }}
-      CHIBI_CI_ARCH: ${{ matrix.arch }}
-  compare:
-    name: Compiler self-build across platforms
-    needs: recover
-    if: always() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'full'))
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        persist-credentials: false
-    - name: Require successful self-build on every platform
-      shell: pwsh
-      env:
-        RECOVERY_RESULT: ${{ needs.recover.result }}
-      run: |
-        if ($env:RECOVERY_RESULT -ne 'success') {
-          throw "Compiler self-build matrix did not pass: $env:RECOVERY_RESULT"
-        }
-    - uses: actions/download-artifact@v4
-      with:
-        pattern: compiler-self-build-*
-        path: recovered
-    - name: Require identical compiler stages on all three platforms
-      shell: pwsh
-      run: ./.github/ci/compare-compilers.ps1
-    - name: Require identical portable scalar regressions across platforms
-      shell: pwsh
-      run: ./.github/ci/compare-scalars.ps1
   no-c-compiler:
     name: Native stages without a C compiler (Linux)
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'full')
@@ -956,14 +672,11 @@ jobs:
     timeout-minutes: 45
     env:
       EXPECTED_SHA: ${{ github.sha }}
-      CHIBI_CI_SANITIZERS: ${{ inputs.sanitizers == true && 'ON' || 'OFF' }}
       CC: clang-18
       CXX: clang++-18
       GH_TOKEN: ${{ github.token }}
       XDG_RUNTIME_DIR: /tmp/chibi-runtime
       SDL_AUDIODRIVER: dummy
-      LIBCLANG_ROOT: /usr/lib/llvm-18
-      NATIVE_TOOLCHAIN_FLAGS: -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
       JOBS: '2'
     steps:
     - uses: actions/checkout@v4
@@ -972,62 +685,22 @@ jobs:
         persist-credentials: false
     - name: Install the native LLVM tools
       run: sh .github/native-llvm.sh
-    - name: Select CI native profile
-      run: sh .github/native-profile.sh
     - name: Verify clean source candidate
       run: |
         test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
         test -z "$(git status --porcelain --untracked-files=normal)"
-    - name: Install graph build dependencies
+    - name: Install the foreign C compiler
       run: |
-        sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends \
-          clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 ccache \
-          libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
-          libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
-          libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
-        install -d -m 700 "$XDG_RUNTIME_DIR"
-    - name: Build Release graph products and private hosts
-      run: sh tools/build.sh build --jobs "$JOBS" --libclang-root "$LIBCLANG_ROOT" --release --target chibi --target chibi-asset-compiler --target chibi-compile --target
-        chibi-build-host --target chibi-compiler-host
-    - name: Record Release graph tool identities
-      run: |
-        sha256sum \
-          build-release/sdk/chibi-build-host \
-          build-release/sdk/chibi-build-host.chibi-record \
-          build-release/sdk/chibi-compiler-host \
-          build-release/sdk/chibi-compiler-host.chibi-record \
-          > "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
-        cat "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
-    - name: Build graph products and test drivers (selected Debug profile)
-      run: sh tools/build.sh build --jobs "$JOBS" --libclang-root "$LIBCLANG_ROOT" --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION"
-        --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --build build-sdk-tests --target chibi --target chibi-compile --target
-        test_tools --target test_language --target chibi-compiler-host --host "$PWD/build-release/sdk/chibi-build-host"
-    - name: Verify Release graph tools survived the harness build unchanged
-      run: sha256sum --check "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
+        sudo apt-get update -q
+        sudo apt-get install -y -q --no-install-recommends clang-18
+    - name: Build native SDK products
+      run: sh tools/build.sh build --jobs "$JOBS" --release
     - name: Verify graph commands, discovery, incremental builds and resources
-      env:
-        CHIBI_TOOLS_BUILD_DIR: build-sdk-tests/test/tools
-      shell: bash
-      run: |
-        set -e
-        for route in graph-engine graph-driver graph-evidence graph-discovery graph-wasm graph-os graph-c graph-build; do
-          sh tools/build.sh test --build build-sdk-tests "$route"
-        done
+      run: sh tools/build.sh test graph-engine graph-driver graph-commands graph-evidence graph-discovery graph-wasm graph-os graph-c graph-build
     - name: Verify graph SDK packaging and relocation
       run: sh tools/build.sh test graph-sdk-install
-    - name: Native, material, project and language selectors on graph outputs
-      env:
-        UBSAN_OPTIONS: halt_on_error=1
-        CHIBI_TOOLS_BUILD_DIR: build-sdk-tests/test/tools
-        CHIBI_LANGUAGE_BUILD_DIR: build-sdk-tests/test/language
-        CHIBI_COMPILER_HOST: build-sdk-tests/sdk/chibi-compiler-host
-      shell: bash
-      run: |
-        set -e
-        for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" "$CHIBI_COMPILER_HOST" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
-        # Groups retain their existing coverage and admission policy; they
-        # remain sequential because fixtures and build outputs are shared.
-        sh tools/build.sh test --build build-sdk-tests native projects language
+    - name: Native program and language selectors
+      run: sh tools/build.sh test native projects language language-scalar-native
     - name: Verify sources remain unchanged
       run: |
         test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"

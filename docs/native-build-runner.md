@@ -64,7 +64,7 @@ The programs call `core:os`. Its native implementation uses `core:sys/posix` or
 natives. `Driver.chibi` no longer fetches a build host just to run these programs,
 and selecting a target no longer adds `chibi-build-host` as an extra target.
 
-## Products and remaining compatibility tools
+## Products
 
 The default graph products are the authored native compiler/CLI and asset
 compiler service. Building or installing them does not discover a C compiler or
@@ -76,8 +76,9 @@ The pinned seed builds the current compiler first. That compiler builds the
 asset service, whose runtime helpers may be newer than the seed. Selecting the
 asset service or a target that uses it also selects the current compiler.
 
-Explicit legacy C test and bootstrap targets remain while their consumers move.
-The old bytecode bootstrap comparison is requested only with `--compare-vm`.
+The native facade archive preserves the public compile-only C API. Generic
+foreign C builds remain supported by explicit test-owned graph targets. C
+reflection, VM comparison hosts and bytecode bootstrap recovery are removed.
 Native recovery and vendor samples use the native compiler.
 
 ## Verification
@@ -86,7 +87,7 @@ Native recovery and vendor samples use the native compiler.
 It builds stages two and three and compares their full hashes. When an older
 seed produces a different stage two, it also builds stage four and requires
 stages three and four to match. It compiles and runs the native build driver
-and graph too. Only `--compare-vm` requests the old VM comparison and its C hosts.
+and graph too. It does not construct or invoke a C host.
 
 ```
 sh tools/build.sh native-self-host --llvm /path/to/llvm/bin

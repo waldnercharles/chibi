@@ -1,201 +1,48 @@
-# Chibi toolchain migration inventory
+# Toolchain inventory
 
-Read this before changing or deleting project-owned Python, shell, Make, CMake,
-packaging, reflection, test-supervision, browser, or release code. This file
-lists current owners and the requirements for replacing them.
+The normal toolchain is authored Chibi compiled to native code through LLVM.
+The verified native seed builds the current compiler, which builds the CLI,
+asset service and compile-only facade archive. No C compiler host, bytecode VM,
+reflection generator or generated C registry participates in that route.
 
-The goal is not to translate scripts line for line. Move policy and orchestration
-into shared `.chibi` modules, keep native host capabilities narrow, then delete a
-legacy implementation only after its callers and failure behavior have moved.
-
-## Minimum final tool set
-
-The installed product should expose one public tool, `chibi`. Compiler, build,
-check, format, test, documentation, browser, export, version, and diagnostics are
-commands or internal modules behind it. `chibi-player` remains a runtime product,
-not a second authoring tool. A checksummed bootstrap compiler artifact may remain
-for recovery, but it is not a competing implementation.
-
-Repository build programs may call external compilers, linkers, LLVM, SLJIT,
-Emscripten, platform SDKs, Git, and hosting APIs. Those dependencies do not own
-Chibi policy. Python remains acceptable only inside an external application that
-requires its Python API, such as Blender.
-
-## Universal deletion gate
-
-Before removing or bypassing an implementation:
-
-1. Name its exact responsibility and replacement.
-2. Find every source-tree, installed-SDK, CI, release, Studio, game, and external
-   application caller.
-3. Prove the replacement from a clean tree and, when applicable, from a relocated
-   installed SDK without engine source.
-4. Exercise success, invalid input, partial output, interruption, retry, cache hit,
-   cache invalidation, and cleanup behavior that the responsibility owns.
-5. Compare output manifests, identities, permissions, licenses, checksums, runtime
-   behavior, and supported platforms where applicable.
-6. Remove the old caller, implementation, tests that only test the old mechanism,
-   and stale documentation together. Preserve replacement coverage.
-7. Describe the checks run and any remaining recovery path in the change.
-
-Passing a happy-path replacement is not enough. A repository-local `.chibi` file
-does not replace a capability installed into the SDK. Invoking CMake from Chibi
-does not replace CMake's build graph. Building a C compiler from Chibi does not
-make the compiler self-hosted.
-
-## Responsibility ledger
-
-| Responsibility | Current owners | Replacement and deletion gate | Required evidence |
-| --- | --- | --- | --- |
-| Public CLI | `tools/compiler/native_driver/`, `apps/host/Host.chibi`, `packages/core/os/` | The installed native compiler owns command routing, source compilation, test scheduling and cache policy. The native shared-generation host owns live replacement. The unregistered C application shell is retired; the obsolete `apps/chibi` package is retired. | The 17 surviving behaviors in [C test verdicts](c-test-verdicts.md) and `test/graph/ChibiCliTests.chibi`, plus `test/native_cli/` and installed/relocated SDK checks. The C CLI harness is retired after native behavior and process/terminal parity passed. |
-| Standalone program sessions, C reference | `src/authoring/program.c`, `src/execution/program.c` | The exported `Chibi::program` API still uses the VM. The November 1 [test verdicts](c-test-verdicts.md) retire that C interface with the VM; a new native C session API is not required. The unused `program_service` catalog and its catalog-only test are retired. The C session tests are retired after their three surviving behaviors passed natively. | `test/native_cli/watch.sh` preserves accepted code and retained state after rejected source and entry edits. `test/native_aot/generations/run.sh` covers unreachable collection errors, physical diagnostics and execution of the preserved image, alongside imported state and independent generations. |
-| Legacy VM package tests | `src/host/compile_main.c`, `src/host/compile_tests.c`, `src/authoring/package_compile.c` | The C `chibi-compile` target remains an explicit VM test reference. The installed `bin/chibi-compile` is the native compiler. Game-project compilation is archived; native public source run/test/build are covered separately. | Retire with the explicit VM comparison after native language samples pass. `test/graph/ChibiCliTests.chibi` and `test/native_cli/` preserve public command, diagnostic and process behavior. |
-| Build-program compilation | `src/host/build_host.c`, `src/toolchain/compiler_bootstrap.c`, `tools/compiler/package_compiler/`, `tools/compiler/bootstrap/` | A validated owned Chibi compiler generation replaces C semantic preparation for build programs. `CompileClosureWithEffects` carries actual native effects; the runtime-only linker loads its output. Retain other C frontend callers until their separate gates pass. | Fast load without recompilation, changed compiler/core hash detection, fixed-point recovery, damaged/version/ABI/completeness rejection, owned results, no loader writes, native-link boundaries and relocated read-only SDK invocation. |
-| Build-program process and file operations | `packages/core/os/`, `packages/core/sys/`, `tools/toolchain/Driver.chibi` | Authored native OS capabilities and the native runner own ordinary builds and selectors. The private build-host harness, fixtures, selectors and implicit test seed route are retired. Explicit VM comparison and recovery still retain the old host implementation. | Native OS file/process suites, CLI foreground and terminal cases, and Linux workload descendant-cleanup controls preserve public behavior. [C test verdicts](c-test-verdicts.md) distinguishes those contracts from retired private buffers, quotas and atomic-write semantics. |
-| Native graph | `tools/toolchain/Graph.chibi`, `tools/graph/` | The native Linux and macOS route; the Makefile's `GRAPH_BUILD=` CMake fallback left with the CMake build. Standalone consumer builds and public SDK/web/Studio remain separate callers. | All native `build-graph-*` routes, actual-profile verification, native/material/project/language groups and private compiler-tools SDK relocation. |
-| Native configuration | `tools/toolchain/Build.chibi` | Installed Chibi program owns native orchestration, compiler SDK discovery and third-party archive downloads. The Python signature probe and the shell configuration and recovery scripts left with the CMake build in ef553b24b. Preserve explicit compiler, toolchain, cache, and user-definition precedence and correct invalidation. | Clean and warm `chibi build` profile builds. |
-| Dependency acquisition and cache | Done (2026-10-20). `third_party/archives.tsv` pins one prebuilt archive per target and variant, published as a GitHub release; `Build.chibi` downloads it into the clone's `.git/chibi/third_party`, shared by its worktrees, and `cmake/third_party.cmake` loads it (`third_party/README.md`). | The FetchContent declarations, configure-time patching, `dependency_package.py`, `fetchcontent_cache.py`, `cmake/dependency_package/`, the `CHIBI_DEPENDENCY_*` and `CHIBI_FETCHCONTENT_*` switches, their tests and CI cache keys are deleted. The temporary archive builder (`third_party/CMakeLists.txt`) and `cmake/third_party.cmake`'s own download leave with CMake (M6). | Offline clean `chibi build` from the cached archives and test aggregates on macOS arm64; `build-toolchain` downloads, verifies, reuses and prunes archives through a `gh` stand-in. Web and macOS ThreadSanitizer archives are built locally (release third-party-2026-10-21.2); Linux and Windows archives wait for `.github/workflows/third-party.yml`. |
-| Build logs and command display | `tools/toolchain/Driver.chibi` and the build host | `tools/quiet.py` and the Makefile's `QUIET` were deleted with the Makefile in e4aa7b4e2. Build host owns bounded capture, full failure diagnostics, log retention, pruning, concurrent writers, and signal cleanup. | Focused native fixtures for success, large output, failure, interruption, pruning, and concurrent commands. |
-| SDK and runtime packaging | `tools/toolchain/SDK.chibi` (`chibi build install`); the Studio runtime SDK (`runtime-sdk`, `package-runtime-sdk`, `tools/graph/sdk`) was deleted with its product, `chibi-player` | The Chibi compiler-tools installer carries both private hosts, compiler/core/bootstrap/build resources and dependency notices into a fresh relocatable prefix, with exact link-record checks and atomic publication. `tools/package_sdk.py` and the SDK's CMake package left with the CMake build in ef553b24b. Full SDK packaging must stage and install the full compiler/bootstrap tree in `share/chibi/compiler` and its core collection in `share/chibi/core` for the private build host, and preserve target/header/object ownership, licenses and identity. | `graph-sdk-install`; complete compiler payload, source-free and relocated read-only installed SDK consumers. |
-| Player and Studio packaging | None | `tools/package_studio.py` was deleted in 7b97ecf7c and `tools/package_player.py` left with the player in 477245017. Player packaging returns with a Chibi renderer. | Installed player startup once a player exists again. |
-| Native reflection and generated code | `tools/reflect/`, `sdk/native.cmake`, `src/runtime/component_ids.tsv`, `cmake/tests/generation*.cmake` | Keep the native host generator until a Chibi replacement reproduces IDs, layouts, bindings, and transactional failure, including native-host generation for Emscripten targets. | Reflection range cases, generation identity/unchanged/failure fixtures, handle pins, JIT identity, native and cross-build use. |
-| Internal build graph | root `CMakeLists.txt`, `cmake/`, `sdk/`, and component/test `CMakeLists.txt` files | Chibi build graph reproduces profiles, generated prerequisites, native/cross compile, include/link ownership, optional modules, and install layouts. CMake still owns SDK construction, other native-platform paths, Wasm, Studio consumers and parity/recovery builds. | Native compiler, runtime-only, browser, test-driver, installed SDK, relocated SDK, and manifest comparisons. |
-| CMake consumer interface | installed `ChibiConfig.cmake`, `ChibiTargets.cmake`, and related files | Treat this separately from the internal graph. Generate and retain it while Studio or another supported CMake consumer needs it. | Build Studio and representative consumers against only a relocated installed SDK. |
-| Test selection and supervision | `chibi build test` (`tools/toolchain/Driver.chibi`, `tools/tests.tsv`), `src/automation/execution_policy.*` | Done (2026-10-30, 819d20cd4): `chibi build test` runs each selector as its own process with a deadline, and `tools/test_policy.py`, `tools/agent.py`, `tools/validation_plan.py`, `tools/gpu_capabilities.py` and their C tests were deleted. | `chibi build test unit` (execution-policy cases) and the affected selectors. |
-| Release publication | `.github/workflows/publish.yml`, `.github/workflows/ci.yml`, package helpers | Keep workflow scheduling and credentials in hosted YAML. Move reusable validation and assembly policy into `.chibi` programs runnable on clean workers. | Immutable-release rejection, exact assets, build identity, checksums, engine revision, and matching native/web SDK generations. |
-| Browser compiler isolation | `tools/web_env.sh`, Emscripten configuration | Preserve isolation between native host generators and target compiler environments, and matching compiler/player output. | Native contamination rejection plus serial/threaded browser output ownership and browser compiler/player matching. |
-| C source formatting | `tools/clang-format.sh`, `.githooks/pre-commit`, CI | Keep external clang-format 22 (`chibi build format`) while maintained C exists. `chibi fmt`, which formatted authored source and assets, is archived with the C front end; its replacement does not format C. | Existing C format check and a separate canonical authored-format corpus. |
-| Stage-zero compiler | `src/language/` (including the generated Tree-sitter parser), the compiler parts of `src/authoring/`, `src/types/` and `src/execution/` | Build-program semantic preparation has moved to Chibi. Public project/catalog preparation and differential/recovery callers remain. Remove the C frontend only after those callers move and the installed compiler/build/link and checked-game gates pass. Raw native syntax facts remain a separate capability. | `chibi build bootstrap-artifact` (recovery's fixed point), `chibi build test bootstrap-recovery`, the semantic fixture set on both stages, and an installed clean-checkout compiler/build/link and checked-game proof with `cmake`, `clang` and `gcc` unavailable. |
-| Native executables and runtime | `src/host/`, `src/toolchain/`, `src/execution/`, `src/types/` | Executables stay C until Chibi has a native backend that emits them (LLVM AOT, backend milestone 4 in `docs/self-hosting-build.md`). Their orchestration and policy (command dispatch, export assembly, migration, validation) move to installed `.chibi` modules first. | `test/graph/ChibiCliTests.chibi`, `test/native_cli/foreground.py`, installed-SDK and relocated-SDK command runs, and matching bytecode/SLJIT/native semantics. |
-| First-party engine modules | `src/runtime/`, `src/render/`, `src/ui/`, `src/assets/`, `src/authoring/`, `src/automation/`, `src/capabilities/`, `src/diagnostics/`, `src/platform/`, `src/support/`, `include/chibi/` | M9: Chibi packages over narrow bindings to SDL, Cute, Box2D, Box3D, RmlUi, codecs and platform APIs. `src/ui/rml.cpp` and `test/draw_backend.cpp` stay as pass-through shims while their C++ libraries do. | Each module's existing deterministic fixtures, desktop and browser parity, and ownership tests at every binding. |
-| C regression and differential tests | `test/` pico_unit drivers | A test leaves with the C it tests. When a Chibi component replaces its C reference, its cases move to `@test` under `chibi test`. The uncalled subprocess benchmark wrapper is retired. Native workload checksums, measurements and detached-descendant supervision run in `test/native_aot/workloads/Benchmark.chibi`; its C harness is retired. | The replacement's `chibi test` cases and the aggregate that ran the C cases. |
-| Collaboration room service | `tools/collab/server/` (Node) | Needs a Chibi network service with HTTP and WebSocket bindings, or a move to `chibi-studio`, whose browser client is its only consumer. | `tools/collab/server/server.test.mjs` authority, readiness and transport cases, and Studio collaboration against the service. The C launcher is retired. |
-
-## CMake retirement boundaries, 2026-10-28
-
-The build lane owns reusable graph, bootstrap and packaging modules. The public
-CLI lane owns `tools/compiler/native_driver`, `apps/host`, command dispatch and
-native program execution/reload. The exported C program-session API in
-`src/authoring/program*` remains a VM reference until its deletion. Coordinate changes to
-`SDK.chibi` and graph target/resource tables so native compiler/core resources
-and exported session libraries remain in the same tested SDK.
-
-| CMake responsibility | Live callers and replacement | Removal condition |
+| Capability | Owning source | Verification |
 | --- | --- | --- |
-| Standalone reflection host construction | `sdk-reflect-build` feeds native SDK, runtime SDK, browser SDK and browser player recipes. Linux/macOS use `Graph.chibi`'s `SDKReflect` entry and the existing `reflect` target, writing the same executable path. Windows keeps the restricted C-only `tools/reflect/CMakeLists.txt` route. | Delete the remaining standalone project after Windows can execute the authored graph and its native reflection/dependency profile is verified. Root-project construction is not an equivalent fallback because it enables C++, compiler, native and desktop defaults. The native generator and `resource.cmake` remain for real generation/reference callers. |
-| Cold first host and recovery | the driver's bootstrap step, `sdk-reflect-bootstrap`, `configure_native.sh`, `configure.sh`, root/SDK CMake. | A compatible pinned host or narrow native construction route can load the authored compiler/graph from a clean checkout, recover damaged/missing payloads, and preserve explicit toolchain selection. Never require a host to construct the first host. |
-| Full public SDK construction and installation | `sdk-build`, `runtime-sdk-build`, `sdk-install`, `package-sdk`, `package-runtime-sdk`, `package_sdk.py`, SDK CMake exports. `SDK.chibi` currently installs private compiler tools. | Graph target/header/object/resource/license ownership covers every exported library and product; Chibi stages and publishes them atomically. Native/runtime packages and relocated, read-only, source-free consumers pass. SDK version must have an owner independent of CMake. |
-| Browser and Windows construction | Browser SDK/player recipes, `web_env.sh`, SDK CMake; Windows native/recovery builds. | Equivalent graph target/compiler/link inventories and host/target isolation, plus Windows process-tree execution/cancellation. The host reflection executable always uses the native compiler. |
-| Standalone tests, vendor archives and reference builds | `test/tools`, `test/language`, `third_party/CMakeLists.txt`, `graph-reference`, generation/package fixtures. | Authored construction runs each live product/consumer and preserves generated-file identity and failure/cleanup behavior. Remove mechanism-only fixtures with the replaced mechanism. |
-| Installed CMake consumer metadata | `ChibiConfig.cmake`, `ChibiTargets.cmake` and helpers consumed by Studio and C consumers. | Keep compatibility output while those consumers use CMake. Generate it from Chibi-owned SDK metadata first; remove it only when the named consumers switch and relocated SDK proofs pass. |
+| Native compiler and CLI | `tools/compiler/native_driver`, shared package compiler/facts/LLVM packages | Compiler tests, native source suites and byte-identical native stages |
+| Checkout entry | `tools/build.sh`, `tools/build.ps1`, `tools/bootstrap/native-seed.*` | Hash/manifest failures, cold/warm entry, argv/Unicode/exit/cwd controls |
+| Build planning and execution | `tools/toolchain`, `tools/graph` | Native driver/Graph selectors, cache and filesystem receipts |
+| Generic foreign C graph | `tools/graph/c`, explicit `chibi_graph_fixture` and `graph_headerless` | Cold/warm edits, headers, flags, failure/retry, archive consumer and headerless executable |
+| Native compiler-tools SDK | `tools/toolchain/SDK.chibi`, native product/archive recipes | Fresh/overlay install, complete source and receipt validation, relocation, public C ABI consumer |
+| Desktop compile-only C ABI | `src/authoring/asset_compiler_host.h`, authored facade archive | Real C caller, exact closure bytes, diagnostics, quota, cancellation, cache, nested calls and threads |
+| Optional browser compiler | Authored Wasm compiler/runtime, public Wasm headers/adapter | Wasm ABI, ownership, archive identity and SDK consumer probes |
+| Cross-platform objects | Native LLVM backend, `test/native_aot/targets` | Identical manifest inventory consumed on macOS and Windows |
+| Vendor libraries | `packages/core/vendor`, pinned third-party archives | Real native vendor imports and no-C compiler proof |
+| Native OS/runtime | `packages/core/sys`, `tools/compiler/native_link`, LLVM runtime emitters | Runtime suites, retained generations, platform process and allocation probes |
+| Seed maintenance | `.github/maintenance/native-seed.sh`, `native-seed.ps1` | Exact source/CI artifact identity, SHA verification and restored-source hashes |
 
-`SDKReflect` accepts the retained Make toolchain definitions for C/C++ compilers,
-archiver, ranlib, macOS sysroot/architecture and libclang root, including typed
-`-DNAME:TYPE=VALUE` and split `-D NAME=VALUE` spellings. It rejects unsupported
-definitions before writing build output. Linux/macOS warm reflection construction
-does not configure CMake, fetch vendor archives or construct compiler hosts.
-Libclang discovery checks the explicit root first, then `CMAKE_PREFIX_PATH`,
-conventional prefixes from `CMAKE_INCLUDE_PATH` and `CMAKE_LIBRARY_PATH`, known
-LLVM installations and system prefixes. Environment lists use the host path
-separator, retain spaces and resolve relative prefixes from the source root.
-Each selected installation supplies its own C API headers, library and builtin
-headers. Its driver reports the builtin resource directory, including custom
-directory names; without that driver, discovery requires a unique matching
-resource directory beside the library. The three environment search variables
-are not accepted as `-D` definitions; arbitrary split include/library
-installations remain unsupported.
+The installed `chibi-compile` name is an alias of the native `chibi` executable.
+It does not restore the retired C compiler program. The prepared artifact writer
+remains a compile-only API; prepared bytecode compiler recovery is removed.
 
-## Installed Python surface
+The former Studio runtime SDK/player product was retired before this compiler
+migration. Current compiler-tools SDK checks do not validate that historical
+Studio product. Studio owns its editor APIs and browser storage tests in its own
+repository.
 
-None. The SDK's CMake package, which installed `package_sdk.py`,
-`package_player.py`, `package_studio.py` and `configure_inputs.py`, left the
-tree with them (ef553b24b, 477245017, 7b97ecf7c). No Python remains outside
-`archive/` and `third_party/`.
+## Retirement candidate and acceptance
 
-## Host file primitives
+The final retirement branch removes the old C compiler/VM/runtime source tree,
+C reflection tools and targets, C driver selectors, explicit VM comparison and
+prepared-runtime seed/recovery jobs. It preserves both asset ABI headers,
+Windows resources, vendor bindings, native/Wasm runtime code, generic foreign
+C fixtures and native metadata/source APIs.
 
-The build host now reads file kinds, change stamps and directory entries,
-copies, renames, removes, hashes, and lists its allowed environment
-(`docs/self-hosting-build.md`). Each step's own output holds 1 MiB, and probes
-keep tool reports out of the build's output. What each responsibility still
-lacks:
+This deletion is prepared separately from runtime acceptance. Integration still
+requires the coordinated survivor proofs, including actual hosted Windows
+runtime and target-consumer results. Compiler reproduction and local build
+success alone do not establish that all former runtime behavior is preserved.
 
-| Responsibility | Unblocked by the primitives | Still missing |
-| --- | --- | --- |
-| Configuration signature | Done: `configure_inputs.py` left with the CMake build (ef553b24b). | Nothing. |
-| Dependency acquisition and cache | Done: `Build.chibi` downloads prebuilt archives with `gh`, then hashes, unpacks with `tar`, renames them into the clone's Git directory and prunes unpinned ones. | Nothing. |
-| SDK, player and Studio packaging | Kinds, walks, copies, renames, removals, file hashing, exclusive directory reservation and publication without replacement. Compiler-tools installation uses them in `SDK.chibi`. | Full SDK target/header/vendor metadata and ownership, player/Studio assembly, remaining platform checks, sizes, modification-time order, symbolic-link reads, and M6. |
-
-## Removal inventory
-
-Every project-owned C, C++, Python, CMake, Make, shell and Node file outside
-`third_party/`, as of 2026-10-19. Each group names its ledger responsibility,
-its callers and one decision:
-
-- **Delete now**: nothing calls it, or its replacement already owns the
-  responsibility. Remove it with its stale documentation.
-- **Replace now**: Chibi and the build host can already do the work.
-- **Blocked**: names the missing Chibi capability, host binding or bootstrap
-  step.
-- **Keep**: an external application or library requires it.
-- **Owner decision**: deletable, but only after the named person confirms.
-
-The **host file primitives** below are those in the "Host file primitives"
-section: file kinds, change stamps, directory listing, copy, rename, remove,
-SHA-256 and environment names, with 1 MiB of output per step. The host still
-cannot read sizes, modification-time order or link targets, create unique
-staging directories, or limit a child's resources. Its instruction budget,
-100 million since the build graph, also bounds authored walks over large trees.
-
-### Python
-
-| Files | Responsibility and callers | Decision |
-| --- | --- | --- |
-| `tools/test_policy.py`, `tools/agent.py`, `tools/validation_plan.py`, `tools/gpu_capabilities.py` | Test supervision. | **Deleted** in 819d20cd4: `chibi build test` and `tools/tests.tsv` replace them. |
-| `tools/quiet.py` | Make command display. | **Deleted** with the Makefile in e4aa7b4e2. |
-| `tools/configure_inputs.py`, `tools/package_sdk.py` | Native configuration probe; SDK packaging. | **Removed** with the CMake build in ef553b24b. |
-| `tools/package_player.py`, `tools/package_studio.py` | Player and Studio packaging. | **Removed** with the player in 477245017 and the Studio packaging in 7b97ecf7c. |
-
-### Shell
-
-| Files | Responsibility and callers | Decision |
-| --- | --- | --- |
-| `tools/configure.sh`, `tools/configure_native.sh` | Stage-zero configuration and cold-build recovery. | **Removed** with the CMake build in ef553b24b. The driver now uses the verified native seed. The unused first-host downloader and pin table are removed. |
-| `tools/web_env.sh` | Browser compiler isolation. | **Deleted** with the web packaging in 7b97ecf7c. |
-| `tools/clang-format.sh`, `.githooks/pre-commit` | C formatting. `chibi build format [--check]`, CI, the pre-commit hook. | **Keep** while project C exists. |
-| `chibi build census` | Fails on CMake, Make or Python build files outside `archive/` and `third_party/`, and prints the first-party C files and lines and each C++/Objective-C shim. CI runs it on every commit. | **Keep** until the C count reaches zero. |
-
-### Make and CMake
-
-| Files | Responsibility and callers | Decision |
-| --- | --- | --- |
-| `Makefile` | Build, test and packaging entry points. | **Deleted** in e4aa7b4e2: `chibi build` and its verbs replace it. |
-| Root `CMakeLists.txt`, `cmake/*.cmake`, `sdk/`, component and test `CMakeLists.txt` | Internal build graph. | **Removed** in ef553b24b: the authored graph (`chibi build`) builds every product and test driver. |
-| Installed `ChibiConfig.cmake` and `ChibiTargets.cmake` | CMake consumer interface. `chibi-studio`. | **Blocked**: kept while Studio builds through CMake. |
-
-### C and C++
-
-| Files | Responsibility and callers | Decision |
-| --- | --- | --- |
-| `src/language/` | Stage-zero compiler and remaining public project/catalog preparation. | **Blocked**: move remaining callers and pass the installed compiler/build/link and checked-game proof. Build programs use the Chibi compiler; public compilation and differential/recovery paths still need the C implementation. |
-| `src/host/`, `src/toolchain/`, `src/execution/`, `src/types/` | Executables, bytecode/SLJIT execution and the value ABI. | **Blocked**: Chibi emits no native executables yet (LLVM AOT). Their policy moves to installed `.chibi` modules first. |
-| `src/runtime/`, `src/render/`, `src/ui/`, `src/assets/`, `src/authoring/`, `src/automation/`, `src/capabilities/`, `src/diagnostics/`, `src/platform/`, `src/support/`, `include/chibi/` | First-party engine modules and the public header. | **Blocked**: M9, which depends on M5 and M6. |
-| `src/ui/rml.cpp`, `test/draw_backend.cpp` | Pass-through shims to RmlUi and Cute's C++ API. | **Keep** while those libraries are used. |
-| `tools/reflect/` | Native reflection generator. `chibi build sdk-reflect`. | **Blocked**: its ledger gate. |
-| `test/` | C regression and differential drivers. `chibi build test`, CI. | **Blocked**: each leaves with the C it tests. The generic subprocess benchmark wrapper and replaced native workload C harness are retired. |
-
-### Node and browser JavaScript
-
-| Files | Responsibility and callers | Decision |
-| --- | --- | --- |
-| `tools/collab/server/` | Collaboration room service. Its Node tests, `docs/collaboration.md`, Studio's client. | **Blocked**: its ledger gate. |
-
-Only Python that an external application imports, such as Blender through
-`bpy`, belongs to that exception; a launcher around it runs under ordinary
-Python and is part of the migration set. The mesh-to-SDF converter in
-`tools/mesh_sdf/` was retired on 2026-10-21 with no replacement (owner
-decision): its worker required Blender 4.3.2 on Linux, and its tests and the
-example that used it were already gone. Git history keeps it.
-Re-run the caller inventory before each deletion because open branches, CI,
-Studio, or installed SDK consumers may have changed since this document was
-written.
+The C target-runner reference remains until its macOS and Windows differential
+gate passes. Existing historical worktrees and recovered oracle evidence are not
+deletion targets. Earlier construction protocols and checkpoints are recorded in
+[self-hosting history](self-hosting-build.md); their retired commands are not
+current recovery mechanisms.

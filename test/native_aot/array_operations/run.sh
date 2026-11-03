@@ -2,7 +2,6 @@
 set -eu
 compiler=${1:?pass the native compiler}
 llvm=${2:?pass the LLVM tools directory}
-reference=${3:-}
 root=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd -P)
 case "$(uname -s)-$(uname -m)" in
     Darwin-arm64) target=aarch64-apple-darwin ;;
@@ -94,18 +93,3 @@ for level in 0 2; do
     check_brackets "$work/checked.log" || { cat "$work/checked.log"; exit 1; }
     printf 'PASS array source values, canonical places and balanced ownership O%s\n' "$level"
 done
-if [ -n "$reference" ]; then
-    for source in Values Replace Assignments RecordFields Ranges; do
-        project=$work/reference-$source
-        mkdir "$project"
-        cp "$root/test/native_aot/array_operations/$source.chibi" "$project/Main.chibi"
-        head -n 1 "$project/Main.chibi" > "$project/Tests.chibi"
-        printf '%s\n' '@test' 'Check :: () { result := Main(); assert(result == 0); }' >> "$project/Tests.chibi"
-        "$reference" --project-root "$project" --test > "$project/reference.log" 2>&1 || { cat "$project/reference.log"; exit 1; }
-        cat "$project/reference.log"
-    done
-    result=0
-    "$reference" --project-root "$work/checked" --test > "$work/checked-reference.log" 2>&1 || result=$?
-    [ "$result" -eq 1 ] || { cat "$work/checked-reference.log"; exit 1; }
-    check_brackets "$work/checked-reference.log" || { cat "$work/checked-reference.log"; exit 1; }
-fi

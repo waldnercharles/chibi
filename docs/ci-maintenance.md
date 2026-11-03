@@ -10,46 +10,19 @@ operations and respect current holds before running them.
 Run from a clean checkout of the exact reviewed commit. Use a **new directory
 outside the checkout** for each output. Keep each output and its logs when a
 command fails; do not publish partial results. Dependencies must already be
-installed. The existing CI watchdog caps the whole preparation command at the
-runtime (45 minutes), native (180 minutes), and source
-bundle (5 minutes) limits. Runtime comparison and packaging share a hard five-minute cap; the old
-ten-minute publication job no longer exists. The scripts do not extend compiler fixed-point
-iterations or any compiler-internal deadline.
+installed. Native preparation keeps its existing owned-command deadline and
+fixed-point bound. A failed command retains its output for inspection.
 
 ## Tools and platforms
 
-Shell commands need Git, Bash, Node, `shasum`, the GitHub CLI for **read-only** pinned
-asset downloads, and the dependencies used by the build graph. The runtime
-proof additionally needs PowerShell 7 and `readelf` (Linux) or `otool` (macOS).
-Provision a Linux x64 or macOS arm64 machine before preparing binaries:
+Shell preparation needs Git, Bash, Node, `shasum`, LLVM/LLD 22 or newer and the
+GitHub CLI for checksum-pinned asset downloads. Set `LLVM_BIN` and
+`CHIBI_LLVM_BIN` to the same tools directory. `.github/native-llvm.sh` records
+CI provisioning. No C compiler or libclang is needed to prepare native seeds.
 
-- **Ubuntu 24.04:** install `ccache clang-18 clang-tools-18 libclang-18-dev
-  libclang-rt-18-dev llvm-18 lld-18 libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers
-  libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev libxss-dev
-  libxtst-dev libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev`.
-  Native compilation also requires LLVM/LLD 22 or newer, provisioned as in
-  `.github/native-llvm.sh`. Export
-  `CC=clang-18 CXX=clang++-18 LIBCLANG_ROOT=/usr/lib/llvm-18
-  LLVM_BIN=/usr/lib/llvm-22/bin CHIBI_LLVM_BIN=/usr/lib/llvm-22/bin`.
-- **macOS 15 arm64:** install Homebrew `llvm@22 lld@22`; set
-  `LIBCLANG_ROOT=$(brew --prefix llvm@22)`, `CC=$LIBCLANG_ROOT/bin/clang`, and
-  `CXX=$LIBCLANG_ROOT/bin/clang++`. For native seeds, create a new tools directory
-  and link `opt`, `llc` and `llvm-ar` from LLVM plus `ld.lld`, `ld64.lld` and
-  `lld-link` from `$(brew --prefix lld@22)/bin` into it. Export its absolute
-  path as both `LLVM_BIN` and `CHIBI_LLVM_BIN`.
-  Put `$LIBCLANG_ROOT/bin` on `PATH`.
-
-Provisioning is separate from the bounded preparation command; it never gives a
-compiler phase extra time or a retry after that command's deadline. No script
-installs software, changes access, or creates a release on its own.
-
-The Windows native-seed preparation below instead needs PowerShell 7, Git and
-the GitHub CLI. It downloads an existing completed CI proof and does not run a
-compiler or require Bash, Node or a C toolchain.
-
-The unused first-build-host downloader, pin table and publisher preparation
-script have been removed. Native seeds own the default build entry. Explicit
-VM recovery still uses the runtime procedure below until its consumers retire.
+Windows artifact preparation needs PowerShell 7, Git and the GitHub CLI. It
+restores an existing completed CI proof and does not run a compiler. The normal
+Windows checkout entry supports Windows PowerShell 5.1 and runs the native CLI.
 
 ## Native compiler seed
 
@@ -60,7 +33,7 @@ bash .github/maintenance/native-seed.sh /absolute/new/native-linux-x64
 
 This uses the matching row of `tools/bootstrap/native-seed.tsv`. The native build
 entry also requires its platform's verified seed. It runs `native-self-host` with
-`--jobs 4 --skip-vm`, retaining the native build's stage-two/stage-three equality
+`--jobs 4`, retaining the native build's stage-two/stage-three equality
 and the existing stage-three/stage-four fallback for an older seed. Only the
 executable named by the successful fixed-point log is retained as
 `chibi-native-PLATFORM`. The original log, source identity, checksum and proposed
@@ -92,54 +65,6 @@ published and downloaded again under the publication procedure below. Normal
 `tools/build.ps1` selection fails clearly without that row; `--native-driver`
 can select a candidate for validation without changing the manifest.
 
-## Compiler runtime seed and corresponding source
-
-On each of Linux x64 and macOS arm64, using the **same clean commit**:
-
-```sh
-bash .github/maintenance/runtime-seed.sh -OutputDirectory /absolute/new/runtime-linux-x64
-```
-
-The proof fetches the pinned bytecode seed, builds `chibi-compiler-host`, then
-copies only that runtime, `tools/compiler` and `packages/core` into the output
-directory. It rejects native source files, checks process and OS architecture,
-and launches the copied runtime with its environment cleared, empty `PATH`,
-unavailable `CC`/`CXX`, and temporary directories pointing into the proof. The
-runtime's normal bootstrap recovery/fixed-point rules are unchanged. This is
-environment/input isolation, not a filesystem sandbox.
-
-Keep the entire proof directory. It contains recovered `compiler.chibip` and
-its hash, the platform runtime and its hash, stdout/stderr, native imports, and
-JSON recording commit/tree, platform, runtime/closure hashes, input inventory,
-cleared child environment, exit status and build/recovery timings.
-
-Copy the two proof directories to one clean checkout at that same commit. Then:
-
-```sh
-bash .github/maintenance/package-runtime.sh \
-  /absolute/runtime-linux-x64 /absolute/runtime-macos-arm64 \
-  /absolute/new/runtime-release https://example.invalid/replace-with-real-evidence-location
-```
-
-Supply the actual durable URL where the reviewed preparation evidence will be
-retained, not the example URL. The existing manifest field `run_url` records
-that URL; a manual preparation is not represented as a GitHub Actions run.
-Packaging rehashes the actual runtime and compiler bytes, validates both proofs,
-requires cross-platform compiler equality, and preserves the Windows entry of
-format-2 `tools/compiler/runtime.json` unchanged. The package contains:
-
-- Linux/macOS runtime assets and a proposed `runtime.json`, with exact commit,
-  tree, size/hash and `COMPILER_HOST_MAX_ARTIFACT_BYTES`;
-- each platform's recovery evidence, imports and stdout/stderr;
-- the exact commit's `git archive` (including the SLJIT patch and build inputs),
-  the pinned upstream SLJIT and Tree-sitter source archives, and Chibi/fmt/yyjson/
-  SLJIT/Tree-sitter notices;
-- `SHA256SUMS` covering every prepared release file.
-
-The tag remains `compiler-runtime-preparedVERSION-COMMIT`. Review corresponding
-source and notices using [distribution licensing](distribution-licensing.md);
-a successful preparation is not a certification of distribution compliance.
-
 ## Optional source transfer
 
 ```sh
@@ -155,49 +80,43 @@ exact commit/tree, and passed through `git fsck --full`. `manifest.json` and
 `SHA256SUMS` identify the output. Uncommitted work is not included. No checkout
 ref is modified. Transfer the output only when its destination is authorized.
 
-## Separately authorized publication recipe
+## Separately authorized native seed publication
 
-These are manual review gates, **not commands run by CI or the preparation
-scripts**. The retired runtime workflow's automatic branch pin and follow-on
-dispatch are deliberately gone.
+Preparation does not authorize publication or a pin change. The former C-host
+and prepared-bytecode runtime release procedures are retired with their
+consumers; they are not bootstrap alternatives.
 
-1. Obtain explicit approval for the exact source commit, platform assets, tag,
-   repository, corresponding-source material and pin change. Require successful
-   proofs on both runtime platforms. Do not substitute a successful host/native
-   build for the runtime isolation/equality proofs.
-2. Assemble a new flat release directory. For host/native preparation, copy only
-   the intended `chibi-*-PLATFORM` binaries, their source evidence/logs and
-   required source/notices; do **not** publish `previous/` or the complete proof
-   input trees. For a runtime release, use the complete package above. Verify
-   every hash locally. Review that all files are intended public material.
-3. Verify the tag does not already identify a published release. Never replace
-   published assets. An API/authentication/rate-limit error is not evidence of
-   absence. If a draft exists, inspect its target and complete asset inventory;
-   resume only that exact approved commit, and do not overwrite unknown assets.
-4. With separately authorized credentials, use `gh release create TAG --draft
-   --prerelease --latest=false --target COMMIT --repo REPOSITORY` with reviewed
-   title/notes, then `gh release upload TAG FILE... --repo REPOSITORY` for the
-   explicit reviewed inventory (no `--clobber`). Compare the draft's asset list
-   exactly with the expected inventory before publishing it via
-   `gh release edit TAG --draft=false --prerelease --latest=false --repo
-   REPOSITORY`.
-5. Download the published assets to a **new** directory. Verify the tag resolves
-   to the exact commit, the release is nondraft/prerelease, the asset-name set is
-   exact, and all bytes match both `SHA256SUMS` and the prepared files. For a
-   runtime, compare the published `runtime.json`, evidence, imports, source and
-   notices byte-for-byte with the reviewed package; this also retains both
-   platform checks and the unchanged Windows pin. Stop on any mismatch.
-6. Only then propose the verified TSV rows or `runtime.json` in a reviewed PR.
-   Do not commit/push to a branch that advanced during preparation. Do not
-   dispatch CI from these scripts. Use the single CI workflow through its normal
-   approved entry points; never revive the removed workflows.
+1. Obtain approval for the exact source commit, platform assets, tag,
+   repository, corresponding-source material and pin changes. Require each
+   proposed platform's fixed-point and owning runtime checks to pass.
+2. Assemble a new release directory containing only the reviewed
+   `chibi-native-PLATFORM` executable (`.exe` for Windows), its preparation
+   evidence, checksums, corresponding source and required notices. Omit private
+   scratch and input trees. Check every file against the prepared inventory.
+3. Verify that the tag does not already identify a published release. An API,
+   authentication or rate-limit error does not establish absence. If a draft
+   exists, verify its target and complete asset inventory before resuming it.
+   Never replace unknown or published assets.
+4. With the separately authorized credentials, use
+   `gh release create TAG --draft --prerelease --latest=false --target COMMIT --repo REPOSITORY`
+   and `gh release upload TAG FILE... --repo REPOSITORY` for the exact reviewed
+   inventory, without `--clobber`. Compare the complete draft asset list with
+   that inventory before publishing with
+   `gh release edit TAG --draft=false --prerelease --latest=false --repo REPOSITORY`.
+5. Download the published assets into a new directory. Verify the exact tag
+   commit, prerelease state, asset names and every checksum against the reviewed
+   preparation. Keep the corresponding source and platform evidence with the
+   executable. Stop on any mismatch.
+6. Propose only the verified platform rows in `tools/bootstrap/native-seed.tsv`
+   through a reviewed PR. Recheck the source branch before committing. These
+   scripts do not commit, push or dispatch CI.
 
 ## Retirement map
 
 | Retired workflow | Preserved capability | New owner/trigger |
 | --- | --- | --- |
 | `bootstrap-host.yml` | Default native build entry | Retired with its unused host downloader and pin table |
-| `compiler-runtime-seed.yml` | Runtime build, clean-room recovery, equality, import/provenance/source/notices material | `runtime-seed.sh` + `runtime-seed.ps1`, then `package-runtime.sh` + `package-runtime.js`, explicit local preparation |
+| `compiler-runtime-seed.yml` | Retired C host and prepared-bytecode recovery | Removed with its runtime/seed consumers |
 | `native-seed.yml` | Native seeded fixed point, logs, hashes and pins | `native-seed.sh`, explicit local preparation |
 | `source-bundle.yml` | Self-contained exact-source history and verification | `source-bundle.sh`, optional local transfer |
 

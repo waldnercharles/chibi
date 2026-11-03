@@ -16,20 +16,5 @@ if git grep -nE '(==|!=|\|\||&&) *(\|\||&&|\))|\( *(\|\||&&)' -- '*.chibi' ':!ar
 fi
 
 
-# Check test selectors name existing driver flags
-status=0
-while IFS="$(printf '\t')" read -r kind name driver flag rest; do
-  [ "$kind" = tool ] || continue
-  case "$driver" in
-    */test_tools) source=test/tools/main.c ;;
-    */test_language) source=test/language/main.c ;;
-    *) continue ;;
-  esac
-  case "$flag" in --*) ;; *) continue ;; esac
-  grep -qF -- "\"$flag\"" "$source" || { echo "tools/tests.tsv: $name runs $flag, which $source does not accept"; status=1; }
-done < tools/tests.tsv
-test "$status" = 0
-
-
 # Small CI infrastructure regressions; no compiler or language fixtures.
 node --test test/ci/*.test.js

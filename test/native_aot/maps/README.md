@@ -79,10 +79,3 @@ String arrays grow with empty elements; authored record growth requires a
 separate failure-parity check before the final retirement gate.
 
 A growth/shrink regression builds 4096 entries, deletes all but 64 and checks that logical entry/index capacity shrinks with the live map. Capacity planning near 2^30 is checked without allocating those buffers.
-
-Pass an ordinary build host as the fourth argument to `run.sh` to compare the
-array-map source fixture with the bytecode consumer while it remains in use.
-It checks that temporary-map projections keep their arrays before releasing
-the map and that array index callbacks read the receiver's earlier value.
-Foreign-buffer cases use real native C calls; the retained ordinary host lacks
-that capability and its older test runner skips foreign imports.

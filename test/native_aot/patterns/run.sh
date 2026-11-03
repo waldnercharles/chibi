@@ -3,7 +3,6 @@
 set -eu
 compiler=${1:?pass the native compiler}
 llvm=${2:?pass the LLVM tools directory}
-reference=${3:-}
 root=$(cd "$(dirname "$0")/../../.." && pwd -P)
 case "$(uname -s)-$(uname -m)" in
     Darwin-arm64) target=aarch64-apple-darwin ;;
@@ -36,8 +35,3 @@ for source in "$root"/test/native_aot/patterns/rejected/*.chibi; do
     grep -q 'Pattern bindings require a matching if, while or switch arm' "$work/rejected.log"
     test "$(cat "$work/rejected")" = preserved
 done
-if [ -n "$reference" ]; then
-    mkdir "$work/reference"
-    cp "$root/test/native_aot/patterns/Main.chibi" "$work/reference/Main.chibi"
-    "$reference" --project-root "$work/reference" --test
-fi

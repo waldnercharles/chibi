@@ -14,7 +14,8 @@ sh tools/build.sh build --release
 sh tools/build.sh install --prefix /absolute/prefix
 ```
 
-The default products are `chibi` and `chibi-asset-compiler`. The installed
+The default products are `chibi`, `chibi-asset-compiler` and the native
+`chibi_asset_compiler_host` compile-only archive. The installed
 `bin/chibi` and `bin/chibi-compile` contain the same native compiler executable;
 `libexec/chibi/chibi-asset-compiler` is the native authoring compiler companion.
 Compiler, core and graph sources live in `share/chibi`. The native distribution
@@ -22,17 +23,17 @@ omits private VM hosts and bootstrap bytecode. Its commands find resources
 relative to the executable and keep working after the prefix moves.
 
 A project's `Build.chibi` runs through the native program cache. In an engine
-checkout, `chibi build` runs the authored toolchain driver. C engine and test
-targets remain explicit graph targets with their own C toolchain requirements.
+checkout, `chibi build` runs the authored toolchain driver. Explicit test-owned
+C targets exercise the generic foreign-code graph without compiler or VM hosts.
 Desktop asset compilation uses the native companion and the existing prepared
 closure format. See [native asset compilation](native-asset-compiler.md) for its
 process, quota and publication contract.
 
-Compiler self-hosting and native tool installation are separate from runtime
-execution coverage. The engine's retained runtime APIs and browser execution
-still use the VM. Native programs reject unsupported source forms with a source
-diagnostic. [The native ledger](native-llvm-ledger.md) records that coverage;
-these compiler proofs do not claim a complete runtime or browser replacement.
+Compiler reproduction and runtime verification are separate proofs. The C VM,
+reflection generator and C compiler hosts are removed; native and Wasm programs
+use the authored compiler and their owning LLVM runtimes. Unsupported source
+forms still produce diagnostics. [The native ledger](native-llvm-ledger.md)
+records language and runtime coverage.
 
 ## Native recovery and verification
 
@@ -44,12 +45,8 @@ chibi build test graph-sdk-install
 Native recovery starts from the verified native seed, builds the current
 compiler and checks its fixed point. It requires stages two and three to match,
 or, when an older seed produces a different stage two, stages three and four.
-Only an explicit `--compare-vm` requests the retained VM oracle. The bytecode
-recovery commands are compatibility checks while their remaining consumers move.
-Ordinary CI passes `--compare-vm --skip-vm-comparison`, which retains both
-driver-command and graph compile/link command parity while omitting only the
-historical VM-hosted compiler self-build. Scheduled/manual-full CI passes
-`--compare-vm` without that omission. See [CI modes](ci.md) for the full inventory.
+There is no VM comparison or bytecode recovery path. See [CI modes](ci.md) for
+native runtime, cross-target, SDK and no-C compiler validation.
 
 `graph-sdk-install` tests fresh-prefix publication and owned staging cleanup,
 source and inventory validation, relocation, identity errors, and real native
@@ -62,12 +59,13 @@ selection and cache rules.
 ## Historical VM oracle and migration evidence
 
 The remaining sections record earlier implementations, their measured proofs,
-and explicitly retained comparison oracles. They include former SDK layouts,
+and former comparison oracles. They include former SDK layouts,
 CMake commands and build-host protocols. Their commands and pending items
 describe those checkpoints. Use the current workflow above for default build,
 installation and recovery. The former first-host downloader and pin table are
 removed; their historical protocol descriptions below do not provide a recovery
-route. Native seeds own the current build entry.
+route. Native seeds own the current build entry. The C host, reflection and bytecode
+recovery routes described below are retired.
 The private process harness and its `BuildWorkflow`, `BuildProcessFixture` and
 `BuildValueLifetime` sources are also retired. Their descriptions below record
 historical evidence; native OS, CLI and supervisor suites cover the surviving

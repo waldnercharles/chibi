@@ -1,16 +1,15 @@
 package evidence
 
 import files "graph:files"
+import programs "graph:programs"
 import engine "graph:engine"
 import os "core:os"
 import strings "core:strings"
 
-// Evidence that a CI build ran with the profile it selected. It reads what the
-// build left (the commands in each output's `.chibi-record`, the stamps of its
-// inputs, the sanitizer symbols `nm` finds) rather than the planned command
-// databases, which only say what would run. A record can describe a cache hit
-// instead of a fresh compile. C profile checks cover representative objects and
-// required links; native products have their own compiler command checks.
+// Native product evidence reads the actual output receipts, source/tool
+// fingerprints and hashes. A receipt may describe a valid cache hit. The command
+// databases alone only describe planned work. Generic C flags and receipt checks
+// remain available for the independent foreign-code graph fixtures.
 //
 // Every check returns "" when it holds, else what failed.
 
@@ -251,56 +250,64 @@ pub ReadRecord :: (output: string) -> string {
             native = arguments[index] == "--output";
         }
     }
-    if (place < 0 || place + 1 >= length(arguments) || os.RealPath(arguments[place + 1]) != os.RealPath(output)) {
-        return format_text("{}: command output mismatch", output);
-    }
+    archive := place < 0 && length(arguments) == 6 &&
+               strings.HasSuffix(output, "/lib/libchibi_asset_compiler_host.a") &&
+               os.RealPath(arguments[5]) == os.RealPath(output);
     inputs: string[] = [];
-    at := Place(arguments, "-c");
-    if (native) {
-        inputs.append(arguments[0]);
-        for (option in ["--compiler", "--core", "--source"]) {
-            index := Place(arguments, option);
-            if (index < 0 && option == "--source") { continue; }
+    if (archive) {
+        if (arguments[4] != programs.HostTriple()) { return format_text("{}: unexpected native archive target", output); }
+        inputs = engine.NativeArchiveInputs(arguments[1], arguments[2], arguments[0], arguments[3], output);
+    } else {
+        if (place < 0 || place + 1 >= length(arguments) || os.RealPath(arguments[place + 1]) != os.RealPath(output)) {
+            return format_text("{}: command output mismatch", output);
+        }
+        at := Place(arguments, "-c");
+        if (native) {
+            inputs.append(arguments[0]);
+            for (option in ["--compiler", "--core", "--source"]) {
+                index := Place(arguments, option);
+                if (index < 0 && option == "--source") { continue; }
+                if (index < 0 || index + 1 >= length(arguments)) {
+                    return format_text("{}: unexpected native command", output);
+                }
+                if (option == "--source") {
+                    inputs.append(arguments[index + 1]);
+                } else {
+                    inventory := engine.NativeInputs(arguments[index + 1]);
+                    if (length(inventory) == 0) {
+                        return format_text("{}: cannot read native source inventory", output);
+                    }
+                    inputs.extend(inventory);
+                }
+            }
+            index := Place(arguments, "--llvm");
             if (index < 0 || index + 1 >= length(arguments)) {
                 return format_text("{}: unexpected native command", output);
             }
-            if (option == "--source") {
-                inputs.append(arguments[index + 1]);
-            } else {
-                inventory := engine.NativeInputs(arguments[index + 1]);
-                if (length(inventory) == 0) {
-                    return format_text("{}: cannot read native source inventory", output);
+            linker := "ld.lld";
+            suffix := "";
+            if (os.Platform() == "Darwin") { linker = "ld64.lld"; }
+            if (os.Platform() == "Windows") { linker = "lld-link"; suffix = ".exe"; }
+            for (tool in ["opt", "llc", linker]) {
+                inputs.append(format_text("{}/{}{}", arguments[index + 1], tool, suffix));
+            }
+        } else if (at >= 0) {
+            if (at + 1 >= length(arguments)) {
+                return format_text("{}: unexpected compile command", output);
+            }
+            inputs.append(arguments[at + 1]);
+        } else {
+            // The link puts objects before -o and libraries after its output;
+            // other absolute operands, such as macOS -isysroot, are not inputs.
+            for (index in 1..<place) {
+                if (strings.HasSuffix(arguments[index], ".o")) {
+                    inputs.append(arguments[index]);
                 }
-                inputs.extend(inventory);
             }
-        }
-        index := Place(arguments, "--llvm");
-        if (index < 0 || index + 1 >= length(arguments)) {
-            return format_text("{}: unexpected native command", output);
-        }
-        linker := "ld.lld";
-        suffix := "";
-        if (os.Platform() == "Darwin") { linker = "ld64.lld"; }
-        if (os.Platform() == "Windows") { linker = "lld-link"; suffix = ".exe"; }
-        for (tool in ["opt", "llc", linker]) {
-            inputs.append(format_text("{}/{}{}", arguments[index + 1], tool, suffix));
-        }
-    } else if (at >= 0) {
-        if (at + 1 >= length(arguments)) {
-            return format_text("{}: unexpected compile command", output);
-        }
-        inputs.append(arguments[at + 1]);
-    } else {
-        // The link puts objects before -o and libraries after its output;
-        // other absolute operands, such as macOS -isysroot, are not inputs.
-        for (index in 1..<place) {
-            if (strings.HasSuffix(arguments[index], ".o")) {
-                inputs.append(arguments[index]);
-            }
-        }
-        for (index in (place + 2)..<length(arguments)) {
-            if (strings.HasPrefix(arguments[index], "/")) {
-                inputs.append(arguments[index]);
+            for (index in (place + 2)..<length(arguments)) {
+                if (strings.HasPrefix(arguments[index], "/")) {
+                    inputs.append(arguments[index]);
+                }
             }
         }
     }
@@ -338,19 +345,6 @@ Quote :: (text: string) -> string {
     return format_text("\"{}\"", escaped);
 }
 
-// The flags a test compiler header lists, one JSON string per line.
-pub ExportedFlags :: (header: string) -> string[] {
-    flags: string[] = [];
-    for (line in strings.SplitLines(header)) {
-        text := strings.TrimSpace(line);
-        if (strings.HasPrefix(text, "\"") && strings.HasSuffix(text, "\",")) {
-            body := strings.Cut(text, 1, strings.ByteLength(text) - 3);
-            flags.append(strings.ReplaceAll(strings.ReplaceAll(body, "\\\"", "\""), "\\\\", "\\"));
-        }
-    }
-    return flags;
-}
-
 // The index of the first `value` in `arguments`, -1 when there is none.
 Place :: (arguments: string[], value: string) -> int {
     for (index in 0..<length(arguments)) {
@@ -361,43 +355,31 @@ Place :: (arguments: string[], value: string) -> int {
     return -1;
 }
 
-// A source names a representative C object; a target names a native product.
-// Rows with neither are C links.
-Output :: struct {
-    path: string;
-    source: string;
-    test: bool;
-    target: string;
-}
-
+Output :: struct { path: string; target: string; }
 Outputs :: () -> Output[] {
-    outputs: Output[] = [
-        {path: "objects/chibi_support/src/support/arena.c.o", source: "src/support/arena.c", test: false, target: ""},
-        {path: "objects/test_tools/test/tools/main.c.o", source: "test/tools/main.c", test: true, target: ""},
-        {path: "objects/test_language/test/language/main.c.o", source: "test/language/main.c", test: true, target: ""},
-        {path: "sdk/chibi-compile", source: "", test: false, target: ""},
-        {path: "sdk/chibi-build-host", source: "", test: false, target: ""},
-        {path: "test/tools/test_tools", source: "", test: false, target: ""},
-        {path: "test/language/test_language", source: "", test: false, target: ""}
-    ];
+    outputs: Output[] = [];
     for (target in engine.NativeProducts()) {
-        outputs.append({path: strings.TrimPrefix(engine.Executable("", target), "/"), source: "", test: false, target: target});
+        outputs.append({path: strings.TrimPrefix(engine.Executable("", target), "/"), target: target});
     }
+    outputs.append({path: strings.TrimPrefix(engine.AssetCompilerArchive(""), "/"), target: ""});
     return outputs;
 }
 
-// What CI selected and ran, as the workflow passes it: the build host reads no
-// ambient environment beyond a short allowlist, so each fact is an argument.
 pub Selected :: struct {
     sha: string;
     run: string;
     attempt: string;
     job: string;
-    sanitizers: string;
-    profile: string;
-    optimization: string;
-    frame_pointers: string;
     outcome: string;
+}
+
+pub CheckArchive :: (arguments: string[], root: string, build: string) -> string {
+    if (length(arguments) != 6) { return "unexpected native archive command"; }
+    expected := engine.NativeArchiveCommand(arguments[0], arguments[3], os.RealPath(root), os.RealPath(build));
+    for (index in 0..<length(expected)) {
+        if (arguments[index] != expected[index]) { return "unexpected native archive command"; }
+    }
+    return "";
 }
 
 // The outcome of Verify: the first problem ("" when none) and a JSON object for
@@ -418,19 +400,6 @@ Verify :: (root: string, build: string, output: string, nm: string, selected: Se
         strings.TrimSpace(changes.stdout) != "") {
         return {problem: "checkout does not match the clean CI source", checked: checked};
     }
-    if (selected.sanitizers != "ON" && selected.sanitizers != "OFF") {
-        return {problem: "missing selected sanitizer profile", checked: checked};
-    }
-    sanitizers := selected.sanitizers == "ON";
-    profile := "debug";
-    frames := "on";
-    if (sanitizers) {
-        profile = "sanitizer";
-        frames = "";
-    }
-    if (selected.profile != profile || selected.optimization != "1" || selected.frame_pointers != frames) {
-        return {problem: "unexpected selected CI profile", checked: checked};
-    }
     for (name in ["compile_commands.json", "link_commands.json"]) {
         if (os.Copy(format_text("{}/{}", build, name), format_text("{}/{}", output, name)) != nil) {
             return {problem: format_text("cannot copy {}", name), checked: checked};
@@ -450,20 +419,8 @@ Verify :: (root: string, build: string, output: string, nm: string, selected: Se
             return {problem: format_text("cannot copy the record of {}", path), checked: checked};
         }
         problem := "";
-        compiled := row.source != "";
-        native := row.target != "";
-        if (compiled) {
-            at := Place(arguments, "-c");
-            wanted := os.RealPath(format_text("{}/{}", root, row.source));
-            if (at < 0 || at + 1 != length(arguments) - 1 || os.RealPath(arguments[at + 1]) != wanted) {
-                return {problem: format_text("wrong representative source for {}", path), checked: checked};
-            }
-            problem = CheckFlags(arguments, sanitizers, row.test);
-        } else if (native) {
-            problem = CheckNative(arguments, root, build, row.target);
-        } else {
-            problem = CheckSanitizers(arguments, sanitizers);
-        }
+        if (row.target == "") { problem = CheckArchive(arguments, root, build); }
+        else { problem = CheckNative(arguments, root, build, row.target); }
         if (problem != "") {
             return {problem: format_text("{}: {}", path, problem), checked: checked};
         }
@@ -477,38 +434,20 @@ Verify :: (root: string, build: string, output: string, nm: string, selected: Se
         if (listed.status != 0 || digest == "") {
             return {problem: format_text("cannot read the symbols of {}", path), checked: checked};
         }
-        lines: string[] = [];
-        for (line in strings.SplitLines(listed.stdout)) {
-            if (strings.Contains(line, "__asan_") || strings.Contains(line, "__ubsan_")) {
-                lines.append(line);
-            }
-        }
-        if (os.WriteText(format_text("{}.symbols.txt", destination), format_text("{}\n", strings.Join(lines, "\n"))) != nil) {
+        if (os.WriteText(format_text("{}.symbols.txt", destination), listed.stdout) != nil) {
             return {problem: format_text("cannot write the symbols of {}", path), checked: checked};
         }
-        problem = CheckSymbols(listed.stdout, sanitizers && !native, compiled);
-        if (problem != "") {
-            return {problem: format_text("{}: {}", path, problem), checked: checked};
+        if (row.target == "") {
+            receipt := format_text("{}.json", path);
+            if (os.Copy(receipt, format_text("{}.json", destination)) != nil) {
+                return {problem: "cannot copy the native archive receipt", checked: checked};
+            }
         }
         if (os.Stamp(path) != before || (os.Platform() == "Windows" && files.Digest(path) != digest)) {
             return {problem: format_text("output changed during capture: {}", path), checked: checked};
         }
-        names: string[] = [];
-        for (name in Symbols(listed.stdout, compiled)) {
-            names.append(Quote(name));
-        }
-        toolchain := "C";
-        if (native) { toolchain = "native"; }
-        checked.append(format_text("{{\"output\":{},\"toolchain\":{},\"sha256\":{},\"stamp\":{},\"symbols\":[{}]}}", Quote(path),
-                                   Quote(toolchain), Quote(digest), Quote(before), strings.Join(names, ",")));
-    }
-    header := format_text("{}/test/tools/testing/include/export_compiler.h", build);
-    if (os.Copy(header, format_text("{}/export_compiler.h", output)) != nil) {
-        return {problem: "cannot copy the exported compiler header", checked: checked};
-    }
-    problem := CheckFlags(ExportedFlags(files.Text(header)), sanitizers, true);
-    if (problem != "") {
-        return {problem: format_text("exported compiler flags: {}", problem), checked: checked};
+        checked.append(format_text("{{\"output\":{},\"toolchain\":\"native\",\"sha256\":{},\"stamp\":{}}}",
+                                   Quote(path), Quote(digest), Quote(before)));
     }
     if (selected.outcome != "success") {
         return {problem: "selected build did not succeed; partial evidence only", checked: checked};
@@ -516,8 +455,8 @@ Verify :: (root: string, build: string, output: string, nm: string, selected: Se
     return {problem: "", checked: checked};
 }
 
-// Verifies the build in `build` and writes receipt.json below `output`; 0 when
-// the profile is verified. Run right after the selected build, before tests
+// Verifies native products and archives in `build`, writing receipt.json below
+// `output`; 0 when every required product is verified. Run right after the selected build, before tests
 // re-enter the planner and change stamps.
 pub Capture :: (root: string, build: string, output: string, nm: string, selected: Selected) -> int {
     if (os.MakeDirectory(output) != nil && !os.Exists(output)) {
@@ -529,9 +468,6 @@ pub Capture :: (root: string, build: string, output: string, nm: string, selecte
     checked := verdict.checked;
     environment := [format_text("\"sha\":{}", Quote(selected.sha)), format_text("\"run\":{}", Quote(selected.run)),
                     format_text("\"attempt\":{}", Quote(selected.attempt)), format_text("\"job\":{}", Quote(selected.job)),
-                    format_text("\"sanitizers\":{}", Quote(selected.sanitizers)), format_text("\"profile\":{}", Quote(selected.profile)),
-                    format_text("\"optimization\":{}", Quote(selected.optimization)),
-                    format_text("\"frame_pointers\":{}", Quote(selected.frame_pointers)),
                     format_text("\"outcome\":{}", Quote(selected.outcome))];
     status := "verified";
     error := "";
@@ -540,7 +476,7 @@ pub Capture :: (root: string, build: string, output: string, nm: string, selecte
         error = format_text(",\"error\":{}", Quote(problem));
     }
     receipt := format_text("{{\"environment\":{{{}}},\"status\":{},\"scope\":{},\"checked\":[{}]{}}}\n", strings.Join(environment, ","),
-                           Quote(status), Quote("representative C objects, required C links and registered native programs; not every translation unit"),
+                           Quote(status), Quote("registered native programs and compile-only facade archives; C sanitizer instrumentation is not claimed"),
                            strings.Join(checked, ","), error);
     if (os.WriteText(format_text("{}/receipt.json", output), receipt) != nil) {
         os.Print("evidence: cannot write receipt.json");

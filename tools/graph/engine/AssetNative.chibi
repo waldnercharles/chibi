@@ -27,12 +27,12 @@ AssetNativeBuildCommand :: (llvm: string, root: string, build_dir: string) -> st
             "--entry", "Main", "--collection", Join(["graph=", root, "/tools/graph"]),
             "--target", programs.HostTriple(), "--llvm", llvm, "--output", AssetNativeBuilder(build_dir)];
 }
-AssetNativeCommand :: (builder: string, llvm: string, root: string, build_dir: string) -> string[] {
+pub NativeArchiveCommand :: (builder: string, llvm: string, root: string, build_dir: string) -> string[] {
     return [builder, root, Executable(build_dir, "chibi"), llvm, programs.HostTriple(), AssetCompilerArchive(build_dir)];
 }
 pub NativeArchiveCommands :: (llvm: string, root: string, build_dir: string) -> string {
     return Join(["[\n", c.LinkEntry(AssetNativeBuildCommand(llvm, root, build_dir), AssetNativeBuilder(build_dir)), ",\n",
-                 c.LinkEntry(AssetNativeCommand(AssetNativeBuilder(build_dir), llvm, root, build_dir), AssetCompilerArchive(build_dir)), "\n]\n"]);
+                 c.LinkEntry(NativeArchiveCommand(AssetNativeBuilder(build_dir), llvm, root, build_dir), AssetCompilerArchive(build_dir)), "\n]\n"]);
 }
 pub NativeArchiveRecordedCommands :: (build_dir: string) -> string {
     output := AssetCompilerArchive(build_dir);
@@ -47,36 +47,46 @@ pub NativeArchiveRecordedCommands :: (build_dir: string) -> string {
     return Join(["[\n", c.LinkEntry(command, output), "\n]\n"]);
 }
 pub BuildNativeArchives :: (llvm: string, root: string, build_dir: string) -> int {
-    templates: string[] = [];
     for (relative in ["tools/graph/asset_native_runtime/Runtime.ll", "tools/graph/asset_native_runtime/Windows.ll",
                       "tools/graph/asset_io_runtime/Files.ll"]) {
         path := Join([root, "/", relative]);
         if (os.Kind(path) != os.KindFile) { os.Print(Join(["graph: missing native archive template ", path])); return -1; }
-        templates.append(path);
     }
     compiler := Executable(build_dir, "chibi");
     builder := programs.BuildWithProject(root, Join([root, "/tools/compiler"]), compiler, llvm,
                                          "tools/graph/asset_native/Build.chibi", "Main", ["graph=tools/graph"]);
     if (builder == "") { return -1; }
+    inputs := NativeArchiveInputs(root, compiler, builder, llvm, AssetCompilerArchive(build_dir));
+    if (length(inputs) == 0) { return -1; }
+    return c.Step(NativeArchiveCommand(builder, llvm, root, build_dir), inputs, AssetCompilerArchive(build_dir));
+}
+
+// The archive's complete receipt inputs, shared by construction and evidence.
+pub NativeArchiveInputs :: (root: string, compiler: string, builder: string, llvm: string, output: string) -> string[] {
     inputs := NativeInputs(Join([root, "/tools/compiler"]));
     core := NativeInputs(Join([root, "/packages/core"]));
     graph := NativeInputs(Join([root, "/tools/graph"]));
     if (length(inputs) == 0 || length(core) == 0 || length(graph) == 0) {
-        os.Print("graph: cannot inventory native facade sources"); return -1;
+        os.Print("graph: cannot inventory native facade sources"); return [];
     }
     inputs.extend(core);
     inputs.extend(graph);
-    inputs.extend(templates);
+    for (relative in ["tools/graph/asset_native_runtime/Runtime.ll", "tools/graph/asset_native_runtime/Windows.ll",
+                      "tools/graph/asset_io_runtime/Files.ll"]) {
+        path := Join([root, "/", relative]);
+        if (os.Kind(path) != os.KindFile) { os.Print(Join(["graph: missing native archive template ", path])); return []; }
+        inputs.append(path);
+    }
     inputs.extend([builder, compiler, Join([root, "/src/authoring/asset_compiler_host.h"]),
-                   Join([AssetCompilerArchive(build_dir), ".json"])]);
+                   Join([output, ".json"])]);
     archive_tool := "llvm-ar";
     if (os.Platform() == "Windows") { archive_tool = "llvm-lib"; }
     suffix := "";
     if (os.Platform() == "Windows") { suffix = ".exe"; }
     for (tool in ["opt", "llc", "llvm-link", archive_tool]) {
         path := os.RealPath(Join([llvm, "/", tool, suffix]));
-        if (!os.IsFile(path)) { os.Print(Join(["graph: missing native archive tool ", tool])); return -1; }
+        if (!os.IsFile(path)) { os.Print(Join(["graph: missing native archive tool ", tool])); return []; }
         inputs.append(path);
     }
-    return c.Step(AssetNativeCommand(builder, llvm, root, build_dir), inputs, AssetCompilerArchive(build_dir));
+    return inputs;
 }

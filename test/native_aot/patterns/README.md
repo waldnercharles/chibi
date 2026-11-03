@@ -1,4 +1,4 @@
-`run.sh COMPILER LLVM [ORDINARY_COMPILER]` checks the unchanged authored pattern
+`run.sh COMPILER LLVM` checks the unchanged authored pattern
 suites, `&&` short circuit and source mutation, shadowing, tag-guarded payloads,
 loop refresh, break/continue/return, plain suspension, and malformed facts.
 The existing managed-values runner also poisons freed storage, requires balanced

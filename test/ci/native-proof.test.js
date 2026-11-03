@@ -44,7 +44,7 @@ for (const [full, bootstrapRun] of [['false', ''], ['false', '123'], ['true', ''
 test "$1" = "$PWD/build-release/sdk/chibi-asset-compiler"
 test "$2" = "$PWD/build-release/sdk/chibi"
 test "$3" = "$CHIBI_LLVM_BIN"
-test "$4" = clang-18
+test "$4" = "$CC"
 printf '%s\\n' native_aot/asset_compiler/bridge.sh >> "$RUNNER_TEMP/checks"
 `);
       fs.writeFileSync(path.join(root, 'test/native_aot/asset_compiler/archive.sh'), `set -eu
@@ -75,7 +75,7 @@ exit 93
       git(['init', '-q']); git(['add', '.']);
       git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'launcher fixture']);
       const env = {...process.env, RUNNER_TEMP: logs, CHIBI_FULL: full, CHIBI_LLVM_BIN: path.join(root, 'llvm'),
-        CHIBI_WINDOWS_BOOTSTRAP_RUN: bootstrapRun,
+        CHIBI_WINDOWS_BOOTSTRAP_RUN: bootstrapRun, CC: 'fixture-cc',
         GITHUB_SHA: git(['rev-parse', 'HEAD'])};
       delete env.CHIBI_BUILD_HOST;
       const result = spawnSync('bash', ['.github/ci/native-proof.sh'], {cwd: root, env, encoding: 'utf8', timeout: 5000});
@@ -87,13 +87,14 @@ exit 93
       for (const option of ['--build-host', '--compiler-host', '--compare-vm', '--skip-vm-comparison', '--skip-vm']) {
         assert.equal(commands[0].split(' ').includes(option), false, option);
       }
-      assert.equal(commands[0].includes(`--windows ${logs}/windows`), bootstrapRun === '');
+      assert.equal(commands[0].includes(`--windows ${logs}/windows`), process.platform === 'linux' && bootstrapRun === '');
       if (full === 'true') {
         assert.ok(commands[1].includes('build --release --target chibi --target chibi-asset-compiler'));
         assert.ok(commands[2].includes('graph-sdk-install'));
       }
       assert.deepEqual(fs.readFileSync(path.join(logs, 'checks'), 'utf8').trim().split('\n'),
-        full === 'true' ? [...checks, 'native_aot/asset_compiler/bridge.sh', 'native_aot/asset_compiler/archive.sh'] : checks);
+        (full === 'true' ? [...checks, 'native_aot/asset_compiler/bridge.sh', 'native_aot/asset_compiler/archive.sh'] : checks)
+          .filter(file => process.platform === 'linux' || file !== 'native_aot/native_driver/run.sh'));
     } finally { fs.rmSync(scratch, {recursive: true, force: true}); }
   });
 }

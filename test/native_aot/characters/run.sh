@@ -2,7 +2,6 @@
 set -eu
 compiler=${1:?pass the native compiler}
 llvm=${2:?pass the LLVM directory}
-reference=${3:-}
 repo=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd -P)
 work=$(mktemp -d "${TMPDIR:-/tmp}/chibi-characters.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
@@ -36,12 +35,6 @@ for level in 0 2; do
     "$work/callback-$level"
     printf 'PASS native characters and real UTF-8 tests O%s\n' "$level"
 done
-if [ -n "$reference" ]; then
-    "$reference" --project-root "$work/project" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
-    awk '/^(PASS|FAIL) (characters|shadow)[.]/ { print }' "$work/reference.log" | LC_ALL=C sort > "$work/reference.results"
-    awk '/^(PASS|FAIL) (characters|shadow)[.]/ { print }' "$work/native.results" > "$work/comparable.results"
-    diff -u "$work/reference.results" "$work/comparable.results"
-fi
 for source in "$repo"/test/native_aot/characters/rejected/*.chibi; do
     set +e
     CHIBI_CORE="$repo/packages/core" "$compiler" run --llvm "$llvm" -O2 "$source" > "$work/rejected.log" 2>&1

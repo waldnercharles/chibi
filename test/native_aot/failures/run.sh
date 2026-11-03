@@ -1,10 +1,8 @@
 #!/bin/sh
-# Native failure behavior, optionally compared with the retained VM runner
-# during migration. Expected outcomes stay explicit when that oracle retires.
+# Native failure behavior with exact expected categories and diagnostics.
 set -eu
 stage=${1:?native compiler required}
 llvm=${2:?LLVM directory required}
-reference=${3:-}
 repo=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd -P)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -24,15 +22,6 @@ for level in 0 2; do
     awk '/expected AssertionFailed, but it failed with UnwrappedNil/ { found=1 } END { exit !found }' "$work/native.log"
     awk '/expected UnwrappedNil, but the test returned/ { found=1 } END { exit !found }' "$work/native.log"
 done
-if [ -n "$reference" ]; then
-    set +e
-    "$reference" --project-root "$work/project" --test > "$work/reference.log" 2>&1
-    reference_status=$?
-    set -e
-    [ "$reference_status" -eq 1 ] || { cat "$work/reference.log"; exit 1; }
-    awk '/^(PASS|FAIL) facts[.]/ { print }' "$work/reference.log" | LC_ALL=C sort > "$work/reference.results"
-    diff -u "$work/reference.results" "$work/native.results"
-fi
 set +e
 CHIBI_CORE="$repo/packages/core" "$stage" run --llvm "$llvm" -O2 "$work/programs/Outside.chibi" > "$work/outside.log" 2>&1
 outside_status=$?

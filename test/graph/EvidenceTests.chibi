@@ -105,11 +105,6 @@ SymbolsMatchTheProfile :: () {
     assert(length(evidence.Symbols(ELF(), true)) == 2, "each runtime symbol once");
 }
 
-ExportedFlagsReadTheHeaderOneStringPerLine :: () {
-    header := "static const char *const flags[] = {\n    \"-O1\",\n    \"-DNAME=\\\"x\\\"\",\n    \"a\\\\b\",\n};\n";
-    flags := evidence.ExportedFlags(header);
-    assert(length(flags) == 3 && flags[0] == "-O1" && flags[1] == "-DNAME=\"x\"" && flags[2] == "a\\b", "the flags");
-}
 
 // A record is the command, a blank line, then each stamped file and its stamp.
 Record :: (output: string, command: string[], stamped: string[]) {
@@ -271,14 +266,70 @@ NativeRecordsBindCompilerSourcesAndTools :: () {
     Clean(directory);
 }
 
+// The same owning input inventory checks both construction and capture, including
+// source additions, native LLVM templates and the public facade receipt.
+NativeArchivesBindTheirCompleteInventory :: () {
+    root := Fresh();
+    build := format_text("{}/build", root);
+    llvm := format_text("{}/llvm", root);
+    for (relative in ["tools/compiler", "packages/core", "tools/graph/asset_native_runtime",
+                      "tools/graph/asset_io_runtime", "src/authoring", "llvm", "build/lib"]) {
+        made := os.MakeDirectory(format_text("{}/{}", root, relative));
+        assert(made == nil, "the native archive input directory");
+    }
+    for (relative in ["tools/compiler/Main.chibi", "packages/core/Core.chibi", "tools/graph/Graph.chibi",
+                      "tools/graph/asset_native_runtime/Runtime.ll", "tools/graph/asset_native_runtime/Windows.ll",
+                      "tools/graph/asset_io_runtime/Files.ll", "src/authoring/asset_compiler_host.h"]) {
+        Write(format_text("{}/{}", root, relative), "fixture source");
+    }
+    compiler := engine.Executable(build, "chibi");
+    made := os.MakeDirectory(format_text("{}/sdk", build));
+    assert(made == nil, "the native compiler directory");
+    Write(compiler, "current compiler");
+    builder := format_text("{}/builder", root);
+    Write(builder, "current graph builder");
+    archive_tool := "llvm-ar";
+    suffix := "";
+    if (os.Platform() == "Windows") { archive_tool = "llvm-lib"; suffix = ".exe"; }
+    for (tool in ["opt", "llc", "llvm-link", archive_tool]) {
+        Write(format_text("{}/{}{}", llvm, tool, suffix), "native LLVM tool");
+    }
+    output := engine.AssetCompilerArchive(build);
+    Write(output, "native archive");
+    Write(format_text("{}.json", output), "public archive receipt");
+    command := engine.NativeArchiveCommand(builder, llvm, root, build);
+    assert(evidence.CheckArchive(command, root, build) == "", "the registered archive recipe");
+    changed := command;
+    changed[4] = "different-target";
+    assert(evidence.CheckArchive(changed, root, build) != "", "a different archive target is rejected");
+    inputs := engine.NativeArchiveInputs(root, compiler, builder, llvm, output);
+    inputs.append(output);
+    Record(output, command, inputs);
+    assert(evidence.ReadRecord(output) == "", "the complete native archive receipt");
+    for (input in inputs) {
+        if (input == output) { continue; }
+        Record(output, command, Without(inputs, input));
+        assert(strings.Contains(evidence.ReadRecord(output), "missing command input binding"), "every native archive input is bound");
+    }
+    Record(output, command, inputs);
+    added := format_text("{}/tools/graph/Added.chibi", root);
+    Write(added, "new graph source");
+    assert(strings.Contains(evidence.ReadRecord(output), "missing command input binding"), "new graph sources require a receipt binding");
+    removed := os.Remove(added);
+    assert(removed == nil, "remove the added graph source");
+    Write(format_text("{}.json", output), "changed public archive receipt");
+    assert(strings.Contains(evidence.ReadRecord(output), "stale input/output"), "changed archive metadata invalidates capture");
+    Clean(root);
+}
+
 pub Run :: () -> int {
     FlagsAcceptTheSelectedProfile();
     FlagsRefuseWhatBreaksIt();
     FlagsCheckTheSanitizersExactly();
     SymbolsMatchTheProfile();
-    ExportedFlagsReadTheHeaderOneStringPerLine();
     RecordsBindTheCommandToLiveStamps();
     RecordsBindLinksToTheirObjectsAndLibraries();
+    NativeArchivesBindTheirCompleteInventory();
     NativeProductsUseTheirOwnRecipe();
     NativeRecordsBindCompilerSourcesAndTools();
     return 0;

@@ -3,9 +3,8 @@
 set -eu
 compiler=${1:?pass the native compiler}
 llvm=${2:?pass the LLVM tools directory}
-reference=${3:-}
 root=$(cd "$(dirname "$0")/../../.." && pwd -P)
-records_source=${4:-$root/test/native_aot/managed_values/Records.chibi}
+records_source=${3:-$root/test/native_aot/managed_values/Records.chibi}
 case "$compiler" in /*) ;; *) compiler=$(pwd -P)/$compiler ;; esac
 case "$llvm" in /*) ;; *) llvm=$(pwd -P)/$llvm ;; esac
 case "$(uname -s)-$(uname -m)" in
@@ -119,33 +118,3 @@ grep -q "name an array update's arguments in parameter order" "$work/deep-labels
     --source "$root/test/native_aot/managed_values/Probe.chibi" --entry Main \
     --output "$work/probe" --llvm "$llvm" --target "$triple" --level 2 --jobs 1
 "$work/probe" "$work" "$llvm" "$root/test/native_aot/managed_values/Audit.ll"
-if [ -n "$reference" ]; then
-    mkdir "$work/reference"
-    cp "$root/test/native_aot/managed_values/Records.chibi" "$work/reference/Records.chibi"
-    printf '%s\n' 'package managed_records' '@test' 'Calls :: () { FunctionalArrays(); }' > "$work/reference/Tests.chibi"
-    "$reference" --project-root "$work/reference" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
-    cat "$work/reference.log"
-    mkdir "$work/reference-fields"
-    cp "$root/test/native_aot/managed_values/Fields.chibi" "$work/reference-fields/Fields.chibi"
-    printf '%s\n' 'package field_places' '@test' 'Calls :: () { result := Main(); assert(result == 0); }' > "$work/reference-fields/Tests.chibi"
-    "$reference" --project-root "$work/reference-fields" --test > "$work/reference-fields.log" 2>&1 || { cat "$work/reference-fields.log"; exit 1; }
-    cat "$work/reference-fields.log"
-    mkdir "$work/reference-deep-fields"
-    cp "$root/test/native_aot/managed_values/DeepArrayFields.chibi" "$work/reference-deep-fields/Main.chibi"
-    printf '%s\n' 'package deep_array_fields' '@test' 'Calls :: () { Cases(); }' > "$work/reference-deep-fields/Tests.chibi"
-    "$reference" --project-root "$work/reference-deep-fields" --test > "$work/reference-deep-fields.log" 2>&1 || { cat "$work/reference-deep-fields.log"; exit 1; }
-    cat "$work/reference-deep-fields.log"
-    for source in Initial Late LateField; do
-        mkdir "$work/reference-deep-$source"
-        input=$root/test/native_aot/managed_values/deep_places/$source.chibi
-        cp "$input" "$work/reference-deep-$source/Main.chibi"
-        printf '%s\n' "$(sed -n '1p' "$input")" '@test' 'Check :: () { result := Main(); assert(result == 0); }' > "$work/reference-deep-$source/Tests.chibi"
-        set +e
-        "$reference" --project-root "$work/reference-deep-$source" --test > "$work/reference-deep-$source.log" 2>&1
-        failed=$?
-        set -e
-        test "$failed" -eq 1
-        grep -Eq 'Referenced (array element|storage) is unavailable' "$work/reference-deep-$source.log"
-        if grep -q 'RHS evaluated' "$work/reference-deep-$source.log"; then cat "$work/reference-deep-$source.log"; exit 1; fi
-    done
-fi

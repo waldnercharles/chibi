@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install the native compiler's LLVM 22 tools and expose one directory to every
-# build entry in this job. The C bootstrap's clang/libclang is configured apart.
+# build entry in this job. Foreign C ABI tests select their compiler separately.
 set -eu
 : "${GITHUB_ENV:?GITHUB_ENV is required}"
 : "${RUNNER_TEMP:?RUNNER_TEMP is required}"
@@ -23,7 +23,7 @@ case "$(uname -s)" in
         lld=$(brew --prefix lld@22)
         llvm_bin=$RUNNER_TEMP/llvm-bin
         mkdir -p "$llvm_bin"
-        for tool in opt llc llvm-ar llvm-link llvm-lib; do
+        for tool in opt llc llvm-ar llvm-link llvm-lib llvm-nm llvm-readobj; do
             ln -sf "$llvm/bin/$tool" "$llvm_bin/$tool"
         done
         # Native macOS needs ld64.lld; the other two link cross-target programs.

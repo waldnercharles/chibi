@@ -3,19 +3,16 @@ package engine
 import c "graph:c"
 import files "graph:files"
 import os "core:os"
-import target "core:target"
 import strings "core:strings"
 
-// Builds the engine's libraries, which Targets.chibi describes, with the C
-// graph. Each matches the target of the same name in sdk/CMakeLists.txt; the
-// build-graph route compares their compile commands with CMake's.
+// Native products and foreign C/LLVM targets share the metadata in Targets.chibi.
 
-// A build configuration: what root CMakeLists.txt reads from its cache.
+// The configured foreign-code toolchain and compile/link policy.
 pub Profile :: struct {
     compiler: string;
     // The C++ compiler of the same toolchain.
     cxx_compiler: string;
-    // Clang, AppleClang or GNU, as CMake identifies the compiler.
+    // Clang, AppleClang or GNU.
     compiler_id: string;
     // Debug, Release, RelWithDebInfo or MinSizeRel.
     build_type: string;
@@ -29,114 +26,8 @@ pub Profile :: struct {
     sanitizers: string;
     // The directory debug info names for a ccache build, or empty.
     debug_compilation_dir: string;
-    // libclang, which the reflection tool links: its headers, its library and
-    // the builtin headers of the clang it belongs to.
-    libclang_include: string;
-    opengl_library: string;
-    opengl_include: string;
-    glx_library: string;
-    libclang_library: string;
-    clang_resource_include: string;
-    // The unpacked third-party archive the profile builds with, as
-    // cmake/third_party.cmake picks it (ThirdParty); `third-party/` paths are
-    // below it.
+    // The unpacked third-party archive; `third-party/` paths are below it.
     third_party: string;
-    // A reflect program to run instead of the one the graph builds, as a
-    // cross build's CHIBI_REFLECT_EXECUTABLE names one; empty to build it.
-    reflect: string;
-}
-
-// The builtin headers of the clang that a libclang belongs to, as
-// tools/reflect/resource.cmake finds them: that clang's resource directory.
-// Empty when it has none.
-pub ClangResourceInclude :: (libclang_library: string) -> string {
-    if (libclang_library == "") {
-        return "";
-    }
-    library_dir := strings.Slice(libclang_library, 0, strings.LastIndex(libclang_library, "/"));
-    parent_end := strings.LastIndex(library_dir, "/");
-    parent := strings.Slice(library_dir, 0, parent_end);
-    target := strings.Slice(library_dir, parent_end + 1, strings.ByteLength(library_dir) - parent_end - 1);
-    // A conventional GNU multiarch library still belongs to prefix/lib and
-    // prefix/bin, not to a separate toolchain below lib/<target>.
-    if (strings.HasSuffix(parent, "/lib") && strings.HasSuffix(target, "-linux-gnu")) {
-        library_dir = parent;
-    }
-    // The installation's own driver owns its resource path. CLANG_RESOURCE_DIR
-    // may use any directory name; only the driver-absent fallback filters versions.
-    clang := Join([library_dir, "/../bin/clang"]);
-    if (os.Exists(clang)) {
-        printed := os.Capture([clang, "-print-resource-dir"]);
-        if (printed.status == 0) {
-            include := Join([strings.TrimSpace(printed.stdout), "/include"]);
-            if (os.Exists(Join([include, "/stdbool.h"]))) {
-                return include;
-            }
-        }
-    }
-    // libclang can be installed without its driver. Match resource.cmake's
-    // unique matching resource directory fallback; ambiguity is not success.
-    resolved := os.RealPath(libclang_library);
-    basename_start := strings.LastIndex(resolved, "/") + 1;
-    basename := strings.Slice(resolved, basename_start, strings.ByteLength(resolved) - basename_start);
-    version := "";
-    if (strings.HasPrefix(basename, "libclang-")) {
-        version = strings.Partition(basename, "libclang-").tail;
-    } else if (strings.HasPrefix(basename, "libclang.")) {
-        version = strings.Partition(basename, "libclang.").tail;
-    }
-    digits := 0;
-    for (byte in strings.Bytes(version)) {
-        if (byte < 48 || byte > 57) {
-            break;
-        }
-        digits += 1;
-    }
-    major := strings.Slice(version, 0, digits);
-    found := "";
-    resources := Join([library_dir, "/clang"]);
-    for (name in files.Names(resources)) {
-        if (major != "" && name != major && !strings.HasPrefix(name, Join([major, "."]))) {
-            continue;
-        }
-        include := Join([resources, "/", name, "/include"]);
-        if (os.Kind(include) == os.KindNone) {
-            continue;
-        }
-        if (found != "") {
-            return "";
-        }
-        found = include;
-    }
-    if (found == "" || !os.Exists(Join([found, "/stdbool.h"]))) {
-        return "";
-    }
-    return found;
-}
-
-// Defines the profile gives a target's compiles, after its own.
-ProfileDefines :: (target: string, profile: Profile) -> string[] {
-    if (target == "reflect") {
-        return [Join(["-DCHIBI_REFLECT_RESOURCE_INCLUDE_DIR=\"", profile.clang_resource_include, "\""])];
-    }
-    return [];
-}
-
-// Include directories the profile gives a target, before its others.
-ProfileIncludes :: (target: string, profile: Profile) -> string[] {
-    if (target == "reflect") {
-        return [profile.libclang_include];
-    }
-    return [];
-}
-
-// External libraries the profile gives an executable's link, first.
-ProfileLibraries :: (target: string, profile: Profile) -> string[] {
-    if (target == "reflect") {
-        library_dir := strings.Slice(profile.libclang_library, 0, strings.LastIndex(profile.libclang_library, "/"));
-        return [Join(["-Wl,-rpath,", library_dir]), profile.libclang_library];
-    }
-    return [];
 }
 
 pub Program :: (target: string) -> bool {
@@ -148,8 +39,7 @@ pub Program :: (target: string) -> bool {
     return false;
 }
 
-// Where an executable is written: below the build directory where CMake
-// writes it (ProgramDirectory).
+// The target's executable below its configured ProgramDirectory.
 pub Executable :: (build_dir: string, target: string) -> string {
     suffix := "";
     if (os.Platform() == "Windows" && length(NativeArguments(target)) != 0) { suffix = ".exe"; }
@@ -159,7 +49,7 @@ pub Executable :: (build_dir: string, target: string) -> string {
     return Join([build_dir, "/", ProgramDirectory(target), "/", target, suffix]);
 }
 
-// What CMake gives an executable's link before its objects: the language
+// Flags before an executable's objects: the language
 // flags, the platform's link flags, the sanitizers and its LinkOptions.
 LinkFlags :: (profile: Profile, build_dir: string, target: string) -> string[] {
     flags: string[] = [];
@@ -184,18 +74,14 @@ LinkFlags :: (profile: Profile, build_dir: string, target: string) -> string[] {
     return flags;
 }
 
-// What an executable links after its output, in CMake's order: the profile's
-// external libraries, then its Links: the graph's archives by name, the
+// What an executable links after its output: the target's Links, including
+// the graph's archives by name, the
 // third-party archive's `third-party/` paths, and options and frameworks as
 // they are.
 LinkLibraries :: (source_root: string, build_dir: string, target: string, profile: Profile) -> string[] {
-    libraries := ProfileLibraries(target, profile);
+    libraries: string[] = [];
     for (linked in Links(target)) {
-        if (linked == "system/libOpenGL.so") {
-            libraries.append(profile.opengl_library);
-        } else if (linked == "system/libGLX.so") {
-            libraries.append(profile.glx_library);
-        } else if (strings.HasPrefix(linked, "third-party/")) {
+        if (strings.HasPrefix(linked, "third-party/")) {
             libraries.append(Resolve(source_root, build_dir, profile.third_party, linked));
         } else if (strings.HasPrefix(linked, "chibi_")) {
             libraries.append(Library(source_root, build_dir, profile.third_party, linked).output);
@@ -206,42 +92,35 @@ LinkLibraries :: (source_root: string, build_dir: string, target: string, profil
     return libraries;
 }
 
-// `0xNN,` for each byte of the file, the initializer list of a C array. The
-// build host has it as a native; a native program writes the same text itself.
-when target.Native == 1 {
-    Digit :: (nibble: int) -> u8 {
-        if (nibble < 10) {
-            return u8(48 + nibble);
-        }
-        return u8(87 + nibble);
+// `0xNN,` for each byte of the file, the initializer list of a C array.
+Digit :: (nibble: int) -> u8 {
+    if (nibble < 10) {
+        return u8(48 + nibble);
     }
+    return u8(87 + nibble);
+}
 
-    ByteList :: (path: string) -> string {
-        read := os.ReadBytes(path);
-        if (read.error != nil) {
-            return "";
-        }
-        out: u8[] = [];
-        for (byte in read.data) {
-            out.append(48);
-            out.append(120);
-            out.append(Digit(int(byte) / 16));
-            out.append(Digit(int(byte) % 16));
-            out.append(44);
-        }
-        return text_from_bytes(out);
+ByteList :: (path: string) -> string {
+    read := os.ReadBytes(path);
+    if (read.error != nil) {
+        return "";
     }
-} else {
-    ByteList :: (path: string) -> string {
-        return build.byte_list(path);
+    out: u8[] = [];
+    for (byte in read.data) {
+        out.append(48);
+        out.append(120);
+        out.append(Digit(int(byte) / 16));
+        out.append(Digit(int(byte) % 16));
+        out.append(44);
     }
+    return text_from_bytes(out);
 }
 
 Join :: (parts: string[]) -> string {
     return strings.Join(parts, "");
 }
 
-// The name a target's headers are published under, its CMake EXPORT_NAME.
+// The name a target's headers are published under.
 pub Component :: (target: string) -> string {
     name := ExportName(target);
     if (name != "") {
@@ -314,8 +193,8 @@ pub Library :: (source_root: string, build_dir: string, third_party: string, tar
     };
 }
 
-// A path the tables name: below the build directory for a `build/` path, as
-// CMake writes generated sources; below the third-party archive for a
+// A path the tables name: below the build directory for a `build/` path;
+// below the third-party archive for a
 // `third-party/` path; otherwise below the source root.
 Resolve :: (source_root: string, build_dir: string, third_party: string, path: string) -> string {
     if (strings.HasPrefix(path, "build/")) {
@@ -336,7 +215,7 @@ pub Sources :: (source_root: string, build_dir: string, third_party: string, tar
     return sources;
 }
 
-// A define with the values CMake substitutes: {source_root}, {build_type},
+// A define with substituted {source_root}, {build_type},
 // {sha256:PATH} for a file's SHA-256 and {program:NAME} for where an
 // executable is written.
 Expand :: (source_root: string, build_dir: string, profile: Profile, define: string) -> string {
@@ -358,7 +237,7 @@ Expand :: (source_root: string, build_dir: string, profile: Profile, define: str
     return Join([strings.Partition(text, "{sha256:").head, sha256, strings.Partition(rest, "}").tail]);
 }
 
-// Writes each header a target configures into its private root, as CMake's
+// Writes each header a target configures into its private root, using
 // configure_file does, when its text changed: a `.in` template with each
 // `@NAME@` of Substitutions replaced, or a plain copy. False when an input is
 // missing or an output cannot be written.
@@ -387,40 +266,9 @@ Configure :: (source_root: string, build_dir: string, profile: Profile, target: 
     return true;
 }
 
-// The shared SDK version authority, also read by the CMake compatibility path.
+// The shared SDK version authority.
 pub SDKVersion :: (source_root: string) -> string {
     return strings.TrimSpace(files.Text(Join([source_root, "/sdk/VERSION"])));
-}
-
-// The build identity document sdk/artifact_formats.cmake writes, which
-// `chibi version` and `chibi doctor` read: the SDK and project versions, the
-// platform, the processors and execution backends, and for each artifact
-// format its version and the SHA-256 of the sources and headers that own it.
-// Empty when an owner declares no version.
-Identity :: (source_root: string, profile: Profile) -> string {
-    processor := profile.architecture;
-    if (processor == "") {
-        uname := os.Capture(["uname", "-m"]);
-        if (uname.status == 0) {
-            processor = strings.TrimSpace(uname.stdout);
-        }
-    }
-    return IdentityFor(source_root, processor, "[\"bytecode\", \"sljit\"]");
-}
-
-IdentityFor :: (source_root: string, processor: string, backends: string) -> string {
-    sdk := SDKVersion(source_root);
-    project := ProjectVersion(source_root);
-    if (sdk == "" || project == "") { return ""; }
-    records: string[] = [];
-    for (format in ArtifactFormats()) {
-        record := FormatRecord(source_root, strings.Split(format, " "));
-        if (record == "") {
-            return "";
-        }
-        records.append(record);
-    }
-    return IdentityText(sdk, project, processor, backends, records);
 }
 
 IdentityText :: (sdk: string, project: string, processor: string, backends: string, records: string[]) -> string {
@@ -430,67 +278,6 @@ IdentityText :: (sdk: string, project: string, processor: string, backends: stri
         "\"], \"backends\": ", backends, ", \"project_version\": ", project,
         ", \"artifact_formats\": {\n", strings.Join(records, ",\n"), "\n}}\n"
     ]);
-}
-
-// One artifact format's record: its version, its owner and, by its flags, the
-// value_wire codec and the execution codecs. Empty without a version.
-FormatRecord :: (source_root: string, fields: string[]) -> string {
-    version := Version(Join([source_root, "/src/", fields[2]]), fields[3]);
-    if (version == "") {
-        return "";
-    }
-    parts := ["\"", fields[0], "\": {\"version\": ", version, ", ", Owner(source_root, fields[1], fields[2])];
-    for (flag in fields) {
-        if (flag == "VALUE_WIRE") {
-            parts.extend([", \"codec\": {", Owner(source_root, "types/value_wire.c", "types/value_wire.h"), "}"]);
-        }
-        if (flag == "EXECUTION_CODECS") {
-            implementation: string[] = [];
-            codecs := ["execution/prepared_function.c", "execution/prepared_record.c"];
-            for (source in codecs) {
-                implementation.append(Join(["{\"source\": \"src/", source, "\", \"sha256\": \"",
-                                            files.Digest(Join([source_root, "/src/", source])), "\"}"]));
-            }
-            parts.extend([", \"implementation\": [", strings.Join(implementation, ", "), "]"]);
-        }
-    }
-    parts.append("}");
-    return Join(parts);
-}
-
-// A source and the header it publishes, with their SHA-256: the staged header
-// is a copy of the one below src/.
-Owner :: (source_root: string, source: string, header: string) -> string {
-    return Join([
-        "\"source\": \"src/", source, "\", \"sha256\": \"", files.Digest(Join([source_root, "/src/", source])),
-        "\", \"header\": \"src/", header, "\", \"header_sha256\": \"",
-        files.Digest(Join([source_root, "/src/", header])), "\""
-    ]);
-}
-
-// The digits a header's `#define NAME N` or `#define NAME UINT64_C(N)`
-// declares, or empty when it declares none.
-Version :: (path: string, define: string) -> string {
-    prefix := Join(["#define ", define, " "]);
-    for (line in strings.Lines(files.Text(path))) {
-        if (!strings.HasPrefix(line, prefix)) {
-            continue;
-        }
-        value := strings.TrimPrefix(strings.Partition(line, prefix).tail, "UINT64_C(");
-        digits := 0;
-        while (digits < strings.ByteLength(value) && strings.ByteAt(value, digits) >= 48 &&
-               strings.ByteAt(value, digits) <= 57) {
-            digits += 1;
-        }
-        return strings.Slice(value, 0, digits);
-    }
-    return "";
-}
-
-// Writes the build identity to build/sdk/chibi_engine_metadata.json, where
-// CMake writes it, when its text changed. False when it cannot.
-pub WriteIdentity :: (source_root: string, build_dir: string, profile: Profile) -> bool {
-    return WriteIdentityText(build_dir, Identity(source_root, profile));
 }
 
 pub WriteNativeIdentity :: (source_root: string, build_dir: string) -> bool {
@@ -571,7 +358,7 @@ ChibiSources :: (directory: string) -> string[] {
     return sources;
 }
 
-// Paths in byte order, as CMake's list(SORT) orders them.
+// Paths in byte order.
 Sorted :: (paths: string[]) -> string[] {
     sorted: string[] = [];
     for (path in paths) {
@@ -611,13 +398,6 @@ WriteSourceLists :: (source_root: string, build_dir: string, target: string) -> 
 // Installs a target's resources into the build tree (Resources).
 Install :: (source_root: string, build_dir: string, third_party: string, target: string) -> bool {
     for (resource in Resources(target)) {
-        // This tree is a runnable legacy compiler distribution. Prepare its
-        // pinned bytecode before copying, including host-only SDK builds.
-        if (strings.Partition(resource, "=").tail == "tools/compiler" &&
-            os.Run(["sh", Join([source_root, "/tools/bootstrap/seed.sh"])]) != 0) {
-            os.Print("graph: preparing the legacy compiler resources failed");
-            return false;
-        }
         if (!CopyChanged(Resolve(source_root, build_dir, third_party, strings.Partition(resource, "=").tail),
                          Resolve(source_root, build_dir, third_party, strings.Partition(resource, "=").head))) {
             return false;
@@ -635,7 +415,7 @@ Configured :: (target: string) -> string[] {
     return headers;
 }
 
-// A test package's direct source files, in CMake glob order. Directories
+// A test package's direct source files, in byte order. Directories
 // named .chibi and nested packages are not members of this package.
 TestSources :: (directory: string) -> string[] {
     names: string[] = [];
@@ -675,11 +455,10 @@ TestSubstitution :: (source_root: string, value: string) -> string {
     return strings.Join(lines, "");
 }
 
-// A substitution's value: `bytes:PATH` as the C initializer CMake writes from
-// file(READ ... HEX), `cstring:PATH` as the lines of a C string literal, or
+// A substitution's value: `bytes:PATH` as a C byte initializer,
+// `cstring:PATH` as the lines of a C string literal, or
 // `compiler:ARGUMENT` as an escaped initializer line for each of the
-// profile's C compiler, its C flags and ARGUMENT, if any, as
-// test/tools/CMakeLists.txt writes them. Test package substitutions take
+// profile's C compiler, its C flags and ARGUMENT, if any. Test package substitutions take
 // `test-sources:PREFIX:PACKAGE:DIR` or `test-inputs:PREFIX:PACKAGE:DIR`.
 Substitute :: (source_root: string, build_dir: string, profile: Profile, value: string) -> string {
     kind := strings.Partition(value, ":").head;
@@ -714,7 +493,7 @@ Substitute :: (source_root: string, build_dir: string, profile: Profile, value: 
 
 // The parts of a template with each `@NAME@` of a target's Substitutions
 // replaced, none when a test package is empty. The template is small, so it
-// is scanned in the VM, and the caller joins the parts once: build values are
+// is scanned once, and the caller joins the parts once: build values are
 // never freed, and replacing one placeholder at a time copied the growing
 // text, embedded sources and all, for each of them.
 Substituted :: (source_root: string, build_dir: string, profile: Profile, target: string, template: string) -> string[] {
@@ -769,60 +548,6 @@ Substituted :: (source_root: string, build_dir: string, profile: Profile, target
     }
     parts.append(rest);
     return parts;
-}
-
-// Whether building the targets runs reflect first: one compiles a source it
-// writes.
-Reflects :: (targets: string[]) -> bool {
-    for (target in targets) {
-        if (Generator(target) == "reflect") {
-            return true;
-        }
-    }
-    return false;
-}
-
-// Builds reflect, unless the profile names one, and stages the math headers
-// it reads, then writes the native type and binding sources with it, as root
-// CMakeLists.txt's generate_runtime_registry does, when reflect or an input
-// CMake names changed. The other output counts as an input, so losing it
-// reruns reflect. The number of sources compiled, or -1 on failure.
-Reflect :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: string) -> int {
-    program := profile.reflect;
-    if (program == "") {
-        program = Executable(build_dir, "reflect");
-    }
-    prerequisites: string[] = [];
-    for (target in Targets()) {
-        built := profile.reflect == "" && (target == "reflect" || Linked("reflect", target));
-        if (built || target == "chibi_math") {
-            prerequisites.append(target);
-        }
-    }
-    compiled := Build(tools, profile, source_root, build_dir, prerequisites);
-    if (compiled < 0) {
-        return -1;
-    }
-    types := Resolve(source_root, build_dir, "", Files("chibi_native_types")[0]);
-    bindings := Resolve(source_root, build_dir, "", Files("chibi_native_bindings")[0]);
-    command := [
-        program, Join([source_root, "/src/runtime/native_nodes.c"]), "--prefix", "", "--types-output", types,
-        "--runtime-output", bindings, "--include", Join([source_root, "/src"]), "--include",
-        Join([build_dir, "/sdk/public/math"]), "--manifest", Join([source_root, "/src/runtime/component_ids.tsv"])
-    ];
-    if (profile.sysroot != "") {
-        command.extend(["--sysroot", profile.sysroot]);
-    }
-    inputs := [program, bindings];
-    for (input in ["src/runtime/component_ids.tsv", "src/runtime/native_nodes.c",
-                   "src/runtime/components.h", "src/types/annotate.h"]) {
-        inputs.append(Join([source_root, "/", input]));
-    }
-    if (c.Step(command, inputs, types) < 0) {
-        os.Print("graph: reflect failed");
-        return -1;
-    }
-    return compiled;
 }
 
 // Whether building a program needs a target: a library it links, a program
@@ -917,7 +642,7 @@ IncludeDirectory :: (source_root: string, build_dir: string, third_party: string
 
 // Its defines, then a source's own (SourceDefines), the source's include
 // directories (SourceIncludes) and then its own, its system ones, the
-// profile's flags, then its own options: the order CMake writes them. An
+// profile's flags, then its own options. An
 // empty file names no source. SourceFlags adds a source's own options.
 pub CompileFlags :: (source_root: string, build_dir: string, target: string, profile: Profile, file: string,
                      language: string) -> string[] {
@@ -925,26 +650,16 @@ pub CompileFlags :: (source_root: string, build_dir: string, target: string, pro
     for (define in Defines(target)) {
         flags.append(Join(["-D", Expand(source_root, build_dir, profile, define)]));
     }
-    flags.extend(ProfileDefines(target, profile));
     for (define in SourceDefines(target, file)) {
         flags.append(Join(["-D", Expand(source_root, build_dir, profile, define)]));
     }
     for (include in SourceIncludes(target, file)) {
         flags.append(Join(["-I", IncludeDirectory(source_root, build_dir, profile.third_party, include)]));
     }
-    for (include in ProfileIncludes(target, profile)) {
-        flags.append(Join(["-I", include]));
-    }
     for (include in Includes(target)) {
         flags.append(Join(["-I", IncludeDirectory(source_root, build_dir, profile.third_party, include)]));
     }
     for (include in SystemIncludes(target)) {
-        if (include == "system/opengl") {
-            if (profile.opengl_include != "" && profile.opengl_include != "/usr/include") {
-                flags.extend(["-isystem", profile.opengl_include]);
-            }
-            continue;
-        }
         flags.extend(["-isystem", IncludeDirectory(source_root, build_dir, profile.third_party, include)]);
     }
     flags.extend(Flags(profile, build_dir, target, language));
@@ -954,7 +669,7 @@ pub CompileFlags :: (source_root: string, build_dir: string, target: string, pro
 
 // The flags a source compiles with: its target's, which target_flags holds
 // for a C source without its own include directories, then its own options,
-// last, where CMake puts source properties.
+// last.
 SourceFlags :: (source_root: string, build_dir: string, target: string, file: string, profile: Profile,
                 target_flags: string[]) -> string[] {
     language := Language(file);
@@ -970,8 +685,7 @@ Clang :: (profile: Profile) -> bool {
     return profile.compiler_id == "Clang" || profile.compiler_id == "AppleClang";
 }
 
-// The flag root CMakeLists.txt adds to each language's flags for a ccache
-// build's debug directory, when debug info is on.
+// The debug-directory mapping for a ccache build when debug info is on.
 DebugDirectoryFlags :: (profile: Profile, build_dir: string) -> string[] {
     if (profile.debug_compilation_dir == "" ||
         (profile.build_type != "Debug" && profile.build_type != "RelWithDebInfo")) {
@@ -986,7 +700,7 @@ DebugDirectoryFlags :: (profile: Profile, build_dir: string) -> string[] {
     return [];
 }
 
-// What CMake adds for each build type with Clang and GCC.
+// The optimization, debug and assertion flags for each build type.
 BuildTypeFlags :: (profile: Profile) -> string[] {
     build_type := profile.build_type;
     if (build_type == "Debug") {
@@ -1011,16 +725,13 @@ BuildTypeFlags :: (profile: Profile) -> string[] {
     return [];
 }
 
-// The flags every compile takes after its include directories, in the order
-// root CMakeLists.txt and CMake's platform files give them for the source's
-// language (c, cxx or objc), with the target's standard for it and
+// The flags after include directories for the source's language
+// (c, cxx or objc), with the target's standard and
 // position-independent code.
 pub Flags :: (profile: Profile, build_dir: string, target: string, language: string) -> string[] {
     flags: string[] = [];
-    // CMake's Objective-C compile rule names the language. Root
-    // CMakeLists.txt gives each language the ccache debug directory before
-    // sdk/desktop.cmake enables Objective-C, so its sources have none: a CMake
-    // defect copied so the commands stay equal, which leaves with CMake.
+    // Objective-C names its language explicitly and preserves the historical
+    // command policy that omits its debug-directory mapping.
     if (language == "objc") {
         flags.extend(["-x", "objective-c"]);
     }
@@ -1143,27 +854,18 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
             return -1;
         }
     }
-    // Install resources before generators, which may compile prerequisite
-    // hosts. CMake writes these files during configuration. Write the
-    // identity first, since the resource lists copy it.
+    // Write the identity before installing resources that copy it.
     installs := false;
     for (target in targets) {
         installs = installs || length(Resources(target)) > 0;
     }
-    if (installs && !WriteIdentity(source_root, build_dir, profile)) {
+    if (installs && !WriteNativeIdentity(source_root, build_dir)) {
         os.Print("graph: writing the build identity failed");
         return -1;
     }
     for (target in targets) {
         if (!Install(source_root, build_dir, profile.third_party, target)) {
             os.Print(Join(["graph: installing ", target, "'s resources failed"]));
-            return -1;
-        }
-    }
-    generated := 0;
-    if (Reflects(targets)) {
-        generated = Reflect(tools, profile, source_root, build_dir);
-        if (generated < 0) {
             return -1;
         }
     }
@@ -1229,11 +931,10 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
             return -1;
         }
     }
-    return length(running) + generated;
+    return length(running);
 }
 
-// The compile commands of the selected targets as a compile_commands.json, as
-// CMake exports its own.
+// The selected targets' complete compile_commands.json inventory.
 pub CompileCommands :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: string, targets: string[]) -> string {
     entries: string[] = [];
     for (target in targets) {

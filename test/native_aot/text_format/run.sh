@@ -85,18 +85,5 @@ for source in Main Strings Aggregates Family Records; do
         fi
     fi
 done
-if [ -n "${3:-}" ]; then
-    for source in Main Strings Aggregates Family OptionalRecords; do
-        mkdir "$work/reference-$source"
-        cp "$root/test/native_aot/text_format/$source.chibi" "$work/reference-$source/Main.chibi"
-        package=text_format
-        if [ "$source" = Strings ]; then package=text_format_strings; fi
-        if [ "$source" = Aggregates ]; then package=text_format_aggregates; fi
-        if [ "$source" = Family ]; then package=text_format_family; fi
-        if [ "$source" = OptionalRecords ]; then package=optional_record_summary; fi
-        printf 'package %s\n@test\nValues :: () { result := Main(); assert(result == 0); }\n' "$package" > "$work/reference-$source/Tests.chibi"
-        "$3" --project-root "$work/reference-$source" --test
-    done
-fi
 
-sh "$root/test/native_aot/windows_decimal/run.sh" "$driver" "$llvm" "${3:-}"
+sh "$root/test/native_aot/windows_decimal/run.sh" "$driver" "$llvm"

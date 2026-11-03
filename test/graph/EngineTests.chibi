@@ -12,9 +12,8 @@ Debug :: (sanitizers: string, frames: bool, optimization: string) -> engine.Prof
     profile: engine.Profile = {
         compiler: "/unused/clang", cxx_compiler: "/unused/clang++", compiler_id: "Clang", build_type: "Debug",
         debug_optimization: optimization, debug_frame_pointers: frames, architecture: "", sysroot: "",
-        warnings: false, sanitizers: sanitizers, debug_compilation_dir: "", libclang_include: "",
-        opengl_library: "", opengl_include: "", glx_library: "", libclang_library: "",
-        clang_resource_include: "", third_party: "", reflect: ""
+        warnings: false, sanitizers: sanitizers, debug_compilation_dir: "",
+        third_party: ""
     };
     return profile;
 }
@@ -63,7 +62,7 @@ DebugFlagsKeepInstrumentation :: () {
 
 // Tests compile with assertions even where the profile would drop them.
 TestsKeepAssertions :: () {
-    for (target in ["graph_headerless", "test_tools", "test_language"]) {
+    for (target in ["graph_headerless"]) {
         assert(Has(engine.Options(target), "-UNDEBUG"), "test target undefines NDEBUG");
     }
 }
@@ -104,54 +103,6 @@ ArgumentsAreValidated :: () {
     assert(engine.TargetError(["--target", "--commands-only", "on"], targets) == "graph: --target requires a target name", "an option as target");
 }
 
-ReflectionError :: (arguments: string[]) -> string {
-    return engine.ReflectionOptions(arguments).error;
-}
-
-// SDK reflection takes three options and the toolchain definitions Make's
-// SDK consumers pass, and rejects anything else before building.
-ReflectionArgumentsAreValidated :: () {
-    for (option in ["--jobs", "--build", "--libclang-root"]) {
-        invalid := format_text("graph: invalid native reflection option '{0}'", option);
-        assert(ReflectionError([option]) == invalid, "an option without a value");
-        assert(ReflectionError([option, ""]) == invalid, "an option with an empty value");
-    }
-    assert(ReflectionError(["--commands-only", "on"]) == "graph: invalid native reflection option '--commands-only'", "an unknown option");
-    unsupported := "graph: unsupported native reflection toolchain argument '-DUNSUPPORTED=ON'";
-    assert(ReflectionError(["--", "-DUNSUPPORTED=ON"]) == unsupported, "an unknown definition");
-    assert(ReflectionError(["--", "-D"]) == "graph: -D requires a native toolchain definition", "a missing definition");
-    assert(ReflectionError(["--", "-DCMAKE_C_COMPILER:FILEPATH="]) == "graph: unsupported native reflection toolchain argument '-DCMAKE_C_COMPILER:FILEPATH='", "an empty definition");
-    assert(ReflectionError(["--", "-DCMAKE_C_COMPILER:FILEPATH=/usr/bin/true", "-DUNSUPPORTED=ON"]) == unsupported, "a typed compiler, then an unknown definition");
-    assert(ReflectionError(["--", "-D", "CMAKE_C_COMPILER:FILEPATH=/usr/bin/true", "-DUNSUPPORTED=ON"]) == unsupported, "a split compiler, then an unknown definition");
-    assert(ReflectionError(["--", "-D", "LIBCLANG_ROOT:PATH=/fixture/llvm root", "-DUNSUPPORTED=ON"]) == unsupported, "a split libclang root, then an unknown definition");
-    assert(ReflectionError(["--", "-D", "UNSUPPORTED=ON"]) == unsupported, "a split unknown definition");
-
-    value := "/fixture/llvm root=value";
-    mapped := engine.NativeToolchainOption(strings.Join(["-DLIBCLANG_ROOT:PATH=", value], ""));
-    assert(length(mapped) == 2 && mapped[0] == "--libclang-root" && mapped[1] == value, "a typed path keeps its value");
-    assert(length(engine.NativeToolchainOption("-DLIBCLANG_ROOT:PATH")) == 0, "a definition without a value");
-
-    // The last definition wins, and an explicit --libclang-root wins over both.
-    reflection := engine.ReflectionOptions(["--build", "/out", "--libclang-root", "/llvm", "--", "-DCMAKE_C_COMPILER=cc",
-                                            "-D", "CMAKE_C_COMPILER:FILEPATH=clang", "-DLIBCLANG_ROOT=/other"]);
-    assert(reflection.error == "", "valid reflection arguments");
-    options := reflection.options;
-    assert(Option(options, "--compiler") == "clang" && Option(options, "--libclang-root") == "/llvm", "the chosen definitions");
-    assert(Option(options, "--build") == "/out" && Option(options, "--profile") == "release" && Option(options, "--target") == "reflect", "the reflection build");
-}
-
-// Naming test_tools and the launcher builds the programs they run, as CMake's
-// add_dependencies does, and no other program.
-NamedProgramsBuildWhatTheyRun :: () {
-    named := ["--commands-only", "on", "--target", "test_tools", "--target", "chibi"];
-    for (program in ["test_tools", "chibi-compile", "chibi-compiler-host", "chibi"]) {
-        assert(engine.Selected(named, program), "a program a named program runs");
-    }
-    assert(!engine.Selected(named, "chibi-build-host"), "tooling tests no longer run the private build host");
-    assert(!engine.Selected(named, "reflect"), "an unrelated program");
-    assert(engine.Selected(["--commands-only", "on"], "reflect"), "no target names every target");
-}
-
 // Companions may use runtime helpers added after the pinned bootstrap seed.
 // Even a consumer of the asset library must first build the current compiler.
 NativeCompanionsUseCurrentCompiler :: () {
@@ -159,9 +110,6 @@ NativeCompanionsUseCurrentCompiler :: () {
         named := ["--target", consumer];
         assert(engine.Selected(named, "chibi"), "the current compiler is a transitive prerequisite");
         assert(engine.Selected(named, "chibi-asset-compiler"), "the native asset service is selected");
-    }
-    if (os.Platform() == "Darwin" || os.Platform() == "Linux") {
-        assert(engine.Selected(["--target", "test_tools"], "chibi"), "a linked asset library needs the compiler too");
     }
     products := engine.NativeProducts();
     assert(length(products) == 2 && products[0] == "chibi" && products[1] == "chibi-asset-compiler",
@@ -225,8 +173,6 @@ pub Run :: () -> int {
     TestsKeepAssertions();
     DebugOptionsAreValidated();
     ArgumentsAreValidated();
-    ReflectionArgumentsAreValidated();
-    NamedProgramsBuildWhatTheyRun();
     return 0;
 }
 
@@ -288,30 +234,9 @@ NativeIdentityUsesAuthoredOwners :: () {
     written = engine.WriteNativeIdentity(root, output);
     text = IdentityRead(metadata);
     assert(written && strings.Contains(text, "\"execution\": {\"version\": 29") && strings.Contains(text, os.HashText(writer)), "the encoder owns its version and identity together");
-    // Explicit VM reference builds retain their C codec identity, while the
-    // project compatibility field has the same single SDK owner.
-    for (directory in ["execution", "types", "runtime"]) {
-        made := os.MakeDirectory(strings.Concatenate([root, "/src/", directory]));
-        assert(made == nil, "make legacy identity input directories");
-    }
-    for (path in ["execution/prepared.c", "execution/prepared_function.c", "execution/prepared_record.c",
-                  "types/value_wire.c", "types/value_wire.h", "runtime/event_catalog.c"]) {
-        IdentityWrite(strings.Concatenate([root, "/src/", path]), "legacy codec owner\n");
-    }
-    IdentityWrite(strings.Concatenate([root, "/src/execution/prepared.h"]), "#define EXECUTION_PREPARED_VERSION 28\n");
-    IdentityWrite(strings.Concatenate([root, "/src/runtime/event_catalog.h"]), "#define EVENT_CATALOG_VERSION 3\n");
-    profile := Debug("", false, "");
-    profile.architecture = "fixture";
-    legacy := strings.Concatenate([root, "/legacy"]);
-    written = engine.WriteIdentity(root, legacy, profile);
-    assert(written, "the explicit VM identity remains available");
-    old := IdentityRead(strings.Concatenate([legacy, "/sdk/chibi_engine_metadata.json"]));
-    assert(strings.Contains(old, "\"backends\": [\"bytecode\", \"sljit\"]") && strings.Contains(old, "\"events\": {\"version\": 3"), "the explicit VM identity retains its codec records");
     IdentityWrite(project, "40\n");
     written = engine.WriteNativeIdentity(root, output);
     assert(written && strings.Contains(IdentityRead(metadata), "\"project_version\": 40"), "native identity reads the SDK version authority");
-    written = engine.WriteIdentity(root, legacy, profile);
-    assert(written && strings.Contains(IdentityRead(strings.Concatenate([legacy, "/sdk/chibi_engine_metadata.json"])), "\"project_version\": 40"), "legacy identity derives the same compatibility version");
     removed = os.Run(["/bin/rm", "-rf", root]);
     assert(removed == 0, "remove the private identity fixture");
 }

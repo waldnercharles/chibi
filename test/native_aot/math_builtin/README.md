@@ -32,9 +32,6 @@ overload is admitted by retiring the two C `whole_math.c` cases.
 `failures` distinguishes expression bounds failures from unavailable logical
 destinations before and after RHS effects. Its fifteen expected failures reject
 all seven typed categories for the ordinary unclassified reference failure.
-Pass an ordinary compiler as the third `run.sh` argument to compare that same
-fixture's outcomes directly.
-
 `select.sh` and `Select.ps1` separately execute the typed native selection
 primitive at O0 and O2, checking both outcomes for bool, u8, i32, i64, f32 and
 f64, plus NaN and negative zero. The i64 alternatives share their low32 bits;

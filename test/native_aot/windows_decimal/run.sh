@@ -1,8 +1,7 @@
 #!/bin/sh
 set -eu
-compiler=${1:?usage: run.sh NATIVE_COMPILER LLVM_BIN [REFERENCE_COMPILER]}
-llvm=${2:?usage: run.sh NATIVE_COMPILER LLVM_BIN [REFERENCE_COMPILER]}
-reference=${3:-}
+compiler=${1:?usage: run.sh NATIVE_COMPILER LLVM_BIN}
+llvm=${2:?usage: run.sh NATIVE_COMPILER LLVM_BIN}
 root=$(cd "$(dirname "$0")/../../.." && pwd -P)
 case "$(uname -s)-$(uname -m)" in
     Darwin-arm64) target=aarch64-apple-darwin ;;
@@ -22,7 +21,3 @@ for level in 0 2; do
     "$work/values-$level"
     printf 'PASS full-width Win32 decimal words O%s\n' "$level"
 done
-if [ -n "$reference" ]; then
-    printf '%s\n' 'package windows' '@test' 'Values :: () { result := Main(); assert(result == 0); }' > "$work/source/Tests.chibi"
-    "$reference" --project-root "$work/source" --test
-fi

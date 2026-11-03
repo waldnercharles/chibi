@@ -2,7 +2,6 @@
 set -eu
 stage=${1:?native compiler required}
 llvm=${2:?LLVM directory required}
-reference=${3:-}
 repo=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd -P)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -15,11 +14,6 @@ for level in 0 2; do
     awk '/^(PASS|FAIL) (body|facts|unions|named)[.]/ { print }' "$work/native.log" | LC_ALL=C sort > "$work/native.results"
     diff -u "$repo/test/native_aot/optionals/expected.txt" "$work/native.results"
 done
-if [ -n "$reference" ]; then
-    "$reference" --project-root "$work/project" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
-    awk '/^(PASS|FAIL) (body|facts|unions|named)[.]/ { print }' "$work/reference.log" | LC_ALL=C sort > "$work/reference.results"
-    diff -u "$work/reference.results" "$work/native.results"
-fi
 set +e
 CHIBI_CORE="$repo/packages/core" "$stage" run --llvm "$llvm" -O2 "$work/rejected/Main.chibi" > "$work/rejected.log" 2>&1
 rejected_status=$?
@@ -46,6 +40,6 @@ for level in 0 2; do
         awk '/^PASS project[.]Calls$/ { found=1 } END { exit !found }' "$work/authored.log"
     done
 done
-sh "$repo/test/native_aot/managed_values/run.sh" "$stage" "$llvm" '' "$repo/test/native_aot/optionals/fixtures/unions/Unions.chibi"
-sh "$repo/test/native_aot/managed_values/run.sh" "$stage" "$llvm" '' "$repo/test/native_aot/optionals/fixtures/facts/Ownership.chibi"
+sh "$repo/test/native_aot/managed_values/run.sh" "$stage" "$llvm" "$repo/test/native_aot/optionals/fixtures/unions/Unions.chibi"
+sh "$repo/test/native_aot/managed_values/run.sh" "$stage" "$llvm" "$repo/test/native_aot/optionals/fixtures/facts/Ownership.chibi"
 printf '%s\n' 'native optional values passed'

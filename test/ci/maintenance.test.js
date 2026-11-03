@@ -5,48 +5,8 @@ const path = require('node:path');
 const {createHash} = require('node:crypto');
 const {spawnSync} = require('node:child_process');
 const test = require('node:test');
-const {validateRecovery} = require('../../.github/maintenance/package-runtime.js');
 const root = path.resolve(__dirname, '../..');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-const runtime = Buffer.from('fixture runtime');
-const compiler = Buffer.from('fixture compiler');
-const revision = 'a'.repeat(40), tree = 'b'.repeat(40);
-const evidence = {
-  revision, source_tree: tree, runner_os: 'Linux', runner_arch: 'X64',
-  runtime_sha256: hash(runtime), proof_exit_code: 0,
-  compiler_bytes: compiler.length, compiler_sha256: hash(compiler),
-  native_build_seconds: 1, proof_seconds: 2,
-  child_environment: {PATH: '', CC: 'unavailable-in-recovery-proof', CXX: 'unavailable-in-recovery-proof',
-    TEMP: '/proof', TMP: '/proof', TMPDIR: '/proof'},
-  input_files: ['chibi-compiler-host', 'tools/compiler/bootstrap/compiler.chibip'],
-};
-test('runtime preparation validates actual bytes and rejects changed provenance/isolation', () => {
-  const validate = value => validateRecovery('linux-x64', revision, tree, value, runtime, compiler, `${hash(compiler)}  compiler.chibip\n`);
-  assert.equal(validate(evidence), hash(compiler));
-  for (const mutate of [
-    value => { value.revision = 'c'.repeat(40); },
-    value => { value.source_tree = 'c'.repeat(40); },
-    value => { value.runner_arch = 'ARM64'; },
-    value => { value.runtime_sha256 = '0'.repeat(64); },
-    value => { value.compiler_sha256 = '0'.repeat(64); },
-    value => { value.compiler_bytes++; },
-    value => { value.proof_exit_code = 1; },
-    value => { value.child_environment.PATH = '/usr/bin'; },
-    value => { value.child_environment.TOKEN = 'not-a-secret-fixture'; },
-    value => { value.child_environment.TMP = '/different'; },
-    value => { value.input_files.push('tools/compiler/hidden.C'); },
-    value => { value.input_files = []; },
-    value => { value.proof_seconds = -1; },
-  ]) {
-    const changed = structuredClone(evidence);
-    mutate(changed);
-    assert.throws(() => validate(changed), /linux-x64:/);
-  }
-  assert.throws(() => validateRecovery('linux-x64', revision, tree, evidence, runtime, Buffer.from('changed'), ''), /compiler bytes/);
-  const mac = {...evidence, runner_os: 'macOS', runner_arch: 'ARM64'};
-  assert.equal(validateRecovery('macos-arm64', revision, tree, mac, runtime, compiler, `${hash(compiler)}  compiler.chibip`), hash(compiler));
-});
-
 function fixture(t) {
   const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'chibi-maintenance-test-')));
   t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
@@ -104,14 +64,14 @@ test('native seed command construction preserves platform, pin and fixed point',
   git('add', '.'); git('commit', '-m', 'fixture tools');
   const bin = path.join(directory, 'bin'); fs.mkdirSync(bin);
   fs.writeFileSync(path.join(bin, 'uname'), '#!/bin/sh\ncase "$1" in -s) echo Linux;; -m) echo x86_64;; esac\n', {mode: 0o755});
-  const env = {...process.env, PATH: `${bin}:${process.env.PATH}`, LIBCLANG_ROOT: '/fixture llvm', LLVM_BIN: '/fixture llvm/bin',
+  const env = {...process.env, PATH: `${bin}:${process.env.PATH}`, LLVM_BIN: '/fixture llvm/bin',
     CC: 'fixture-clang', CXX: 'fixture-clang++', BUILD_LOG: path.join(directory, 'build.log'), SEED_LOG: path.join(directory, 'seed.log')};
   const result = spawnSync('bash', ['.github/maintenance/native-seed.sh', path.join(directory, 'native')],
     {cwd: repo, env, encoding: 'utf8', timeout: 10000});
   assert.equal(result.status, 0, result.stderr);
   const args = fs.readFileSync(env.BUILD_LOG, 'utf8').trim().split('\n');
-  assert.deepEqual(args.slice(0, 9), ['build', 'native-self-host', '--llvm', env.LLVM_BIN, '--libclang-root', env.LIBCLANG_ROOT, '--jobs', '4', '--skip-vm']);
-  assert.deepEqual(args.slice(9), ['--stage-one', path.join(directory, 'native/previous/chibi')]);
+  assert.deepEqual(args.slice(0, 6), ['build', 'native-self-host', '--llvm', env.LLVM_BIN, '--jobs', '4']);
+  assert.deepEqual(args.slice(6), ['--stage-one', path.join(directory, 'native/previous/chibi')]);
   assert.equal(fs.readFileSync(path.join(directory, 'native/chibi-native-linux-x64'), 'utf8'), 'fixture');
   assert.equal(git('status', '--porcelain'), '');
 });

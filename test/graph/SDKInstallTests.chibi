@@ -588,7 +588,7 @@ CompilerToolsPackageAndRunAfterRelocation :: (fixture: Fixture) {
     profile := ["--target", "chibi_graph_fixture", "--commands-only", "on", "--profile", "explicit", "--compiler", "/usr/bin/false",
                 "--cxx-compiler", "/usr/bin/false", "--compiler-id", "Clang", "--build-type", "Release", "--warnings", "off",
                 "--architecture", "", "--sysroot", "", "--sanitizers", "", "--debug-compilation-dir", "",
-                "--ranlib", "/usr/bin/false", "--third-party", fixture.archive, "--libclang-include", "", "--libclang-library", ""];
+                "--ranlib", "/usr/bin/false", "--third-party", fixture.archive];
     commands := slice(head, 0, length(head));
     commands.extend(["--build", graph_build, "--launcher", "", "--archiver", "/usr/bin/false"]);
     commands.extend(profile);

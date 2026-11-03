@@ -2,7 +2,6 @@
 set -eu
 compiler=${1:?pass the native compiler}
 llvm=${2:?pass the LLVM tools directory}
-reference=${3:-}
 case "$compiler" in /*) ;; *) compiler=$(pwd -P)/$compiler ;; esac
 case "$llvm" in /*) ;; *) llvm=$(pwd -P)/$llvm ;; esac
 root=$(cd "$(dirname "$0")/../../.." && pwd -P)
@@ -88,18 +87,3 @@ set -e
 test "$status" -eq 1 || { cat "$work/rejected.log"; exit 1; }
 test "$(cat "$work/rejected")" = preserved
 grep -F 'Pointer.chibi:4:5: scalar proof supports only number, bool and string values' "$work/rejected.log" > /dev/null
-if [ -n "$reference" ]; then
-    for source in Main Iteration Reverse Places; do
-        project=$work/reference-$source
-        mkdir "$project"
-        cp "$root/test/native_aot/nested_arrays/$source.chibi" "$project/Main.chibi"
-        head -n 1 "$project/Main.chibi" > "$project/Tests.chibi"
-        printf '%s\n' '@test' 'Copies :: () { result := Main(); assert(result == 0); }' >> "$project/Tests.chibi"
-        "$reference" --project-root "$project" --test > "$project/reference.log" 2>&1 || { cat "$project/reference.log"; exit 1; }
-        cat "$project/reference.log"
-    done
-    result=0
-    "$reference" --project-root "$work/checked" --test > "$work/checked-reference.log" 2>&1 || result=$?
-    [ "$result" -eq 1 ] || { cat "$work/checked-reference.log"; exit 1; }
-    check_places "$work/checked-reference.log" || { cat "$work/checked-reference.log"; exit 1; }
-fi

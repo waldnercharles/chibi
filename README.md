@@ -31,12 +31,14 @@ these resources beside their prefix, so the prefix can move.
 For a development build, use `sh tools/build.sh build`. Once `chibi` is installed,
 `chibi build` inside the checkout does the same. The default products are the
 native CLI/compiler, asset compiler and compile-only archive; `--target chibi` builds the CLI/compiler
-alone. Run it as `build/sdk/chibi`. Explicit C engine and test targets still
-require a C23 compiler and libclang for reflection.
+alone. Run it as `build/sdk/chibi`. Explicit foreign C graph fixtures and C ABI
+consumers use a C compiler; native products require LLVM and the verified seed.
 
-The compiler and toolchain self-host natively. Engine runtime APIs and browser
-execution still use the retained VM. The [native ledger](docs/native-llvm-ledger.md)
-records native language support and the remaining runtime work.
+The compiler and toolchain self-host natively. Programs and reload generations
+use the native runtime; the optional browser compiler uses the authored Wasm
+route. The compile-only prepared artifact encoder remains available. The
+[native ledger](docs/native-llvm-ledger.md) records language admission and runtime
+verification. Compiler reproduction alone does not establish runtime parity.
 
 ## Hello World
 
@@ -77,39 +79,11 @@ The CLI is compiled from
 graph packages beside the installed SDK, compiles programs natively, and runs
 them. Command parsing and reload policy live in Chibi.
 
-## Run a project
+## Studio
 
-Give `chibi run` a project folder or its `project.kdl`:
-
-```sh
-chibi run /path/to/game
-```
-
-`chibi /path/to/game` also runs a game folder containing `project.kdl`.
-
-Inside a project folder, omit the path:
-
-```sh
-chibi check
-chibi run
-chibi export --output /path/to/release
-```
-
-`run` builds changed content before it starts the player. `export` creates a
-folder or app with the player and the game's resources. See
-[Export a game](docs/guide/toolchain.md#export-a-game) for platform details.
-
-## Edit with Studio
-
-Studio edits the same project files. Install it from its separate checkout:
-
-```sh
-make -C /path/to/chibi-studio install
-chibi-dev /path/to/game
-```
-
-You can also open [Studio in your browser](https://waldnercharles.github.io/chibi-studio/).
-The browser version uses the latest engine release.
+Studio is maintained in its [own repository](https://github.com/waldnercharles/chibi-studio).
+Its build, installation and browser instructions belong there. The compiler-tools
+SDK described here does not package the former game player or runtime SDK.
 
 ## License
 

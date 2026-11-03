@@ -36,12 +36,11 @@ typedef struct
     bool source_truncated;
 } asset_compiler_diagnostic;
 
-/* Compiles the package of the first file of a request, which
- * compiler_package_request_json builds, and the packages it imports, on the
- * native service. Returns the closure as a caller-freed artifact, readable
- * by compiler_artifact_read, or NULL with a copied diagnostic whose document is
- * the index of the request's file. NULL options use the packaged service
- * discovery and default limits. */
+/* Compiles the package of the first file in a UTF-8 JSON request and its
+ * imported packages on the native service. Returns the serialized prepared
+ * closure as caller-freed bytes, or NULL with a copied diagnostic whose
+ * document is the index of the request's file. NULL options use the packaged
+ * service discovery and default limits. */
 unsigned char *asset_compiler_compile_closure(
     const char *request,
     size_t request_length,

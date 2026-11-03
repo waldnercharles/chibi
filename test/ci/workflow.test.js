@@ -45,53 +45,12 @@ test('ordinary PR, push and manual ci run Linux, macOS and both native targets',
   assert.deepEqual(active('workflow_dispatch', 'ci', true), ['native', 'native-macos', 'native-self-host-windows', 'native-targets']);
 });
 test('full proofs are explicit, and Graph stays opt-in', () => {
-  const full = ['build-alone', 'compare', 'native', 'native-macos', 'native-self-host-windows', 'native-targets', 'no-c-compiler', 'recover'];
+  const full = ['build-alone', 'native', 'native-macos', 'native-self-host-windows', 'native-targets', 'no-c-compiler'];
   assert.deepEqual(active('schedule'), full);
   assert.deepEqual(active('workflow_dispatch', 'full'), full);
   assert.deepEqual(active('workflow_dispatch', 'graph'), ['graph']);
   assert.deepEqual(active('workflow_dispatch', 'unknown'), []);
 });
-test('only fully pinned manual ci admits Windows without the Linux or macOS work', () => {
-  const pins = {run: '123', commit: 'a'.repeat(40), sha256: 'b'.repeat(64)};
-  const ordinary = ['native', 'native-macos', 'native-self-host-windows', 'native-targets'];
-  for (let mask = 0; mask < 8; mask++) {
-    const bootstrap = Object.fromEntries(Object.entries(pins).filter((_, index) => mask & (1 << index)));
-    assert.deepEqual(active('workflow_dispatch', 'ci', false, undefined, bootstrap),
-      mask === 7 ? ['native-self-host-windows'] : ordinary, `pin subset ${mask}`);
-  }
-  assert.deepEqual(active('workflow_dispatch', 'ci', true, undefined, pins), ['native-self-host-windows']);
-  for (const [event, mode] of [['pull_request', ''], ['push', ''], ['schedule', ''],
-    ['workflow_dispatch', 'full'], ['workflow_dispatch', 'graph'], ['workflow_dispatch', 'unknown']]) {
-    assert.deepEqual(active(event, mode, false, undefined, pins), active(event, mode));
-  }
-  assert.ok(!active('workflow_dispatch', 'ci', false, undefined, pins, true).includes('native-self-host-windows'));
-});
-test('the run name identifies a pinned Windows proof separately from complete ci', () => {
-  const expression = /\$\{\{([\s\S]+?)\}\}/.exec(source.split('run-name: ')[1])[1];
-  const pins = {windows_bootstrap_run: '123', windows_bootstrap_commit: 'a'.repeat(40), windows_bootstrap_sha256: 'b'.repeat(64)};
-  for (const [event, mode, bootstrap, expected] of [
-    ['workflow_dispatch', 'ci', pins, 'Windows proof'],
-    ['workflow_dispatch', 'ci', {}, 'ci'],
-    ['workflow_dispatch', 'ci', {...pins, windows_bootstrap_run: ''}, 'ci'],
-    ['workflow_dispatch', 'ci', {...pins, windows_bootstrap_commit: ''}, 'ci'],
-    ['workflow_dispatch', 'ci', {...pins, windows_bootstrap_sha256: ''}, 'ci'],
-    ['workflow_dispatch', 'full', pins, 'full'],
-    ['workflow_dispatch', 'graph', pins, 'graph'],
-    ['pull_request', '', pins, 'pull_request'], ['push', '', pins, 'push'], ['schedule', '', pins, 'schedule'],
-  ]) {
-    const inputs = {mode, windows_bootstrap_run: '', windows_bootstrap_commit: '', windows_bootstrap_sha256: '', ...bootstrap};
-    assert.equal(vm.runInNewContext(expression, {github: {event_name: event}, inputs}), expected);
-  }
-});
-test('both canonical phase budgets and nested source gate are enforced', () => {
-  assert.match(source, /CHIBI_CORE_DEADLINE=\$\(\(\$\(date \+%s\) \+ 2700\)\)/);
-  assert.match(source, /budget\.js --reserve 360 "\$CHIBI_CORE_DEADLINE"/);
-  assert.match(source, /budget\.js "\$CHIBI_CORE_DEADLINE" bash \.github\/ci\/linux-core\.sh/);
-  assert.match(source, /deadline=\$\(\(\$\(date \+%s\) \+ 5400\)\)/);
-  const setup = readFileSync(path.join(root, '.github/ci/linux-setup.sh'), 'utf8');
-  assert.match(setup, /budget\.js "\$\(\(\$\(date \+%s\) \+ 300\)\)" bash \.github\/ci\/format\.sh/);
-});
-
 test('canonical work has no classifier, receipt or silent source-path bypass', () => {
   const linux = source.slice(source.indexOf('\n  native:\n'), source.indexOf('\n  native-macos:\n'));
   assert.doesNotMatch(source, /receipt|ci-policy|CHIBI_CI_PROFILE|Prepare native bootstrap|ci-tested-tree/);
@@ -136,19 +95,13 @@ test('ordinary native targets consume the Linux bundle without enabling full-onl
   assert.match(source, /platform: windows-x64/);
 });
 
-test('ordinary platform validation never enables sanitizer or full-only certification', () => {
+test('native proofs do not claim C sanitizer instrumentation', () => {
+  assert.doesNotMatch(source, /CHIBI_CI_SANITIZERS|native-profile\.sh|inputs\.sanitizers|compiler-self-build-/);
+  assert.ok(!jobs.has('recover') && !jobs.has('compare'));
   const full = /CHIBI_FULL: \$\{\{ (.+) \}\}/.exec(source)[1];
-  const sanitizer = /CHIBI_CI_SANITIZERS: \$\{\{ ([\s\S]+?) \}\}/.exec(source)[1];
-  for (const [event, mode, requested, expected] of [
-    ['pull_request', '', false, false], ['push', '', false, false],
-    ['workflow_dispatch', 'ci', false, false], ['workflow_dispatch', 'ci', true, false],
-    ['workflow_dispatch', 'full', false, false], ['workflow_dispatch', 'full', true, true],
-    ['workflow_dispatch', 'graph', false, false], ['workflow_dispatch', 'graph', true, true],
-    ['schedule', '', false, true],
-  ]) {
-    const context = {github: {event_name: event}, inputs: {mode, sanitizers: requested}};
-    assert.equal(vm.runInNewContext(sanitizer, context), expected ? 'ON' : 'OFF');
-    assert.equal(vm.runInNewContext(full, context), event === 'schedule' || (event === 'workflow_dispatch' && mode === 'full'));
+  for (const [event, mode] of [['pull_request', ''], ['workflow_dispatch', 'ci'], ['workflow_dispatch', 'full'], ['schedule', '']]) {
+    assert.equal(vm.runInNewContext(full, {github: {event_name: event}, inputs: {mode}}),
+      event === 'schedule' || (event === 'workflow_dispatch' && mode === 'full'));
   }
 });
 
@@ -158,6 +111,9 @@ test('pinned Windows bootstrap keeps canonical modes and validates producer iden
   assert.deepEqual(active('workflow_dispatch', 'graph', false, 'skipped', {run: '123'}), ['graph']);
   assert.ok(active('workflow_dispatch', 'ci', false, 'skipped', {run: '123'}).includes('native-self-host-windows'));
   assert.ok(!active('pull_request', '', false, 'skipped', {run: '123'}).includes('native-self-host-windows'));
+  const pinned = {run: '123', commit: 'f'.repeat(40), sha256: 'e'.repeat(64)};
+  assert.deepEqual(active('workflow_dispatch', 'ci', false, 'skipped', pinned), ['native-self-host-windows']);
+  assert.deepEqual(active('workflow_dispatch', 'full', false, 'success', pinned), active('workflow_dispatch', 'full'));
   for (const input of ['windows_bootstrap_run', 'windows_bootstrap_commit', 'windows_bootstrap_sha256']) {
     assert.match(source, new RegExp(`^      ${input}:$`, 'm'));
   }
@@ -214,7 +170,7 @@ test('the transitional Windows bootstrap allowance leaves other phase bounds unc
   const linux = source.slice(source.indexOf('\n  native:\n'), source.indexOf('\n  native-macos:\n'));
   const macos = source.slice(source.indexOf('\n  native-macos:\n'), source.indexOf('\n  native-self-host-windows:\n'));
   assert.match(linux, /^    timeout-minutes: 135$/m);
-  assert.match(macos, /^    timeout-minutes: 45$/m);
+  assert.match(macos, /^    timeout-minutes: 135$/m);
 });
 
 test('external Windows bootstrap skips only the unused current producer upload', () => {

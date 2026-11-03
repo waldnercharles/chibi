@@ -2316,11 +2316,7 @@ ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
             waits = waits || WaitingOperand(row);
             task_calls = task_calls || (row.kind == facts.CallRow && row.literal == i64(facts.CallSpawned));
         }
-        // Native validation checks record leaves against its existing layout.
-        if (waits && !Scalar(rows[head].type) &&
-            (rows[head].type < facts.RecordType || rows[head].type >= facts.ArrayType)) {
-            return "scalar waiting results require numbers, bools, or records without owners";
-        }
+        // Native validation checks promise ownership against its existing layout.
         if (rows[head].value == facts.FunctionVoid && !waits) {
             return "scalar void task metadata names a function that does not wait";
         }
@@ -4368,7 +4364,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     fresh = Without(fresh, spent);
                 }
                 pending = [];
-                fresh_value := (FreshArray(operand) && !array_place) || retained_element || mutated_owned;
+                fresh_value := (FreshArray(operand) && !array_place) || retained_element || mutated_owned ||
+                               (operand.kind == facts.AwaitResultRow && TrackedRecord(managed, operand.type));
                 if (fresh_value && length(closes) > 0 && type == abi.TextStorage) {
                     logical_strings.append(produced);
                 } else if (fresh_value) {

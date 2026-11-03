@@ -1,0 +1,105 @@
+package owned_promises
+
+Payload :: struct { text: string; words: string[]; numbers: int[]; }
+Text :: (count: int) -> string { return text_from_bytes(resize([u8(120)], count)); }
+Make :: (count: int) -> Payload { return {text: Text(count), words: [Text(count + 1)], numbers: [count, count + 2]}; }
+Worker :: (count: int) -> Payload { yield; return Make(count); }
+Words :: (count: int) -> string[] { yield; return [Text(count), Text(count + 1)]; }
+String :: (count: int) -> string { yield; return Text(count); }
+Numbers :: () -> int[] { yield; return [int(7), 19]; }
+EchoText :: (value: string) -> string { yield; return value; }
+EchoWords :: (value: string[]) -> string[] { yield; return value; }
+EchoRecord :: (value: Payload) -> Payload { yield; return value; }
+EmptyWords :: () -> string[] { yield; return []; }
+Check :: (value: Payload, count: int) {
+    assert(text_byte_length(value.text) == count);
+    assert(text_byte_length(value.words[0]) == count + 1);
+    assert(value.numbers[0] == count && value.numbers[1] == count + 2);
+}
+Hold :: (value: Payload) -> int { yield; yield; yield; yield; Check(value, 13); return 0; }
+Parent :: () -> int {
+    pending := Worker(13);
+    joined := await pending;
+    if joined is Cancelled { return 1; }
+    else { return await Hold(joined); }
+}
+Main :: () -> int {
+    direct := await Worker(11);
+    Check(direct, 11);
+    direct_words := await Words(5);
+    assert(text_byte_length(direct_words[0]) == 5);
+    direct_text := await String(3);
+    assert(text_byte_length(direct_text) == 3);
+    direct_numbers: int[] = await Numbers();
+    assert(direct_numbers[1] == 19);
+    offered := Make(5);
+    echo := EchoRecord(offered);
+    offered = Make(6);
+    echoed := await echo;
+    if echoed is Cancelled { return 11; }
+    else { Check(echoed, 5); }
+    original_text := Text(7);
+    text_echo := EchoText(original_text);
+    original_text = Text(9);
+    echoed_text := await text_echo;
+    if echoed_text is Cancelled { return 12; }
+    else { assert(text_byte_length(echoed_text) == 7); }
+    echoed_words := await EchoWords([Text(2)]);
+    assert(text_byte_length(echoed_words[0]) == 2);
+    empty_words := await EmptyWords();
+    empty_text := await String(0);
+    assert(length(empty_words) == 0 && text_byte_length(empty_text) == 0);
+    if true { discarded := Worker(8); }
+    Worker(9);
+    yield
+    yield
+    for count in 1..<1025 {
+        pending := Worker(count);
+        alias := pending;
+        joined := await pending;
+        if joined is Cancelled { return 2; }
+        else {
+            copy := joined;
+            Check(copy, count);
+            copy.text = Text(3);
+            copy.words[0] = Text(4);
+            copy.numbers[0] = -1;
+        }
+        again := await alias;
+        if again is Cancelled { return 3; }
+        else { Check(again, count); }
+        pending = Worker(count + 1);
+        replacement := await pending;
+        if replacement is Cancelled { return 4; }
+        else { Check(replacement, count + 1); }
+        strings := Words(7);
+        copied := await strings;
+        if copied is Cancelled { return 5; }
+        else {
+            changed := copied;
+            changed[0] = Text(17);
+        }
+        original := await strings;
+        if original is Cancelled { return 6; }
+        else { assert(text_byte_length(original[0]) == 7); }
+        text := String(9);
+        first := await text;
+        if first is Cancelled { return 7; }
+        else { assert(text_byte_length(first) == 9); }
+        second := await text;
+        if second is Cancelled { return 8; }
+        else { assert(text_byte_length(second) == 9); }
+        stopped := Worker(99);
+        stop_alias := stopped;
+        cancel stopped
+        absent := await stop_alias;
+        if absent is not Cancelled { return 9; }
+    }
+    parent := Parent();
+    yield
+    yield
+    cancel parent
+    stopped_parent := await parent;
+    if stopped_parent is not Cancelled { return 10; }
+    return 0;
+}

@@ -4,16 +4,20 @@ import native "project:llvm_native"
 import abi "project:native_abi"
 import strings "core:strings"
 
-RecordPromise :: (fields: int[], code: native.Instruction[]) -> native.Result {
+RecordPromise :: (fields: int[], code: native.Instruction[], program: bool = true) -> native.Result {
     empty: int[] = [];
     texts: string[] = [];
     source: native.Source = {file: "", directory: ""};
-    return native.EmitProgram(abi.LinuxX64(),
-        [Function(abi.IntStorage, 0, 0, 3, 0, 6, 0, 0),
-         Function(native.RecordType, 0, 3, 1, 6, 5, 0, 0)],
-        empty, [native.TaskType, native.RecordType + 1, abi.IntStorage, native.RecordType], empty,
-        code, empty, [{first: 0, count: 1, identity: 0}, {first: 1, count: 2, identity: 0}],
-        fields, texts, source, texts, empty, empty);
+    functions := [Function(abi.IntStorage, 0, 0, 3, 0, 6, 0, 0),
+                  Function(native.RecordType, 0, 3, 1, 6, 5, 0, 0)];
+    slots := [native.TaskType, native.RecordType + 1, abi.IntStorage, native.RecordType];
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 2, identity: 0}];
+    if (program) {
+        return native.EmitProgram(abi.LinuxX64(), functions, empty, slots, empty, code, empty, records,
+                                  fields, texts, source, texts, empty, empty);
+    }
+    return native.Emit(abi.LinuxX64(), functions, empty, slots, empty, code, empty, records,
+                       fields, texts, source, texts, empty, empty, false, 1);
 }
 RecordPromiseCode :: () -> native.Instruction[] {
     return [Code(native.Check, 0, 0, 0, 0, 0, 0),
@@ -38,9 +42,30 @@ RecordPromisesUseTheirDeclaredPayload :: () {
             "native task observer or result differs from its type");
 }
 @test
-OwnedPromiseLeavesRemainClosed :: () {
-    Rejects(RecordPromise([abi.TextStorage, abi.IntStorage, native.RecordType], RecordPromiseCode()),
-            "native task observer or result differs from its type");
+OwnedPromisesCopyOnJoinAndDropOnDestroy :: () {
+    text := Emitted(RecordPromise([abi.TextStorage, abi.IntStorage, native.RecordType], RecordPromiseCode()));
+    assert(strings.Contains(text, "%payload.copy2 = call %record0 @chibi_value.32.copy"));
+    assert(strings.Contains(text, "store %record0 zeroinitializer, ptr %result0\n  call void @chibi_value.32.drop"));
+}
+@test
+OwnedPromisesRequireTheProgramOwner :: () {
+    Rejects(RecordPromise([abi.TextStorage, abi.IntStorage, native.RecordType], RecordPromiseCode(), false),
+            "native waiting frames cannot own managed values or pointers yet");
+}
+@test
+CollectorPointersRequirePromiseRootsBeforeAdmission :: () {
+    code := RecordPromiseCode();
+    code[2] = Code(native.AwaitHandle, 0, 0, 0, 0, 0, 0);
+    code[8] = Code(native.Constant, native.PointerType, 0, 0, 0, 0, 0);
+    code[9] = Code(native.Publish, native.PointerType, 0, 0, 0, 0, 0);
+    empty: int[] = [];
+    texts: string[] = [];
+    records: native.Record[] = [];
+    Rejects(native.EmitProgram(abi.LinuxX64(),
+        [Function(abi.IntStorage, 0, 0, 3, 0, 6, 0, 0), Function(native.PointerType, 0, 3, 1, 6, 5, 0, 0)],
+        empty, [native.TaskType, abi.IntStorage, abi.IntStorage, native.PointerType], empty, code, empty,
+        records, empty, texts, {file: "", directory: ""}, texts, empty, empty),
+        "native waiting results require a pointer-free value and program-owned cleanup");
 }
 @test
 SharedRecordResultGraphDoesNotExpandItsPaths :: () {

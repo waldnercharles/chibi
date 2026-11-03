@@ -3809,7 +3809,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                             change.op = native.ArraySet;
                             change.right = stack[base + 2];
                             change.target = incoming;
-                            change.literal = 0;
+                            change.literal = i64(native.ArraySetPlace);
                         }
                         // All source operands have run. Resolve the current
                         // entry, then replace its descriptor without callbacks.

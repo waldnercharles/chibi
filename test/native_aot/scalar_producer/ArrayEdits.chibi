@@ -176,3 +176,25 @@ MapForeignPlacesProjection :: () {
     RejectChanged(rows, [Changed(loan, TypeField, i64(facts.ArrayType + facts.BoolType))], mismatch);
     RejectChanged(rows, [Changed(loan - 2, KindField, i64(facts.RefRow))], mismatch);
 }
+
+MapArrayPlacesProjection :: () {
+    rows := Produced("package places\nMain::()->int{other:[int:int[]]=[1:[8]];values:[int:int[]]=[1:[1]];values[1][0]+=2;return values[1][0];}");
+    ValidateRows(rows, "");
+    change := -1;
+    assignment := -1;
+    for (row, index in rows) {
+        if (row.kind == facts.MapRow && row.value == facts.MapArraySet) { change = index; }
+    }
+    for (row, index in rows) {
+        if (row.kind == facts.AssignRow && index + row.count == change) { assignment = index; }
+    }
+    assert(change >= 0 && assignment >= 0 && rows[assignment + 1].kind == facts.RefRow);
+    mismatch := "scalar map operation differs from its operands";
+    RejectChanged(rows, [Changed(change, CountField, 3)], mismatch);
+    RejectChanged(rows, [Changed(change, CountField, 5)], mismatch);
+    RejectChanged(rows, [Changed(change, TypeField, i64(facts.BoolType))], mismatch);
+    RejectChanged(rows, [Changed(assignment + 1, ValueField, 0)], "scalar map change is not the assignment of its map");
+    previous := ArrayEditOperation(rows, facts.ArrayPlaceGet);
+    RejectChanged(rows, [Changed(previous, CountField, 1)], "scalar array operation differs from its operands");
+    RejectChanged(rows, [Changed(previous, TypeField, i64(facts.BoolType))], "scalar array operation differs from its operands");
+}

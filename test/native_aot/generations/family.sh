@@ -60,6 +60,28 @@ for mode in tasks failure; do
 done
 echo "native generations: suspended pointer/array roots, cancellation and old task failure O$level passed"
 
+compile ManagedRecords "$work/records.so"
+compile ManagedRecordsEdited "$work/records-edited.so"
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_aot/generations/RecordCellsProbe.chibi" --entry Main \
+    --output "$work/record-probe" --llvm "$llvm" --target "$triple" --level 2 --jobs 1
+mkdir "$work/record-cells"
+(cd "$work/record-cells" && "$work/record-probe")
+run=$work/records
+mkdir "$run"
+cp "$work/records.so" "$run/live-0.so"
+(cd "$run" && exec timeout 90 "$host") > "$run/host.log" 2>&1 &
+child=$!
+wait_marker "$run/managed-record-ready" "$run/host.log"
+cp "$work/records-edited.so" "$run/pending.so"
+mv "$run/pending.so" "$run/next.so"
+result=0
+wait "$child" || result=$?
+child=
+if [ "$result" -ne 7 ]; then cat "$run/host.log" >&2; echo "record roots status$result, expected7" >&2; exit 1; fi
+test "$(cat "$run/managed-record-done")" = old42
+echo "native generations: typed cyclic record roots, changed layouts and image cell leases O$level passed"
+
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$root/test/native_aot/generations/FamilyProbe.chibi" --entry Main \
     --output "$work/probe" --llvm "$llvm" --target "$triple" --level 2 --jobs 1

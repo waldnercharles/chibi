@@ -402,7 +402,7 @@ ValidUnion :: (rows: facts.Row[], records: int[], head: int, starts: int[], size
     declared := rows[head];
     beyond := After(rows, head);
     if (beyond < 0 || beyond >= length(rows) || declared.name == "" || declared.text != "" || declared.type != 0 ||
-        declared.value != 0 || declared.literal != 0 || !Located(declared, starts, size)) {
+        declared.value != 0 || !Located(declared, starts, size)) {
         return "invalid scalar union row";
     }
     variants: int[] = [];
@@ -435,6 +435,9 @@ ValidUnion :: (rows: facts.Row[], records: int[], head: int, starts: int[], size
             payloads += 1;
         }
         at += variant.count + 1;
+    }
+    if (declared.literal != 0 && !ManagedOptional(rows, records, facts.RecordType + SortedIndex(records, head))) {
+        return "invalid managed optional cell layout";
     }
     return "";
 }

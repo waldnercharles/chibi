@@ -1,0 +1,3 @@
+package optional_pointer
+Value :: struct { pointer: ^int; }
+Main :: () -> int { number := 7; value: Value? = {pointer: &number}; pointer := &value; return 0; }

@@ -2016,6 +2016,12 @@ ScalarIs :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[
 ScalarHeldUnion :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                     names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> int {
     value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.DereferenceExpression) && !ScalarScopedDereference(forest, text, names, value)) {
+        pointer := ScalarPointerRecord(forest, text, callables, params, names, types, members, package,
+                                       Field(forest, value, syntax.FieldOperand));
+        shape := ScalarPointerElement(types, pointer);
+        if (shape.storage == UnionStorage && shape.container == 0) { return shape.record; }
+    }
     view := ScalarViewOperation(forest, text, callables, params, names, types, members, package, value);
     optional_view := ScalarViewOptional(types, view);
     if (optional_view >= 0) { return optional_view; }

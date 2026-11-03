@@ -40,12 +40,26 @@ ManagedVariables :: (rows: facts.Row[], head: int, last: int) -> ManagedBoxes {
 ManagedVariable :: (boxed: bool[], variable: int) -> bool {
     return variable >= 0 && variable < length(boxed) && boxed[variable];
 }
+// The optional tag and its plain payload can be copied as bytes. This
+// closed shape excludes backing owners and collector edges from cell payloads.
+ManagedOptional :: (rows: facts.Row[], records: int[], type: int) -> bool {
+    payload := OptionalPayloadType(rows, records, type);
+    if (Scalar(payload)) { return true; }
+    if (payload < facts.RecordType || payload >= facts.ArrayType || payload - facts.RecordType >= length(records)) { return false; }
+    head := records[payload - facts.RecordType];
+    if (rows[head].kind != facts.RecordRow || After(rows, head) < 0) { return false; }
+    for (field in head + 1..<head + 1 + rows[head].count) {
+        if (rows[field].kind != facts.MemberRow || !Scalar(rows[field].type) || rows[field].literal == i64(facts.CharNominal)) { return false; }
+    }
+    return true;
+}
 ManagedValue :: (rows: facts.Row[], records: int[], type: int, tag: i64) -> bool {
     if (Scalar(type) || type == facts.PointerType) { return tag != 0; }
     if (type >= facts.ArrayType && type < facts.MapType && Scalar(type - facts.ArrayType)) { return tag != 0; }
     if (type < facts.RecordType || type >= facts.ArrayType || type - facts.RecordType >= length(records)) { return false; }
     head := records[type - facts.RecordType];
-    return rows[head].kind == facts.RecordRow && rows[head].literal != 0 && rows[head].literal == tag;
+    return (rows[head].kind == facts.RecordRow || ManagedOptional(rows, records, type)) &&
+           rows[head].literal != 0 && rows[head].literal == tag;
 }
 
 ManagedPins :: struct {

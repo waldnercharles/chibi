@@ -596,6 +596,8 @@ jobs:
             @{ name = 'family-format'; source = 'test/native_aot/text_format/Family.chibi' },
             @{ name = 'print'; source = 'test/native_aot/output/Main.chibi' },
             @{ name = 'task-timing'; source = 'test/native_aot/tasks/cases/timing/Main.chibi' },
+            @{ name = 'gc-array-promises'; source = 'test/native_aot/managed_pointers/source/TaskArrayPromises.chibi' },
+            @{ name = 'task-view-roots'; source = 'test/native_aot/managed_pointers/source/TaskViews.chibi' },
             @{ name = 'square-root'; source = 'test/native_aot/math_scalar/SquareRoot.chibi' },
             @{ name = 'shadow-root'; source = 'test/native_aot/math_scalar/Shadow.chibi' },
             @{ name = 'math-kernels'; source = 'test/native_aot/math_scalar/Kernels.chibi' },
@@ -609,6 +611,8 @@ jobs:
             @{ name = 'nested-maps'; source = 'test/native_aot/map_programs/NestedContainers.chibi' },
             @{ name = 'nested-map-places'; source = 'test/native_aot/map_programs/NestedPlaces.chibi' },
             @{ name = 'deep-map-places'; source = 'test/native_aot/map_programs/DeepPlaces.chibi' },
+            @{ name = 'deep-mapped-arrays'; source = 'test/native_aot/map_programs/DeepArrays.chibi' },
+            @{ name = 'record-field-arrays'; source = 'test/native_aot/managed_values/RecordFieldArrays.chibi' },
             @{ name = 'sdk-paths'; source = 'test/bootstrap/fixtures/InstallPaths.chibi' },
             @{ name = 'library-loader'; source = 'test/native_aot/loader/Windows.chibi' }
           )

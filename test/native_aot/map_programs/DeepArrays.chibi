@@ -1,0 +1,46 @@
+package deep_mapped_array_places
+
+Item :: struct { word: string; values: int[]; }
+Replace :: (values: ^([int:[int:int[]]])) -> int {
+    fresh: [int:[int:int[]]] = [1:[2:[100],9:[90]],7:[8:[80]]]; values^ = fresh; return 4;
+}
+Key :: (values: ^([int:[int:int[]]])) -> int { ignored := Replace(values); return 2; }
+Repair :: (values: ^([int:int[]][])) -> int { values^ = [[1:[10]]]; return 1; }
+Index :: (trace: ^int, value: int) -> int { trace^ = trace^ * 10 + value; return value; }
+Right :: (trace: ^int) -> int { trace^ = trace^ * 10 + 4; return 9; }
+Alias :: (read: ^([int:[int:int[]]]), changed: ^([int:[int:int[]]])) -> int {
+    read^[1][2][0] += Replace(changed); return read^[1][2][0];
+}
+Main :: () -> int {
+    values: [int:[int:int[]]] = [1:[2:[3]]];
+    old := values;
+    values[1][2][0] += Replace(&values);
+    assert(values[1][2][0] == 7 && old[1][2][0] == 3 && values[1][9][0] == 90 && values[7][8][0] == 80);
+    values[1][Key(&values)][0] += 9;
+    assert(values[1][2][0] == 109);
+    joined := Alias(&values, &values);
+    assert(joined == 113 && values[1][2][0] == 113);
+    trace := 0;
+    values[Index(&trace,1)][Index(&trace,2)][Index(&trace,0)] = Right(&trace);
+    assert(trace == 1204 && values[1][2][0] == 9);
+    mixed: [int:int[]][] = [];
+    mixed[0][Repair(&mixed)][0] += 9;
+    assert(mixed[0][1][0] == 19);
+    snapshot := mixed;
+    mixed[0][1][0] = 20;
+    assert(mixed[0][1][0] == 20 && snapshot[0][1][0] == 19);
+    for (index in 0..<96) {
+        word := text_from_bytes([u8(111),119,110,101,100]);
+        records: [int:[int:Item[]]] = [1:[2:[{word:word,values:[index]}]]];
+        copy := records;
+        records[1][2][0] = {word:"changed",values:[7]};
+        assert(copy[1][2][0].word == "owned" && copy[1][2][0].values[0] == index);
+        assert(records[1][2][0].word == "changed" && records[1][2][0].values[0] == 7);
+        maps: [int:[int:[int:string][]]] = [1:[2:[[3:word]]]];
+        old_maps := maps;
+        maps[1][2][0] = [4:"replacement"];
+        assert(old_maps[1][2][0][3] == "owned" && !old_maps[1][2][0].has(4));
+        assert(maps[1][2][0][4] == "replacement" && !maps[1][2][0].has(3));
+    }
+    return 0;
+}

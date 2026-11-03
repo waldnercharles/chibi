@@ -1100,7 +1100,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             return Result.Rejected(-1, "native scalar local cannot hold a managed value or pointer");
         }
     }
-    if (waiting[function] && !TaskPromiseValue(records, lifecycle, managed_records, result, ProgramMode(mode) || family)) {
+    if (waiting[function] && !TaskPromiseValue(records, fields, lifecycle, managed_records, result, ProgramMode(mode) || family)) {
         return Result.Rejected(-1, "native waiting results require a pointer-free value and program-owned cleanup");
     }
     definitions: int[] = [];

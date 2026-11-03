@@ -34,19 +34,22 @@ Main :: () -> int {
              Code(native.Constant, abi.IntStorage, 10, 0, 0, 0, 8),
              Code(native.ArrayInsert, array, 11, 8, 9, 10, 0),
              Code(native.ArrayReverse, array, 12, 11, 0, 0, 0),
+             Code(native.ArraySet, array, 19, 12, 6, 10, i64(native.ArraySetUnchanged)),
+             Code(native.ArraySet, array, 20, 19, 9, 10, i64(native.ArraySetUnchanged)),
              Code(native.Constant, abi.IntStorage, 13, 0, 0, 0, 0),
-             Code(native.ArrayGet, abi.IntStorage, 14, 12, 13, 0, 0),
+             Code(native.ArraySet, array, 21, 20, 13, 10, i64(native.ArraySetUnchanged)),
+             Code(native.ArrayGet, abi.IntStorage, 14, 21, 13, 0, 0),
              Code(native.ArrayGet, abi.IntStorage, 15, 5, 13, 0, 0),
              Code(native.Constant, abi.IntStorage, 16, 0, 0, 0, 10),
              Code(native.Mul, abi.IntStorage, 17, 14, 16, 0, 0),
              Code(native.Add, abi.IntStorage, 18, 17, 15, 0, 0),
              Code(native.ArrayDrop, array, 0, 5, 0, 0, 0),
-             Code(native.ArrayDrop, array, 0, 12, 0, 0, 0),
+             Code(native.ArrayDrop, array, 0, 21, 0, 0, 0),
              Code(native.Publish, abi.IntStorage, 0, 18, 0, 0, 0),
              Code(native.Return, 0, 0, 0, 0, 0, 0)];
     slots := [array, abi.IntStorage, array, abi.IntStorage, array, array, abi.IntStorage, abi.IntStorage,
               array, abi.IntStorage, abi.IntStorage, array, array, abi.IntStorage, abi.IntStorage,
-              abi.IntStorage, abi.IntStorage, abi.IntStorage, abi.IntStorage];
+              abi.IntStorage, abi.IntStorage, abi.IntStorage, abi.IntStorage, array, array, array];
     functions: native.Function[] = [{result: abi.IntStorage, first_parameter: 0, parameters: 0, first_slot: 0,
                                      slots: length(slots), first_local: 0, locals: 0, first_code: 0, code: length(code),
                                      first_argument: 0, arguments: 0}];
@@ -78,7 +81,7 @@ Main :: () -> int {
         if (linked.kind != 0) { return 1; }
         status := os.Run([program]);
         if (status != 82) { os.Print(format_text("array edits O{} exited {}", level, status)); return 1; }
-        os.Print(format_text("PASS array edits O{}: clamped insert, reverse and value-copy isolation", level));
+        os.Print(format_text("PASS array edits O{}: clamped insert, reverse, ignored invalid set and value-copy isolation", level));
     }
     return 0;
 }

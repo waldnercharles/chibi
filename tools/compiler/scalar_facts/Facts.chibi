@@ -43,7 +43,8 @@ package scalar_facts
 // - a Function row: its `name`, result `type`, `count` parameters and
 //   declaration range, and in a library its stable symbol ID as `literal`,
 //   the ID the runtime binds it by;
-// - `count` Parameter rows: `name`, `type`, ordinal `value`, name range;
+// - `count` Parameter rows: `name`, `type`, ordinal `value`, name range and
+//   a Parameter mode as `literal`;
 // - a Local row for each named result, with its name's range, whose operand
 //   is its zero: a Literal, or a Zero for a record. A function with one
 //   named result returns its value, and one with several the record of
@@ -325,7 +326,11 @@ pub TaskRunningRow: int : 51;
 // pointee value. `value` is ManagedRead/ManagedWrite; literal retains the full
 // semantic pointee identity as u64 bits, independent of module type ordinals.
 pub ManagedRow: int : 52;
-// A zero-arity address of variable `value`, giving PointerType. The variable
+// An address of variable `value`, giving PointerType and consuming no operand.
+// Count is zero for a scalar, or the exact record pointee type for a record.
+// A tagged RecordRow.literal is its full nominal+layout identity; its Member
+// literals are full value identities, distinct from ordinary char flags.
+// The variable
 // is promoted to one typed heap cell from initialization; literal is the same
 // semantic identity every address/read/write of that pointee carries.
 pub ManagedAddressRow: int : 53;
@@ -337,6 +342,10 @@ pub ManagedBorrow: int : 4;
 // Eager scalar selection: bool condition, then same-typed yes and no values.
 // Values are numeric or bool, never managed values or references.
 pub SelectRow: int : 54;
+// A field descriptor from one managed pointer operand. Type is the parent
+// record, value its field ordinal, literal the complete field value identity;
+// the produced value is PointerType, not the parent metadata type.
+pub ManagedFieldRow: int : 55;
 // Maps Nil | Some(record) to Nil | Some(field), selecting plain numeric/bool
 // field `value`. Both optional shapes are canonical; count is one.
 pub OptionalFieldRow: int : 56;
@@ -368,17 +377,27 @@ pub CallSpawned: int : 2;
 // so a call in the key/value may replace the map before the change applies.
 pub MapRow: int : 50;
 // What a RefRow of `type` pushes on the operand stack, and so what a
-// reference parameter of `type` takes: ReferenceType plus the type. A
-// parameter row whose literal is 1 is a reference parameter. Its variable is
-// of its `type` for every other row, and reading or writing it reads or
+// reference parameter of `type` takes: ReferenceType plus the type.
+// ParameterReference and ParameterReadonlyReference both take a reference.
+// Its variable is of its `type` for every other row, and reading or writing it reads or
 // writes the caller's variable, so a callee changes its caller's records and
 // arrays in place. No other function holds a reference: the caller's
 // variable outlives the call, and none is the entry or in a library.
-// A parameter row whose literal is 2 is an array parameter the function
+// ParameterOwnedArray is an array parameter the function
 // changes, which is its own: the caller's argument is an array no one else
 // holds, a copy or one that is moved, so the function appends to it in place
 // and neither copies it at entry nor leaves a copy for its caller to see.
 pub ReferenceType: int : 1048576;
+// ParameterRow.literal modes. Legacy reference facts conservatively permit
+// writes; readonly facts preserve the same reference ABI without publishing
+// a retained caller's unchanged local after a recursive state write.
+pub ParameterValue: int : 0;
+pub ParameterReference: int : 1;
+pub ParameterOwnedArray: int : 2;
+pub ParameterReadonlyReference: int : 3;
+pub ReferenceParameter :: (mode: i64) -> bool {
+    return mode == i64(ParameterReference) || mode == i64(ParameterReadonlyReference);
+}
 
 // The value types: int and bool, then the other integer types, then the
 // floating ones, then string. The facts carry no compiler storage ordinal.
@@ -523,6 +542,17 @@ pub ArrayLoan: int : 17;
 // Read a logical array place. Unavailability is the ordinary reference
 // failure, distinct from expression indexing's typed bounds failure.
 pub ArrayPlaceGet: int : 20;
+// Mutating insert(array,index,item) and reverse(array) consume their canonical
+// array place as a RefRow, resolve it after arguments, and publish the change.
+pub ArrayInsert: int : 18;
+pub ArrayReverse: int : 19;
+// Functional forms give a new value, leaving every input unchanged.
+pub ArrayInserted: int : 21;
+pub ArrayReversed: int : 22;
+// Native set_array_elem ignores an invalid index, for both function and method.
+// Bracket assignment keeps ArraySet and its checked-index failure.
+pub ArrayReplaced: int : 23;
+pub ArrayReplace: int : 24;
 // A Local row whose `literal` is SwitchSubject holds the union a switch is on
 // when the switch is not on a variable, so each arm's bindings can read it
 // again. It has the switch statement's range, a Switch row of the same range

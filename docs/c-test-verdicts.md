@@ -46,7 +46,7 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/tools/web_storage.c` | 19 | chibi-studio's `web_storage.js` | move to Node tests in its owning repository |
 | `test/tools/build_process.c` | 53 | the C build host's natives | goes, except 16 core:os cases |
 | `test/tools/chibi_cli.c` (retired 2026-11-02) | 24 | `apps/chibi` launched by the C apphost | native CLI behavior is covered by `ChibiCliTests.chibi` and `test/native_cli/foreground.py`; launcher/VM mechanics leave with the host |
-| `test/tools/native_workloads.c` | 2 | `chibi build --native` end to end | `native_workloads_build_and_run` survives |
+| `test/tools/native_workloads.c` (retired 2026-11-02) | 2 | `chibi build --native` end to end | checksums, timings and detached-descendant cleanup run through the authored native workload benchmark |
 
 ## What survives, and where it goes
 
@@ -183,8 +183,12 @@ from a copied SDK; editing `apps/chibi` no longer overrides the native executabl
 
 - `chibi build --native` of `test/native_aot/workloads` at O0 and O2
   (`native_workloads_build_and_run`): ported as `BuildTests.chibi`'s
-  `BuildsTheWorkloads`, which checks each kernel's checksum. The timings stay with
-  `native-workload-benchmark` until a Chibi benchmark replaces it.
+  `BuildsTheWorkloads`, which checks each kernel's checksum. The authored
+  `test/native_aot/workloads/Benchmark.chibi` also preserves all eight timing
+  rows, per-child RSS, executable size and median-of-three runs. Its isolated
+  Linux worker preserves grouped and `setsid`-detached cleanup after timeouts,
+  early leader exit and interruption. The C file, dispatcher and source-list
+  entry are retired; the selector keeps its name and Linux-only platform contract.
 
 ### The scalar producer: `test/native_aot/scalar_producer`
 

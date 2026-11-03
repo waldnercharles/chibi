@@ -155,6 +155,7 @@ Main :: () -> int {
     ImportedPackages();
     CollectionPackages();
     ScopedPackages();
+    ScopedParameterModes();
     LocatedPackages();
     UnsupportedSources();
     LibraryContracts();
@@ -163,6 +164,7 @@ Main :: () -> int {
     TextArgumentsProjection();
     CallArgumentsProjection();
     SynchronousProjection();
+    ArrayEditsProjection();
     Corpus();
     os.Print("PASS real producer rows, 169 malformed variants, packages and library contracts");
     return 0;

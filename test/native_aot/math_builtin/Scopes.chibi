@@ -1,0 +1,21 @@
+package math_scope_ownership
+
+foreign { chibi_value_test_allocations :: () -> u64 }
+Inner :: struct { position: vec3; values: int[]; }
+Box :: struct { inner: Inner; values: int[]; }
+Main :: () -> int {
+    box: Box = {inner: {position: vec3(1, 2, 3), values: [int(7)]}, values: [int(9)]};
+    box.inner.position.xy = vec2(4, 5);
+    initial := chibi_value_test_allocations();
+    box.values[0] = 10;
+    observed := chibi_value_test_allocations();
+    assert(observed == initial, "outer parent capture ended before the next statement");
+    inner := box.inner;
+    box = {inner: {position: vec3(0), values: []}, values: []};
+    initial = chibi_value_test_allocations();
+    inner.values[0] = 8;
+    observed = chibi_value_test_allocations();
+    assert(observed == initial, "nested parent capture ended before the next statement");
+    assert(inner.position == vec3(4, 5, 3) && inner.values[0] == 8);
+    return 0;
+}

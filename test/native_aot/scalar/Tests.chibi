@@ -222,6 +222,37 @@ ScalarCallModesAreBounded :: () {
         assert(scalar.Validate(TaskFacts(mode, false)) == "invalid scalar operand row");
     }
 }
+ScalarReferenceParameterModesKeepTheReferenceABI :: () {
+    original := TaskFacts(facts.CallPlain, false);
+    for mode in [facts.ParameterReference, facts.ParameterReadonlyReference] {
+        parameter := TaskFact(facts.ParameterRow, facts.IntType, 0, 0, "value", 34, 35);
+        parameter.literal = i64(mode);
+        rows := [original[0], original[1],
+                 TaskFact(facts.FunctionRow, facts.IntType, 0, 0, "Main", 0, 32),
+                 TaskFact(facts.LocalRow, facts.IntType, 0, 1, "value", 1, 6),
+                 TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 2, 3),
+                 TaskFact(facts.ReturnRow, 0, 0, 2, "", 7, 12),
+                 TaskFact(facts.RefRow, facts.IntType, 0, 0, "", 8, 9),
+                 TaskFact(facts.CallRow, facts.IntType, 1, 1, "Read", 9, 10),
+                 TaskFact(facts.FunctionRow, facts.IntType, 0, 1, "Read", 33, 64), parameter,
+                 TaskFact(facts.ReturnRow, 0, 0, 1, "", 36, 40),
+                 TaskFact(facts.ReadRow, facts.IntType, 0, 0, "", 37, 38)];
+        assert(scalar.Validate(rows) == "");
+        assert(strings.Contains(Emitted(rows), "define internal i32 @chibi_scalar.1(ptr %arg0)"));
+        assert(scalar.Validate(Changed(rows, 9, LiteralValue, facts.ParameterValue)) ==
+               "scalar call argument differs from its parameter");
+        for invalid in [int(-1), facts.ParameterReadonlyReference + 1] {
+            assert(Invalid(Changed(rows, 9, LiteralValue, invalid)));
+        }
+        addressed := [rows[0], rows[1], rows[2], rows[3], rows[4],
+                      TaskFact(facts.LocalRow, facts.WordType, 1, 1, "address", 7, 12),
+                      TaskFact(facts.FunctionAddressRow, facts.WordType, 1, 0, "Read", 8, 9),
+                      TaskFact(facts.ReturnRow, 0, 0, 1, "", 13, 16),
+                      TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 14, 15),
+                      rows[8], rows[9], rows[10], rows[11]];
+        assert(scalar.Validate(addressed) == "scalar function address needs a function of numbers and bools");
+    }
+}
 ScalarRetainedCharacterMetadataIsChecked :: () {
     source := TaskFacts(facts.CallPlain, false);
     member := TaskFact(facts.MemberRow, facts.IntType, 0, 0, "character", 1, 2);
@@ -409,6 +440,7 @@ pub Tests :: () -> int {
     ScalarAwaitedCallsMustNameWaitingFunctions();
     ScalarFunctionAddressesCannotNameWaitingFunctions();
     ScalarCallModesAreBounded();
+    ScalarReferenceParameterModesKeepTheReferenceABI();
     ScalarRetainedCharacterMetadataIsChecked();
     ScalarArrayWithoutOperandsAreValidated();
     ScalarArrayFieldPlacesAreValidated();

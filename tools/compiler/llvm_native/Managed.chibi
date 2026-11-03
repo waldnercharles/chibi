@@ -416,9 +416,9 @@ ManagedTypes :: (types: int[]) -> bool {
     }
     return false;
 }
-// All roots refer to initialized stable stack slots. Plain functions pay
-// nothing. Pointer-bearing suspended frames remain rejected by validation.
-ManagedRoots :: (shape: Function, slots: int[], locals: int[]) -> string {
+// All roots refer to initialized stable slots. Plain functions pay nothing;
+// suspended frames attach their persistent roots after coroutine allocation.
+ManagedRoots :: (shape: Function, slots: int[], locals: int[], traced: bool[]) -> string {
     output: string[] = ["  %managed.heap = call ptr @chibi_managed.owner(ptr %ctx)\n",
         "  %managed.head = getelementptr %chibi.managed.heap, ptr %managed.heap, i32 0, i32 1\n",
         "  %managed.previous = load ptr, ptr %managed.head\n"];
@@ -433,11 +433,13 @@ ManagedRoots :: (shape: Function, slots: int[], locals: int[]) -> string {
             // Only GC releases cells, so scalar pointer snapshots are safe
             // roots. Array reads may borrow freed backing; explicit pins
             // instead cover actual owning places across collecting calls.
-            if (type != PointerType) { continue; }
+            if (type != PointerType && !ManagedTraced(type, traced)) { continue; }
+            trace := "pointer";
+            if (type != PointerType) { trace = format_text("record{}", type - RecordType); }
             output.append(Store(Zero(type), type, prefix, index));
             output.append(format_text("  %managed.{}{} = alloca %chibi.managed.root\n", prefix, index));
             output.append(format_text("  call void @chibi_managed.push(ptr %managed.heap, ptr %managed.{}{}, ptr %{}{}, ptr @chibi_managed.trace.{})\n",
-                                      prefix, index, prefix, index, "pointer"));
+                                      prefix, index, prefix, index, trace));
         }
     }
     return strings.Join(output, "");
@@ -490,13 +492,15 @@ ManagedUnroots :: (is_entry: bool) -> string {
     if (is_entry) { output = strings.Concatenate([output, "  call void @chibi_managed.collect(ptr %ctx, ptr %managed.heap)\n"]); }
     return output;
 }
-ManagedInstruction :: (item: Instruction, pc: int, persistent: bool) -> string {
+ManagedInstruction :: (item: Instruction, pc: int, records: Record[], persistent: bool) -> string {
     out := format_text("p{}:\n", pc);
     if (item.op == ManagedNew) {
         out = format_text("{}  call void @chibi_managed.safepoint(ptr %ctx, ptr %managed.heap)\n", out);
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.right, "s", item.left));
         out = format_text("{}{}", out, Sized(format_text("bytes{}", pc), item.right));
-        out = format_text("{}  %cell{} = call ptr @chibi_managed.new(ptr %ctx, ptr %managed.heap, i64 %bytes{}, ptr null, ptr null, i32 {})\n", out, pc, pc, item.right);
+        layout := "null";
+        if (item.right >= RecordType) { layout = format_text("@chibi_managed.layout{}", item.right - RecordType); }
+        out = format_text("{}  %cell{} = call ptr @chibi_managed.new(ptr %ctx, ptr %managed.heap, i64 %bytes{}, ptr {}, ptr null, i32 {})\n", out, pc, pc, layout, ManagedStorageClass(item.right));
         out = format_text("{}  %payload{} = getelementptr %chibi.managed.cell, ptr %cell{}, i32 1\n", out, pc, pc);
         out = format_text("{}  store {} %a{}, ptr %payload{}\n", out, TypeName(item.right), pc, pc);
         pointer := abi.ManagedPointerType();
@@ -507,8 +511,18 @@ ManagedInstruction :: (item: Instruction, pc: int, persistent: bool) -> string {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), PointerType, "s", item.left));
         out = format_text("{}{}", out, Sized(format_text("bytes{}", pc), item.type - RefType));
         out = format_text("{}  %address{} = call ptr @chibi_managed.address(ptr %managed.heap, {} %a{}, i64 {}, i64 %bytes{}, i32 {})\n",
-                          out, pc, abi.ManagedPointerType(), pc, item.literal, pc, item.type - RefType);
+                          out, pc, abi.ManagedPointerType(), pc, item.literal, pc, ManagedStorageClass(item.type - RefType));
         out = format_text("{}{}", out, Store(format_text("%address{}", pc), item.type, "s", item.output));
+    } else if (item.op == ManagedProject) {
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), PointerType, "s", item.left));
+        out = format_text("{}{}", out, Sized(format_text("bytes{}", pc), item.right));
+        out = format_text("{}  %address{} = call ptr @chibi_managed.address(ptr %managed.heap, {} %a{}, i64 {}, i64 %bytes{}, i32 {})\n",
+                          out, pc, abi.ManagedPointerType(), pc, records[item.right - RecordType].identity, pc, RecordType);
+        out = format_text("{}  %offset{} = extractvalue {} %a{}, 1\n", out, pc, abi.ManagedPointerType(), pc);
+        out = format_text("{}  %field.offset{} = add i64 %offset{}, ptrtoint (ptr getelementptr ({}, ptr null, i32 0, i32 {}) to i64)\n", out, pc, pc, TypeName(item.right), item.target);
+        out = format_text("{}  %field{} = insertvalue {} %a{}, i64 %field.offset{}, 1\n", out, pc, abi.ManagedPointerType(), pc, pc);
+        out = format_text("{}  %projected{} = insertvalue {} %field{}, i64 {}, 2\n", out, pc, abi.ManagedPointerType(), pc, item.literal);
+        out = format_text("{}{}", out, Store(format_text("%projected{}", pc), PointerType, "s", item.output));
     } else if (item.op == ManagedPin) {
         address := format_text("%s{}", item.left);
         if (item.target == 1) {
@@ -656,4 +670,27 @@ ManagedComparison :: (item: Instruction, pc: int) -> string {
         value = format_text("%different{}", pc);
     }
     return strings.Concatenate([out, Store(value, abi.BoolStorage, "s", item.output)]);
+}
+
+// Only the family adapter exports these hooks. A raw C/library bundle keeps
+// its five-pointer context and cannot adopt managed cells accidentally.
+ManagedFamilySymbols :: (runtime: bool, managed: bool) -> string {
+    out: string[] = [format_text("\n@{} = external hidden global i64\n", abi.ManagedImageCounter())];
+    if (!managed) { out.append(format_text("%chibi.managed.heap = type {}\n", abi.ManagedHeapType())); }
+    out.append(format_text("define i64 @chibi_host_family_abi() {{\n  ret i64 {}\n}}\n", abi.ManagedFamilyABI));
+    out.append("define i64 @chibi_host_family_size() {\n  %size = ptrtoint ptr getelementptr (%chibi.managed.heap, ptr null, i32 1) to i64\n  ret i64 %size\n}\n");
+    out.append(format_text("define i64 @chibi_host_cells_pending() {{\n  %count = load atomic i64, ptr @{} acquire, align 8\n  ret i64 %count\n}}\n", abi.ManagedImageCounter()));
+    out.append("define i32 @chibi_host_set_family(ptr %heap) {\nentry:\n  %present = icmp ne ptr %heap, null\n  br i1 %present, label %adopt, label %invalid\ninvalid:\n  ret i32 1\nadopt:\n");
+    if (runtime) {
+        out.append(format_text("  %at = getelementptr {}, ptr @chibi_context, i32 0, i32 {}\n", abi.ManagedContextType(), abi.ManagedOwnerField));
+        out.append("  %old = load ptr, ptr %at\n  %empty = icmp eq ptr %old, null\n  %same = icmp eq ptr %old, %heap\n  %allowed = or i1 %empty, %same\n  br i1 %allowed, label %store, label %invalid\nstore:\n  store ptr %heap, ptr %at\n");
+    }
+    out.append("  ret i32 0\n}\n");
+    out.append("define i32 @chibi_host_family_collect() {\n");
+    if (managed) {
+        out.append(format_text("  %at = getelementptr {}, ptr @chibi_context, i32 0, i32 {}\n", abi.ManagedContextType(), abi.ManagedOwnerField));
+        out.append("  %heap = load ptr, ptr %at\n  %present = icmp ne ptr %heap, null\n  br i1 %present, label %collect, label %invalid\ninvalid:\n  ret i32 2\ncollect:\n  call void @chibi_managed.collect(ptr @chibi_context, ptr %heap)\n  ret i32 0\n");
+    } else { out.append("  ret i32 1\n"); }
+    out.append("}\n");
+    return strings.Join(out, "");
 }

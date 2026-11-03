@@ -372,14 +372,19 @@ ScalarBuiltinKernels :: (forest: snapshot.SnapshotNode[], text: string, types: T
             remaining -= 1;
             continue;
         }
-        base := top - call.count;
+        arity := call.count;
+        // A managed address carries its record type in count, not operands.
+        if (call.kind == facts.ManagedAddressRow) { arity = 0; }
+        base := top - arity;
         assert(base >= 0);
         parameter_types: int[] = [];
         if (call.kind == facts.CallRow && call.value < 0) {
             for (argument in base..<top) { parameter_types.append(stack[argument]); }
         }
-        if (base == length(stack)) { stack.append(call.type); }
-        else { stack[base] = call.type; }
+        type := call.type;
+        if (call.kind == facts.ManagedFieldRow) { type = facts.PointerType; }
+        if (base == length(stack)) { stack.append(type); }
+        else { stack[base] = type; }
         top = base + 1;
         remaining -= 1;
         if (call.kind != facts.CallRow || call.value >= 0) { continue; }

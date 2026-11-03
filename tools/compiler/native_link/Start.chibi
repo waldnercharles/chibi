@@ -17,6 +17,21 @@ pub ManagedProgramContext :: (module: string) -> string {
         ", ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release, ptr @chibi_managed_owner }");
 }
 
+// Shared images borrow the same stable program owner. No image allocates a
+// private heap; the host adopts this context before invoking any source code.
+pub ManagedFamilyContext :: (module: string, context: bool) -> string {
+    result := module;
+    if (context) {
+        prefix := strings.Concatenate(["@chibi_context = hidden global ", abi.ContextType(), " "]);
+        allocation := ", ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release }";
+        assert(strings.Contains(result, prefix) && strings.Contains(result, allocation));
+        result = strings.ReplaceAll(result, prefix, strings.Concatenate(["@chibi_context = hidden global ", abi.ManagedContextType(), " "]));
+        result = strings.ReplaceAll(result, allocation,
+            ", ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release, ptr null }");
+    }
+    return strings.Concatenate([result, "\n@", abi.ManagedImageCounter(), " = hidden global i64 0, align 8\n"]);
+}
+
 // The start modules: the LLVM IR of the shim that starts a native program,
 // calls its entry `chibi_scalar() -> i32` (`chibi_scalar(ptr)` with a runtime
 // context when `context` is set) and makes the result the exit status. Link it

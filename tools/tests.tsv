@@ -16,7 +16,7 @@ tool	program-sdk	@build@/test/tools/test_tools	--program-sdk
 tool	chibi-cli-process	python3	test/native_cli/foreground.py	@compiler@	@llvm@
 tool	chibi-cli	sh	test/native_cli/survivors.sh	@compiler@	@llvm@	@release@/sdk/chibi
 tool	native-build	env	CHIBI_LLVM_BIN=@llvm@	@compiler@	run	--llvm	@llvm@	--root	tools/compiler	--core	packages/core	--entry	Run	test/native_aot/native_build/BuildTests.chibi	--	@compiler@	@release@/sdk/chibi
-tool	native-workload-benchmark	@build@/test/tools/test_tools	--native-workload-benchmark	@release@/sdk/chibi
+tool	native-workload-benchmark	sh	@root@/test/native_aot/workloads/run.sh	@compiler@	@llvm@
 tool	chibi-cli-installed	sh	test/native_cli/survivors.sh	@compiler@	@llvm@	dist/sdk/bin/chibi
 tool	native-link	sh	test/native_aot/link/run.sh	@compiler@	@llvm@
 tool	native-build-entry	sh	test/bootstrap/native-entry.sh

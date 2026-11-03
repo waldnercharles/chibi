@@ -106,6 +106,22 @@ with tempfile.TemporaryDirectory(prefix="chibi-native-foreground-") as temporary
     work = Path(temporary)
     child = work / "tty child"
     triple = "aarch64-apple-darwin" if sys.platform == "darwin" else "x86_64-unknown-linux-gnu"
+    scope_probe = work / "foreground scope"
+    subprocess.run([compiler, "--compiler", str(root / "tools/compiler"), "--core", core,
+                    "--source", str(root / "test/native_cli/fixtures/foreground_scope.chibi"),
+                    "--entry", "Main", "--output", str(scope_probe), "--llvm", llvm,
+                    "--target", triple, "--level", "2", "--jobs", "1"], check=True)
+
+    def inherited_scope_signals():
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        signal.signal(signal.SIGHUP, signal.SIG_DFL)
+
+    for tail, expected in [(None, 0), ("interrupt", 0),
+                           ("terminate", -signal.SIGTERM), ("hangup", -signal.SIGHUP)]:
+        command = [str(scope_probe)] + ([tail] if tail else [])
+        observed = subprocess.run(command, preexec_fn=inherited_scope_signals, check=False)
+        assert observed.returncode == expected, (tail, expected, observed.returncode)
     subprocess.run([compiler, "--compiler", str(root / "tools/compiler"), "--core", core,
                     "--source", str(root / "test/native_cli/fixtures/tty_child.chibi"),
                     "--entry", "Main", "--output", str(child), "--llvm", llvm,

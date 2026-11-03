@@ -9,6 +9,29 @@ independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
 ## Current checkpoint, 2 November
 
+The published composition `4d23cceee` reproduces between macOS stages two and
+three, SHA-256 `21a367aed5aa63e8ac7b6edcec503ef2cfbc86267dc7354b51ccf941dcd7ecf5`.
+The stages take 315.42 and 223.48 seconds. Its 443 compiler tests pass in 25.76
+seconds; both generation suites pass in 24.91/24.16 seconds, including the
+readonly retained-reference regression and both alias orders. All 59 original
+math samples at O0/O2 plus deterministic/failure controls pass in 30.37 seconds;
+managed pointer, task-root and descriptor checks pass in 47.75 seconds. These
+are matching-source results. CI run `41557074074` is still in progress.
+
+`1a98be6cd` fixes a Linux heap overwrite in foreground process supervision.
+glibc writes a 152-byte signal action into buffers previously sized at 128
+bytes. The three buffers now reserve 256 bytes. The unchanged-source control
+aborts on Linux; the fix passes repeated scopes and signal restoration on
+Linux and macOS, plus the existing foreground/terminal suite.
+
+The next composition adds `a1b04ceb1` execution-family heaps and code leases,
+`2ec74f60e` canonical array places and named insert/reverse operations, and
+`ef24a6e0e` lexical facts scopes with immediate owned-value cleanup. Their
+individual source/runtime proofs pass; they are newer than the fixed point
+above. The family-plus-readonly slice also passes the full generation suite,
+including old-image callbacks and incompatible ABI rejection. Aggregate record
+cells remain excluded from shared images until their code leases are connected.
+
 `85b37934c` closes reordered callback arguments, including mixed named and
 positional calls. Arguments evaluate in written order; the compiler rearranges
 existing operand slots without runtime copies. Its matching compiler builds in
@@ -82,9 +105,10 @@ three: `d5c343e4f68b6ba02c47c320be0ef8df337b5565b22702c8b0729be7753f98d3`.
 Those stages take 109.40 and 69.30 seconds. Its 436 compiler tests, nullable
 managed-pointer tests and nested-array tests pass. Its generation suite exposes
 a retained-record scoped-reference reentry regression (exit 2 instead of 3).
-The cause is stale publication of a readonly reference after a nested call updates
-retained state. A fix preserving parameter write classification and alias-order
-controls is in progress; this is not complete runtime acceptance.
+The cause was stale publication of a readonly reference after a nested call
+updates retained state. `4d23cceee` integrates the fix, preserving parameter
+write classification and testing both alias orders. Its matching generation
+suites pass as recorded above; broader runtime migration remains incomplete.
 
 The next composition includes primitive optional payload reads, source-ordered
 named text calls, persistent collector roots, and the VM decoder ownership split.

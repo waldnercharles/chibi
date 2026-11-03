@@ -15,7 +15,7 @@ esac
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$root/test/native_aot/maps/Probe.chibi" --entry Main \
     --output "$work/probe" --llvm "$llvm" --target "$triple" --jobs 2
-for mode in positive tombstone-key tombstone-value facts readonly array-readonly; do
+for mode in positive tombstone-key tombstone-value facts readonly array-readonly nested-readonly; do
     "$work/probe" "$work" "$llvm" "$root/test/native_aot/maps/Runtime.ll" "$mode"
 done
 for kind in 1 2 3 4 5 6 7; do

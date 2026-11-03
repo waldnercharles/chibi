@@ -211,13 +211,11 @@ Main :: () -> int {
     }
     if (!Rejected(target, slots, code, true, no_records, empty, "standalone collector owner") ||
         !Rejected(abi.WebAssembly32(), slots, code, false, no_records, empty, "WebAssembly managed pointers") ||
-        !Rejected(target, slots, code, false,
-            [{first: 0, count: 1, identity: 0}, {first: 1, count: 1, identity: 0}],
-            [native.ArrayType + native.RecordType + 1, pointer], "aggregate roots")) { return 1; }
-    // Inline pointer and pointer-array roots need no nominal cell identity.
-    // Arrays of pointer-bearing records still need a container tracing protocol.
-    for (field in [pointer, array]) {
-        switch Emit(target, slots, code, false, [{first: 0, count: 1, identity: 0}], [field]) {
+        !Rejected(target, slots, code, false, [{first: 0, count: 1, identity: 0}], [native.ViewType], "aggregate roots")) { return 1; }
+    // Inline pointer roots and active backing owners need no nominal cell
+    // identity. Unsupported view aggregates retain the rejection above.
+    for leaf in [pointer, array] {
+        switch Emit(target, slots, code, false, [{first: 0, count: 1, identity: 0}], [leaf]) {
             case .Emitted(text): { }
             case .Rejected(instruction, message): os.Print(message); return 1;
         }

@@ -65,9 +65,9 @@ InlineRootValidationPrecedesEveryChildIndex :: () {
     Rejects(InlineRootModule([{first: 0, count: 1, identity: 0}], [native.RecordType + 1]), RecordLayout());
     Rejects(InlineRootModule([{first: 0, count: 1, identity: 0}, {first: 1, count: 2, identity: 0}],
         [native.RecordType + 1, native.RecordType, native.PointerType]), RecordLayout());
-    // Arrays break by-value cycles, but cannot turn a GC graph into an inline root.
+    // Backing recursion must use pointer links, as in checked source.
     Rejects(InlineRootModule([{first: 0, count: 2, identity: 0}], [native.ArrayType + native.RecordType, native.PointerType]),
-        "native managed pointer aggregate roots require collector-copyable inline records or optional views");
+        "native collector values require an acyclic inline and array layout");
 }
 
 @test
@@ -92,4 +92,58 @@ InlineRootTracingDoesNotGrantCellOrProjectionIdentity :: () {
     records = [{first: 0, count: 1, identity: -900}, {first: 1, count: 1, identity: -700}];
     Rejects(InlineRootModule(records, [native.RecordType + 1, native.PointerType]),
         "native managed record metadata requires scalar or pointer fields");
+}
+
+@test
+CollectorArrayTracingUsesTypedElementsAndActiveOwners :: () {
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 1, identity: 0}];
+    text := Emitted(InlineRootModule(records, [native.ArrayType + native.RecordType + 1, native.PointerType]));
+    assert(strings.Contains(text, "define internal void @chibi_managed.trace.array1("));
+    assert(strings.Contains(text, "call void @chibi_managed.trace.array1(ptr %heap, ptr %field0)"));
+    assert(strings.Contains(text, "getelementptr %record1, ptr %data, i64 %wide"));
+    assert(strings.Contains(text, "call void @chibi_managed.trace.record1(ptr %heap, ptr %at)"));
+    assert(!strings.Contains(text, "ptr @chibi_managed.trace.record0)"));
+}
+@test
+CollectorArrayMetadataKeepsRootlessContainersClosed :: () {
+    array := native.ArrayType + native.RecordType;
+    code := [Code(native.Constant, array, 0, 0, 0, 0, 0),
+        Code(native.Constant, abi.IntStorage, 1, 0, 0, 0, 0),
+        Code(native.Publish, abi.IntStorage, 0, 1, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    shape := Function(abi.IntStorage, 0, 0, 2, 0, length(code), 0, 0);
+    source: native.Source = {file: "", directory: ""};
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}];
+    Rejects(native.Emit(abi.LinuxX64(), [shape], [], [array, abi.IntStorage], [], code, [], records,
+        [native.PointerType], [], source, [], [], [], false, 1), "native managed pointers require a standalone collector owner");
+    // A pointer-free backing cycle keeps its prior public layout acceptance.
+    Emitted(InlineRootModule([{first: 0, count: 1, identity: 0}], [native.ArrayType + native.RecordType]));
+    // A collector cycle through multiple record/array nodes is rejected too.
+    Rejects(InlineRootModule([{first: 0, count: 1, identity: 0}, {first: 1, count: 2, identity: 0}],
+        [native.ArrayType + native.RecordType + 1, native.ArrayType + native.RecordType, native.PointerType]),
+        "native collector values require an acyclic inline and array layout");
+}
+
+@test
+CollectorArraysDoNotBorrowOptionalWindowRootAdmission :: () {
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 2, identity: 0}];
+    Rejects(InlineRootModule(records, [native.ArrayType + native.RecordType + 1, abi.IntStorage, native.ViewType]),
+        "native managed pointer aggregate roots require scalar or pointer-only inline records");
+    // A standalone optional window is allowed, so test its array slot directly.
+    records = [{first: 0, count: 2, identity: 0}];
+    array := native.ArrayType + native.RecordType;
+    code := [Code(native.Constant, array, 0, 0, 0, 0, 0),
+        Code(native.Constant, abi.IntStorage, 1, 0, 0, 0, 0),
+        Code(native.Publish, abi.IntStorage, 0, 1, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    source: native.Source = {file: "", directory: ""};
+    Rejects(native.EmitProgram(abi.LinuxX64(), [Function(abi.IntStorage, 0, 0, 2, 0, length(code), 0, 0)], [],
+        [array, abi.IntStorage], [], code, [], records, [abi.IntStorage, native.ViewType], [], source, [], [], []),
+        "native collector array elements require a supported traced value");
+    // An unused result signature can seed metadata without a producing slot.
+    code = [Code(native.Constant, abi.IntStorage, 0, 0, 0, 0, 0),
+        Code(native.Publish, abi.IntStorage, 0, 0, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0),
+        Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    functions := [Function(abi.IntStorage, 0, 0, 1, 0, 3, 0, 0), Function(array, 0, 1, 0, 3, 1, 0, 0)];
+    Rejects(native.EmitProgram(abi.LinuxX64(), functions, [], [abi.IntStorage], [], code, [], records,
+        [abi.IntStorage, native.ViewType], [], source, [], [], []),
+        "native collector array elements require a supported traced value");
 }

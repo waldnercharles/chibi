@@ -84,6 +84,44 @@ ManagedRecordLayouts :: (records: Record[], fields: int[]) -> ManagedRecordLayou
     }
     return found;
 }
+// Ordinary recursive values require pointer links. Public native tables must
+// preserve that bound before typed tracers descend through array backing.
+ManagedCollectorShapesValid :: (records: Record[], fields: int[], values: ValueLayout) -> bool {
+    count := 0;
+    for (index in 0..<length(records)) {
+        if (!values.valid[index] && values.collector_copyable[index]) { count += 1; }
+    }
+    if (count == 0) { return true; }
+    incoming := resize([int(0)], length(records));
+    for (index in 0..<length(records)) {
+        if (values.valid[index] || !values.collector_copyable[index]) { continue; }
+        record := records[index];
+        for (at in record.first..<record.first + record.count) {
+            child := fields[at];
+            if (child >= ArrayType && child < MapType) { child -= ArrayType; }
+            child -= RecordType;
+            if (child >= 0 && child < length(records) && !values.valid[child] && values.collector_copyable[child]) { incoming[child] += 1; }
+        }
+    }
+    ready: int[] = [];
+    for (index in 0..<length(records)) {
+        if (!values.valid[index] && values.collector_copyable[index] && incoming[index] == 0) { ready.append(index); }
+    }
+    at := 0;
+    while (at < length(ready)) {
+        record := records[ready[at]];
+        for (field in record.first..<record.first + record.count) {
+            child := fields[field];
+            if (child >= ArrayType && child < MapType) { child -= ArrayType; }
+            child -= RecordType;
+            if (child < 0 || child >= length(records) || values.valid[child] || !values.collector_copyable[child]) { continue; }
+            incoming[child] -= 1;
+            if (incoming[child] == 0) { ready.append(child); }
+        }
+        at += 1;
+    }
+    return length(ready) == count;
+}
 ManagedRecord :: (records: Record[], layout: ManagedRecordLayout, type: int) -> bool {
     return type >= RecordType && type < ArrayType && type - RecordType < length(layout.flat) &&
            layout.flat[type - RecordType] && records[type - RecordType].identity != 0;
@@ -161,6 +199,7 @@ ManagedRootTypes :: (types: int[], traced: bool[]) -> bool {
     for (type in types) {
         held := type;
         if (held >= RefType) { held -= RefType; }
+        if (held >= ArrayType && held < MapType) { held -= ArrayType; }
         if (ManagedTraced(held, traced)) { return true; }
     }
     return false;
@@ -168,9 +207,11 @@ ManagedRootTypes :: (types: int[], traced: bool[]) -> bool {
 // The same nominal type may have different versions in mapped generations.
 // Only its complete identity plus actual LLVM byte layout permits resolution.
 ManagedRecordModule :: (records: Record[], fields: int[], tags: i64[], layout: ManagedRecordLayout, values: ValueLayout,
-                        wanted: bool[], counter: string) -> string {
+                        wanted: bool[], counter: string, arrays: bool[]) -> string {
     out: string[] = [];
     traces := resize([false], length(records));
+    array_traces := resize([false], length(records));
+    for (index in 0..<length(arrays)) { array_traces[index] = arrays[index]; }
     pending: int[] = [];
     for (index in 0..<length(records)) {
         if (wanted[index] && layout.traced[index] &&
@@ -183,9 +224,11 @@ ManagedRecordModule :: (records: Record[], fields: int[], tags: i64[], layout: M
     while (at < length(pending)) {
         record := records[pending[at]];
         for (field in record.first..<record.first + record.count) {
-            child := fields[field] - RecordType;
-            if (fields[field] >= RecordType && fields[field] < ArrayType &&
-                layout.traced[child] && ValueCollectorCopyable(values, fields[field]) && !traces[child]) {
+            held := fields[field];
+            if (held >= ArrayType && held < MapType) { held -= ArrayType; }
+            child := held - RecordType;
+            if (ManagedTraced(held, layout.traced) && fields[field] >= ArrayType && fields[field] < MapType) { array_traces[child] = true; }
+            if (ManagedTraced(held, layout.traced) && ValueCollectorCopyable(values, held) && !traces[child]) {
                 traces[child] = true;
                 pending.append(child);
             }
@@ -203,17 +246,18 @@ ManagedRecordModule :: (records: Record[], fields: int[], tags: i64[], layout: M
             out.append(format_text("define internal void {}(ptr %heap, ptr %value) {{\nentry:\n", trace));
             for (field in 0..<record.count) {
                 held := fields[record.first + field];
-                child := ManagedTraced(held, layout.traced);
-                if (held != PointerType && held != ViewType && held != ArrayType + PointerType && !child) { continue; }
+                child := held;
+                if (held >= ArrayType && held < MapType) { child -= ArrayType; }
+                traced := ManagedTraced(child, layout.traced);
+                if (held != PointerType && held != ViewType && held != ArrayType + PointerType && !traced) { continue; }
                 out.append(format_text("  %field{} = getelementptr inbounds {}, ptr %value, i32 0, i32 {}\n", field, name, field));
-                target := "pointer";
+                target := ManagedTraceName(held);
                 if (held == ViewType) { target = "view"; }
-                else if (held == ArrayType + PointerType) { target = "array"; }
-                else if (child) { target = format_text("record{}", held - RecordType); }
                 out.append(format_text("  call void @chibi_managed.trace.{}(ptr %heap, ptr %field{})\n", target, field));
             }
             out.append("  ret void\n}\n");
         }
+        if (array_traces[index]) { out.append(ManagedArrayTraceRuntime(ArrayType + type)); }
         if (!wanted[index] || record.identity == 0 || (!layout.flat[index] && !layout.plain[index])) { continue; }
         out.append(format_text("@chibi_managed.layout{} = private constant %chibi.managed.layout {{ ptr {}, ptr @chibi_managed.validate.record{}, ptr {} }}\n", index, trace, index, counter));
         out.append(format_text("define internal i1 @chibi_managed.validate.record{}(i64 %offset, i64 %tag, i64 %bytes, i32 %storage) {{\nentry:\n", index));

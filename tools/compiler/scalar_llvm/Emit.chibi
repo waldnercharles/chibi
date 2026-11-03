@@ -2585,7 +2585,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 owned_vars.append(index);
                 owned_types.append(type);
             }
-            if (rows[head + 1 + index].literal == i64(facts.ParameterOwnedArray)) {
+            if (rows[head + 1 + index].literal == i64(facts.ParameterOwnedArray) && !boxed) {
                 // A parameter the function changes is its own container.
                 owned_vars.append(index);
                 owned_types.append(type);
@@ -2609,6 +2609,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             body.append(made);
             body.extend(glue.after);
             body.append(Op(native.Save, native.PointerType, 0, slot, 0, places[variable]));
+            if (rows[head + 1 + variable].literal == i64(facts.ParameterOwnedArray)) {
+                body.append(Giving(NativeType(rows[head + 1 + variable].type), value));
+            }
             slot += 1 + length(glue.types);
         }
         // Each open if statement, switch or loop; each pending break or
@@ -3053,11 +3056,28 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         slots[length(slots) - 1] = native.RefType + target;
                         body.append(address);
                         if (operand.value == facts.ManagedWrite) {
-                            body.append(Op(native.Poke, target, 0, slot, stack[base + 1], 0));
+                            if (target >= native.ArrayType && target < native.MapType) {
+                                // Acquire the incoming owner before releasing
+                                // the old backing, including self-assignment.
+                                incoming := stack[base + 1];
+                                if (Holds(fresh, incoming)) { fresh = Without(fresh, incoming); }
+                                else {
+                                    slots.append(target);
+                                    body.append(Op(native.ValueCopy, target, slot + 1 + extra, incoming, 0, 0));
+                                    incoming = slot + 1 + extra;
+                                    extra += 1;
+                                }
+                                previous := slot + 1 + extra;
+                                slots.append(target);
+                                body.extend([Op(native.Deref, target, previous, slot, 0, 0), Giving(target, previous),
+                                    Op(native.Poke, target, 0, slot, incoming, 0)]);
+                                extra += 1;
+                            } else { body.append(Op(native.Poke, target, 0, slot, stack[base + 1], 0)); }
                         }
                         slots.append(target);
-                        item = Op(native.Deref, target, slot + 1, slot, 0, 0);
-                        slot += 1;
+                        item = Op(native.Deref, target, slot + 1 + extra, slot, 0, 0);
+                        slot += 1 + extra;
+                        extra = 0;
                     }
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.ReadRow && ManagedVariable(pointer_boxes.boxed, operand.value)) {
@@ -3882,6 +3902,18 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     body.extend(glue.after);
                 } else { body.append(item); }
                 produced := slot;
+                if ((operand.kind == facts.ManagedRow && operand.value != facts.ManagedBorrow ||
+                    operand.kind == facts.ReadRow && ManagedVariable(pointer_boxes.boxed, operand.value)) &&
+                    type >= native.ArrayType && type < native.MapType) {
+                    // The cell may be replaced by a later operand. Keep this
+                    // evaluated value independently before any callback.
+                    kept := KeepValue(managed, operand.type, produced, slot + 1 + extra);
+                    slots.extend(kept.slot_types);
+                    body.extend(kept.code);
+                    extra += length(kept.slot_types);
+                    produced = kept.value;
+                    fresh.append(produced);
+                }
                 if (operand.kind == facts.ReadRow && type == abi.TextStorage && length(string_references) > 0 &&
                     (string_references[operand.value] || (scoped_string_reference && Referenced(rows, head, operand.value)))) {
                     body.append(Op(native.TextRetain, abi.TextStorage, 0, slot, 0, 0));
@@ -4374,7 +4406,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 // result is dropped at once; any other array is borrowed.
                 if (ArrayTyped(type) && Holds(fresh, value)) {
                     fresh = Without(fresh, value);
-                    if (row.name == "_") {
+                    if (boxed || row.name == "_") {
                         body.append(Giving(type, value));
                     } else {
                         owned_vars.append(row.value);
@@ -4448,8 +4480,25 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 body.append(Op(native.Local, native.PointerType, slot, places[row.value], 0, 0));
                 address := Op(native.ManagedAddress, native.RefType + type, slot + 1, slot, 0, 0);
                 address.literal = pointer_boxes.tags[row.value];
-                body.extend([address, Op(native.Poke, type, 0, slot + 1, value, 0)]);
-                slot += 2;
+                body.append(address);
+                if (type >= native.ArrayType && type < native.MapType) {
+                    incoming := value;
+                    next := slot + 2;
+                    if (Holds(fresh, incoming)) { fresh = Without(fresh, incoming); }
+                    else {
+                        slots.append(type);
+                        body.append(Op(native.ValueCopy, type, next, incoming, 0, 0));
+                        incoming = next;
+                        next += 1;
+                    }
+                    slots.append(type);
+                    body.extend([Op(native.Deref, type, next, slot + 1, 0, 0), Giving(type, next),
+                        Op(native.Poke, type, 0, slot + 1, incoming, 0)]);
+                    slot = next + 1;
+                } else {
+                    body.append(Op(native.Poke, type, 0, slot + 1, value, 0));
+                    slot += 2;
+                }
             } else if (row.kind == facts.AssignRow && Referenced(rows, head, row.value)) {
                 // The value goes where the reference points.
                 type := NativeType(row.type);

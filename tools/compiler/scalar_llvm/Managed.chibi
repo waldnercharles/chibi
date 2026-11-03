@@ -42,6 +42,7 @@ ManagedVariable :: (boxed: bool[], variable: int) -> bool {
 }
 ManagedValue :: (rows: facts.Row[], records: int[], type: int, tag: i64) -> bool {
     if (Scalar(type) || type == facts.PointerType) { return tag != 0; }
+    if (type >= facts.ArrayType && type < facts.MapType && Scalar(type - facts.ArrayType)) { return tag != 0; }
     if (type < facts.RecordType || type >= facts.ArrayType || type - facts.RecordType >= length(records)) { return false; }
     head := records[type - facts.RecordType];
     return rows[head].kind == facts.RecordRow && rows[head].literal != 0 && rows[head].literal == tag;

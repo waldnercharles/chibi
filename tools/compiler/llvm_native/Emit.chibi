@@ -3305,11 +3305,16 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
                 }
             }
             for (item in held) {
-                if (item.op == ManagedNew && item.right >= RecordType) { record_roots[item.right - RecordType] = true; }
+                if (item.op == ManagedNew && item.right >= RecordType && item.right < ArrayType) { record_roots[item.right - RecordType] = true; }
             }
             counter := "null";
             if (family) { counter = strings.Concatenate(["@", abi.ManagedImageCounter()]); }
             out.append(ManagedRecordModule(records, fields, field_tags, managed_records, record_roots, counter));
+        }
+        if (managed) {
+            counter := "null";
+            if (family) { counter = strings.Concatenate(["@", abi.ManagedImageCounter()]); }
+            out.append(ManagedArrayModule(held, counter));
         }
         // One piece holds every text; each of several, the ones it reads.
         wanted := resize([false], length(texts));

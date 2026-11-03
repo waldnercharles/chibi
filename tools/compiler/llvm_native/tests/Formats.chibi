@@ -124,3 +124,51 @@ BoolFormatKeepsNumberRequirementForModifiers :: () {
     text := Emitted(FormatModule(code, [0, 1, 2], false, 1));
     assert(strings.Contains(text, "\n; chibi-format-numbers\n"));
 }
+
+// A collection contributes its descriptor's inline count, never an element
+// pointer. Only native-owned contexts understand these format-only tags.
+SummaryModule :: (type: int, context: int) -> native.Result {
+    empty: int[] = [];
+    records: native.Record[] = [];
+    names: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    functions := [Function(6, 0, 0, 4, 0, 7, 0, 2)];
+    slots: int[] = [13, type, 13, 6];
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0),
+             Code(native.Constant, 13, 0, 0, 0, 0, 0),
+             Code(native.Constant, type, 1, 0, 0, 0, 0),
+             Code(native.Format, 13, 2, 0, 0, 2, 0),
+             Code(native.TextLength, 6, 3, 2, 0, 0, 0),
+             Code(native.Publish, 6, 0, 3, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    if (context == 0) {
+        return native.EmitProgram(abi.LinuxX64(), functions, empty, slots, empty, code, [0, 1],
+                                  records, empty, ["{}"], source, names, empty, empty);
+    }
+    ids: i64[] = [3];
+    if (context == 1) {
+        characters: bool[] = [];
+        tags: i64[] = [];
+        return native.EmitFamilyLibraryStates(abi.LinuxX64(), "Summaries", ["Main"], ids,
+            functions, empty, slots, empty, code, [0, 1], records, empty, tags, ["{}"], 1, names, -1, characters);
+    }
+    if (context == 2) {
+        return native.Emit(abi.LinuxX64(), functions, empty, slots, empty, code, [0, 1],
+                           records, empty, ["{}"], source, names, empty, empty, false, 1);
+    }
+    return native.EmitLibrary(abi.LinuxX64(), "Summaries", ["Main"], ids, functions, empty, slots, empty,
+                              code, [0, 1], records, empty, ["{}"], 1, names);
+}
+@test
+AggregateFormatRequiresNativeContext :: () {
+    for (type in [int(1030), 2150]) {
+        for (context in [int(0), 1]) {
+            text := Emitted(SummaryModule(type, context));
+            assert(strings.Contains(text, "; chibi-format\n"));
+            assert(!strings.Contains(text, "; chibi-format-numbers\n"));
+        }
+        for (context in [int(2), 3]) {
+            Rejects(SummaryModule(type, context), "aggregate formatting requires a standalone or execution-family context");
+        }
+    }
+}

@@ -1,0 +1,77 @@
+package llvm_native
+
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Sampling owns only stack scratch. The embedding host borrows a validated
+// immutable grant into this context; the provider state may change per call.
+ClockRuntime :: () -> string {
+    text := strings.Join([
+        "define internal @RESULT@ @chibi_clock_raw(ptr %ctx) {\n",
+        "entry:\n",
+        "  %grant.at = getelementptr @CONTEXT@, ptr %ctx, i32 0, i32 @FIELD@\n",
+        "  %grant = load ptr, ptr %grant.at\n",
+        "  %absent = icmp eq ptr %grant, null\n",
+        "  br i1 %absent, label %denied, label %sample\n",
+        "denied:\n",
+        "  ret @RESULT@ { i64 0, i64 0, i32 -1, i32 0 }\n",
+        "sample:\n",
+        "  %domain = load i64, ptr %grant\n",
+        "  %read.at = getelementptr @GRANT@, ptr %grant, i32 0, i32 1\n",
+        "  %state.at = getelementptr @GRANT@, ptr %grant, i32 0, i32 2\n",
+        "  %read = load ptr, ptr %read.at\n",
+        "  %state = load ptr, ptr %state.at\n",
+        "  %nanoseconds = alloca i64, align 8\n",
+        "  %error = alloca i32, align 4\n",
+        "  store i64 0, ptr %nanoseconds\n",
+        "  store i32 0, ptr %error\n",
+        "  %status = call i32 %read(ptr %state, ptr %nanoseconds, ptr %error)\n",
+        // -1 is reserved for no grant; a provider cannot manufacture denial.
+        "  %reserved = icmp eq i32 %status, -1\n",
+        "  %transport = select i1 %reserved, i32 3, i32 %status\n",
+        "  %time = load i64, ptr %nanoseconds\n",
+        "  %code = load i32, ptr %error\n",
+        "  %a = insertvalue @RESULT@ zeroinitializer, i64 %time, 0\n",
+        "  %b = insertvalue @RESULT@ %a, i64 %domain, 1\n",
+        "  %c = insertvalue @RESULT@ %b, i32 %transport, 2\n",
+        "  %d = insertvalue @RESULT@ %c, i32 %code, 3\n",
+        "  ret @RESULT@ %d\n",
+        "}\n",
+    ], "");
+    text = strings.ReplaceAll(text, "@CONTEXT@", abi.ClockContextType());
+    text = strings.ReplaceAll(text, "@GRANT@", abi.ClockGrantType());
+    text = strings.ReplaceAll(text, "@FIELD@", format_text("{}", abi.ClockGrantField));
+    return strings.ReplaceAll(text, "@RESULT@", abi.ClockSampleType());
+}
+
+ClockBindingSymbols :: () -> string {
+    text := strings.Join([
+        "define i32 @chibi_host_set_clock(ptr %grant) {\n",
+        "entry:\n",
+        "  %absent = icmp eq ptr %grant, null\n",
+        "  br i1 %absent, label %store, label %validate\n",
+        "validate:\n",
+        "  %domain = load i64, ptr %grant\n",
+        "  %read.at = getelementptr @GRANT@, ptr %grant, i32 0, i32 1\n",
+        "  %read = load ptr, ptr %read.at\n",
+        "  %named = icmp ne i64 %domain, 0\n",
+        "  %callable = icmp ne ptr %read, null\n",
+        "  %valid = and i1 %named, %callable\n",
+        "  br i1 %valid, label %store, label %invalid\n",
+        "store:\n",
+        "  %at = getelementptr @CONTEXT@, ptr @chibi_context, i32 0, i32 @FIELD@\n",
+        "  store ptr %grant, ptr %at\n",
+        "  ret i32 0\n",
+        "invalid:\n",
+        "  ret i32 1\n",
+        "}\n",
+    ], "");
+    text = strings.ReplaceAll(text, "@CONTEXT@", abi.ClockContextType());
+    text = strings.ReplaceAll(text, "@GRANT@", abi.ClockGrantType());
+    return strings.ReplaceAll(text, "@FIELD@", format_text("{}", abi.ClockGrantField));
+}
+
+ClockFactorySymbol :: (name: string) -> bool {
+    return name == "chibi_clock_grant_init" || name == "chibi_clock_host_init";
+}
+

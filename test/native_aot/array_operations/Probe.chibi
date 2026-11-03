@@ -43,13 +43,15 @@ Main :: () -> int {
              Code(native.Constant, abi.IntStorage, 16, 0, 0, 0, 10),
              Code(native.Mul, abi.IntStorage, 17, 14, 16, 0, 0),
              Code(native.Add, abi.IntStorage, 18, 17, 15, 0, 0),
+             Code(native.ArrayGet, abi.BoolStorage, 22, 21, 13, 0, i64(native.ArrayGetPlaceCheck)),
+             Code(native.Select, abi.IntStorage, 23, 22, 18, 13, 0),
              Code(native.ArrayDrop, array, 0, 5, 0, 0, 0),
              Code(native.ArrayDrop, array, 0, 21, 0, 0, 0),
-             Code(native.Publish, abi.IntStorage, 0, 18, 0, 0, 0),
+             Code(native.Publish, abi.IntStorage, 0, 23, 0, 0, 0),
              Code(native.Return, 0, 0, 0, 0, 0, 0)];
     slots := [array, abi.IntStorage, array, abi.IntStorage, array, array, abi.IntStorage, abi.IntStorage,
               array, abi.IntStorage, abi.IntStorage, array, array, abi.IntStorage, abi.IntStorage,
-              abi.IntStorage, abi.IntStorage, abi.IntStorage, abi.IntStorage, array, array, array];
+              abi.IntStorage, abi.IntStorage, abi.IntStorage, abi.IntStorage, array, array, array, abi.BoolStorage, abi.IntStorage];
     functions: native.Function[] = [{result: abi.IntStorage, first_parameter: 0, parameters: 0, first_slot: 0,
                                      slots: length(slots), first_local: 0, locals: 0, first_code: 0, code: length(code),
                                      first_argument: 0, arguments: 0}];

@@ -9,28 +9,68 @@ independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
 ## Current checkpoint, 2 November
 
-The published composition `4d23cceee` reproduces between macOS stages two and
-three, SHA-256 `21a367aed5aa63e8ac7b6edcec503ef2cfbc86267dc7354b51ccf941dcd7ecf5`.
-The stages take 315.42 and 223.48 seconds. Its 443 compiler tests pass in 25.76
-seconds; both generation suites pass in 24.91/24.16 seconds, including the
-readonly retained-reference regression and both alias orders. All 59 original
-math samples at O0/O2 plus deterministic/failure controls pass in 30.37 seconds;
-managed pointer, task-root and descriptor checks pass in 47.75 seconds. These
-are matching-source results. CI run `41557074074` is still in progress.
+The later composition `3e038edf1` adds explicit clock grant/context support,
+ordered array-place writes, managed-record image leases, and the private
+build-host test retirement. An experimental constructor-growth builder compiles
+that frozen source in 17.40 seconds. The resulting compiler passes 446 compiler
+tests in 24.90 seconds, the generation/family suite in 36.95, and array operations
+at O0/O2 in 14.84. This is a composed runtime check, not a new fixed-point claim;
+the constructor fix and public clock bridge are still being validated separately.
+
+`decffa729` restores binary-copy, nonempty publication and file-identity controls
+in the native OS suite, passing on macOS arm64 and Linux x64. Those controls
+caught Darwin accepting a same-directory exclusive rename; the native Publish
+path now rejects occupied destinations before its kernel-exclusive rename.
+`6a88590b3` retires the 53-case private build-host harness, its authored fixtures,
+selectors, implicit test seeds and test-driver dependency on private host objects.
+Graph/driver, native-runner, CI orchestration and C syntax checks pass. Explicit
+VM comparison and recovery remain, and `policy_worker` remains a graph fixture.
+
+The combined compiler/core source at `813b93875` reproduces between macOS
+stages three and four, SHA-256
+`74af3f632114846c54327550627450ac013da8a8c7befc58ac065d753232af75`.
+The older builder's stage two differs; stage times are 198.04, 181.34 and
+206.10 seconds. Its stage-three compiler passes 445 tests in 25.66 seconds.
+Managed pointer/record and task-root checks pass in 49.17 seconds, patterns in
+13.83, arrays in 11.20, poisoned owned-value checks in 20.98, and the family
+and reload suite in 36.75. These are matching-source macOS results; broad
+product/platform acceptance remains open.
+
+This composition includes execution-family heaps and code leases, flat managed
+record cells, canonical array places and insert/reverse/replacement, lexical
+cleanup and union condition bindings, nested math writes, and linear inline
+record-layout validation. The later `3e038edf1` composition wires shared record
+cells to their image counters and tests cyclic task roots across reloads.
+Owned values across suspension and deep retained snapshots are still in progress.
+
+The verified compiler permits retirement of the obsolete C compiler census,
+its VM transport, eleven embedded-source templates and sixty-six source-byte
+substitutions. The historical census report remains. `8b5258e3f` removes the
+unused VM-host download/publishing preparation routes, and `93c881a24` runs
+map-receiver coverage through the native compiler.
+
+CI run `41557074074` uses the same tree as published `4d23cceee`. Linux stages
+three and four match at `eb84095352e74dfde1851a9a0d099e7215ac5088219cc79e3b993ec77cdf6077`.
+Its core Linux/macOS jobs failed on a missing embedded optional-source declaration,
+now corrected and then superseded by census retirement. The native proof later
+failed on an outdated imported-attribute diagnostic expectation, corrected in
+`3d727ed53` with a reproduced failure and passing full attribute check. The two
+platform module jobs received only cross-runners because the failed core build
+never produced their manifests; the artifact paths are correct. These failures
+do not constitute product acceptance. Windows self-host/product validation is
+still being followed. Its Windows stages three and four do match at
+`a0b1cc5ec867c125e2b3315d3486c4ef72e6f85b1e87bfede70aff4c74820cfd`
+(114 and 113 seconds). The Windows asset consumer then failed SDK-relative
+service discovery with an unspecified program, although explicit-service and
+authored verifier checks passed. The authored facade replacement must pass that
+same relocation case. The later checkout-product step was cancelled by the next
+push; the job is not platform acceptance. CI `41563501452` is testing `d4451f6be`.
 
 `1a98be6cd` fixes a Linux heap overwrite in foreground process supervision.
 glibc writes a 152-byte signal action into buffers previously sized at 128
 bytes. The three buffers now reserve 256 bytes. The unchanged-source control
 aborts on Linux; the fix passes repeated scopes and signal restoration on
 Linux and macOS, plus the existing foreground/terminal suite.
-
-The next composition adds `a1b04ceb1` execution-family heaps and code leases,
-`2ec74f60e` canonical array places and named insert/reverse operations, and
-`ef24a6e0e` lexical facts scopes with immediate owned-value cleanup. Their
-individual source/runtime proofs pass; they are newer than the fixed point
-above. The family-plus-readonly slice also passes the full generation suite,
-including old-image callbacks and incompatible ABI rejection. Aggregate record
-cells remain excluded from shared images until their code leases are connected.
 
 `85b37934c` closes reordered callback arguments, including mixed named and
 positional calls. Arguments evaluate in written order; the compiler rearranges
@@ -50,13 +90,13 @@ the 64-byte cell and 56-byte heap. `040c44bb2` adds Wasm compile-call options an
 resource cleanup, with actual Node quota/cancellation/normal/failure checks.
 Shared-family unload and aggregate source admission remain separate work.
 
-The authored workload benchmark has the matching eight output rows, but review
-found missing detached-descendant cleanup. Real opt/llc processes can occupy
-separate process groups. The C supervisor and canonical selector remain until
-the replacement preserves timeout and early-exit cleanup, including actual Linux
-execution. The live desktop/browser compile facade and cache are also still being
-replaced; its first authored desktop C consumer passes compile, relocation,
-diagnostics, quota and cancellation, without first-party C implementation code.
+The authored workload benchmark now preserves grouped and detached-descendant
+cleanup through a private Linux subreaper worker. Its canonical Linux run passes
+all supervision controls and produces the original eight measurement rows in
+53.87 seconds. `ab1f3c06b` removes the C implementation and switches its selector
+atomically. Desktop and browser compile/cache facades pass their existing ABI
+consumers without first-party C implementation code; archive/SDK integration and
+fresh full-source browser emission remain in progress.
 
 CI run `41539102677` at `c5c0a1ac2` reproduces Linux stages three and four
 byte for byte (`1d1d289a2429fe2ee2a75a71a959bf21590a02ff3ebf7cd8af1037a11bf1268e`).

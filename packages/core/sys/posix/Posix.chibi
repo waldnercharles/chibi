@@ -63,6 +63,7 @@ foreign libc {
     posix_spawn_file_actions_init :: (actions: u8[]) -> i32
     posix_spawn_file_actions_adddup2 :: (actions: u8[], descriptor: i32, target: i32) -> i32
     posix_spawn_file_actions_addclose :: (actions: u8[], descriptor: i32) -> i32
+    posix_spawn_file_actions_addchdir_np :: (actions: u8[], directory: cstring) -> i32
     posix_spawn_file_actions_destroy :: (actions: u8[]) -> i32
 }
 
@@ -94,6 +95,9 @@ when target.Os == target.Darwin {
     WriteNew: int : 1537;
     // Renames without replacing: RENAME_EXCL.
     RenameNew :: (source: string, destination: string) -> bool {
+        // Darwin accepts renaming a directory to itself, even with RENAME_EXCL.
+        // Reject occupied names first; the kernel still excludes racing creates.
+        if Kind(destination) != KindNone { return false; }
         return renamex_np(source, destination, 4) == 0;
     }
     pub Platform :: () -> string {
@@ -785,7 +789,13 @@ pub Start :: (command: string[], piped: bool) -> int {
 // WaitFor/Kill retain their usual process semantics and leave these files
 // for the caller to read and remove. Failure to start returns -1.
 pub StartRedirected :: (command: string[], stdout_path: string, stderr_path: string, attached: bool = false) -> int {
-    if length(command) == 0 || stderr_path == "" || stdout_path == stderr_path {
+    return StartRedirectedIn(command, stdout_path, stderr_path, "", attached);
+}
+
+// Sets only the child's working directory, preserving the caller's process-wide
+// cwd. Equal output paths are permitted only for the explicit null device.
+pub StartRedirectedIn :: (command: string[], stdout_path: string, stderr_path: string, directory: string, attached: bool = false) -> int {
+    if length(command) == 0 || stderr_path == "" || (stdout_path == stderr_path && stdout_path != "/dev/null") {
         return -1;
     }
     actions := Block(256);
@@ -793,7 +803,8 @@ pub StartRedirected :: (command: string[], stdout_path: string, stderr_path: str
     if status != 0 {
         return -1;
     }
-    status = posix_spawn_file_actions_addopen(actions, 0, "/dev/null", 0, 0);
+    if directory != "" { status = posix_spawn_file_actions_addchdir_np(actions, directory); }
+    if status == 0 { status = posix_spawn_file_actions_addopen(actions, 0, "/dev/null", 0, 0); }
     if status == 0 && stdout_path != "" {
         status = posix_spawn_file_actions_addopen(actions, 1, stdout_path, i32(WriteNew), 384);
     }
@@ -856,6 +867,40 @@ pub WaitFor :: (process: int, timeout_ms: int) -> int {
     }
     Report(process);
     return Decoded(Word32(status, 0));
+}
+
+// Wait for an isolated redirected child's whole group. waitid leaves its
+// leader unreaped until the group has been stopped, so its PID cannot be reused
+// for an unrelated group. Scratch is caller-owned >=256 bytes and reused while
+// polling; this does not install handlers or change caller signal state.
+pub WaitGroup :: (process: int, information: ^(u8[]), timeout_ms: int) -> int {
+    if process <= 0 || length(information^) < 256 { return 127; }
+    waited: i64 = 0;
+    while true {
+        for (byte in ForegroundInfoPid..<ForegroundInfoPid + 4) { information^[byte] = 0; }
+        checked := waitid(1, u32(process), information^, i32(1 + 4 + ForegroundNowait));
+        if checked < 0 {
+            error := ErrorNumber();
+            if error == 4 { continue; }
+            return -1;
+        }
+        if Word32(information^, ForegroundInfoPid) == process {
+            // No callback or other reap may intervene between ownership proof
+            // and retiring the group. The leader remains reserved by waitid.
+            stopped := kill(i32(0 - process), 9);
+            done := waitpid(i32(process), information^, 0);
+            while done < 0 {
+                error := ErrorNumber();
+                if error != 4 { return -1; }
+                done = waitpid(i32(process), information^, 0);
+            }
+            if done != i32(process) { return -1; }
+            return Decoded(Word32(information^, 0));
+        }
+        if timeout_ms >= 0 && waited >= i64(timeout_ms) { return StillRunning; }
+        paused := usleep(2000);
+        waited += 2;
+    }
 }
 
 // Stops the program and everything it started, waits for it and returns what

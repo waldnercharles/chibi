@@ -5,6 +5,8 @@ import facts "project:scalar_facts"
 import scalar "project:scalar_llvm"
 import abi "project:native_abi"
 import cases "fixtures:cases"
+import snapshot "project:source_snapshot"
+import routes "project:package_routes"
 import strings "core:strings"
 import os "core:os"
 
@@ -116,6 +118,8 @@ GenericFixtureSource :: () -> string { return "package scalar\nMain :: () -> int
 GenericIntegerFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return Named(25) + Inline(50); }\nNamed :: (sample: int) -> int { return Remap(sample, Gain); }\nInline :: (sample: int) -> int { return Remap(sample, (value: int) => value * 3); }\nRemap :: (sample: $T, transform: fn(value: T) -> T) -> T { return transform(value: sample); }\nGain :: (input: int) -> int { return input * 2; }\n"; }
 
 Main :: () -> int {
+    BoundedDeclarationConstructors();
+    InferredGenericAddressCompiles();
     basic := Produced(BasicFixtureSource());
     specialized := Produced(GenericFixtureSource());
     specialized_integer := Produced(GenericIntegerFixtureSource());
@@ -163,8 +167,9 @@ Main :: () -> int {
     CollectionProjection();
     TextArgumentsProjection();
     CallArgumentsProjection();
-    SynchronousProjection();
     ArrayEditsProjection();
+    ArrayPlacesProjection();
+    SynchronousProjection();
     Corpus();
     os.Print("PASS real producer rows, 169 malformed variants, packages and library contracts");
     return 0;

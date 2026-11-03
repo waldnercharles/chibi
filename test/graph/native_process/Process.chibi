@@ -25,6 +25,8 @@ pub Capture :: (command: string[], timeout_ms: int) -> os.Result {
     }
     stdout := os.ReadText(stdout_path);
     stderr := os.ReadText(stderr_path);
+    assert(stdout.error == nil, "the captured stdout reads");
+    assert(stderr.error == nil, "the captured stderr reads");
     result: os.Result = {status: status, stdout: stdout.text, stderr: stderr.text};
     if (status == 124) {
         result.stderr = strings.Concatenate([result.stderr, "graph fixture: child timed out\n"]);
@@ -32,7 +34,8 @@ pub Capture :: (command: string[], timeout_ms: int) -> os.Result {
     removed_stdout := os.Remove(stdout_path);
     removed_stderr := os.Remove(stderr_path);
     removed_directory := os.Remove(reserved.path);
-    assert(removed_stdout == nil && removed_stderr == nil && removed_directory == nil,
-           "the private process files are removed");
+    assert(removed_stdout == nil, "the captured stdout is removed");
+    assert(removed_stderr == nil, "the captured stderr is removed");
+    assert(removed_directory == nil, "the private process directory is removed");
     return result;
 }

@@ -101,6 +101,20 @@ stub naming its install path, so no SDK is read. A plan with `shared` set links
 its objects and archives as a Linux shared library (`-shared`) or a macOS dylib
 (`-dylib`), without a process entry. Each generation supplies its own runtime context.
 
+The authored formatter receives 24-byte `{ i32 tag, i32 length, i64 word,
+ptr bytes }` values. Scalar/text tags 1 through 12 retain the existing runtime
+value contract. Native-only tags 13 and 14 summarize arrays and maps: `length`
+is the descriptor's saved count, with zero `word` and null `bytes`. The renderer
+writes `Array[n]` or `Map[n]`, ignores modifiers, and never reads elements or
+backing storage. A later argument may replace the collection without changing
+the earlier saved count. The returned text owns its bytes.
+
+These summary tags require a standalone native context or an explicit execution
+family, whose image supplies the authored formatter. Generic modules and native
+libraries using the legacy C context reject aggregate formatting. The C value
+adapter and exported scalar signatures continue to accept only tags 1 through
+12. Standalone text/collection-only formatting has no numeric CRT dependency.
+
 ## Checks
 
 - `native_link/tests` (`chibi test tools/compiler`) checks `Command` for all three targets,

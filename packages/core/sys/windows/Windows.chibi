@@ -109,6 +109,7 @@ Backslash: int : 92;
 CreateNew: u32 : 1;
 CreateSuspended: u32 : 4;
 NewProcessGroup: u32 : 512;
+CreateNoWindow: u32 : 134217728;
 KilledExit: u32 : 4294967287; // The DWORD representation of exit status -9.
 WaitTimeout: u32 : 258;
 MaxPathUnits: int : 260;
@@ -1090,7 +1091,7 @@ pub Start :: (command: string[], piped: bool) -> int {
 // Wait/Kill never report or remove redirected output. Windows already inherits
 // containing parent jobs, including when POSIX's attached group option is false.
 pub StartRedirected :: (command: string[], stdout_path: string, stderr_path: string, attached: bool = false) -> int {
-    if stderr_path == "" || stdout_path == stderr_path { return -1; }
+    if stderr_path == "" || (stdout_path == stderr_path && stdout_path != "NUL") { return -1; }
     return StartProcess(command, false, stdout_path, stderr_path);
 }
 
@@ -1149,7 +1150,9 @@ StartProcess :: (command: string[], piped: bool, stdout_path: string, stderr_pat
         output = Shared(GetStdHandle(-11));
         errors = Shared(GetStdHandle(-12));
     }
-    starting.information = Launch(command, starting.input, output, errors, CreateSuspended | NewProcessGroup);
+    launch_flags := CreateSuspended | NewProcessGroup;
+    if stderr_path != "" || piped { launch_flags |= CreateNoWindow; }
+    starting.information = Launch(command, starting.input, output, errors, launch_flags);
     if length(starting.information) == 0 {
         AbandonProcess(starting, folder);
         return -1;

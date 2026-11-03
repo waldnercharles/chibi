@@ -18,7 +18,7 @@ for (const [full, bootstrapRun] of [['false', ''], ['false', '123'], ['true', ''
         'native_aot/native_driver/minimum.sh', 'native_aot/text_format/run.sh', 'native_aot/link/memory.sh', 'native_aot/output/run.sh',
         'native_aot/diagnostics/run.sh', 'native_aot/generations/run.sh', 'native_aot/test_attributes/run.sh',
         'native_aot/failures/run.sh', 'native_aot/task_busy/run.sh', 'native_aot/optionals/run.sh',
-        'native_aot/fallible/run.sh',
+        'native_aot/fallible/run.sh', 'native_aot/patterns/run.sh',
         'bootstrap/native-entry.sh', 'bootstrap/native-runner.sh', 'native_aot/tasks/run.sh',
         'native_aot/math_scalar/run.sh', 'native_aot/math_builtin/select.sh', 'native_aot/math_builtin/run.sh', 'native_aot/characters/run.sh', 'native_aot/array_operations/run.sh', 'native_aot/text_arguments/run.sh', 'native_aot/nested_arrays/run.sh', 'native_aot/managed_values/run.sh',
         'native_aot/managed_pointers/run.sh', 'native_aot/maps/run.sh',
@@ -33,7 +33,6 @@ for (const [full, bootstrapRun] of [['false', ''], ['false', '123'], ['true', ''
       }
       fs.writeFileSync(path.join(root, 'tools/bootstrap/native-seed.tsv'), '# no pinned seed in this launcher fixture\n');
       fs.writeFileSync(path.join(root, 'tools/bootstrap/seed.sh'), 'exit 0\n');
-      fs.writeFileSync(path.join(root, 'tools/bootstrap.sh'), 'exit 91\n');
       fs.writeFileSync(path.join(root, 'tools/bootstrap/native-seed.sh'), '#!/bin/sh\nmkdir -p "$(dirname "$2")"\ncp "$RUNNER_TEMP/native-driver" "$2"\n');
       fs.mkdirSync(path.join(root, 'tools/toolchain'));
       fs.writeFileSync(path.join(root, 'tools/toolchain/Driver.chibi'), 'fixture\n');

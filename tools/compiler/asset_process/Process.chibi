@@ -1,0 +1,31 @@
+package asset_process
+
+import os "core:os"
+import target "core:target"
+
+pub Child :: struct { id: int; information: u8[]; }
+
+when target.Os == target.Windows {
+    pub Start :: (command: string[], directory: string) -> Child {
+        return {id: os.StartRedirected(command, "NUL", "NUL"), information: []};
+    }
+    pub Wait :: (child: ^Child, timeout_ms: int) -> int {
+        return os.Wait(child^.id, timeout_ms);
+    }
+} else {
+    import process "core:sys/posix"
+    pub Start :: (command: string[], directory: string) -> Child {
+        scratch := resize([u8(0)], 256);
+        started := process.StartRedirectedIn(command, "/dev/null", "/dev/null", directory);
+        return {id: started, information: scratch};
+    }
+    pub Wait :: (child: ^Child, timeout_ms: int) -> int {
+        // Move-out/restore bridges the current cross-package scoped-reference
+        // admission without keeping a second owner of mutable OS scratch.
+        scratch := child^.information;
+        child^.information = [];
+        result := process.WaitGroup(child^.id, &scratch, timeout_ms);
+        child^.information = scratch;
+        return result;
+    }
+}

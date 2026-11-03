@@ -359,6 +359,7 @@ when target.Native == 1 {
 
     // Starts a process with caller-owned output files, whose parent folders
     // exist. Empty stdout_path inherits stdout; stderr_path names a file.
+    // Paths must differ except when both name the platform null device.
     // Wait/Kill leave files in place for the caller to read and remove.
     // An attached child shares the parent's cancellation group; Kill stops
     // that child, while cancelling its parent group also stops descendants.

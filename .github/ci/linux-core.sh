@@ -18,7 +18,7 @@ finish() {
     sh tools/build.sh native-evidence --sha "$GITHUB_SHA" --run "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" --job "$GITHUB_JOB" --sanitizers "$CHIBI_CI_SANITIZERS" --profile "$BUILD_PROFILE" --optimization "$BUILD_DEBUG_OPTIMIZATION" --frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --outcome "$outcome" --host "$PWD/build-release/sdk/chibi-build-host" --build build --output "$RUNNER_TEMP/native-profile" --nm /usr/lib/llvm-18/bin/llvm-nm || echo "::warning::Native profile evidence failed (informational)"
   fi
   if [ "$debug_succeeded" = true ]; then
-    sh tools/build.sh test --build-host build-release/sdk/chibi-build-host language-scalar-native
+    sh tools/build.sh test language-scalar-native
     scalar_status=$?
     if [ "$status" = 0 ]; then status=$scalar_status; fi
   fi
@@ -32,7 +32,6 @@ trap finish EXIT
 # Build an unsanitized chibi launcher (Release)
 export CHIBI_BUILD_TIMINGS="$RUNNER_TEMP/build-timings"
 sh tools/build.sh build --release --target chibi --target chibi-build-host --target chibi-compiler-host --target test_tools --libclang-root /usr/lib/llvm-18
-export CHIBI_BUILD_HOST=build-release/sdk/chibi-build-host
 sh test/native_aot/targets/build.sh "$PWD/build-release/sdk/chibi" "$CHIBI_LLVM_BIN" "$CHIBI_NATIVE_BUNDLE"
 
 # Build products and test drivers (selected Debug profile)
@@ -44,11 +43,11 @@ unset CHIBI_BUILD_TIMINGS
 export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
 
 # Graph and native driver programs
-sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" graph-engine graph-driver graph-evidence graph-discovery graph-wasm graph-os
+sh tools/build.sh test graph-engine graph-driver graph-evidence graph-discovery graph-wasm graph-os
 
 # Tooling and process integrations
 mkdir -m 700 -p "$CHIBI_TEST_TIMINGS"
-sh tools/build.sh test --build-host build-release/sdk/chibi-build-host short
+sh tools/build.sh test short
 build/test/tools/test_tools --case-timings
 
 
@@ -57,5 +56,5 @@ set -e
 mkdir -m 700 -p "$CHIBI_TEST_TIMINGS"
 export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
 for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
-sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native
-sh tools/build.sh test --build-host build-release/sdk/chibi-build-host --jobs 3 bootstrap-load projects language
+sh tools/build.sh test native
+sh tools/build.sh test --jobs 3 bootstrap-load projects language

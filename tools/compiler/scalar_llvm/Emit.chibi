@@ -3967,7 +3967,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                             // Its allocator can synchronously collect this family.
                             if (element >= native.RecordType && pointer_program) {
                                 glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
-                                    fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root);
+                                    fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root, false, records, value_layout);
                                 next_root = glue.next;
                                 slots.extend(glue.types);
                                 extra += length(glue.types);

@@ -1,6 +1,0 @@
-package task_managed_frame
-Main :: () -> int {
-    values: int[] = [1, 2];
-    yield
-    return values[0];
-}

@@ -86,5 +86,21 @@ the original nine successful kernels, an escaped optional-only root under
 collection, and initial/late mutation failure checks. A separate 4096-append
 entry requires at most 32 allocations; the current implementation uses 13.
 Fatal failure probes check their category with poisoned frees, while successful
-probes also require zero live allocations. Authored view fields, view containers,
-retained views and suspended view frames remain outside this admission.
+probes also require zero live allocations. Authored unions with one empty
+variant and one primitive-view payload reuse the same traced tag/window layout.
+Their source proof covers returned union-only roots, owner replacement, switch
+and `is` bindings, and either tag order. Pattern bindings remain read-only.
+Ordinary source already rejects view fields in records. Views over strings,
+records, nested arrays or union elements, and immutable `text.view(range)`, are
+working ordinary forms still awaiting native support. View containers, retained
+views and suspended view frames also remain outside this admission.
+
+Optional numeric/bool values and flat numeric/bool record payloads can share
+managed cells. The optional tag and payload move together; nil replacement
+and scoped alias writes are visible through every pointer. The cell keeps the
+same 64-byte header and uses a complete optional nominal/layout identity.
+Its immutable validator exposes the whole payload; inline field projection
+keeps the existing flat-record rule. Backing owners and pointer/view edges
+inside optional cells remain outside this slice. The original four fallible
+pointer cases run at O0/O2, and the poisoned source proof checks escaped cells,
+early returns and forced collection with bounded peak allocation.

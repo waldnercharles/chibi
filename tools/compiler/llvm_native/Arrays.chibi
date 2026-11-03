@@ -165,7 +165,7 @@ ArrayUses :: (code: Instruction[]) -> int[] {
             type = item.right;
             flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArraySharing;
         }
-        if (item.op == ManagedPin) {
+        if (item.op == ManagedPin || item.op == OwnerPin) {
             if (type >= RefType) { type -= RefType; }
             flags = ArrayDropping;
         }

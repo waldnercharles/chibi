@@ -33,7 +33,10 @@ PASS scoring.DoublesPoints
 
 `chibi test [ROOT]` finds each package below ROOT. Without a path, it uses
 the working directory. Each package source starts with `package NAME`.
-Keep tests beside the package functions they check.
+Keep tests beside the package functions they check. Each selected package also
+runs test exports from its project imports. Recursive discovery can run an
+imported test again when it selects that package separately. Core imports do
+not add their tests to a project run.
 
 ## Parallel execution
 
@@ -41,8 +44,8 @@ No CI setup is needed: independent tests run on a bounded worker pool by default
 The compiler infers which test closures have no external effects, including
 called and imported functions. Those tests have private invocation storage.
 Tests with random, host, state or other external effects run alone, between
-completed parallel spans. Results and failures are printed in source order,
-not completion order. Each test has its own execution budget.
+completed parallel spans. Results and failures are printed in package and test
+order, not completion order. Each test has its own execution budget.
 
 The native toolchain runs each test in a separate process. Effectful tests
 forward output as it is written; cancellation stops their active child processes.

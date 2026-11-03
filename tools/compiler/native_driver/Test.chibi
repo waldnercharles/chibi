@@ -492,10 +492,10 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
     for (directory in directories) { visible.append(route.Visible(directory)); }
     collected := compiler.CollectScalarProgramWithEffects("/project", collections, visible, gathered.paths, gathered.sources,
         PointerFacts(target), Names(), Natives(), Ports(), Identities(), platform.os, platform.arch, main_name, true);
-    prepared: TestProgram = {rows: collected.rows, sources: gathered.sources, names: [], effects: []};
+    prepared: TestProgram = {rows: collected.rows, sources: gathered.sources, names: [], labels: [], effects: []};
     if (length(collected.effects) > 0) {
         if (length(collected.tests) == 0) { CacheDiscard(scratch); return result; }
-        prepared = TestProgramRows(collected, gathered.paths, gathered.sources, main_name, dispatcher);
+        prepared = TestProgramRows(collected, gathered.paths, gathered.sources, main_name, dispatcher, label);
     }
     gathered.sources = prepared.sources;
     built := EmitCollected(collections, directories, gathered.paths, gathered.sources, triple, main_name, llvm, program,
@@ -507,7 +507,7 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
         return result;
     }
     diagnostic_paths := TestDiagnosticPaths(gathered.paths, project, core);
-    result = TestRuns(label, prepared.names, prepared.effects, program, scratch, workers, diagnostic_paths, gathered.sources, result);
+    result = TestRuns(prepared.labels, prepared.names, prepared.effects, program, scratch, workers, diagnostic_paths, gathered.sources, result);
     CacheDiscard(scratch);
     return result;
 }

@@ -12,6 +12,7 @@ Promise :: struct { first: int; last: bool; }
 RecordWorker :: () -> Promise { yield; return {first: 37, last: true}; }
 CheckPromise :: (value: Promise) { assert(value.first == 37 && value.last); }
 OwnedWorker :: () -> Payload { yield; return {text: Text(11), words: [Text(13)], numbers: [int(17)]}; }
+MapWorker :: () -> [int: string] { if false { yield } return [1: Text(21)]; }
 CheckOwned :: (value: Payload) {
     assert(text_byte_length(value.text) == 11 && text_byte_length(value.words[0]) == 13 && value.numbers[0] == 17);
 }
@@ -41,6 +42,7 @@ Worker :: () -> int {
     if initial is Cancelled { return 1; }
     else { CheckPromise(initial); }
     owned := OwnedWorker();
+    mapped := MapWorker();
     first := await owned;
     if first is Cancelled { return 1; }
     else {
@@ -49,6 +51,9 @@ Worker :: () -> int {
         changed.text = Text(7);
         changed.words[0] = Text(9);
     }
+    map_result := await mapped;
+    if map_result is Cancelled { return 1; }
+    else { value := map_result; value[1] = Text(41); assert(text_byte_length(value[1]) == 41); }
     while !Exists("allow-old") { yield; }
     repeated := await promise;
     if repeated is Cancelled { return 1; }
@@ -56,6 +61,9 @@ Worker :: () -> int {
     again := await owned;
     if again is Cancelled { return 1; }
     else { CheckOwned(again); }
+    map_again := await mapped;
+    if map_again is Cancelled { return 1; }
+    else { value := map_again; assert(text_byte_length(value[1]) == 21, "old map promise preserves independent joins after reload"); }
     if Exists("failure-case") { Broken(&payload); }
     Finish(payload);
     return 0;

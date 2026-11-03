@@ -7,7 +7,60 @@ following CI merge `a76ea8005`. Further work is composed on
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
-## Current composition: 6699cb764
+## Current composition: d3a829bec
+
+The native-only self-host route is integrated. It runs the independent Driver
+and Graph command contract before returning, propagates its failure status,
+and prepares no VM comparison host. Ordinary and full CI use this route; the
+historical comparator remains an explicit option pending retirement. The exact
+composition passes the real command contract in 6.39 seconds including its
+compilation, runner failure/routing checks in 9.21, and four CI contract checks
+in 7.99. All full product and SDK checks remain. Evidence is in
+`/private/tmp/chibi-d3a8-command-proof/receipt.json`.
+
+Its compiler/core source is unchanged from `59686a368`, which integrates
+collector-owned task arrays and records, view roots in suspended frames,
+backing-reference validation, indexed record array-field replacement, scalar
+string cells and deep map-to-array bracket writes. macOS stages two and three
+reproduce byte for byte in 32.37 and 36.77 seconds, SHA-256
+`657c5a52b181642924fc1094c69957903297184c9b2235d89d660aac0a9a7fea`.
+All 530 compiler tests pass in 25.93 seconds, the full map suite in 116.59,
+and actual source-lowered string-cell writes across writer-image unloading in
+15.71. All 3,515 archived source blobs and modes remain unchanged. Evidence is
+in `/private/tmp/chibi-5968-composed-proof/receipt.json`.
+
+The preceding `0387bd773` passes its combined managed-value suite in 101.97
+seconds. Its managed-pointer suite passed source, collector, callback, task and
+view-failure checks before a stale metadata rejection at 162.57 seconds. The
+fixture now requires the newly supported pointer-array record roots to emit;
+arrays of pointer-bearing records still reject. With only that fixture overlaid,
+the remaining boundaries, schema leases, optional sources and preserved-output
+checks pass in 55.17 seconds. Owned-task completion, cancellation, failure,
+reload and image-close checks pass in 12.55. This is a resumed proof against
+unchanged production source, not a complete second suite run. Both original
+and resumed receipts remain in `/private/tmp/chibi-0387-composed-proof` and
+`/private/tmp/chibi-0387-boundary-remainder`.
+
+The Linux proof of `6699cb764` is complete: stages three and four are identical,
+SHA-256 `be0c33a8d5828da21ef06fa301d35a5a3bffa4bfaa78ffae9c94dc4a42d39926`,
+and all 517 compiler tests pass in 77.77 seconds. Ten O0/O2 view, task and map
+programs pass in 21.32 seconds including compilation. The first pair differed
+only in local symbol names; no normalization was used. The final pair and all
+3,484 unchanged source blobs are recorded in
+`/private/tmp/chibi-6699-linux-proof/receipt.json`.
+
+Remaining behavior owners are finishing map/view promises, task-observer and
+pointer-record arrays, GC-bearing view elements, direct inline GC-record source
+admission, optional-text cells, deep mapped-array methods, shared typed failures,
+and imported selected tests. Final nine-family inventory, supported-platform
+products and Windows bootstrap acceptance remain required. A separate Linux
+producer is being prepared to supply a fresh Windows compiler through the
+existing successful-job artifact guard; it has not been dispatched. The audited
+14f7 Linux/macOS package still awaits publication approval. The held retirement
+will preserve current native fixtures, Windows fixes and exact command checks
+while removing legacy callers, selectors, recovery artifacts and their code.
+
+### Earlier composition: 6699cb764
 
 The source at `6699cb764` includes indexed foreign-buffer loans, typed active
 collector-root ranges, separate rooted-copy and rootless-value properties,
@@ -17,8 +70,8 @@ byte for byte after 32.51 and 31.69 seconds, SHA-256
 `b633bdae6472338b23530bb8d2bf49c701a42d7cb3ded78d67932f91737dcc08`.
 All 517 compiler tests pass in 26.43 seconds. The frozen source's 3,484 tracked
 blobs are unchanged. Evidence is in
-`/private/tmp/chibi-selected-composed-proof/receipt.json`. Linux is validating
-this same revision separately; no Windows acceptance is claimed for it.
+`/private/tmp/chibi-selected-composed-proof/receipt.json`. Its completed Linux
+proof is recorded above; no Windows acceptance is claimed for it.
 
 The preceding indexed-loan composition `be4f279b9` builds in 30.26 seconds,
 passes 510 compiler tests in 25.59, and passes its combined indexed-buffer,

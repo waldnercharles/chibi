@@ -120,6 +120,7 @@ GenericIntegerFixtureSource :: () -> string { return "package scalar\nMain :: ()
 Main :: () -> int {
     BoundedDeclarationConstructors();
     InferredGenericAddressCompiles();
+    InlineGcRecordsKeepStructuralIdentity();
     basic := Produced(BasicFixtureSource());
     specialized := Produced(GenericFixtureSource());
     specialized_integer := Produced(GenericIntegerFixtureSource());
@@ -178,6 +179,7 @@ Main :: () -> int {
     NestedMapPlacesProjection();
     DeepMapPlacesProjection();
     DeepMappedArraysProjection();
+    DeepMappedMethodsProjection();
     DeepMapPlacesGrowth();
     MapArrayPlacesProjection();
     RecordElementPlacesProjection();

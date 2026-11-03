@@ -26,6 +26,10 @@ cat > "$checkout/compiler" <<'COMPILER'
 #!/bin/sh
 set -eu
 printf 'compile\n' >> "$ENTRY_COMPILES"
+if [ -n "${ENTRY_PROGRESS:-}" ]; then
+    grep -Fqx "tools/build.sh: compiling native build entry with $0" "$ENTRY_PROGRESS"
+    if grep -Fq 'native build entry ready' "$ENTRY_PROGRESS"; then exit 96; fi
+fi
 while [ "$#" -gt 0 ]; do
     if [ "$1" = --output ]; then output=$2; fi
     shift
@@ -46,12 +50,14 @@ count() { test "$(wc -l < "$ENTRY_COMPILES" | tr -d ' ')" = "$1"; }
 entry() { sh tools/build.sh "$@" --native-driver "$checkout/compiler" --llvm "$checkout/llvm"; }
 
 # Cold and warm entry: no bootstrap host, exact argument boundaries, one compile.
-entry build test --build 'output with spaces'
+ENTRY_PROGRESS="$scratch/cold-progress" entry build test --build 'output with spaces' 2> "$scratch/cold-progress"
+grep -Fqx 'tools/build.sh: native build entry ready' "$scratch/cold-progress"
 printf '%s\n' build test --build 'output with spaces' --native-driver "$checkout/compiler" --llvm "$checkout/llvm" > "$scratch/expected"
 cmp "$scratch/expected" "$ENTRY_RESULT"
 count 1
 test "$(wc -l < "$ENTRY_VERSION_LOG" | tr -d ' ')" = 3
-entry census
+entry census 2> "$scratch/warm-progress"
+test ! -s "$scratch/warm-progress"
 count 1
 test "$(wc -l < "$ENTRY_VERSION_LOG" | tr -d ' ')" = 3
 if (ENTRY_EXIT=17 entry census); then exit 1; else test "$?" = 17; fi
@@ -89,7 +95,8 @@ done
 # A failed compile leaves no usable cache, cannot fall back to the C host,
 # and a later successful invocation retries instead of using partial output.
 printf '\n# failure input\n' >> compiler
-if (ENTRY_COMPILE_STATUS=23 entry census); then exit 1; else test "$?" = 23; fi
+if (ENTRY_COMPILE_STATUS=23 ENTRY_PROGRESS="$scratch/failed-progress" entry census 2> "$scratch/failed-progress"); then exit 1; else test "$?" = 23; fi
+if grep -Fq 'native build entry ready' "$scratch/failed-progress"; then exit 1; fi
 count "$next"
 next=$((next + 1))
 entry census

@@ -755,10 +755,11 @@ NativeStage :: (name: string, stage: string, directory: string, llvm: string, ta
         return status
     }
     command := [stage, "--compiler", Absolute("tools/compiler"), "--core", Absolute("packages/core"), "--output", Join([directory, StageProgram(target)]), "--llvm", llvm, "--target", target]
-    began := Clock()
     if (dry) {
         return Step(name, command, dry)
     }
+    os.Print(Join([name, ": compiling with ", stage]))
+    began := Clock()
     ran := os.Capture(command)
     os.Print(format_text("{}: {} s, exit {}", name, Clock() - began, ran.status))
     if (ran.status != 0) {

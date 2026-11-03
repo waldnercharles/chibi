@@ -107,6 +107,7 @@ if [ ! -x "$cached/driver" ]; then
             exit 2
         fi
     done
+    printf 'tools/build.sh: compiling native build entry with %s\n' "$native_driver" >&2
     "$native_driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
         --source "$root/tools/toolchain/Driver.chibi" --entry Main --output "$work/driver" \
         --collection "graph=$root/tools/graph" \
@@ -114,6 +115,7 @@ if [ ! -x "$cached/driver" ]; then
     test -x "$work/driver"
     mkdir -p "$cached"
     mv "$work/driver" "$cached/driver"
+    printf 'tools/build.sh: native build entry ready\n' >&2
 fi
 rm -rf "$work"
 trap - EXIT

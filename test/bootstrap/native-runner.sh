@@ -210,7 +210,12 @@ case "$output" in
         event=stage-two-windows ;;
     *) echo "unexpected fake-stage output: $output" >&2; exit 92 ;;
 esac
+if [ -n "${RUNNER_FIXTURE_PROGRESS:-}" ]; then
+    grep -Fqx "$event: compiling with $0" "$RUNNER_FIXTURE_PROGRESS"
+    if grep -Eq "^$event: [0-9]+ s, exit " "$RUNNER_FIXTURE_PROGRESS"; then exit 96; fi
+fi
 printf '%s\n' "$event" >> "$SEED_EVENTS"
+if [ "${RUNNER_STAGE_STATUS:-0}" != 0 ]; then exit "$RUNNER_STAGE_STATUS"; fi
 cp "$0" "$output"
 chmod +x "$output"
 STAGE
@@ -220,6 +225,17 @@ export RUNNER_FIXTURE_CONTRACT="$scratch/command-contract" RUNNER_FIXTURE_TARGET
 export RUNNER_FIXTURE_LLVM="$llvm" RUNNER_FIXTURE_LLVM_REAL="$(cd "$llvm" && pwd -P)"
 export RUNNER_FIXTURE_WORK="$scratch/stages" RUNNER_FIXTURE_WINDOWS="$scratch/windows"
 export RUNNER_FIXTURE_FIXED="$RUNNER_FIXTURE_WORK/stage2/chibi" RUNNER_CONTRACT_STATUS=0
+
+# Stage progress must be visible while the compiler is still running, even
+# when that compiler fails. Preserve the exact status and stop later stages.
+export RUNNER_FIXTURE_PROGRESS="$scratch/stage-progress" RUNNER_STAGE_STATUS=19
+: > "$SEED_EVENTS"
+if "$scratch/driver" build native-self-host --llvm "$llvm" --stage-one "$scratch/stage" \
+    --work "$RUNNER_FIXTURE_WORK" > "$RUNNER_FIXTURE_PROGRESS" 2>&1; then exit 1; else test "$?" = 19; fi
+printf 'stage-two\n' > "$scratch/expected-events"
+cmp "$scratch/expected-events" "$SEED_EVENTS"
+grep -Eq '^stage-two: [0-9]+ s, exit 19$' "$RUNNER_FIXTURE_PROGRESS"
+unset RUNNER_FIXTURE_PROGRESS RUNNER_STAGE_STATUS
 
 # The stage-two-only boundary still returns before the mandatory command
 # contract, optional Windows stage, seed or comparison hosts.

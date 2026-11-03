@@ -159,6 +159,17 @@ inside optional cells remain outside this slice. The original four fallible
 pointer cases run at O0/O2, and the poisoned source proof checks escaped cells,
 early returns and forced collection with bounded peak allocation.
 
+Optional string cells retain the whole optional identity and own only a present
+text payload. Nil clears the payload without inspecting its bytes. Constructors
+and explicit, boxed-variable or scoped writes import borrowed text before
+releasing the previous owner. The raw proof clobbers borrowed present bytes and
+checks that Nil clears a valid nonzero inactive field. The source proof covers
+Nil, present empty strings, snapshots before callbacks, returned/parameter cells
+and assertion cleanup. Its emitted-control check rejects a missing Nil skip
+before compiling or executing the program. The two-image proof writes an actual
+returned optional literal into an older cell, clobbers and unloads the writer,
+then reads and releases the old cell. Removing the import fails at O0/O2.
+
 Scalar string cells own an immutable text descriptor. Copies retain counted
 owners and import borrowed bytes; replacing through a pointer, boxed variable
 or scoped reference acquires the incoming owner before dropping the old one.

@@ -40,11 +40,11 @@ ManagedVariables :: (rows: facts.Row[], head: int, last: int) -> ManagedBoxes {
 ManagedVariable :: (boxed: bool[], variable: int) -> bool {
     return variable >= 0 && variable < length(boxed) && boxed[variable];
 }
-// The optional tag and its plain payload can be copied as bytes. This
-// closed shape excludes backing owners and collector edges from cell payloads.
+// Plain optional payloads copy as bytes; Text uses the whole-cell owner path.
+// Other backing owners and collector edges require their own cell layout.
 ManagedOptional :: (rows: facts.Row[], records: int[], type: int) -> bool {
     payload := OptionalPayloadType(rows, records, type);
-    if (Scalar(payload)) { return true; }
+    if (Scalar(payload) || payload == facts.StringType) { return true; }
     if (payload < facts.RecordType || payload >= facts.ArrayType || payload - facts.RecordType >= length(records)) { return false; }
     head := records[payload - facts.RecordType];
     if (rows[head].kind != facts.RecordRow || After(rows, head) < 0) { return false; }
@@ -52,6 +52,23 @@ ManagedOptional :: (rows: facts.Row[], records: int[], type: int) -> bool {
         if (rows[field].kind != facts.MemberRow || !Scalar(rows[field].type) || rows[field].literal == i64(facts.CharNominal)) { return false; }
     }
     return true;
+}
+// Import borrowed text bytes before a whole optional escapes into an older
+// cell. Generic inline record copies retain only already-counted text owners.
+ManagedOptionalTextCopy :: (type: int, value: int, next: int, place: int, pc: int) -> HeldValue {
+    text := NativeType(facts.StringType);
+    number := NativeType(facts.IntType);
+    tag := Op(native.Extract, number, next + 1, value, type, 0);
+    payload := Op(native.Extract, text, next + 4, value, type, 0);
+    payload.literal = 1;
+    replaced := Op(native.Insert, type, next + 6, value, next + 5, 0);
+    replaced.literal = 1;
+    return {code: [Op(native.Constant, type, next, 0, 0, 0), Op(native.Save, type, 0, next, 0, place),
+        tag, Op(native.Constant, number, next + 2, 0, 0, 0),
+        Op(native.Eq, number, next + 3, next + 1, next + 2, 0), Op(native.Branch, 0, 0, next + 3, 0, pc + 10),
+        payload, Op(native.ValueCopy, text, next + 5, next + 4, 0, 0), replaced,
+        Op(native.Save, type, 0, next + 6, 0, place), Op(native.Local, type, next + 7, place, 0, 0)],
+        slot_types: [type, number, number, NativeType(facts.BoolType), text, text, type, type], value: next + 7};
 }
 ManagedValue :: (rows: facts.Row[], records: int[], type: int, tag: i64) -> bool {
     if (Scalar(type) || type == facts.StringType || type == facts.PointerType) { return tag != 0; }

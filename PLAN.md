@@ -7,7 +7,55 @@ following CI merge `a76ea8005`. Further work is composed on
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
-## Current composition: d3a829bec
+## Current composition: 542b5c86d
+
+The combined source now includes counted map task results, collector-backed
+arrays of pointer-bearing records, deeper mapped-array methods and typed
+failures across shared execution generations. Failed awaits and immediate
+spawns propagate failure before subsequent source effects. Existing view
+promise roots, parent-child cancellation and original-generation completion
+remain intact. The new combined fixed-point, compiler, task-owner, collector
+and map checks are running against an immutable archive at
+`/private/tmp/chibi-542b-composed-proof`.
+
+The preceding `1d5386d9f` composition preserves imported selected tests, concrete
+generic instances and source ordering. Its macOS stages two and three reproduce
+byte for byte in 36.86 and 36.02 seconds, SHA-256
+`f1f6aa4c9b398753e306ac49d8a2adba59ae22f42f0b89ff5329b2d35ebf35c0`.
+All 530 compiler tests pass in 29.32 seconds, with all 3,520 archived source
+blobs and modes unchanged. The receipt is
+`/private/tmp/chibi-imported-composed-proof/receipt.json`.
+
+That compiler passes all 456 tests in the complete nine-family sample inventory:
+base 99, collections 49, comptime 9, fallible 84, imports 69, math 59, native 7,
+native_arguments 12 and types 68. There are no missing, failed or unexpected
+test names; all 705 sample source files match the original audit before and
+after execution. The summed family elapsed time is 81.27 seconds, not wall time:
+at most two families ran concurrently, each with one test worker. CC/CXX were
+disabled, and the native family used current core files with the original
+verified font/library fixtures. Evidence is in
+`/private/tmp/chibi-final-nine-preparation/final-receipt.json`.
+
+Remaining confirmed source behavior work covers task-observer arrays,
+pointer-element views, map-valued-map iteration, optional-text cells and owned
+record cells. Supported-platform product checks and Windows bootstrap
+acceptance remain required. The isolated retirement branch is reconciling
+legacy CI callers, selectors, recovery artifacts and host/VM code with the
+current native command contracts and fixtures; the deletion is not yet applied
+to this branch.
+
+The approved c5 Linux/macOS bootstrap package is published and both pins are
+advanced. The separate audited 14f7 package still awaits approval. Temporary
+Linux producer `36506138d` is being checked directly with the published c5
+Linux binary before dispatch. A successful complete producer job must supply
+the exact run, source revision and Windows executable hash for the subsequent
+Windows acceptance job. No new Windows acceptance is claimed.
+
+All elapsed times here are validation under shared load, not performance
+comparisons. Earlier sections retain the evidence and limitations at each
+historical checkpoint; their former pending items are superseded above.
+
+### Earlier composition: d3a829bec
 
 The native-only self-host route is integrated. It runs the independent Driver
 and Graph command contract before returning, propagates its failure status,

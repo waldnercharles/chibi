@@ -1,0 +1,61 @@
+package optional_string_cells
+
+Text :: (value: int) -> string { return text_from_bytes([u8(65), u8(0), u8(wrap: value)]); }
+Owner :: (value: int) -> ^(string?) { text: string? = Text(value); return &text; }
+Parameter :: (value: string?) -> ^(string?) { return &value; }
+Literal :: () -> string? { return "returned optional literal"; }
+Scoped :: (value: ^(string?)) { value^ = "scoped literal"; }
+Clear :: (value: ^(string?)) { value^ = nil; }
+Replace :: (value: ^(string?), next: int) -> int { value^ = Text(next); return next; }
+Snapshot :: (value: string?, changed: ^(string?)) -> string? { Clear(changed); return value; }
+First :: (value: string?, ignored: int) -> int {
+    if value { return int(text_byte_at(value, 2)); }
+    return -1;
+}
+Main :: () -> int {
+    value: string? = Text(1);
+    pointer := &value;
+    alias := pointer;
+    copied := pointer^;
+    alias^ = Text(2);
+    if copied { assert(text_byte_at(copied, 2) == 1); } else { assert(false); }
+    if value { assert(text_byte_at(value, 2) == 2); } else { assert(false); }
+    before := First(pointer^, Replace(alias, 3));
+    assert(before == 2);
+    before = First(value, Replace(pointer, 4));
+    assert(before == 3);
+    snapshot := Snapshot(pointer^, alias);
+    assert(value == nil);
+    if snapshot { assert(text_byte_at(snapshot, 2) == 4); } else { assert(false); }
+    value = Text(5);
+    value = value;
+    pointer^ = value;
+    Scoped(alias);
+    if value { assert(value == "scoped literal"); } else { assert(false); }
+    pointer^ = Literal();
+    if value { assert(value == "returned optional literal"); } else { assert(false); }
+    returned := Owner(17);
+    parameter := Parameter(Text(19));
+    empty: string? = "";
+    empty_pointer := &empty;
+    sampled := empty_pointer^;
+    assert(sampled != nil);
+    if sampled { assert(text_byte_length(sampled) == 0); }
+    for index in 0..<2000 { discarded := Owner(index % 127); }
+    observed := returned^;
+    if observed { assert(text_byte_at(observed, 2) == 17); } else { assert(false); }
+    observed = parameter^;
+    if observed { assert(text_byte_at(observed, 2) == 19); } else { assert(false); }
+    Clear(returned);
+    assert(returned^ == nil);
+    value = nil;
+    assert(pointer^ == nil);
+    return 0;
+}
+Failure :: () -> int {
+    value: string? = Text(7);
+    pointer := &value;
+    pointer^ = Literal();
+    assert(false, "optional text cell failure releases the active payload");
+    return 0;
+}

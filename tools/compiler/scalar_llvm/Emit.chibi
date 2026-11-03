@@ -3632,7 +3632,26 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         slots[length(slots) - 1] = native.RefType + target;
                         body.append(address);
                         if (operand.value == facts.ManagedWrite) {
-                            if (target == abi.TextStorage || (target >= native.ArrayType && target < native.MapType)) {
+                            if (target >= native.RecordType && target < native.ArrayType &&
+                                OptionalPayloadType(rows, declared, operand.type) == facts.StringType) {
+                                incoming := stack[base + 1];
+                                locals.append(target);
+                                kept := ManagedOptionalTextCopy(target, incoming, slot + 1 + extra, local, length(body));
+                                local += 1;
+                                slots.extend(kept.slot_types);
+                                body.extend(kept.code);
+                                extra += length(kept.slot_types);
+                                if (Holds(fresh, incoming)) {
+                                    body.extend(DropValue(managed, operand.type, incoming).code);
+                                    fresh = Without(fresh, incoming);
+                                }
+                                previous := slot + 1 + extra;
+                                slots.append(target);
+                                body.extend([Op(native.Deref, target, previous, slot, 0, 0),
+                                    Op(native.ValueDrop, target, 0, previous, 0, 0),
+                                    Op(native.Poke, target, 0, slot, kept.value, 0)]);
+                                extra += 1;
+                            } else if (target == abi.TextStorage || (target >= native.ArrayType && target < native.MapType)) {
                                 // Acquire the incoming owner before releasing
                                 // the old backing, including self-assignment.
                                 incoming := stack[base + 1];
@@ -4773,6 +4792,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     operand.kind == facts.ReadRow && ManagedVariable(pointer_boxes.boxed, operand.value)) && type == abi.TextStorage) {
                     retained_element = true;
                 }
+                if (operand.kind == facts.ManagedRow && operand.value != facts.ManagedBorrow && TrackedRecord(managed, type)) {
+                    retained_record = true;
+                }
                 if ((operand.kind == facts.ManagedRow && operand.value != facts.ManagedBorrow ||
                     operand.kind == facts.ReadRow && ManagedVariable(pointer_boxes.boxed, operand.value)) &&
                     type >= native.ArrayType && type < native.MapType) {
@@ -5361,7 +5383,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                 }
                 if (keeps || record_keeps) {
-                    if (boxed && type == abi.TextStorage) { body.append(Giving(type, value)); }
+                    if (boxed) { body.extend(DropValue(managed, row.type, value).code); }
                     else {
                         owned_vars.append(row.value);
                         owned_types.append(type);
@@ -5434,7 +5456,20 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 address := Op(native.ManagedAddress, native.RefType + type, slot + 1, slot, 0, 0);
                 address.literal = pointer_boxes.tags[row.value];
                 body.append(address);
-                if (type == abi.TextStorage) {
+                if (OptionalPayloadType(rows, declared, row.type) == facts.StringType) {
+                    locals.append(type);
+                    kept := ManagedOptionalTextCopy(type, value, slot + 2, local, length(body));
+                    local += 1;
+                    slots.extend(kept.slot_types);
+                    body.extend(kept.code);
+                    body.extend(DropValue(managed, row.type, value).code);
+                    previous := slot + 2 + length(kept.slot_types);
+                    slots.append(type);
+                    body.extend([Op(native.Deref, type, previous, slot + 1, 0, 0),
+                        Op(native.ValueDrop, type, 0, previous, 0, 0),
+                        Op(native.Poke, type, 0, slot + 1, kept.value, 0)]);
+                    slot = previous + 1;
+                } else if (type == abi.TextStorage) {
                     slots.extend([type, type]);
                     body.extend([Op(native.ValueCopy, type, slot + 2, value, 0, 0), Giving(type, value),
                         Op(native.Deref, type, slot + 3, slot + 1, 0, 0), Giving(type, slot + 3),
@@ -5465,6 +5500,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 body.append(Op(native.Local, native.RefType + type, slot, places[row.value], 0, 0));
                 if (TrackedRecord(managed, type)) {
                     pointer := slot;
+                    if (OptionalPayloadType(rows, declared, row.type) == facts.StringType) {
+                        locals.append(type);
+                        kept := ManagedOptionalTextCopy(type, value, slot + 1, local, length(body));
+                        local += 1;
+                        slots.extend(kept.slot_types);
+                        body.extend(kept.code);
+                        body.extend(DropValue(managed, row.type, value).code);
+                        value = kept.value;
+                        slot += length(kept.slot_types);
+                    }
                     slots.append(type);
                     body.append(Op(native.Deref, type, slot + 1, pointer, 0, 0));
                     dropped := DropValue(managed, row.type, slot + 1);

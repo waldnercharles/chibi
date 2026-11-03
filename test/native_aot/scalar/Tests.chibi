@@ -216,6 +216,14 @@ ScalarFunctionAddressesCannotNameWaitingFunctions :: () {
             TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 3, 4),
             rows[5], rows[6], rows[7], rows[8], rows[9]];
     assert(scalar.Validate(rows) == "scalar function address cannot name a waiting function");
+    rows[4].literal = i64(abi.CallbackVoid);
+    assert(scalar.Validate(rows) == "scalar function address cannot name a waiting function");
+    rows[9].kind = facts.LiteralRow;
+    assert(scalar.Validate(rows) == "");
+    for (mode in [i64(-1), 2, 4294967296]) {
+        rows[4].literal = mode;
+        assert(scalar.Validate(rows) == "scalar function address differs from its function");
+    }
 }
 ScalarCallModesAreBounded :: () {
     for (mode in [int(-1), 3]) {

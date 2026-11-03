@@ -204,6 +204,9 @@ pub ForeignIndirectVoid: int : 3;
 pub ForeignCallMode :: (mode: int) -> bool { return mode >= ForeignDirect && mode <= ForeignIndirectVoid; }
 pub ForeignIsIndirect :: (mode: int) -> bool { return mode == ForeignIndirect || mode == ForeignIndirectVoid; }
 pub ForeignIsVoid :: (mode: int) -> bool { return mode == ForeignDirectVoid || mode == ForeignIndirectVoid; }
+// A void C callback discards the authored function's internal int result.
+pub CallbackValue: int : 0;
+pub CallbackVoid: int : 1;
 // Standalone managed execution extends the legacy prefix with one stable
 // execution-family heap owner. Generic C-bundle/library admission stays
 // separate until its embedding contract supplies this owner explicitly.

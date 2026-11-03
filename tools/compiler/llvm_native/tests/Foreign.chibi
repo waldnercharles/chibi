@@ -301,13 +301,13 @@ Callbacks :: () -> native.Instruction[] {
             Code(native.Publish, 6, 0, 0, 0, 0, 0),
             Code(native.Return, 0, 0, 0, 0, 0, 0)];
 }
-CallbackModule :: (code: native.Instruction[]) -> native.Result {
+CallbackModule :: (code: native.Instruction[], result: int = 6) -> native.Result {
     empty: int[] = [];
     records: native.Record[] = [];
     names: string[] = [];
     source: native.Source = {file: "", directory: ""};
-    return native.Emit(abi.LinuxX64(), [Function(6, 0, 0, 2, 0, 5, 0, 1), Function(6, 1, 2, 1, 5, 4, 1, 0)], [6],
-                       [9, 6, 6], empty, code, [0], records, empty, ["chibi_probe_call"], source, names, empty, empty,
+    return native.Emit(abi.LinuxX64(), [Function(6, 0, 0, 2, 0, 5, 0, 1), Function(result, 1, 2, 1, 5, 4, 1, 0)], [6],
+                       [9, 6, result], empty, code, [0], records, empty, ["chibi_probe_call"], source, names, empty, empty,
                        false, 1);
 }
 // A function address is the address of an adapter with C's calling convention,
@@ -325,4 +325,49 @@ FunctionAddressNamesAFunctionOfTheModule :: () {
     code := Callbacks();
     code[1] = Code(native.FunctionAddress, 9, 0, 2, 0, 0, 0);
     Rejects(CallbackModule(code), "native function address differs from its function");
+}
+@test
+VoidFunctionAddressDiscardsItsInternalResult :: () {
+    code := Callbacks();
+    code[1].literal = i64(abi.CallbackVoid);
+    text := Emitted(CallbackModule(code));
+    assert(strings.Contains(text, "%v1 = ptrtoint ptr @chibi_callback.1.void to i64\n"));
+    assert(strings.Contains(text, "define internal void @chibi_callback.1.void(i32 %a0) #0 {\n"));
+    assert(strings.Contains(text, "%result = call i32 @chibi_scalar.1(i32 %a0)\n  ret void\n"));
+    Rejects(CallbackModule(code, abi.BoolStorage), "native function address differs from its function");
+}
+@test
+FunctionAddressRejectsUnknownCallbackMetadata :: () {
+    for (mode in [i64(-1), 2, 4294967296]) {
+        code := Callbacks();
+        code[1].literal = mode;
+        Rejects(CallbackModule(code), "native function address differs from its function");
+    }
+    code := Callbacks();
+    code[1].right = 1;
+    Rejects(CallbackModule(code), "native function address differs from its function");
+    code[1].right = 0;
+    code[1].target = 1;
+    Rejects(CallbackModule(code), "native function address differs from its function");
+}
+@test
+CallbackAdaptersAreKeyedByFunctionAndReturnABI :: () {
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0),
+             Code(native.FunctionAddress, 9, 0, 1, 0, 0, i64(abi.CallbackValue)),
+             Code(native.FunctionAddress, 9, 1, 1, 0, 0, i64(abi.CallbackVoid)),
+             Code(native.Constant, 6, 2, 0, 0, 0, 0),
+             Code(native.Publish, 6, 0, 2, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0),
+             Code(native.Check, 0, 0, 0, 0, 0, 0),
+             Code(native.Argument, 6, 0, 0, 0, 0, 0),
+             Code(native.Publish, 6, 0, 0, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    empty: int[] = [];
+    records: native.Record[] = [];
+    names: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    text := Emitted(native.Emit(abi.LinuxX64(), [Function(6, 0, 0, 3, 0, 6, 0, 0), Function(6, 1, 3, 1, 6, 4, 0, 0)],
+                                [6], [9, 9, 6, 6], empty, code, empty, records, empty, names, source, names, empty, empty, false, 1));
+    assert(strings.Contains(text, "define internal i32 @chibi_callback.1(i32 %a0)"));
+    assert(strings.Contains(text, "define internal void @chibi_callback.1.void(i32 %a0)"));
 }

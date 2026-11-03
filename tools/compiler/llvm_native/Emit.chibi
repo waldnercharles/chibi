@@ -226,6 +226,8 @@ pub Poke: int : 54;
 // that takes the runtime context passes the program's own, the global
 // @chibi_context its start module defines, and a failure the function records
 // waits there for the start module to report; C gets the result's zero.
+// Literal CallbackVoid discards an internal int result and returns void to C;
+// CallbackValue preserves the scalar result. Right and target are zero.
 pub FunctionAddress: int : 55;
 // One past the last instruction; bump it with each new one.
 // output = a string of the bytes of the left slot's array of bytes (u8), a
@@ -910,11 +912,12 @@ ReferenceValid :: (slots: int[], locals: int[], item: Instruction) -> bool {
 // Whether a function address names a function C can call: a word whose
 // parameters and result are numbers or bools.
 FunctionAddressValid :: (functions: Function[], parameters: int[], item: Instruction) -> bool {
-    if (!Index(item.left, length(functions)) || item.type != abi.WordStorage) {
+    if (!Index(item.left, length(functions)) || item.type != abi.WordStorage || item.right != 0 || item.target != 0 ||
+        (item.literal != i64(abi.CallbackValue) && item.literal != i64(abi.CallbackVoid))) {
         return false;
     }
     callee := functions[item.left];
-    if (abi.ScalarType(callee.result) == "") {
+    if (abi.ScalarType(callee.result) == "" || (item.literal == i64(abi.CallbackVoid) && callee.result != abi.IntStorage)) {
         return false;
     }
     for (index in 0..<callee.parameters) {
@@ -927,7 +930,12 @@ FunctionAddressValid :: (functions: Function[], parameters: int[], item: Instruc
 // The C-ABI adapter of function `function`, which a function address names:
 // the same parameters and result with the extensions C asks of its caller, and
 // the program's context first when the module takes one.
-CallbackAdapter :: (functions: Function[], parameters: int[], function: int, mode: int, runtime: bool) -> string {
+CallbackSymbol :: (function: int, callback: int) -> string {
+    suffix := "";
+    if (callback == abi.CallbackVoid) { suffix = ".void"; }
+    return format_text("chibi_callback.{}{}", function, suffix);
+}
+CallbackAdapter :: (functions: Function[], parameters: int[], function: int, callback: int, mode: int, runtime: bool) -> string {
     callee := functions[function];
     listed: string[] = [];
     passed: string[] = [];
@@ -939,20 +947,27 @@ CallbackAdapter :: (functions: Function[], parameters: int[], function: int, mod
         listed.append(format_text("{}{} %a{}", TypeName(type), CExtension(type), index));
         passed.append(format_text("{} %a{}", TypeName(type), index));
     }
-    out := format_text("define internal{} {} @chibi_callback.{}({}) #0 {\nentry:\n", CExtension(callee.result),
-                       TypeName(callee.result), function, strings.Join(listed, ", "));
+    result := TypeName(callee.result);
+    extension := CExtension(callee.result);
+    if (callback == abi.CallbackVoid) { result = "void"; extension = ""; }
+    out := format_text("define internal{} {} @{}({}) #0 {\nentry:\n", extension,
+                       result, CallbackSymbol(function, callback), strings.Join(listed, ", "));
     out = format_text("{}  %result = call {} @{}({})\n", out, TypeName(callee.result), Symbol(function, mode),
                       strings.Join(passed, ", "));
-    return format_text("{}  ret {} %result\n}\n", out, TypeName(callee.result));
+    if (callback == abi.CallbackVoid) { return format_text("{}  ret void\n}\n", out); }
+    return format_text("{}  ret {} %result\n}\n", out, result);
 }
 // The adapters of the functions whose address the module takes, once each.
 CallbackAdapters :: (functions: Function[], parameters: int[], code: Instruction[], mode: int, runtime: bool) -> string {
-    taken: int[] = [];
+    taken := resize([int(0)], length(functions));
     out: string[] = [];
     for (item in code) {
-        if (item.op == FunctionAddress && !taken.contains(item.left)) {
-            taken.append(item.left);
-            out.append(format_text("\n{}", CallbackAdapter(functions, parameters, item.left, mode, runtime)));
+        if (item.op == FunctionAddress) {
+            callback := int(item.literal);
+            flag := 1 << u32(callback);
+            if ((taken[item.left] & flag) != 0) { continue; }
+            taken[item.left] |= flag;
+            out.append(format_text("\n{}", CallbackAdapter(functions, parameters, item.left, callback, mode, runtime)));
         }
     }
     return strings.Join(out, "");
@@ -2960,7 +2975,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         } else if (item.op == ForeignCall) {
             out.append(ForeignInstruction(own_slots, own, texts, code, loan_origins, item, pc));
         } else if (item.op == FunctionAddress) {
-            out.append(format_text("p{}:\n  %v{} = ptrtoint ptr @chibi_callback.{} to i64\n", pc, pc, item.left));
+            out.append(format_text("p{}:\n  %v{} = ptrtoint ptr @{} to i64\n", pc, pc, CallbackSymbol(item.left, int(item.literal))));
             out.append(Store(format_text("%v{}", pc), item.type, "s", item.output));
             out.append(format_text("  br label %p{}\n", pc + 1));
         } else if (item.op == OwnerPin || item.op == OwnerUnpin) {

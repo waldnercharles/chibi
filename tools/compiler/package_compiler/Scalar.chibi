@@ -170,7 +170,15 @@ ScalarCallbackAddress :: (forest: snapshot.SnapshotNode[], text: string, callabl
     }
     target := callables[found];
     shape := ProcShape(forest, text, signature);
-    matches := target.count == length(shape) - 1 && target.result == shape[length(shape) - 1] && target.result_container == 0;
+    result := shape[length(shape) - 1];
+    mode := abi.CallbackValue;
+    if (result == 0) {
+        // Ordinary preflight checked the void signature. ScalarResults has
+        // normalized its authored body to the internal discarded int result.
+        result = IntStorage;
+        mode = abi.CallbackVoid;
+    }
+    matches := target.count == length(shape) - 1 && target.result == result && target.result_container == 0;
     for (index in 0..<target.count) {
         if (index < length(shape) - 1) {
             given := params[target.first + index];
@@ -181,7 +189,9 @@ ScalarCallbackAddress :: (forest: snapshot.SnapshotNode[], text: string, callabl
         return ScalarOperands.Failed(Diagnose(forest, argument, 0, "the function differs from the parameter's function type"));
     }
     output := rows;
-    output.append(ScalarAt(forest, node, facts.FunctionAddressRow, facts.WordType, found, 0, target.name));
+    address := ScalarAt(forest, node, facts.FunctionAddressRow, facts.WordType, found, 0, target.name);
+    address.literal = i64(mode);
+    output.append(address);
     return ScalarOperands.Built(output);
 }
 // The rows of a call of a foreign function: each argument converted to its

@@ -12,7 +12,6 @@ cp "$root/tools/bootstrap/native-seed.sh" "$checkout/tools/bootstrap/native-seed
 printf 'package driver\n' > "$checkout/tools/toolchain/Driver.chibi"
 printf 'package sample\n' > "$checkout/packages/core/sample/Sample.chibi"
 printf 'package sample\n' > "$checkout/tools/graph/sample/Sample.chibi"
-printf '#!/bin/sh\nexit 93\n' > "$checkout/tools/bootstrap.sh"
 printf '#!/bin/sh\nexit 94\n' > "$checkout/tools/bootstrap/seed.sh"
 for tool in opt llc ld.lld ld64.lld; do
     cat > "$checkout/llvm/$tool" <<'TOOL'

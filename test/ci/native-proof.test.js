@@ -33,7 +33,6 @@ for (const [full, bootstrapRun] of [['false', ''], ['false', '123'], ['true', ''
       }
       fs.writeFileSync(path.join(root, 'tools/bootstrap/native-seed.tsv'), '# no pinned seed in this launcher fixture\n');
       fs.writeFileSync(path.join(root, 'tools/bootstrap/seed.sh'), 'exit 0\n');
-      fs.writeFileSync(path.join(root, 'tools/bootstrap.sh'), 'exit 91\n');
       fs.writeFileSync(path.join(root, 'tools/bootstrap/native-seed.sh'), '#!/bin/sh\nmkdir -p "$(dirname "$2")"\ncp "$RUNNER_TEMP/native-driver" "$2"\n');
       fs.mkdirSync(path.join(root, 'tools/toolchain'));
       fs.writeFileSync(path.join(root, 'tools/toolchain/Driver.chibi'), 'fixture\n');

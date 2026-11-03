@@ -38,8 +38,7 @@ ScalarPointerElement :: (types: TypeDecl[], record: int) -> ValueType {
     }
     if (declared.value_record != -1) { return none; }
     type := ScalarTypeOf(declared.value_storage);
-    text_array := type == facts.StringType && declared.value_container == ArrayContainer;
-    if ((type < facts.IntType || type > facts.DoubleType) && !text_array) { return none; }
+    if ((type < facts.IntType || type > facts.DoubleType) && type != facts.StringType) { return none; }
     return {storage: declared.value_storage, container: declared.value_container, record: -1};
 }
 ScalarPointerType :: (types: TypeDecl[], record: int) -> int {
@@ -161,7 +160,8 @@ ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables
         found := Lookup(names, Text(forest, text, held));
         if (found < 0) { return -1; }
         binding := names[found];
-        scalar := binding.record == -1 && ScalarTypeOf(binding.storage) >= facts.IntType && ScalarTypeOf(binding.storage) <= facts.DoubleType;
+        scalar := binding.record == -1 && ((ScalarTypeOf(binding.storage) >= facts.IntType &&
+                  ScalarTypeOf(binding.storage) <= facts.DoubleType) || binding.storage == TextStorage);
         record := binding.storage == StructStorage && binding.record >= 0 && types[binding.record].kind == RecordDecl;
         array := (scalar || (binding.storage == TextStorage && binding.record == -1)) && binding.container == ArrayContainer;
         if (binding.container == ArrayContainer && binding.record >= 0) {

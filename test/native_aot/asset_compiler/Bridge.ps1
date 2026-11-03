@@ -101,7 +101,9 @@ try {
         $env:PATH = ''
         $env:CC = 'Z:/no-c-compiler.exe'
         $env:CXX = 'Z:/no-cxx-compiler.exe'
-        [Environment]::SetEnvironmentVariable('CHIBI_ASSET_COMPILER', $null, 'Process')
+        # PowerShell converts $null to an empty .NET string. An empty override
+        # is intentionally rejected; SDK discovery requires an absent name.
+        [Environment]::SetEnvironmentVariable('CHIBI_ASSET_COMPILER', [NullString]::Value, 'Process')
         $env:TEMP = "$Work/temp"
         $env:TMP = "$Work/temp"
         Write-Host 'Run the relocated native service and C consumer without runtime build tools'
@@ -133,7 +135,11 @@ try {
         }
         if (@(Get-ChildItem -LiteralPath "$Work/temp" -Force).Count) { throw 'The native compiler left temporary files' }
     } finally {
-        foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
+        foreach ($name in $names) {
+            $restored = $saved[$name]
+            if ($null -eq $restored) { $restored = [NullString]::Value }
+            [Environment]::SetEnvironmentVariable($name, $restored, 'Process')
+        }
     }
     Write-Host 'Windows native asset quota, cancellation, diagnostics and UTF-8 SDK relocation passed'
     $passed = $true

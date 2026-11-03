@@ -1,0 +1,11 @@
+package foreign_element_category
+import testing "core:testing"
+foreign import libc "system:c"
+foreign libc { memset :: (data:u8[],value:i32,count:u64) -> rawptr }
+Entry :: struct { values:u8[]; }
+@test
+BoundsCannotMatchAnUnwrapFailure :: () {
+    testing.ExpectFailure(testing.Failure.UnwrappedNil);
+    rows:Entry[]=[];
+    written:=memset(rows[0].values,9,1);
+}

@@ -1,0 +1,7 @@
+[
+{"output": "/BUILD/sdk/chibi", "arguments": ["@COMPILER@", "--compiler", "@ROOT@/tools/compiler", "--core", "@ROOT@/packages/core", "--entry", "Main", "--output", "/BUILD/sdk/chibi", "--llvm", "@LLVM@", "--target", "aarch64-apple-darwin", "--jobs", "2", "--package", "native_driver"]},
+{"output": "/BUILD/sdk/chibi-asset-compiler", "arguments": ["/BUILD/sdk/chibi", "--compiler", "@ROOT@/tools/compiler", "--core", "@ROOT@/packages/core", "--entry", "Main", "--output", "/BUILD/sdk/chibi-asset-compiler", "--llvm", "@LLVM@", "--target", "aarch64-apple-darwin", "--jobs", "2", "--source", "@ROOT@/tools/compiler/asset_driver/Main.chibi"]},
+{"output": "/BUILD/tools/asset-native-build", "arguments": ["/BUILD/sdk/chibi", "--compiler", "@ROOT@/tools/compiler", "--core", "@ROOT@/packages/core", "--source", "@ROOT@/tools/graph/asset_native/Build.chibi", "--entry", "Main", "--collection", "graph=@ROOT@/tools/graph", "--target", "aarch64-apple-darwin", "--llvm", "@LLVM@", "--output", "/BUILD/tools/asset-native-build"]},
+{"output": "/BUILD/lib/libchibi_asset_compiler_host.a", "arguments": ["/BUILD/tools/asset-native-build", "@ROOT@", "/BUILD/sdk/chibi", "@LLVM@", "aarch64-apple-darwin", "/BUILD/lib/libchibi_asset_compiler_host.a"]},
+{"output": "/BUILD/test/graph/graph_headerless", "arguments": ["/fixture clang", "-O3", "-DNDEBUG", "-Wl,-search_paths_first", "-Wl,-headerpad_max_install_names", "/BUILD/objects/graph_headerless/test/graph/fixtures/headerless.c.o", "-o", "/BUILD/test/graph/graph_headerless"]}
+]

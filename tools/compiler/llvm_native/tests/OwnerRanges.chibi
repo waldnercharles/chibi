@@ -1,0 +1,52 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+OwnerRanges :: (fields: int[], mode: int = 0) -> native.Result {
+    array := native.ArrayType + native.PointerType;
+    reference := native.RefType + native.RecordType + 1;
+    code := [Code(native.Constant, abi.IntStorage, 0, 0, 0, 0, 0),
+        Code(native.Publish, abi.IntStorage, 0, 0, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0),
+        Code(native.Argument, native.RecordType, 0, 0, 0, 0, 0),
+        Code(native.Argument, array, 1, 1, 0, 0, 0),
+        Code(native.Argument, reference, 2, 2, 0, 0, 0),
+        Code(native.Save, reference, 0, 2, 0, 0, 0),
+        Code(native.ManagedTrack, native.RecordType, 0, 0, 0, native.ManagedTrackSlot, 0),
+        Code(native.ManagedTrack, array, 0, 1, 0, native.ManagedTrackSlot, 0),
+        Code(native.ManagedTrack, reference, 0, 0, 0, native.ManagedTrackLocal, 0),
+        Code(native.ManagedTrack, native.RecordType, 0, 0, 0, native.ManagedClearSlot, 0),
+        Code(native.ManagedPoll, 0, 0, 0, 0, 0, 0),
+        Code(native.Constant, abi.IntStorage, 3, 0, 0, 0, 0),
+        Code(native.Publish, abi.IntStorage, 0, 3, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    if (mode == 1) { code[9] = Code(native.ManagedTrack, native.RecordType + 1, 0, 0, 0, native.ManagedTrackLocal, 0); }
+    if (mode == 2) { code[7] = Code(native.ManagedTrack, native.RecordType + 1, 0, 0, 0, native.ManagedTrackSlot, 0); }
+    worker := Function(abi.IntStorage, 3, 1, 4, 3, length(code) - 3, 0, 0);
+    worker.locals = 1;
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 2, identity: 0}];
+    return native.EmitProgram(abi.LinuxX64(), [Function(abi.IntStorage, 0, 0, 1, 0, 3, 0, 0), worker],
+        [native.RecordType, array, reference], [abi.IntStorage, native.RecordType, array, reference, abi.IntStorage],
+        [reference], code, [], records, fields, [], {file: "", directory: ""}, [], [], []);
+}
+@test
+TypedOwnerRangesKeepEightBytesPerCanonicalLocation :: () {
+    text := Emitted(OwnerRanges([native.ArrayType + native.PointerType, native.RecordType, abi.IntStorage]));
+    assert(strings.Contains(text, "%managed.owner.refs = alloca [3 x ptr]"));
+    assert(strings.Contains(text, "@chibi_managed.trace.owners1(ptr %heap, ptr %payload)"));
+    assert(strings.Contains(text, "call void @chibi_managed.trace.record0(ptr %heap, ptr %g0.slot)"));
+    assert(strings.Contains(text, "call void @chibi_managed.trace.array(ptr %heap, ptr %g1.slot)"));
+    assert(strings.Contains(text, "call void @chibi_managed.trace.record1(ptr %heap, ptr %g2.slot)"));
+    // The second record appears only behind RefType. Tracking must seed its
+    // helper closure even though ordinary snapshot scanning skips that type.
+    assert(strings.Contains(text, "define internal void @chibi_managed.trace.record1("));
+    assert(strings.Contains(text, "call void @chibi_managed.trace.record0(ptr %heap, ptr %field0)"));
+}
+@test
+TypedOwnerRangesRejectRootlessAndMismatchedLocations :: () {
+    error := "native deferred collection differs from its owning roots";
+    fields := [native.ArrayType + native.PointerType, native.RecordType, abi.IntStorage];
+    Rejects(OwnerRanges(fields, 1), error);
+    Rejects(OwnerRanges(fields, 2), error);
+    Rejects(OwnerRanges([abi.TextStorage, native.RecordType, abi.IntStorage]), error);
+}

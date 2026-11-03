@@ -24,6 +24,7 @@ tool	bootstrap-recovery	@build@/test/tools/test_tools	--bootstrap-recovery	@rele
 tool	bootstrap-load	@release@/test/tools/test_tools	--bootstrap-load	@root@/tools/compiler/bootstrap
 tool	graph-engine	@program@	test/graph/EngineTests.chibi	Run
 tool	graph-driver	@program@	test/graph/DriverTests.chibi	Run	@compiler@	@llvm@
+tool	graph-commands	@program@	test/graph/CommandTests.chibi	Run	@compiler@	@llvm@
 tool	graph-discovery	@program@	test/graph/DiscoveryTests.chibi	Run	@compiler@	@llvm@
 tool	graph-evidence	@program@	test/graph/EvidenceTests.chibi	Run
 tool	graph-c	@program@	test/graph/CTests.chibi	Run	@compiler@	@llvm@

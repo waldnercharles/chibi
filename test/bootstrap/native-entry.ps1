@@ -92,7 +92,11 @@ Main :: () -> int {
     Write-Host 'PASS Windows native entry candidate/default, arguments, status, cwd and checksum failures'
 } finally {
     Set-Location -LiteralPath $previous
-    foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
+    foreach ($name in $names) {
+        $restored = $saved[$name]
+        if ($null -eq $restored) { $restored = [NullString]::Value }
+        [Environment]::SetEnvironmentVariable($name, $restored, 'Process')
+    }
     if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
 }
 exit 0

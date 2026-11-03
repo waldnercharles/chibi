@@ -1,0 +1,110 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+
+// Validation only: these deliberately malformed lifetime tables are never run.
+TaskBorrowModule :: (middle: native.Instruction[], field: bool = false, argument: bool = false) -> native.Result {
+    array := native.ArrayType + abi.IntStorage;
+    outer := native.ArrayType + native.RecordType;
+    selected := native.RefType + array;
+    if (field) { selected = native.RefType + native.RecordType; }
+    worker := [Code(native.Constant,outer,0,0,0,0,0), Code(native.Save,outer,0,0,0,0,0),
+        Code(native.LocalAddress,native.RefType + outer,1,0,0,0,0),
+        Code(native.Constant,abi.IntStorage,2,0,0,0,0),
+        Code(native.ArrayValueAddress,selected,3,1,2,outer,0)];
+    worker.extend(middle);
+    worker.extend([Code(native.Suspend,0,0,0,0,0,0), Code(native.Constant,abi.IntStorage,7,0,0,0,0),
+        Code(native.Publish,abi.IntStorage,0,7,0,0,0), Code(native.Return,0,0,0,0,0,0)]);
+    code := [Code(native.Constant,abi.IntStorage,0,0,0,0,0),
+        Code(native.Publish,abi.IntStorage,0,0,0,0,0), Code(native.Return,0,0,0,0,0,0)];
+    code.extend(worker);
+    functions := [Function(abi.IntStorage,0,0,1,0,3,0,0),
+        Function(abi.IntStorage,0,1,14,3,length(worker),0,0)];
+    second := functions[1]; second.locals = 4; second.arguments = 1; functions[1] = second;
+    slots := [abi.IntStorage,outer,native.RefType + outer,abi.IntStorage,selected,array,array,
+        abi.IntStorage,abi.IntStorage,native.RefType + array,abi.IntStorage,
+        native.RecordType,native.PointerType,outer,native.RecordType];
+    parameters: int[] = [];
+    if (argument) {
+        helper := Function(abi.IntStorage,1,length(slots),1,length(code),3,1,0);
+        helper.first_local = 4; functions.append(helper);
+        parameters.append(native.RefType + array);
+        slots.append(abi.IntStorage);
+        code.extend([Code(native.Constant,abi.IntStorage,0,0,0,0,0),
+            Code(native.Publish,abi.IntStorage,0,0,0,0,0), Code(native.Return,0,0,0,0,0,0)]);
+    }
+    return native.EmitProgram(abi.LinuxX64(),functions,parameters,slots,[outer,selected,native.RecordType,array],code,[int(3)],
+        [{first:0,count:1,identity:0}],[array],[],{file:"",directory:""},[],[],[]);
+}
+@test
+WaitingBackingReferencesPermitImmediateReadsAndUnusedStaleStorage :: () {
+    array := native.ArrayType + abi.IntStorage;
+    Emitted(TaskBorrowModule([Code(native.Deref,array,4,3,0,0,0),
+        Code(native.ArrayLength,abi.IntStorage,6,4,0,0,0)]));
+    Emitted(TaskBorrowModule([]));
+    // An independently acquired descriptor survives the later suspension.
+    Emitted(TaskBorrowModule([Code(native.Deref,array,4,3,0,0,0),
+        Code(native.ValueCopy,array,5,4,0,0,0), Code(native.Suspend,0,0,0,0,0,0),
+        Code(native.ArrayLength,abi.IntStorage,6,5,0,0,0)]));
+}
+@test
+WaitingCanonicalFrameFieldAndCellReferencesRemainStable :: () {
+    array := native.ArrayType + abi.IntStorage;
+    outer := native.ArrayType + native.RecordType;
+    Emitted(TaskBorrowModule([Code(native.Suspend,0,0,0,0,0,0),
+        Code(native.Deref,outer,12,1,0,0,0), Code(native.ArrayLength,abi.IntStorage,6,12,0,0,0)]));
+    Emitted(TaskBorrowModule([Code(native.Constant,native.RecordType,10,0,0,0,0),
+        Code(native.Save,native.RecordType,0,10,0,2,0),
+        Code(native.FieldAddress,native.RefType + array,8,2,native.RecordType,0,0),
+        Code(native.Suspend,0,0,0,0,0,0), Code(native.Deref,array,4,8,0,0,0),
+        Code(native.ArrayLength,abi.IntStorage,6,4,0,0,0)]));
+    Emitted(TaskBorrowModule([Code(native.Constant,array,5,0,0,0,0),
+        Code(native.ManagedNew,native.PointerType,11,5,array,0,17),
+        Code(native.ManagedAddress,native.RefType + array,8,11,0,0,17),
+        Code(native.Suspend,0,0,0,0,0,0), Code(native.Deref,array,4,8,0,0,0),
+        Code(native.ArrayLength,abi.IntStorage,6,4,0,0,0)]));
+}
+@test
+WaitingBackingReferencesPermitFieldScratchAndCanonicalWriteback :: () {
+    array := native.ArrayType + abi.IntStorage;
+    Emitted(TaskBorrowModule([Code(native.Save,native.RefType + native.RecordType,0,3,0,1,0),
+        Code(native.FieldAddress,native.RefType + array,8,1,native.RecordType,1,0),
+        Code(native.Deref,array,4,8,0,0,0), Code(native.ArrayResize,array,5,4,2,0,0),
+        Code(native.ArrayDrop,array,0,4,0,0,0), Code(native.Poke,array,0,8,5,0,0)],true));
+    Emitted(TaskBorrowModule([Code(native.Deref,array,4,3,0,0,0),
+        Code(native.ArrayPush,array,5,4,2,0,1), Code(native.Poke,array,0,3,5,0,0)]));
+}
+@test
+WaitingBackingReferencesRejectSuspensionReplacementAndEscape :: () {
+    array := native.ArrayType + abi.IntStorage;
+    outer := native.ArrayType + native.RecordType;
+    failure := "native waiting backing references require immediate canonical access";
+    for barrier in [Code(native.Suspend,0,0,0,0,0,0), Code(native.ValueDrop,outer,0,0,0,0,0),
+        Code(native.Save,outer,0,0,0,0,0), Code(native.Poke,outer,0,1,0,0,0),
+        Code(native.Jump,0,0,0,0,6,0)] {
+        Rejects(TaskBorrowModule([barrier,Code(native.Deref,array,4,3,0,0,0)]),failure);
+    }
+    Rejects(TaskBorrowModule([Code(native.Deref,array,4,3,0,0,0),
+        Code(native.Suspend,0,0,0,0,0,0),Code(native.ArrayLength,abi.IntStorage,6,4,0,0,0)]),failure);
+    Rejects(TaskBorrowModule([Code(native.Deref,array,4,3,0,0,0),
+        Code(native.Save,array,0,4,0,3,0)]),failure);
+    Rejects(TaskBorrowModule([Code(native.Deref,array,4,3,0,0,0),
+        Code(native.Constant,native.RecordType,10,0,0,0,0),
+        Code(native.Insert,native.RecordType,13,10,4,0,0), Code(native.Suspend,0,0,0,0,0,0),
+        Code(native.Extract,array,5,13,native.RecordType,0,0),
+        Code(native.ArrayLength,abi.IntStorage,6,5,0,0,0)]),failure);
+    Rejects(TaskBorrowModule([Code(native.Save,native.RefType + array,0,3,0,1,0),
+        Code(native.Suspend,0,0,0,0,0,0),Code(native.Local,native.RefType + array,8,1,0,0,0),
+        Code(native.Deref,array,4,8,0,0,0)]),failure);
+    Rejects(TaskBorrowModule([Code(native.Local,native.RefType + array,8,1,0,0,0),
+        Code(native.Deref,array,4,8,0,0,0),Code(native.Save,native.RefType + array,0,3,0,1,0)]),failure);
+    Rejects(TaskBorrowModule([Code(native.Call,abi.IntStorage,9,2,0,1,0)],false,true),failure);
+    // Reentry must resolve backing again, even when the old bits remain in
+    // scratch storage. This edge bypasses the sole scratch store.
+    Rejects(TaskBorrowModule([Code(native.Save,native.RefType + native.RecordType,0,3,0,1,0),
+        Code(native.FieldAddress,native.RefType + array,8,1,native.RecordType,1,0),
+        Code(native.Deref,array,4,8,0,0,0), Code(native.ArrayPush,array,5,4,2,0,1),
+        Code(native.Poke,array,0,8,5,0,0), Code(native.ValueDrop,outer,0,0,0,0,0),
+        Code(native.Jump,0,0,0,0,6,0)],true),failure);
+}

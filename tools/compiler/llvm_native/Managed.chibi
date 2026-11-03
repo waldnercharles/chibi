@@ -464,7 +464,7 @@ ManagedTypes :: (types: int[]) -> bool {
 }
 // All roots refer to initialized stable slots. Plain functions pay nothing;
 // suspended frames attach their persistent roots after coroutine allocation.
-ManagedRoots :: (shape: Function, slots: int[], locals: int[], traced: bool[]) -> string {
+ManagedRoots :: (shape: Function, slots: int[], locals: int[], records: Record[], fields: int[], layout: ManagedRecordLayout) -> string {
     output: string[] = ["  %managed.heap = call ptr @chibi_managed.owner(ptr %ctx)\n",
         "  %managed.head = getelementptr %chibi.managed.heap, ptr %managed.heap, i32 0, i32 1\n",
         "  %managed.previous = load ptr, ptr %managed.head\n"];
@@ -479,7 +479,7 @@ ManagedRoots :: (shape: Function, slots: int[], locals: int[], traced: bool[]) -
             // Only GC releases cells, so scalar pointer snapshots are safe
             // roots. Array reads may borrow freed backing; explicit pins
             // instead cover actual owning places across collecting calls.
-            if (type != PointerType && type != ViewType && !ManagedTraced(type, traced)) { continue; }
+            if (!TaskFrameTraced(layout, type) && type != ViewType && !ViewOptional(records, fields, type, ViewType)) { continue; }
             trace := "pointer";
             if (type == ViewType) { trace = "view"; }
             else if (type != PointerType) { trace = format_text("record{}", type - RecordType); }
@@ -494,7 +494,7 @@ ManagedRoots :: (shape: Function, slots: int[], locals: int[], traced: bool[]) -
 // The nodes and their slots are used by attach and release across suspension,
 // so coroutine lowering puts them in the stable heap frame, not the ramp stack.
 ManagedFrameRoots :: struct { prologue: string; attach: string; cleanup: string; destroy: string; }
-ManagedFrame :: (shape: Function, slots: int[], locals: int[], layout: ManagedRecordLayout) -> ManagedFrameRoots {
+ManagedFrame :: (shape: Function, slots: int[], locals: int[], records: Record[], fields: int[], layout: ManagedRecordLayout, values: ValueLayout) -> ManagedFrameRoots {
     prologue: string[] = ["  %managed.heap = call ptr @chibi_managed.owner(ptr %ctx)\n"];
     attach: string[] = [];
     cleanup: string[] = [];
@@ -506,9 +506,10 @@ ManagedFrame :: (shape: Function, slots: int[], locals: int[], layout: ManagedRe
         if (part == 1) { first = shape.first_local; count = shape.locals; prefix = "l"; types = locals; }
         for (index in 0..<count) {
             type := types[first + index];
-            if (!TaskFrameTraced(layout, type)) { continue; }
+            if (!TaskFrameRoot(records, fields, layout, type)) { continue; }
             trace := "pointer";
-            if (type != PointerType) { trace = format_text("record{}", type - RecordType); }
+            if (type == ViewType) { trace = "view"; }
+            else if (type != PointerType) { trace = format_text("record{}", type - RecordType); }
             if (part == 0) { prologue.append(Store(Zero(type), type, prefix, index)); }
             prologue.append(format_text("  %managed.{}{} = alloca %chibi.managed.persistent\n  store %chibi.managed.persistent zeroinitializer, ptr %managed.{}{}\n", prefix, index, prefix, index));
             attach.append(format_text("  call void @chibi_managed.hold(ptr %managed.heap, ptr %managed.{}{}, ptr %{}{}, ptr @chibi_managed.trace.{})\n", prefix, index, prefix, index, trace));
@@ -516,11 +517,12 @@ ManagedFrame :: (shape: Function, slots: int[], locals: int[], layout: ManagedRe
         }
     }
     destroy := "";
-    if (TaskFrameTraced(layout, shape.result)) {
+    if (TaskFrameTraced(layout, shape.result) || ValueCollectorOwner(values, shape.result)) {
         // One 32-byte persistent node. Unlike local snapshots, the promise
         // remains a root through final suspension until its last observer.
         trace := "pointer";
-        if (shape.result != PointerType) { trace = format_text("record{}", shape.result - RecordType); }
+        if (shape.result == ArrayType + PointerType) { trace = "array"; }
+        else if (shape.result != PointerType) { trace = format_text("record{}", shape.result - RecordType); }
         prologue.append("  %managed.promise = alloca %chibi.managed.persistent\n  store %chibi.managed.persistent zeroinitializer, ptr %managed.promise\n");
         attach.append(format_text("  call void @chibi_managed.hold(ptr %managed.heap, ptr %managed.promise, ptr %result0, ptr @chibi_managed.trace.{})\n", trace));
         destroy = format_text("  store {} zeroinitializer, ptr %result0\n  call void @chibi_managed.unhold(ptr %managed.promise)\n", TypeName(shape.result));
@@ -561,7 +563,12 @@ ManagedInstruction :: (item: Instruction, pc: int, records: Record[], persistent
         layout := "null";
         drop := "null";
         value := format_text("%a{}", pc);
-        if (ManagedArray(item.right)) {
+        if (item.right == abi.TextStorage) {
+            layout = format_text("@chibi_managed.layout.text{}", item.literal);
+            drop = "@chibi_managed.drop.text";
+            out = format_text("{}  %owned{} = call {} @chibi_text.share(ptr %ctx, {} %a{})\n", out, pc, abi.TextType(), abi.TextType(), pc);
+            value = format_text("%owned{}", pc);
+        } else if (ManagedArray(item.right)) {
             layout = format_text("@chibi_managed.layout.array{}.{}", item.right, item.literal);
             drop = format_text("@chibi_managed.drop.array{}", item.right);
             out = format_text("{}  %owned{} = call {} @chibi_array.{}.copy(ptr %ctx, {} %a{})\n", out, pc, TypeName(item.right), item.right, TypeName(item.right), pc);

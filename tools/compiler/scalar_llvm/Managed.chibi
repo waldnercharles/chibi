@@ -54,7 +54,7 @@ ManagedOptional :: (rows: facts.Row[], records: int[], type: int) -> bool {
     return true;
 }
 ManagedValue :: (rows: facts.Row[], records: int[], type: int, tag: i64) -> bool {
-    if (Scalar(type) || type == facts.PointerType) { return tag != 0; }
+    if (Scalar(type) || type == facts.StringType || type == facts.PointerType) { return tag != 0; }
     if (type >= facts.ArrayType && type < facts.MapType &&
         (Scalar(type - facts.ArrayType) || type - facts.ArrayType == facts.StringType ||
          (type - facts.ArrayType >= facts.RecordType && type - facts.ArrayType - facts.RecordType < length(records)))) { return tag != 0; }
@@ -72,8 +72,8 @@ ManagedPins :: struct {
 }
 // A canonical owner keeps its stable place registered until its lifetime
 // ends. Descriptor replacement changes that same place without a root walk.
-ManagedOwnerLocal :: (type: int, place: int, live: bool) -> native.Instruction[] {
-    if (type != native.ArrayType + native.PointerType) { return []; }
+ManagedOwnerLocal :: (type: int, place: int, live: bool, layout: native.ValueLayout) -> native.Instruction[] {
+    if (!native.ValueCollectorOwner(layout, type)) { return []; }
     mode := native.ManagedTrackLocal;
     if (!live) { mode = native.ManagedClearLocal; }
     return [Op(native.ManagedTrack, type, 0, place, 0, mode)];
@@ -81,12 +81,12 @@ ManagedOwnerLocal :: (type: int, place: int, live: bool) -> native.Instruction[]
 // Expression temporaries need roots only during this poll. Existing call
 // pins already protect them at collecting calls before the statement boundary.
 // The list is bounded by this statement's operands, not all live locals.
-ManagedPollCode :: (slot: int, pc: int, fresh: int[], slots: int[], first_slot: int) -> native.Instruction[] {
+ManagedPollCode :: (slot: int, pc: int, fresh: int[], slots: int[], first_slot: int, layout: native.ValueLayout) -> native.Instruction[] {
     output: native.Instruction[] = [];
-    array := native.ArrayType + native.PointerType;
     for (value in fresh) {
-        if (slots[first_slot + value] == array) {
-            output.append(Op(native.ManagedTrack, array, 0, value, 0, native.ManagedTrackSlot));
+        type := slots[first_slot + value];
+        if (native.ValueCollectorOwner(layout, type)) {
+            output.append(Op(native.ManagedTrack, type, 0, value, 0, native.ManagedTrackSlot));
         }
     }
     at := pc + length(output);
@@ -94,8 +94,9 @@ ManagedPollCode :: (slot: int, pc: int, fresh: int[], slots: int[], first_slot: 
         Op(native.Branch, 0, 0, slot, 0, at + 3), Op(native.Jump, 0, 0, 0, 0, at + 4),
         Op(native.ManagedPoll, 0, 0, 0, 0, 0)]);
     for (value in fresh) {
-        if (slots[first_slot + value] == array) {
-            output.append(Op(native.ManagedTrack, array, 0, value, 0, native.ManagedClearSlot));
+        type := slots[first_slot + value];
+        if (native.ValueCollectorOwner(layout, type)) {
+            output.append(Op(native.ManagedTrack, type, 0, value, 0, native.ManagedClearSlot));
         }
     }
     return output;
@@ -106,6 +107,14 @@ ManagedPollCode :: (slot: int, pc: int, fresh: int[], slots: int[], first_slot: 
 ManagedPinOwners :: (vars: int[], owned: int[], places: int[], locals: int[], first_local: int,
                      fresh: int[], slots: int[], first_slot: int, frames: Frame[], next_slot: int, next_root: int, frame_owners: bool, records: native.Record[], layout: native.ValueLayout) -> ManagedPins {
     output: ManagedPins = {before: [], after: [], types: [], next: next_root};
+    // Canonical record owners are already tracked for their full lifetime.
+    // Fresh record copies need membership only across this collecting call.
+    for (slot in fresh) {
+        type := slots[first_slot + slot];
+        if (type >= native.RecordType && type < native.ArrayType && native.ValueCollectorOwner(layout, type)) {
+            output.before.append(Op(native.ManagedTrack, type, 0, slot, 0, native.ManagedTrackSlot));
+        }
+    }
     roots: int[] = [];
     modes: int[] = [];
     array := native.ArrayType + native.PointerType;
@@ -152,6 +161,12 @@ ManagedPinOwners :: (vars: int[], owned: int[], places: int[], locals: int[], fi
         output.before.extend(owners.before);
         owners.after.extend(output.after);
         output.after = owners.after;
+    }
+    for (slot in fresh) {
+        type := slots[first_slot + slot];
+        if (type >= native.RecordType && type < native.ArrayType && native.ValueCollectorOwner(layout, type)) {
+            output.after.append(Op(native.ManagedTrack, type, 0, slot, 0, native.ManagedClearSlot));
+        }
     }
     return output;
 }

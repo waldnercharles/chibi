@@ -38,6 +38,11 @@ mkdir "$scratch/current directory Ω"
 CHIBI_CORE=$root/packages/core "$scratch/identities" "$compiler" "$llvm" "$scratch/programs"
 
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_cli/Discovery.chibi" --entry Main --output "$scratch/discovery" \
+    --llvm "$llvm" --target "$target"
+CHIBI_CORE=$root/packages/core "$scratch/discovery" "$compiler" "$llvm" "$scratch/programs"
+
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$root/test/native_cli/Workers.chibi" --entry Main --output "$scratch/workers" \
     --llvm "$llvm" --target "$target"
 CHIBI_CORE=$root/packages/core "$scratch/workers" "$compiler" "$llvm" "$scratch/programs"

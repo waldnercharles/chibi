@@ -71,6 +71,8 @@ FrameOwnerSchemaRejectsWrongLocationsAndTypes :: () {
         "native waiting parameters need scalar values; managed values and dependencies are not supported yet");
     records: native.Record[] = [{first: 0, count: 2, identity: 0}];
     fields := [native.PointerType, abi.TextStorage];
+    assert(native.TaskOwnedType(records, native.ValueLayouts(records, fields), native.RecordType));
+    fields[1] = native.ViewType;
     assert(!native.TaskOwnedType(records, native.ValueLayouts(records, fields), native.RecordType));
 }
 @test

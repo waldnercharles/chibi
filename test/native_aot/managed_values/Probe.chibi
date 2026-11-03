@@ -221,9 +221,31 @@ Main :: () -> int {
         Op(native.Return, 0, 0, 0, 0, 0)]);
     slots.extend([record_type, record_type, array, abi.IntStorage, abi.IntStorage, array, abi.IntStorage,
                   array, abi.IntStorage, abi.IntStorage, abi.IntStorage, abi.IntStorage, abi.IntStorage]);
-    functions := [function, borrowed, loan, record_input];
-    parameters := [array, array, record_type];
-    native_locals := [array];
+    // A borrowed outer and leaf have no native owner. Capture imports its
+    // loan, but comparison must still use the original leaf's descriptor.
+    outer := native.ArrayType + record_type;
+    indexed: native.Function = {result: abi.IntStorage, first_parameter: 3, parameters: 1,
+        first_slot: length(slots), slots: 14, first_local: 1, locals: 1,
+        first_code: length(code), code: 0, first_argument: length(foreign_arguments), arguments: 5};
+    code.extend([Op(native.Check,0,0,0,0,0),Op(native.Argument,outer,0,0,0,0),
+        {op:native.Save,type:outer,output:0,left:0,right:0,target:0,literal:0},
+        Op(native.LocalAddress,native.RefType + outer,1,0,0,0),Op(native.Constant,abi.IntStorage,2,0,0,0),
+        {op:native.ArrayLoan,type:array,output:3,left:0,right:1,target:native.ArrayLoanIndexed,literal:0},
+        {op:native.ArrayLoan,type:array,output:4,left:0,right:1,target:native.ArrayLoanIndexed,literal:0},
+        {op:native.ForeignCall,type:abi.IntStorage,output:5,left:0,right:3,target:2,literal:0},
+        Op(native.ArrayDrop,array,0,3,0,0),Op(native.ArrayDrop,array,0,4,0,0),
+        Op(native.Local,outer,6,0,0,0),Op(native.ArrayGet,record_type,7,6,2,0),
+        Op(native.Extract,array,8,7,record_type,0),Op(native.ArrayGet,abi.IntStorage,9,8,2,0),
+        Op(native.Constant,abi.IntStorage,10,0,0,9),Op(native.Sub,abi.IntStorage,11,9,10,0),
+        Op(native.Sub,abi.IntStorage,12,5,10,0),Op(native.BitOr,abi.IntStorage,13,11,12,0),
+        Op(native.ArrayDrop,outer,0,6,0,0),Op(native.Publish,abi.IntStorage,0,13,0,0),Op(native.Return,0,0,0,0,0)]);
+    indexed.code = length(code) - indexed.first_code;
+    slots.extend([outer,native.RefType + outer,abi.IntStorage,array,array,abi.IntStorage,outer,record_type,array,
+                  abi.IntStorage,abi.IntStorage,abi.IntStorage,abi.IntStorage,abi.IntStorage]);
+    foreign_arguments.extend([1,2,0,3,4]);
+    functions := [function, borrowed, loan, record_input, indexed];
+    parameters := [array, array, record_type, outer];
+    native_locals := [array,outer];
     records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 1, identity: 0}];
     fields := [abi.TextStorage, array];
     source: native.Source = {file: "", directory: ""};
@@ -255,7 +277,7 @@ Main :: () -> int {
     text = strings.Concatenate([text,
         "define i32 @chibi_value_probe_pointer(ptr %data) {\nentry:\n  %null = icmp eq ptr %data, null\n  %result = zext i1 %null to i32\n  ret i32 %result\n}\n",
         "define i32 @chibi_value_probe_alias(ptr %left, ptr %right) {\nentry:\n  store i32 9, ptr %left\n  %value = load i32, ptr %right\n  ret i32 %value\n}\n"]);
-    borrowed_data := "@chibi_value_test_borrowed = private global [2 x i32] [i32 7, i32 8]\n";
+    borrowed_data := "@chibi_value_test_borrowed = private global [2 x i32] [i32 7, i32 8]\n@chibi_value_test_borrowed_outer = private global [1 x %record1] [%record1 { { i32, i32, ptr, ptr } { i32 2, i32 2, ptr @chibi_value_test_borrowed, ptr null } }]\n";
     audit_text := strings.ReplaceAll(audit.text,
         "%result = call i32 @chibi_value_test_entry(ptr @chibi_value_test_ctx)",
         strings.Concatenate(["%value.result = call i32 @chibi_value_test_entry(ptr @chibi_value_test_ctx)\n",
@@ -265,7 +287,10 @@ Main :: () -> int {
             "  %grown = call { i32, i32, ptr, ptr } @chibi_scalar.2(ptr @chibi_value_test_ctx, { i32, i32, ptr, ptr } %room)\n",
             "  call void @chibi_array.1030.drop(ptr @chibi_value_test_ctx, { i32, i32, ptr, ptr } %grown)\n",
             "  %record.result = call i32 @chibi_scalar.3(ptr @chibi_value_test_ctx, %record1 { { i32, i32, ptr, ptr } { i32 2, i32 2, ptr @chibi_value_test_borrowed, ptr null } })\n",
-            "  %array.result = or i32 %value.result, %borrowed.result\n  %result = or i32 %array.result, %record.result"]));
+            "  %indexed.result = call i32 @chibi_scalar.4(ptr @chibi_value_test_ctx, { i32, i32, ptr, ptr } { i32 1, i32 1, ptr @chibi_value_test_borrowed_outer, ptr null })\n",
+            "  %borrowed.after = load i32, ptr @chibi_value_test_borrowed\n  %borrowed.changed = sub i32 %borrowed.after, 7\n",
+            "  %array.result = or i32 %value.result, %borrowed.result\n  %record.results = or i32 %array.result, %record.result\n",
+            "  %indexed.results = or i32 %record.results, %indexed.result\n  %result = or i32 %indexed.results, %borrowed.changed"]));
     if (os.WriteText(module, strings.Concatenate([text, borrowed_data, audit_text])) ||
         os.WriteText(start, link.Start(target.triple, false, true))) { return 2; }
     for (level in [int(0), 2]) {

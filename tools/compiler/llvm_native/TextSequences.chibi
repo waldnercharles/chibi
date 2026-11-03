@@ -1,6 +1,7 @@
 package llvm_native
 
 import abi "project:native_abi"
+import strings "core:strings"
 
 TextSequenceOperation :: (op: int) -> bool { return op == TextRange || op == TextClone; }
 TextSequenceValid :: (records: Record[], fields: int[], slots: int[], item: Instruction) -> bool {
@@ -34,12 +35,22 @@ TextCopiedBytes :: (pc: int, guarded: bool = false) -> string {
 }
 TextSequenceModule :: (code: Instruction[], guarded: bool = false) -> string {
     needed := false;
+    shared := false;
     for (item in code) {
-        if (TextSequenceOperation(item.op)) { needed = true; break; }
+        needed = needed || TextSequenceOperation(item.op);
+        shared = shared || (item.op == ValueCopy && item.type == abi.TextStorage) ||
+                            (item.op == ManagedNew && item.right == abi.TextStorage);
     }
-    if (!needed) { return ""; }
-    return format_text("define internal {} @chibi_text.copy(ptr %ctx, ptr %data0, i32 %n0) {{\np0:\n{}  ret {} %v0\n}}\n",
-                       abi.TextType(), TextCopiedBytes(0, guarded), abi.TextType());
+    if (!needed && !shared) { return ""; }
+    text := abi.TextType();
+    out := format_text("define internal {} @chibi_text.copy(ptr %ctx, ptr %data0, i32 %n0) {{\np0:\n{}  ret {} %v0\n}}\n",
+                       text, TextCopiedBytes(0, guarded), text);
+    if (!shared) { return out; }
+    return strings.Concatenate([format_text("{}define internal {} @chibi_text.share(ptr %ctx, {} %value) {{\nentry:\n", out, text, text),
+        format_text("  %owner = extractvalue {} %value, 2\n  %borrowed = icmp eq ptr %owner, null\n  br i1 %borrowed, label %import, label %share\nshare:\n", text),
+        format_text("  call void @chibi_scalar.retain(ptr %owner)\n  ret {} %value\nimport:\n", text),
+        format_text("  %data = extractvalue {} %value, 0\n  %length = extractvalue {} %value, 1\n", text, text),
+        format_text("  %owned = call {} @chibi_text.copy(ptr %ctx, ptr %data, i32 %length)\n  ret {} %owned\n}}\n", text, text)]);
 }
 
 TextSequenceInstruction :: (item: Instruction, pc: int) -> string {

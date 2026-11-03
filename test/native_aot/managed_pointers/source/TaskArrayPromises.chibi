@@ -1,0 +1,124 @@
+package managed_array_promises
+
+Make :: (value: int) -> ^int { return &value; }
+Churn :: () { for index in 0..<3000 { discarded := Make(index); } }
+// This was the original pointer_array_result rejection kernel.
+Kernel :: () -> ^int[] { value := 7; yield; return [&value]; }
+Worker :: (value: int) -> ^int[] { saved := [Make(value), Make(value + 1)]; yield; return saved; }
+Ready :: () -> ^int[] { if false { yield } return [Make(31)]; }
+Pass :: (values: ^int[]) -> ^int[] { yield; return values; }
+Nested :: () -> ^int[] { values := [Make(23)]; return await Pass(values); }
+Empty :: () -> ^int[] { yield; return []; }
+Marker :: struct { pointer: ^int; }
+Envelope :: struct { values: ^int[]; label: string; marker: Marker; }
+Packed :: (value: int) -> Envelope {
+    saved: Envelope = {values: [Make(value)], label: format_text("batch{}", value), marker: {pointer: Make(value + 1)}};
+    yield;
+    return saved;
+}
+PassPacked :: (value: Envelope) -> Envelope { yield; Churn(); return value; }
+KeepPacked :: (value: Envelope) -> int { while true { yield } }
+Main :: () -> int {
+    original := Kernel();
+    kernel := await original;
+    if kernel is Cancelled { return 9; }
+    else { values := kernel; assert(values[0]^ == 7); }
+    pending := Worker(19);
+    alias := pending;
+    yield
+    yield
+    Churn();
+    joined := await pending;
+    if joined is Cancelled { return 1; }
+    else {
+        values := joined;
+        values[0] = Make(99);
+        values.append(Make(100));
+        Churn();
+        assert(values[0]^ == 99 && values[1]^ == 20 && values[2]^ == 100);
+    }
+    again := await alias;
+    if again is Cancelled { return 2; }
+    else { values := again; assert(length(values) == 2 && values[0]^ == 19); }
+    ready := Ready();
+    Churn();
+    immediate := await ready;
+    if immediate is Cancelled { return 3; }
+    else { values := immediate; assert(values[0]^ == 31); }
+    direct := await Worker(7);
+    Churn();
+    assert(direct[0]^ == 7);
+    nested := await Nested();
+    Churn();
+    assert(nested[0]^ == 23);
+    empty := await Empty();
+    assert(length(empty) == 0);
+    packed := Packed(61);
+    yield; yield; Churn();
+    packed_result := await packed;
+    if packed_result is Cancelled { return 4; }
+    else {
+        saved := packed_result;
+        yield; Churn();
+        local := saved.values;
+        local[0] = Make(99);
+        assert(saved.values[0]^ == 61 && saved.marker.pointer^ == 62 && saved.label == "batch61");
+        assert(local[0]^ == 99);
+    }
+    packed_again := await packed;
+    if packed_again is Cancelled { return 5; }
+    else { saved := packed_again; assert(saved.values[0]^ == 61); }
+    source := await Packed(81);
+    independent := PassPacked(source);
+    source = await Packed(91);
+    Churn();
+    independent_result := await independent;
+    if independent_result is Cancelled { return 6; }
+    else {
+        saved := independent_result;
+        assert(saved.values[0]^ == 81 && saved.marker.pointer^ == 82 && saved.label == "batch81");
+    }
+    assert(source.values[0]^ == 91);
+    cancelled_record := KeepPacked(source);
+    yield; Churn(); cancel cancelled_record
+    record_gone := await cancelled_record;
+    assert(record_gone is Cancelled);
+    for index in 0..<64 { orphan := Ready(); }
+    cancelled := Nested();
+    cancel cancelled
+    gone := await cancelled;
+    assert(gone is Cancelled);
+    return 0;
+}
+Broken :: () -> ^int[] {
+    saved := [Make(41)];
+    yield;
+    assert(false, "GC-array promise failure releases the pending owner");
+    return saved;
+}
+Failure :: () -> int {
+    ready := Ready();
+    packed := Packed(71);
+    joined := await ready;
+    if joined is Cancelled { return 1; }
+    else {
+        saved := joined;
+        owned := await packed;
+        if owned is Cancelled { return 2; }
+        else { record := owned; assert(record.values[0]^ == 71); }
+        Churn();
+        assert(saved[0]^ == 31);
+        assert(false, "completed GC-array promise failure releases both copies");
+    }
+    return 0;
+}
+ChildFailure :: () -> int {
+    ready := Ready();
+    joined := await ready;
+    if joined is Cancelled { return 1; }
+    else {
+        saved := joined;
+        failed := await Broken();
+        return saved[0]^ + length(failed);
+    }
+}

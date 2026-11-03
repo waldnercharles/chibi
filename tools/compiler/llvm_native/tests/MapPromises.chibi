@@ -1,0 +1,93 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+MapPromise :: (type: int, program: bool = true) -> native.Result {
+    code := RecordPromiseCode();
+    code[2] = Code(native.AwaitResult, native.RecordType, 1, 0, type, 0, 0);
+    code[8] = Code(native.Constant, type, 0, 0, 0, 0, 0);
+    code[9] = Code(native.Publish, type, 0, 0, 0, 0, 0);
+    functions := [Function(abi.IntStorage, 0, 0, 3, 0, 6, 0, 0), Function(type, 0, 3, 1, 6, 5, 0, 0)];
+    slots := [native.TaskType, native.RecordType, abi.IntStorage, type];
+    records: native.Record[] = [{first: 0, count: 2, identity: 0}];
+    fields := [abi.IntStorage, type];
+    if (program) {
+        return native.EmitProgram(abi.LinuxX64(), functions, [], slots, [], code, [], records, fields, [],
+            {file: "", directory: ""}, [], [], []);
+    }
+    return native.Emit(abi.LinuxX64(), functions, [], slots, [], code, [], records, fields, [],
+        {file: "", directory: ""}, [], [], [], false, 1);
+}
+@test
+MapPromisesCopyOnJoinAndReleaseTheTypedResult :: () {
+    type := native.MapOf(abi.IntStorage, abi.TextStorage);
+    text := Emitted(MapPromise(type));
+    assert(strings.Contains(text, format_text("%payload.copy2 = call {} @chibi_map.share", abi.MapType())));
+    assert(strings.Contains(text, format_text("store {} zeroinitializer, ptr %result0\n  call void @chibi_map.{}.drop", abi.MapType(), type)));
+    assert(!strings.Contains(text, format_text("@chibi_array.{}.drop", type)));
+    assert(strings.Contains(text, format_text("define internal void @chibi_map.{}.drop", type)));
+}
+@test
+MapPromiseAdmissionRetainsThePayloadAndOwnerBoundaries :: () {
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}];
+    layout := native.ValueLayouts(records, [native.PointerType]);
+    assert(native.TaskOwnedType([], native.ValueLayouts([], []), native.MapOf(abi.IntStorage, abi.TextStorage)));
+    for value in [native.PointerType, native.ViewType, native.TaskType, native.RecordType] {
+        assert(!native.TaskOwnedType(records, layout, native.MapOf(abi.IntStorage, value)));
+    }
+    Rejects(MapPromise(native.MapOf(abi.IntStorage, abi.TextStorage), false),
+        "native waiting frames cannot own managed values or pointers yet");
+}
+
+// Malformed lifetimes are validation input; no emitted control is executed.
+MapFrameBorrow :: (middle: native.Instruction[], parameter: bool = false) -> native.Result {
+    inner := native.MapOf(abi.IntStorage, abi.TextStorage);
+    outer := native.MapOf(abi.IntStorage, native.RecordType);
+    reference := native.RefType + inner;
+    worker := [Code(native.Constant, outer, 0, 0, 0, 0, 0),
+        Code(native.Save, outer, 0, 0, 0, 0, 0),
+        Code(native.LocalAddress, native.RefType + outer, 1, 0, 0, 0, 0),
+        Code(native.Constant, abi.IntStorage, 2, 0, 0, 0, 0),
+        Code(native.MapValueAddress, reference, 3, 1, 2, 1, i64(outer))];
+    worker.extend(middle);
+    worker.extend([Code(native.Suspend, 0, 0, 0, 0, 0, 0), Code(native.Constant, abi.IntStorage, 7, 0, 0, 0, 0),
+        Code(native.Publish, abi.IntStorage, 0, 7, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)]);
+    code := [Code(native.Constant, abi.IntStorage, 0, 0, 0, 0, 0),
+        Code(native.Publish, abi.IntStorage, 0, 0, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    code.extend(worker);
+    shape := Function(abi.IntStorage, 0, 1, 10, 3, length(worker), 0, 0);
+    shape.locals = 3;
+    parameters: int[] = [];
+    if (parameter) { shape.parameters = 1; parameters.append(reference); }
+    return native.EmitProgram(abi.LinuxX64(), [Function(abi.IntStorage, 0, 0, 1, 0, 3, 0, 0), shape], parameters,
+        [abi.IntStorage, outer, native.RefType + outer, abi.IntStorage, reference, inner, inner,
+         abi.IntStorage, abi.IntStorage, reference, outer],
+        [outer, reference, inner], code, [], [{first: 0, count: 1, identity: 0}], [inner], [],
+        {file: "", directory: ""}, [], [], []);
+}
+@test
+MapFrameReferencesKeepBackingLifetimesConfined :: () {
+    inner := native.MapOf(abi.IntStorage, abi.TextStorage);
+    outer := native.MapOf(abi.IntStorage, native.RecordType);
+    reference := native.RefType + inner;
+    Emitted(MapFrameBorrow([Code(native.Deref, inner, 4, 3, 0, 0, 0),
+        Code(native.MapLength, abi.IntStorage, 6, 4, 0, 0, i64(inner))]));
+    Emitted(MapFrameBorrow([Code(native.Deref, inner, 4, 3, 0, 0, 0),
+        Code(native.ValueCopy, inner, 5, 4, 0, 0, 0), Code(native.Suspend, 0, 0, 0, 0, 0, 0),
+        Code(native.MapLength, abi.IntStorage, 6, 5, 0, 0, i64(inner))]));
+    Emitted(MapFrameBorrow([Code(native.Suspend, 0, 0, 0, 0, 0, 0),
+        Code(native.Deref, outer, 9, 1, 0, 0, 0)]));
+    failure := "native waiting backing references require immediate canonical access";
+    Rejects(MapFrameBorrow([Code(native.Suspend, 0, 0, 0, 0, 0, 0),
+        Code(native.Deref, inner, 4, 3, 0, 0, 0)]), failure);
+    Rejects(MapFrameBorrow([Code(native.Deref, inner, 4, 3, 0, 0, 0),
+        Code(native.Suspend, 0, 0, 0, 0, 0, 0),
+        Code(native.MapLength, abi.IntStorage, 6, 4, 0, 0, i64(inner))]), failure);
+    Rejects(MapFrameBorrow([Code(native.Save, reference, 0, 3, 0, 1, 0),
+        Code(native.Suspend, 0, 0, 0, 0, 0, 0), Code(native.Local, reference, 8, 1, 0, 0, 0),
+        Code(native.Deref, inner, 4, 8, 0, 0, 0)]), failure);
+    Rejects(MapFrameBorrow([], true),
+        "native waiting parameters need scalar values; managed values and dependencies are not supported yet");
+}

@@ -248,9 +248,15 @@ TaskResultInstruction :: (item: Instruction, pc: int, testing: bool, owners: boo
         if (item.right == abi.TextStorage) {
             out = format_text("{}  %payload.owner{} = extractvalue {} {}, 2\n  call void @chibi_scalar.retain(ptr %payload.owner{})\n", out, pc, TypeName(item.right), payload, pc);
         } else if (ValueOwned(item.right, owners)) {
-            helper := "chibi_value";
-            if (item.right >= ArrayType) { helper = "chibi_array"; }
-            out = format_text("{}  %payload.copy{} = call {} @{}.{}.copy(ptr %ctx, {} {})\n", out, pc, TypeName(item.right), helper, item.right, TypeName(item.right), payload);
+            if (item.right >= MapType) {
+                // A join acquires the existing counted value. Physical map
+                // copying belongs to a later copy-on-write mutation.
+                out = format_text("{}  %payload.copy{} = call {} @chibi_map.share({} {})\n", out, pc, TypeName(item.right), TypeName(item.right), payload);
+            } else {
+                helper := "chibi_value";
+                if (item.right >= ArrayType) { helper = "chibi_array"; }
+                out = format_text("{}  %payload.copy{} = call {} @{}.{}.copy(ptr %ctx, {} {})\n", out, pc, TypeName(item.right), helper, item.right, TypeName(item.right), payload);
+            }
             payload = format_text("%payload.copy{}", pc);
         }
         out = format_text("{}  %joined{} = insertvalue {} %tagged{}, {} {}, 1\n", out, pc, type, pc, TypeName(item.right), payload);

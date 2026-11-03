@@ -2071,7 +2071,7 @@ ValueUses :: (code: Instruction[], records: Record[], fields: int[], owners: boo
         build.used.arrays[type - ArrayType] |= ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation;
     }
     for (type in promises) {
-        if (type >= RecordType && type < ArrayType) { ValueReach(&build, type, false, true); }
+        if ((type >= RecordType && type < ArrayType) || (type >= MapType && type < RefType)) { ValueReach(&build, type, false, true); }
     }
     for (item in code) {
         mapped := MapInstructionType(item);
@@ -5104,7 +5104,8 @@ MapUsed :: (item: Instruction) -> int {
 // typed helper dependency. Only the latter carries it directly in type.
 MapInstructionType :: (item: Instruction) -> int {
     if (MapOperation(item.op)) { return MapUsed(item); }
-    if ((item.op == ValueCopy || item.op == ValueDrop) && item.type >= MapType && item.type < RefType) { return item.type; }
+    if ((item.op == ValueCopy || item.op == ValueDrop || item.op == OwnerPin) && item.type >= MapType && item.type < RefType) { return item.type; }
+    if (item.op == AwaitResult && item.right >= MapType && item.right < RefType) { return item.right; }
     return 0;
 }
 // Whether an instruction names the context: it allocates, gives back, or ends

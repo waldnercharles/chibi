@@ -6,6 +6,13 @@
 @task_owner.original.allocate = internal global ptr null
 @task_owner.original.release = internal global ptr null
 
+; Read-only test seam for allocation growth assertions in source fixtures.
+define i64 @chibi_task_owner_allocations() {
+entry:
+  %total = load i64, ptr @task_owner.total
+  ret i64 %total
+}
+
 define internal ptr @task_owner.allocate(ptr %ctx, i64 %bytes) {
 entry:
   %total = load i64, ptr @task_owner.total

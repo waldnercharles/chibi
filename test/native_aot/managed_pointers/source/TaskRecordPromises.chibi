@@ -1,0 +1,61 @@
+package managed_record_promises
+
+Inner :: struct { pointer: ^int; stamp: int; }
+Outer :: struct { inner: Inner; enabled: bool; }
+Make :: (value: int) -> ^int { return &value; }
+Churn :: () { for index in 0..<3000 { discarded := Make(index); } }
+Value :: (value: int) -> Outer { return {inner: {pointer: Make(value), stamp: value}, enabled: true}; }
+Read :: (value: Outer) -> int { return value.inner.pointer^ + value.inner.stamp; }
+Worker :: (value: int) -> Outer { saved := Value(value); yield; return saved; }
+Ready :: () -> Outer { if false { yield } return Value(31); }
+Pass :: (value: Outer) -> Outer { yield; return value; }
+Nested :: () -> Outer { saved := Value(23); return await Pass(saved); }
+Main :: () -> int {
+    pending := Worker(19);
+    alias := pending;
+    yield
+    yield
+    Churn();
+    first := await pending;
+    if first is Cancelled { return 1; }
+    else {
+        saved := first;
+        saved.enabled = false;
+        Churn();
+        assert(Read(saved) == 38 && !saved.enabled);
+    }
+    again := await alias;
+    if again is Cancelled { return 2; }
+    else { assert(again.enabled && Read(again) == 38); }
+    completed := Ready();
+    Churn();
+    immediate := await completed;
+    if immediate is Cancelled { return 3; }
+    else { assert(Read(immediate) == 62); }
+    direct := await Worker(7);
+    Churn();
+    assert(Read(direct) == 14);
+    nested := await Nested();
+    Churn();
+    assert(Read(nested) == 46);
+    cancelled := Nested();
+    cancel cancelled
+    joined := await cancelled;
+    assert(joined is Cancelled);
+    for index in 0..<32 {
+        task := Worker(index);
+        yield
+        Churn();
+        result := await task;
+        if result is Cancelled { return 4; }
+        else { assert(Read(result) == index * 2); }
+    }
+    return 0;
+}
+Broken :: () -> Outer {
+    value := await Worker(41);
+    yield
+    assert(Read(value) == 0, "nested record promise failure preserves roots");
+    return value;
+}
+Failure :: () -> int { failed := Broken(); yield; await failed; return 0; }

@@ -1,0 +1,49 @@
+package llvm_native_calls
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+RecordElementModule :: (mode: i64, invalid: int) -> native.Result {
+    record := native.RecordType;
+    array := native.ArrayType + record;
+    inner := native.ArrayType + abi.IntStorage;
+    output := native.RefType + record;
+    if (invalid == 1) { output = native.RefType + abi.IntStorage; }
+    index_type := abi.IntStorage;
+    if (invalid == 2) { index_type = abi.BoolStorage; }
+    address := Code(native.ArrayValueAddress, output, 3, 1, 2, array, mode);
+    if (invalid == 3) { address.left = 0; }
+    fields := [abi.TextStorage, inner];
+    if (invalid == 4) { fields[0] = native.MapOf(abi.IntStorage, native.ArrayType + native.PointerType); }
+    if (invalid == 5) { fields = [inner]; output = native.RefType + inner; address.type = output; }
+    code := [Code(native.Check,0,0,0,0,0,0),
+             Code(native.Constant,array,0,0,0,0,0),
+             Code(native.Save,array,0,0,0,0,0),
+             Code(native.LocalAddress,native.RefType + array,1,0,0,0,0),
+             Code(native.Constant,index_type,2,0,0,0,0), address,
+             Code(native.Constant,abi.IntStorage,4,0,0,0,0),
+             Code(native.Publish,abi.IntStorage,0,4,0,0,0),Code(native.Return,0,0,0,0,0,0)];
+    function: native.Function = {result:abi.IntStorage,first_parameter:0,parameters:0,first_slot:0,slots:5,
+        first_local:0,locals:1,first_code:0,code:length(code),first_argument:0,arguments:0};
+    return native.Emit(abi.LinuxX64(),[function],[],[array,native.RefType + array,index_type,output,abi.IntStorage],
+        [array],code,[],[{first:0,count:length(fields),identity:0}],fields,[],{file:"",directory:""},[],[],[],false,1);
+}
+@test
+RecordElementReferencesSeparateObservationFromCanonicalMutation :: () {
+    for mode in [i64(native.ArrayAddressBracket),i64(native.ArrayAddressMethod),i64(native.ArrayAddressObserve)] {
+        text := Emitted(RecordElementModule(mode,0));
+        assert(strings.Contains(text,"store ptr %outer_at5, ptr %s3"));
+        unique := strings.Contains(text,"%outer_unique5 = call");
+        if (mode == i64(native.ArrayAddressObserve)) { assert(!unique); }
+        else { assert(unique); }
+    }
+}
+@test
+RecordElementReferencesRejectWrongShapeIndexOwnerAndMode :: () {
+    for kind in 1..<6 {
+        Rejects(RecordElementModule(i64(native.ArrayAddressObserve),kind),"native nested array reference differs from its wrapper");
+    }
+    for mode in [i64(-1),i64(native.ArrayAddressObserve + 1),i64(2147483648)] {
+        Rejects(RecordElementModule(mode,0),"native nested array reference differs from its wrapper");
+    }
+}

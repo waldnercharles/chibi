@@ -1,0 +1,42 @@
+package nested_map_copies
+foreign { chibi_value_test_allocations :: () -> i64 }
+Main :: () -> int {
+    text := text_from_bytes([u8(111), 108, 100]);
+    values: [int:[int:string]] = [1:[2:text]];
+    rows: [int:int][] = [[1:7]];
+    before := chibi_value_test_allocations();
+    sum := 0;
+    for index in 0..<4096 {
+        snapshot := values;
+        inner := snapshot[1];
+        copied_rows := rows;
+        row := copied_rows[0];
+        sum += text_byte_length(inner[2]) + row[1];
+    }
+    copy_calls := chibi_value_test_allocations();
+    assert(sum == 40960);
+    assert(copy_calls == before, "nested map copies and payload reads share owners without allocation");
+    changed := values;
+    inner := changed[1];
+    inner[2] = "new";
+    changed[1] = inner;
+    completed := chibi_value_test_allocations();
+    assert(completed - copy_calls == 2, "one modified leaf detaches each shared map exactly once");
+    assert(values[1][2] == "old" && changed[1][2] == "new");
+    direct := values;
+    map_before := chibi_value_test_allocations();
+    direct[1][2] = "direct";
+    map_changed := chibi_value_test_allocations();
+    assert(map_changed - map_before == 2, "canonical nested map write detaches its two shared owners once");
+    assert(direct[1][2] == "direct" && values[1][2] == "old");
+    updated_rows := rows;
+    array_before := chibi_value_test_allocations();
+    updated_rows[0][1] += 2;
+    array_changed := chibi_value_test_allocations();
+    assert(array_changed - array_before == 2, "canonical array-map write detaches the shared array and map once");
+    for (index in 0..<4096) { updated_rows[0][1] += 1; }
+    array_finished := chibi_value_test_allocations();
+    assert(array_finished == array_changed, "unique nested mutation does not retain temporary aliases or copy the root");
+    assert(updated_rows[0][1] == 4105 && rows[0][1] == 7);
+    return 0;
+}

@@ -24,7 +24,7 @@ done
 sh "$root/test/native_aot/map_programs/run.sh" "$compiler" "$llvm" "$work/programs"
 # Compile authored source once, then run its emitted module through the same
 # poisoned allocator and zero-outstanding-allocation check as the facts probes.
-for name in Ownership Effects Receivers ManagedRecords StringEffects ArrayPayload ArrayForeign Compound ArrayBacked ArrayValues Unions Optionals ArrayForeignPlace ForeignLoans ArrayCompound ArrayPlaces; do
+for name in Ownership Effects Receivers ManagedRecords StringEffects ArrayPayload ArrayForeign Compound ArrayBacked ArrayValues Unions Optionals ArrayForeignPlace ForeignLoans ArrayCompound ArrayPlaces NestedContainers NestedPlaces; do
     project=$work/source-project/$name
     mkdir -p "$project"
     cp "$root/test/native_aot/map_programs/$name.chibi" "$project/$name.chibi"

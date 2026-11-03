@@ -8,6 +8,8 @@ foreign libc {
     access :: (path: cstring, mode: i32) -> i32
 }
 Link :: struct { value: int; next: ^Link?; }
+Branch :: struct { head: ^Link; stamp: int; }
+Aggregate :: struct { branch: Branch; valid: bool; }
 Cycle :: (value: int) -> ^Link {
     first: Link = {value: value, next: nil};
     second: Link = {value: 5, next: nil};
@@ -27,20 +29,39 @@ Mark :: (path: string, text: string) {
 }
 Allowed :: () -> bool { return access("allow-managed-record", 0) == 0; }
 Done :: () { Mark("managed-record-done", "old42"); }
+Promise :: () -> ^Link { if false { yield } return Cycle(37); }
+NestedPromise :: () -> Aggregate {
+    if false { yield }
+    return {branch: {head: Cycle(53), stamp: 11}, valid: true};
+}
 Worker :: () -> int {
-    pointer := Cycle(37);
+    promised := Promise();
+    aggregate := NestedPromise();
     while !Allowed() { yield }
     Churn();
-    next := pointer.next;
-    if next != nil {
-        total := pointer.value + next.value;
-        assert(total == 42, "old generation keeps its typed cyclic record payload");
-    } else { assert(false, "old generation loses no record links"); }
-    Done();
+    record := await aggregate;
+    if record is Cancelled { return 2; }
+    else {
+        saved := record;
+        head := saved.branch.head;
+        assert(saved.valid && saved.branch.stamp == 11 && head.value == 53, "old nested record promise keeps its graph through reload");
+    }
+    joined := await promised;
+    if joined is Cancelled { return 1; }
+    else {
+        pointer := joined;
+        next := pointer.next;
+        if next != nil {
+            total := pointer.value + next.value;
+            assert(total == 42, "old generation keeps its typed cyclic record payload");
+        } else { assert(false, "old generation loses no record links"); }
+        Done();
+    }
     return 0;
 }
 Cancelled :: () -> int {
     pointer := Cycle(19);
+    aggregate := NestedPromise();
     while true { yield }
 }
 Main :: () -> int {

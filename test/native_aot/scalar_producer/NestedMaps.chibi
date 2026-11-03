@@ -1,0 +1,51 @@
+package native_driver
+
+NestedMapsProjection :: () {
+    rows := Produced("package nested_maps\nMain::()->int{groups:[int:[int:int]]=[:];return groups[1][2];}\n");
+    assert(rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+    get := -1;
+    for (row, index in rows) {
+        if (row.kind == facts.MapRow && row.value == facts.MapGetWrapped) { get = index; }
+    }
+    assert(get >= 0);
+    // Sequence typing can intern unused carriers too. Mutate the exact
+    // result record of this get, rather than a different unused declaration.
+    member := -1;
+    type := facts.RecordType;
+    for (row, index in rows) {
+        if (row.kind != facts.RecordRow && row.kind != facts.UnionRow) { continue; }
+        if (type == rows[get].type) { member = index + 1; }
+        type += 1;
+    }
+    assert(member >= 0 && rows[member].type >= facts.MapType);
+    mismatch := "scalar map operation differs from its operands";
+    RejectChanged(rows, [Changed(get, TypeField, i64(facts.IntType))], mismatch);
+    RejectChanged(rows, [Changed(get, CountField, 1)], mismatch);
+    RejectChanged(rows, [Changed(get, ValueField, i64(facts.MapGetOptional))], mismatch);
+    RejectChanged(rows, [Changed(member, TypeField, i64(facts.ArrayType + facts.IntType))], mismatch);
+    // A same-shaped carrier cannot change the outer map's key contract.
+    mapped := int(rows[get].literal);
+    wrong_key := mapped - (mapped - facts.MapType) % 16 + facts.BoolType;
+    RejectChanged(rows, [Changed(get, LiteralField, i64(wrong_key))], mismatch);
+}
+
+NestedMapPlacesProjection :: () {
+    rows := Produced("package nested_maps\nMain::()->int{rows:[int:int][]=[[:]];rows[0][1]=2;delete rows[0][1];groups:[int:[int:int]]=[1:[:]];groups[1][2]=3;delete groups[1][2];return 0;}\n");
+    assert(rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+    found := 0;
+    mismatch := "scalar map operation differs from its operands";
+    for (row, index in rows) {
+        if (row.kind != facts.MapRow || row.value < facts.ArrayMapSet || row.value > facts.NestedMapDelete) { continue; }
+        found += 1;
+        RejectChanged(rows, [Changed(index, LiteralField, 1)], mismatch);
+        RejectChanged(rows, [Changed(index, CountField, i64(row.count + 1))], mismatch);
+        RejectChanged(rows, [Changed(index, TypeField, i64(facts.IntType))], mismatch);
+        wrong := facts.ArrayMapSet;
+        if (row.value == facts.ArrayMapSet) { wrong = facts.NestedMapSet; }
+        if (row.value == facts.ArrayMapDelete) { wrong = facts.NestedMapDelete; }
+        RejectChanged(rows, [Changed(index, ValueField, i64(wrong))], mismatch);
+    }
+    assert(found == 4);
+}

@@ -13,9 +13,11 @@ reordering the table or inserting an unrelated type preserves existing hashes.
 The compiler projects checked types into this graph in
 `package_compiler/ScalarNativeSchemas.chibi`. The preparation function fills the
 private `TypeDecl.native_schema` field and preserves ordinary `.layout` hashes,
-type identities and pointer tags. Constructors initialize the extra eight bytes
-to zero. Preparation is not activated in normal compilation until its aggregate
-view consumer is admitted.
+type identities and existing pointer tags. Constructors initialize the extra
+eight bytes to zero. The final native projection prepares schemas when an
+aggregate array cell or view signature needs them. Owned aggregate array cells
+use a separate tag domain containing this complete schema; primitive and string
+array cells keep their established identities.
 
 Closure uses at most 128 KiB for 1024 nodes and 16,777,216 word unions. The
 canonical hash scan visits each reachable definition once per root. Compiler

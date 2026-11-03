@@ -1,0 +1,9 @@
+package record_place_category
+import testing "core:testing"
+Entry :: struct { values: int[]; }
+@test
+ElementPlaceIsNotAReadBoundsFailure :: () {
+    testing.ExpectFailure(testing.Failure.IndexOutOfRange);
+    rows: Entry[] = [];
+    rows[0].values[0] = 9;
+}

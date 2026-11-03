@@ -85,7 +85,7 @@ aliases, value copies, variable element writes/append and canonical foreign
 byte-buffer writes. Inline pointer-bearing record arrays and array-backed
 record cells still need their respective tracing and place lowering.
 
-Scalar/string pointer-backed views use a 32-byte cell/start/count descriptor.
+Pointer-backed views use a 32-byte cell/start/count descriptor.
 They follow replacement and growth of that cell while retaining a fixed window;
 ordinary array copies, view clones and slices keep their value semantics.
 Direct views and their optional union slots are traced. The source proof runs
@@ -97,7 +97,7 @@ probes also require zero live allocations. String reads acquire an independent
 text owner before later callbacks can replace the backing. Writes preserve the
 incoming owner before releasing the old element; clones and slices copy through
 the ordinary typed array lifecycle, including each text owner.
-Authored unions with one empty variant and one scalar/string view payload reuse
+Authored unions with one empty variant and one admitted view payload reuse
 the same traced tag/window layout.
 Their source proof covers returned union-only roots, owner replacement, switch
 and `is` bindings, and either tag order. Pattern bindings remain read-only.
@@ -109,10 +109,18 @@ Bracket slices and clones independently copy their bytes. The source proof
 checks returned temporaries, callback evaluation order, strict bounds, and
 4096 counted windows without a new backing allocation per window, and 4096
 uncounted windows with an independently owned copy for each.
-Ordinary source already rejects view fields in records. Views over records,
-nested arrays or union elements are
-working ordinary forms still awaiting native support. View containers, retained
-views and suspended view frames also remain outside this admission.
+Pointer-free owned records, unions and nested arrays can also be view elements.
+A read acquires its nested owners before subsequent callbacks; a write owns the
+incoming element before detaching or releasing the old value. Clone and slice
+use the same typed array lifecycle. Every view operation carries its expected
+full element schema. The schema graph includes reachable union definitions and
+preserves identities under unrelated insertion and local record reindexing.
+The two-image proof checks compatible access, changed-schema rejection and old
+callback-image leases at O0/O2. Source ownership proofs include the original
+nested-array/union lending cases, view-only roots and callback collection.
+Ordinary source already rejects view fields in records. GC-bearing elements,
+view containers, retained views and suspended view frames remain outside this
+admission.
 
 Optional numeric/bool values and flat numeric/bool record payloads can share
 managed cells. The optional tag and payload move together; nil replacement
@@ -163,3 +171,32 @@ import, so a freestanding Linux program can use the null-accessor path without
 libc. `weak.sh` executes that path at O0/O2; the directory provider suite checks
 that release callbacks really clobber error state before the OS error capture.
 `growth.sh` bounds LLVM growth for 100 and 1000 live pointer-array locals.
+
+Pointer and nullable-pointer promises use one 32-byte persistent root node for
+the typed result slot. Completion unlinks local roots but keeps that node until
+the last observer destroys the frame. Inline awaits transfer the pointer before
+clearing the child slot and destroying the child; collection can resume only
+after the caller's root is initialized. The source proof includes collection
+before the first join, repeated joins, successful nil versus cancellation, and
+old-generation promises read after incoming-generation allocation.
+
+A pointer parameter whose body can yield or await captures a managed cell.
+The existing forwarding graph propagates this rule through synchronous callers,
+so no borrowed stack reference survives a task's suspension. The source proof
+keeps captures alive after their spawning caller returns and cancels them under
+allocation pressure. Borrowed native reference parameters, pointer-array
+results and view promises remain closed.
+
+Waiting functions may read or replace a plain optional cell through an immediate
+managed-address access. The temporary record reference cannot enter a local,
+call argument or later statement, and control flow cannot enter its read or
+write/readback chain. Borrowed record-reference parameters remain rejected.
+
+Pointer-only nested record promises reuse the same typed result slot and
+persistent root. Child-record trace helpers follow initialized inline fields;
+record copies share pointer identities while scalar fields retain value
+semantics. The source proof covers repeated joins, by-value waiting parameters,
+eager completion, cancellation and propagated failures. Reload keeps an old
+nested promise's cyclic graph alive while the incoming generation uses a
+changed cell layout. Pointer-bearing records with backing owners, arrays, maps or views
+remain outside this task-result domain.

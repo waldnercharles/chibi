@@ -7,7 +7,34 @@ following CI merge `a76ea8005`. Further work is composed on
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
-## Current composition: 2ec95de3f
+## Current composition: 516e00318
+
+Deferred callback collection and stable live-owner roots are integrated. The
+collector preserves OS error state around a requested collection; coroutine
+owner-table addresses are initialized after the frame is selected. The exact
+`b5236dc4f` composition builds in 20.20 seconds, passes 490 compiler tests in
+23.34, the full managed source/collector/boundary suite in 130.18, and the map
+suite at O0/O2 with poisoned allocation in 91.48. Its receipt is
+`/private/tmp/chibi-gc-composed-proof/receipt.json`.
+
+The newer `516e00318` adds LLVM floating absolute value, the precise directory
+callback regression and the schema preparation API for aggregate views. Schema
+preparation remains inactive until its first runtime consumer is integrated.
+This source reproduces between macOS stages two and three, SHA-256
+`e495d314e9f5f7b505fa8bddef2890771e2f9adab19ee86cc27a58ba73e8457d`,
+after 19.83 and 20.72 seconds. All 496 compiler tests pass in 26.86 seconds;
+the directory suite, including OS error capture across actual collection
+callbacks, passes at O0/O2 in 9.84. Evidence is in
+`/private/tmp/chibi-gc-schema-proof/receipt.json`.
+
+Windows-only run `41600184879` validates `f5622c655` with the verified pinned
+bootstrap. Windows job `125796823615` started four seconds after dispatch and
+passed artifact identity and LLVM checks; its compiler and product proofs are
+still running. Other platforms are deliberately skipped in this route.
+Managed task promises, aggregate views and the remaining canonical nested
+collection writes retain active owners. VM deletion remains held.
+
+### Earlier composition: 2ec95de3f
 
 Source map copies now share counted backing, with canonical mapped-array
 mutation and foreign-buffer loans. Nested map ownership helpers and array-held
@@ -54,10 +81,10 @@ failures and preserves all 441 original passing names. All sample source Git
 blobs are unchanged. Only `collections/view_element_lending/facts.Calls` remains
 uncompiled; aggregate view ownership is in progress. The inventory and original
 foreign/font setup receipts are in `/private/tmp/chibi-original-nine-matrix`.
-Checked directory enumeration still needs the pending GC poll's OS-error
-preservation proof and hosted Windows execution. Full callback routing,
-safe-point polls and managed task promises are being proved together before
-integration.
+The directory poll's OS-error preservation proof is now integrated and passes
+locally as recorded above; hosted Windows execution remains required. Managed
+task promises are being composed with the integrated callback routing and
+safe-point polls.
 
 ### Published-seed chain at 72598f131
 
@@ -113,10 +140,10 @@ passes 263 tests in the four affected sample families. Seven cases remain
 uncompiled; all are accepted by the ordinary compiler. Strict array ranges and
 aggregate views have active owners. Nested map ownership, mapped foreign
 buffers, managed task results and void C callback adapters are also in progress.
-The collector callback foundation is composed: the heap is 64 bytes and its
-family ABI is 3. Complete callback routing and safe-point polls are still in
-progress; the foundation alone does not fix the reproduced collection-reentry
-failure. Native instruction IDs 107/108 remain reserved for those polls.
+The collector heap is 64 bytes and its family ABI is 3. Full callback routing
+and safe-point polls now pass the combined runtime proof above. Native
+instructions 107/108 service deferred collection, 111 tracks stable owners,
+and 112 emits floating absolute value; 109/110 retain text range/copy behavior.
 
 The C/VM/recovery deletion candidate remains held until these native behavior
 replacements and supported-platform products pass. Its independent Driver and
@@ -695,10 +722,14 @@ Further integrated changes and evidence:
   waiting void Main at O0/O2, selected void tests and a Linux shared generation
   execute successfully. Attribute checks passed in 1.63 s.
 
-Remaining runtime consumers include `application.*`, `program.open/update/call`
-and browser compilation/execution. The current WebAssembly JIT still delegates
-some operations to VM stepping. These need working replacements before their
-VM support, APIs or recovery assets can be deleted.
+That earlier checkpoint still had runtime consumer migrations open. The current
+browser closure audit at `202201afb` against held retirement `9ab4c0c8d` retains
+the LLVM asset compiler facade, independent Wasm program isolation test, clock
+adapter and Studio storage tests. The old C browser launcher was already
+retired in `4af5f942d` (`docs/c-test-verdicts.md`). General Wasm tasks and managed
+pointers remain explicitly rejected. Studio's VM-dependent editor code requires
+SDK packages archived before this deletion candidate, so this work does not
+establish a working VM-free Studio browser editor.
 
 At the next checkpoint, `975dbd72d`, the optional-value fix and scoped map-alias
 fix are integrated. Its compiler source reproduced identical macOS arm64

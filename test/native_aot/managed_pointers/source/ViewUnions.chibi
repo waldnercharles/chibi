@@ -1,5 +1,10 @@
 package view_unions
 
+// This declared payload needs its schema even without an aggregate array
+// factory. Only the empty variant is materialized by Main.
+OwnedPair :: union { Row(xs: int[]) | Empty }
+Unmaterialized :: union { Missing | Present(window: view OwnedPair[]) }
+
 Window :: union { Missing | Present(window: view int[]) }
 Reverse :: union { Present(window: view bool[]) | Missing }
 
@@ -58,6 +63,7 @@ ReverseTag :: () -> bool {
     return false;
 }
 Main :: () -> int {
+    unmaterialized := Unmaterialized.Missing;
     changed := ChangedOwner();
     assert(changed == 78);
     returned := ReturnedRoot();

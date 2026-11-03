@@ -7,7 +7,9 @@ ViewOperands :: (row: facts.Row) -> int {
         case facts.ViewMake: return 3;
         case facts.ViewLength: return 1;
         case facts.ViewGet: return 2;
+        case facts.ViewGetPlace: return 2;
         case facts.ViewSet: return 3;
+        case facts.ViewSetPlace: return 3;
         case facts.ViewClone: return 1;
         case facts.ViewSlice: return 3;
         case: return -1;
@@ -17,7 +19,8 @@ ValidView :: (rows: facts.Row[], records: int[], row: facts.Row, stack: int[], b
     op := facts.ViewOperation(row.value);
     element := facts.ViewElement(row.value);
     count := ViewOperands(row);
-    if ((!Scalar(element) && element != facts.StringType) || count < 0 || row.count != count || row.name != "" ||
+    if ((!Scalar(element) && element != facts.StringType &&
+         (element < facts.RecordType || element >= facts.ArrayType || element - facts.RecordType >= length(records))) || count < 0 || row.count != count || row.name != "" || row.literal == 0 ||
         base < 0 || base > length(stack) - count) { return false; }
     first := facts.ViewType;
     if (op == facts.ViewMake) { first = facts.PointerType; }
@@ -25,18 +28,17 @@ ValidView :: (rows: facts.Row[], records: int[], row: facts.Row, stack: int[], b
     if (count >= 2 && stack[base + 1] != facts.IntType) { return false; }
     if (count == 3) {
         last := facts.IntType;
-        if (op == facts.ViewSet) { last = element; }
+        if (op == facts.ViewSet || op == facts.ViewSetPlace) { last = element; }
         if (stack[base + 2] != last) { return false; }
     }
     if (op == facts.ViewMake) {
         return row.literal != 0 && OptionalPayloadType(rows, records, row.type) == facts.ViewType;
     }
-    if (op == facts.ViewGet || op == facts.ViewSet) {
+    if (op == facts.ViewGet || op == facts.ViewSet || op == facts.ViewGetPlace || op == facts.ViewSetPlace) {
         type := element;
-        if (op == facts.ViewSet) { type = facts.IntType; }
-        return row.type == type && (row.literal == 0 || row.literal == 1);
+        if (op == facts.ViewSet || op == facts.ViewSetPlace) { type = facts.IntType; }
+        return row.type == type;
     }
-    if (row.literal != 0) { return false; }
     if (op == facts.ViewLength) { return row.type == facts.IntType; }
     if (op == facts.ViewClone) { return row.type == facts.ArrayType + element; }
     return op == facts.ViewSlice && OptionalPayloadType(rows, records, row.type) == facts.ArrayType + element;

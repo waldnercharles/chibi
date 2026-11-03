@@ -1139,17 +1139,36 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
     return "";
 }
 
-// Whether the Array row at `row` of the operands of the statement at `at`,
-// which end before `last`, reads operands of its types from `stack`, none
-// below `floor`. A change of an array is the last operand of an Assign to the
-// variable its first operand reads, or the second last, before the Update of
-// the array's field of that variable's record.
+// The only reference-valued prefix admitted for a projected mutation is its
+// assigned root, followed by inline field references. Arguments are already
+// captured values, so no callback can invalidate that chain before writeback.
+ArrayReferenceMember :: (rows: facts.Row[], records: int[], at: int, row: int) -> int {
+    if (rows[at].kind != facts.AssignRow || row <= at + 2) { return 0; }
+    first := rows[at + 1];
+    if (first.kind != facts.RefRow || first.type != rows[at].type || first.value != rows[at].value || first.literal != 0) { return 0; }
+    parent := first.type;
+    next := at + 2;
+    while (next < row && rows[next].kind == facts.FieldReferenceRow) {
+        field := rows[next];
+        if (RecordMemberType(rows, records, parent, i64(field.value)) != field.type) { return 0; }
+        parent = field.type;
+        next += 1;
+    }
+    if (next == at + 2 || Element(records, parent) == 0 || next + rows[row].count - 1 != row) { return 0; }
+    for (index in next..<row) { if (rows[index].kind != facts.ReadRow) { return 0; } }
+    return parent;
+}
 ArrayPlaceMember :: (rows: facts.Row[], records: int[], operand: facts.Row) -> int {
     if (operand.literal == i64(facts.NestedArrayPlace)) { return NestedArrayMember(rows, records, operand.type); }
     if (operand.literal == i64(facts.OptionalArrayPlace)) { return OptionalPayloadType(rows, records, operand.type); }
     if (operand.literal != 0) { return MemberType(rows, records, operand.type, int(operand.literal) - 1); }
     return operand.type;
 }
+// Whether the Array row at `row` of the operands of the statement at `at`,
+// which end before `last`, reads operands of its types from `stack`, none
+// below `floor`. A change of an array is the last operand of an Assign to the
+// variable its first operand reads, or the second last, before the Update of
+// the array's field of that variable's record.
 ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, operand: facts.Row, stack: int[],
                floor: int) -> string {
     consumed := ArrayOperands(operand);
@@ -1165,13 +1184,15 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
     if (placed) {
         optional := operand.literal == i64(facts.OptionalArrayPlace);
         nested := operand.literal == i64(facts.NestedArrayPlace);
-        if (operand.literal != 0 && !nested) {
+        referenced := operand.literal == i64(facts.ArrayReferencePlace);
+        if (operand.literal != 0 && !nested && !referenced) {
             mismatch = format_text("{} at {}..{} (parent {}, field {}, operator {}): {}", mismatch,
                 operand.start, operand.end, operand.type, operand.literal - 1, operator,
                 strings.Slice(rows[0].text, operand.start, operand.end - operand.start));
             if (!optional && (operand.literal < 1 || operand.literal > i64(2147483647))) { return mismatch; }
         }
         field := ArrayPlaceMember(rows, records, operand);
+        if (referenced) { field = ArrayReferenceMember(rows, records, at, row); }
         element := Element(records, field);
         assigned := rows[at].kind == facts.AssignRow && rows[at].type == operand.type &&
             rows[at + 1].kind == facts.RefRow && rows[at + 1].type == operand.type &&
@@ -1184,8 +1205,10 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
             rows[at + 2].type == facts.ReferenceType + operand.type &&
             rows[at + 3].kind == facts.ReadRow && rows[at + 3].type == element;
         if (optional && (operator != facts.ArraySet || (!Scalar(element) && element != facts.StringType))) { return mismatch; }
+        receiver := operand.type;
+        if (referenced) { receiver = field; }
         if ((!ArrayChanges(operator) && operator != facts.ArrayResize) || element == 0 ||
-            stack[base] != facts.ReferenceType + operand.type || base != 0 || row != last - 1 ||
+            stack[base] != facts.ReferenceType + receiver || base != 0 || row != last - 1 ||
             (!assigned && !borrowed)) { return mismatch; }
         argument := base + 1;
         if (nested) {
@@ -2994,6 +3017,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             // A while loop's condition runs on each pass.
             start := length(body);
             stack: int[] = [];
+            published_place := false;
             // Fresh arrays this statement's rows read and no longer need.
             pending: int[] = [];
             // The slots that read an owning variable's array, and the variables;
@@ -3728,8 +3752,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     base := length(stack) - ArrayOperands(operand);
                     root := stack[base];
                     nested := operand.literal == i64(facts.NestedArrayPlace);
-                    fielded := operand.literal != 0 && !nested;
+                    referenced := operand.literal == i64(facts.ArrayReferencePlace);
+                    fielded := operand.literal != 0 && !nested && !referenced;
                     member := ArrayPlaceMember(rows, declared, operand);
+                    if (referenced) { member = ArrayReferenceMember(rows, declared, at, index); }
                     array := NativeType(member);
                     element := member - facts.ArrayType;
                     op := operand.value;
@@ -3828,10 +3854,27 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     // Resize returns an independent backing rather than
                     // consuming its input, unlike the in-place operations.
                     if (op == facts.ArrayResize) { body.append(Giving(array, current)); }
-                    body.append(Op(native.Poke, array, 0, address, changed, 0));
                     extra += 2;
-                    item = Op(native.Deref, type, slot, root, 0, 0);
-                    retained_record = fielded;
+                    if (referenced && SortedIndex(retained_variables, rows[at].value) < 0) {
+                        // Poke already changes the canonical variable. No full
+                        // root value is needed: copying it would visit every
+                        // sibling owner for a single leaf mutation.
+                        published_place = true;
+                        slots[shape.first_slot + slot] = native.RefType + array;
+                        item = Op(native.Poke, array, 0, address, changed, 0);
+                    } else {
+                        body.append(Op(native.Poke, array, 0, address, changed, 0));
+                        if (referenced) {
+                            // Direct retained source places remain gated, but
+                            // public facts still publish their whole state.
+                            root = slot + 1 + extra;
+                            slots.append(native.RefType + type);
+                            body.append(Op(native.LocalAddress, native.RefType + type, root, places[rows[at].value], 0, 0));
+                            extra += 1;
+                        }
+                        item = Op(native.Deref, type, slot, root, 0, 0);
+                        retained_record = fielded || referenced;
+                    }
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.ArrayRow) {
                     base := length(stack) - ArrayOperands(operand);
@@ -4404,6 +4447,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 }
             }
             fresh = leftover;
+            if (published_place) {
+                // The canonical leaf is already stored. Preserve ordinary
+                // temporary cleanup above and the surrounding Scope below.
+                at = first + row.count;
+                continue;
+            }
             if (MapIterated(row)) {
                 // A traversal saves one descriptor. A fresh temporary or a
                 // producer's snapshot owns it until every exit leaves the loop.

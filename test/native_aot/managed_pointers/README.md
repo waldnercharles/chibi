@@ -78,7 +78,7 @@ aliases, value copies, variable element writes/append and canonical foreign
 byte-buffer writes. Inline pointer-bearing record arrays and array-backed
 record cells still need their respective tracing and place lowering.
 
-Scalar/string pointer-backed views use a 32-byte cell/start/count descriptor.
+Pointer-backed views use a 32-byte cell/start/count descriptor.
 They follow replacement and growth of that cell while retaining a fixed window;
 ordinary array copies, view clones and slices keep their value semantics.
 Direct views and their optional union slots are traced. The source proof runs
@@ -90,7 +90,7 @@ probes also require zero live allocations. String reads acquire an independent
 text owner before later callbacks can replace the backing. Writes preserve the
 incoming owner before releasing the old element; clones and slices copy through
 the ordinary typed array lifecycle, including each text owner.
-Authored unions with one empty variant and one scalar/string view payload reuse
+Authored unions with one empty variant and one admitted view payload reuse
 the same traced tag/window layout.
 Their source proof covers returned union-only roots, owner replacement, switch
 and `is` bindings, and either tag order. Pattern bindings remain read-only.
@@ -102,10 +102,18 @@ Bracket slices and clones independently copy their bytes. The source proof
 checks returned temporaries, callback evaluation order, strict bounds, and
 4096 counted windows without a new backing allocation per window, and 4096
 uncounted windows with an independently owned copy for each.
-Ordinary source already rejects view fields in records. Views over records,
-nested arrays or union elements are
-working ordinary forms still awaiting native support. View containers, retained
-views and suspended view frames also remain outside this admission.
+Pointer-free owned records, unions and nested arrays can also be view elements.
+A read acquires its nested owners before subsequent callbacks; a write owns the
+incoming element before detaching or releasing the old value. Clone and slice
+use the same typed array lifecycle. Every view operation carries its expected
+full element schema. The schema graph includes reachable union definitions and
+preserves identities under unrelated insertion and local record reindexing.
+The two-image proof checks compatible access, changed-schema rejection and old
+callback-image leases at O0/O2. Source ownership proofs include the original
+nested-array/union lending cases, view-only roots and callback collection.
+Ordinary source already rejects view fields in records. GC-bearing elements,
+view containers, retained views and suspended view frames remain outside this
+admission.
 
 Optional numeric/bool values and flat numeric/bool record payloads can share
 managed cells. The optional tag and payload move together; nil replacement

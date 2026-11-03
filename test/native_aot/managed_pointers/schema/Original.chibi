@@ -1,0 +1,10 @@
+package owned_view_schema
+Leaf :: union { Value(number: int) | Missing }
+Row :: struct { leaf: Leaf; xs: int[]; }
+Main :: () -> int {
+    values: Row[] = [{leaf: Leaf.Value(7), xs: [1]}];
+    owner := &values;
+    selected := owner.view(0..<1);
+    if selected { return selected.length() - 1; }
+    return 1;
+}

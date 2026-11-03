@@ -104,6 +104,12 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
                      names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
     value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.IndexExpression)) {
+        view := ScalarViewOperation(forest, text, callables, params, names, types, members, package, value);
+        if (view.operation == facts.ViewGet && view.shape.record >= 0 && ScalarNestedCollection(types[view.shape.record])) {
+            return SequenceElement(types, view.shape);
+        }
+    }
     if (Is(forest, value, syntax.AwaitExpression)) {
         awaited := Unparenthesized(forest, Field(forest, value, syntax.FieldValue));
         if (Is(forest, awaited, syntax.CallExpression)) {
@@ -689,6 +695,10 @@ ScalarArrayStored :: (forest: snapshot.SnapshotNode[], text: string, callables: 
 ScalarIndexed :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
                   node: int, rows: facts.Row[]) -> ScalarOperands {
+    view := ScalarViewOperation(forest, text, callables, params, names, types, members, callable.package, node);
+    if (view.operation != 0) {
+        return ScalarViewRows(forest, text, callables, params, callable, names, types, members, constants, node, view, rows);
+    }
     object := Field(forest, node, syntax.FieldObject);
     index := Field(forest, node, syntax.FieldIndex);
     shape := ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, object);

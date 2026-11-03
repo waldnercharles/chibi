@@ -114,6 +114,7 @@ NestedArrayElement :: (records: Record[], fields: int[], type: int) -> int {
     record := records[wrapper - RecordType];
     if (record.count != 1) { return 0; }
     inner := fields[record.first];
+    if (MapShaped(records, inner)) { return inner; }
     element := ElementType(records, inner);
     if (element == 0 || (!Integer(element) && !abi.Floating(element) &&
         element != abi.BoolStorage && element != abi.TextStorage)) { return 0; }
@@ -133,6 +134,7 @@ ArrayValueReference :: (item: Instruction, pc: int, program: bool) -> string {
     out = format_text("{}  br i1 %outer_inside{}, label %outer_present{}, label %outer_absent{}\nouter_absent{}:\n", out, pc, pc, pc, pc);
     if (program) {
         failure := "chibi_native_reference_unavailable";
+        if (item.type >= RefType + MapType) { failure = "chibi_native_map_owner_unavailable"; }
         if (item.literal == i64(ArrayAddressMethod)) { failure = "chibi_native_array_mutation_unavailable"; }
         out = format_text("{}  call void @{}()\n", out, failure);
     } else { out = format_text("{}  call void @llvm.trap()\n", out); }

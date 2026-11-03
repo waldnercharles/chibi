@@ -576,7 +576,7 @@ FreshArray :: (operand: facts.Row) -> bool {
     }
     if (operand.kind == facts.MapRow) {
         return operand.value == facts.MapNew || operand.value == facts.MapCopy ||
-               ((operand.value == facts.MapGet || operand.value == facts.MapKeyAt || operand.value == facts.MapValueAt) &&
+               ((MapGets(operand.value) || operand.value == facts.MapKeyAt || operand.value == facts.MapValueAt) &&
                 (operand.type == facts.StringType || (operand.type >= facts.ArrayType && operand.type < facts.MapType)));
     }
     if (operand.kind != facts.ArrayRow || operand.literal != 0) {
@@ -1032,6 +1032,9 @@ ArrayChanges :: (operator: int) -> bool {
 MappedArrayChange :: (value: int) -> bool {
     return value >= facts.MapArrayPush && value <= facts.MapArrayResize;
 }
+MapGets :: (value: int) -> bool {
+    return value == facts.MapGet || value == facts.MapGetOptional;
+}
 // The postfix operands of one map operator; -1 means no such operator.
 MapOperands :: (operand: facts.Row) -> int {
     if (operand.value == facts.MapNew) {
@@ -1047,7 +1050,7 @@ MapOperands :: (operand: facts.Row) -> int {
         if (operand.value == facts.MapArraySet) { return 4; }
         return 3;
     }
-    if (operand.value >= facts.MapGet && operand.value <= facts.MapValueAt) {
+    if ((operand.value >= facts.MapGet && operand.value <= facts.MapValueAt) || operand.value == facts.MapGetOptional) {
         return 2;
     }
     return -1;
@@ -1102,9 +1105,10 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
     if ((operand.value == facts.MapHas || operand.value == facts.MapLiveAt) && operand.type != facts.BoolType) {
         return mismatch;
     }
-    if ((operand.value == facts.MapGet || operand.value == facts.MapValueAt) && operand.type != value) {
+    if ((MapGets(operand.value) || operand.value == facts.MapValueAt) && operand.type != value) {
         return mismatch;
     }
+    if (operand.value == facts.MapGetOptional && OptionalPayloadType(rows, records, value) == 0) { return mismatch; }
     if (operand.value == facts.MapKeyAt && operand.type != key) {
         return mismatch;
     }
@@ -2424,7 +2428,7 @@ ArrayLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: i
 // The native instruction for a map operator other than its literal.
 MapLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: int) -> native.Instruction {
     op := native.MapLength;
-    if (operand.value == facts.MapGet) { op = native.MapGet; }
+    if (MapGets(operand.value)) { op = native.MapGet; }
     else if (operand.value == facts.MapSet) { op = native.MapSet; }
     else if (operand.value == facts.MapHas) { op = native.MapHas; }
     else if (operand.value == facts.MapDelete) { op = native.MapDelete; }
@@ -2441,6 +2445,7 @@ MapLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: int
     if (operand.value == facts.MapSet) {
         target = stack[base + 2];
     }
+    if (operand.value == facts.MapGetOptional) { target = native.MapGetZero; }
     item := Op(op, type, slot, stack[base], right, target);
     if (operand.literal != 0) {
         item.literal = i64(NativeType(int(operand.literal)));
@@ -3688,13 +3693,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         if (op != facts.MapSet && op != facts.MapDelete && Holds(fresh, stack[base])) {
                             pending.append(stack[base]);
                         }
-                        retained_record = (op == facts.MapGet || op == facts.MapValueAt) && TrackedRecord(managed, type);
-                        retained_array = (op == facts.MapGet || op == facts.MapValueAt) &&
+                        retained_record = (MapGets(op) || op == facts.MapValueAt) && TrackedRecord(managed, type);
+                        retained_array = (MapGets(op) || op == facts.MapValueAt) &&
                                          type >= native.ArrayType && type < native.MapType;
                         // A string read borrows from its map. Retain it before
                         // a fresh input map is dropped, then track the result
                         // as fresh so the statement either keeps or releases it.
-                        if ((op == facts.MapGet || op == facts.MapKeyAt || op == facts.MapValueAt) && type == abi.TextStorage) {
+                        if ((MapGets(op) || op == facts.MapKeyAt || op == facts.MapValueAt) && type == abi.TextStorage) {
                             body.append(item);
                             slots.append(type);
                             body.append(Op(native.TextRetain, type, 0, slot, 0, 0));

@@ -467,6 +467,18 @@ ScalarReturnsValue :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
 ScalarVoid :: (callable: Callable) -> bool {
     return callable.result == 0 && callable.result_container == 0 && callable.results == 0;
 }
+// Optional map payloads are live when their containing map is live, even if
+// no present value is extracted into a separate optional local.
+ScalarOptionalRoot :: (types: TypeDecl[], storage: int, container: int, record: int) -> int {
+    if (container == MapContainer && record >= 0 && record < length(types) && types[record].kind == MapDecl) {
+        declared := types[record];
+        if (declared.value_storage == UnionStorage && declared.value_container == 0 && ScalarOptional(types, declared.value_record)) {
+            return declared.value_record;
+        }
+    }
+    if (storage == UnionStorage && container == 0 && ScalarOptional(types, record)) { return record; }
+    return -1;
+}
 ScalarResults :: (callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
                   body_optionals: int[]) -> ScalarView {
     seen: Callable[] = [];
@@ -508,20 +520,16 @@ ScalarResults :: (callables: Callable[], params: Param[], types: TypeDecl[], mem
     // Emit only those held by a signature, a field or a checked body's cells.
     used := resize(body_optionals, length(records));
     for (param in params) {
-        if (param.storage == UnionStorage && param.container == 0 && ScalarOptional(records, param.record)) {
-            used[param.record] = 1;
-        }
+        optional := ScalarOptionalRoot(records, param.storage, param.container, param.record);
+        if (optional >= 0) { used[optional] = 1; }
     }
     for (callable in seen) {
-        if (callable.result == UnionStorage && callable.result_container == 0 &&
-            ScalarOptional(records, callable.result_record)) {
-            used[callable.result_record] = 1;
-        }
+        optional := ScalarOptionalRoot(records, callable.result, callable.result_container, callable.result_record);
+        if (optional >= 0) { used[optional] = 1; }
     }
     for (field in fields) {
-        if (field.storage == UnionStorage && field.container == 0 && ScalarOptional(records, field.record)) {
-            used[field.record] = 1;
-        }
+        optional := ScalarOptionalRoot(records, field.storage, field.container, field.record);
+        if (optional >= 0) { used[optional] = 1; }
     }
     for (index in 0..<length(records)) {
         declared := records[index];
@@ -897,7 +905,8 @@ ScalarOptionalRead :: (forest: snapshot.SnapshotNode[], text: string, names: Nam
                        node: int, record: int, context: int) -> bool {
     if (context == UnionStorage || !ScalarOptional(types, record)) { return false; }
     payload := types[record];
-    if (payload.value_container != 0 || (!Numeric(payload.value_storage) && payload.value_storage != BoolStorage)) { return false; }
+    if (payload.value_container != 0 || (!Numeric(payload.value_storage) && payload.value_storage != BoolStorage &&
+        payload.value_storage != TextStorage)) { return false; }
     shape: ValueType = {storage: UnionStorage, container: 0, record: record};
     return OptionalValuePresent(forest, text, names, node, shape);
 }
@@ -4210,9 +4219,8 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], authored: snapshot.SnapshotNode
                 if (!math_values^ && cell.storage == StructStorage && MathKind(table^, cell.record) != 0) {
                     math_values^ = true;
                 }
-                if (cell.storage == UnionStorage && cell.container == 0 && ScalarOptional(table^, cell.record)) {
-                    body_optionals^[cell.record] = 1;
-                }
+                optional := ScalarOptionalRoot(table^, cell.storage, cell.container, cell.record);
+                if (optional >= 0) { body_optionals^[optional] = 1; }
             }
             // A retained local reads and writes its state, which the facts carry.
             // A write through a scoped parameter the module passes by reference

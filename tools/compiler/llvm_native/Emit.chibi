@@ -258,6 +258,9 @@ pub MapLength: int : 60;
 // output = the value of the right slot's key in the left slot's map, of type,
 // or the value type's zero when the map has no such key.
 pub MapGet: int : 61;
+// MapGet target mode: a missing aggregate key returns its zero initializer.
+// Source optional maps use this for Nil; ordinary record/union maps use 0.
+pub MapGetZero: int : 1;
 // output = whether the left slot's map has the right slot's key, a bool.
 pub MapHas: int : 62;
 // output = the left slot's map with the right slot's key given the value in slot
@@ -4837,7 +4840,8 @@ MapValid :: (records: Record[], lifecycle: ValueLayout, slots: int[], item: Inst
         return item.type == abi.IntStorage;
     }
     if (item.op == MapGet) {
-        return item.type == value && Typed(slots, item.right, key);
+        return item.type == value && Typed(slots, item.right, key) &&
+               (item.target == 0 || (item.target == MapGetZero && value >= RecordType && value < ArrayType));
     }
     if (item.op == MapValueAddress) {
         return MapArrayValue(value) && item.type == RefType + value && Typed(slots, item.right, key) && item.target == 0;
@@ -4897,8 +4901,13 @@ MapRead :: (item: Instruction, pc: int) -> string {
         out = format_text("{}  %v{} = extractvalue {} %m{}, {}\n", out, pc, map, pc, field);
     } else if (item.op == MapGet || item.op == MapHas || item.op == MapValueAddress) {
         out = format_text("{}{}", out, Load(format_text("k{}", pc), key, "s", item.right));
-        out = format_text("{}  %v{} = call {} @chibi_map.{}.{}({} %m{}, {} %k{})\n", out, pc, TypeName(item.type), used,
-                          MapHelper(item.op), map, pc, TypeName(key), pc);
+        fallback := "";
+        if (item.op == MapGet && value >= RecordType && value < ArrayType) {
+            fallback = ", i1 false";
+            if (item.target == MapGetZero) { fallback = ", i1 true"; }
+        }
+        out = format_text("{}  %v{} = call {} @chibi_map.{}.{}({} %m{}, {} %k{}{})\n", out, pc, TypeName(item.type), used,
+                          MapHelper(item.op), map, pc, TypeName(key), pc, fallback);
     } else if (item.op == MapSet) {
         out = format_text("{}{}", out, Load(format_text("k{}", pc), key, "s", item.right));
         out = format_text("{}{}", out, Load(format_text("c{}", pc), value, "s", item.target));
@@ -5138,9 +5147,12 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[]) -> string {
     prehash := "  %wide = zext $K %key to i64";
     same := "  %same = icmp eq $K %a, %b";
     missing := "  ret $V zeroinitializer";
+    fallback := "";
     if (value >= RecordType && value < ArrayType) {
         missing = "  call void @llvm.trap()\n  unreachable";
         if (native_program) { missing = "  call void @chibi_native_failure(i32 2)\n  unreachable"; }
+        fallback = ", i1 %zero_default";
+        missing = format_text("  br i1 %zero_default, label %zero, label %absent\nzero:\n  ret $V zeroinitializer\nabsent:\n{}", missing);
     }
     if (keyed) {
         prehash = "  %wide = call i64 @chibi_map.text_hash($K %key)";
@@ -5267,7 +5279,7 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[]) -> string {
         "  %dnext = add i32 %dist, 1",
         "  br label %walk",
         "}",
-        "define internal $V @chibi_map.$N.get($M %m, $K %wanted) {",
+        "define internal $V @chibi_map.$N.get($M %m, $K %wanted$GET_DEFAULT) {",
         "entry:",
         "  %used = extractvalue $M %m, 1",
         "  %slots = extractvalue $M %m, 3",
@@ -5642,6 +5654,7 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[]) -> string {
     text = strings.ReplaceAll(text, "$PREHASH", prehash);
     text = strings.ReplaceAll(text, "$SAME", same);
     text = strings.ReplaceAll(text, "$MISSING", missing);
+    text = strings.ReplaceAll(text, "$GET_DEFAULT", fallback);
     text = strings.ReplaceAll(text, "$REPLACED", strings.TrimSuffix(strings.Join(replaced, ""), "\n"));
     text = strings.ReplaceAll(text, "$DELETED", strings.TrimSuffix(strings.Join(deleted, ""), "\n"));
     text = strings.ReplaceAll(text, "$RETAINED", strings.TrimSuffix(MapEach("retain", "%fresh", "r", key, value, owners), "\n"));

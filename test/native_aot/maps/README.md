@@ -39,6 +39,11 @@ Authored union values use the same ownership closure for their active string,
 record and array payloads. Their missing keys also report `MapKeyAbsent`.
 `Unions` covers copied/temporary reads, tag replacement, duplicate keys,
 iteration and growth; `UnionMissing` checks the failure at O0 and O2.
+Optional map values preserve missing-key nil separately from a stored nil
+entry. `Optionals` checks presence, numeric/string/record/union payloads,
+copies, temporary results, iteration, growth and guarded string ownership.
+The same aggregate get helper takes an explicit zero-default mode; ordinary
+record and union lookups retain their required-key failure.
 Evaluation-effect cases also require a read-only argument to survive a later
 argument replacing the same map. Set/delete capture their target's address
 and reload it after key/value evaluation. These run under the poisoned allocator.

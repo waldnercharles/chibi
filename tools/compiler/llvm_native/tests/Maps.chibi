@@ -152,3 +152,10 @@ ArrayRecordMapPayloadsUseTheSameClosedLifecycle :: () {
     Rejects(RecordPayloadMap(native.PointerType, true), "native managed pointer aggregate roots require typed flat records");
     Rejects(RecordPayloadMap(native.MapOf(abi.IntStorage, abi.IntStorage), true), MapOperands());
 }
+
+@test
+MapGetsRejectUnknownOrScalarZeroDefaultModes :: () {
+    for (mode in [int(-1), native.MapGetZero, 2]) {
+        ChangedMap(6, Code(native.MapGet, 6, 5, 4, 1, mode, 2150));
+    }
+}

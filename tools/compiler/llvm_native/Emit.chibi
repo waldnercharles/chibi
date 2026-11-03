@@ -429,7 +429,9 @@ pub ManagedTrackSlot: int : 0;
 pub ManagedTrackLocal: int : 1;
 pub ManagedClearSlot: int : 2;
 pub ManagedClearLocal: int : 3;
-pub InstructionCount: int : 112;
+// IEEE floating absolute value; no library import or side effects.
+pub FloatAbs: int : 112;
+pub InstructionCount: int : 113;
 // A Call's `literal`: an ordinary call, an awaited call (the callee is a waiting
 // function, run inline in the waiting caller, giving its result), or a spawn (the
 // callee is a waiting function, started as a task of its own, giving an owning
@@ -449,20 +451,20 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
 Produces :: (op: int) -> bool {
     if (ViewOperation(op)) { return op != ViewSet; }
     return op == ManagedPending || TextSequenceOperation(op) || op == ArrayValueAddress || op == ClockSample || op == ManagedProject || op == ArrayInsert || op == ArrayReverse || op == Select || op == ManagedNew || op == ManagedAddress || op == Print || op == TaskCopy || op == TaskRunning || op == AwaitResult || op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
-           op == ForeignCall || op == StateLoad || op == FunctionAddress || op == Sqrt || op == ValueCopy || op == ArrayLoan || (MapOperation(op) && op != MapDrop);
+           op == ForeignCall || op == StateLoad || op == FunctionAddress || op == Sqrt || op == FloatAbs || op == ValueCopy || op == ArrayLoan || (MapOperation(op) && op != MapDrop);
 }
 Comparison :: (op: int) -> bool {
     return op >= Lt && op <= Ne;
 }
 Unary :: (op: int) -> bool {
-    return op == Neg || op == BitNot || op == Sqrt;
+    return op == Neg || op == BitNot || op == Sqrt || op == FloatAbs;
 }
 ReadsLeft :: (op: int) -> bool {
     if (ViewOperation(op)) { return true; }
     return TextSequenceOperation(op) || op == ArrayValueAddress || op == ManagedProject || op == ArrayInsert || op == ArrayReverse || op == Select || op == ManagedNew || op == ManagedAddress || op == ManagedPin || op == Print || op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
            (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText || op == ArrayDrop || op == TextRetain ||
            op == TextRelease || op == StateStore || op == Deref || op == Poke || op == ValueCopy || op == ValueDrop || op == ArrayLoan || op == AwaitHandle || op == Cancel ||
-           op == CancelAfter || op == Delay || op == Sqrt || (op >= TaskCopy && op <= AwaitResult) || MapOperation(op);
+           op == CancelAfter || op == Delay || op == Sqrt || op == FloatAbs || (op >= TaskCopy && op <= AwaitResult) || MapOperation(op);
 }
 Integer :: (type: int) -> bool {
     return abi.IntegerBits(type) > 0;
@@ -1197,6 +1199,10 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (item.op == Sqrt && (item.type != abi.FloatStorage || !Typed(slots, item.left, item.type))) {
             return Result.Rejected(base + pc, "native square root requires an f32 operand");
         }
+        if (item.op == FloatAbs && (!abi.Floating(item.type) || !Typed(slots, item.left, item.type) ||
+                                   item.right != 0 || item.target != 0 || item.literal != 0)) {
+            return Result.Rejected(base + pc, "native floating absolute value requires one f32 or f64 operand");
+        }
         if (item.op == Select && ((!Integer(item.type) && !abi.Floating(item.type) && item.type != abi.BoolStorage) || !Typed(slots, item.left, abi.BoolStorage) ||
                                  !Typed(slots, item.right, item.type) || !Typed(slots, item.target, item.type) ||
                                  item.literal != 0)) {
@@ -1897,6 +1903,10 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         if (Unary(item.op)) {
             if (item.op == Sqrt) {
                 out = format_text("{}  %v{} = call float @llvm.sqrt.f32(float %a{})\n", out, pc, pc);
+            } else if (item.op == FloatAbs) {
+                suffix := "f64";
+                if (item.type == abi.FloatStorage) { suffix = "f32"; }
+                out = format_text("{}  %v{} = call {} @llvm.fabs.{}({} %a{})\n", out, pc, type, suffix, type, pc);
             } else if (item.op == Neg && abi.Floating(item.type)) {
                 // Flips the sign bit, as the VMs' negation does: -0.0 for 0.0.
                 out = format_text("{}{}", out, format_text("  %v{} = fneg {} %a{}\n", pc, type, pc));
@@ -3428,6 +3438,13 @@ TextEqual :: () -> string {
 Declarations :: (code: Instruction[]) -> string {
     out: string[] = [];
     for (item in code) {
+        if (item.op == FloatAbs) {
+            suffix := "f64";
+            if (item.type == abi.FloatStorage) { suffix = "f32"; }
+            declaration := format_text("declare {} @llvm.fabs.{}({})\n", TypeName(item.type), suffix, TypeName(item.type));
+            if (!out.contains(declaration)) { out.append(declaration); }
+            continue;
+        }
         if (item.op == Sqrt) {
             declaration := "declare float @llvm.sqrt.f32(float)\n";
             if (!out.contains(declaration)) {

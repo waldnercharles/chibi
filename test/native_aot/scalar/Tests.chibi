@@ -583,7 +583,27 @@ ScalarArrayRangeAndCoalesceValidateTheirPayloads :: () {
     }
 }
 
+ScalarFloatAbsoluteChecksItsOperands :: () {
+    prefix := TaskFacts(facts.CallPlain, false);
+    for (type in [facts.FloatType, facts.DoubleType]) {
+        rows := [prefix[0], prefix[1], TaskFact(facts.FunctionRow, facts.IntType, 0, 0, "Main", 1, 64),
+                 TaskFact(facts.LocalRow, type, 0, 2, "value", 2, 10), TaskFact(facts.LiteralRow, type, 0, 0, "", 3, 4),
+                 TaskFact(facts.UnaryRow, type, facts.FloatAbsolute, 1, "", 4, 5),
+                 TaskFact(facts.ReturnRow, 0, 0, 1, "", 11, 14), TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 12, 13)];
+        assert(scalar.Validate(rows) == "");
+        text := Emitted(rows);
+        assert(strings.Contains(text, "@llvm.fabs."));
+        bad := rows;
+        bad[5].type = facts.IntType;
+        assert(scalar.Validate(bad) != "", "floating abs rejects an integer result");
+        bad = rows;
+        bad[5].count = 2;
+        assert(scalar.Validate(bad) != "", "floating abs has exactly one operand");
+    }
+}
+
 pub Tests :: () -> int {
+    ScalarFloatAbsoluteChecksItsOperands();
     ScalarArrayRangeAndCoalesceValidateTheirPayloads();
     ScalarBorrowedRecordSummaryDoesNotAcquireFields();
     ScalarRecordSummariesValidateTheirOperands();

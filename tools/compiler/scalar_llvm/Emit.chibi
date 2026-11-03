@@ -1532,7 +1532,8 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                        (facts.Floating(operand.type) && operand.value == facts.Negate);
             nots := operand.type == facts.BoolType && operand.value == facts.Not;
             roots := operand.type == facts.FloatType && operand.value == facts.SquareRoot;
-            if (operand.name != "" || operand.count != 1 || (!negates && !nots && !roots) || base < floor ||
+            absolute := facts.Floating(operand.type) && operand.value == facts.FloatAbsolute;
+            if (operand.name != "" || operand.count != 1 || (!negates && !nots && !roots && !absolute) || base < floor ||
                 stack[base] != operand.type) {
                 return "scalar arithmetic differs from its number operands";
             }
@@ -2396,6 +2397,7 @@ Arithmetic :: (operator: int) -> int {
     return operations[operator - facts.Add];
 }
 Unary :: (operator: int) -> int {
+    if (operator == facts.FloatAbsolute) { return native.FloatAbs; }
     if (operator == facts.SquareRoot) {
         return native.Sqrt;
     }

@@ -15,6 +15,7 @@ ScalarNestedMapAssigned :: (forest: snapshot.SnapshotNode[], text: string, calla
                             callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
                             statement: int, change: ScalarMapCall, next_variable: ^int) -> ScalarOperands {
     array_leaf := change.operator == facts.MapArraySet;
+    array_method := change.operator >= facts.MapArrayPush && change.operator <= facts.MapArrayResize && !array_leaf;
     last_key := change.key;
     object := Unparenthesized(forest, change.object);
     if (array_leaf) {
@@ -28,7 +29,7 @@ ScalarNestedMapAssigned :: (forest: snapshot.SnapshotNode[], text: string, calla
         object = Unparenthesized(forest, Field(forest, object, syntax.FieldObject));
     }
     if (!Is(forest, object, syntax.Identifier) ||
-        (change.operator != facts.MapSet && change.operator != facts.MapDelete && !array_leaf)) {
+        (change.operator != facts.MapSet && change.operator != facts.MapDelete && !array_leaf && !array_method)) {
         return ScalarOperands.Failed(Diagnose(forest, change.object, 0,
             "native nested map changes require a map or array variable and a collection index path"));
     }
@@ -74,6 +75,9 @@ ScalarNestedMapAssigned :: (forest: snapshot.SnapshotNode[], text: string, calla
         }
         steps[index] = step;
         current = shape;
+    }
+    if (array_method && shape.container != ArrayContainer) {
+        return ScalarOperands.Failed(Diagnose(forest, change.object, 0, "native mapped array methods require an array descriptor"));
     }
     root_type := steps[0].type;
     leaf := steps[length(steps) - 1];
@@ -197,6 +201,25 @@ ScalarNestedMapAssigned :: (forest: snapshot.SnapshotNode[], text: string, calla
         operation = facts.NestedMapSet; if (root_type < facts.MapType) { operation = facts.ArrayMapSet; }
         if (array_leaf) { operation = facts.MapArraySet; }
         count += 1;
+    }
+    if (array_method) {
+        argument := ScalarArrayArgumentNode(forest, FirstMember(forest, Field(forest, FirstMember(forest, statement), syntax.FieldArguments)));
+        prepared := ScalarOperands.Built(incoming);
+        if (change.operator == facts.MapArrayPush) {
+            prepared = ScalarArrayElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                                               argument, shape, incoming);
+        } else if (change.operator == facts.MapArrayExtend) {
+            prepared = ScalarArrayValue(forest, text, callables, params, callable, names, types, members, constants,
+                                       argument, shape, incoming);
+        } else {
+            prepared = ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                                     argument, argument, IntStorage, IntStorage, facts.Clamp, incoming);
+        }
+        switch prepared {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): incoming = built;
+        }
+        operation = change.operator; count += 1;
     }
     incoming.append(ScalarAt(forest, value_node, facts.MapRow, root_type, operation, count, ""));
     rows.append(ScalarAt(forest, value_node, facts.AssignRow, root_type, binding.index, length(incoming), "")); rows.extend(incoming);

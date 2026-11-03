@@ -42,11 +42,20 @@ Main :: () -> int {
             [root_source, parse_import, "package unused\n"],
             "rejected Value: Expected `}`, found the end of the file (to close the `{` at 2:24) (lib/Lib.chibi:3)");
 
-    // This is valid front-end syntax but rejected by the scalar body producer.
-    unsupported := "package lib\nPoint :: struct { x: int; }\npub Value :: () -> int { p: Point = {x: 1}; return text_byte_length(format_text(\"{}\", p)); }\n";
-    Rejected(["Main.chibi"], [unsupported], unsupported, "p", "scalar proof formats only numbers, bools and strings", 3, 87);
+    // Pointer-free record summaries are supported. Pointer-bearing records still
+    // reject at the ordinary native-call boundary, with the same imported span.
+    unsupported := "package lib\nPoint :: struct { x: ^int; }\npub Value :: () -> int { value := 1; p: Point = {x: &value}; return text_byte_length(format_text(\"{}\", p)); }\n";
+    Rejected(["Main.chibi"], [unsupported], unsupported, "p", "Native calls cannot retain managed pointer arguments", 3, 104);
     Rejected(["Main.chibi", "lib/Lib.chibi"], [root_source, unsupported], strings.Concatenate([root_source, unsupported]),
-             "p", "scalar proof formats only numbers, bools and strings", 6, 87);
+             "p", "Native calls cannot retain managed pointer arguments", 6, 104);
+
+    // Ordinary source supports string cells; native scalar cells remain gated.
+    // This passes ordinary body checking before the facts producer rejects it.
+    late := "package lib\npub Value :: () -> int { value := \"text\"; pointer := &value; return text_byte_length(pointer^) - 3; }\n";
+    Rejected(["Main.chibi"], [late], late, "pointer := &value;",
+             "scalar proof supports only number, bool and string values", 2, 43);
+    Rejected(["Main.chibi", "lib/Lib.chibi"], [root_source, late], strings.Concatenate([root_source, late]),
+             "pointer := &value;", "scalar proof supports only number, bool and string values", 5, 43);
 
     // The on-disk target is deliberately a different length from its replacement.
     uses_target := "package main\nimport target \"core:target\"\nimport lib \"project:lib\"\nMain :: () -> int { return lib.Value() + target.Native; }\n";
@@ -68,7 +77,7 @@ Main :: () -> int {
 // A typed scheduling summary follows actual calls, including recursive and
 // imported calls. An unrelated function with the same name stays independent.
 TypedEffects :: () {
-    source := "package main\nimport other \"project:other\"\nforeign { External :: () -> int }\nMain :: () -> int { return 0; }\nPure :: () -> int { values: int[] = [1, 2]; values[0] = 3; return length(values); }\nCallsPure :: () -> int { return Pure(); }\nLeaf :: () -> int { return External(); }\nMid :: () -> int { return Leaf(); }\nCycleA :: (n: int) -> int { if (n > 0) { return CycleB(n - 1); } return Leaf(); }\nCycleB :: (n: int) -> int { return CycleA(n); }\nImported :: () -> int { return other.Value(); }\n";
+    source := "package main\nimport other \"project:other\"\nforeign { External :: () -> int }\nMain :: () -> int { return 0; }\nPure :: () -> int { values: int[] = [1, 2]; values[0] = 3; return length(values); }\nCallsPure :: () -> int { return Pure(); }\nLeaf :: () -> int { return External(); }\nMid :: () -> int { return Leaf(); }\nCycleA :: (n: int) -> int { if (n > 0) { return CycleB(n - 1); } return Leaf(); }\nCycleB :: (n: int) -> int { return CycleA(n); }\nImported :: () -> int { return other.Value(); }\n@test MetadataIsOptional :: () {}\n";
     other := "package other\nforeign { ExternalOther :: () -> int }\npub Value :: () -> int { return ExternalOther(); }\nPure :: () -> int { return 1; }\n";
     collected := compiler.CollectScalarProgramWithEffects("/project", [], [], ["Main.chibi", "other/Other.chibi"],
         [source, other], TargetFacts(), Names(), Natives(), Ports(), Identities(), 1, 1, "Main");
@@ -85,12 +94,13 @@ TypedEffects :: () {
         }
     }
     assert(at == length(collected.effects), "one mask per function, no facts payload overload");
+    assert(length(collected.tests) == 0, "ordinary effects callers do not request test metadata");
     assert(masks["Main"] == 0 && masks["Pure"] == 0 && masks["CallsPure"] == 0, "local mutation and pure calls stay pure");
     assert(masks["Leaf"] == 3 && masks["Mid"] == 3 && masks["CycleA"] == 3 && masks["CycleB"] == 3 &&
            masks["Imported"] == 3, "foreign read/write effects close across calls and cycles");
     rejected := compiler.CollectScalarProgramWithEffects("/project", [], [], ["Main.chibi"],
-        ["package main\nMain :: () -> int { return Missing(); }\n"], TargetFacts(), Names(), Natives(), Ports(), Identities(), 1, 1, "Main");
-    assert(length(rejected.effects) == 0 && rejected.rows[1].kind == facts.RejectionRow, "rejection publishes no partial masks");
+        ["package main\nMain :: () -> int { return Missing(); }\n@test Good :: () {}\n"], TargetFacts(), Names(), Natives(), Ports(), Identities(), 1, 1, "Main", true);
+    assert(length(rejected.effects) == 0 && length(rejected.tests) == 0 && rejected.rows[1].kind == facts.RejectionRow, "rejection publishes no partial masks or selected tests");
 }
 
 Collect :: (paths: string[], sources: string[]) -> facts.Row[] {

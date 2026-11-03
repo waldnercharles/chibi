@@ -3,16 +3,17 @@ package llvm_native
 import abi "project:native_abi"
 import strings "core:strings"
 
-// These owners contain no collector edges. Direct pointer-array roots keep
-// their separate persistent-root path; maps and views remain closed here.
+// Record owners use the same copy/drop graph after active collector roots
+// protect any pointer-array fields. Direct pointer arrays retain their
+// separate cancellation path; maps and views remain closed here.
 pub TaskOwnedType :: (records: Record[], layout: ValueLayout, type: int) -> bool {
     if (type == abi.TextStorage) { return true; }
     if (type >= ArrayType && type < MapType) {
         element := ElementType(records, type);
         return element != 0 && ValueValid(layout, element);
     }
-    return type >= RecordType && type < ArrayType && type - RecordType < length(layout.owned) &&
-           layout.valid[type - RecordType] && layout.owned[type - RecordType];
+    return type >= RecordType && type < ArrayType && type - RecordType < length(layout.collector_owned) &&
+           layout.collector_copyable[type - RecordType] && layout.collector_owned[type - RecordType];
 }
 
 // One pointer per distinct owning location, eight bytes on desktop. NULL means

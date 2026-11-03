@@ -546,7 +546,8 @@ Gather :: (project: string, collections: string[], directories: string[], packag
 // A package under test: its folder, the test files it also takes, and one more file, `name`
 // holding `text`, that is not on disk, the test dispatcher. A nonempty `entry_text` is the
 // first file of the package under test, `entry_name`, also not on disk.
-// `collection` identifies that package through its existing project/core route.
+// Its import closure also includes files named ...Tests.chibi: those may own
+// public helpers. `collection` identifies the package through its existing route.
 Extra :: struct {
     folder: string;
     collection: string;
@@ -577,7 +578,7 @@ GatherWith :: (project: string, collections: string[], directories: string[], pa
     kinds.extend(collections);
     next := 0;
     while (next < length(folders)) {
-        files := PackageFiles(folders[next], folders[next] == extra.folder);
+        files := PackageFiles(folders[next], extra.folder != "");
         if (extra.folder != "" && folders[next] == extra.folder) {
             files.append(extra.name);
         }

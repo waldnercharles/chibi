@@ -325,10 +325,15 @@ pub ArrayLoanValue: int : 2;
 // default. No entry address survives later arguments. String keys own one
 // reference until the call resolves the entry.
 pub ArrayLoanMap: int : 3;
-// Borrows an existing array entry at left map/right key; literal is its map
-// type. Target 0 observes a map value; target 1 takes a RefMap and detaches
-// and publishes its canonical owner before borrowing the entry. Resolve after
-// callbacks and immediately update the descriptor. Map mutation invalidates it.
+// Left is the evaluated outer array, right its stable canonical RefOuter.
+// Literal names [field_count, index_slot, field ordinals...] in arguments.
+// Capture owns only the leaf; call-time resolution may retain it historically.
+pub ArrayLoanIndexed: int : 4;
+// Borrows an existing descriptor entry at left map/right key; literal is its
+// map type. Target 0 observes an array entry. Target 1 takes a RefMap, detaches
+// and publishes its canonical owner, then returns an array descriptor or the
+// immediate map field of a one-field carrier. Resolve after callbacks and
+// immediately update the descriptor. Map mutation invalidates the address.
 pub MapValueAddress: int : 75;
 // A new scalar managed cell initialized from left, whose value type is right.
 // The result is PointerType, literal its stable semantic pointee identity.
@@ -1116,7 +1121,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (item.op == ManagedPending || item.op == ManagedPoll || item.op == ManagedTrack) {
-            if ((!ProgramMode(mode) && !family) || !ManagedPollValid(item, slots, locals)) {
+            if ((!ProgramMode(mode) && !family) || !ManagedPollValid(item, slots, locals, lifecycle)) {
                 return Result.Rejected(base + pc, "native deferred collection differs from its owning roots");
             }
         }
@@ -1266,12 +1271,19 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (item.op == ArrayLoan) {
             if (length(loan_uses) == 0) { loan_uses = resize([false], length(slots)); }
             element := ElementType(records, item.type);
-            if (element == abi.BoolStorage || abi.ScalarType(element) == "" || !Typed(slots, item.left, item.type) ||
-                item.target < ArrayLoanPlace || item.target > ArrayLoanMap ||
-                (item.target != ArrayLoanMap && item.literal != 0) ||
+            if (element == abi.BoolStorage || abi.ScalarType(element) == "" ||
+                (item.target != ArrayLoanIndexed && !Typed(slots, item.left, item.type)) ||
+                item.target < ArrayLoanPlace || item.target > ArrayLoanIndexed ||
+                (item.target != ArrayLoanMap && item.target != ArrayLoanIndexed && item.literal != 0) ||
                 (item.target == ArrayLoanPlace && !Typed(slots, item.right, RefType + item.type)) ||
                 ((item.target == ArrayLoanMove || item.target == ArrayLoanValue) && item.right != item.left)) {
                 return Result.Rejected(base + pc, "native foreign buffer loan differs from its array or place");
+            }
+            if (item.target == ArrayLoanIndexed) {
+                if (IndexedLoanType(slots, arguments, records, fields, item) != item.type ||
+                    !ValueValid(lifecycle, ElementType(records, slots[item.left]))) {
+                    return Result.Rejected(base + pc, "native indexed buffer loan differs from its captured path");
+                }
             }
             if (item.target == ArrayLoanMap) {
                 mapped := 0;
@@ -1292,7 +1304,8 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
              (ElementType(records, item.type) != 0 && item.type != ArrayType + PointerType && !ValueValid(lifecycle, item.type - ArrayType)) ||
              (ElementType(records, item.type) == 0 &&
               !MapPayloadValid(records, lifecycle, item.type) &&
-              (item.type < RecordType || item.type >= ArrayType || !ValueValid(lifecycle, item.type) || !lifecycle.owned[item.type - RecordType])) ||
+              (item.type < RecordType || item.type >= ArrayType || !ValueCollectorCopyable(lifecycle, item.type) ||
+               !lifecycle.collector_owned[item.type - RecordType] || (!ValueValid(lifecycle, item.type) && !ProgramMode(mode) && !family))) ||
              item.right != 0 || item.target != 0 || item.literal != 0 || (item.op == ValueDrop && item.output != 0))) {
             return Result.Rejected(base + pc, "native value lifecycle requires an array or managed aggregate operand");
         }
@@ -1302,7 +1315,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (((item.op >= ArrayLength && item.op <= ArrayBytes) || item.op == ArrayText || item.op == ArrayInsert || item.op == ArrayReverse) && !ArrayValid(records, slots, item, value_shapes.nodes)) {
             return Result.Rejected(base + pc, "native array operation differs from its operands");
         }
-        if (MapOperation(item.op) && !MapValid(records, lifecycle, slots, item)) {
+        if (MapOperation(item.op) && !MapValid(records, fields, lifecycle, slots, item)) {
             return Result.Rejected(base + pc, "native map operation differs from its operands");
         }
         if (ViewOperation(item.op) && !ViewValid(records, fields, lifecycle, slots, arguments, item)) {
@@ -1453,6 +1466,10 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if (item.op == ArrayLoan && item.target == ArrayLoanMap && !Dominates(dominance, definitions[int(item.literal)], pc)) {
             return Result.Rejected(base + pc, "native map buffer key is not defined on every path");
+        }
+        if (item.op == ArrayLoan && item.target == ArrayLoanIndexed &&
+            !Dominates(dominance, definitions[arguments[int(item.literal) + 1]], pc)) {
+            return Result.Rejected(base + pc, "native indexed buffer position is not defined on every path");
         }
         if (item.op == ManagedTrack && item.target == ManagedTrackSlot && !Dominates(dominance, definitions[item.left], pc)) {
             return Result.Rejected(base + pc, "native collector root is not defined on every path");
@@ -2035,10 +2052,13 @@ ValueReach :: (build: ^ValueClosure, held: int, range: bool, by_value: bool) {
         build^.pending.append(type);
     }
 }
-ValueUses :: (code: Instruction[], records: Record[], fields: int[], owners: bool[], promises: int[]) -> ValueUse {
+ValueUses :: (code: Instruction[], records: Record[], fields: int[], owners: bool[], promises: int[], loan_arrays: int[]) -> ValueUse {
     build: ValueClosure = {used: {records: resize([false], length(records)), ranges: resize([false], length(records)),
                                   by_value: resize([false], length(records)), arrays: ArrayUses(code, promises), maps: []},
                            owners: owners, pending: [], maps: []};
+    for (type in loan_arrays) {
+        build.used.arrays[type - ArrayType] |= ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation;
+    }
     for (type in promises) {
         if (type >= RecordType && type < ArrayType) { ValueReach(&build, type, false, true); }
     }
@@ -2717,8 +2737,8 @@ CstringHelper :: () -> string {
 // order, and nothing else is passed. A string is copied with its NUL to one of
 // the function's stack buffers, so the callee reads a C string; a string too
 // long for the buffer, or holding a NUL, traps.
-ForeignInstruction :: (slots: int[], arguments: int[], texts: string[], code: Instruction[], origins: int[], item: Instruction, pc: int) -> string {
-    out := format_text("p{}:\n{}", pc, ForeignArrays(slots, arguments, code, origins, item, pc));
+ForeignInstruction :: (slots: int[], arguments: int[], records: Record[], fields: int[], texts: string[], code: Instruction[], origins: int[], item: Instruction, pc: int) -> string {
+    out := format_text("p{}:\n{}", pc, ForeignArrays(slots, arguments, records, fields, code, origins, item, pc));
     listed: string[] = [];
     callee := format_text("@{}", texts[int(item.literal)]);
     buffer: int = 0;
@@ -2904,7 +2924,7 @@ AwaitHandleInstruction :: (item: Instruction, pc: int, testing: bool) -> string 
 }
 EmitFunction :: (functions: Function[], function: int, parameters: int[], slots: int[], locals: int[],
                  code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[],
-                 mode: int, step_budget: int, runtime: bool, fallible: bool[], shared: bool, waiting: bool[], scoped: bool, testing: bool, record_owners: bool[], managed: bool, managed_records: ManagedRecordLayout, guarded: bool = false) -> string {
+                 mode: int, step_budget: int, runtime: bool, fallible: bool[], shared: bool, waiting: bool[], scoped: bool, testing: bool, record_owners: bool[], managed: bool, managed_records: ManagedRecordLayout, lifecycle: ValueLayout, guarded: bool = false) -> string {
     shape := functions[function];
     coroutine := waiting[function];
     result := shape.result;
@@ -2931,7 +2951,9 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         returns = "ptr";
         attributes = " presplitcoroutine";
     }
-    out: string[] = [format_text("define {}{} @{}({}) #0{} {\nentry:\n", linkage, returns,
+    gc_owners: ManagedOwnerLayout = {slots: [], locals: [], count: 0, ranges: []};
+    if (managed) { gc_owners = ManagedOwnerLocations(shape, code, length(records)); }
+    out: string[] = [ManagedOwnerTrace(gc_owners, function), format_text("define {}{} @{}({}) #0{} {\nentry:\n", linkage, returns,
                                  Symbol(function, mode), strings.Join(listed, ", "), attributes)];
     out.append(format_text("  %budget0 = alloca i32\n  store i32 {}, ptr %budget0\n", step_budget));
     for (index in 0..<shape.slots) {
@@ -2952,11 +2974,11 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     }
     frame_roots: ManagedFrameRoots = {prologue: "", attach: "", cleanup: "", destroy: ""};
     if (managed && coroutine) {
-        frame_roots = ManagedFrame(shape, slots, locals, records, fields, managed_records);
+        frame_roots = ManagedFrame(shape, slots, locals, records, fields, managed_records, lifecycle);
         out.append(frame_roots.prologue);
     }
     if (managed) {
-        if (!coroutine) { out.append(ManagedRoots(shape, slots, locals, managed_records.traced)); }
+        if (!coroutine) { out.append(ManagedRoots(shape, slots, locals, records, fields, managed_records)); }
         for (pc in 0..<shape.code) {
             item := code[shape.first_code + pc];
             if (item.op == ManagedPin) {
@@ -2966,9 +2988,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
             }
         }
     }
-    gc_owners: ManagedOwnerLayout = {slots: [], locals: [], count: 0};
-    if (managed) { gc_owners = ManagedOwnerLocations(shape, code); }
-    owner_roots := ManagedOwnerRoots(gc_owners.count, coroutine);
+    owner_roots := ManagedOwnerRoots(gc_owners, coroutine, function);
     out.append(owner_roots.prologue);
     frame_roots.attach = strings.Concatenate([frame_roots.attach, owner_roots.attach]);
     frame_roots.cleanup = strings.Concatenate([frame_roots.cleanup, owner_roots.cleanup]);
@@ -2976,6 +2996,9 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     // reuses them.
     for (pc in 0..<shape.code) {
         item := code[shape.first_code + pc];
+        if (item.op == ArrayLoan && item.target == ArrayLoanIndexed) {
+            out.append(format_text("  %indexed.capture{} = alloca {}\n", item.output, abi.ArrayType()));
+        }
         if (item.op == Format) {
             out.append(format_text("  %values{} = alloca [{} x {}]\n  %text{} = alloca {}\n", pc, item.target,
                                    abi.ValueType(), pc, abi.TextType()));
@@ -3072,9 +3095,9 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         } else if (item.op == ClockSample) {
             out.append(ClockInstruction(item, pc));
         } else if (item.op == ArrayLoan) {
-            out.append(LoanInstruction(own_slots, item, pc));
+            out.append(LoanInstruction(own_slots, own, records, fields, item, pc));
         } else if (item.op == ForeignCall) {
-            out.append(ForeignInstruction(own_slots, own, texts, code, loan_origins, item, pc));
+            out.append(ForeignInstruction(own_slots, own, records, fields, texts, code, loan_origins, item, pc));
         } else if (item.op == FunctionAddress) {
             out.append(format_text("p{}:\n  %v{} = ptrtoint ptr @{} to i64\n", pc, pc, CallbackSymbol(item.left, int(item.literal))));
             out.append(Store(format_text("%v{}", pc), item.type, "s", item.output));
@@ -3515,10 +3538,11 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         return Result.Rejected(-1, "native managed field identities differ from the field table");
     }
     managed_records := ManagedRecordLayouts(records, fields);
+    lifecycle := ValueLayouts(records, fields);
     for (index in 0..<length(records)) {
         record := records[index];
         if (ManagedTraced(RecordType + index, managed_records.traced) &&
-            !managed_records.traceable[index] && !ViewOptional(records, fields, RecordType + index, ViewType)) {
+            !ValueCollectorCopyable(lifecycle, RecordType + index) && !ViewOptional(records, fields, RecordType + index, ViewType)) {
             return Result.Rejected(-1, "native managed pointer aggregate roots require scalar or pointer-only inline records");
         }
         if (record.identity == 0) { continue; }
@@ -3572,7 +3596,6 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         return Result.Rejected(-1, "native line table differs from its module");
     }
     waiting := WaitingFunctions(functions, code);
-    lifecycle := ValueLayouts(records, fields);
     promises: int[] = [];
     text_promise := false;
     for (function in 0..<length(functions)) {
@@ -3582,7 +3605,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
                 return Result.Rejected(instruction, message);
             case .Emitted(text):
                 result := functions[function].result;
-                if (waiting[function] && TaskOwnedType(records, lifecycle, result)) {
+                if (waiting[function] && (TaskOwnedType(records, lifecycle, result) || result == ArrayType + PointerType)) {
                     promises.append(result);
                     text_promise = text_promise || result == abi.TextStorage;
                 }
@@ -3610,10 +3633,14 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     formatting := false;
     numeric_formatting := false;
     clocked := false;
+    indexed_loans: ArrayLoanUse[] = [];
     for (shape in functions) {
         for (pc in shape.first_code..<shape.first_code + shape.code) {
             item := code[pc];
             if (item.op == ClockSample) { clocked = true; }
+            if (item.op == ArrayLoan && item.target == ArrayLoanIndexed) {
+                indexed_loans.append({instruction: pc, type: slots[shape.first_slot + item.left]});
+            }
             if (item.op != Format) { continue; }
             formatting = true;
             // A bool can use numeric modifiers too. Text and collection
@@ -3661,7 +3688,8 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         }
     }
     states := RetainedStates(code);
-    record_owners := lifecycle.owned;
+    rooted_lifecycle := ValueRootedOwners(lifecycle);
+    record_owners := rooted_lifecycle.owned;
     out: string[] = [];
     for (piece in 0..<pieces) {
         first := bounds[piece];
@@ -3722,10 +3750,15 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             }
             for (item in held) {
                 if (item.op == ManagedNew && item.right >= RecordType && item.right < ArrayType) { record_roots[item.right - RecordType] = true; }
+                if (item.op == ManagedTrack) {
+                    type := item.type;
+                    if (type >= RefType) { type -= RefType; }
+                    if (ManagedTraced(type, managed_records.traced)) { record_roots[type - RecordType] = true; }
+                }
             }
             counter := "null";
             if (family) { counter = strings.Concatenate(["@", abi.ManagedImageCounter()]); }
-            out.append(ManagedRecordModule(records, fields, field_tags, managed_records, record_roots, counter));
+            out.append(ManagedRecordModule(records, fields, field_tags, managed_records, lifecycle, record_roots, counter));
         }
         if (managed) {
             counter := "null";
@@ -3778,7 +3811,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         out.append(Callees(functions, parameters, held, home, piece, mode, runtime));
         for (function in first..<last) {
             text := EmitFunction(functions, function, parameters, slots, locals, code, arguments, records, fields,
-                                 texts, mode, step_budget, runtime, fallible, shared[function], waiting, scoped, testing, record_owners, managed, managed_records, guarded);
+                                 texts, mode, step_budget, runtime, fallible, shared[function], waiting, scoped, testing, record_owners, managed, managed_records, lifecycle, guarded);
             if (debug) {
                 text = Located(text, Subprogram(function), Location(length(functions), compares,
                                                                     functions[function].first_code));
@@ -3831,8 +3864,13 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             }
             out.append(format_text("\n{}", text));
         }
-        value_uses := ValueUses(held, records, fields, record_owners, promises);
-        array_helpers := ArrayModule(value_uses.arrays, record_owners, lifecycle.backed, guarded);
+        loan_arrays: int[] = [];
+        for (loan in indexed_loans) {
+            if (loan.instruction >= functions[first].first_code &&
+                loan.instruction < functions[last - 1].first_code + functions[last - 1].code) { loan_arrays.append(loan.type); }
+        }
+        value_uses := ValueUses(held, records, fields, record_owners, promises, loan_arrays);
+        array_helpers := ArrayModule(value_uses.arrays, record_owners, rooted_lifecycle.backed, guarded);
         out.append(array_helpers);
         value_comparisons := piece == 0 && length(comparison_roots) > 0;
         if (value_comparisons) {
@@ -3845,7 +3883,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             // the same freestanding helper as array operations.
             for (retained in states) { copies = copies || retained.type == abi.TextStorage; }
         }
-        map_helpers := MapModule(value_uses.maps, ProgramMode(mode), record_owners, lifecycle.backed, guarded);
+        map_helpers := MapModule(value_uses.maps, records, fields, ProgramMode(mode), record_owners, rooted_lifecycle.backed, guarded);
         out.append(map_helpers);
         out.append(TextSequenceModule(held, guarded));
         if (copies) {
@@ -3854,7 +3892,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         if (Zeroes(held) || value_comparisons || length(value_uses.maps) != 0) {
             out.append(format_text("\n{}", ArrayZeroHelper()));
         }
-        value_helpers := ValueModule(value_uses, records, fields, lifecycle, map_helpers == "");
+        value_helpers := ValueModule(value_uses, records, fields, rooted_lifecycle, map_helpers == "");
         if (Counts(held) || text_promise || value_helpers != "" || array_helpers != "") {
             out.append(format_text("\n{}{}", TextHelpers(guarded), value_helpers));
         }
@@ -5069,9 +5107,19 @@ MapPayloadValid :: (records: Record[], lifecycle: ValueLayout, type: int) -> boo
     if (MapArrayValue(element)) { element -= ArrayType; }
     return ValueValid(lifecycle, element);
 }
+// The first field of a physical collection carrier is the immediate map.
+// Other record payloads do not need canonical descriptor-address helpers.
+MapCarrierElement :: (records: Record[], fields: int[], type: int) -> int {
+    if (type < RecordType || type >= ArrayType || !Index(type - RecordType, length(records))) { return 0; }
+    record := records[type - RecordType];
+    if (record.count != 1) { return 0; }
+    member := fields[record.first];
+    if (!MapShaped(records, member)) { return 0; }
+    return member;
+}
 // Whether a map instruction reads the operands of its type: the map in the left
 // slot, a key or an index in the right, and MapSet's value in slot `target`.
-MapValid :: (records: Record[], lifecycle: ValueLayout, slots: int[], item: Instruction) -> bool {
+MapValid :: (records: Record[], fields: int[], lifecycle: ValueLayout, slots: int[], item: Instruction) -> bool {
     used := MapUsed(item);
     input := used;
     if (item.op == MapValueAddress && item.target == 1) { input += RefType; }
@@ -5088,7 +5136,12 @@ MapValid :: (records: Record[], lifecycle: ValueLayout, slots: int[], item: Inst
                (item.target == 0 || (item.target == MapGetZero && value >= RecordType && value < ArrayType));
     }
     if (item.op == MapValueAddress) {
-        return MapArrayValue(value) && item.type == RefType + value && Typed(slots, item.right, key) &&
+        projected := value;
+        if (item.target == 1 && value >= RecordType && value < ArrayType) {
+            projected = MapCarrierElement(records, fields, value);
+            if (projected == 0) { return false; }
+        } else if (!MapArrayValue(value)) { return false; }
+        return item.type == RefType + projected && Typed(slots, item.right, key) &&
                (item.target == 0 || item.target == 1);
     }
     if (item.op == MapHas) {
@@ -5131,6 +5184,8 @@ MapRead :: (item: Instruction, pc: int) -> string {
     if (item.op == MapValueAddress && item.target == 1) {
         out = Load(format_text("owner{}", pc), RefType + used, "s", item.left);
         out = format_text("{}{}", out, Load(format_text("k{}", pc), key, "s", item.right));
+        // A one-map-field carrier begins with that descriptor at offset zero.
+        // Validation admits this projection only for canonical target 1.
         out = format_text("{}  %v{} = call ptr @chibi_map.{}.reference(ptr %ctx, ptr %owner{}, {} %k{})\n", out, pc, used, pc, TypeName(key), pc);
         return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
     }
@@ -5399,7 +5454,7 @@ MapShared :: (guarded: bool = false) -> string {
 
 // The helpers of map type `type`, named `@chibi_map.<type>.<helper>`: hash,
 // same, find, get, has, set, delete, copy and drop.
-MapHelpers :: (type: int, native_program: bool, owners: bool[], backed: bool[]) -> string {
+MapHelpers :: (type: int, native_program: bool, owners: bool[], backed: bool[], carrier: bool) -> string {
     key := MapKey(type);
     value := MapValue(type);
     keyed := key == abi.TextStorage;
@@ -5434,7 +5489,7 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[], backed: bool[]) 
                                    MapOwner("release", "%dkv", "dk", key)));
     }
     address := "";
-    if (MapArrayValue(value)) {
+    if (MapArrayValue(value) || carrier) {
         unavailable := "  call void @llvm.trap()\n  unreachable";
         if (native_program) { unavailable = "  call void @chibi_native_failure(i32 0)\n  unreachable"; }
         address = strings.Join([
@@ -5880,7 +5935,7 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[], backed: bool[]) 
     ], "\n");
     released := MapEach("release", "%entries", "x", key, value, owners, backed, true);
     text = strings.Concatenate([text, "\n", MapOwnedDrop(type, released), "\n", MapUnique(type)]);
-    if (MapArrayValue(value)) { text = strings.Concatenate([text, "\n", MapReference(type)]); }
+    if (MapArrayValue(value) || carrier) { text = strings.Concatenate([text, "\n", MapReference(type)]); }
     text = strings.ReplaceAll(text, "$ADDRESS", address);
     text = strings.ReplaceAll(text, "$SCANNED", format_text("{}", MapScanned));
     text = strings.ReplaceAll(text, "$LIMIT", format_text("{}", MapLimit));
@@ -5898,13 +5953,13 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[], backed: bool[]) 
     return format_text("{}\n", strings.ReplaceAll(text, "$N", format_text("{}", type)));
 }
 // The typed map helpers in the shared ownership dependency closure, once each.
-MapModule :: (types: int[], native_program: bool, owners: bool[], backed: bool[], guarded: bool = false) -> string {
+MapModule :: (types: int[], records: Record[], fields: int[], native_program: bool, owners: bool[], backed: bool[], guarded: bool = false) -> string {
     if (length(types) == 0) {
         return "";
     }
     out: string[] = [MapShared(guarded), MapOwnersRuntime(), ValueDrain()];
     for (type in types) {
-        out.append(MapHelpers(type, native_program, owners, backed));
+        out.append(MapHelpers(type, native_program, owners, backed, MapCarrierElement(records, fields, MapValue(type)) != 0));
     }
     return format_text("\n{}", strings.Join(out, "\n"));
 }

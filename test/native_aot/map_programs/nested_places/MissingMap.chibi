@@ -1,0 +1,3 @@
+package nested_map_failure
+Value :: () -> int { assert(false,"RHS ran"); return 9; }
+Main :: () -> int { groups: [string:[string:int]] = [:]; groups["g"]["a"] = Value(); return 0; }

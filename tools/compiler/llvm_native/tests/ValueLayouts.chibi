@@ -1,0 +1,89 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+
+@test
+CollectorCopiesKeepRootlessAdmissionSeparate :: () {
+    records: native.Record[] = [{first: 0, count: 2, identity: 0}, {first: 2, count: 1, identity: 0}];
+    for leaf in [native.PointerType, native.ArrayType + native.PointerType] {
+        layout := native.ValueLayouts(records, [abi.IntStorage, native.RecordType + 1, leaf]);
+        rooted := native.ValueRootedOwners(layout);
+        for index in 0..<2 {
+            assert(!layout.valid[index] && !layout.owned[index] && !layout.backed[index]);
+            assert(layout.collector_copyable[index]);
+            owned := leaf == native.ArrayType + native.PointerType;
+            assert(rooted.owned[index] == owned && rooted.backed[index] == owned);
+            assert(!rooted.valid[index], "rooted ownership must not change container or cell admission");
+            assert(native.ValueCollectorCopyable(layout, native.RecordType + index));
+        }
+    }
+}
+@test
+CollectorCopiesPreserveExistingValueOwners :: () {
+    records: native.Record[] = [{first: 0, count: 2, identity: 0}];
+    for owner in [abi.TextStorage, native.ArrayType + abi.IntStorage, native.MapOf(abi.IntStorage, abi.IntStorage)] {
+        layout := native.ValueLayouts(records, [native.PointerType, owner]);
+        assert(!layout.valid[0] && !layout.owned[0] && !layout.backed[0]);
+        assert(layout.collector_copyable[0] && layout.collector_owned[0]);
+        assert(layout.collector_backed[0] == (owner != abi.TextStorage));
+    }
+}
+@test
+CollectorCopiesDoNotAdmitGcContainerPayloads :: () {
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 1, identity: 0}];
+    for container in [native.ArrayType + native.RecordType + 1,
+                      native.MapOf(abi.IntStorage, native.RecordType + 1),
+                      native.MapOf(abi.IntStorage, native.ArrayType + native.PointerType)] {
+        layout := native.ValueLayouts(records, [container, native.PointerType]);
+        assert(!layout.collector_copyable[0] && !layout.collector_owned[0] && !layout.collector_backed[0]);
+        assert(layout.collector_copyable[1] && !layout.collector_owned[1]);
+    }
+    // An array can break an inline cycle, but its GC payload still needs its
+    // own tracing protocol rather than inheriting the inline-copy domain.
+    records = [{first: 0, count: 2, identity: 0}];
+    layout := native.ValueLayouts(records, [native.ArrayType + native.RecordType, native.ArrayType + native.PointerType]);
+    assert(!layout.collector_copyable[0]);
+}
+@test
+CollectorCopyInvalidityReachesEveryInlineParent :: () {
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 2, identity: 0}];
+    layout := native.ValueLayouts(records, [native.RecordType + 1, native.PointerType, native.ViewType]);
+    for index in 0..<2 {
+        assert(!layout.collector_copyable[index] && !layout.collector_owned[index] && !layout.collector_backed[index]);
+    }
+    for type in [int(-1), native.TaskType, native.ViewType, native.RecordType + 2,
+                 native.ArrayType + native.RecordType, native.RefType + native.PointerType] {
+        assert(!native.ValueCollectorCopyable(layout, type));
+    }
+}
+@test
+PointerFreeCopiesRetainTheirOriginalProperties :: () {
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 2, identity: 0}];
+    layout := native.ValueLayouts(records, [native.RecordType + 1, abi.TextStorage, native.ArrayType + abi.IntStorage]);
+    rooted := native.ValueRootedOwners(layout);
+    for index in 0..<2 {
+        assert(layout.valid[index] && layout.owned[index] && layout.backed[index]);
+        assert(layout.collector_copyable[index] == layout.valid[index]);
+        assert(rooted.owned[index] == layout.owned[index] && rooted.backed[index] == layout.backed[index]);
+    }
+}
+@test
+CollectorCopyPropertiesCloseSharedTypeGraphs :: () {
+    for count in [int(100), 800] {
+        records: native.Record[] = [];
+        fields: int[] = [];
+        for index in 0..<count {
+            child := native.ArrayType + native.PointerType;
+            if (index + 1 < count) { child = native.RecordType + index + 1; }
+            records.append({first: length(fields), count: 2, identity: 0});
+            fields.extend([child, child]);
+        }
+        layout := native.ValueLayouts(records, fields);
+        assert(length(layout.collector_copyable) == count && length(layout.collector_owned) == count);
+        for index in 0..<count {
+            assert(!layout.valid[index] && !layout.owned[index] && !layout.backed[index]);
+            assert(layout.collector_copyable[index] && layout.collector_owned[index] && layout.collector_backed[index]);
+        }
+    }
+}

@@ -1,14 +1,14 @@
 # CI: one workflow, explicit platform validation
 
 `.github/workflows/ci.yml` is the only workflow. Ordinary PRs, pushes to `main`,
-and manual `mode=ci` run five jobs:
+and manual `mode=ci` without complete Windows bootstrap pins run five jobs:
 
 1. **Engine build and native tests**: Linux core behavior and native fixed point.
 2. **Engine build and native tests (macOS)**: the existing macOS core suite.
 3. **Native scalar modules (macos-arm64)**: link and execute Linux-generated modules on macOS.
 4. **Native scalar modules (windows-x64)**: link and execute those modules on Windows.
-5. **Native self-host (Windows)**: run the cross-linked compiler, exercise the
-   native Windows paths, and verify its bounded native fixed point.
+5. **Native self-host (Windows)**: verify the native fixed point, run the complete
+   compiler-unit root, then exercise native Windows products and runtime paths.
 
 PRs test the actual synthetic merge checkout. Main pushes validate again,
 including ordinary merges: there is no changed-path classifier, tested-tree
@@ -87,7 +87,11 @@ attributes each retain five-minute caps, as do native generations. The Linux
 job's 135-minute ceiling is the sum of the old 45/90-minute jobs, not a larger
 allowance for either phase.
 macOS core retains 45 minutes; each target-module job retains 10 minutes.
-Windows native self-host retains its 60-minute bound and runs without sanitizers.
+Windows native self-host has a transitional 120-minute bound and runs without
+sanitizers. An older pinned seed took 49m34s to build stage three, followed by
+94s and 57s self-builds; a later cold run exhausted the previous hour before
+reporting stage three. This Windows allowance includes the complete compiler
+tests and product checks. It does not change the other phase or test deadlines.
 Watchdog regressions cover expiration, status propagation and nested process
 cleanup, including external cancellation.
 
@@ -103,7 +107,7 @@ fixed by deleting the now-obsolete receipt subsystem.
 | Trigger/mode | Additional or distinct work |
 | --- | --- |
 | Daily schedule, 08:00 UTC | Linux/macOS ASan + UBSan; prepared recovery; clean default build; SDK; no-C proof |
-| Manual `mode=ci` | The same five canonical jobs as PR/main, without sanitizers |
+| Manual `mode=ci` | The same five canonical jobs as PR/main, without sanitizers; all three Windows bootstrap pins select only the explicitly labeled Windows proof |
 | Manual `mode=full` | Canonical jobs plus recovery/clean-build/SDK/no-C; `sanitizers=true` explicitly enables ASan + UBSan |
 | Manual `mode=graph` | Isolated Graph harness, Release host/record identity, generated resources, incremental/command checks, SDK relocation and functional suite |
 | Direct maintenance scripts | Bootstrap/runtime/native seed preparation and optional source bundle |
@@ -122,7 +126,7 @@ Failures must be diagnosed; moving them off PRs does not make them acceptable.
 | macOS engine | Canonical PR/main/manual job; same 45-minute limit; scheduled/explicit full instrumentation |
 | macOS/Windows native modules | Canonical real runners; same 10-minute limits; Linux bundle uploaded on ordinary runs too |
 | Clean default build | Scheduled/manual-full, separate clean checkout, 45-minute cap, tooling census, native `chibi`/asset-compiler products and private-host absence assertions |
-| `native-self-host.yml` | Canonical Linux native phase plus Windows native object/self-host job; original 90/60-minute bounds |
+| `native-self-host.yml` | Canonical Linux native phase with its 90-minute bound; Windows compiler/product job has a transitional 120-minute allowance |
 | `compiler-recovery.yml` | Scheduled/manual-full, three isolated 30-minute platform jobs plus 5-minute comparison; compiler bytes and scalar evidence checked |
 | `no-c-compiler.yml` | Scheduled/manual-full, same 90-minute clean-machine proof and vendor sample |
 | `linux-graph.yml` | Manual `graph` mode, same 45-minute limit and distinct host/harness identity checks |
@@ -161,12 +165,17 @@ fixed-point and ownership assertions are not downgraded.
 ## Windows native self-build
 
 The Linux native phase cross-links stage two and uploads it for the real
-Windows runner. Windows uses checksum-pinned LLVM 22.1.8, exercises its asset
-compiler, object pipeline, build runner, formatting, output, task timing, math
-and SDK paths, and builds stages three and four. Their bytes must match; an
-older compiler may require the existing single fallback, stage four equals
-stage five. This runs on the ordinary canonical cadence, without sanitizers
-and within 60 minutes. A manual pinned-artifact input checks producer, source
-commit and compiler hash before reuse; it does not waive the fixed point.
+Windows runner. Windows uses checksum-pinned LLVM 22.1.8 and builds stages three
+and four. Their bytes must match; an older compiler may require the existing
+single fallback, stage four equals stage five. Stage four then runs the complete
+`tools/compiler` test root at O0, using this checkout's core and the same LLVM.
+The existing runner keeps per-test process isolation and its default workers;
+the native exit status is preserved and console output is retained as an artifact.
+The asset compiler, object pipeline, build runner, formatting, output, task timing,
+math and SDK checks follow. This runs on the ordinary canonical cadence, without
+sanitizers and within the transitional 120-minute Windows allowance. A manual
+pinned-artifact input checks producer, source commit and compiler hash before
+reuse; it does not waive the fixed point or compiler tests. Fully pinned manual
+`ci` runs select this Windows proof alone; full mode keeps its broader coverage.
 The exact integrated head still needs fresh CI. Windows prepared recovery
 remains in full mode; the known prepared-target-ABI failure is not waived.

@@ -15,7 +15,7 @@ TaskFramePlain :: (layout: ValueLayout, type: int) -> bool {
     return type < ArrayType && Index(index, length(layout.valid)) && layout.valid[index] && !layout.owned[index];
 }
 TaskFrameTraced :: (layout: ManagedRecordLayout, type: int) -> bool {
-    return type == PointerType || (ManagedTraced(type, layout.traced) && layout.flat[type - RecordType]);
+    return type == PointerType || (ManagedTraced(type, layout.traced) && layout.traceable[type - RecordType]);
 }
 // A frame may keep a window independently of task promise admission. Exact
 // optional/authored-union windows reuse their existing tag/window tracer.
@@ -26,7 +26,8 @@ TaskFrameValue :: (records: Record[], fields: int[], layout: ValueLayout, manage
                     type: int, observer: bool, owned: bool) -> bool {
     if (owned && TaskFrameRoot(records, fields, managed, type)) { return true; }
     if (owned && TaskOwnedType(records, layout, type)) { return true; }
-    if (owned && observer && type >= RefType && TaskOwnedType(records, layout, type - RefType)) { return true; }
+    if (owned && observer && type >= RefType && TaskOwnedType(records, layout, type - RefType) &&
+        !ValueCollectorOwner(layout, type - RefType)) { return true; }
     if (type == TaskType) { return observer; }
     if (type == PointerType || type == ArrayType + PointerType) { return true; }
     if (observer && type >= RefType &&
@@ -70,7 +71,8 @@ TaskReferencesValid :: (layout: ValueLayout, slots: int[], code: Instruction[], 
     return "";
 }
 TaskPromiseValue :: (records: Record[], layout: ValueLayout, managed: ManagedRecordLayout, type: int, owned: bool) -> bool {
-    return TaskFramePlain(layout, type) || (owned && (TaskOwnedType(records, layout, type) || TaskFrameTraced(managed, type)));
+    return TaskFramePlain(layout, type) || (owned && (type == ArrayType + PointerType ||
+           TaskOwnedType(records, layout, type) || TaskFrameTraced(managed, type)));
 }
 TaskResultValid :: (records: Record[], fields: int[], slots: int[], layout: ValueLayout, managed: ManagedRecordLayout, owned: bool, item: Instruction) -> bool {
     record := item.type - RecordType;

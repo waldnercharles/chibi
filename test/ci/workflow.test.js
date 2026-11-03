@@ -173,6 +173,50 @@ test('pinned Windows bootstrap keeps canonical modes and validates producer iden
   assert.ok(windows.indexOf('name: Cache the verified LLVM tools after Windows validation') > windows.indexOf('foreach ($case in $cases)'));
 });
 
+test('Windows runs the complete compiler root after its fixed point and before products', () => {
+  const windows = source.slice(source.indexOf('\n  native-self-host-windows:\n'), source.indexOf('\n  native-targets:\n'));
+  const marker = '      - name: Run complete native Windows compiler tests\n';
+  assert.ok(windows.includes(marker), 'Windows must execute the full compiler test root');
+  const step = windows.split(marker)[1].split(/^      - /m)[0];
+  const condition = /^        if: \$\{\{ (.+) \}\}$/m.exec(step)[1];
+  for (const outcome of ['success', 'failure', 'skipped', 'cancelled']) {
+    for (const stopped of [false, true]) {
+      assert.equal(vm.runInNewContext(condition, {cancelled: () => stopped,
+        steps: {'windows-fixed-point': {outcome}}}), !stopped && outcome === 'success');
+    }
+  }
+  assert.match(step, /CHIBI_CORE: \$\{\{ github\.workspace \}\}\/packages\/core/);
+  assert.match(step, /& "\$env:RUNNER_TEMP\/stage4\/chibi\.exe" test "\$root\/tools\/compiler" --llvm \$env:CHIBI_WINDOWS_LLVM -O0 2>&1 \| Tee-Object -FilePath "\$env:RUNNER_TEMP\/windows-compiler-tests\.log"/);
+  assert.match(step, /^          exit \$LASTEXITCODE$/m);
+  assert.doesNotMatch(step, /continue-on-error|CHIBI_TEST_WORKERS|--filter|--package/);
+  assert.ok(windows.indexOf(marker) > windows.indexOf('      - name: Keep Windows fixed-point evidence\n'));
+  assert.ok(windows.indexOf(marker) < windows.indexOf('      - name: Check the native Windows asset compiler and C consumer\n'));
+});
+
+test('Windows preserves compiler test logs after success, failure or cancellation', () => {
+  const marker = '      - name: Preserve native Windows compiler test output\n';
+  assert.ok(source.includes(marker), 'compiler failures must retain their output');
+  const step = source.split(marker)[1].split(/^      - /m)[0];
+  const condition = /^        if: (.+)$/m.exec(step)[1];
+  for (const outcome of ['success', 'failure', 'skipped', 'cancelled']) {
+    assert.equal(vm.runInNewContext(condition, {always: () => true,
+      steps: {'windows-compiler-tests': {outcome}}}), outcome !== 'skipped');
+  }
+  assert.match(step, /uses: actions\/upload-artifact@/);
+  assert.match(step, /name: native-windows-compiler-tests-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/);
+  assert.match(step, /path: \$\{\{ runner\.temp \}\}\/windows-compiler-tests\.log/);
+  assert.match(step, /retention-days: 7/);
+});
+
+test('the transitional Windows bootstrap allowance leaves other phase bounds unchanged', () => {
+  const windows = source.slice(source.indexOf('\n  native-self-host-windows:\n'), source.indexOf('\n  native-targets:\n'));
+  assert.equal(/^    timeout-minutes: (\d+)$/m.exec(windows)[1], '120');
+  const linux = source.slice(source.indexOf('\n  native:\n'), source.indexOf('\n  native-macos:\n'));
+  const macos = source.slice(source.indexOf('\n  native-macos:\n'), source.indexOf('\n  native-self-host-windows:\n'));
+  assert.match(linux, /^    timeout-minutes: 135$/m);
+  assert.match(macos, /^    timeout-minutes: 45$/m);
+});
+
 test('external Windows bootstrap skips only the unused current producer upload', () => {
   const proof = source.split('    - name: Native fixed-point proof\n')[1].split(/^    - /m)[0];
   assert.match(proof, /CHIBI_WINDOWS_BOOTSTRAP_RUN: \$\{\{ inputs\.windows_bootstrap_run \}\}/);

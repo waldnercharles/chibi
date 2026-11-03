@@ -1,0 +1,3 @@
+third-party: @THIRD_PARTY@ third-party /BUILD release
+graph: env CCACHE_BASEDIR=@ROOT@ @GRAPH@ --build /BUILD --profile release --native-driver @COMPILER@ --llvm @LLVM@ --jobs 2 --all-commands on --target chibi --target chibi-asset-compiler --target chibi_asset_compiler_host
+compile-commands: ln -sfn /BUILD/compile_commands.json compile_commands.json

@@ -1,0 +1,18 @@
+package foreign_element_bounds
+import testing "core:testing"
+foreign import libc "system:c"
+foreign libc { memset :: (data:u8[],value:i32,count:u64) -> rawptr }
+Entry :: struct { values:u8[]; }
+Never :: () -> i32 { assert(false,"RHS evaluated"); return 9; }
+@test
+EmptyOuterIsAnExpressionBoundsFailure :: () {
+    testing.ExpectFailure(testing.Failure.IndexOutOfRange);
+    rows:Entry[]=[];
+    written:=memset(rows[0].values,Never(),1);
+}
+@test
+NegativeIndexIsAnExpressionBoundsFailure :: () {
+    testing.ExpectFailure(testing.Failure.IndexOutOfRange);
+    rows:Entry[]=[{values:[u8(1)]}];
+    written:=memset(rows[-1].values,Never(),1);
+}

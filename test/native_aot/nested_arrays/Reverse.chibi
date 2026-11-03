@@ -1,0 +1,55 @@
+package reversed_arrays
+
+Text :: (n: int) -> string { return text_from_bytes([u8(65), u8(n)]); }
+Back :: (values: int[]) -> int {
+    total := 0;
+    for < value, index in values { total = total * 100 + value * 10 + index; }
+    return total;
+}
+Rows :: () -> int[][] { return [[1, 2], [3], [4, 5]]; }
+Last :: (rows: int[][]) -> int[] {
+    for < row in rows { return row; }
+    return [];
+}
+Scoped :: (read: ^(string[]), changed: ^(string[])) -> int {
+    total := 0;
+    for < value in read^ {
+        changed^ = [Text(9)];
+        total = total * 10 + text_byte_at(value, 1);
+    }
+    return total;
+}
+Main :: () -> int {
+    assert(Back([1, 2, 3]) == 322110 && Back([]) == 0 && Back([7]) == 70);
+    total := 0;
+    for < value in [int(1), 2, 3] {
+        if value == 3 { continue; }
+        total = total * 10 + value;
+        if value == 1 { break; }
+    }
+    assert(total == 21);
+    flags: bool[] = [false, true, false];
+    total = 0;
+    for < value, index in flags { if value { total += index; } }
+    assert(total == 1);
+    rows := Rows();
+    total = 0;
+    for < row, index in rows { total = total * 100 + row[0] * 10 + index; }
+    assert(total == 423110);
+    kept := Last(Rows());
+    assert(kept[0] == 4 && kept[1] == 5);
+    empty: int[][] = [];
+    for < row in empty { total += length(row); }
+    assert(total == 423110);
+    words: string[][] = [[Text(1)], [Text(2)], [Text(3)]];
+    total = 0;
+    for < row in words {
+        words = [[Text(20)]];
+        total = total * 10 + text_byte_at(row[0], 1);
+    }
+    assert(total == 321 && text_byte_at(words[0][0], 1) == 20);
+    source: string[] = [Text(1), Text(2), Text(3)];
+    scoped := Scoped(&source, &source);
+    assert(scoped == 321 && text_byte_at(source[0], 1) == 9);
+    return 0;
+}

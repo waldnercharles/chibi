@@ -1,4 +1,5 @@
 package_compiler/Compile.chibi
+package_compiler/ClockCatalog.chibi
 package_compiler/Body.chibi
 package_compiler/Fallible.chibi
 package_compiler/Generics.chibi

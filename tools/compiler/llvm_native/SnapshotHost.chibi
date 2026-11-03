@@ -1,0 +1,143 @@
+package llvm_native
+
+import abi "project:native_abi"
+import strings "core:strings"
+
+RetainedTextTag: int : 12;
+RetainedSnapshotTag: int : 15;
+SnapshotStateTag :: (binding: Instruction, index: int, roots: int[], characters: bool[]) -> int {
+    if (index < length(roots) && roots[index] >= 0) { return RetainedSnapshotTag; }
+    if (StateArray(binding.type)) { return RetainedArrayTag; }
+    if (index < length(characters) && characters[index]) { return RetainedCharTag; }
+    return abi.ValueTag(binding.type);
+}
+SnapshotDropAt :: (type: int, address: string, layout: ValueLayout) -> string {
+    if (type == abi.TextStorage) {
+        return strings.Concatenate([
+            format_text("  %previous = load {}, ptr {}\n", abi.TextType(), address),
+            format_text("  %owner = extractvalue {} %previous, 2\n  call void @chibi_scalar.free(ptr %ctx, ptr %owner)\n", abi.TextType())]);
+    }
+    if (type >= ArrayType && type < MapType) {
+        return strings.Concatenate([
+            format_text("  %previous = load {}, ptr {}\n", abi.ArrayType(), address),
+            format_text("  call void @chibi_array.{}.drop(ptr %ctx, {} %previous)\n", type, abi.ArrayType())]);
+    }
+    if (type >= RecordType && layout.owned[type - RecordType]) {
+        return format_text("  call void @chibi_value.{}.drop_at(ptr %ctx, ptr {})\n", type, address);
+    }
+    return "";
+}
+SnapshotStageCallbacks :: (states: Instruction[], layout: ValueLayout) -> string {
+    out: string[] = [];
+    dropped := resize([false], MapType);
+    for (binding, index in states) {
+        type := binding.type;
+        name := TypeName(type);
+        if (ValueOwned(type, layout.owned) && !dropped[type]) {
+            dropped[type] = true;
+            out.append(format_text("define internal void @chibi_snapshot.drop.{}(ptr %ctx, ptr %payload) {{\nentry:\n", type));
+            out.append(SnapshotDropAt(type, "%payload", layout));
+            out.append("  ret void\n}\n");
+        }
+        out.append(format_text("define internal void @chibi_snapshot.commit.{}(ptr %ctx, ptr %payload) {{\nentry:\n", index));
+        out.append(SnapshotDropAt(type, strings.Concatenate(["@", StateSymbol(index)]), layout));
+        out.append(format_text("  %value = load {}, ptr %payload\n", name));
+        value := "%value";
+        if (abi.Floating(type)) {
+            out.append(format_text("  %bits = bitcast {} %value to {}\n", name, StateStorage(type)));
+            value = "%bits";
+        }
+        out.append(format_text("  store {} {}, ptr @{}\n  store i1 true, ptr @{}.ready\n  ret void\n}\n",
+                               StateStorage(type), value, StateSymbol(index), StateSymbol(index)));
+    }
+    return strings.Join(out, "");
+}
+SnapshotHostAccept :: (states: Instruction[], roots: int[], characters: bool[]) -> string {
+    cases: string[] = [];
+    blocks: string[] = [];
+    for (binding, index in states) {
+        tag := SnapshotStateTag(binding, index, roots, characters);
+        cases.append(format_text("i32 {}, label %state{}", index, index));
+        blocks.append(format_text("state{}:\n  %same{} = icmp eq i32 %from, {}\n", index, index, tag));
+        if (tag == RetainedSnapshotTag) {
+            blocks.append(format_text("  br i1 %same{}, label %shape{}, label %invalid\nshape{}:\n", index, index, index));
+            blocks.append(format_text("  %view{} = inttoptr i64 %word to ptr\n  %shape.at{} = getelementptr %chibi.snapshot.view, ptr %view{}, i32 0, i32 1\n", index, index, index));
+            blocks.append(format_text("  %old.shape{} = load ptr, ptr %shape.at{}\n", index, index));
+            blocks.append(format_text("  %accepted{} = call i1 @chibi_snapshot.schema.accept(ptr @chibi_context, ptr %memo, ptr %queue, ptr %old.shape{}, ptr @chibi_snapshot.shape.{})\n", index, index, index));
+            blocks.append(format_text("  br i1 %accepted{}, label %valid, label %invalid\n", index));
+        } else if (tag >= 1 && tag <= 11) {
+            blocks.append(format_text("  br i1 %same{}, label %valid, label %number\n", index));
+        } else if (tag == RetainedCharTag) {
+            blocks.append(format_text("  br i1 %same{}, label %character{}, label %invalid\ncharacter{}:\n", index, index, index));
+            blocks.append(format_text("  %within{} = icmp ule i64 %word, 1114111\n  %range{} = and i64 %word, -2048\n  %scalar{} = icmp ne i64 %range{}, 55296\n", index, index, index, index));
+            blocks.append(format_text("  %unicode{} = and i1 %within{}, %scalar{}\n  br i1 %unicode{}, label %valid, label %invalid\n", index, index, index, index));
+        } else {
+            blocks.append(format_text("  br i1 %same{}, label %valid, label %invalid\n", index));
+        }
+    }
+    return strings.Concatenate([
+        "define i32 @chibi_host_retained_accept(i64 %handle, i32 %index, i32 %from, i64 %word) #0 {\nentry:\n",
+        "  %session = inttoptr i64 %handle to ptr\n  %failed.at = getelementptr %chibi.snapshot.transaction, ptr %session, i32 0, i32 8\n  %failed = load i1, ptr %failed.at\n  br i1 %failed, label %done, label %prepare\nprepare:\n",
+        "  %memo = getelementptr %chibi.snapshot.transaction, ptr %session, i32 0, i32 0\n  %queue = getelementptr %chibi.snapshot.transaction, ptr %session, i32 0, i32 1\n",
+        format_text("  switch i32 %index, label %invalid [{}]\n", strings.Join(cases, " ")),
+        strings.Join(blocks, ""),
+        "number:\n  %low = icmp uge i32 %from, 1\n  %high = icmp ule i32 %from, 11\n  %numeric = and i1 %low, %high\n  br i1 %numeric, label %valid, label %invalid\nvalid:\n  ret i32 1\ninvalid:\n  store i1 true, ptr %failed.at\n  br label %done\ndone:\n  ret i32 0\n}\n"
+    ]);
+}
+SnapshotHostStage :: (states: Instruction[], roots: int[], characters: bool[], layout: ValueLayout) -> string {
+    cases: string[] = [];
+    blocks: string[] = [];
+    for (binding, index in states) {
+        type := binding.type;
+        tag := SnapshotStateTag(binding, index, roots, characters);
+        name := TypeName(type);
+        cases.append(format_text("i32 {}, label %state{}", index, index));
+        blocks.append(format_text("state{}:\n", index));
+        drop := "null";
+        if (ValueOwned(type, layout.owned)) { drop = format_text("@chibi_snapshot.drop.{}", type); }
+        blocks.append(format_text("  %stage{} = call ptr @chibi_snapshot.stage.new(ptr @chibi_context, ptr %session, i32 {}, i64 ptrtoint (ptr getelementptr ({}, ptr null, i32 1) to i64), ptr @chibi_snapshot.commit.{}, ptr {})\n", index, index, name, index, drop));
+        blocks.append(format_text("  %present{} = icmp ne ptr %stage{}, null\n  br i1 %present{}, label %copy{}, label %none\ncopy{}:\n", index, index, index, index, index));
+        blocks.append(format_text("  %payload{} = call ptr @chibi_snapshot.stage.payload(ptr %stage{})\n", index, index));
+        if (tag == RetainedSnapshotTag || tag == RetainedTextTag || tag == RetainedArrayTag) {
+            blocks.append(format_text("  %source{} = inttoptr i64 %word to ptr\n", index));
+            source := format_text("%source{}", index);
+            if (tag == RetainedSnapshotTag) {
+                blocks.append(format_text("  %value{} = load ptr, ptr %source{}\n", index, index));
+                source = format_text("%value{}", index);
+            }
+            if (ValueOwned(type, layout.owned)) {
+                blocks.append(format_text("  call void @chibi_snapshot.value.{}(ptr @chibi_context, ptr %values, ptr {}, ptr %payload{})\n", type, source, index));
+            } else {
+                blocks.append(format_text("  %plain{} = load {}, ptr {}\n  store {} %plain{}, ptr %payload{}\n", index, name, source, name, index, index));
+            }
+        } else {
+            word := "%word";
+            if (tag != RetainedCharTag) {
+                blocks.append(format_text("  %word{} = call i64 @chibi_scalar.convert(i32 %from, i32 {}, i64 %word)\n", index, tag));
+                word = format_text("%word{}", index);
+            }
+            blocks.append(FromWord(format_text("value{}", index), word, type));
+            blocks.append(format_text("  store {} %value{}, ptr %payload{}\n", name, index, index));
+        }
+        blocks.append(format_text("  %drained{} = call i1 @chibi_snapshot.queue.drain(ptr @chibi_context, ptr %queue, ptr %values)\n", index));
+        // Copy callbacks are total for a validated typed value. A false result
+        // can only come from using a schema callback as a value callback.
+        blocks.append(format_text("  br i1 %drained{}, label %ready{}, label %trap\nready{}:\n", index, index, index));
+        blocks.append(format_text("  %ready.at{} = getelementptr %chibi.snapshot.stage, ptr %stage{}, i32 0, i32 4\n  store i1 true, ptr %ready.at{}\n  ret i32 1\n", index, index, index));
+    }
+    return strings.Concatenate([
+        "define i32 @chibi_host_retained_stage(i64 %handle, i32 %index, i32 %from, i64 %word) #0 {\nentry:\n",
+        "  %accepted = call i32 @chibi_host_retained_accept(i64 %handle, i32 %index, i32 %from, i64 %word)\n  %valid = icmp eq i32 %accepted, 1\n  br i1 %valid, label %prepare, label %none\nprepare:\n",
+        "  %session = inttoptr i64 %handle to ptr\n  %memo = getelementptr %chibi.snapshot.transaction, ptr %session, i32 0, i32 2\n  %queue = getelementptr %chibi.snapshot.transaction, ptr %session, i32 0, i32 3\n  %values = alloca %chibi.snapshot.values\n  %with.memo = insertvalue %chibi.snapshot.values zeroinitializer, ptr %memo, 0\n  %with.queue = insertvalue %chibi.snapshot.values %with.memo, ptr %queue, 1\n  store %chibi.snapshot.values %with.queue, ptr %values\n",
+        format_text("  switch i32 %index, label %none [{}]\n", strings.Join(cases, " ")),
+        strings.Join(blocks, ""), "none:\n  ret i32 0\ntrap:\n  call void @llvm.trap()\n  unreachable\n}\n"
+    ]);
+}
+SnapshotHost :: (states: Instruction[], shapes: SnapshotShapes, characters: bool[], layout: ValueLayout) -> string {
+    return strings.Concatenate([
+        SnapshotStageCallbacks(states, layout),
+        "define i64 @chibi_host_retained_begin() #0 {\nentry:\n  %session = call ptr @chibi_snapshot.transaction.new(ptr @chibi_context)\n  %handle = ptrtoint ptr %session to i64\n  ret i64 %handle\n}\n",
+        SnapshotHostAccept(states, shapes.roots, characters), SnapshotHostStage(states, shapes.roots, characters, layout),
+        "define i32 @chibi_host_retained_finish(i64 %handle, i32 %wanted) #0 {\nentry:\n  %session = inttoptr i64 %handle to ptr\n  %commit = icmp ne i32 %wanted, 0\n  %status = call i32 @chibi_snapshot.transaction.finish(ptr @chibi_context, ptr %session, i1 %commit)\n  ret i32 %status\n}\n"
+    ]);
+}

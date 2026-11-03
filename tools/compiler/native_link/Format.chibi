@@ -22,7 +22,7 @@ import abi "project:native_abi"
 // Modern standalone modules prove every Format operand's storage. Text/count
 // calls cannot enter the numeric renderer, even with dynamic modifiers.
 // Legacy and shared contexts can receive arbitrary values and keep it complete.
-RuntimeFormat :: (windows: bool, numeric: bool = true) -> string {
+pub RuntimeFormat :: (windows: bool, numeric: bool = true) -> string {
     numbers := "define internal i32 @chibi_format_number(ptr %buffer, ptr %conversion, i64 %word, i1 %floating, i1 %wide) {\n  unreachable\n}\n";
     if (numeric) { numbers = FormatNumbers(windows); }
     return Join([numbers, FormatGrammar(), FormatModifiers(), FormatRenderer(), FormatWalk()]);

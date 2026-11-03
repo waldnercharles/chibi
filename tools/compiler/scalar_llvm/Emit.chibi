@@ -178,6 +178,18 @@ Converts :: (from: int, to: int) -> bool {
     }
     return Integer(to) && Number(from);
 }
+// Result-bank projection has no native cell pointers: one plain record value.
+ClockSampleType :: (rows: facts.Row[], records: int[], type: int) -> bool {
+    if (type < facts.RecordType || type >= facts.ArrayType || type - facts.RecordType >= length(records)) { return false; }
+    head := records[type - facts.RecordType];
+    if (rows[head].kind != facts.RecordRow || rows[head].count != 4) { return false; }
+    expected := [facts.Int64Type, facts.WordType, facts.IntType, facts.IntType];
+    for (field, index in expected) {
+        member := rows[head + 1 + index];
+        if (member.type != field || member.literal != 0) { return false; }
+    }
+    return true;
+}
 // The backend's storage ordinal of a value type: the storages of int, bool,
 // i8, u8, i16, u16, u32, i64, u64, number, f64 and string in facts type
 // order. Record r is the backend's record r.
@@ -259,7 +271,9 @@ OptionalPayloadType :: (rows: facts.Row[], records: int[], type: int) -> int {
 // Whether `row` is a loop over an array, and whether it also names the index.
 Arrayed :: (row: facts.Row) -> bool {
     return row.kind == facts.ForRow && (row.literal == i64(facts.RangeArray) ||
-                                      row.literal == i64(facts.RangeArray + facts.RangeKeyed));
+                                      row.literal == i64(facts.RangeArray + facts.RangeKeyed) ||
+                                      row.literal == i64(facts.RangeArray + facts.RangeReverse) ||
+                                      row.literal == i64(facts.RangeArray + facts.RangeKeyed + facts.RangeReverse));
 }
 MapIterated :: (row: facts.Row) -> bool {
     return row.kind == facts.ForRow && (row.literal == i64(facts.RangeMap) ||
@@ -267,6 +281,7 @@ MapIterated :: (row: facts.Row) -> bool {
 }
 Keyed :: (row: facts.Row) -> bool {
     return row.kind == facts.ForRow && (row.literal == i64(facts.RangeArray + facts.RangeKeyed) ||
+                                      row.literal == i64(facts.RangeArray + facts.RangeKeyed + facts.RangeReverse) ||
                                       row.literal == i64(facts.RangeMap + facts.RangeKeyed));
 }
 // The first loop binding: an array element, a map value, or a keyed map's key.
@@ -1541,6 +1556,10 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 }
             }
             stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.ClockSampleRow) {
+            if (operand.name != "" || operand.value != 0 || operand.count != 0 || !ClockSampleType(rows, records, operand.type)) {
+                return "scalar clock sample differs from its four-field transport record";
+            }
         } else if (operand.kind == facts.ZeroRow) {
             captured_union := rows[at].kind == facts.LocalRow && rows[at].literal == i64(facts.PatternStorage) &&
                               rows[at].count == 1 && UnionHead(rows, records, operand.type) >= 0;
@@ -2426,7 +2445,11 @@ pub EmitLines :: (rows: facts.Row[], directory: string) -> Result {
 pub EmitProgramFor :: (target: abi.Target, rows: facts.Row[], directory: string) -> Result {
     return Lower(target, rows, directory, directory != "", false, true);
 }
-Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool, shared: bool, program: bool, family: bool = false) -> Result {
+// Explicit seven-slot embedding boundary; ordinary Wasm emission has no clock owner.
+pub EmitClockProgramFor :: (target: abi.Target, rows: facts.Row[], directory: string) -> Result {
+    return Lower(target, rows, directory, directory != "", false, true, false, true);
+}
+Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool, shared: bool, program: bool, family: bool = false, clock_owner: bool = false) -> Result {
     error := ValidateWith(rows, shared);
     if (error != "") {
         return Result.Invalid(error);
@@ -3292,6 +3315,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                     shape.arguments += operand.count;
                     stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.ClockSampleRow) {
+                    item = Op(native.ClockSample, type, slot, 0, 0, 0);
                 } else if (operand.kind == facts.ForeignRow) {
                     item = Op(native.ForeignCall, type, slot, operand.value, shape.arguments, operand.count);
                     item.literal = i64(length(texts));
@@ -3910,7 +3935,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                 }
                 stored = [];
-                if (pointer_program && (item.op == native.Call || item.op == native.ForeignCall || item.op == native.AwaitResult)) {
+                if (pointer_program && (item.op == native.ClockSample || item.op == native.Call || item.op == native.ForeignCall || item.op == native.AwaitResult)) {
                     glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
                         fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root);
                     next_root = glue.next;
@@ -4039,7 +4064,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                     moving = -1;
                 }
-                if (length(retained_variables) > 0 && (item.op == native.Call || item.op == native.ForeignCall)) {
+                if (length(retained_variables) > 0 && (item.op == native.ClockSample || item.op == native.Call || item.op == native.ForeignCall)) {
                     // A scoped call or writable foreign loan can mutate a
                     // retained local. Publish it before later expression calls
                     // or control-flow exits, while the binding is in scope.
@@ -4229,8 +4254,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 // their own, before the element's variable.
                 array := NativeType(facts.ArrayType + row.type);
                 element := NativeType(row.type);
+                reverse := (row.literal & i64(facts.RangeReverse)) != 0;
                 frame: Frame = {kind: row.kind, skip: -1, leave: -1, ends: false, head: 0, index: local + 1,
-                                bound: local, counted: false, reverse: false, escape: length(jumps), empty: -1,
+                                bound: local, counted: false, reverse: reverse, escape: length(jumps), empty: -1,
                                 exits: 0, armed: false, fallback: -1, owned: length(owned_vars), held: -1, held_type: 0, pattern_first: -1};
                 // A loop over a fresh array owns it, in a local of its own.
                 if (Holds(fresh, stack[0])) {
@@ -4243,20 +4269,42 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 if (Keyed(row)) {
                     places.append(local + 1);
                 }
-                slots.append(integer);
-                body.extend([Op(native.Save, array, 0, stack[0], 0, local), Op(native.Constant, integer, slot, 0, 0, 0),
-                             Op(native.Save, integer, 0, slot, 0, local + 1)]);
-                slot += 1;
+                body.append(Op(native.Save, array, 0, stack[0], 0, local));
+                if (reverse) {
+                    // Length zero starts at the signed sentinel -1. The
+                    // head rejects it before any element access.
+                    one := Op(native.Constant, integer, slot + 1, 0, 0, 0);
+                    one.literal = 1;
+                    slots.extend([integer, integer, integer]);
+                    body.extend([Op(native.ArrayLength, integer, slot, stack[0], 0, 0), one,
+                                 Op(native.Sub, integer, slot + 2, slot, slot + 1, 0),
+                                 Op(native.Save, integer, 0, slot + 2, 0, local + 1)]);
+                    slot += 3;
+                } else {
+                    slots.append(integer);
+                    body.extend([Op(native.Constant, integer, slot, 0, 0, 0),
+                                 Op(native.Save, integer, 0, slot, 0, local + 1)]);
+                    slot += 1;
+                }
                 frame.head = length(body);
-                slots.extend([integer, array, integer, abi.BoolStorage]);
-                body.extend([Op(native.Local, integer, slot, local + 1, 0, 0),
-                             Op(native.Local, array, slot + 1, local, 0, 0),
-                             Op(native.ArrayLength, integer, slot + 2, slot + 1, 0, 0),
-                             Op(native.Lt, integer, slot + 3, slot, slot + 2, 0),
-                             Op(native.Branch, 0, 0, slot + 3, 0, length(body) + 6)]);
+                if (reverse) {
+                    slots.extend([integer, integer, abi.BoolStorage]);
+                    body.extend([Op(native.Local, integer, slot, local + 1, 0, 0),
+                                 Op(native.Constant, integer, slot + 1, 0, 0, 0),
+                                 Op(native.Ge, integer, slot + 2, slot, slot + 1, 0),
+                                 Op(native.Branch, 0, 0, slot + 2, 0, length(body) + 5)]);
+                    slot += 3;
+                } else {
+                    slots.extend([integer, array, integer, abi.BoolStorage]);
+                    body.extend([Op(native.Local, integer, slot, local + 1, 0, 0),
+                                 Op(native.Local, array, slot + 1, local, 0, 0),
+                                 Op(native.ArrayLength, integer, slot + 2, slot + 1, 0, 0),
+                                 Op(native.Lt, integer, slot + 3, slot, slot + 2, 0),
+                                 Op(native.Branch, 0, 0, slot + 3, 0, length(body) + 6)]);
+                    slot += 4;
+                }
                 frame.skip = length(body);
                 body.append(Op(native.Jump, 0, 0, 0, 0, 0));
-                slot += 4;
                 slots.extend([array, integer, element]);
                 body.extend([Op(native.Local, array, slot, local, 0, 0), Op(native.Local, integer, slot + 1, local + 1, 0, 0),
                              Op(native.ArrayGet, element, slot + 2, slot, slot + 1, 0),
@@ -4655,7 +4703,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
     // manifest name, not a prepared artifact's stable library identity.
     emitted: native.Result = native.Result.Rejected(-1, "");
     if (rows[1].text == "" && !generation && program) {
-        if (pointer_program) {
+        if (clock_owner) {
+            emitted = native.EmitClockProgramTyped(target, functions, parameters, slots, locals, code, arguments, records, fields,
+                                                  field_tags, texts, source, names, lines, columns);
+        } else if (pointer_program) {
             emitted = native.EmitProgramTyped(target, functions, parameters, slots, locals, code, arguments, records, fields,
                                              field_tags, texts, source, names, lines, columns);
         } else {

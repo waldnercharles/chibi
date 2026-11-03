@@ -1,0 +1,13 @@
+package asset_archive_test
+
+import engine "graph:engine"
+import os "core:os"
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 3) { return 2; }
+    built := engine.BuildNativeArchives(arguments[0], arguments[1], arguments[2]);
+    os.Print(format_text("built:{}", built));
+    if (built < 0) { return 1; }
+    return 0;
+}

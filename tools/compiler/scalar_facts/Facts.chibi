@@ -209,7 +209,8 @@ package scalar_facts
 // RangeArray declares variable `value`, of its element `type` and `name`,
 // and its one operand is the array it iterates, whose elements the body
 // cannot change. With RangeKeyed the variable after it is the int index of the
-// element, which the body cannot change either. It runs its body for each element in order. The array is
+// element, which the body cannot change either. RangeReverse visits elements
+// from the last to the first, preserving their original indices. The array is
 // read once, so a producer iterates a Copy of the variable when the body
 // assigns it.
 // A condition's last operand is its bool; a
@@ -359,6 +360,8 @@ pub OperandBindRow: int : 58;
 // A lexical scope without operands. Its header has type/value/count/literal 0
 // and empty names/text; End repeats its located range and releases its owners.
 pub ScopeRow: int : 59;
+// One private clock transport value: zero operands and metadata, exact i64/u64/int/int record.
+pub ClockSampleRow: int : 60;
 // A numeric/bool view operation. Value packs operation * 16 + scalar type;
 // type is the result (make/slice use the ordinary optional record). Count is
 // operand arity; only make carries the full array-cell identity in literal.
@@ -591,8 +594,8 @@ pub CharNominal: int : 4;
 // captures and its writeback may share that range; operands keep real ranges.
 pub Captured: int : 8;
 
-// A For row's range flags. RangeArray stands alone or with RangeKeyed,
-// which declares the next variable, an int, as the index of the element.
+// A For row's range flags. RangeArray may combine with RangeReverse and
+// RangeKeyed, which declares the next variable, an int, as the element's index.
 pub RangeExclusive: int : 1;
 pub RangeReverse: int : 2;
 pub RangeArray: int : 4;

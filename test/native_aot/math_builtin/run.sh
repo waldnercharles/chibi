@@ -13,7 +13,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/chibi-builtin-math.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 cp -R "$root/test/native_aot/math_builtin/failures" "$work/failures"
 for level in 0 2; do
-    for source in Deterministic Nested; do
+    for source in Deterministic Nested Edges; do
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$root/test/native_aot/math_builtin/$source.chibi" --entry Main \
             --output "$work/$source-$level" --llvm "$llvm" --target "$target" --level "$level" --jobs 2

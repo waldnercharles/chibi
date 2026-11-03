@@ -31,7 +31,7 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/language/parallel.c`, `main.c`, `backend.h`, `compiler_cache.h` | 9, 0 | the C test runner | goes |
 | `test/runtime/whole_integer.c` (retired 2026-11-02) | 3 | hand-built integer IR, bytecode against SLJIT | retired; admitted integer rules remain in the authored all-width arithmetic suite and native backend; exact integer math in this file used BF-only instructions, not exact integer source overloads |
 | `test/runtime/whole_conversion.c` (retired 2026-11-02) | 1 | typed scalar selection through hand-built IR | native `math_builtin/Select.chibi` preserves bool/u8/i32/i64/f32/f64 selection, both conditions, NaN and signed zero at O0/O2; its unused conversion helpers leave with it |
-| `test/runtime/whole_math.c` | 2 | hand-built IR, bytecode against SLJIT | goes; the conversion, negation and comparison rules are ported; the math specials wait on owner decisions |
+| `test/runtime/whole_math.c` (retired 2026-11-02) | 2 | hand-built math IR, bytecode against SLJIT | native `math_builtin/Edges.chibi` preserves admitted source special values and live results at O0/O2; unsupported BF-only f64/log10 shapes retire without admitting source overloads |
 | `test/runtime/persistent_store.c` | 1 | `execution_program_set_state` | goes, except retained records across a swap |
 | `test/runtime/reference_cave.c`, `reference_cave.h` (retired 2026-11-02) | 0 | a helper with no live caller | retired with its unused test-driver source entry |
 | `test/support/arena.c`, `asset_value.c` (retired 2026-11-02) | 5, 3 | C allocator internals and `av_doc` ownership, cloning and JSON representation | retired; production support and asset libraries remain for their live C consumers |
@@ -47,7 +47,7 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/tools/case_timings_test.c`, `case_timings.c`, `fixture.c`, `policy_worker.c`, `main.c` | 9, 0 | the C test runner and its workers | goes |
 | `test/tools/box3d.c` | 2 | the third-party box3d library | goes with the C engine build |
 | `test/tools/collab.c` (retired 2026-11-02) | 5 | the Node collab server | authority, readiness, logs and transport failures moved to `tools/collab/server/server.test.mjs`; `collab`, `short` and `native-tools` select them |
-| `test/tools/web_storage.c` | 19 | chibi-studio's `web_storage.js` | move to Node tests in its owning repository |
+| `test/tools/web_storage.c` (retired 2026-11-02) | 19 | chibi-studio's `web_storage.js` | all 19 cases now belong to Studio's `tests/web/web-storage.test.cjs`, including browser-export isolation |
 | `test/tools/build_process.c` (retired) | 53 | the C build host's natives | public behavior covered by native OS/CLI/supervisor suites; private contracts retired |
 | `test/tools/chibi_cli.c` (retired 2026-11-02) | 24 | `apps/chibi` launched by the C apphost | native CLI behavior is covered by `ChibiCliTests.chibi` and `test/native_cli/foreground.py`; launcher/VM mechanics leave with the host |
 | `test/tools/native_workloads.c` (retired 2026-11-02) | 2 | `chibi build --native` end to end | checksums, timings and detached-descendant cleanup run through the authored native workload benchmark |
@@ -237,6 +237,8 @@ compiler reproduced at stages three and four from the combined `813b93875` sourc
 - **Integer `abs`, `min`, `max` and `clamp`.** The retired `whole_integer.c`
   asserted exact integer BF instructions. Source math converts integer operands
   to `number`; retiring this C test does not admit exact integer overloads.
-- **IEEE special values in `core:math`.** `whole_math.c` asserts tan, asin, acos, atan,
-  exp, log, log10, pow, atan2 and clamp at NaN, ±inf, ±0, subnormals and 1e20. The samples
-  pin only finite values. Should the language guarantee libm's results at the specials?
+- **Math special values.** Native `math_builtin/Edges.chibi` pins classification
+  and zero signs for admitted f32 builtins and f32/f64 exp/pow. Finite angles
+  use tolerances. Unsupported BF-only f64/log10 shapes in the retired
+  `whole_math.c` do not admit source overloads. Its clamp expression and the
+  current source clamp keep their distinct operand order and edge results.

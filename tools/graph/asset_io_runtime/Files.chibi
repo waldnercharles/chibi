@@ -1,0 +1,105 @@
+package asset_io_runtime
+
+import os "core:os"
+import strings "core:strings"
+
+// SDK probes contain integer constants only; no probe implementation is linked.
+pub Probe :: (module: string, name: string, limit: int) -> int {
+    value := -1;
+    for (line in strings.Lines(module)) {
+        if (!strings.HasPrefix(line, strings.Concatenate(["@", name, " = "]))) { continue; }
+        if (value != -1) { return -1; }
+        marker := " constant i32 ";
+        start := strings.Index(line, marker);
+        if (start < 0) { return -1; }
+        start += strings.ByteLength(marker);
+        value = 0;
+        count := 0;
+        for (index in start..<strings.ByteLength(line)) {
+            digit := strings.ByteAt(line, index) - 48;
+            if (digit < 0 || digit > 9) { break; }
+            if (value > (limit - digit) / 10) { return -1; }
+            value = value * 10 + digit;
+            count += 1;
+        }
+        if (count == 0) { return -1; }
+    }
+    return value;
+}
+
+pub ProbeSource :: () -> string {
+    return "#define _GNU_SOURCE 1\n#include <sys/stat.h>\n#include <stddef.h>\n#include <dirent.h>\n#include <fcntl.h>\n#include <errno.h>\n#define IO_CONST(name, value) const unsigned chibi_io_##name = (value)\nIO_CONST(stat_bytes, sizeof(struct stat));\nIO_CONST(mode_offset, offsetof(struct stat, st_mode));\nIO_CONST(mode_bits, sizeof(((struct stat*)0)->st_mode)*8);\nIO_CONST(size_offset, offsetof(struct stat, st_size));\nIO_CONST(size_bytes, sizeof(((struct stat*)0)->st_size));\nIO_CONST(stamp_offset, offsetof(struct stat, st_mtime));\nIO_CONST(stamp_bytes, sizeof(((struct stat*)0)->st_mtime));\nIO_CONST(name_offset, offsetof(struct dirent, d_name));\nIO_CONST(mode_mask, S_IFMT);\nIO_CONST(mode_regular, S_IFREG);\nIO_CONST(mode_directory, S_IFDIR);\nIO_CONST(read_flags, O_RDONLY|O_NOFOLLOW|O_NONBLOCK);\nIO_CONST(lock_flags, O_RDWR|O_CREAT|O_NOFOLLOW|O_NONBLOCK);\nIO_CONST(exists_error, EEXIST);\nIO_CONST(missing_error, ENOENT);\nIO_CONST(follow_flags, O_RDONLY|O_NONBLOCK);\n";
+}
+
+// Runtime and IO templates form one module. Each declaration has one owner;
+// definitions in the first template satisfy the IO declarations directly.
+pub Append :: (runtime: string, io: string) -> string {
+    declared: [string:int] = [:];
+    for (line in strings.Lines(runtime)) {
+        if (!strings.HasPrefix(line, "declare ") && !strings.HasPrefix(line, "define ")) { continue; }
+        at := strings.Index(line, "@");
+        end := strings.Index(line, "(");
+        if (at >= 0 && end > at) { declared[strings.Slice(line, at, end - at)] = 1; }
+    }
+    lines := [runtime];
+    for (line in strings.Lines(io)) {
+        if (strings.HasPrefix(line, "target triple")) { continue; }
+        if (strings.HasPrefix(line, "declare ")) {
+            at := strings.Index(line, "@");
+            end := strings.Index(line, "(");
+            if (at >= 0 && end > at && declared[strings.Slice(line, at, end - at)] == 1) { continue; }
+        }
+        lines.append(line);
+    }
+    return strings.Join(lines, "\n");
+}
+
+pub Module :: (root: string, triple: string, probe: string = "") -> string {
+    wasm := triple == "wasm32-unknown-emscripten";
+    mac := strings.HasPrefix(triple, "aarch64-apple-") || strings.HasPrefix(triple, "arm64-apple-");
+    if (!wasm && !mac && !strings.HasPrefix(triple, "x86_64-unknown-linux")) { return ""; }
+    names := ["STAT_BYTES", "MODE_OFFSET", "MODE_BITS", "SIZE_OFFSET", "STAMP_OFFSET", "NAME_OFFSET",
+              "MODE_MASK", "MODE_REGULAR", "MODE_DIRECTORY", "READ_FLAGS", "LOCK_FLAGS", "EXISTS_ERROR", "MISSING_ERROR", "FOLLOW_FLAGS"];
+    // Same two native stat/dirent ABIs as core:sys/posix. Wasm comes from its
+    // selected SDK headers, not the build machine's ABI.
+    values: int[] = [256, 24, 32, 48, 88, 19, 61440, 32768, 16384, 133120, 133186, 17, 2, 2048];
+    if (mac) { values = [256, 4, 16, 96, 48, 21, 61440, 32768, 16384, 260, 774, 17, 2, 4]; }
+    if (wasm) {
+        keys := ["stat_bytes", "mode_offset", "mode_bits", "size_offset", "stamp_offset", "name_offset",
+                 "mode_mask", "mode_regular", "mode_directory", "read_flags", "lock_flags", "exists_error", "missing_error", "follow_flags"];
+        for (key, index in keys) {
+            values[index] = Probe(probe, strings.Concatenate(["chibi_io_", key]), 1048576);
+            if (values[index] < 0) { return ""; }
+        }
+        if (Probe(probe, "chibi_io_size_bytes", 16) != 8 || Probe(probe, "chibi_io_stamp_bytes", 16) != 8) { return ""; }
+    }
+    if (values[0] <= 0 || values[0] > 4096 || (values[2] != 16 && values[2] != 32) ||
+        values[1] + values[2] / 8 > values[0] || values[3] + 8 > values[0] || values[4] + 8 > values[0] || values[5] > 4096) { return ""; }
+    read := os.ReadText(strings.Concatenate([root, "/tools/graph/asset_io_runtime/Files.ll"]));
+    if (read.error != nil) { return ""; }
+    text := strings.ReplaceAll(read.text, "@TRIPLE@", triple);
+    word := "64";
+    if (wasm) { word = "32"; }
+    text = strings.ReplaceAll(text, "@WORD@", word);
+    for (name, index in names) { text = strings.ReplaceAll(text, strings.Concatenate(["@", name, "@"]), format_text("{}", values[index])); }
+    // LLVM requires different source and destination widths on integer casts.
+    for (name in ["count", "capacity", "wide", "length", "value", "address"]) {
+        text = strings.ReplaceAll(text, strings.Concatenate(["zext i", word, " %", name, " to i", word]), strings.Concatenate(["add i", word, " %", name, ", 0"]));
+        text = strings.ReplaceAll(text, strings.Concatenate(["trunc i", word, " %", name, " to i", word]), strings.Concatenate(["add i", word, " %", name, ", 0"]));
+    }
+    error := "__errno_location";
+    if (mac) { error = "__error"; }
+    text = strings.Concatenate([text, "\ndeclare ptr @", error, "()\ndefine ptr @chibi_asset_errno() {\n  %address = call ptr @", error, "()\n  ret ptr %address\n}\n"]);
+    if (wasm) {
+        text = strings.Concatenate([text,
+            "@chibi_asset_publication = internal global i8 0, align 1\n",
+            "define internal i1 @chibi_asset_publication_enter() {\n  %pair = cmpxchg ptr @chibi_asset_publication, i8 0, i8 1 acquire monotonic\n  %acquired = extractvalue { i8, i1 } %pair, 1\n  ret i1 %acquired\n}\n",
+            "define void @chibi_asset_publication_release() {\n  store atomic i8 0, ptr @chibi_asset_publication release, align 1\n  ret void\n}\n",
+            "@chibi_asset_dirty_hook = private constant [70 x i8] c\"if(Module['chibiAssetCacheDirty']){Module['chibiAssetCacheDirty']();}\\00\"\ndeclare void @emscripten_run_script(ptr)\ndefine void @chibi_asset_cache_changed() {\n  call void @emscripten_run_script(ptr @chibi_asset_dirty_hook)\n  ret void\n}\n"]);
+    } else {
+        text = strings.Concatenate([text, "\ndefine internal i1 @chibi_asset_publication_enter() { ret i1 true }\ndefine void @chibi_asset_publication_release() { ret void }\ndefine void @chibi_asset_cache_changed() { ret void }\n"]);
+    }
+    // These functions are defined below or by the call boundary, not imports.
+    text = strings.ReplaceAll(text, "declare ptr @chibi_asset_errno()\n", "");
+    return text;
+}

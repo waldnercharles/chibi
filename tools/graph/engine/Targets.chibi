@@ -25,7 +25,7 @@ pub Targets :: () -> string[] {
         "chibi_arithmetic_capabilities", "chibi_native_types", "chibi_native_bindings", "chibi_task_pool_runtime", "chibi_host_native_default",
 
         "chibi_source_catalog", "chibi_program", "chibi_build_host", "chibi-build-host", "chibi_compiler_host",
-        "chibi-compiler-host", "chibi_asset_compiler_host", "chibi", "chibi-asset-compiler"
+        "chibi-compiler-host", "chibi", "chibi-asset-compiler", "chibi_asset_compiler_host"
     ];
     // The native products and full test drivers share the platform's archive.
     if (os.Platform() == "Darwin" || os.Platform() == "Linux") {
@@ -43,10 +43,6 @@ pub Targets :: () -> string[] {
 // `build/` entry, which a step of the graph writes, or below the third-party
 // archive for a `third-party/` entry.
 Files :: (target: string) -> string[] {
-    if (target == "chibi_asset_compiler_host") {
-        return ["src/authoring/asset_compiler_host.c", "src/authoring/asset_compiler_native.c",
-                "src/support/binary_cache.c", "src/host/process.c"];
-    }
     if (target == "reflect") {
         return [
             "tools/reflect/reflect.c", "tools/reflect/collect.c", "tools/reflect/identity.c", "tools/reflect/emit.c",
@@ -236,7 +232,6 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi_source_runtime_consumer") {
         return [
-            "test/runtime/whole_math.c",
             "test/runtime/persistent_store.c", "test/support/reflected_types.c"
         ];
     }
@@ -244,7 +239,6 @@ Files :: (target: string) -> string[] {
         return [
             "test/tools/main.c", "test/tools/case_timings.c", "test/tools/case_timings_test.c",
             "test/tools/fixture.c",
-            "test/tools/web_storage.c",
             "src/host/process.c", "third_party/yyjson/yyjson.c",
             "test/tools/compiler_bootstrap.c",
             "src/host/native_libraries.c", "test/tools/box3d.c"
@@ -407,9 +401,6 @@ pub PrivateHeaders :: (target: string) -> string[] {
     if (target == "chibi_source_catalog") {
         return ["support/sha256.h"];
     }
-    if (target == "chibi_asset_compiler_host") {
-        return ["support/binary_cache.h", "support/sha256.h", "authoring/asset_compiler_native.h", "host/process.h"];
-    }
     if (target == "chibi_types") {
         return ["types/array_internal.h"];
     }
@@ -537,7 +528,7 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_asset_compiler_host") {
         // This compile-only ABI runs the native service; the legacy VM
         // decoder belongs to chibi_source_catalog, not the facade archive.
-        return ["public/asset_compiler_host", "private/asset_compiler_host", "public/support"];
+        return ["public/asset_compiler_host"];
     }
     if (target == "reflect") {
         return ["public/capabilities", "public/types", "public/support", "public/execution_contract"];

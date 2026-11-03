@@ -1,0 +1,117 @@
+package native_driver
+
+import compiler "project:package_compiler"
+import facts "project:scalar_facts"
+import scalar "project:scalar_llvm"
+import abi "project:native_abi"
+import strings "core:strings"
+import os "core:os"
+import syntax "project:syntax_diagnostics"
+import route "project:driver_paths"
+
+// The runner appends the actual driver catalog and pure module boundary.
+HostSource :: (body: string) -> string {
+    return strings.Concatenate(["package clock\nNativeClockSample :: struct { nanoseconds: i64; domain: u64; status: int; platform_error: int; }\npub Read :: () -> int { ", body, " }\n"]);
+}
+RootSource :: () -> string { return "package main\nimport clock \"host:clock\"\nMain :: () -> int { return clock.Read(); }\n"; }
+Rows :: (host: string, root: string, natives: compiler.Native[], ports: compiler.Port[], identities: u64[]) -> facts.Row[] {
+    return compiler.CollectScalarProgram("/project", ["core", "host"], ["/sdk/core", "/sdk/host"],
+        ["Main.chibi", "/sdk/host/clock/Clock.chibi"], [root, host], TargetFacts(), Names(), natives, ports, identities, 1, 1, "Main");
+}
+CountSamples :: (rows: facts.Row[]) -> int {
+    count := 0;
+    for row in rows { if row.kind == facts.ClockSampleRow { count += 1; } }
+    return count;
+}
+Rejected :: (rows: facts.Row[]) {
+    assert(length(rows) == 2 && rows[1].kind == facts.RejectionRow);
+    assert(CountSamples(rows) == 0);
+}
+OwnerRejected :: (result: scalar.Result) {
+    switch result {
+        case .Invalid(message): assert(strings.Contains(message, "seven-slot clock owner"));
+        case: assert(false, "a five-slot clock context cannot emit LLVM");
+    }
+}
+Main :: () -> int {
+    natives := Natives(); ports := Ports(); identities := Identities();
+    body := "raw := RawSample(); return raw.status + raw.status + raw.platform_error;";
+    host := HostSource(body);
+    rows := Rows(host, RootSource(), natives, ports, identities);
+    assert(rows[1].kind == facts.DocumentRow && CountSamples(rows) == 1);
+    assert(scalar.Validate(rows) == "");
+    unused := Rows(HostSource("raw := RawSample(); return 0;"), RootSource(), natives, ports, identities);
+    assert(unused[1].kind == facts.DocumentRow && CountSamples(unused) == 1, "an unused result still samples");
+    ambient := strings.Concatenate([RootSource(), "Sample :: () -> int { return 17; }\nRawSample :: () -> int { return 19; }\n"]);
+    assert(CountSamples(Rows(host, ambient, natives, ports, identities)) == 1);
+    shadow := strings.Concatenate([HostSource("raw := RawSample(); return raw.status;"),
+        "RawSample :: () -> NativeClockSample { return {nanoseconds: 1, domain: 2, status: 0, platform_error: 0}; }\n"]);
+    shadowed := Rows(shadow, RootSource(), natives, ports, identities);
+    assert(shadowed[1].kind == facts.DocumentRow && CountSamples(shadowed) == 0, "authored calls retain their identity");
+    Rejected(Rows(host, "package main\nMain :: () -> int { raw := RawSample(); return raw.status; }\n", natives, ports, identities));
+    Rejected(Rows(HostSource("return RawSample().status;"), RootSource(), natives, ports, identities));
+    for variant in 0..<8 {
+        changed := natives;
+        changed_ports := ports;
+        changed_ids := identities;
+        kernel := changed[length(changed) - 1];
+        switch variant {
+            case 0: kernel.effects = 0;
+            case 1: kernel.results = 3;
+            case 2: kernel.variadic = true;
+            case 3: changed_ids[length(changed_ids) - 1] = changed_ids[length(changed_ids) - 1] ^ u64(1);
+            case 4: changed_ids[0] = compiler.ClockNativeID;
+            case 5:
+                port := changed_ports[kernel.first]; port.storage = 9; changed_ports[kernel.first] = port;
+            case 6:
+                port := changed_ports[kernel.first + 1]; port.container = 1; changed_ports[kernel.first + 1] = port;
+            case 7:
+                // get is outside the native subset; its reserved ID must still count.
+                for native, index in changed { if native.name == "get" { changed_ids[2 * index] = compiler.ClockNativeID; } }
+        }
+        changed[length(changed) - 1] = kernel;
+        Rejected(Rows(host, RootSource(), changed, changed_ports, changed_ids));
+    }
+    clock := -1; record := -1; ordinal := 0;
+    for row, index in rows { if row.kind == facts.ClockSampleRow { clock = index; } }
+    for row, index in rows {
+        if row.kind == facts.RecordRow || row.kind == facts.UnionRow {
+            if facts.RecordType + ordinal == rows[clock].type { record = index; }
+            ordinal += 1;
+        }
+    }
+    assert(clock >= 0 && record >= 0);
+    for variant in 0..<10 {
+        changed := rows; sample := changed[clock];
+        switch variant {
+            case 0: sample.value = 1;
+            case 1: sample.count = 1;
+            case 2: sample.literal = 1;
+            case 3: sample.name = "sample";
+            case 4: sample.text = "sample";
+            case 5: sample.type = facts.IntType;
+            case 6:
+                field := changed[record + 1]; field.type = facts.WordType; changed[record + 1] = field;
+            case 7:
+                field := changed[record + 2]; field.type = facts.Int64Type; changed[record + 2] = field;
+            case 8:
+                field := changed[record + 3]; field.literal = i64(facts.CharNominal); changed[record + 3] = field;
+            case 9: sample.type = facts.RecordType + 10000;
+        }
+        changed[clock] = sample;
+        assert(scalar.Validate(changed) != "" && length(scalar.EmitBytes(changed)) == 0);
+    }
+    OwnerRejected(scalar.EmitFor(abi.LinuxX64(), rows));
+    OwnerRejected(scalar.EmitProgramFor(abi.WebAssembly32(), rows, ""));
+    switch scalar.EmitClockProgramFor(abi.WebAssembly32(), rows, "") {
+        case .Emitted(text): assert(strings.Contains(text, "@chibi_clock_raw"));
+        case .Invalid(message): os.Print(message); return 1;
+        case: assert(false, "an explicit Wasm clock owner emits through the same rows");
+    }
+    switch ModuleClock(["core", "host"], ["/sdk/core", "/sdk/host"],
+        ["Main.chibi", "/sdk/host/clock/Clock.chibi"], [RootSource(), host], "wasm32-unknown-emscripten", "Main", "") {
+        case .Emitted(text): assert(strings.Contains(text, "@chibi_clock_raw"));
+        case .Rejected(message): os.Print(message); return 1;
+    }
+    return 0;
+}

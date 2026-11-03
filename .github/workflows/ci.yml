@@ -484,9 +484,21 @@ jobs:
           if-no-files-found: warn
           retention-days: 1
       - name: Check the native Windows asset compiler and C consumer
+        id: windows-asset-proof
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         run: |
           & ./test/native_aot/asset_compiler/Bridge.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
+      - name: Keep failed Windows asset facade evidence
+        if: ${{ failure() && steps.windows-asset-proof.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-windows-asset-facade-failure
+          path: ${{ runner.temp }}/chibi-native-asset-*
+          if-no-files-found: warn
+          retention-days: 1
       - name: Exercise the native Windows object pipeline
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |

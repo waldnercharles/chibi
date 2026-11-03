@@ -44,7 +44,7 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/tools/box3d.c` | 2 | the third-party box3d library | goes with the C engine build |
 | `test/tools/collab.c` (retired 2026-11-02) | 5 | the Node collab server | authority, readiness, logs and transport failures moved to `tools/collab/server/server.test.mjs`; `collab`, `short` and `native-tools` select them |
 | `test/tools/web_storage.c` | 19 | chibi-studio's `web_storage.js` | move to Node tests in its owning repository |
-| `test/tools/build_process.c` | 53 | the C build host's natives | goes, except 16 core:os cases |
+| `test/tools/build_process.c` (retired) | 53 | the C build host's natives | public behavior covered by native OS/CLI/supervisor suites; private contracts retired |
 | `test/tools/chibi_cli.c` (retired 2026-11-02) | 24 | `apps/chibi` launched by the C apphost | native CLI behavior is covered by `ChibiCliTests.chibi` and `test/native_cli/foreground.py`; launcher/VM mechanics leave with the host |
 | `test/tools/native_workloads.c` (retired 2026-11-02) | 2 | `chibi build --native` end to end | checksums, timings and detached-descendant cleanup run through the authored native workload benchmark |
 
@@ -109,8 +109,10 @@ What they cover:
   - reads of a folder, FIFO or missing path;
   - `RealPath`, `HashText`, and `HashFile` of a million `a`s.
 
-The C build host is still in use, so its cases stay until the native build runner replaces
-it. These are the ported `build_process.c` cases, which go with it:
+The native build runner now owns ordinary builds and test selectors. The 53-case
+private `build_process.c` harness and its three selectors are retired. Its live
+process and file contracts are covered by these native suites, the CLI foreground
+tests, and the Linux workload supervisor controls. The original cases include:
 - `exits_and_spawn_errors`;
 - `argv_cwd_and_explicit_environment`;
 - `descendants_stop_on_timeout_and_leader_exit`;
@@ -125,15 +127,27 @@ it. These are the ported `build_process.c` cases, which go with it:
 - `private_file_reads_preserve_bytes_and_reject_invalid_files`;
 - `private_hashes_match_sha256_vectors`.
 
-They don't port:
-- `private_waits_take_output_in_wait_order`: a native piped child writes to a file, so
-  it has no pipe to fill.
-- `private_atomic_writes_preserve_target_on_rename_failure`: the native write is not
-  atomic.
-- `Getenv` of an empty variable: core:os cannot set a variable for a child.
-- `private_waits_refuse_unknown_and_repeated_handles` and
-  `private_unwaited_and_late_steps_stop`: the two implementations disagree, so these
-  wait on an owner decision.
+The file suite also checks binary Copy over an existing file, its old inode and
+permission bits, failure preservation and temporary cleanup; nonempty Publish
+preserves payload and destination identities on rejection. It rejects the same
+directory under both identical and alternate path spellings. Stamp follows links,
+rejects dangling links and distinguishes files, and List includes hidden names.
+
+Private build-host implementation contracts retire with this harness: pipe wait
+order, its job/result tables, bounded buffers, environment allowlists, VM quotas,
+recovery deadlines and private namespace are not native API requirements. The
+native process and CLI tests cover the surviving cancellation and child lifetime
+behavior. `policy_worker` remains only as a graph executable-staging fixture.
+
+`core:os.WriteText` and `WriteBytes` are truncating writes; they do not inherit the
+private `build.write_file` atomic replacement contract. Accepted compiler outputs
+use a partial file and Rename; compiler and build caches use a reserved stage and
+Publish; fresh SDK publication uses a reserved stage and Publish. SDK overlays
+copy each file through Copy's atomic replacement. Mutable private build metadata
+and `.chibi-record` receipts are written directly: failed writes stop the build,
+and incomplete receipts cause a rebuild. This does not make an SDK overlay a
+transaction over the whole prefix. Explicit VM comparison and recovery still
+retain their host implementation until the final VM retirement gate.
 
 ### The CLI: native public commands (ported)
 

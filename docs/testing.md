@@ -173,9 +173,9 @@ cancellation, child-group cleanup and terminal suspend/resume. It requires LLVM.
 `chibi-cli-process` runs the process and terminal cases alone.
 
 `chibi build test <name>` runs one selector against the drivers in `build/` and
-the Release tools in `build-release/`; `--build`, `--release-build` and
-`--build-host` select other builds. Some selectors run separately from the
-groups; `chibi build test --list` shows every selector and group.
+the Release tools in `build-release/`; `--build` and `--release-build` select other
+builds. Some selectors run separately from the groups; `chibi build test --list`
+shows every selector and group.
 
 Add a case to the selector that owns its area; add a selector to its group's
 row in `tools/tests.tsv` so the group, and therefore CI, runs it. Studio's
@@ -276,8 +276,6 @@ selectors. The counts describe coverage and do not record a pass.
   restrictions and cycle collection.
 - `language-record-document`: five cases, adding three tiny JSON roundtrips,
   four malformed byte tags and one rejected NUL name.
-- `build-process`: the helper case adds seven operations on at most seven bytes
-  and no processes. Binary-output and file assertions replace text rejection.
 
 These extensions add no rendering, GPU or network work and no additional child
 process launches.
@@ -399,35 +397,15 @@ compiler without recovering. Interned strings keep the compiler near 23 MB, and
 package sources are capped at 8 MiB, so this case can't cross the artifact
 bound; the sparse cases above cover it.
 
-## Private build-host process checks
+## Native build and process checks
 
-`chibi build test build-process` selects the C cases in the existing tooling
-dispatcher; `chibi build` builds `chibi-build-host`, `test_tools` and its
-`policy_worker` dependency. The route uses one disposable directory,
-fixed authored sources and at most 58 controlled process launches or failed
-spawn attempts. It performs no
-engine configure/build, network, renderer or GPU work. Case deadlines are at
-most two seconds, with shorter deliberate timeout/cancellation budgets.
-
-Cases cover exact argv and cwd, explicit environment and parent isolation,
-separate output bounds, a step's 1,023-argument bound, exits/signals, spawn
-errors, timeout, active cancellation,
-and descendants whose leader exits first. The private host executes both the
-controlled source and unchanged recording workflow on bytecode and SLJIT, with
-actual backend counters and failure-path assertions. Compiler-enabled full
-native builds also verify absence from the ordinary game catalog; minimal
-compiler-only builds verify rejection by a catalog without build capabilities.
-Two CLI invocations cover source loading, a nonzero authored result and a missing
-entry. Seven additional cases cover argument and returned-value lifetimes,
-string operations, truncated or binary output rejection, regular-file and size
-limits, and atomic write failure cleanup. Five more cover a step's 1 MiB output
-and unreported probes, file kinds, stamps and sorted directory entries with
-their limits, atomic copies, renames and removals, SHA-256 against FIPS 180-4
-vectors, and environment names. Their fixed file workload is about 10 MiB and 8,193 empty
-files.
+The private `build-process`, `build-process-files` and `build-timings` selectors
+are retired. Native `core:os` file and process suites, CLI foreground tests and
+the Linux workload supervisor cover the surviving public behavior. The mapping
+and retired private contracts are recorded in [C test verdicts](c-test-verdicts.md).
 
 `graph-engine`, `graph-driver`, `graph-discovery`, `graph-c` and `graph-build`
-run the authored programs in `test/graph` under the build host: the profile's
+run the authored programs in `test/graph` natively: the profile's
 flags, argument checks and target selection; the driver's plans; toolchain
 discovery against fixture installations; `tools/graph/c`'s steps,
 response-file links and dependency files; and, in `graph-build`, Debug builds
@@ -439,7 +417,7 @@ compiles about fifteen C files and takes about 2.5 minutes.
 `chibi-cli-installed` runs the same native CLI and process suite against
 `dist/sdk/bin/chibi`; run `chibi build install --prefix dist/sdk` first.
 
-`build-process`, `chibi-cli-process` and `chibi-cli-installed` are in no group;
+`chibi-cli-process` and `chibi-cli-installed` are in no group;
 run them by name.
 Windows does not build or select the private host.
 

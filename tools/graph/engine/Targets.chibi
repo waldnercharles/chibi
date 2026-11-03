@@ -255,7 +255,6 @@ Files :: (target: string) -> string[] {
             "test/tools/fixture.c",
             "test/tools/web_storage.c", "test/support/arena.c",
             "src/host/process.c", "third_party/yyjson/yyjson.c",
-            "test/tools/build_process.c",
             "test/tools/compiler_bootstrap.c",
             "src/host/native_libraries.c", "test/support/fmt.c", "test/tools/box3d.c"
         ];
@@ -819,7 +818,7 @@ pub Includes :: (target: string) -> string[] {
             "public/value_document", "public/asset_values", "public/program",
             "public/source_catalog",
             "public/native_capabilities", "public/input_action",
-            "public/core_capabilities", "private/build-host", "public/compiler_host", "public/array_capabilities", "public/native_types", "public/task_pool_runtime", "public/native_prepared",
+            "public/core_capabilities", "public/compiler_host", "public/array_capabilities", "public/native_types", "public/task_pool_runtime", "public/native_prepared",
             "public/comparison_capabilities", "public/conversion_capabilities", "public/host_native_default",
             "public/host_native_catalog", "public/asset_json", "public/json", "public/arithmetic_capabilities", "public/math_capabilities", "public/vector_capabilities"
         ];
@@ -931,9 +930,8 @@ pub Defines :: (target: string) -> string[] {
     if (target == "test_tools") {
         return [
             "CF_RUNTIME_SHADER_COMPILATION", "CF_STATIC",
-            "CHIBI_POLICY_WORKER_PATH=\"{program:policy_worker}\"",
             "CHIBI_SOURCE_ROOT=\"{source_root}\"", "CHIBI_TEST_ASSET_VALUES=1",
-            "CHIBI_TEST_BOX3D=1", "CHIBI_TEST_BUILD_PROCESS=1", "CHIBI_TEST_COMPILER_ARTIFACT=1",
+            "CHIBI_TEST_BOX3D=1", "CHIBI_TEST_COMPILER_ARTIFACT=1",
             "CHIBI_TEST_FMT=1", "CHIBI_TEST_NATIVE_RUNTIME=1", "CHIBI_TEST_PROGRAM=1",
             "CHIBI_TEST_SOURCE_RUNTIME=1",
             "IMGUI_USE_WCHAR32", "ImDrawIdx=unsigned int", "_DARWIN_C_SOURCE", "_DEFAULT_SOURCE",
@@ -1185,7 +1183,7 @@ pub Runs :: (target: string) -> string[] {
         return ["chibi-asset-compiler"];
     }
     if (target == "test_tools") {
-        return ["policy_worker", "chibi-build-host", "chibi-compiler-host", "chibi-compile"];
+        return ["chibi-compiler-host", "chibi-compile"];
     }
     return [];
 }
@@ -1226,8 +1224,7 @@ pub LinkedObjects :: (target: string) -> string[] {
     if (target == "test_tools") {
         return [
             "chibi_sdk_contracts", "chibi_program_consumer", "chibi_native_consumer",
-            "chibi_asset_values_consumer", "chibi_source_runtime_consumer",
-            "chibi_build_host"
+            "chibi_asset_values_consumer", "chibi_source_runtime_consumer"
         ];
     }
     return [];

@@ -67,6 +67,7 @@ foreign {
     chibi_argument_count :: () -> i64
     chibi_process_argv :: () -> rawptr
     chibi_environment :: () -> rawptr
+    chibi_clock_host_init :: () -> rawptr
 }
 
 // A single byte owner keeps the execution-family heap stable until every
@@ -149,6 +150,10 @@ ClosePinned :: (pinned: ^(Generation[])) -> int {
 }
 
 Main :: () -> int {
+    // Keep one domain factory in the executable, never in a reloadable image.
+    // Merely creating the factory grants no image access to the clock.
+    clock_factory := chibi_clock_host_init();
+    assert(clock_factory != 0);
     active: Generation = {handle: OpenGeneration("./live-0.so"), path: "./live-0.so", destination: ""};
     if active.handle == 0 { return 2; }
     if !Complete(active.handle) {

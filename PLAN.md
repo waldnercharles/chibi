@@ -7,7 +7,47 @@ following CI merge `a76ea8005`. Further work is composed on
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
-## Current composition: ad3e3f5b0
+## Current composition: ad0af9c4f
+
+The combined source includes inferred arrays of task observers, pointer-element
+views, boxed argument roots, and canonical collector-array references in waiting
+frames. The Windows runtime matrix contains 35 source/entry cases. Map comparison
+has its runtime implementation; source admission remains under validation.
+
+The preceding `a73081162` reproduces byte for byte between stages two and three
+in 35.64 and 35.30 seconds, SHA-256
+`15f480276b0b0a20304a87b05f03035ca114ed0e6ed1863d429c3b6807459130`.
+All 546 compiler tests pass in 28.87 seconds and task ownership in 21.27. The
+managed-pointer run passed its source, callback and controlled-failure checks,
+then stopped at an obsolete metadata expectation after 246.91 seconds. Pointer
+array cells are now supported, so `f255bcaf7` changes that check to require
+acceptance and retains a map-cell rejection. The remaining checks are being
+resumed against the unchanged production archive with an explicit fixture-only
+overlay. No completed continuation or final combined acceptance is claimed yet.
+Evidence is in `/private/tmp/chibi-a730-composed-proof`.
+
+Remaining confirmed source work covers owned flat record cells, views over
+collector-bearing record arrays, map comparison within arrays, and the method
+form of task-observer removal. Their owners are checking actual source lifetime,
+aliasing and reload behavior. Final product and platform checks, the held
+host/VM/recovery deletion, and verified platform seed acceptance remain required.
+Archived engine and Studio services remain outside the live replacement scope.
+
+The approved c5 Linux/macOS bootstrap package is published and both pins are
+advanced. The separately audited 14f7 package still awaits approval. The original
+local c5 admission of Linux producer `36506138d` reached its unchanged 90-minute
+bound: the controller built in 8.394 seconds, but the compiler build produced no
+module or executable. This is incomplete admission, not a source rejection.
+The seed and all 3,485 archived source files remain unchanged. The independent
+hosted producer is running as GitHub Actions run `41627603178`; its entire job
+must pass before its Windows artifact can be consumed. No fresh Windows runtime
+acceptance is claimed.
+
+All elapsed times are validation under shared load, not performance comparisons.
+The sections below retain evidence at their named historical checkpoints; their
+former pending items are superseded by the current status above.
+
+### Earlier composition: ad3e3f5b0
 
 The combined source now includes counted map task results, collector-backed
 arrays of pointer-bearing records, deeper mapped-array methods, nested map

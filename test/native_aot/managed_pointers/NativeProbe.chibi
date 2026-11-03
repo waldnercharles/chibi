@@ -185,7 +185,7 @@ Main :: () -> int {
     payload_code[0] = Op(native.Constant, map, 0, 0, 0, 0);
     payload_code[1] = Op(native.ManagedNew, pointer, 1, 0, map, -880);
     if (!Rejected(target, [map, pointer, number], payload_code, false, [], [],
-                  "initializer differs from its scalar type")) { return 1; }
+                  "native scalar slot cannot hold a managed value or pointer")) { return 1; }
     for (mode in 2..<6) {
         switch RecordEmission(target, mode) {
             case .Emitted(text): os.Print("accepted invalid managed record metadata or projection"); return 1;

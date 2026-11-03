@@ -8,6 +8,8 @@ import strings "core:strings"
 
 Main :: () -> int {
     args := os.Arguments();
+    assertion := length(args) > 0 && args[0] == "--assertion";
+    if (assertion) { args = slice(args, 1, length(args)); }
     if (length(args) < 4) { return 2; }
     work := args[0];
     llvm := args[1];
@@ -46,7 +48,12 @@ Main :: () -> int {
                 }
                 if (host.Link(plan)) { return 1; }
                 result := os.Capture([output]);
-                if (result.status != 0) {
+                valid := result.status == 0;
+                if (assertion) {
+                    valid = result.status == 134 && strings.Contains(result.stderr, "native failure: AssertionFailed") &&
+                            strings.HasPrefix(result.stdout, "managed source live 0 peak ");
+                }
+                if (!valid) {
                     os.Print(format_text("managed source {} force={} O{} status={} {}{}", args[index], forced, level,
                         result.status, result.stdout, result.stderr));
                     return 1;

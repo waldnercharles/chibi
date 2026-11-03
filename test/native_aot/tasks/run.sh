@@ -116,9 +116,9 @@ for folder in "$root"/test/native_aot/tasks/rejected/*; do
         task_array) grep -q "array item differs from the array's type" "$work/rejection" ;;
         task_array_parameter) grep -Eq 'scalar proof|native task parameters require cancellation unwind support' "$work/rejection" ;;
         numeric_handle) grep -q 'conversion needs a number' "$work/rejection" ;;
-        task_parameter) grep -Eq 'scalar proof|native task parameters require cancellation unwind support' "$work/rejection" ;;
+        task_parameter) grep -Fq 'await needs a task handle or authored call' "$work/rejection" ;;
         different_result_producers|void_result) grep -q 'assigned value differs from its local' "$work/rejection" ;;
-        dependency) grep -q 'waiting frames cannot own managed values or pointers yet' "$work/rejection" ;;
+        dependency) grep -q 'waiting parameters need scalar values; managed values and dependencies are not supported yet' "$work/rejection" ;;
         managed_frame) grep -q 'waiting frames cannot own managed values or pointers yet' "$work/rejection" ;;
     esac
     test ! -e "$work/rejected"

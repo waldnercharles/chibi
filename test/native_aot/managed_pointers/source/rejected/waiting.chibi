@@ -1,2 +1,0 @@
-package rejected_waiting_pointer
-Main :: () -> int { value := 1; pointer := &value; yield; return pointer^; }

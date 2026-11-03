@@ -6,7 +6,7 @@
 @managed_source.report = private constant [44 x i8] c"managed source live %ld peak %ld total %ld\0A\00"
 declare ptr @malloc(i64)
 declare void @free(ptr)
-declare i32 @printf(ptr, ...)
+declare i32 @dprintf(i32, ptr, ...)
 
 define internal ptr @managed_source.allocate(ptr %ctx, i64 %bytes) {
 entry:
@@ -53,7 +53,7 @@ entry:
   %live = load i64, ptr @managed_source.live
   %peak = load i64, ptr @managed_source.peak
   %total = load i64, ptr @managed_source.total
-  %printed = call i32 (ptr, ...) @printf(ptr @managed_source.report, i64 %live, i64 %peak, i64 %total)
+  %printed = call i32 (i32, ptr, ...) @dprintf(i32 1, ptr @managed_source.report, i64 %live, i64 %peak, i64 %total)
   %balanced = icmp eq i64 %live, 0
   ; The threshold is 64 KiB and cells are at least 65 bytes. This bound also
   ; permits the few live array owners without growing with loop iterations.

@@ -1,0 +1,21 @@
+package owned_generation
+
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fclose :: (stream: rawptr) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+}
+// Main is deliberately not rerun; this generation has no old Worker or Payload.
+Main :: () -> int { return 99; }
+Frame :: () -> int {
+    if access("cancel-case", 0) == 0 { return 7; }
+    if access("allow-old", 0) != 0 {
+        stream := fopen("allow-old", "wb");
+        assert(stream != 0);
+        closed := fclose(stream);
+        assert(closed == 0);
+    }
+    if access("old-done", 0) == 0 { return 7; }
+    return 0;
+}

@@ -322,6 +322,10 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     numeric_formatting := Contains(markers, "; chibi-format-numbers");
     clock := Contains(markers, "; chibi-clock");
     clock_host := Contains(markers, "; chibi-clock-host");
+    if (options.static_link && linux && clock_host) {
+        os.Print("native: a clock host factory links libc dynamically; omit --static");
+        return 2;
+    }
     context := strings.Contains(pieces[0], "\ndefine i32 @chibi_scalar(ptr %ctx)");
     if (shared) {
         context = strings.Contains(pieces[0], "\n@chibi_context = external global ");

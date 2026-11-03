@@ -1,0 +1,74 @@
+package clock_guest
+
+import watch "host:clock"
+import time "core:time"
+
+Main :: () -> int { return 0; }
+Frame :: () -> int { return 0; }
+
+Make :: (value: int) -> ^int { return &value; }
+Reentry :: () -> int {
+    values: ^int[] = [Make(11), Make(37)];
+    result := watch.Now();
+    if result.error != nil { return 1; }
+    return values[0]^ + values[1]^ - 48;
+}
+
+Platform :: (expected: int) -> int {
+    result := watch.Now();
+    if result.error != nil {
+        if result.error.kind != expected || result.error.code != 0 { return 1; }
+        if result.instant.nanoseconds != 0 || result.instant.domain != 0 { return 2; }
+        return 0;
+    }
+    if expected != 0 || result.instant.nanoseconds < 0 || result.instant.domain == 0 { return 3; }
+    return 0;
+}
+Reading :: (nanoseconds: i64, domain: u64, kind: int, code: int) -> int {
+    result := watch.Now();
+    if result.error != nil {
+        if kind == 0 { return 1; }
+        if result.instant.nanoseconds != 0 || result.instant.domain != 0 { return 2; }
+        if result.error.kind != kind || result.error.code != code { return 3; }
+        return 0;
+    }
+    if kind != 0 { return 4; }
+    if result.instant.nanoseconds != nanoseconds || result.instant.domain != domain { return 5; }
+    duration: time.Duration = {nanoseconds: nanoseconds};
+    if time.Nanoseconds(duration) != nanoseconds { return 6; }
+    duration.nanoseconds = 1500000000;
+    if time.Seconds(duration) != 1.5 { return 7; }
+    return 0;
+}
+Elapsed :: (expected: i64) -> int {
+    earlier := watch.Now();
+    if earlier.error != nil { return 1; }
+    later := watch.Now();
+    if later.error != nil { return 2; }
+    elapsed := watch.Between(earlier.instant, later.instant);
+    if elapsed.error != nil { return 3; }
+    if time.Nanoseconds(elapsed.duration) != expected { return 4; }
+    return 0;
+}
+Mismatch :: () -> int {
+    earlier: time.Instant = {nanoseconds: 5, domain: 1};
+    later: time.Instant = {nanoseconds: 9, domain: 2};
+    elapsed := watch.Between(earlier, later);
+    if elapsed.error != nil {
+        kind := elapsed.error.kind;
+        code := elapsed.error.code;
+        if time.Nanoseconds(elapsed.duration) != 0 { return 1; }
+        if kind != watch.DomainMismatch || code != 0 { return 2; }
+        return 0;
+    }
+    return 3;
+}
+// A same-spelling ambient procedure cannot intercept the package's kernel.
+Sample :: () -> (nanoseconds: i64, domain: u64, status: int, platform_error: int) {
+    return (11, 13, 17, 19);
+}
+Ambient :: () -> int {
+    sample := Sample();
+    if sample.nanoseconds != 11 || sample.domain != 13 || sample.status != 17 || sample.platform_error != 19 { return 1; }
+    return 0;
+}

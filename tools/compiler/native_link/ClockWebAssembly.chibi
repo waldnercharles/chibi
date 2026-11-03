@@ -1,0 +1,68 @@
+package native_link
+
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Explicit seven-slot execution. The caller's callback context keeps its
+// address and private tail; only the borrowed clock grant changes during the
+// synchronous call. A legacy five-slot extent is rejected before any field
+// read. Invalid input leaves the result and context untouched; a source failure
+// leaves its failure pointer in the context without publishing a result.
+pub ClockWebAssemblyAdapter :: () -> string {
+    text := Join([
+        "target triple = \"wasm32-unknown-emscripten\"\n",
+        "declare i32 @chibi_scalar(ptr)\n",
+        "; The caller owns the full context and may append private callback state.\n",
+        "; Status 0 publishes an i32 result, 1 rejects input, 2 preserves a source failure.\n",
+        "define i32 @chibi_clock_context_size() {\n",
+        "  %bytes = ptrtoint ptr getelementptr (@CONTEXT@, ptr null, i32 1) to i32\n",
+        "  ret i32 %bytes\n",
+        "}\n",
+        "define i64 @chibi_clock_context_abi() {\n",
+        "  ret i64 @ABI@\n",
+        "}\n",
+        "define i32 @chibi_clock_program(ptr %ctx, i32 %bytes, ptr %grant, ptr %result) {\n",
+        "entry:\n",
+        "  %context.present = icmp ne ptr %ctx, null\n",
+        "  %result.present = icmp ne ptr %result, null\n",
+        "  %expected = ptrtoint ptr getelementptr (@CONTEXT@, ptr null, i32 1) to i32\n",
+        "  %sized = icmp eq i32 %bytes, %expected\n",
+        "  %present = and i1 %context.present, %result.present\n",
+        "  %valid = and i1 %present, %sized\n",
+        "  br i1 %valid, label %grant.check, label %invalid\n",
+        "grant.check:\n",
+        "  %absent = icmp eq ptr %grant, null\n",
+        "  br i1 %absent, label %invoke, label %grant.validate\n",
+        "grant.validate:\n",
+        "  %domain = load i64, ptr %grant\n",
+        "  %read.at = getelementptr @GRANT@, ptr %grant, i32 0, i32 1\n",
+        "  %read = load ptr, ptr %read.at\n",
+        "  %named = icmp ne i64 %domain, 0\n",
+        "  %callable = icmp ne ptr %read, null\n",
+        "  %allowed = and i1 %named, %callable\n",
+        "  br i1 %allowed, label %invoke, label %invalid\n",
+        "invoke:\n",
+        "  %grant.at = getelementptr @CONTEXT@, ptr %ctx, i32 0, i32 @FIELD@\n",
+        "  %previous = load ptr, ptr %grant.at\n",
+        "  %failure.at = getelementptr @CONTEXT@, ptr %ctx, i32 0, i32 1\n",
+        "  store ptr null, ptr %failure.at\n",
+        "  store ptr %grant, ptr %grant.at\n",
+        "  %value = call i32 @chibi_scalar(ptr %ctx)\n",
+        "  store ptr %previous, ptr %grant.at\n",
+        "  %failure = load ptr, ptr %failure.at\n",
+        "  %failed = icmp ne ptr %failure, null\n",
+        "  br i1 %failed, label %source.failed, label %publish\n",
+        "publish:\n",
+        "  store i32 %value, ptr %result\n",
+        "  ret i32 0\n",
+        "source.failed:\n",
+        "  ret i32 2\n",
+        "invalid:\n",
+        "  ret i32 1\n",
+        "}\n",
+    ]);
+    text = strings.ReplaceAll(text, "@CONTEXT@", abi.ClockContextType());
+    text = strings.ReplaceAll(text, "@GRANT@", abi.ClockGrantType());
+    text = strings.ReplaceAll(text, "@FIELD@", format_text("{}", abi.ClockGrantField));
+    return strings.ReplaceAll(text, "@ABI@", format_text("{}", abi.ManagedFamilyABI));
+}

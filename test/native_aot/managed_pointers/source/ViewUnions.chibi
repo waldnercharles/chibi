@@ -1,0 +1,75 @@
+package view_unions
+
+Window :: union { Missing | Present(window: view int[]) }
+Reverse :: union { Present(window: view bool[]) | Missing }
+
+Owner :: (value: int) -> ^(int[]) { values: int[] = [value, value + 1]; return &values; }
+Churn :: () {
+    for (index in 0..<4096) {
+        transient := Owner(index);
+        assert(transient^[0] == index);
+    }
+}
+Owned :: () -> Window {
+    owner := Owner(4);
+    selected := owner.view(0..<2);
+    if selected { return Window.Present(selected); }
+    return Window.Missing;
+}
+Read :: (value: Window) -> int {
+    switch value {
+        case .Present(window): return window[0] * 10 + window[1];
+        case: return -1;
+    }
+}
+ChangedOwner :: () -> int {
+    values: int[] = [1, 2]; owner := &values; selected := owner.view(0..<2);
+    if selected {
+        value := Window.Present(selected);
+        owner^ = [7, 8];
+        return Read(value);
+    }
+    return -2;
+}
+ReturnedRoot :: () -> int {
+    value := Owned();
+    copy := value;
+    value = Window.Missing;
+    Churn();
+    return Read(copy);
+}
+Pattern :: (value: Window) -> int {
+    if value is .Present(window) && window.length() == 2 {
+        Churn();
+        return window[0] * 10 + window[1];
+    }
+    return -1;
+}
+ReverseTag :: () -> bool {
+    values: bool[] = [true, false]; owner := &values; selected := owner.view(0..<2);
+    if selected {
+        value := Reverse.Present(selected);
+        owner^ = [false, true];
+        switch value {
+            case .Present(window): return !window[0] && window[1];
+            case: return false;
+        }
+    }
+    return false;
+}
+Main :: () -> int {
+    changed := ChangedOwner();
+    assert(changed == 78);
+    returned := ReturnedRoot();
+    assert(returned == 45);
+    value := Owned();
+    matched := Pattern(value);
+    assert(matched == 45);
+    absent := Read(Window.Missing);
+    assert(absent == -1);
+    unmatched := Pattern(Window.Missing);
+    assert(unmatched == -1);
+    reverse := ReverseTag();
+    assert(reverse);
+    return 0;
+}

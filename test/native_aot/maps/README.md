@@ -44,19 +44,23 @@ including through aliased scoped parameters and binary string keys.
 Managed record values share the aggregate lifecycle for nested scalar/string
 fields. Copy, replacement, deletion, growth/shrink, temporary results and loop
 exits must retain each live payload and release it once. Array-backed record
-values remain rejected until their recursive backing ownership is available.
+values use that same closure, including nested records and string arrays.
 Borrowed string and record array elements also survive later literal callbacks
 that replace the source element before the map is constructed.
 String variables used as map keys also survive later callbacks that replace
 the variable, including differently named scoped aliases and conditional calls.
-The native emitter also checks int[] payload ownership, independent mapped
+Array payloads cover numeric, bool, string, record and union elements through
+the existing array lifecycle. The native emitter checks independent mapped
 array edits, missing-key empty arrays and values escaping a dropped map.
-Authored int[] payloads support reads, literals, copies, insertion/deletion,
+Authored array payloads support reads, literals, copies, insertion/deletion,
 iteration, calls/returns and projected append/extend/remove/resize/element
 assignment. Callback arguments finish before a projected update resolves its
 current map entry. Readonly iterator buffers passed to C use independent loans.
-Array-backed record payloads, other nested containers, projected foreign buffers
-and compound mapped-array element assignment remain explicitly rejected.
+Projected map foreign buffers and compound mapped-array element assignment
+remain closed. ArrayValues exercises borrowed and fresh owned elements,
+duplicate keys, copies, scoped aliases, growth, deletion and record shrinking.
+String arrays grow with empty elements; authored record growth requires a
+separate failure-parity check before the final retirement gate.
 
 A growth/shrink regression builds 4096 entries, deletes all but 64 and checks that logical entry/index capacity shrinks with the live map. Capacity planning near 2^30 is checked without allocating those buffers.
 

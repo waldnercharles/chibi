@@ -3252,7 +3252,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 for (position in 0..<length(bindings)) {
                     binding := bindings[position];
                     field := types[variant].first + position;
-                    type := ScalarMemberType(types, members, field);
+                    type := ScalarViewUnionMemberType(types, members, current.held, field);
                     name := Text(forest, text, binding);
                     read := [ScalarAt(forest, binding, facts.ReadRow, held_type, current.subject, 0, ""),
                              ScalarAt(forest, binding, facts.PayloadRow, type, field - payloads, 1, "")];
@@ -4112,7 +4112,7 @@ ScalarRetainedNames :: (forest: snapshot.SnapshotNode[], text: string, types: Ty
         if (Is(forest, node, syntax.StateDeclaration)) {
             declared := StateType(forest, text, &table, 0, node);
             place := StatePlace;
-            if (declared.storage == StructStorage || declared.container == ArrayContainer) {
+            if (declared.storage == StructStorage || declared.storage == UnionStorage || declared.container == ArrayContainer) {
                 // The ordinary preflight checks a mutable aggregate local;
                 // native retained lowering supplies its persistent storage.
                 place = CellPlace;
@@ -4213,7 +4213,7 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], authored: snapshot.SnapshotNode
             // A retained local reads and writes its state, which the facts carry.
             // A write through a scoped parameter the module passes by reference
             // changes the caller's variable, which the facts carry.
-            permitted: int = NativePrintEffect | ScalarPointerEffects(hosts) | ScalarViewEffects(roots);
+            permitted: int = NativePrintEffect | ScalarPointerEffects(hosts) | ScalarViewEffects(table^, members, roots, cells);
             if (callables[function].waits) {
                 permitted |= SuspendEffect;
             }
@@ -4809,7 +4809,7 @@ ScalarRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: T
         if (declared.kind == UnionDecl) {
             union_name := ScalarDeclaredName(declared, named);
             named.append(union_name);
-            switch ScalarUnion(forest, types, members, declared, union_name) {
+            switch ScalarUnion(forest, types, members, position, declared, union_name) {
                 case .Failed(diagnostic):
                     return ScalarOperands.Failed(diagnostic);
                 case .Built(union_rows):
@@ -4858,7 +4858,7 @@ ScalarOptionalRows :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], decla
 // payloads. The variants are `declared`'s, in order, and their payloads are
 // consecutive members.
 ScalarUnion :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: TypeMember[],
-                declared: TypeDecl, name: string) -> ScalarOperands {
+                held: int, declared: TypeDecl, name: string) -> ScalarOperands {
     rows: facts.Row[] = [ScalarAt(forest, declared.node, facts.UnionRow, 0, 0, declared.count, name)];
     variants: int[] = [];
     for (member in Members(forest, declared.node)) {
@@ -4873,7 +4873,7 @@ ScalarUnion :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: Typ
         fields := Members(forest, Field(forest, variants[ordinal], syntax.FieldParameters));
         for (index in 0..<variant.count) {
             field := members[variant.first + index];
-            payload := ScalarMemberType(types, members, variant.first + index);
+            payload := ScalarViewUnionMemberType(types, members, held, variant.first + index);
             if (field.container == MapContainer) {
                 return ScalarOperands.Failed(Diagnose(forest, fields[index], 0,
                                                       "native map payloads require union ownership support"));

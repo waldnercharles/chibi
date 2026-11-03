@@ -1,0 +1,13 @@
+package readonly_view_pattern
+Window :: union { Missing | Present(window: view int[]) }
+Main :: () -> int {
+    values: int[] = [1]; owner := &values; selected := owner.view(0..<1);
+    if selected {
+        value := Window.Present(selected);
+        switch value {
+            case .Present(window): window[0] = 7; return 0;
+            case: return 0;
+        }
+    }
+    return 0;
+}

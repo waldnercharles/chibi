@@ -11,6 +11,22 @@ ScalarSchemaView :: union { Prepared(types: TypeDecl[]) | Failed(message: string
 ScalarSchemaValue :: (types: TypeDecl[], mapping: int[], value: ValueType,
                        edges: ^(int[]), hash: u64) -> ScalarSchemaPart {
     out := HashBytes(HashBytes(hash, u64(wrap: value.storage), 4), u64(wrap: value.container), 4);
+    if (value.storage == PointerStorage) {
+        if (value.record < 0 || value.record >= length(types) || types[value.record].kind != PointerDecl) {
+            return {hash: out, supported: false};
+        }
+        pointed := ScalarPointerElement(types, value.record);
+        supported := (value.container == 0 || value.container == ArrayContainer) && pointed.storage != 0;
+        // Constructor IDs are shared by nullable/nonnullable declarations.
+        // Hash the full source value; its pointee's definition is an edge,
+        // not another pointer node or an expanded copy of that definition.
+        out = HashBytes(out, SemanticTag(types, value), 8);
+        if (pointed.record >= 0) {
+            if (pointed.record >= length(mapping) || mapping[pointed.record] < 0) { supported = false; }
+            else { edges.append(mapping[pointed.record]); }
+        }
+        return {hash: out, supported: supported};
+    }
     supported := (value.container == 0 || value.container == ArrayContainer) &&
         (Numeric(value.storage) || value.storage == BoolStorage || value.storage == TextStorage ||
          value.storage == StructStorage || value.storage == UnionStorage);

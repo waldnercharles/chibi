@@ -1,0 +1,56 @@
+package record_view_host
+import os "core:os"
+import strings "core:strings"
+import target "core:target"
+foreign import libc "system:c"
+foreign libc {
+    dlopen :: (path: cstring, flags: i32) -> rawptr
+    dlsym :: (image: rawptr, name: cstring) -> rawptr
+    dlclose :: (image: rawptr) -> i32
+    calloc :: (count: u64, width: u64) -> rawptr
+    free :: (memory: rawptr)
+}
+Required :: (image: rawptr, name: string) -> rawptr { address := dlsym(image, name); assert(address != 0); return address; }
+when target.Os == target.Darwin { Open :: (path: string) -> rawptr { return dlopen(path, 262); } }
+else { Open :: (path: string) -> rawptr { return dlopen(path, 2); } }
+Main :: () -> int {
+    args := os.Arguments(); if (length(args) != 3) { return 2; }
+    old := Open(args[0]); writer := Open(args[1]); assert(old != 0 && writer != 0);
+    size: fn() -> i64 = Required(old, "chibi_host_family_size");
+    adopt_old: fn(heap: rawptr) -> i32 = Required(old, "chibi_host_set_family");
+    adopt_writer: fn(heap: rawptr) -> i32 = Required(writer, "chibi_host_set_family");
+    create: fn(window: rawptr) -> i32 = Required(old, "record_view_create");
+    count: fn(window: rawptr) -> i32 = Required(writer, "record_view_Count");
+    read: fn(window: rawptr) -> i32 = Required(old, "record_view_Read");
+    label: fn(window: rawptr) -> i32 = Required(old, "record_view_Label");
+    owned_text: fn(window: rawptr) -> i32 = Required(old, "record_view_owned_text");
+    release: fn() -> i32 = Required(old, "record_view_release");
+    old_pending: fn() -> i64 = Required(old, "chibi_host_cells_pending");
+    writer_pending: fn() -> i64 = Required(writer, "chibi_host_cells_pending");
+    collect: fn() -> i32 = Required(old, "chibi_host_family_collect");
+    bytes := size(); assert(bytes > 0 && bytes <= 4096);
+    heap := calloc(1, u64(bytes)); window := calloc(1, 32); assert(heap != 0 && window != 0);
+    adopted_old := adopt_old(heap); adopted_writer := adopt_writer(heap); assert(adopted_old == 0 && adopted_writer == 0);
+    created := create(window); assert(created == 0);
+    before := old_pending(); assert(before == 2, "old array and pointed record lease their creating image");
+    collected := collect(); assert(collected == 0);
+    length := count(window); assert(length == 1, "compatible source fingerprint accepts the old array cell");
+    if (args[2] == "Set" || args[2] == "Replace") {
+        change: fn(window: rawptr) -> i32 = Required(writer, strings.Concatenate(["record_view_", args[2]]));
+        changed := change(window); assert(changed == 0);
+        // Check only the owner bits while both images are mapped. An old
+        // implementation fails safely here, before writer unload or byte reads.
+        owns_text := owned_text(window); assert(owns_text == 1, "published writer literal must have a counted owner");
+        writer_cells := writer_pending(); assert(writer_cells == 0, "setter reuses old pointers and creates no writer cells");
+        closed := dlclose(writer); assert(closed == 0);
+        valid := label(window); assert(valid == 1, "NUL text survives writer unload");
+    } else { closed := dlclose(writer); assert(closed == 0); }
+    number := read(window); assert(number == 7);
+    rooted := old_pending(); assert(rooted == 2);
+    released := release(); assert(released == 0);
+    collected = collect(); assert(collected == 0);
+    remaining := old_pending(); assert(remaining == 0, "array and pointer metadata leases drain after the root leaves");
+    closed_old := dlclose(old); assert(closed_old == 0);
+    free(window); free(heap);
+    return 0;
+}

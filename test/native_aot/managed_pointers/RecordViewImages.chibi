@@ -1,0 +1,88 @@
+package native_driver
+
+import compiler "project:package_compiler"
+import facts "project:scalar_facts"
+import native "project:llvm_native"
+import scalar "project:scalar_llvm"
+import abi "project:native_abi"
+import link "project:native_link"
+import host "project:native_link_host"
+import os "core:os"
+import strings "core:strings"
+
+// The wrappers call actual source-generated functions. Record ordinals,
+// function ordinals and full cell tags come from the checked source facts.
+Adapter :: (rows: facts.Row[]) -> string {
+    functions: [string: int] = [:];
+    function := 0; ordinal := 0; record := -1; label := -1; row_type := 0; tag: i64 = 0;
+    for (at in 0..<length(rows)) {
+        row := rows[at];
+        if (row.kind == facts.RecordRow || row.kind == facts.UnionRow) {
+            if (row.name == "Row") {
+                record = ordinal; row_type = facts.ArrayType + facts.RecordType + ordinal;
+                for (field in 0..<row.count) { if (rows[at + 1 + field].name == "label") { label = field; } }
+            }
+            ordinal += 1;
+        }
+        if (row.kind == facts.FunctionRow) { functions[row.name] = function; function += 1; }
+    }
+    for (row in rows) { if (row.kind == facts.ManagedAddressRow && row.count == row_type) { tag = row.literal; } }
+    assert(record >= 0 && label >= 0 && tag != 0);
+    assert(functions.has("Factory") && functions.has("Count") && functions.has("Read") && functions.has("Set") && functions.has("Replace") && functions.has("Label"));
+    view := abi.ManagedViewType(); pointer := abi.ManagedPointerType(); array := abi.ArrayType();
+    // Facts and native use different record/array kind bases.
+    native_array := native.ArrayType + native.RecordType + record;
+    out := ["@record_view.root = internal global %chibi.managed.root zeroinitializer\n",
+        format_text("@record_view.owner = internal global {} zeroinitializer\n", pointer),
+        "define i32 @record_view_create(ptr %window) {\nentry:\n",
+        format_text("  %pointer = call {} @chibi_scalar.{}(ptr @chibi_context)\n  store {} %pointer, ptr @record_view.owner\n", pointer, functions["Factory"], pointer),
+        format_text("  %selected = insertvalue {} zeroinitializer, {} %pointer, 0\n  %view = insertvalue {} %selected, i32 1, 2\n  store {} %view, ptr %window\n", view, pointer, view, view),
+        format_text("  %heap.at = getelementptr {}, ptr @chibi_context, i32 0, i32 {}\n  %heap = load ptr, ptr %heap.at\n", abi.ManagedContextType(), abi.ManagedOwnerField),
+        "  call void @chibi_managed.push(ptr %heap, ptr @record_view.root, ptr @record_view.owner, ptr @chibi_managed.trace.pointer)\n  ret i32 0\n}\n"];
+    for (name in ["Count", "Read", "Set"]) {
+        out.append(format_text("define i32 @record_view_{}(ptr %window) {{\nentry:\n  %view = load {}, ptr %window\n  %result = call i32 @chibi_scalar.{}(ptr @chibi_context, {} %view)\n  ret i32 %result\n}}\n", name, view, functions[name], view));
+    }
+    out.append(format_text("define i32 @record_view_Label(ptr %window) {{\nentry:\n  %view = load {}, ptr %window\n  %result = call i1 @chibi_scalar.{}(ptr @chibi_context, {} %view)\n  %wide = zext i1 %result to i32\n  ret i32 %wide\n}}\n", view, functions["Label"], view));
+    out.append(format_text("define i32 @record_view_Replace(ptr %window) {{\nentry:\n  %view = load {}, ptr %window\n  %pointer = extractvalue {} %view, 0\n  %result = call {} @chibi_scalar.{}(ptr @chibi_context, {} %pointer)\n  ret i32 0\n}}\n", view, view, pointer, functions["Replace"], pointer));
+    out.append(format_text("define i32 @record_view_owned_text(ptr %window) {{\nentry:\n  %view = load {}, ptr %window\n", view));
+    out.append(format_text("  %heap.at = getelementptr {}, ptr @chibi_context, i32 0, i32 {}\n  %heap = load ptr, ptr %heap.at\n", abi.ManagedContextType(), abi.ManagedOwnerField));
+    out.append(format_text("  %array.at = call ptr @chibi_view.{}.{}.require(ptr %heap, {} %view)\n  %array = load {}, ptr %array.at\n  %data = extractvalue {} %array, 2\n", native_array, tag, view, array, array));
+    out.append(format_text("  %text.at = getelementptr %record{}, ptr %data, i32 0, i32 {}\n  %text = load {}, ptr %text.at\n  %owner = extractvalue {} %text, 2\n", record, label, abi.TextType(), abi.TextType()));
+    out.append("  %owned = icmp ne ptr %owner, null\n  %result = zext i1 %owned to i32\n  ret i32 %result\n}\n");
+    out.append(format_text("define i32 @record_view_release() {{\nentry:\n  %heap.at = getelementptr {}, ptr @chibi_context, i32 0, i32 {}\n  %heap = load ptr, ptr %heap.at\n", abi.ManagedContextType(), abi.ManagedOwnerField));
+    out.append(format_text("  call void @chibi_managed.pop(ptr %heap, ptr @record_view.root)\n  store {} zeroinitializer, ptr @record_view.owner\n  ret i32 0\n}}\n", pointer));
+    return strings.Join(out, "");
+}
+Main :: () -> int {
+    args := os.Arguments(); if (length(args) != 3) { return 2; }
+    work := args[0]; llvm := args[1]; sources := args[2];
+    target := abi.LinuxX64(); platform_os := 1; architecture := 1;
+    if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); platform_os = 2; architecture = 2; }
+    start := strings.Concatenate([work, "/record-view-start.ll"]);
+    runtime := link.ManagedFamilyContext(link.SharedContext(target.triple, true), true);
+    if (os.WriteText(start, runtime)) { return 2; }
+    for (name in ["Original", "Reindexed", "Changed"]) {
+        source := os.ReadText(format_text("{}/{}.chibi", sources, name));
+        if source.error { return 2; }
+        rows := compiler.CollectScalarGeneration("/project", [], [], ["Main.chibi"], [source.text], TargetFacts(), Names(), Natives(), Ports(), Identities(), platform_os, architecture);
+        if (length(rows) < 3 || rows[1].kind == facts.RejectionRow) { if (length(rows) > 1) { os.Print(rows[1].text); } return 1; }
+        module := "";
+        switch scalar.EmitFamilyShared(target, rows) {
+            case .Emitted(text): module = strings.Concatenate([text, Adapter(rows)]);
+            case .Invalid(message): os.Print(message); return 1;
+            case .Rejected(rejected): os.Print(rejected[length(rejected) - 1].text); return 1;
+        }
+        file := format_text("{}/{}.ll", work, name);
+        if (os.WriteText(file, module)) { return 2; }
+        for (level in [int(0), 2]) {
+            output := format_text("{}/{}-O{}.so", work, name, level);
+            objects := [strings.Concatenate([output, ".o"]), strings.Concatenate([output, "-start.o"])];
+            if (host.Objects(llvm, [file, start], objects, level, 1)) { return 1; }
+            plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", false);
+            plan.shared = true; plan.imports = link.SystemImports([module, runtime], target.triple);
+            if (os.Platform() != "Darwin") { plan.libraries = ["c"]; }
+            if (host.Link(plan)) { return 1; }
+        }
+    }
+    return 0;
+}

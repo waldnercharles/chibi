@@ -145,7 +145,7 @@ ManagedOptionalText :: (records: Record[], fields: int[], type: int) -> bool {
 }
 ManagedPayload :: (records: Record[], fields: int[], layout: ManagedRecordLayout, values: ValueLayout, type: int, tag: i64) -> bool {
     return abi.ScalarType(type) != "" || type == abi.TextStorage || type == ArrayType + PointerType ||
-           (ManagedArray(type) && ElementType(records, type) != 0 && ValueValid(values, type - ArrayType)) ||
+           (ManagedArray(type) && ElementType(records, type) != 0 && ValueCollectorCopyable(values, type - ArrayType)) ||
            ((ManagedCellRecord(records, layout, type) || ManagedOptionalText(records, fields, type)) &&
             records[type - RecordType].identity != 0 && records[type - RecordType].identity == tag);
 }
@@ -153,10 +153,10 @@ ManagedArray :: (type: int) -> bool {
     return type >= ArrayType && type < MapType &&
            (abi.ScalarType(type - ArrayType) != "" || type - ArrayType == abi.TextStorage || type - ArrayType == PointerType || type - ArrayType >= RecordType);
 }
-// Array cells own one descriptor. Pointer elements use the same typed tracer
-// as ordinary pointer arrays; other admitted elements have no GC edges.
+// Array cells own one descriptor. Collector-bearing elements use their typed
+// backing tracer; rootless elements need no collector callback.
 // The last cell release drops typed backing and nested owners while leased.
-ManagedArrayModule :: (code: Instruction[], counter: string) -> string {
+ManagedArrayModule :: (code: Instruction[], values: ValueLayout, counter: string) -> string {
     out: string[] = [];
     seen: [string: bool] = [:];
     dropped: [int: bool] = [:];
@@ -172,7 +172,7 @@ ManagedArrayModule :: (code: Instruction[], counter: string) -> string {
             out.append(format_text("  %value = load {}, ptr %payload\n  call void @chibi_array.{}.drop(ptr %ctx, {} %value)\n  ret void\n}}\n", abi.ArrayType(), type, abi.ArrayType()));
         }
         trace := "null";
-        if (type == ArrayType + PointerType) { trace = "@chibi_managed.trace.array"; }
+        if (ValueCollectorArray(values, type)) { trace = strings.Concatenate(["@chibi_managed.trace.", ManagedTraceName(type)]); }
         out.append(format_text("@chibi_managed.layout.array{} = private constant %chibi.managed.layout {{ ptr {}, ptr @chibi_managed.validate.array{}, ptr {} }}\n", key, trace, key, counter));
         out.append(format_text("define internal i1 @chibi_managed.validate.array{}(i64 %offset, i64 %tag, i64 %bytes, i32 %storage) {{\nentry:\n", key));
         out.append(format_text("  %tag.ok = icmp eq i64 %tag, {}\n  %storage.ok = icmp eq i32 %storage, {}\n", item.literal, ManagedStorageClass(type)));

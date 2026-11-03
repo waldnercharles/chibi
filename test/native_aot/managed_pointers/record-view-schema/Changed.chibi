@@ -1,0 +1,29 @@
+package record_view_schema
+Point :: struct { number: f32; }
+Row :: struct { pointer: ^Point; label: string; }
+Factory :: () -> ^(Row[]) {
+    point: Point = {number: 7};
+    rows: Row[] = [{pointer: &point, label: "old literal"}];
+    return &rows;
+}
+Count :: (selected: view Row[]) -> int { return selected.length(); }
+Read :: (selected: view Row[]) -> int { row := selected[0]; return int(row.pointer.number); }
+Label :: (selected: view Row[]) -> bool { row := selected[0]; return row.label == "writer\u0000literal"; }
+Literal :: () -> string { return "writer\u0000literal"; }
+Set :: (selected: view Row[]) -> int {
+    old := selected[0];
+    selected[0] = {pointer: old.pointer, label: Literal()};
+    return 0;
+}
+Replace :: (pointer: ^(Row[])) -> ^(Row[]) {
+    previous := pointer^[0];
+    pointer^ = [{pointer: previous.pointer, label: Literal()}];
+    return pointer;
+}
+Main :: () -> int {
+    pointer := Factory(); selected := pointer.view(0..<1)!;
+    set := Set(selected); replaced := Replace(pointer);
+    valid := Label(selected);
+    assert(set == 0 && valid && length(replaced^) == 1);
+    return Read(selected);
+}

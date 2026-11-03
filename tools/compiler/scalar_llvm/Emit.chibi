@@ -1249,6 +1249,19 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             floor = depths[length(depths) - 1];
         }
         operand := rows[row];
+        if (operand.kind == facts.OperandSwapRow) {
+            if (operand.type != 0 || operand.literal != 0 || operand.name != "" || operand.text != "" ||
+                !Located(operand, starts, size) || !Within(operand, scope) || operand.value < 0 ||
+                operand.count <= operand.value || operand.count >= length(stack) - floor) {
+                return "scalar operand exchange differs from its evaluation stack";
+            }
+            left := length(stack) - 1 - operand.value;
+            right := length(stack) - 1 - operand.count;
+            held := stack[left];
+            stack[left] = stack[right];
+            stack[right] = held;
+            continue;
+        }
         // Only a string literal has text, and a foreign call the library it links.
         // A reference's literal selects a record field; its type and index are checked below.
         texted := (operand.kind == facts.LiteralRow && operand.type == facts.StringType) ||
@@ -2795,6 +2808,14 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     break;
                 }
                 operand := rows[index];
+                if (operand.kind == facts.OperandSwapRow) {
+                    left := length(stack) - 1 - operand.value;
+                    right := length(stack) - 1 - operand.count;
+                    held := stack[left];
+                    stack[left] = stack[right];
+                    stack[right] = held;
+                    continue;
+                }
                 type := NativeType(operand.type);
                 slots.append(type);
                 if (operand.kind == facts.LogicalRow) {

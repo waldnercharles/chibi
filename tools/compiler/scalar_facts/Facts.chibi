@@ -340,6 +340,10 @@ pub SelectRow: int : 54;
 // Maps Nil | Some(record) to Nil | Some(field), selecting plain numeric/bool
 // field `value`. Both optional shapes are canonical; count is one.
 pub OptionalFieldRow: int : 56;
+// Exchanges two evaluation-stack values without copying them. `value` and
+// `count` are depths below the top, 0 <= value < count; type and literal are 0.
+// Named calls evaluate arguments in source order, then arrange their slots.
+pub OperandSwapRow: int : 57;
 // A source void waiting function has no success payload despite its internal int.
 pub FunctionVoid: int : 1;
 pub CallPlain: int : 0;

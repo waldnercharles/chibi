@@ -1,0 +1,29 @@
+package native_driver
+
+CallArgumentsProjection :: () {
+    rows := Produced("package scalar\nMain :: () -> int { return Apply(Pick); }\nApply :: (op: fn(first: int, second: bool) -> int) -> int { return op(second: true, first: 7); }\nPick :: (x: int, flag: bool) -> int { if flag { return x; } return 0; }\n");
+    assert(rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+    swap := -1;
+    for (row, index in rows) {
+        if row.kind == facts.OperandSwapRow { swap = index; }
+    }
+    assert(swap >= 0, "reordered callback arguments exchange existing values");
+    invalid := "scalar operand exchange differs from its evaluation stack";
+    for edit in [Changed(swap, ValueField, -1), Changed(swap, CountField, 0),
+                 Changed(swap, CountField, 1000), Changed(swap, TypeField, i64(facts.IntType)),
+                 Changed(swap, LiteralField, 1), Changed(swap, StartField, -1),
+                 Named(swap, NameField, "bad"), Named(swap, TextField, "bad")] {
+        RejectChanged(rows, [edit], invalid);
+    }
+    // A lazy RHS cannot exchange its own operand with a preceding call argument.
+    lazy := Produced("package scalar\nMain :: () -> int { return Apply(Pick); }\nApply :: (op: fn(first: int, second: bool) -> int) -> int { return op(first: 7, second: true && false); }\nPick :: (x: int, flag: bool) -> int { if flag { return x; } return 0; }\n");
+    ValidateRows(lazy, "");
+    logical := -1;
+    for (row, index in lazy) {
+        if row.kind == facts.LogicalRow { logical = index; }
+    }
+    assert(logical >= 0);
+    RejectChanged(lazy, [Changed(logical + 1, KindField, i64(facts.OperandSwapRow)),
+                        Changed(logical + 1, TypeField, 0), Changed(logical + 1, CountField, 1)], invalid);
+}

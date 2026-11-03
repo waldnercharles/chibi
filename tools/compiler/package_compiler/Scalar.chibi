@@ -1402,6 +1402,8 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     }
     target := callables[callee];
     count: int = 0;
+    position: int = 0;
+    order: int[] = [];
     argument_changes: string[] = [];
     argument_changes_read := false;
     // A float argument widens to a double parameter, as the call step widens
@@ -1413,16 +1415,23 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             continue;
         }
         argument := supplied;
+        parameter := position;
         if (Is(forest, supplied, syntax.NamedArgument)) {
             signature := GenericCallbackSignature(forest, text, names, node);
-            if ((signature < 0 && !GenericResolvedCall(names, node)) ||
-                GenericCallParameter(forest, text, callables, params, names, callee, node, supplied, count) != count) {
+            if (signature < 0 && !GenericResolvedCall(names, node)) {
                 return ScalarOperands.Failed(Diagnose(forest, supplied, 0,
-                                                      "scalar proof passes callable arguments in order"));
+                                                      "scalar proof names arguments only for resolved callable signatures"));
             }
+            parameter = GenericCallParameter(forest, text, callables, params, names, callee, node, supplied, position);
             argument = Field(forest, supplied, syntax.FieldValue);
+        } else { position += 1; }
+        assert(parameter >= 0 && parameter < target.count, "checked call argument has a parameter");
+        // Positional and already ordered calls need no permutation storage.
+        if (parameter != count && length(order) == 0) {
+            for previous in 0..<count { order.append(previous); }
         }
-        param := params[target.first + count];
+        if (parameter != count || length(order) > 0) { order.append(parameter); }
+        param := params[target.first + parameter];
         if (param.reference) {
             switch ScalarReferenceArgument(forest, text, callables, params, callable, names, types, members, constants, argument, param, output) {
                 case .Failed(diagnostic):
@@ -1518,12 +1527,34 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     }
     // An omitted argument is its parameter's default, a literal of the
     // parameter's type at the call, as the call step fills it in.
-    while (count < target.count) {
-        param := params[target.first + count];
-        omitted := ScalarLiteral(forest, node, ScalarTypeOf(param.storage), param.default_bits);
-        omitted.text = param.default_text;
-        output.append(omitted);
-        count += 1;
+    if (length(order) == 0) {
+        while (count < target.count) {
+            param := params[target.first + count];
+            omitted := ScalarLiteral(forest, node, ScalarTypeOf(param.storage), param.default_bits);
+            omitted.text = param.default_text;
+            output.append(omitted);
+            count += 1;
+        }
+    } else {
+        // Labeled calls supply the complete signature. A one-based inverse
+        // checks uniqueness, then places each value with at most one exchange.
+        assert(count == target.count, "checked labeled call supplies every parameter");
+        positions := resize([int(0)], target.count);
+        for index in 0..<length(order) {
+            assert(positions[order[index]] == 0, "checked call arguments are unique");
+            positions[order[index]] = index + 1;
+        }
+        for index in 0..<target.count {
+            other := positions[index] - 1;
+            if (other == index) { continue; }
+            output.append(ScalarAt(forest, node, facts.OperandSwapRow, 0,
+                                   count - 1 - other, count - 1 - index, ""));
+            moved := order[index];
+            order[index] = index;
+            order[other] = moved;
+            positions[moved] = other + 1;
+            positions[index] = index + 1;
+        }
     }
     call := ScalarAt(forest, node, facts.CallRow, type, callee, count, target.name);
     if (target.waits) {

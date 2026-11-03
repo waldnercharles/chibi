@@ -1,0 +1,89 @@
+package array_edits_probe
+
+import os "core:os"
+import native "project:llvm_native"
+import abi "project:native_abi"
+import host "project:native_link_host"
+import link "project:native_link"
+import strings "core:strings"
+
+Code :: (op: int, type: int, output: int, left: int, right: int, target: int, literal: i64) -> native.Instruction {
+    return {op: op, type: type, output: output, left: left, right: right, target: target, literal: literal};
+}
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 2 && length(arguments) != 3) { return 2; }
+    target := abi.LinuxX64();
+    suffix := "";
+    windows := os.Platform() == "Windows";
+    if (windows) { target = abi.WindowsX64(); suffix = ".exe"; }
+    else if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
+    array := native.ArrayType + abi.IntStorage;
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0),
+             Code(native.Constant, array, 0, 0, 0, 0, 0),
+             Code(native.Constant, abi.IntStorage, 1, 0, 0, 0, 2),
+             Code(native.ArrayPush, array, 2, 0, 1, 0, 1),
+             Code(native.Constant, abi.IntStorage, 3, 0, 0, 0, 4),
+             Code(native.ArrayPush, array, 4, 2, 3, 0, 1),
+             Code(native.ValueCopy, array, 5, 4, 0, 0, 0),
+             Code(native.Constant, abi.IntStorage, 6, 0, 0, 0, -9),
+             Code(native.Constant, abi.IntStorage, 7, 0, 0, 0, 1),
+             Code(native.ArrayInsert, array, 8, 4, 6, 7, 0),
+             Code(native.Constant, abi.IntStorage, 9, 0, 0, 0, 2147483647),
+             Code(native.Constant, abi.IntStorage, 10, 0, 0, 0, 8),
+             Code(native.ArrayInsert, array, 11, 8, 9, 10, 0),
+             Code(native.ArrayReverse, array, 12, 11, 0, 0, 0),
+             Code(native.ArraySet, array, 19, 12, 6, 10, i64(native.ArraySetUnchanged)),
+             Code(native.ArraySet, array, 20, 19, 9, 10, i64(native.ArraySetUnchanged)),
+             Code(native.Constant, abi.IntStorage, 13, 0, 0, 0, 0),
+             Code(native.ArraySet, array, 21, 20, 13, 10, i64(native.ArraySetUnchanged)),
+             Code(native.ArrayGet, abi.IntStorage, 14, 21, 13, 0, 0),
+             Code(native.ArrayGet, abi.IntStorage, 15, 5, 13, 0, 0),
+             Code(native.Constant, abi.IntStorage, 16, 0, 0, 0, 10),
+             Code(native.Mul, abi.IntStorage, 17, 14, 16, 0, 0),
+             Code(native.Add, abi.IntStorage, 18, 17, 15, 0, 0),
+             Code(native.ArrayGet, abi.BoolStorage, 22, 21, 13, 0, i64(native.ArrayGetPlaceCheck)),
+             Code(native.Select, abi.IntStorage, 23, 22, 18, 13, 0),
+             Code(native.ArrayDrop, array, 0, 5, 0, 0, 0),
+             Code(native.ArrayDrop, array, 0, 21, 0, 0, 0),
+             Code(native.Publish, abi.IntStorage, 0, 23, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    slots := [array, abi.IntStorage, array, abi.IntStorage, array, array, abi.IntStorage, abi.IntStorage,
+              array, abi.IntStorage, abi.IntStorage, array, array, abi.IntStorage, abi.IntStorage,
+              abi.IntStorage, abi.IntStorage, abi.IntStorage, abi.IntStorage, array, array, array, abi.BoolStorage, abi.IntStorage];
+    functions: native.Function[] = [{result: abi.IntStorage, first_parameter: 0, parameters: 0, first_slot: 0,
+                                     slots: length(slots), first_local: 0, locals: 0, first_code: 0, code: length(code),
+                                     first_argument: 0, arguments: 0}];
+    source: native.Source = {file: "", directory: ""};
+    module := "";
+    switch native.EmitProgram(target, functions, [], slots, [], code, [], [], [], [], source, [], [], []) {
+        case .Rejected(instruction, message): os.Print(message); return 1;
+        case .Emitted(text): module = text;
+    }
+    if (length(arguments) == 3) {
+        audit := os.ReadText(arguments[2]);
+        if (audit.error != nil) { return 1; }
+        assert(strings.Contains(module, "define i32 @chibi_scalar(ptr %ctx)"));
+        module = strings.Concatenate([strings.Replace(module, "define i32 @chibi_scalar(ptr %ctx)",
+            "define i32 @chibi_value_test_entry(ptr %ctx)", 1), audit.text]);
+    }
+    levels: int[] = [0, 2];
+    for (level in levels) {
+        base := format_text("{}/array-edits-{}", arguments[1], level);
+        written := os.WriteText(strings.Concatenate([base, ".ll"]), module);
+        if (written != nil) { return 1; }
+        start := os.WriteText(strings.Concatenate([base, ".start.ll"]), link.ProgramStart(target.triple, windows, true, false));
+        if (start != nil) { return 1; }
+        objects := [strings.Concatenate([base, ".o"]), strings.Concatenate([base, ".start.o"])];
+        compiled := host.ObjectsResult(arguments[0], [strings.Concatenate([base, ".ll"]), strings.Concatenate([base, ".start.ll"])], objects, level, 2);
+        if (compiled.kind != 0) { return 1; }
+        program := strings.Concatenate([base, suffix]);
+        linked := host.LinkResult(link.Program(target.triple, arguments[0], objects, [], [], [], program, "", windows));
+        if (linked.kind != 0) { return 1; }
+        status := os.Run([program]);
+        if (status != 82) { os.Print(format_text("array edits O{} exited {}", level, status)); return 1; }
+        os.Print(format_text("PASS array edits O{}: clamped insert, reverse, ignored invalid set and value-copy isolation", level));
+    }
+    return 0;
+}

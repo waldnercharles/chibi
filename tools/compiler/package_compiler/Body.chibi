@@ -113,6 +113,9 @@ UpdateFact: int : 0;
 NativeFact: int : 1;
 CallFact: int : 2;
 WriteFact: int : 3;
+// A typed unmanaged scalar destination created for a copied result or a
+// conditional expression. `node` is its source; `target` is the body-local cell.
+ScalarValueCellFact: int : 4;
 UnknownWrite: int : -1;
 Body :: union {
     Failed(diagnostic: syntax.Diagnostic)
@@ -903,8 +906,8 @@ DirectiveFacts :: (forest: snapshot.SnapshotNode[], context: BodyContext, direct
         kind = NativeFact;
         target = item.a;
     }
-    if (kind == UpdateFact) {
-        fact: SemanticFact = {node: item.node, kind: UpdateFact, target: target};
+    if (kind == UpdateFact || kind == ScalarValueCellFact) {
+        fact: SemanticFact = {node: item.node, kind: kind, target: target};
         recorded.append(fact);
         return SemanticState.Read(summary, recorded);
     }
@@ -2632,6 +2635,17 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     addressed := AddressedNames(forest, text, address_root,
                                 ScopedArguments(forest, text, callables, params, natives, aliases, callable.package,
                                                 address_root));
+    if (length(addressed) > 0) {
+        // Concrete generic parameters may hold inferred optional types that
+        // no source spelling declared. Seed only the values boxing needs.
+        for (index in 0..<callable.count) {
+            param := params[callable.first + index];
+            if (!param.reference && Holds(addressed, param.name)) {
+                EnsurePointer(table, {storage: param.storage, container: param.container, record: param.record},
+                              false, callable.package);
+            }
+        }
+    }
     begun := Prologue(forest, text, params, callable, aliases, key, solid, meaning, referenced, mutated, addressed, ops,
                       target);
     switch begun {
@@ -2978,6 +2992,21 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                                       added_calls, added_names, scheduled, popped, value, kept, marks):
                             code.extend(added_code);
                             slots.extend(added_slots);
+                            condition = value;
+                    }
+                }
+                if (Single(condition, TaskStorage)) {
+                    condition_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
+                                           cell: length(cells), host: length(hosts), call: length(calls)};
+                    switch TaskCommandStep(forest, document, values, value_top + 1, item, RunningCommand, 0,
+                                           Typed(-1, BoolStorage, 0, -1), ops, target, condition_at) {
+                        case .Failed(diagnostic): return Body.Failed(diagnostic);
+                        case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
+                                      added_calls, added_names, scheduled, popped, value, kept, marks):
+                            code.extend(added_code);
+                            slots.extend(added_slots);
+                            cells.extend(added_cells);
+                            hosts.extend(added_hosts);
                             condition = value;
                     }
                 }
@@ -3399,6 +3428,9 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 }
                 cells.append(MovedCell(Typed(-1, element.storage, element.container, element.record)));
                 answer := length(cells) - 1;
+                if (ScalarValueCell(cells[answer])) {
+                    facts.append({node: item.node, kind: ScalarValueCellFact, target: answer});
+                }
                 present := NoValue();
                 probe: Bases = {pc: length(code), slot: length(slots), local: length(locals),
                                 cell: length(cells), host: length(hosts), call: length(calls)};
@@ -3560,7 +3592,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         } else if ((kind == syntax.BinaryExpression && (operator == tk.In || operator == syntax.NotIn)) ||
                    (kind == syntax.CallExpression &&
                     (item.c == MapHasMark || (item.phase == 0 && MapMethod(forest, text, names, item.node, "has"))))) {
-            step = MapHasStep(forest, text, document, table^, values, value_top, item, ops, target, at);
+            step = MapHasStep(forest, text, document, callables, params, natives, names, callable.package,
+                              table^, values, value_top, item, ops, target, at);
         } else if (kind == syntax.CallExpression) {
             step = CallStep(forest, text, document, callables, params, table, members, constants, natives, ports, makes,
                             make_fields, names, callable.package, values, value_top, built, item, ops, target, at);

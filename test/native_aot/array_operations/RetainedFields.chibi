@@ -1,0 +1,13 @@
+package record_field_retained
+Leaf :: struct { value: int; }
+Root :: struct { leaf: Leaf; marker: int; }
+Next :: () -> int {
+    value: retain Root = {leaf: {value: 1}, marker: 7};
+    value.leaf.value += 1;
+    return value.leaf.value * 10 + value.marker;
+}
+Main :: () -> int {
+    first := Next(); second := Next();
+    assert(first == 27 && second == 37);
+    return 0;
+}

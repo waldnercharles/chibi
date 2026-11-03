@@ -1,0 +1,70 @@
+package scalar_scope_checks
+
+import facts "project:scalar_facts"
+import scalar "project:scalar_llvm"
+import os "core:os"
+
+Row :: (kind: int, type: int, value: int, count: int, name: string, start: int, end: int) -> facts.Row {
+    return {kind: kind, type: type, value: value, count: count, literal: 0, name: name, text: "",
+             start: start, end: end, line: 1, column: start + 1};
+}
+Rows :: () -> facts.Row[] {
+    source := Row(facts.SourceRow, 0, 0, 0, "Scope.chibi", 0, 0);
+    source.text = "        ";
+    source.line = 0;
+    source.column = 0;
+    document := source;
+    document.kind = facts.DocumentRow;
+    document.name = "project:Scope.chibi";
+    document.text = "";
+    format := Row(facts.LiteralRow, facts.StringType, 0, 0, "", 0, 1);
+    format.text = "held {}";
+    value := Row(facts.LiteralRow, facts.IntType, 0, 0, "", 0, 1);
+    value.literal = 17;
+    answer := Row(facts.LiteralRow, facts.IntType, 0, 0, "", 4, 5);
+    answer.literal = 42;
+    return [source, document, Row(facts.FunctionRow, facts.IntType, 0, 0, "Main", 0, 8),
+        Row(facts.ScopeRow, 0, 0, 0, "", 0, 3), Row(facts.LocalRow, facts.StringType, 0, 3, "owned", 0, 1),
+        format, value, Row(facts.TextRow, facts.StringType, facts.TextFormat, 2, "", 0, 1),
+        Row(facts.EndRow, 0, 0, 0, "", 0, 3), Row(facts.ReturnRow, 0, 0, 1, "", 4, 5), answer];
+}
+Invalid :: (rows: facts.Row[]) -> bool { return scalar.Validate(rows) != "" && length(scalar.EmitBytes(rows)) == 0; }
+Main :: () -> int {
+    rows := Rows();
+    message := scalar.Validate(rows);
+    if message != "" { os.Print(message); return 1; }
+    assert(length(scalar.EmitBytes(rows)) > 0);
+    for variant in 0..<9 {
+        changed := rows;
+        scope := changed[3];
+        closed := changed[8];
+        switch variant {
+            case 0: scope.type = facts.IntType;
+            case 1: scope.value = 1;
+            case 2: scope.count = 1;
+            case 3: scope.literal = 1;
+            case 4: scope.name = "scope";
+            case 5: scope.text = "scope";
+            case 6: closed.end = 2;
+            case 7: closed.kind = facts.ElseRow;
+            case 8:
+                // The variable remains in the function's type table, but its
+                // owning scope has ended and its index is no longer visible.
+                read := changed[10];
+                read.kind = facts.ReadRow;
+                read.type = facts.StringType;
+                read.literal = 0;
+                changed[10] = read;
+        }
+        changed[3] = scope;
+        changed[8] = closed;
+        assert(Invalid(changed), "malformed scopes publish no LLVM");
+    }
+    nested := slice(rows, 0, 4);
+    nested.append(rows[3]);
+    nested.extend(slice(rows, 4, 5));
+    nested.append(rows[8]);
+    nested.extend(slice(rows, 9, 2));
+    assert(scalar.Validate(nested) == "" && length(scalar.EmitBytes(nested)) > 0);
+    return 0;
+}

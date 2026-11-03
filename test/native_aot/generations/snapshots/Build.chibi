@@ -1,0 +1,122 @@
+package retained_snapshot_live
+import native "project:llvm_native"
+import abi "project:native_abi"
+import os "core:os"
+import link "project:native_link"
+import host "project:native_link_host"
+import strings "core:strings"
+Op :: (op: int, type: int, output: int, left: int) -> native.Instruction {
+    return {op: op, type: type, output: output, left: left, right: 0, target: 0, literal: 0};
+}
+Library :: (target: abi.Target, variant: string) -> native.Result {
+    edited := variant != "first";
+    bad := variant == "bad";
+    record_a := native.RecordType;
+    record_t := native.RecordType + 1;
+    if edited { record_a = native.RecordType + 1; record_t = native.RecordType; }
+    ai := native.ArrayType + abi.IntStorage;
+    aa := native.ArrayType + record_a;
+    at := native.ArrayType + record_t;
+    texts := native.ArrayType + abi.TextStorage;
+    records: native.Record[] = [{first: 0, count: 3, identity: 0}, {first: 3, count: 2, identity: 0}];
+    fields := [abi.IntStorage, abi.TextStorage, ai, abi.TextStorage, at];
+    labels := ["number", "message", "values", "name", "children"];
+    if edited {
+        records = [{first: 0, count: 2, identity: 0}, {first: 2, count: 3, identity: 0}];
+        fields = [abi.TextStorage, at, abi.IntStorage, abi.TextStorage, ai];
+        labels = ["name", "children", "number", "message", "values"];
+    }
+    if bad { labels[3] = "changed"; }
+    nodes: native.SnapshotShapeNode[] = [
+        {kind: native.SnapshotArray, type: aa, extra: 0, first: 0, count: 1},
+        {kind: native.SnapshotRecord, type: record_a, extra: 0, first: 1, count: 3},
+        {kind: native.SnapshotScalar, type: abi.IntStorage, extra: abi.ValueTag(abi.IntStorage), first: 0, count: 0},
+        {kind: native.SnapshotScalar, type: abi.TextStorage, extra: abi.ValueTag(abi.TextStorage), first: 0, count: 0},
+        {kind: native.SnapshotArray, type: ai, extra: 0, first: 4, count: 1},
+        {kind: native.SnapshotRecord, type: record_t, extra: 0, first: 5, count: 2},
+        {kind: native.SnapshotArray, type: at, extra: 0, first: 7, count: 1},
+        {kind: native.SnapshotArray, type: texts, extra: 0, first: 8, count: 1}];
+    shapes: native.SnapshotShapes = {nodes: nodes, edges: [
+        {name: "", target: 1}, {name: "number", target: 2}, {name: "message", target: 3}, {name: "values", target: 4},
+        {name: "", target: 2}, {name: "name", target: 3}, {name: "children", target: 6}, {name: "", target: 5}, {name: "", target: 3}], roots: [0, 6, 7, -1]};
+    if bad {
+        edges := shapes.edges;
+        changed := edges[2];
+        changed.name = "changed";
+        edges[2] = changed;
+        shapes.edges = edges;
+    }
+    slots: int[] = [];
+    code := [Op(native.Check, 0, 0, 0)];
+    retained := 0;
+    for type in [aa, at, texts, ai] {
+        slot := length(slots);
+        slots.extend([type, type, type]);
+        code.append(Op(native.Constant, type, slot, 0));
+        code.append(Op(native.ValueCopy, type, slot + 1, slot));
+        code.append(Op(native.ValueDrop, type, 0, slot + 1));
+        load := Op(native.StateLoad, type, slot + 2, slot + 1);
+        load.right = retained;
+        load.target = retained;
+        code.append(load);
+        retained += 1;
+    }
+    slot := length(slots);
+    slots.append(abi.IntStorage);
+    code.append(Op(native.Constant, abi.IntStorage, slot, 0));
+    code.append(Op(native.Publish, abi.IntStorage, 0, slot));
+    code.append(Op(native.Return, 0, 0, 0));
+    shape: native.Function = {result: abi.IntStorage, first_parameter: 0, parameters: 0, first_slot: 0, slots: length(slots),
+        first_local: 0, locals: 0, first_code: 0, code: length(code), first_argument: 0, arguments: 0};
+    return native.EmitSnapshotLibrary(target, "SnapshotProbe", ["Frame"], [i64(1)], [shape], [], slots, [], code, [],
+        records, fields, ["Frame.records", "Frame.tree", "Frame.texts", "Frame.numbers"], 1000000, labels, -1, [], shapes);
+}
+Main :: () -> int {
+    args := os.Arguments();
+    if length(args) != 4 { return 2; }
+    work := args[0];
+    llvm := args[1];
+    template := os.ReadText(args[2]);
+    if template.error { return 2; }
+    level := 0;
+    if args[3] == "2" { level = 2; }
+    else if args[3] != "0" { return 2; }
+    target := abi.LinuxX64();
+    if os.Platform() == "Darwin" { target = abi.MacOSArm64(); }
+    for variant in ["first", "bad", "edited"] {
+        module := "";
+        switch Library(target, variant) {
+            case .Rejected(instruction, message): os.Print(message); return 1;
+            case .Emitted(text): module = text;
+        }
+        module = strings.ReplaceAll(module, "@chibi_host_call_Frame(", "@chibi_snapshot.original_Frame(");
+        module = strings.ReplaceAll(module, "define i32 @chibi_host_entries() #0 {\nentry:\n  ret i32 2\n}",
+                                           "define i32 @chibi_host_entries() #0 {\nentry:\n  ret i32 3\n}");
+        value := "0";
+        record := "%record0";
+        array := "1056";
+        if variant != "first" { value = "2"; record = "%record1"; array = "1057"; }
+        if variant == "bad" { value = "1"; }
+        body := strings.ReplaceAll(template.text, "$VARIANT", value);
+        body = strings.ReplaceAll(body, "$RECORD", record);
+        body = strings.ReplaceAll(body, "$ARRAY", array);
+        module = strings.Concatenate([module, body]);
+        if variant == "first" {
+            module = strings.Concatenate([module, "@llvm.global_dtors = appending global [1 x {i32,ptr,ptr}] [{i32,ptr,ptr} {i32 65535,ptr @fixture.unload,ptr null}]\n"]);
+        }
+        output := strings.Concatenate([work, "/", variant, ".so"]);
+        source := strings.Concatenate([output, ".ll"]);
+        start := strings.Concatenate([output, ".start.ll"]);
+        if os.WriteText(source, module) || os.WriteText(start, link.SharedContext(target.triple, true)) { return 2; }
+        objects := [strings.Concatenate([output, ".o"]), strings.Concatenate([output, ".start.o"])];
+        if host.Objects(llvm, [source], [objects[0]], level, 1) { return 1; }
+        if host.Object(llvm, start, objects[1], level) { return 1; }
+        plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", true);
+        plan.shared = true;
+        if os.Platform() == "Darwin" {
+            plan.imports = [{name: "System", symbols: ["malloc", "calloc", "free", "dprintf", "abort", "snprintf", "_exit", "fopen", "fclose", "__cxa_atexit"]}];
+        } else { plan.libraries = ["c"]; }
+        if host.Link(plan) { return 1; }
+    }
+    return 0;
+}

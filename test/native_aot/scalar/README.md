@@ -102,8 +102,8 @@ would, at the variable's type.
 Calls may repeat, nest and recurse, directly or mutually. Natively recursion
 is unchecked, as Rust's and Odin's is: it runs as deep as the stack allows,
 every function probes its stack, and an endless recursion faults in the guard
-page. The native test host reports that as a stack overflow and aborts; a
-standalone program installs no report. Stage zero's
+page. Native programs install no report handler and retain the OS fault policy.
+The C test host's optional handler is retired. Stage zero's
 VM limits a script to 64 nested calls (`SCRIPT_CALL_DEPTH_LIMIT`); the VMs
 here run stage one's output, which has no limit, and are only asked to agree
 with native code on recursion that ends. Arguments evaluate left to right, each
@@ -210,35 +210,18 @@ rows own their strings and, once snapshotted, their record shape.
 
 - Across processes, `Run.ps1` passes the producer's exact stdout file as the
   consumer's input.
-- In one process, `tool language-package-compiler-chibi-scalar` produces the
-  rows on both VMs, frees the producer's packages and inputs, reads the
-  retained rows, then prepares the consumer and emits them as IR with the call.
-  It also validates a guarded module's rows and 19 malformed variants of them:
-  if statement layout, comparison operator, arity, result and operand types,
-  the condition's stack, statement and end ranges, a read past the variables,
-  a body that can end without returning, and a recursive call misnamed.
-  An arithmetic module's rows get 9 more: binary and unary operators, arity,
-  result type and bool operands. A module with locals, an else and a logical
-  gets 18: logical counts, operators and right sides, a `!` of an int, reads
-  of a local in its own initializer and out of its block, local and
-  assignment rows, else and end layout and ranges, and return paths. A
-  module of a `for` loop that breaks and an endless `while` loop that
-  continues gets 17: break and continue outside a loop or with fields, an
-  endless loop that breaks or tests false, condition and bound types, index
-  rows, an assignment to the index, reads of it in its bound and after its
-  loop, and loop end and body ranges. A switch whose default arm declares a
-  local gets 15: statements before the first arm, arms outside a switch, a
-  second default, switch and arm types, arm fields and ranges, a read of the
-  default arm's local in the next arm, and an arm that does not return.
-  A union module whose switch binds payloads gets 25: union, variant and
-  payload rows out of order, unnamed, duplicated, outside their declaration
-  or of a record or string type, a variant made with another's payloads or as a
-  scalar, Tag and Payload rows of another type, arity or payload, and a zero,
-  field read or comparison of a union or its tag. A string module gets 10:
-  text on an int literal or a read, a string literal with a nonzero or
-  oversized literal, strings ordered or compared with an int, a local or
-  read of another type and a string argument for an int parameter. A string
-  record field is rejected with the record module's variants.
+- In one native process, `tool language-package-compiler-chibi-scalar` runs
+  `test/native_aot/scalar_producer`. Fifteen source projections retain their
+  owned rows and temporary heap-backed source text after later collections,
+  then the real validator and consumer inspect and emit those values. Twelve
+  row-kind sequences and all 169 malformed edit variants preserve their exact
+  rejection diagnostics and empty-output checks. Package, collection, scoped
+  pointer, library and retained-state contracts also run natively, followed by
+  every authored scalar corpus case, including deep operands. The retired C
+  selector's VM package teardown and JSON arena ownership are replaced by the
+  native values' actual lifetime boundary. See the
+  [producer coverage](../scalar_producer/README.md) for the C-case mapping and
+  the one updated unknown-conversion selector.
 
 `scalar_llvm.Validate` checks the representation: counts within their rows, row
 layout, canonical fields, positions, typed operand stacks and callee
@@ -268,20 +251,14 @@ their payloads.
 
 ## Native objects
 
-Feed `EmitBytes` output, written with the compiler host's `--output-bytes`, to
-the unchanged driver:
+`native_link_host.Objects` verifies and optimizes emitted LLVM modules through
+`opt`, then emits objects through `llc`; `native_link_host.Object` emits an
+already-prepared module. The self-hosted native driver uses those same entry
+points. See the [native driver checks](../native_driver/README.md) and
+[`native_link`](../../../tools/compiler/native_link/README.md).
 
-```text
-chibi-build-host --root REPO --source tools/native_aot/Driver.chibi \
-  --collection native_aot=REPO/tools/native_aot/driver --core REPO/packages/core --compiler REPO/tools/compiler \
-  --compiler-core REPO/packages/core --entry Object --timeout-ms 120000 -- \
-  ABS_INPUT_LL ABS_FRESH_OUTPUT_DIRECTORY ABS_OPT ABS_LLC 0|2
-```
-
-See the [driver contract](../driver/README.md) for its trusted-tool,
-target/layout and publication rules. The entry's int32 result is the only
-native observation: `bool` parameters and results are internal, and any `bool`
-probe is a validation-only adapter, not an ABI.
+The entry's int32 result is the native observation: `bool` parameters and `bool`
+results are the corpus's private query adapter, not a public ABI.
 
 `tool language-scalar-native` (`test/language`, Linux x86-64 only) runs the
 corpus natively, and can bundle the same modules for macOS arm64 and Windows
@@ -360,7 +337,7 @@ it.
 
 ## Portable recovery regression
 
-`Run.ps1` runs after the two-stage self-build in `compiler-recovery.yml`. It
+`Run.ps1` runs after the two-stage self-build in the single CI workflow's scheduled/manual-full recovery job. It
 binds the pinned runtime, recovered stage2, compiler and regression source
 inventories, compiles `Regression.chibi` on both VMs with identical bytes, and
 runs the authored `Tests` (26 malformed-row fixtures plus emission checks).

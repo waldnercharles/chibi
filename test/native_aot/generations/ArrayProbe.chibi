@@ -1,0 +1,146 @@
+package retained_array_probe
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import link "project:native_link"
+import host "project:native_link_host"
+import os "core:os"
+import strings "core:strings"
+
+Op :: (op: int, type: int, output: int, left: int, right: int, target: int) -> native.Instruction {
+    return {op: op, type: type, output: output, left: left, right: right, target: target, literal: 0};
+}
+Run :: (target: abi.Target, work: string, llvm: string, stem: string, text: string) -> int {
+    module := format_text("{}/{}.ll", work, stem);
+    start := format_text("{}/{}-start.ll", work, stem);
+    if os.WriteText(module, text) || os.WriteText(start, link.Start(target.triple, false, true)) { return 2; }
+    for level in [int(0), 2] {
+        objects := [format_text("{}/{}-O{}.o", work, stem, level), format_text("{}/{}-start-O{}.o", work, stem, level)];
+        if host.Objects(llvm, [module, start], objects, level, 1) { return 1; }
+        program := format_text("{}/{}-O{}", work, stem, level);
+        plan := link.Program(target.triple, llvm, objects, [], [], [], program, "", false);
+        if os.Platform() == "Darwin" {
+            runtime: link.Import = {name: "System", symbols: ["malloc", "calloc", "free", "dprintf", "abort"]};
+            plan.imports = [runtime];
+        }
+        if host.Link(plan) || os.Run([program]) != 0 { return 1; }
+    }
+    return 0;
+}
+CharLibrary :: (target: abi.Target, storage: int, characters: bool[], initial_value: i64 = 65) -> native.Result {
+    initial := Op(native.StateLoad, storage, 0, 0, 0, 0);
+    initial.literal = initial_value;
+    if storage == abi.BoolStorage { initial.literal = 1; }
+    code := [Op(native.Check, 0, 0, 0, 0, 0), initial,
+        Op(native.Constant, abi.IntStorage, 1, 0, 0, 0),
+        Op(native.Publish, abi.IntStorage, 0, 1, 0, 0), Op(native.Return, 0, 0, 0, 0, 0)];
+    shape: native.Function = {result: abi.IntStorage, first_parameter: 0, parameters: 0, first_slot: 0, slots: 2,
+        first_local: 0, locals: 0, first_code: 0, code: length(code), first_argument: 0, arguments: 0};
+    return native.EmitLibraryStates(target, "CharacterProbe", ["Frame"], [i64(1)], [shape], [],
+        [storage, abi.IntStorage], [], code, [], [], [], ["Frame.character"], 1, [], -1, characters);
+}
+Main :: () -> int {
+    args := os.Arguments();
+    if length(args) != 4 { return 2; }
+    work := args[0];
+    llvm := args[1];
+    audit := os.ReadText(args[2]);
+    if audit.error { return 2; }
+    target := abi.LinuxX64();
+    if os.Platform() == "Darwin" { target = abi.MacOSArm64(); }
+    array := native.ArrayType + abi.IntStorage;
+    seven := Op(native.Constant, abi.IntStorage, 2, 0, 0, 0);
+    seven.literal = 7;
+    code := [Op(native.Check, 0, 0, 0, 0, 0), Op(native.Constant, array, 0, 0, 0, 0),
+        Op(native.StateLoad, array, 1, 1, 0, 0), seven, Op(native.ArrayPush, array, 3, 1, 2, 0),
+        Op(native.StateStore, array, 0, 3, 0, 0), Op(native.ValueDrop, array, 0, 3, 0, 0),
+        Op(native.Constant, abi.IntStorage, 4, 0, 0, 0), Op(native.Publish, abi.IntStorage, 0, 4, 0, 0),
+        Op(native.Return, 0, 0, 0, 0, 0)];
+    shape: native.Function = {result: abi.IntStorage, first_parameter: 0, parameters: 0, first_slot: 0, slots: 5,
+        first_local: 0, locals: 0, first_code: 0, code: length(code), first_argument: 0, arguments: 0};
+    text := "";
+    switch native.EmitLibrary(target, "ArrayProbe", ["Frame"], [i64(1)], [shape], [],
+        [array, array, abi.IntStorage, array, abi.IntStorage], [], code, [], [], [], ["Frame.values"], 1, []) {
+        case .Rejected(instruction, message): os.Print(message); return 1;
+        case .Emitted(emitted): text = emitted;
+    }
+    assert(!strings.Contains(text, "@chibi_retained_ArrayProbe"), "bulk manifests cannot expose array handles");
+    // Install the audited context callbacks before invoking the library. A
+    // self-migration must clone before dropping the old root, then release all
+    // owned state. Comparing data addresses distinguishes a real snapshot.
+    entry_code := strings.Concatenate([
+        "define i32 @chibi_value_test_entry(ptr %ctx) {\nentry:\n",
+        "  %allocate = getelementptr { ptr, ptr, ptr, ptr, ptr }, ptr @chibi_context, i32 0, i32 2\n",
+        "  %release = getelementptr { ptr, ptr, ptr, ptr, ptr }, ptr @chibi_context, i32 0, i32 4\n",
+        "  store ptr @chibi_value_test_allocate, ptr %allocate\n  store ptr @chibi_value_test_release, ptr %release\n",
+        "  %started = call i32 @chibi_host_call_Frame()\n  %before = call i64 @chibi_host_retained_get(i32 0)\n",
+        "  %before.at = inttoptr i64 %before to ptr\n  %old = load { i32, i32, ptr, ptr }, ptr %before.at\n",
+        "  %old.data = extractvalue { i32, i32, ptr, ptr } %old, 2\n",
+        "  %copied = call i32 @chibi_host_retained_set(i32 0, i64 %before)\n",
+        "  %current = load { i32, i32, ptr, ptr }, ptr %before.at\n  %data = extractvalue { i32, i32, ptr, ptr } %current, 2\n",
+        "  %aliased = icmp eq ptr %old.data, %data\n  %alias.status = zext i1 %aliased to i32\n",
+        "  %value = load i32, ptr %data\n  %difference = sub i32 %value, 7\n",
+        "  %tag = call i32 @chibi_host_retained_type(i32 0)\n  %wrong.tag = sub i32 %tag, 13\n",
+        "  %schema = call i64 @chibi_host_retained_schema(i32 0)\n  %missing.schema = icmp eq i64 %schema, 0\n",
+        "  %schema.status = zext i1 %missing.schema to i32\n",
+        "  %released = call i32 @chibi_host_retained_release()\n  %released.again = call i32 @chibi_host_retained_release()\n",
+        "  %values = or i32 %alias.status, %difference\n  %types = or i32 %wrong.tag, %schema.status\n",
+        "  %result = or i32 %values, %types\n  ret i32 %result\n}\n"
+    ]);
+    if Run(target, work, llvm, "array-snapshot", strings.Concatenate([text, entry_code, audit.text])) != 0 { return 1; }
+    switch CharLibrary(target, abi.IntStorage, [true, true]) {
+        case .Rejected(instruction, message): assert(message == "native character state metadata differs from retained state");
+        case .Emitted(emitted): assert(false, "character metadata must cover exactly the state table");
+    }
+    switch CharLibrary(target, abi.BoolStorage, [true]) {
+        case .Rejected(instruction, message): assert(message == "native character state requires int storage");
+        case .Emitted(emitted): assert(false, "character metadata requires i32 storage");
+    }
+    for invalid in [i64(-1), i64(55296), i64(1114112)] {
+        switch CharLibrary(target, abi.IntStorage, [true], invalid) {
+            case .Rejected(instruction, message): assert(message == "native character state initial value is not a Unicode scalar");
+            case .Emitted(emitted): assert(false, "character initial state must be a Unicode scalar");
+        }
+    }
+    switch CharLibrary(target, abi.IntStorage, [true]) {
+        case .Rejected(instruction, message): os.Print(message); return 1;
+        case .Emitted(emitted): text = emitted;
+    }
+    assert(!strings.Contains(text, "@chibi_retained_CharacterProbe"), "bulk manifests cannot erase nominal characters");
+    character_code := strings.Concatenate([
+        "define i32 @chibi_value_test_entry(ptr %ctx) {\nentry:\n",
+        "  %initial = call i64 @chibi_host_retained_get(i32 0)\n  %initial.wrong = icmp ne i64 %initial, 65\n",
+        "  %negative = call i32 @chibi_host_retained_set(i32 0, i64 -1)\n",
+        "  %surrogate = call i32 @chibi_host_retained_set(i32 0, i64 55296)\n",
+        "  %oversize = call i32 @chibi_host_retained_set(i32 0, i64 1114112)\n",
+        "  %converted = call i32 @chibi_host_retained_set_as(i32 0, i32 1, i64 66)\n",
+        "  %unchanged = call i64 @chibi_host_retained_get(i32 0)\n  %unchanged.wrong = icmp ne i64 %unchanged, 65\n",
+        "  %accepted = call i32 @chibi_host_retained_set_as(i32 0, i32 14, i64 1114111)\n  %accepted.wrong = sub i32 %accepted, 1\n",
+        "  %current = call i64 @chibi_host_retained_get(i32 0)\n  %current.wrong = icmp ne i64 %current, 1114111\n",
+        "  %tag = call i32 @chibi_host_retained_type(i32 0)\n  %tag.wrong = sub i32 %tag, 14\n",
+        "  %schema = call i64 @chibi_host_retained_schema(i32 0)\n  %missing = icmp eq i64 %schema, 0\n",
+        "  %invalid.1 = or i32 %negative, %surrogate\n  %invalid.2 = or i32 %oversize, %converted\n",
+        "  %invalid = or i32 %invalid.1, %invalid.2\n  %status.1 = or i32 %invalid, %accepted.wrong\n  %status = or i32 %status.1, %tag.wrong\n",
+        "  %bad.1 = or i1 %initial.wrong, %unchanged.wrong\n  %bad.2 = or i1 %current.wrong, %missing\n",
+        "  %bad = or i1 %bad.1, %bad.2\n  %bad.status = zext i1 %bad to i32\n",
+        "  %result = or i32 %status, %bad.status\n  ret i32 %result\n}\n"
+    ]);
+    if Run(target, work, llvm, "character-schema", strings.Concatenate([text, character_code, audit.text])) != 0 { return 1; }
+    source := os.ReadText(args[3]);
+    if source.error != nil { return 2; }
+    growth := strings.ReplaceAll(source.text, "define i32 @chibi_scalar(ptr %ctx)", "define i32 @chibi_value_test_entry(ptr %ctx)");
+    growth = strings.ReplaceAll(growth, "declare i64 @chibi_value_test_allocations()\n", "");
+    // The two reachable program-owned array roots outlive Main. Close them
+    // explicitly at the audit's program boundary, then check every allocation.
+    cleanup: string[] = [];
+    for index in 0..<2 {
+        cleanup.append(format_text("  %state{} = load {{ i32, i32, ptr, ptr }}, ptr @chibi_scalar.retained.{}\n", index, index));
+        cleanup.append(format_text("  call void @chibi_array.{}.drop(ptr @chibi_value_test_ctx, {{ i32, i32, ptr, ptr }} %state{})\n", array, index));
+        cleanup.append(format_text("  store {{ i32, i32, ptr, ptr }} zeroinitializer, ptr @chibi_scalar.retained.{}\n", index));
+    }
+    audited := strings.ReplaceAll(audit.text, "  %live = load i64, ptr @chibi_value_test_live\n",
+        strings.Concatenate([strings.Join(cleanup, ""), "  %live = load i64, ptr @chibi_value_test_live\n"]));
+    if Run(target, work, llvm, "array-growth", strings.Concatenate([growth, audited])) != 0 { return 1; }
+    os.Print("native retained arrays: independent snapshot, nominal chars, amortized growth and balanced release at O0/O2");
+    return 0;
+}

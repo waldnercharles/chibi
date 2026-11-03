@@ -1110,13 +1110,25 @@ CleanupProjectionStep :: (prefix: Step, owner: Value, natives: ResolvedNative[],
     }
 }
 
+// Plain scalar scratch cells store their complete value in the payload.
+// Aggregate descriptors use their existing copy/ownership intrinsics.
+ScalarValueCell :: (cell: Cell) -> bool {
+    return cell.kind == ValueKind && cell.container == 0 && cell.record == -1 &&
+           cell.constant == 0 && cell.variant == -1 && (Numeric(cell.storage) || cell.storage == BoolStorage);
+}
+
 CopyResultCellsStep :: (bundle: Value, result_types: Value[], ops: Ops, target: Target,
-                        at: Bases, node: snapshot.SnapshotNode) -> Step {
+                        at: Bases, origin: int, node: snapshot.SnapshotNode) -> Step {
     output_cells: Cell[] = [];
+    copies: Work[] = [];
     index: int = 0;
     while (index < length(result_types)) {
         port := result_types[index];
-        output_cells.append(TypedCell(port.storage, port.container, port.record));
+        cell := TypedCell(port.storage, port.container, port.record);
+        output_cells.append(cell);
+        if (ScalarValueCell(cell)) {
+            copies.append(RecordSemantic(origin, ScalarValueCellFact, at.cell + index));
+        }
         index += 1;
     }
     prefix := Step.Emitted([], [], [], output_cells, [], [], [], [], [], 0, NoValue(), NoValue(), []);
@@ -1162,13 +1174,13 @@ CopyResultCellsStep :: (bundle: Value, result_types: Value[], ops: Ops, target: 
             return Step.Failed(diagnostic);
         case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
                       popped, produced, retained, marks):
-            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, extend(next, copies),
                                 1, result, NoValue(), marks);
     }
 }
 
 CopyNativeResultsStep :: (bundle: Value, natives: ResolvedNative[], ports: ResolvedPort[], ops: Ops, target: Target,
-                          at: Bases, node: snapshot.SnapshotNode) -> Step {
+                          at: Bases, origin: int, node: snapshot.SnapshotNode) -> Step {
     called := natives[bundle.record];
     result_types: Value[] = [];
     index: int = 0;
@@ -1177,10 +1189,10 @@ CopyNativeResultsStep :: (bundle: Value, natives: ResolvedNative[], ports: Resol
         result_types.append(Typed(-1, port.storage, port.container, port.record));
         index += 1;
     }
-    return CopyResultCellsStep(bundle, result_types, ops, target, at, node);
+    return CopyResultCellsStep(bundle, result_types, ops, target, at, origin, node);
 }
 CopyFunctionResultsStep :: (bundle: Value, callables: Callable[], params: Param[], ops: Ops, target: Target,
-                            at: Bases, node: snapshot.SnapshotNode) -> Step {
+                            at: Bases, origin: int, node: snapshot.SnapshotNode) -> Step {
     called := callables[bundle.record];
     result_types: Value[] = [];
     index: int = 0;
@@ -1189,5 +1201,5 @@ CopyFunctionResultsStep :: (bundle: Value, callables: Callable[], params: Param[
         result_types.append(Typed(-1, param.storage, param.container, param.record));
         index += 1;
     }
-    return CopyResultCellsStep(bundle, result_types, ops, target, at, node);
+    return CopyResultCellsStep(bundle, result_types, ops, target, at, origin, node);
 }

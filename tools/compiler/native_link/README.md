@@ -11,10 +11,16 @@ executable through LLVM's lld, with no C compiler or compiler driver on `PATH`.
   start files on Linux, and `Link` writes the stubs, runs `Command`'s vector and
   publishes the program (a rename from `Partial(plan)`).
 
-`tools/native_aot/driver` links through the same entry points with the build host's
-effects, and records each vector in its receipt. Every vector names lld's flavor
-(`-flavor gnu`, `darwin` or `link`), so a caller may run any of lld's names, or lld
-itself, in place of the vector's first argument.
+`ObjectResult`, `ObjectsResult` and `LinkResult` return the same `Error` record
+with kind/code zero on success. The optional `Object`, `Objects` and `Link`
+interfaces adapt those operations. The native bootstrap driver uses plain
+records so the pinned seed does not need nullable-record field projections.
+
+The native compiler driver uses these entry points directly. Every vector names
+lld's flavor (`-flavor gnu`, `darwin` or `link`), so a caller may run any of lld's
+names, or lld itself, in place of the vector's first argument. The real native
+[driver/cache checks](../../../test/native_aot/native_driver/README.md) cover tool
+identities, interruption, cleanup and exclusive publication.
 
 ```chibi
 import link "project:native_link"
@@ -34,6 +40,15 @@ compiled with `host.Object` and linked beside the program's own objects. It call
 `main` for libc and dyld, `_start` with an `exit_group` for a static Linux program, and
 `mainCRTStartup` with `ExitProcess` for a static Windows one. A static Linux program takes no
 context ("" is returned).
+
+The Windows start also supplies weak C-ABI `memset`, `memcpy` and `memmove`
+definitions. LLVM may introduce these calls while lowering aggregate stores or
+copies. Their byte loops disable builtin recognition, so optimization cannot
+turn them into recursive library calls. They add no CRT imports. An explicitly
+linked provider can own those symbols, including a source's declared DLL import.
+The [memory runtime probe](../../../test/native_aot/link/Memory.ll) executes
+1,056 boundary/guard/overlap/return-value cases at O0 and O2; Windows also checks
+the linked image has no CRT dependency.
 
 Every start module also defines the process arguments as C-ABI functions, which `core:os`
 binds with `foreign import`:
@@ -82,8 +97,23 @@ link order, with their symbols merged and deduplicated:
 `objects` come first and define the entry (`main`, or `_start` / `mainCRTStartup` when
 `static`), then `archives`, then `libraries` by name: `m` on Linux, `c++` or
 `framework:Cocoa` on macOS, `user32.lib` on Windows. A macOS framework is linked from a
-stub naming its install path, so no SDK is read. A plan with `shared` set links a Linux
-shared library of its objects and archives (`-shared`) instead of a program.
+stub naming its install path, so no SDK is read. A plan with `shared` set links
+its objects and archives as a Linux shared library (`-shared`) or a macOS dylib
+(`-dylib`), without a process entry. Each generation supplies its own runtime context.
+
+The authored formatter receives 24-byte `{ i32 tag, i32 length, i64 word,
+ptr bytes }` values. Scalar/text tags 1 through 12 retain the existing runtime
+value contract. Native-only tags 13 and 14 summarize arrays and maps: `length`
+is the descriptor's saved count, with zero `word` and null `bytes`. The renderer
+writes `Array[n]` or `Map[n]`, ignores modifiers, and never reads elements or
+backing storage. A later argument may replace the collection without changing
+the earlier saved count. The returned text owns its bytes.
+
+These summary tags require a standalone native context or an explicit execution
+family, whose image supplies the authored formatter. Generic modules and native
+libraries using the legacy C context reject aggregate formatting. The C value
+adapter and exported scalar signatures continue to accept only tags 1 through
+12. Standalone text/collection-only formatting has no numeric CRT dependency.
 
 ## Checks
 

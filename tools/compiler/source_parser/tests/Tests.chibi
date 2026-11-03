@@ -97,6 +97,27 @@ AcceptsTestFunction :: () {
 }
 
 @test
+EmptySwitchArmsKeepSourceRanges :: () {
+    sources := [
+        "package p\nF :: (x: int) { switch x { case 0: case 1: return; case: } }\n",
+        "package p\nChoice :: union { Empty | Value(number: int) }\nF :: (x: Choice) { switch x { case .Empty: case .Value(number): return; } }\n",
+        "package p\nF :: (x: int) { switch x { case 0: {} case: {} } }\n"];
+    for text in sources {
+        switch parser.Parse(text) {
+            case .Parsed(nodes, fields, is_named, is_extra, root):
+                for node in nodes {
+                    if node.kind == syntax.SwitchArm || node.kind == syntax.Block {
+                        assert(node.start >= 0 && node.end >= node.start && node.end <= text_byte_length(text));
+                        owner := nodes[node.parent];
+                        assert(node.start >= owner.start && node.end <= owner.end);
+                    }
+                }
+            case .Rejected(diagnostic): assert(false, "empty switch arms parse");
+        }
+    }
+}
+
+@test
 RejectsBehavior :: () {
     IsArchived("Thing :: behavior {\n    Speed: number = 3.0\n}\n", "behavior declarations");
 }

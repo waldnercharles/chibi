@@ -1,0 +1,18 @@
+package map_array_foreign
+
+foreign import libc "system:c"
+foreign libc { memset :: (data: int[], value: i32, count: u64) -> rawptr }
+Main :: () -> int {
+    for (round in 0..<64) {
+        values: [int: int[]] = [1: [65], 2: [66]];
+        for (key, item in values) {
+            changed := memset(item, 9, 1);
+            assert(item[0] == 64 + key);
+        }
+        assert(values[1][0] == 65 && values[2][0] == 66);
+        copied := values[1];
+        changed := memset(copied, 9, 1);
+        assert(copied[0] == 9 && values[1][0] == 65);
+    }
+    return 0;
+}

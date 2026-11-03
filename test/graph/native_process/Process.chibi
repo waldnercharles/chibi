@@ -1,0 +1,41 @@
+package graph_native_process
+
+import os "core:os"
+import strings "core:strings"
+
+// Keep the former host's per-child wall deadline while capturing both streams.
+// The process owns its cancellation group; timeout stops its descendants and
+// reaps the child before the caller reads or removes the private output files.
+pub Capture :: (command: string[], timeout_ms: int) -> os.Result {
+    parent := strings.Concatenate([os.Root(), "/.chibi/graph-process"]);
+    made := os.MakeDirectory(parent);
+    assert(made == nil, "the process scratch parent");
+    reserved := os.TemporaryDirectory(parent);
+    assert(reserved.error == nil && reserved.path != "", "the private process directory");
+    stdout_path := strings.Concatenate([reserved.path, "/stdout"]);
+    stderr_path := strings.Concatenate([reserved.path, "/stderr"]);
+    process := os.StartRedirected(command, stdout_path, stderr_path);
+    status := 127;
+    if (process > 0) {
+        status = os.Wait(process, timeout_ms);
+        if (status == os.StillRunning) {
+            os.Kill(process);
+            status = 124;
+        }
+    }
+    stdout := os.ReadText(stdout_path);
+    stderr := os.ReadText(stderr_path);
+    assert(stdout.error == nil, "the captured stdout reads");
+    assert(stderr.error == nil, "the captured stderr reads");
+    result: os.Result = {status: status, stdout: stdout.text, stderr: stderr.text};
+    if (status == 124) {
+        result.stderr = strings.Concatenate([result.stderr, "graph fixture: child timed out\n"]);
+    }
+    removed_stdout := os.Remove(stdout_path);
+    removed_stderr := os.Remove(stderr_path);
+    removed_directory := os.Remove(reserved.path);
+    assert(removed_stdout == nil, "the captured stdout is removed");
+    assert(removed_stderr == nil, "the captured stderr is removed");
+    assert(removed_directory == nil, "the private process directory is removed");
+    return result;
+}

@@ -10,7 +10,8 @@ import os "core:os"
 Calls :: () {
     assert(os.Run(["/bin/rm", "-rf", "os_files"]) == 0, "a fresh folder");
     assert(os.MakeDirectory("os_files/a/b") == nil && os.MakeDirectory("os_files/a/b") == nil, "nested folders, twice");
-    assert(os.WriteText("os_files/file", "text") == nil && os.WriteText("os_files/B", "") == nil, "files");
+    assert(os.WriteText("os_files/file", "text") == nil && os.WriteText("os_files/B", "") == nil &&
+           os.WriteText("os_files/.hidden", "") == nil, "files");
     assert(os.MakeDirectory("os_files/file/below") != nil, "no folder below a file");
     assert(os.WriteText("os_files/a", "x") != nil && os.WriteText("os_files/missing/x", "x") != nil, "no write onto a folder or into a missing one");
     assert(os.Run(["/bin/ln", "-s", "file", "os_files/link"]) == 0 && os.Run(["/bin/ln", "-s", "nothing", "os_files/dangling"]) == 0 &&
@@ -22,19 +23,52 @@ Calls :: () {
     assert(os.Kind("os_files/missing") == os.KindNone && os.Kind("os_files/file/below") == os.KindNone, "nothing there");
     listed := os.List("os_files");
     names := listed.names;
-    assert(listed.error == nil && length(names) == 6 && names[0] == "B" && names[1] == "a" && names[2] == "dangling" &&
-           names[3] == "fifo" && names[4] == "file" && names[5] == "link", "byte order");
+    assert(listed.error == nil && length(names) == 7 && names[0] == ".hidden" && names[1] == "B" && names[2] == "a" &&
+           names[3] == "dangling" && names[4] == "fifo" && names[5] == "file" && names[6] == "link", "byte order includes hidden files");
     assert(os.List("os_files/file").error != nil, "a file has no listing");
 
     stamp := os.Stamp("os_files/file");
-    assert(stamp != "" && os.Stamp("os_files/missing") == "", "stamps");
+    assert(stamp != "" && os.Stamp("os_files/missing") == "" && os.Stamp("os_files/dangling") == "", "stamps");
+    assert(os.Stamp("os_files/link") == stamp && os.Stamp("os_files/B") != stamp, "stamps follow links and distinguish files");
     assert(os.WriteText("os_files/file", "longer text") == nil && os.Stamp("os_files/file") != stamp, "a change changes the stamp");
 
     assert(os.WriteText("os_files/tool", "#!/bin/sh\nexit 3\n") == nil && os.Run(["/bin/chmod", "751", "os_files/tool"]) == 0, "a tool");
     assert(os.Copy("os_files/tool", "os_files/a/tool") == nil && os.Run(["os_files/a/tool"]) == 3, "a copy keeps the mode");
     assert(os.Copy("os_files/link", "os_files/a/copied") == nil && os.Kind("os_files/a/copied") == os.KindFile, "a copy follows a link");
-    assert(os.ReadText("os_files/a/copied").text == "longer text", "the link's file");
+    copied_text := os.ReadText("os_files/a/copied");
+    assert(copied_text.error == nil && copied_text.text == "longer text", "the link's file");
     assert(os.Copy("os_files/missing", "os_files/a/none") != nil, "no copy of nothing");
+
+    // A retained hard link observes the old inode after an atomic replacement.
+    binary: u8[] = [98, 121, 116, 101, 115, 0, 97, 110, 100, 32, 109, 111, 114, 101, 0];
+    assert(os.WriteBytes("os_files/copy-source", binary) == nil && os.Run(["/bin/chmod", "751", "os_files/copy-source"]) == 0,
+           "binary copy source and mode");
+    assert(os.WriteText("os_files/copy-existing", "old") == nil &&
+           os.Run(["/bin/ln", "os_files/copy-existing", "os_files/copy-old-inode"]) == 0, "existing destination inode");
+    assert(os.Copy("os_files/copy-source", "os_files/copy-existing") == nil, "copy replaces an existing destination");
+    old_copy := os.ReadText("os_files/copy-old-inode");
+    replaced := os.ReadBytes("os_files/copy-existing");
+    assert(old_copy.error == nil && old_copy.text == "old", "replacement leaves the old inode unchanged");
+    assert(replaced.error == nil && length(replaced.data) == length(binary), "replacement keeps binary size");
+    for (i in 0..<length(binary)) { assert(replaced.data[i] == binary[i], "replacement keeps every binary byte"); }
+    mode_command := ["/usr/bin/stat", "-c", "%a", "os_files/copy-existing"];
+    if (os.Platform() == "Darwin") { mode_command = ["/usr/bin/stat", "-f", "%Lp", "os_files/copy-existing"]; }
+    mode := os.Capture(mode_command);
+    assert(mode.status == 0 && mode.stdout == "751\n", "replacement keeps all permission bits");
+    before_copy := os.List("os_files");
+    assert(before_copy.error == nil, "copy failure inventory");
+    assert(os.Copy("os_files/missing", "os_files/copy-existing") != nil &&
+           os.Copy("os_files/a", "os_files/copy-existing") != nil &&
+           os.Copy("os_files/copy-source", "os_files/missing/child") != nil &&
+           os.Copy("os_files/copy-source", "os_files/a") != nil, "copy rejects invalid sources and destinations");
+    after_copy := os.List("os_files");
+    assert(after_copy.error == nil && length(after_copy.names) == length(before_copy.names), "failed copies leave no temporary files");
+    for (i in 0..<length(before_copy.names)) { assert(before_copy.names[i] == after_copy.names[i], "failed copies preserve directory entries"); }
+    kept_copy := os.ReadBytes("os_files/copy-existing");
+    kept_child := os.ReadText("os_files/a/copied");
+    assert(kept_copy.error == nil && length(kept_copy.data) == length(binary), "failed copies preserve the destination file");
+    assert(kept_child.error == nil && kept_child.text == "longer text", "failed copies preserve the destination directory");
+    for (i in 0..<length(binary)) { assert(kept_copy.data[i] == binary[i], "failed copies preserve every destination byte"); }
     assert(os.Rename("os_files/a/copied", "os_files/a/renamed") == nil && !os.Exists("os_files/a/copied") &&
            os.Kind("os_files/a/renamed") == os.KindFile, "rename");
 
@@ -43,13 +77,46 @@ Calls :: () {
     assert(os.Remove("os_files/link") == nil, "removing what is gone");
 
     assert(os.Reserve("os_files/new") == nil, "reserve");
-    assert(os.Reserve("os_files/new") != nil && os.Reserve("os_files/dangling") != nil && os.Reserve("os_files/missing/x") != nil,
+    assert(os.Reserve("os_files/new") != nil && os.Reserve("os_files/file") != nil && os.Reserve("os_files/dangling") != nil && os.Reserve("os_files/missing/x") != nil,
            "reserve refuses an existing path, a dangling link and a missing parent");
     assert(os.Reserve("os_files/empty") == nil, "an empty folder");
-    assert(os.Publish("os_files/new", "os_files/a") != nil && os.Publish("os_files/new", "os_files/empty") != nil &&
-           os.Publish("os_files/new", "os_files/dangling") != nil, "publish refuses any existing destination");
+    assert(os.WriteText("os_files/new/payload", "source bytes") == nil &&
+           os.Run(["/bin/ln", "-s", "file", "os_files/publish-link"]) == 0 &&
+           os.Run(["/bin/ln", "-s", "new", "os_files/source-link"]) == 0, "nonempty publication stage");
+    payload_stamp := os.Stamp("os_files/new/payload");
+    identity_command := ["/usr/bin/stat", "-c", "%i:%f", "os_files/file", "os_files/empty", "os_files/publish-link", "os_files/dangling", "os_files/source-link"];
+    if (os.Platform() == "Darwin") {
+        identity_command = ["/usr/bin/stat", "-f", "%i:%p", "os_files/file", "os_files/empty", "os_files/publish-link", "os_files/dangling", "os_files/source-link"];
+    }
+    before_publish := os.Capture(identity_command);
+    assert(before_publish.status == 0 && payload_stamp != "", "publication identities");
+    assert(os.Publish("os_files/new", "os_files/a") != nil, "publish refuses a nonempty destination");
+    assert(os.Publish("os_files/new", "os_files/empty") != nil, "publish refuses an empty destination");
+    assert(os.Publish("os_files/new", "os_files/file") != nil, "publish refuses a file destination");
+    assert(os.Publish("os_files/new", "os_files/publish-link") != nil, "publish refuses a symlink destination");
+    assert(os.Publish("os_files/new", "os_files/dangling") != nil, "publish refuses a dangling symlink destination");
+    assert(os.Publish("os_files/new", "os_files/new") != nil, "publish refuses its own source as destination");
+    assert(os.Publish("os_files/new", "os_files/./new") != nil, "publish refuses another spelling of its source");
+    assert(os.Publish("os_files/new", "os_files/missing/child") != nil, "publish refuses a missing destination parent");
+    rejected_payload := os.ReadText("os_files/new/payload");
+    assert(rejected_payload.error == nil && rejected_payload.text == "source bytes" && os.Stamp("os_files/new/payload") == payload_stamp,
+           "rejected publication preserves the source bytes and identity");
+    assert(os.Publish("os_files/file", "os_files/from-file") != nil &&
+           os.Publish("os_files/source-link", "os_files/from-link") != nil &&
+           os.Publish("os_files/missing", "os_files/from-missing") != nil, "publication requires a real source directory");
+    assert(os.Kind("os_files/from-file") == os.KindNone && os.Kind("os_files/from-link") == os.KindNone &&
+           os.Kind("os_files/from-missing") == os.KindNone, "invalid sources create no destinations");
+    after_publish := os.Capture(identity_command);
+    kept_file := os.ReadText("os_files/file");
+    kept_empty := os.List("os_files/empty");
+    assert(after_publish.status == 0 && after_publish.stdout == before_publish.stdout, "rejected publication preserves destination inodes and modes");
+    assert(kept_file.error == nil && kept_file.text == "longer text", "rejected publication preserves the existing file");
+    assert(kept_empty.error == nil && length(kept_empty.names) == 0, "rejected publication preserves the empty directory");
     assert(os.Publish("os_files/new", "os_files/published") == nil && os.IsDirectory("os_files/published") &&
            !os.Exists("os_files/new"), "publish");
+    published_payload := os.ReadText("os_files/published/payload");
+    assert(published_payload.error == nil && published_payload.text == "source bytes" &&
+           os.Stamp("os_files/published/payload") == payload_stamp, "publication moves the nonempty stage without replacing its payload");
 
     assert(os.ReadText("os_files/a").error != nil && os.ReadText("os_files/missing").error != nil &&
            os.ReadText("os_files/fifo").error != nil, "only a file reads");
@@ -57,7 +124,8 @@ Calls :: () {
 
     assert(os.HashText("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "SHA-256 of text");
     assert(os.Run(["/bin/sh", "-c", "head -c 1000000 /dev/zero | tr '\\000' a > os_files/million"]) == 0, "a million a's");
-    assert(os.HashFile("os_files/million").digest == "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0", "SHA-256 of a file");
+    hashed := os.HashFile("os_files/million");
+    assert(hashed.error == nil && hashed.digest == "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0", "SHA-256 of a file");
     assert(os.HashFile("os_files/missing").error != nil, "no hash of nothing");
     assert(os.Run(["/bin/rm", "-rf", "os_files"]) == 0, "cleaned up");
 }

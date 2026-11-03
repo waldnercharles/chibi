@@ -7,9 +7,11 @@ package target
 pub Linux: int : 1
 pub Darwin: int : 2
 pub Windows: int : 3
+pub Web: int : 4
 
 pub X86_64: int : 1
 pub Arm64: int : 2
+pub Wasm32: int : 3
 
 pub Os: int : 0
 pub Arch: int : 0

@@ -171,12 +171,27 @@ FloatConstantMustFit32Bits :: () {
     ChangedFloat(1, Code(native.Constant, 10, 0, 0, 0, 0, 4294967296), "native constant is outside its type");
 }
 @test
-FloatNegationIsRejected :: () {
-    ChangedFloat(3, Code(native.Neg, 11, 2, 1, 0, 0, 0), "native scalar operand type mismatch");
+FloatNegationKeepsItsIEEEWidth :: () {
+    code := Floats();
+    code[3] = Code(native.Neg, 11, 2, 1, 0, 0, 0);
+    text := Emitted(FloatModule(code));
+    assert(strings.Contains(text, "%v3 = fneg double %a3\n"));
 }
 @test
-FloatRemainderIsRejected :: () {
-    ChangedFloat(3, Code(native.Mod, 11, 2, 1, 1, 0, 0), "native scalar operand type mismatch");
+FloatRemainderKeepsItsIEEEWidth :: () {
+    code := Floats();
+    code[3] = Code(native.Mod, 11, 2, 1, 1, 0, 0);
+    wide := Emitted(FloatModule(code));
+    assert(strings.Contains(wide, "%v3 = frem double %a3, %b3"));
+    assert(strings.Contains(wide, "; chibi-import system:m fmod\n"));
+    code[7] = Code(native.Mod, 10, 6, 0, 0, 0, 0);
+    both := Emitted(FloatModule(code));
+    assert(strings.Contains(both, "%v7 = frem float %a7, %b7"));
+    assert(strings.Contains(both, "; chibi-import system:m fmodf\n"));
+}
+@test
+FloatRemainderRejectsMismatchedOperands :: () {
+    ChangedFloat(3, Code(native.Mod, 11, 2, 0, 1, 0, 0), "native scalar operand type mismatch");
 }
 @test
 IntegerStraightToFloatIsRejected :: () {

@@ -1,0 +1,11 @@
+package facts
+
+@test
+Calls :: () {
+    assert(UnionFirst(Choice.Empty) == 42);
+    assert(UnionFirst(Choice.Value(7)) == 7);
+    assert(UnionLast(Choice.Empty) == 42);
+    assert(UnionLast(Choice.Value(8)) == 8);
+    assert(Scalar(0) == 42 && Scalar(1) == 9 && Scalar(2) == 42);
+    assert(Braced(Choice.Empty) == 42 && Braced(Choice.Value(10)) == 10);
+}

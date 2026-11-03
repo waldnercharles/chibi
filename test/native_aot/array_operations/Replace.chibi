@@ -1,0 +1,46 @@
+package array_set_values
+
+Item :: struct { text: string; values: int[]; }
+Text :: (n: int) -> string { return text_from_bytes([u8(65), u8(n)]); }
+Make :: (n: int) -> Item { return {text: Text(n), values: [n, n + 1]}; }
+Change :: (values: int[]) -> int[] { values.set_array_elem(0, 8); return values; }
+Main :: () -> int {
+    values: int[] = [1, 2];
+    parameter := Change(values);
+    assert(parameter[0] == 8 && values[0] == 1);
+    changed := set_array_elem(values, 1, int(7));
+    assert(values[1] == 2 && changed[1] == 7);
+    absent := set_array_elem(values, -1, int(8));
+    large := set_array_elem(values, 2147483647, int(8));
+    assert(length(absent) == 2 && absent[0] == 1 && large[1] == 2);
+    values.set_array_elem(-1, 9);
+    values.set_array_elem(2147483647, 9);
+    assert(values[0] == 1 && values[1] == 2);
+    values.set_array_elem(Index: 0, Item: 9);
+    assert(values[0] == 9 && changed[0] == 1);
+    assert(set_array_elem(Array: values, Index: 0, Item: int(6))[0] == 6);
+    assert(set_array_elem(Array: values, Item: int(6), Index: 0)[0] == 6);
+    assert(set_array_elem(Index: 0, Array: values, Item: int(6))[0] == 6);
+    assert(set_array_elem(Index: 0, Item: int(6), Array: values)[0] == 6);
+    assert(set_array_elem(Item: int(6), Array: values, Index: 0)[0] == 6);
+    assert(set_array_elem(Item: int(6), Index: 0, Array: values)[0] == 6);
+    flags: bool[] = [true, false];
+    flags.set_array_elem(0, false);
+    assert(!flags[0] && !set_array_elem(flags, 1, true)[0]);
+    words := [Text(1), Text(2)];
+    untouched := set_array_elem(words, -1, Text(9));
+    words.set_array_elem(2147483647, Text(8));
+    words.set_array_elem(1, words[0]);
+    assert(text_byte_at(words[1], 1) == 1 && text_byte_at(untouched[1], 1) == 2);
+    items := [Make(1), Make(2)];
+    original := items;
+    items.set_array_elem(-1, Make(7));
+    invalid := set_array_elem(items, 2147483647, Make(8));
+    items.set_array_elem(1, items[0]);
+    assert(items[1].values[0] == 1 && original[1].values[0] == 2 && invalid[1].values[0] == 2);
+    empty: Item[] = [];
+    empty.set_array_elem(0, Make(9));
+    no_item := set_array_elem(empty, -1, Make(8));
+    assert(length(empty) == 0 && length(no_item) == 0);
+    return 0;
+}

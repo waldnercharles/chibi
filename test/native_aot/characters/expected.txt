@@ -1,0 +1,12 @@
+PASS characters.CharacterFormatting
+PASS characters.NamedCharacterAndOptional
+PASS characters.RejectBeforeNarrowing
+PASS characters.RejectNegative
+PASS characters.RejectPastScalarRange
+PASS characters.RejectSurrogateFirst
+PASS characters.RejectSurrogateLast
+PASS characters.RejectUnsignedMaximum
+PASS characters.ScalarBoundaries
+PASS foreign_character.ForeignCharacterNameIsStillAConversion
+PASS procedure_character.ProcedureCharacterName
+PASS shadow.AuthoredCharacterName

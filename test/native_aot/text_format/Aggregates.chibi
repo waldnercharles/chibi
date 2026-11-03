@@ -1,0 +1,59 @@
+package text_format_aggregates
+
+Inner :: struct { text: string; numbers: int[]; }
+Box :: struct { inner: Inner; }
+Node :: union { Empty | Children(values: Node[]) }
+Choice :: union { Empty | Text(value: Box) }
+
+ResetArray :: (values: ^(string[]), calls: ^int) -> string {
+    calls^ += 1;
+    values^ = [];
+    return "cleared";
+}
+ResetMap :: (values: ^([string: int]), calls: ^int) -> string {
+    calls^ += 1;
+    values^ = [:];
+    return "cleared";
+}
+Words :: () -> string[] { return [text_from_bytes([u8(97)]), "b"]; }
+Entries :: () -> [string: int] { return ["Ada": 1]; }
+Owned :: () -> string {
+    words := Words();
+    result := format_text("{}", words);
+    words = [];
+    return result;
+}
+
+Main :: () -> int {
+    owned := Owned();
+    assert(owned == "Array[2]", "owned summary survives released input");
+    words := Words();
+    entries := Entries();
+    empty: [string: int] = [:];
+    zero: [string: int] = [:];
+    assert(format_text("{}|{}|{}", entries, empty, zero) == "Map[1]|Map[0]|Map[0]", "nonempty, empty and zero map counts");
+    // Container modifiers are ignored by the ordinary formatter, including
+    // modifiers which would pad, truncate or convert a scalar/string value.
+    modifiers := "{:>30s}|{:.1s}|{:x}|{:*d}|{:n}";
+    assert(format_text(modifiers, words, words, entries, entries, words) == "Array[2]|Array[2]|Map[1]|Map[1]|Array[2]", "container modifiers stay ignored");
+    calls := 0;
+    array_snapshot := format_text("{}|{}|{}", words, ResetArray(&words, &calls), words);
+    assert(calls == 1 && array_snapshot == "Array[2]|cleared|Array[0]", "array count captured before later argument effect");
+    map_snapshot := format_text("{}|{}|{}", entries, ResetMap(&entries, &calls), entries);
+    assert(calls == 2 && map_snapshot == "Map[1]|cleared|Map[0]", "map count captured before later argument effect");
+    integers: int[] = [1, 2, 3];
+    flags: bool[] = [true];
+    bytes: u8[] = [];
+    boxes: Box[] = [{inner: {text: text_from_bytes([u8(120)]), numbers: [4, 5]}}];
+    assert(format_text("{}|{}|{}|{}", integers, flags, bytes, boxes) == "Array[3]|Array[1]|Array[0]|Array[1]", "summary ignores element representation");
+    nodes: Node[] = [Node.Children([])];
+    choices: Choice[] = [Choice.Empty, Choice.Text(boxes[0])];
+    assert(format_text("{}|{}", nodes, choices) == "Array[1]|Array[2]", "recursive schemas and union element layouts");
+    assert(format_text("{}|{}", Words(), Entries()) == "Array[2]|Map[1]", "temporary collection results");
+    // Cross both decimal digit boundaries without rendering the elements.
+    for (index in 0..<102) { integers.append(index); }
+    assert(format_text("{}", integers) == "Array[105]", "multi-digit count");
+    assert(format_text("{1}|{0}|{1}", integers, boxes) == "Array[1]|Array[105]|Array[1]", "repeated aggregate indexes");
+    return 0;
+}
+

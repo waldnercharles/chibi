@@ -1657,12 +1657,12 @@ MathAssignmentStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
     return MathAssignmentWrite(forest, document, types, members, values[top - 3], values[top - 2],
                                values[top - 1], selected_kind, selection, ops, target, at, node);
 }
-MathAssignmentWrite :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], members: TypeMember[],
-                        place: Value, replacement: Value, current: Value, desired: int, selection: int[],
+MathReplacementStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], members: TypeMember[],
+                        replacement: Value, current: Value, desired: int, selection: int[], popped: int,
                         ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
     code: Code[] = [];
     slots: Slot[] = [];
-    kind := MathKind(types, place.record);
+    kind := MathKind(types, current.record);
     value := replacement;
     if (value.container == 0 && value.record < 0 && value.storage == DoubleStorage) {
         return MathFailure(document, node, "math components require explicit f32(value) narrowing from f64");
@@ -1685,8 +1685,14 @@ MathAssignmentWrite :: (forest: snapshot.SnapshotNode[], document: int, types: T
         components[selection[index]] = supplied[index];
         index += 1;
     }
-    built := PointerPrefix(code, slots, MathBuild(MathRecord(types, kind), components, 3, ops, target,
-                                                  MathPast(at, code, slots, 0, 0), node));
+    return PointerPrefix(code, slots, MathBuild(MathRecord(types, kind), components, popped, ops, target,
+                                                MathPast(at, code, slots, 0, 0), node));
+}
+MathAssignmentWrite :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], members: TypeMember[],
+                        place: Value, replacement: Value, current: Value, desired: int, selection: int[],
+                        ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    built := MathReplacementStep(forest, document, types, members, replacement, current, desired, selection, 3,
+                                  ops, target, at, node);
     switch built {
         case .Failed(diagnostic):
             return Step.Failed(diagnostic);

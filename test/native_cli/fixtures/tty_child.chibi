@@ -1,0 +1,70 @@
+package tty_child
+
+import target "core:target"
+
+foreign import libc "system:c"
+foreign libc {
+    open :: (path: cstring, flags: i32) -> i32
+    close :: (descriptor: i32) -> i32
+    read :: (descriptor: i32, bytes: u8[], count: u64) -> i64
+    write :: (descriptor: i32, bytes: u8[], count: u64) -> i64
+    isatty :: (descriptor: i32) -> i32
+    getpgrp :: () -> i32
+    tcgetpgrp :: (descriptor: i32) -> i32
+    memcpy :: (bytes: u8[], source: rawptr, count: u64) -> rawptr
+    __error :: () -> rawptr
+    __errno_location :: () -> rawptr
+}
+
+TerminalOption: u8 : 116; // ASCII t.
+foreign {
+    chibi_argument_count :: () -> i64
+    chibi_argument :: (index: i64, bytes: u8[], capacity: i64) -> i64
+}
+
+when target.Os == target.Darwin {
+    ErrorPointer :: () -> rawptr { return __error(); }
+} else {
+    ErrorPointer :: () -> rawptr { return __errno_location(); }
+}
+
+Main :: () -> int {
+    arguments := chibi_argument_count();
+    terminal := false;
+    argument := resize([u8(0)], 64);
+    for (index in 1..<int(arguments)) {
+        size := chibi_argument(i64(index), argument, 64);
+        if (size > 0 && argument[0] == TerminalOption) { terminal = true; }
+    }
+    descriptor: i32 = 0;
+    if (terminal && isatty(0) != 0) { return 43; }
+    if (terminal) { descriptor = open("/dev/tty", 2); }
+    if (descriptor < 0) { return 43; }
+    if (target.Os == target.Darwin && tcgetpgrp(descriptor) != getpgrp()) { return 43; }
+    bytes := resize([u8(0)], 128);
+    error := resize([u8(0)], 4);
+    while (true) {
+        count := read(descriptor, bytes, 128);
+        if (count < 0) {
+            copied := memcpy(error, ErrorPointer(), 4);
+            if (error[0] == 4) { continue; }
+            return 44;
+        }
+        if (count == 0) { break; }
+        offset := 0;
+        while (offset < int(count)) {
+            pending: u8[] = [];
+            for (index in offset..<int(count)) { pending.append(bytes[index]); }
+            written := write(1, pending, u64(length(pending)));
+            if (written < 0) {
+                copied := memcpy(error, ErrorPointer(), 4);
+                if (error[0] == 4) { continue; }
+                return 45;
+            }
+            if (written == 0) { return 45; }
+            offset += int(written);
+        }
+    }
+    if (terminal) { closed := close(descriptor); }
+    return 0;
+}

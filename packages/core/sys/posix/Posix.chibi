@@ -18,6 +18,7 @@ foreign import libc "system:c"
 foreign libc {
     access :: (path: cstring, mode: i32) -> i32
     mkdir :: (path: cstring, mode: u32) -> i32
+    mkdtemp :: (template: u8[]) -> rawptr
     unlink :: (path: cstring) -> i32
     rmdir :: (path: cstring) -> i32
     rename :: (source: cstring, destination: cstring) -> i32
@@ -35,8 +36,7 @@ foreign libc {
     opendir :: (path: cstring) -> rawptr
     readdir :: (directory: rawptr) -> rawptr
     closedir :: (directory: rawptr) -> i32
-    calloc :: (count: u64, size: u64) -> rawptr
-    memmove :: (destination: rawptr, source: u8[], count: u64) -> rawptr
+    memchr :: (buffer: u8[], value: i32, count: u64) -> rawptr
     pipe :: (descriptors: u8[]) -> i32
     read :: (descriptor: i32, buffer: u8[], count: u64) -> i64
     close :: (descriptor: i32) -> i32
@@ -51,6 +51,7 @@ foreign libc {
     posix_spawnattr_setpgroup :: (attributes: u8[], group: i32) -> i32
     posix_spawnattr_destroy :: (attributes: u8[]) -> i32
     getcwd :: (buffer: u8[], size: u64) -> rawptr
+    chdir :: (path: cstring) -> i32
     realpath :: (path: cstring, resolved: u8[]) -> rawptr
     chmod :: (path: cstring, mode: u32) -> i32
     kill :: (process: i32, signal: i32) -> i32
@@ -62,6 +63,7 @@ foreign libc {
     posix_spawn_file_actions_init :: (actions: u8[]) -> i32
     posix_spawn_file_actions_adddup2 :: (actions: u8[], descriptor: i32, target: i32) -> i32
     posix_spawn_file_actions_addclose :: (actions: u8[], descriptor: i32) -> i32
+    posix_spawn_file_actions_addchdir_np :: (actions: u8[], directory: cstring) -> i32
     posix_spawn_file_actions_destroy :: (actions: u8[]) -> i32
 }
 
@@ -93,6 +95,9 @@ when target.Os == target.Darwin {
     WriteNew: int : 1537;
     // Renames without replacing: RENAME_EXCL.
     RenameNew :: (source: string, destination: string) -> bool {
+        // Darwin accepts renaming a directory to itself, even with RENAME_EXCL.
+        // Reject occupied names first; the kernel still excludes racing creates.
+        if Kind(destination) != KindNone { return false; }
         return renamex_np(source, destination, 4) == 0;
     }
     pub Platform :: () -> string {
@@ -274,6 +279,11 @@ pub ReadText :: (path: string) -> string {
     return text_from_bytes(ReadBytes(path));
 }
 
+// Whether the variable exists, including one whose value is empty.
+pub HasEnv :: (name: string) -> bool {
+    return getenv(name) != 0;
+}
+
 // The environment variable's value, "" when it is unset.
 pub Getenv :: (name: string) -> string {
     value := getenv(name);
@@ -338,26 +348,40 @@ pub Output :: struct {
     stderr: string;
 }
 
-// The argument vector `execvp` takes, as bytes: one 8-byte little-endian
-// pointer to each argument's NUL-ended copy, then a null pointer. The copies
-// live in the heap until the program exits.
+// One managed allocation holds the argv pointer table and every NUL-ended
+// argument after it. Passing the complete buffer to posix_spawnp borrows both
+// together until spawn returns; no raw allocation survives each launch.
+// Pointers are 8-byte little-endian words on the supported POSIX targets.
 Vector :: (command: string[]) -> u8[] {
-    vector: u8[] = [];
+    header := (u64(length(command)) + 1) * 8;
+    size := header;
     for argument in command {
-        size := text_byte_length(argument);
-        data: u8[] = [];
-        for index in 0..<size {
-            data.append(u8(text_byte_at(argument, index)));
-        }
-        block := calloc(u64(size + 1), 1);
-        moved := memmove(block, data, u64(size));
-        word := u64(block);
-        for index in 0..<8 {
-            vector.append(u8((word >> u32(8 * index)) & 255));
-        }
+        size += u64(text_byte_length(argument)) + 1;
     }
-    for index in 0..<8 {
-        vector.append(0);
+    if size > 2147483647 {
+        empty: u8[] = [];
+        return empty;
+    }
+    vector := Block(int(size));
+    // The first byte is zero before filling, so memchr returns this buffer's
+    // address with its actual C signature and no unchecked pointer cast.
+    address := memchr(vector, 0, 1);
+    offset := int(header);
+    for argument, at in command {
+        length := text_byte_length(argument);
+        for index in 0..<length {
+            byte := u8(text_byte_at(argument, index));
+            if byte == 0 {
+                empty: u8[] = [];
+                return empty;
+            }
+            vector[offset + index] = byte;
+        }
+        word := u64(address) + u64(offset);
+        for index in 0..<8 {
+            vector[at * 8 + index] = u8((word >> u32(8 * index)) & 255);
+        }
+        offset += length + 1;
     }
     return vector;
 }
@@ -385,6 +409,11 @@ Word32 :: (bytes: u8[], at: int) -> int {
 // returns its process id; -1 when it cannot be started. `own_group` puts it in a
 // process group of its own, so Kill reaches what it started too.
 Launch :: (command: string[], actions: u8[], own_group: bool) -> int {
+    vector := Vector(command);
+    if length(vector) == 0 {
+        destroyed := posix_spawn_file_actions_destroy(actions);
+        return -1;
+    }
     pid := Block(8);
     attributes := Block(512);
     status := posix_spawnattr_init(attributes);
@@ -392,7 +421,7 @@ Launch :: (command: string[], actions: u8[], own_group: bool) -> int {
         status = posix_spawnattr_setflags(attributes, 2);
         status = posix_spawnattr_setpgroup(attributes, 0);
     }
-    started := posix_spawnp(pid, command[0], actions, attributes, Vector(command), chibi_environment());
+    started := posix_spawnp(pid, command[0], actions, attributes, vector, chibi_environment());
     status = posix_spawnattr_destroy(attributes);
     status = posix_spawn_file_actions_destroy(actions);
     if started != 0 {
@@ -412,14 +441,25 @@ pub Spawn :: (command: string[]) -> int {
     return Launch(command, actions, false);
 }
 
-// Waits for the process and returns its exit status.
+// Waits for an attached child and returns its exit status. A child stopped by
+// job control stops its caller too; resuming the caller resumes that child.
 pub Wait :: (process: int) -> int {
     status := Block(8);
-    done := waitpid(i32(process), status, 0);
-    if done < 0 {
-        return -1;
+    while (true) {
+        done := waitpid(i32(process), status, 2);
+        if (done < 0) {
+            if (ErrorNumber() == 4) { continue; }
+            return -1;
+        }
+        word := Word32(status, 0);
+        if ((word & 127) == 127) {
+            stopped := kill(getpid(), i32(ForegroundStop));
+            continued := kill(i32(process), i32(ForegroundContinue));
+            continue;
+        }
+        return Decoded(word);
     }
-    return Decoded(Word32(status, 0));
+    return -1;
 }
 
 // Runs the program, keeping the standard streams, and returns its exit status;
@@ -526,7 +566,16 @@ Terminated :: (buffer: u8[]) -> string {
     return text_from_bytes(text);
 }
 
-// The directory the program was started in, "" when it cannot be read.
+pub ChangeDirectory :: (path: string) -> bool {
+    return chdir(path) == 0;
+}
+
+// Sets mode 0755 after artifact transfer has discarded a program's file mode.
+pub MakeExecutable :: (path: string) -> bool {
+    return chmod(path, 493) == 0;
+}
+
+// The current working directory, "" when it cannot be read.
 pub Root :: () -> string {
     buffer := Block(4096);
     at := getcwd(buffer, 4096);
@@ -584,9 +633,10 @@ Nanoseconds :: (value: int) -> string {
     return text;
 }
 
-// Identifies the file's content and metadata for change detection: equal stamps
-// mean the same file untouched. "" when the path does not exist. A link is
-// followed. The text is the build host's, `device:inode:size:mode:mtime:ctime`
+// The file's identity and metadata for change detection, not a content hash.
+// Equal stamps can miss rapid same-size rewrites on a coarse filesystem clock.
+// "" when the path does not exist. A link is followed.
+// The text is the build host's, `device:inode:size:mode:mtime:ctime`
 // with the mode in octal and the times as seconds.nanoseconds, so a record
 // either host wrote reads the same for the other.
 pub Stamp :: (path: string) -> string {
@@ -622,6 +672,20 @@ pub Copy :: (source: string, destination: string) -> bool {
         return false;
     }
     return true;
+}
+
+// mkdtemp atomically reserves a private directory on the parent's filesystem.
+pub TemporaryDirectory :: (parent: string) -> string {
+    pattern := format_text("{}/work.XXXXXX", parent);
+    template := Block(text_byte_length(pattern) + 1);
+    for index in 0..<text_byte_length(pattern) {
+        template[index] = u8(text_byte_at(pattern, index));
+    }
+    made := mkdtemp(template);
+    if made == 0 {
+        return "";
+    }
+    return Terminated(template);
 }
 
 // Whether the path is a regular file the program may run; a link is followed.
@@ -717,6 +781,49 @@ pub Start :: (command: string[], piped: bool) -> int {
     return process;
 }
 
+// Starts a process with stdout and stderr in separate caller-owned
+// files. Empty stdout inherits the stream. Parent folders exist, and nonempty
+// paths are distinct. Attached children share their parent's process group;
+// others own a group for Kill to stop. Existing
+// files are truncated with private permissions for newly created files.
+// WaitFor/Kill retain their usual process semantics and leave these files
+// for the caller to read and remove. Failure to start returns -1.
+pub StartRedirected :: (command: string[], stdout_path: string, stderr_path: string, attached: bool = false) -> int {
+    return StartRedirectedIn(command, stdout_path, stderr_path, "", attached);
+}
+
+// Sets only the child's working directory, preserving the caller's process-wide
+// cwd. Equal output paths are permitted only for the explicit null device.
+pub StartRedirectedIn :: (command: string[], stdout_path: string, stderr_path: string, directory: string, attached: bool = false) -> int {
+    if length(command) == 0 || stderr_path == "" || (stdout_path == stderr_path && stdout_path != "/dev/null") {
+        return -1;
+    }
+    actions := Block(256);
+    status := posix_spawn_file_actions_init(actions);
+    if status != 0 {
+        return -1;
+    }
+    if directory != "" { status = posix_spawn_file_actions_addchdir_np(actions, directory); }
+    if status == 0 { status = posix_spawn_file_actions_addopen(actions, 0, "/dev/null", 0, 0); }
+    if status == 0 && stdout_path != "" {
+        status = posix_spawn_file_actions_addopen(actions, 1, stdout_path, i32(WriteNew), 384);
+    }
+    if status == 0 {
+        status = posix_spawn_file_actions_addopen(actions, 2, stderr_path, i32(WriteNew), 384);
+    }
+    if status != 0 {
+        destroyed := posix_spawn_file_actions_destroy(actions);
+        return -1;
+    }
+    process := Launch(command, actions, !attached);
+    if process > 0 {
+        // A dead ancestor may have left an automatic Piped report under a
+        // reused PID. This process owns caller paths, never that report.
+        discarded := unlink(OutputPath(process));
+    }
+    return process;
+}
+
 // Prints what a piped program wrote to this program's standard error and
 // removes the file.
 Report :: (process: int) {
@@ -762,6 +869,40 @@ pub WaitFor :: (process: int, timeout_ms: int) -> int {
     return Decoded(Word32(status, 0));
 }
 
+// Wait for an isolated redirected child's whole group. waitid leaves its
+// leader unreaped until the group has been stopped, so its PID cannot be reused
+// for an unrelated group. Scratch is caller-owned >=256 bytes and reused while
+// polling; this does not install handlers or change caller signal state.
+pub WaitGroup :: (process: int, information: ^(u8[]), timeout_ms: int) -> int {
+    if process <= 0 || length(information^) < 256 { return 127; }
+    waited: i64 = 0;
+    while true {
+        for (byte in ForegroundInfoPid..<ForegroundInfoPid + 4) { information^[byte] = 0; }
+        checked := waitid(1, u32(process), information^, i32(1 + 4 + ForegroundNowait));
+        if checked < 0 {
+            error := ErrorNumber();
+            if error == 4 { continue; }
+            return -1;
+        }
+        if Word32(information^, ForegroundInfoPid) == process {
+            // No callback or other reap may intervene between ownership proof
+            // and retiring the group. The leader remains reserved by waitid.
+            stopped := kill(i32(0 - process), 9);
+            done := waitpid(i32(process), information^, 0);
+            while done < 0 {
+                error := ErrorNumber();
+                if error != 4 { return -1; }
+                done = waitpid(i32(process), information^, 0);
+            }
+            if done != i32(process) { return -1; }
+            return Decoded(Word32(information^, 0));
+        }
+        if timeout_ms >= 0 && waited >= i64(timeout_ms) { return StillRunning; }
+        paused := usleep(2000);
+        waited += 2;
+    }
+}
+
 // Stops the program and everything it started, waits for it and returns what
 // WaitFor would: -9 for a program that was running.
 pub Kill :: (process: int) -> int {
@@ -769,6 +910,12 @@ pub Kill :: (process: int) -> int {
         return 127;
     }
     status := kill(i32(0 - process), 9);
+    if status != 0 {
+        // An attached child belongs to its parent's cancellation group.
+        // Killing its handle still stops/reaps that child; the parent group
+        // owns cancellation of any descendants it started.
+        status = kill(i32(process), 9);
+    }
     return WaitFor(process, -1);
 }
 
@@ -822,7 +969,395 @@ pub Print :: (line: string) -> bool {
     return int(written) == length(data);
 }
 
+// Writes the text to standard output unchanged, retrying a short write; false
+// when it cannot be written whole.
+pub WriteOutput :: (text: string) -> bool {
+    data := Bytes(text);
+    done := 0;
+    while done < length(data) {
+        rest: u8[] = [];
+        for index in done..<length(data) {
+            rest.append(data[index]);
+        }
+        written := int(write(1, rest, u64(length(rest))));
+        if written <= 0 {
+            return false;
+        }
+        done += written;
+    }
+    return true;
+}
+
 // Ends the process with the exit status; it does not return.
 pub Exit :: (code: int) -> int {
     return int(_exit(i32(code)));
+}
+
+foreign import foreground_libc "system:c"
+foreign foreground_libc {
+    open :: (path: cstring, flags: i32) -> i32
+    dup :: (descriptor: i32) -> i32
+    socketpair :: (domain: i32, type: i32, protocol: i32, descriptors: u8[]) -> i32
+    send :: (descriptor: i32, text: cstring, count: u64, flags: i32) -> i64
+    signal :: (number: i32, handler: fn(number: i32) -> i32) -> u64
+    sigaction :: (number: i32, actions: u8[], previous: u8[]) -> i32
+    sigemptyset :: (signals: u8[]) -> i32
+    sigaddset :: (signals: u8[], number: i32) -> i32
+    sigprocmask :: (how: i32, signals: u8[], previous: u8[]) -> i32
+    posix_spawnattr_setsigmask :: (attributes: u8[], signals: u8[]) -> i32
+    posix_spawnattr_setsigdefault :: (attributes: u8[], signals: u8[]) -> i32
+    getpgrp :: () -> i32
+    tcgetpgrp :: (terminal: i32) -> i32
+    tcsetpgrp :: (terminal: i32, group: i32) -> i32
+    waitid :: (kind: i32, process: u32, information: u8[], options: i32) -> i32
+    clock_gettime :: (clock: i32, stamp: u8[]) -> i32
+    __error :: () -> rawptr
+    __errno_location :: () -> rawptr
+}
+
+when target.Os == target.Darwin {
+    ForegroundBlock: int : 1;
+    ForegroundSetMask: int : 3;
+    ForegroundCloseOnExec: int : 16777216;
+    ForegroundNonblockingSend: int : 128;
+    ForegroundStopped: int : 8;
+    ForegroundNowait: int : 32;
+    ForegroundInfoPid: int : 12;
+    ForegroundStop: int : 17;
+    ForegroundContinue: int : 19;
+    ForegroundClock: int : 6;
+    ForegroundErrno :: () -> rawptr { return __error(); }
+} else {
+    ForegroundBlock: int : 0;
+    ForegroundSetMask: int : 2;
+    ForegroundCloseOnExec: int : 524288;
+    ForegroundNonblockingSend: int : 64;
+    ForegroundStopped: int : 2;
+    ForegroundNowait: int : 16777216;
+    ForegroundInfoPid: int : 16;
+    ForegroundStop: int : 19;
+    ForegroundContinue: int : 18;
+    ForegroundClock: int : 1;
+    ForegroundErrno :: () -> rawptr { return __errno_location(); }
+}
+
+// Thread-local errno from the last failed libc call. Read it immediately,
+// before another OS call can replace it on this thread.
+pub ErrorNumber :: () -> int {
+    bytes := Block(4);
+    copied := memcpy(bytes, ForegroundErrno(), 4);
+    return Word32(bytes, 0);
+}
+
+ForegroundReaped :: struct { status: int; error: int; }
+ForegroundReap :: (pid: int) -> ForegroundReaped {
+    status := Block(8);
+    done := waitpid(i32(pid), status, 0);
+    while (done < 0) {
+        error := ErrorNumber();
+        if (error != 4) { return {status: 1, error: error}; }
+        done = waitpid(i32(pid), status, 0);
+    }
+    return {status: Decoded(Word32(status, 0)), error: 0};
+}
+
+// One process-wide foreground owner. These scalars are initialized while the
+// signals are blocked and remain read-only until the old handlers are restored.
+// The handler never allocates, changes retained state, or enters the collector.
+ForegroundHook :: (descriptor: int, child: int) -> int {
+    output: retain int = 0;
+    pid: retain int = 0;
+    if (descriptor >= 0) { output = descriptor; pid = child; }
+    if (descriptor == -2) { return pid; }
+    return output;
+}
+
+ForegroundSignal :: (number: i32) -> i32 {
+    child := ForegroundHook(-2, 0);
+    if (child > 0) { sent := kill(i32(0 - child), number); }
+    descriptor := ForegroundHook(-1, 0);
+    if (number == 2) { return i32(send(i32(descriptor), "I", 1, i32(ForegroundNonblockingSend))); }
+    if (number == 15) { return i32(send(i32(descriptor), "T", 1, i32(ForegroundNonblockingSend))); }
+    return i32(send(i32(descriptor), "H", 1, i32(ForegroundNonblockingSend)));
+}
+
+// ForegroundStart owns one child group, its terminal handoff, and the temporary
+// signal handlers. ForegroundWait releases all of them when the child ends.
+// Only one scope may be active in a process. An empty scope owns no resources.
+pub Foreground :: struct {
+    pid: int;
+    terminal: int;
+    parent_group: int;
+    input: int;
+    output: int;
+    interrupt: u8[];
+    terminate: u8[];
+    hangup: u8[];
+    signals: u8[];
+    cancelled: int;
+    cancel_started: i64;
+    problem: string;
+}
+
+// Descriptors below 3 must stay closed if the caller had closed them. Every
+// owned descriptor is positive, leaving zero as absence. Spawn closes the
+// signal channel explicitly; the terminal is opened close-on-exec.
+ForegroundDescriptor :: (descriptor: int) -> int {
+    if (descriptor < 0) { return 0; }
+    held: int[] = [];
+    while (descriptor >= 0 && descriptor < 3) {
+        held.append(descriptor);
+        descriptor = int(dup(i32(descriptor)));
+    }
+    for (temporary in held) { closed := close(i32(temporary)); }
+    if (descriptor < 0) { return 0; }
+    return descriptor;
+}
+
+ForegroundTerminal :: (scope: Foreground, group: int) -> bool {
+    if (scope.terminal == 0) { return true; }
+    previous := Block(128);
+    signals := scope.signals;
+    blocked := sigprocmask(i32(ForegroundBlock), signals, previous);
+    if (blocked != 0) { return false; }
+    changed := tcsetpgrp(i32(scope.terminal), i32(group));
+    empty: u8[] = [];
+    restored := sigprocmask(i32(ForegroundSetMask), previous, empty);
+    return changed == 0 && restored == 0;
+}
+
+ForegroundRelease :: (scope: ^Foreground) {
+    previous := Block(128);
+    signals := scope^.signals;
+    blocked := sigprocmask(i32(ForegroundBlock), signals, previous);
+    if (blocked != 0 && scope^.problem == "") { scope^.problem = "cannot block signals while releasing the foreground program"; }
+    empty: u8[] = [];
+    if (scope^.terminal > 0) {
+        if (tcgetpgrp(i32(scope^.terminal)) == i32(scope^.pid)) {
+            restored := ForegroundTerminal(scope^, scope^.parent_group);
+            if (!restored && scope^.problem == "") { scope^.problem = "cannot restore the foreground terminal"; }
+        }
+        closed := close(i32(scope^.terminal));
+        scope^.terminal = 0;
+    }
+    old_interrupt := scope^.interrupt;
+    old_terminate := scope^.terminate;
+    old_hangup := scope^.hangup;
+    if (length(old_interrupt) > 0) {
+        restored := sigaction(2, old_interrupt, empty);
+        if (restored != 0 && scope^.problem == "") { scope^.problem = "cannot restore the interrupt handler"; }
+    }
+    if (length(old_terminate) > 0) {
+        restored := sigaction(15, old_terminate, empty);
+        if (restored != 0 && scope^.problem == "") { scope^.problem = "cannot restore the termination handler"; }
+    }
+    if (length(old_hangup) > 0) {
+        restored := sigaction(1, old_hangup, empty);
+        if (restored != 0 && scope^.problem == "") { scope^.problem = "cannot restore the hangup handler"; }
+    }
+    if (ForegroundHook(-1, 0) == scope^.output) { cleared := ForegroundHook(0, 0); }
+    if (scope^.input > 0) { closed := close(i32(scope^.input)); scope^.input = 0; }
+    if (scope^.output > 0) { closed := close(i32(scope^.output)); scope^.output = 0; }
+    if (blocked == 0) {
+        restored := sigprocmask(i32(ForegroundSetMask), previous, empty);
+        if (restored != 0 && scope^.problem == "") { scope^.problem = "cannot restore the signal mask after foreground cleanup"; }
+    }
+    scope^.pid = 0;
+}
+
+pub ForegroundStart :: (command: string[]) -> Foreground {
+    scope: Foreground = {pid: 0, terminal: 0, parent_group: 0, input: 0, output: 0,
+        interrupt: [], terminate: [], hangup: [], signals: [], cancelled: 0, cancel_started: 0, problem: ""};
+    if (length(command) == 0 || ForegroundHook(-1, 0) != 0) {
+        scope.problem = "a foreground command needs an inactive process scope";
+        return scope;
+    }
+    signals := Block(128);
+    initialized := sigemptyset(signals);
+    for (number in [int(1), 2, 15, 22]) {
+        if (initialized == 0) { initialized = sigaddset(signals, i32(number)); }
+    }
+    if (initialized != 0) { scope.problem = "cannot prepare the foreground signal set"; return scope; }
+    scope.signals = signals;
+    previous_mask := Block(128);
+    blocked := sigprocmask(i32(ForegroundBlock), signals, previous_mask);
+    if (blocked != 0) { scope.problem = "cannot block foreground signals"; return scope; }
+    sockets := Block(8);
+    paired := socketpair(1, 2, 0, sockets);
+    if (paired == 0) {
+        scope.input = ForegroundDescriptor(Word32(sockets, 0));
+        scope.output = ForegroundDescriptor(Word32(sockets, 4));
+    }
+    empty: u8[] = [];
+    if (scope.input == 0 || scope.output == 0) {
+        scope.problem = "cannot make the foreground signal channel";
+    } else {
+        // glibc's action includes a 128-byte signal set: 152 bytes total on
+        // Linux x86-64. The opaque scratch also covers Darwin's smaller action.
+        saved_interrupt := Block(256);
+        saved_terminate := Block(256);
+        saved_hangup := Block(256);
+        saved := sigaction(2, empty, saved_interrupt);
+        if (saved == 0) { scope.interrupt = saved_interrupt; saved = sigaction(15, empty, saved_terminate); }
+        if (saved == 0) { scope.terminate = saved_terminate; saved = sigaction(1, empty, saved_hangup); }
+        if (saved == 0) { scope.hangup = saved_hangup; }
+        if (saved != 0) {
+            scope.problem = "cannot prepare foreground signal handling";
+        } else {
+            configured := ForegroundHook(scope.output, 0);
+            interrupt := signal(2, ForegroundSignal);
+            terminate := signal(15, ForegroundSignal);
+            hangup := signal(1, ForegroundSignal);
+            if (interrupt == u64(wrap: -1) || terminate == u64(wrap: -1) || hangup == u64(wrap: -1)) {
+                scope.problem = "cannot install foreground signal handling";
+            }
+        }
+    }
+    if (scope.problem == "") {
+        terminal := open("/dev/tty", i32(2 + ForegroundCloseOnExec));
+        scope.terminal = ForegroundDescriptor(int(terminal));
+        scope.parent_group = int(getpgrp());
+        handoff := scope.terminal > 0 && tcgetpgrp(i32(scope.terminal)) == i32(scope.parent_group);
+        if (!handoff && scope.terminal > 0) { closed := close(i32(scope.terminal)); scope.terminal = 0; }
+        attributes := Block(512);
+        pid := Block(8);
+        defaults := Block(128);
+        mask := Block(128);
+        attributes_status := posix_spawnattr_init(attributes);
+        prepared := attributes_status;
+        cleared := sigemptyset(defaults);
+        if (cleared == 0) { cleared = sigemptyset(mask); }
+        for (number in [int(1), 2, 13, 15, 21, 22]) {
+            if (cleared == 0) { cleared = sigaddset(defaults, i32(number)); }
+        }
+        if (cleared == 0 && target.Os == target.Darwin) { cleared = sigaddset(defaults, 18); }
+        else if (cleared == 0) { cleared = sigaddset(defaults, 20); }
+        if (prepared == 0) { prepared = cleared; }
+        flags := 14;
+        if (target.Os == target.Darwin && handoff) { flags += 128; }
+        if (prepared == 0) { prepared = posix_spawnattr_setpgroup(attributes, 0); }
+        if (prepared == 0) { prepared = posix_spawnattr_setsigmask(attributes, mask); }
+        if (prepared == 0) { prepared = posix_spawnattr_setsigdefault(attributes, defaults); }
+        if (prepared == 0) { prepared = posix_spawnattr_setflags(attributes, i16(flags)); }
+        vector := Vector(command);
+        actions := Block(256);
+        actions_initialized := posix_spawn_file_actions_init(actions);
+        actions_status := actions_initialized;
+        if (actions_status == 0) { actions_status = posix_spawn_file_actions_addclose(actions, i32(scope.input)); }
+        if (actions_status == 0) { actions_status = posix_spawn_file_actions_addclose(actions, i32(scope.output)); }
+        if (actions_status == 0 && scope.terminal > 0) { actions_status = posix_spawn_file_actions_addclose(actions, i32(scope.terminal)); }
+        if (prepared == 0 && actions_status == 0) {
+            prepared = posix_spawnp(pid, command[0], actions, attributes, vector, chibi_environment());
+        }
+        if (attributes_status == 0) { destroyed := posix_spawnattr_destroy(attributes); }
+        if (actions_initialized == 0) { destroyed_actions := posix_spawn_file_actions_destroy(actions); }
+        if (prepared != 0 || actions_status != 0) {
+            scope.problem = "cannot start the foreground program";
+        } else {
+            scope.pid = Word32(pid, 0);
+            configured := ForegroundHook(scope.output, scope.pid);
+            if (target.Os == target.Darwin) {
+                if (handoff) { status := Block(8); stopped := waitpid(i32(scope.pid), status, 2); }
+            }
+            if (handoff && !ForegroundTerminal(scope, scope.pid)) {
+                scope.problem = "cannot give the foreground program its terminal";
+            }
+            if (handoff) { continued := kill(i32(0 - scope.pid), i32(ForegroundContinue)); }
+        }
+    }
+    restored := sigprocmask(i32(ForegroundSetMask), previous_mask, empty);
+    if (restored != 0 && scope.problem == "") { scope.problem = "cannot restore the foreground signal mask"; }
+    if (scope.problem != "") {
+        if (scope.pid > 0) { killed := kill(i32(0 - scope.pid), 9); reaped := ForegroundReap(scope.pid); }
+        ForegroundRelease(&scope);
+        if (restored != 0) { retried := sigprocmask(i32(ForegroundSetMask), previous_mask, empty); }
+    }
+    return scope;
+}
+
+// A monotonic millisecond sample, or -1 when the clock cannot be read.
+// Reuse at least 16 scratch bytes for the platform timespec. A uniquely
+// owned buffer needs no allocation; an undersized buffer returns -1.
+pub MonotonicMilliseconds :: (stamp: ^(u8[])) -> i64 {
+    if (length(stamp^) < 16) { return -1; }
+    read := clock_gettime(i32(ForegroundClock), stamp^);
+    if (read != 0) { return -1; }
+    seconds := i64(u64(Word32(stamp^, 0)) | (u64(Word32(stamp^, 4)) << 32));
+    nanos := i64(u64(Word32(stamp^, 8)) | (u64(Word32(stamp^, 12)) << 32));
+    return seconds * 1000 + nanos / 1000000;
+}
+
+// A waitable exit keeps the PID reserved until its group is killed. Stopped
+// children hand the terminal back and suspend their wrapper; a resumed wrapper
+// restores the child's terminal before continuing that entire group.
+pub ForegroundWait :: (scope: ^Foreground, timeout_ms: int) -> int {
+    if (scope^.pid <= 0) { return 127; }
+    information := Block(128);
+    notice := Block(1);
+    polling := Block(8);
+    for (byte in 0..<4) { polling[byte] = u8((scope^.input >> u32(byte * 8)) & 255); }
+    polling[4] = 1;
+    clock := Block(16);
+    waited := 0;
+    while (true) {
+        available := poll(polling, 1, 0);
+        received: i64 = 0;
+        if (available > 0 && (polling[6] & 1) != 0) { received = read(i32(scope^.input), notice, 1); }
+        if (received > 0 && scope^.cancelled == 0) {
+            scope^.cancelled = 1;
+            if (notice[0] == 73) { scope^.cancelled = 2; }
+            else if (notice[0] == 84) { scope^.cancelled = 15; }
+            scope^.cancel_started = MonotonicMilliseconds(&clock);
+        }
+        if (scope^.cancelled != 0) {
+            now := MonotonicMilliseconds(&clock);
+            if (now < 0 || scope^.cancel_started < 0) {
+                scope^.problem = "cannot read the foreground cancellation clock";
+                killed := kill(i32(0 - scope^.pid), 9);
+            } else if (now - scope^.cancel_started >= 2000) {
+                killed := kill(i32(0 - scope^.pid), 9);
+            }
+        }
+        for (byte in ForegroundInfoPid..<ForegroundInfoPid + 4) { information[byte] = 0; }
+        checked := waitid(1, u32(scope^.pid), information, i32(1 + 4 + ForegroundStopped + ForegroundNowait));
+        if (checked < 0) {
+            error := ErrorNumber();
+            if (error == 4) { continue; }
+            // ECHILD proves that this process no longer owns the PID; never
+            // signal a group through a handle whose leader was reaped elsewhere.
+            if (error != 10) { killed := kill(i32(0 - scope^.pid), 9); reaped := ForegroundReap(scope^.pid); }
+            scope^.problem = format_text("cannot wait for the foreground program (errno {})", error);
+            ForegroundRelease(scope);
+            return 1;
+        }
+        if (checked == 0 && Word32(information, ForegroundInfoPid) == scope^.pid) {
+            code := Word32(information, 8);
+            if (code == 1 || code == 2 || code == 3) {
+                killed := kill(i32(0 - scope^.pid), 9);
+                reaped := ForegroundReap(scope^.pid);
+                result := reaped.status;
+                if (reaped.error != 0) { scope^.problem = "cannot reap the foreground program"; }
+                else if (scope^.problem != "") { result = 1; }
+                else if (scope^.cancelled != 0) { result = 0 - scope^.cancelled; }
+                ForegroundRelease(scope);
+                if (scope^.problem != "") { return 1; }
+                return result;
+            }
+            consumed := waitid(1, u32(scope^.pid), information, i32(1 + ForegroundStopped));
+            if (scope^.cancelled == 0) {
+                if (scope^.terminal > 0 && tcgetpgrp(i32(scope^.terminal)) == i32(scope^.pid)) {
+                    restored := ForegroundTerminal(scope^, scope^.parent_group);
+                }
+                stopped := kill(getpid(), i32(ForegroundStop));
+                if (scope^.terminal > 0 && tcgetpgrp(i32(scope^.terminal)) == i32(scope^.parent_group)) {
+                    handed := ForegroundTerminal(scope^, scope^.pid);
+                }
+            }
+            continued := kill(i32(0 - scope^.pid), i32(ForegroundContinue));
+        }
+        if (timeout_ms >= 0 && waited >= timeout_ms) { return StillRunning; }
+        slept := usleep(5000);
+        waited += 5;
+    }
+    return 127;
 }

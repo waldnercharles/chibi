@@ -1,0 +1,65 @@
+package native_driver
+
+import compiler "project:package_compiler"
+import facts "project:scalar_facts"
+import strings "core:strings"
+
+PackageRows :: (paths: string[], sources: string[], collections: string[], directories: string[]) -> facts.Row[] {
+    return compiler.CollectScalarPackages("/project", collections, directories, paths, sources, TargetFacts(), Names(),
+                                         Natives(), Ports(), Identities(), 0, 0);
+}
+
+ImportedPackages :: () {
+    paths := ["Main.chibi", "lib/Lib.chibi"];
+    sources := ["package main\nimport lib \"project:lib\"\nMain :: () -> int { return lib.Add(3, lib.Twice(2)) * lib.Limit; }\n", "package lib\npub Limit :: 5;\npub Twice :: (n: int) -> int { return n * 2; }\npub Add :: (a: int, b: int) -> int { return a + b; }\n"];
+    rows := PackageRows(paths, sources, [], []);
+    assert(length(rows) > 2 && rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+    assert(rows[2].name == "Main");
+    text := IR(rows);
+    assert(strings.Contains(text, "define internal i32 @chibi_scalar.1("));
+    assert(strings.Contains(text, "define internal i32 @chibi_scalar.2("));
+    assert(strings.Contains(text, "call i32 @chibi_scalar."));
+}
+
+CollectionPackages :: () {
+    paths := ["Main.chibi", "/sdk/core/strings/Strings.chibi"];
+    sources := ["package main\nimport strings \"core:strings\"\nMain :: () -> int { return strings.ByteLength(\"hello\"); }\n", "package strings\npub ByteLength :: (value: string) -> int { return text_byte_length(value); }\n"];
+    rows := PackageRows(paths, sources, ["core"], ["/sdk/core"]);
+    assert(length(rows) > 2 && rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+    assert(strings.Contains(IR(rows), "define internal i32 @chibi_scalar.1("));
+}
+
+LocatedPackages :: () {
+    paths := ["Main.chibi", "lib/Lib.chibi"];
+    sources := ["package main\nimport lib \"project:lib\"\nMain :: () -> int { return lib.Add(1, 2); }\n", "package lib\npub Add :: (a: int, b: int) -> int { return a + b; }\npub Table :: struct { m: [int: int]; }\n"];
+    rows := PackageRows(paths, sources, [], []);
+    assert(length(rows) == 2 && rows[1].kind == facts.RejectionRow);
+    joined := rows[0].text;
+    rejected := rows[1];
+    assert(rejected.start > strings.ByteLength(sources[0]) && rejected.end <= strings.ByteLength(joined));
+    assert(strings.Slice(joined, rejected.start, rejected.end - rejected.start) == "m: [int: int];");
+}
+
+ScopedPackages :: () {
+    paths := ["Main.chibi", "lib/Z.chibi", "lib/A.chibi"];
+    sources := ["package main\nimport lib \"project:lib\"\nMain :: () -> int { x: lib.Cursor = {pos: 1}; return lib.Relay(&x); }\n", "package lib\npub Cursor :: struct { pos: int; }\npub Relay :: (c: ^Cursor) -> int { return Step(c); }\n", "package lib\nStep :: (c: ^Cursor) -> int { c.pos += 1; return c.pos; }\n"];
+    rows := PackageRows(paths, sources, [], []);
+    assert(length(rows) > 2 && rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+}
+
+ScopedParameterModes :: () {
+    source := "package aliases\nCounter :: struct { count: int; }\nMain :: () -> int { counter: Counter = {count: 1}; return Change(&counter, &counter); }\nChange :: (reader: ^Counter, writer: ^Counter) -> int { writer.count += 1; return Read(reader); }\nRead :: (value: ^Counter) -> int { return value.count; }\n";
+    rows := Produced(source);
+    ValidateRows(rows, "");
+    parameters := 0;
+    for row in rows {
+        if row.kind != facts.ParameterRow { continue; }
+        if row.name == "writer" { assert(row.literal == i64(facts.ParameterReference)); }
+        else { assert(row.literal == i64(facts.ParameterReadonlyReference)); }
+        parameters += 1;
+    }
+    assert(parameters == 3, "forwarded readonly and writable parameter classifications");
+}

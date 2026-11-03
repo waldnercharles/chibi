@@ -36,6 +36,10 @@ Calls :: () {
     r10: string = Copies();
     e10: string = "0=v0;1=v1;2=v2;|0=changed;1=v1;";
     assert(r10 == e10, "Copies call 10");
+    reads := ReceiverReads();
+    assert(reads == 1111, "receiver value precedes key callback");
+    membership := ReceiverMembership();
+    assert(membership == 11, "membership receiver precedes key callback");
 }
 
 @test

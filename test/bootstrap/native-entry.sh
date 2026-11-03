@@ -6,14 +6,20 @@ root=$(cd "$(dirname "$0")/../.." && pwd -P)
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/chibi-native-entry.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 checkout=$scratch/'checkout with spaces'
-mkdir -p "$checkout/tools/toolchain" "$checkout/tools/bootstrap" "$checkout/packages/core/sample" "$checkout/llvm"
+mkdir -p "$checkout/tools/toolchain" "$checkout/tools/bootstrap" "$checkout/tools/graph/sample" "$checkout/packages/core/sample" "$checkout/llvm"
 cp "$root/tools/build.sh" "$checkout/tools/build.sh"
+cp "$root/tools/bootstrap/native-seed.sh" "$checkout/tools/bootstrap/native-seed.sh"
 printf 'package driver\n' > "$checkout/tools/toolchain/Driver.chibi"
 printf 'package sample\n' > "$checkout/packages/core/sample/Sample.chibi"
-printf '#!/bin/sh\nexit 93\n' > "$checkout/tools/bootstrap.sh"
+printf 'package sample\n' > "$checkout/tools/graph/sample/Sample.chibi"
 printf '#!/bin/sh\nexit 94\n' > "$checkout/tools/bootstrap/seed.sh"
 for tool in opt llc ld.lld ld64.lld; do
-    printf '#!/bin/sh\nexit 0\n' > "$checkout/llvm/$tool"
+    cat > "$checkout/llvm/$tool" <<'TOOL'
+#!/bin/sh
+[ "${1:-}" = --version ] || exit 64
+printf '%s\n' "$0" >> "$ENTRY_VERSION_LOG"
+case "${0##*/}" in opt|llc) echo 'LLVM version 22.1.8' ;; *) echo 'LLD 22.1.8' ;; esac
+TOOL
     chmod +x "$checkout/llvm/$tool"
 done
 cat > "$checkout/compiler" <<'COMPILER'
@@ -33,8 +39,9 @@ if [ "${ENTRY_COMPILE_STATUS:-0}" != 0 ]; then exit "$ENTRY_COMPILE_STATUS"; fi
 chmod +x "$output"
 COMPILER
 chmod +x "$checkout/compiler"
-export ENTRY_COMPILES=$scratch/compiles ENTRY_RESULT=$scratch/arguments
+export ENTRY_COMPILES="$scratch/compiles" ENTRY_RESULT="$scratch/arguments" ENTRY_VERSION_LOG="$scratch/versions"
 cd "$checkout"
+checkout=$(pwd -P)
 count() { test "$(wc -l < "$ENTRY_COMPILES" | tr -d ' ')" = "$1"; }
 entry() { sh tools/build.sh "$@" --native-driver "$checkout/compiler" --llvm "$checkout/llvm"; }
 
@@ -43,9 +50,11 @@ entry build test --build 'output with spaces'
 printf '%s\n' build test --build 'output with spaces' --native-driver "$checkout/compiler" --llvm "$checkout/llvm" > "$scratch/expected"
 cmp "$scratch/expected" "$ENTRY_RESULT"
 count 1
+test "$(wc -l < "$ENTRY_VERSION_LOG" | tr -d ' ')" = 3
 entry census
 count 1
-if ENTRY_EXIT=17 entry census; then exit 1; else test "$?" = 17; fi
+test "$(wc -l < "$ENTRY_VERSION_LOG" | tr -d ' ')" = 3
+if (ENTRY_EXIT=17 entry census); then exit 1; else test "$?" = 17; fi
 count 1
 
 # Content, not timestamps, determines freshness. Added/deleted core files and
@@ -58,13 +67,16 @@ count 2
 printf '// changed\n' >> packages/core/sample/Sample.chibi
 entry census
 count 3
-printf 'package sample\n' > packages/core/sample/Extra.chibi
+printf '// changed\n' >> tools/graph/sample/Sample.chibi
 entry census
 count 4
+printf 'package sample\n' > packages/core/sample/Extra.chibi
+entry census
+count 5
 rm packages/core/sample/Extra.chibi
 entry census
-count 4 # Returns to the exact previously cached input set.
-next=5
+count 5 # Returns to the exact previously cached input set.
+next=6
 for tool in compiler llvm/opt llvm/llc llvm/ld.lld llvm/ld64.lld; do
     printf '\n# changed\n' >> "$tool"
     entry census
@@ -77,7 +89,7 @@ done
 # A failed compile leaves no usable cache, cannot fall back to the C host,
 # and a later successful invocation retries instead of using partial output.
 printf '\n# failure input\n' >> compiler
-if ENTRY_COMPILE_STATUS=23 entry census; then exit 1; else test "$?" = 23; fi
+if (ENTRY_COMPILE_STATUS=23 entry census); then exit 1; else test "$?" = 23; fi
 count "$next"
 next=$((next + 1))
 entry census
@@ -96,27 +108,98 @@ case "$1" in */inputs) exit 37 ;; esac
 exec "$ENTRY_REAL_DIGEST" "$@"
 HASH
     chmod +x "$scratch/hash-bin/sha256sum"
-    if PATH="$scratch/hash-bin:$PATH" ENTRY_REAL_DIGEST=$real_digest entry census; then exit 1; else test "$?" = 37; fi
+    if (PATH="$scratch/hash-bin:$PATH" ENTRY_REAL_DIGEST=$real_digest entry census); then exit 1; else test "$?" = 37; fi
     count "$next"
     test ! -e .chibi/build-entry/driver
 fi
-if sh tools/build.sh census --native-driver "$checkout/compiler"; then exit 1; else test "$?" = 2; fi
+if sh tools/build.sh census --native-driver; then exit 1; else test "$?" = 2; fi
+if sh tools/build.sh census --llvm; then exit 1; else test "$?" = 2; fi
 if sh tools/build.sh census --native-driver "$checkout/missing" --llvm "$checkout/llvm"; then exit 1; else test "$?" = 2; fi
 chmod -x llvm/llc
 if entry census; then exit 1; else test "$?" = 2; fi
 chmod +x llvm/llc
 
-# --llvm alone still belongs to the old entry (e.g. native-self-host). The
-# caller-supplied host and bytecode seed behavior stay unchanged.
-cat > "$checkout/host" <<'HOST'
+# Default entry downloads the pinned native seed, verifies it and reuses it.
+# The release download boundary is local; the real verifier and entry both run.
+mkdir "$scratch/download-bin"
+export ENTRY_SEED="$scratch/seed" ENTRY_DOWNLOADS="$scratch/downloads"
+cp compiler "$ENTRY_SEED"
+seed_hash=$(shasum -a 256 "$ENTRY_SEED" | cut -d' ' -f1)
+case "$(uname -s)" in Darwin) platform=macos-arm64 ;; *) platform=linux-x64 ;; esac
+printf '%s\tfixture-seed\tchibi-native\t%s\n' "$platform" "$seed_hash" > tools/bootstrap/native-seed.tsv
+cat > "$scratch/download-bin/gh" <<'GH'
 #!/bin/sh
-printf '%s\n' "$@" > "$ENTRY_RESULT"
-HOST
-chmod +x "$checkout/host"
-printf '#!/bin/sh\nprintf seed > "%s"\n' "$scratch/seed-used" > tools/bootstrap/seed.sh
-CHIBI_BUILD_HOST=$checkout/host sh tools/build.sh build census --llvm "$checkout/llvm"
-test "$(cat "$scratch/seed-used")" = seed
-grep -q '^--compiler-core$' "$ENTRY_RESULT"
-grep -q '^census$' "$ENTRY_RESULT"
+set -eu
+printf 'download\n' >> "$ENTRY_DOWNLOADS"
+while [ "$#" -gt 0 ]; do
+    case "$1" in --dir) destination=$2 ;; --pattern) asset=$2 ;; esac
+    shift
+done
+cp "$ENTRY_SEED" "$destination/$asset"
+GH
+chmod +x "$scratch/download-bin/gh"
+export PATH="$scratch/download-bin:$PATH"
+sh tools/build.sh census --llvm "$checkout/llvm"
+next=$((next + 1))
 count "$next"
-printf 'native build entry: cold, cached, invalidated, failed and legacy cases passed\n'
+test "$(wc -l < "$ENTRY_DOWNLOADS" | tr -d ' ')" = 1
+seed=$checkout/.chibi/native-seed/$platform/chibi
+printf '%s\n' build census --llvm "$checkout/llvm" --native-driver "$seed" > "$scratch/expected"
+cmp "$scratch/expected" "$ENTRY_RESULT"
+# Environment-selected LLVM uses the same cache, and an irrelevant old host
+# cannot divert execution back to bytecode.
+CHIBI_LLVM_BIN=$checkout/llvm CHIBI_BUILD_HOST=$checkout/missing sh tools/build.sh census
+count "$next"
+test "$(wc -l < "$ENTRY_DOWNLOADS" | tr -d ' ')" = 1
+# Manifest validation precedes even a valid warm cache. Match the Windows
+# fetcher's exact field, character, duplicate and lowercase digest contract.
+cp tools/bootstrap/native-seed.tsv "$scratch/valid-pin.tsv"
+for invalid in duplicate path option uppercase short platform extra; do
+    case "$invalid" in
+        duplicate) cat "$scratch/valid-pin.tsv" "$scratch/valid-pin.tsv" > tools/bootstrap/native-seed.tsv ;;
+        path) printf '%s\ttag\t../escape\t%s\n' "$platform" "$seed_hash" > tools/bootstrap/native-seed.tsv ;;
+        option) printf '%s\t--option\tasset\t%s\n' "$platform" "$seed_hash" > tools/bootstrap/native-seed.tsv ;;
+        uppercase) printf '%s\ttag\tasset\t%s\n' "$platform" "$(printf '%s' "$seed_hash" | tr 'a-f' 'A-F')" > tools/bootstrap/native-seed.tsv ;;
+        short) printf '%s\ttag\tasset\tshort\n' "$platform" > tools/bootstrap/native-seed.tsv ;;
+        platform) printf 'alien-x64\ttag\tasset\t%s\n' "$seed_hash" > tools/bootstrap/native-seed.tsv ;;
+        extra) printf '%s\ttag\tasset\t%s\textra\n' "$platform" "$seed_hash" > tools/bootstrap/native-seed.tsv ;;
+    esac
+    if sh tools/build.sh census --llvm "$checkout/llvm"; then exit 1; else test "$?" = 2; fi
+    count "$next"
+    test "$(wc -l < "$ENTRY_DOWNLOADS" | tr -d ' ')" = 1
+done
+cp "$scratch/valid-pin.tsv" tools/bootstrap/native-seed.tsv
+# Damaged cached bytes are replaced only by a verified download.
+printf 'damaged\n' > "$seed"
+sh tools/build.sh census --llvm "$checkout/llvm"
+count "$next"
+test "$(wc -l < "$ENTRY_DOWNLOADS" | tr -d ' ')" = 2
+printf 'damaged\n' > "$seed"
+printf 'invalid release\n' > "$ENTRY_SEED"
+if sh tools/build.sh census --llvm "$checkout/llvm"; then exit 1; else test "$?" = 1; fi
+count "$next"
+test "$(wc -l < "$ENTRY_DOWNLOADS" | tr -d ' ')" = 3
+# Unsupported tools must fail before the compiler or publication. Restoring
+# their bytes recovers the previously verified cache.
+case "$(uname -s)" in Darwin) active_linker=ld64.lld ;; *) active_linker=ld.lld ;; esac
+for tool in opt llc "$active_linker"; do
+    cp "llvm/$tool" "$scratch/supported-tool"
+    case "$tool" in opt|llc) label='LLVM version ' ;; *) label='LLD ' ;; esac
+    printf '#!/bin/sh\necho "%s21.1.8"\n' "$label" > "llvm/$tool"
+    status=0
+    entry census > "$scratch/old-tool.log" 2>&1 || status=$?
+    test "$status" = 2
+    grep -F 'LLVM 22 or newer is required' "$scratch/old-tool.log"
+    count "$next"
+    cp "$scratch/supported-tool" "llvm/$tool"
+done
+cp llvm/opt "$scratch/supported-tool"
+printf '#!/bin/sh\necho "unrecognized optimizer"\n' > llvm/opt
+if entry census > "$scratch/unknown-version.log" 2>&1; then exit 1; else test "$?" = 2; fi
+count "$next"
+printf '#!/bin/sh\nexit 7\n' > llvm/opt
+if entry census > "$scratch/failed-version.log" 2>&1; then exit 1; else test "$?" = 2; fi
+count "$next"
+cp "$scratch/supported-tool" llvm/opt
+test -z "$(find .chibi/build-entry -maxdepth 1 -name 'work.*' -print)"
+printf 'native build entry: cold, cached, invalidated, failed and verified default cases passed\n'

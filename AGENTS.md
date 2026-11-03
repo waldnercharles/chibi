@@ -1,6 +1,6 @@
 # Chibi
 
-Chibi is a game language with its own compiler, runtime, engine and SDK. The stage-one compiler (`tools/compiler`), build graph (`tools/toolchain`, `tools/graph`), CLI (`apps/chibi`) and core packages (`packages/`) are written in Chibi. The runtime, VM, stage-zero compiler (`src/language`) and test drivers (`test/`) are C.
+Chibi is a game language with its own compiler, runtime, engine and SDK. The stage-one compiler (`tools/compiler`), build graph (`tools/toolchain`, `tools/graph`), CLI (`tools/compiler/native_driver`) and core packages (`packages/`) are written in Chibi. The runtime, VM, stage-zero compiler (`src/language`) and test drivers (`test/`) are C.
 
 ## Engineering rules
 

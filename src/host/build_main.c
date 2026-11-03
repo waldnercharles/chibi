@@ -280,10 +280,9 @@ int main(int argc, char **argv)
         fprintf(stderr, "build timing trace unavailable: %s\n", strerror(errno));
     }
     const char *name = build_timing_name(path);
-    const char *kind = !strcmp(name, "Graph.chibi")         ? "graph-host"
-                     : !strcmp(name, "Build.chibi")         ? "build-host"
-                     : !strcmp(name, "AssetCompiler.chibi") ? "generator-host"
-                                                            : "other-host";
+    const char *kind = !strcmp(name, "Graph.chibi") ? "graph-host"
+                     : !strcmp(name, "Build.chibi") ? "build-host"
+                                                    : "other-host";
     build_timing_write(timings, kind, 0, started, started, 0, 0);
     char *source_path = from_root(root, path);
     char *core_path = NULL;

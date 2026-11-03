@@ -164,10 +164,11 @@ Room controls explain that connecting requires the web editor.
 
 ## Verification
 
-Run `chibi build` and `chibi build test collab`, the focused C protocol/replay
-selector (`test_tools --collab`). It checks malformed and truncated
-messages, ordering, duplicate acceptance, rejection, sequence gaps, snapshot
-failure and recovery, replay non-recursion, and host departure.
+Run `chibi build test collab` or
+`node --test tools/collab/server/server.test.mjs`. The real server tests check
+room creation and invite authority, health readiness, invalid configuration,
+occupied ports, retained failure logs, and POSIX receive timeout and connection
+refusal. They do not cover the browser client's protocol, replay or snapshots.
 
 Use separate browser sessions for the host and invited peer. Exercise join,
 follow/unfollow, graph changes, scene transforms and fields, UI typing, stale

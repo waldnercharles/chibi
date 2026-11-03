@@ -1,0 +1,208 @@
+package task_facts_validation
+
+import facts "project:scalar_facts"
+import scalar "project:scalar_llvm"
+import abi "project:native_abi"
+import native "project:llvm_native"
+import strings "core:strings"
+import os "core:os"
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 1) { return 2; }
+    accepted := Module();
+    assert(scalar.Validate(accepted) == "");
+    for (which in 0..<14) {
+        rows := accepted;
+        for (index in 0..<length(rows)) {
+            row := rows[index];
+            if (row.kind == facts.AwaitResultRow) {
+                if (which == 0) { row.literal = 2; }
+                if (which == 1) { row.value = 100; }
+                if (which == 2) { row.type = facts.BoolType; }
+                if (which == 3) { row.count = 0; }
+            }
+            if (which == 4 && row.kind == facts.MemberRow) { row.type = facts.BoolType; }
+            if (which == 5 && row.kind == facts.FunctionRow && row.name == "Worker") { row.value = facts.FunctionVoid; }
+            if (which == 6 && row.kind == facts.TaskRunningRow) { row.type = facts.IntType; }
+            if (which == 7 && row.kind == facts.YieldRow) { row.kind = facts.LiteralRow; }
+            if (which == 8 && row.kind == facts.MemberRow) { row.type = facts.TaskType; }
+            if (which == 9 && row.kind == facts.MemberRow) { row.type = facts.ArrayType + facts.TaskType; }
+            if (which == 10 && row.kind == facts.LocalRow && row.name == "h") {
+                row.literal = i64(facts.Retained);
+                initial := rows[index + 1];
+                initial.kind = facts.LiteralRow;
+                initial.value = 0;
+                initial.name = "";
+                initial.literal = 0;
+                rows[index + 1] = initial;
+            }
+            if (which == 11 && row.kind == facts.TaskRunningRow) {
+                initial := rows[index - 1];
+                initial.kind = facts.LiteralRow;
+                initial.type = facts.WordType;
+                initial.value = 0;
+                rows[index - 1] = initial;
+            }
+            rows[index] = row;
+        }
+        if (which == 12 || which == 13) {
+            rows = ParameterModule(accepted, which == 13);
+        }
+        failure := scalar.Validate(rows);
+        assert(failure != "");
+        if (which == 12 || which == 13) { assert(failure == "scalar task parameters require cancellation unwind support"); }
+    }
+    target := abi.LinuxX64();
+    if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
+    NativeRejections(target);
+    switch scalar.EmitFor(target, accepted) {
+        case .Rejected(rows): return 3;
+        case .Invalid(message): os.Print(message); return 4;
+        case .Emitted(text):
+            if (os.WriteText(arguments[0], text)) { return 5; }
+    }
+    return 0;
+}
+
+Table :: struct { rows: facts.Row[]; source: string; }
+Row :: (kind: int, type: int, value: int, count: int, name: string, literal: i64) -> facts.Row {
+    return {kind: kind, type: type, value: value, count: count, name: name, literal: literal, text: "",
+            start: 0, end: 0, line: 0, column: 0};
+}
+At :: (given: facts.Row, first: int, last: int) -> facts.Row {
+    row := given;
+    row.start = first;
+    row.end = last;
+    row.line = 1;
+    row.column = first + 1;
+    return row;
+}
+Statement :: (table: ^Table, source: string, kind: int, type: int, variable: int, name: string, operands: facts.Row[]) {
+    first := strings.ByteLength(table.source);
+    table.source = strings.Concatenate([table.source, source]);
+    last := strings.ByteLength(table.source);
+    table.rows.append(At(Row(kind, type, variable, length(operands), name, 0), first, last));
+    for (operand in operands) { table.rows.append(At(operand, first, last)); }
+}
+Module :: () -> facts.Row[] {
+    table: Table = {rows: [Row(facts.SourceRow, 0, 0, 0, "TaskFacts.chibi", 0),
+                           Row(facts.DocumentRow, 0, 0, 0, "project:TaskFacts.chibi", 0)],
+                    source: "Result::union{Success(value:int)|Cancelled}"};
+    last := strings.ByteLength(table.source);
+    table.rows.extend([At(Row(facts.UnionRow, 0, 0, 2, "Result", 0), 0, last),
+                       At(Row(facts.VariantRow, 0, 0, 1, "Success", 0), 0, last),
+                       At(Row(facts.MemberRow, facts.IntType, 0, 0, "value", 0), 0, last),
+                       At(Row(facts.VariantRow, 0, 1, 0, "Cancelled", 0), 0, last)]);
+    main := length(table.rows);
+    first := last;
+    table.rows.append(Row(facts.FunctionRow, facts.IntType, 0, 0, "Main", 0));
+    table.source = strings.Concatenate([table.source, "Main::()->int{"]);
+    Statement(&table, "h:=Worker();", facts.LocalRow, facts.TaskType, 0, "h",
+              [Row(facts.CallRow, facts.TaskType, 1, 0, "Worker", i64(facts.CallSpawned))]);
+    Statement(&table, "running:=bool(h);", facts.LocalRow, facts.BoolType, 1, "running",
+              [Row(facts.ReadRow, facts.TaskType, 0, 0, "", 0), Row(facts.TaskRunningRow, facts.BoolType, 0, 1, "", 0)]);
+    Statement(&table, "v:=await h;", facts.LocalRow, facts.RecordType, 2, "v",
+              [Row(facts.ReadRow, facts.TaskType, 0, 0, "", 0), Row(facts.AwaitResultRow, facts.RecordType, 1, 1, "", 0)]);
+    Statement(&table, "return 0;", facts.ReturnRow, 0, 0, "", [Row(facts.LiteralRow, facts.IntType, 0, 0, "", 0)]);
+    table.source = strings.Concatenate([table.source, "}"]);
+    table.rows[main] = At(table.rows[main], first, strings.ByteLength(table.source));
+    worker := length(table.rows);
+    first = strings.ByteLength(table.source);
+    table.rows.append(Row(facts.FunctionRow, facts.IntType, 0, 0, "Worker", 0));
+    table.source = strings.Concatenate([table.source, "Worker::()->int{"]);
+    Statement(&table, "yield;", facts.LocalRow, facts.IntType, 0, "_", [Row(facts.YieldRow, facts.IntType, 0, 0, "", 0)]);
+    Statement(&table, "return 7;", facts.ReturnRow, 0, 0, "", [Row(facts.LiteralRow, facts.IntType, 0, 0, "", 7)]);
+    table.source = strings.Concatenate([table.source, "}"]);
+    table.rows[worker] = At(table.rows[worker], first, strings.ByteLength(table.source));
+    rows := table.rows;
+    source := rows[0];
+    source.text = table.source;
+    rows[0] = source;
+    return rows;
+}
+
+ParameterModule :: (accepted: facts.Row[], reference: bool) -> facts.Row[] {
+    rows := accepted;
+    first := strings.ByteLength(rows[0].text);
+    header := "Forbidden::(pending:task(int))->int{";
+    suffix := strings.Concatenate([header, "return 0;}"]);
+    last := first + strings.ByteLength(suffix);
+    parameter := Row(facts.ParameterRow, facts.TaskType, 0, 0, "pending", 0);
+    if (reference) { parameter.literal = 1; }
+    statement := first + strings.ByteLength(header);
+    rows.extend([At(Row(facts.FunctionRow, facts.IntType, 0, 1, "Forbidden", 0), first, last),
+                 At(parameter, first, last),
+                 At(Row(facts.ReturnRow, 0, 0, 1, "", 0), statement, last - 1),
+                 At(Row(facts.LiteralRow, facts.IntType, 0, 0, "", 0), statement, last - 1)]);
+    source := rows[0];
+    source.text = strings.Concatenate([source.text, suffix]);
+    rows[0] = source;
+    return rows;
+}
+
+// Direct native tables must enforce the same closed parameter/container/state
+// boundary, even when no source producer or facts consumer is involved.
+NativeRejections :: (target: abi.Target) {
+    for (which in 0..<6) {
+        parameters: int[] = [];
+        slots: int[] = [abi.IntStorage];
+        records: native.Record[] = [];
+        fields: int[] = [];
+        texts: string[] = [];
+        result := abi.IntStorage;
+        first: native.Instruction = {op: native.Constant, type: abi.IntStorage, output: 0, left: 0, right: 0, target: 0, literal: 0};
+        if (which == 0) { parameters = [native.TaskType]; }
+        if (which == 1) { parameters = [native.RefType + native.TaskType]; }
+        if (which == 2) { slots = [native.ArrayType + native.TaskType, abi.IntStorage]; first.type = slots[0]; }
+        if (which == 3) {
+            record: native.Record = {first: 0, count: 1, identity: 0};
+            records = [record];
+            fields = [native.TaskType];
+        }
+        if (which == 4) {
+            first.op = native.StateLoad;
+            first.type = native.TaskType;
+            slots = [native.TaskType, abi.IntStorage];
+            texts = ["task"];
+        }
+        if (which == 5) { slots = [native.RefType + native.TaskType, abi.IntStorage]; first.type = slots[0]; }
+        publish: native.Instruction = {op: native.Publish, type: result, output: 0, left: 0, right: 0, target: 0, literal: 0};
+        done: native.Instruction = {op: native.Return, type: 0, output: 0, left: 0, right: 0, target: 0, literal: 0};
+        code := [first, publish, done];
+        if (which == 2 || which == 4 || which == 5) {
+            zero := first;
+            zero.op = native.Constant;
+            zero.type = abi.IntStorage;
+            zero.output = 1;
+            publish.left = 1;
+            code = [first, zero, publish, done];
+        }
+        function: native.Function = {result: result, first_parameter: 0, parameters: length(parameters),
+            first_slot: 1, slots: length(slots), first_local: 0, locals: 0, first_code: 3, code: length(code),
+            first_argument: 0, arguments: 0};
+        empty: int[] = [];
+        names: string[] = [];
+        source: native.Source = {file: "", directory: ""};
+        // Test the private function, where exported scalar ABI checks cannot
+        // hide an unsupported task parameter, reference or result domain.
+        gateway: native.Function = {result: abi.IntStorage, first_parameter: 0, parameters: 0,
+            first_slot: 0, slots: 1, first_local: 0, locals: 0, first_code: 0, code: 3,
+            first_argument: 0, arguments: 0};
+        zero: native.Instruction = {op: native.Constant, type: abi.IntStorage, output: 0, left: 0, right: 0, target: 0, literal: 0};
+        returned: native.Instruction = {op: native.Publish, type: abi.IntStorage, output: 0, left: 0, right: 0, target: 0, literal: 0};
+        all_slots: int[] = [abi.IntStorage];
+        all_slots.extend(slots);
+        all_code := extend([zero, returned, done], code);
+        switch native.Emit(target, [gateway, function], parameters, all_slots, empty, all_code, empty,
+                           records, fields, texts, source, names, empty, empty, false, 1) {
+            case .Rejected(instruction, message):
+                assert(message != "");
+                if (which == 0 || which == 1) { assert(message == "native task parameters require cancellation unwind support"); }
+                if (which == 2 || which == 5) { assert(message == "native scalar slot cannot hold a managed value or pointer"); }
+                if (which == 3) { assert(message == "native records differ from their field table"); }
+                if (which == 4) { assert(message == "native retained state differs from its operands"); }
+            case .Emitted(text): assert(false, "unsupported task schema emitted");
+        }
+    }
+}

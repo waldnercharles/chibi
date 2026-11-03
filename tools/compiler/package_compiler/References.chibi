@@ -144,6 +144,23 @@ ScopedCalls :: (forest: snapshot.SnapshotNode[], text: string, callables: Callab
     }
     return found;
 }
+// Direct changes and forwarded scoped arguments in a later expression.
+// Only the native producer populates Param.written; it can exclude read-only
+// callees, while the ordinary producer conservatively keeps every scoped call.
+EvaluationChanges :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                      natives: ResolvedNative[], names: Name[], package: int, node: int, written_only: bool) -> string[] {
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.Identifier) || LiteralNode(forest, value)) { return []; }
+    changed := MutatedNames(forest, text, node, AddressedNames(forest, text, node, []));
+    for (argument in ScopedCalls(forest, text, callables, params, natives, names, package, node, false)) {
+        if (written_only && !params[argument.param].written) { continue; }
+        passed := Unparenthesized(forest, argument.value);
+        if (Is(forest, passed, syntax.AddressExpression)) { passed = Field(forest, passed, syntax.FieldOperand); }
+        name := RootName(forest, text, passed);
+        if (name != "" && !changed.contains(name)) { changed.append(name); }
+    }
+    return changed;
+}
 // The `&x` arguments of scoped parameters in the body `node`. Each lends `x`
 // for the call rather than taking a managed address.
 ScopedArguments :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],

@@ -7,9 +7,7 @@ import target "core:target"
 // native program (core:target's Native) it is the platform's libc or kernel32
 // through core:sys/posix or core:sys/windows. One set of signatures serves
 // both, so a package imports core:os and compiles either way. A native
-// program has no ProgramDirectory or Environment yet, and on Windows Stamp,
-// Copy, Reserve, Publish, RealPath, Root, FindExecutable, Start, Wait and Kill
-// report failure until core:sys/windows has them.
+// program has no ProgramDirectory or Environment yet.
 //
 // Paths are relative to the program's root unless absolute. A fallible
 // operation reports an expected failure of the file system or a process as
@@ -219,6 +217,11 @@ when target.Native == 1 {
         return {status: captured.status, stdout: captured.stdout, stderr: captured.stderr};
     }
 
+    // Whether the environment contains the name, including an empty value.
+    pub HasEnv :: (name: string) -> bool {
+        return sys.HasEnv(name);
+    }
+
     pub Getenv :: (name: string) -> string {
         return sys.Getenv(name);
     }
@@ -238,8 +241,41 @@ when target.Native == 1 {
         written := sys.Print(line);
     }
 
-    // Identifies the file's content and metadata for change detection: equal
-    // stamps mean the same file untouched. "" when the path does not exist.
+    // Writes the text to the standard output, as it is.
+    pub WriteOutput :: (text: string) {
+        written := sys.WriteOutput(text);
+    }
+
+    // The path the program was started with, resolved: through the search path
+    // for a bare name, and to its real location.
+    pub ProgramPath :: () -> string {
+        all := sys.Arguments();
+        if length(all) == 0 {
+            return "";
+        }
+        started := all[0];
+        named := true;
+        for index in 0..<text_byte_length(started) {
+            if text_byte_at(started, index) == 47 {
+                named = false;
+            }
+        }
+        if named {
+            found := sys.FindExecutable(started);
+            if found != "" {
+                started = found;
+            }
+        }
+        resolved := sys.RealPath(started);
+        if resolved == "" {
+            return started;
+        }
+        return resolved;
+    }
+
+    // The file's identity and metadata for change detection; filesystem clocks
+    // can give rapid same-size rewrites equal stamps. HashFile verifies content.
+    // "" when the path does not exist.
     pub Stamp :: (path: string) -> string {
         return sys.Stamp(path);
     }
@@ -258,6 +294,16 @@ when target.Native == 1 {
             return Failure(Failed);
         }
         return nil;
+    }
+
+    // Reserves one private directory below an existing parent, on its
+    // filesystem so Publish can rename it atomically. The caller removes it.
+    pub TemporaryDirectory :: (parent: string) -> (path: string, error: Error?) {
+        canonical := RealPath(parent);
+        if (parent == "" || canonical == "") { return ("", Failure(NotFound)); }
+        path := sys.TemporaryDirectory(canonical);
+        if (path == "") { return ("", Failure(Failed)); }
+        return (path, nil);
     }
 
     // Renames a prepared directory to a destination that does not exist. Any
@@ -295,13 +341,31 @@ when target.Native == 1 {
         return sha256.HexOf(data);
     }
 
-    // The directory the program was started in, which relative paths follow.
+    // Changes the working directory for every thread of this native process.
+    // Callers serialize changes and restore it before returning to unrelated work.
+    pub ChangeDirectory :: (path: string) -> Error? {
+        if (!sys.ChangeDirectory(path)) { return Failure(Failed); }
+        return nil;
+    }
+
+    // The current working directory, which relative paths follow.
     pub Root :: () -> string {
         return sys.Root();
     }
 
     pub Start :: (command: string[], stdio: int) -> int {
         return sys.Start(command, stdio == Piped);
+    }
+
+    // Starts a process with caller-owned output files, whose parent folders
+    // exist. Empty stdout_path inherits stdout; stderr_path names a file.
+    // Paths must differ except when both name the platform null device.
+    // Wait/Kill leave files in place for the caller to read and remove.
+    // An attached child shares the parent's cancellation group; Kill stops
+    // that child, while cancelling its parent group also stops descendants.
+    // Failure is -1.
+    pub StartRedirected :: (command: string[], stdout_path: string, stderr_path: string, attached: bool = false) -> int {
+        return sys.StartRedirected(command, stdout_path, stderr_path, attached);
     }
 
     pub Wait :: (process: int, timeout_ms: int) -> int {
@@ -354,8 +418,9 @@ pub Exists :: (path: string) -> bool {
     return build.file_exists(path);
 }
 
-// Identifies the file's content and metadata for change detection: equal
-// stamps mean the same file untouched. "" when the path does not exist.
+// The file's identity and metadata for change detection; filesystem clocks
+// can give rapid same-size rewrites equal stamps. HashFile verifies content.
+// "" when the path does not exist.
 pub Stamp :: (path: string) -> string {
     return build.file_stamp(path);
 }
@@ -425,6 +490,15 @@ pub Reserve :: (path: string) -> Error? {
         return Failure(Failed);
     }
     return nil;
+}
+
+// Same contract as the native capability; the ordinary host only reserves it.
+pub TemporaryDirectory :: (parent: string) -> (path: string, error: Error?) {
+    canonical := RealPath(parent);
+    if (parent == "" || canonical == "") { return ("", Failure(NotFound)); }
+    path := build.temporary_directory(canonical);
+    if (path == "") { return ("", Failure(Failed)); }
+    return (path, nil);
 }
 
 // Atomically renames a prepared directory to a destination that does not
@@ -515,6 +589,11 @@ pub FindExecutable :: (name: string) -> string {
     return build.find_executable(name);
 }
 
+// Whether the environment contains the name, including an empty value.
+pub HasEnv :: (name: string) -> bool {
+    return build.environment_names().contains(name);
+}
+
 // The variable's value, "" when it is unset.
 pub Getenv :: (name: string) -> string {
     return build.environment(name);
@@ -536,5 +615,15 @@ pub Platform :: () -> string {
 // Writes one line to the build's error output.
 pub Print :: (line: string) {
     build.report(line);
+}
+
+// The build program has no standard output; its text goes to the error output.
+pub WriteOutput :: (text: string) {
+    build.report(text);
+}
+
+// A build program has no path of its own to run.
+pub ProgramPath :: () -> string {
+    return "";
 }
 }

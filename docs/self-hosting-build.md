@@ -1,9 +1,79 @@
 # Chibi build tooling and self-hosting
 
-The recording proof and private real-process host use existing Chibi syntax on
-bytecode and SLJIT. Neither changes the game catalog or compiler grammar.
+## Current native workflow
 
-## First increment
+The default compiler and build toolchain are authored native programs.
+`tools/build.sh` verifies the pinned native seed's SHA-256 and compiles the
+native build driver. The driver compiles the graph and other authored tools
+through the verified native compiler. LLVM/LLD 22 or newer supplies optimization,
+object generation and linking. A failed native compile stops the command.
+
+```sh
+export CHIBI_LLVM_BIN=/absolute/path/to/llvm/bin
+sh tools/build.sh build --release
+sh tools/build.sh install --prefix /absolute/prefix
+```
+
+The default products are `chibi` and `chibi-asset-compiler`. The installed
+`bin/chibi` and `bin/chibi-compile` contain the same native compiler executable;
+`libexec/chibi/chibi-asset-compiler` is the native authoring compiler companion.
+Compiler, core and graph sources live in `share/chibi`. The native distribution
+omits private VM hosts and bootstrap bytecode. Its commands find resources
+relative to the executable and keep working after the prefix moves.
+
+A project's `Build.chibi` runs through the native program cache. In an engine
+checkout, `chibi build` runs the authored toolchain driver. C engine and test
+targets remain explicit graph targets with their own C toolchain requirements.
+Desktop asset compilation uses the native companion and the existing prepared
+closure format. See [native asset compilation](native-asset-compiler.md) for its
+process, quota and publication contract.
+
+Compiler self-hosting and native tool installation are separate from runtime
+execution coverage. The engine's retained runtime APIs and browser execution
+still use the VM. Native programs reject unsupported source forms with a source
+diagnostic. [The native ledger](native-llvm-ledger.md) records that coverage;
+these compiler proofs do not claim a complete runtime or browser replacement.
+
+## Native recovery and verification
+
+```sh
+sh tools/build.sh native-self-host --llvm "$CHIBI_LLVM_BIN"
+chibi build test graph-sdk-install
+```
+
+Native recovery starts from the verified native seed, builds the current
+compiler and checks its fixed point. It requires stages two and three to match,
+or, when an older seed produces a different stage two, stages three and four.
+Only an explicit `--compare-vm` requests the retained VM oracle. The bytecode
+recovery commands are compatibility checks while their remaining consumers move.
+Ordinary CI passes `--compare-vm --skip-vm-comparison`, which retains both
+driver-command and graph compile/link command parity while omitting only the
+historical VM-hosted compiler self-build. Scheduled/manual-full CI passes
+`--compare-vm` without that omission. See [CI modes](ci.md) for the full inventory.
+
+`graph-sdk-install` tests fresh-prefix publication and owned staging cleanup,
+source and inventory validation, relocation, identity errors, and real native
+build/run/test commands with `CHIBI_CORE` unset and an empty tool search path.
+The normal install overlays owned SDK paths and removes retired private hosts
+and bytecode resources. See [native product packages](native-package.md) and
+[the native build runner](native-build-runner.md) for the current layout,
+selection and cache rules.
+
+## Historical VM oracle and migration evidence
+
+The remaining sections record earlier implementations, their measured proofs,
+and explicitly retained comparison oracles. They include former SDK layouts,
+CMake commands and build-host protocols. Their commands and pending items
+describe those checkpoints. Use the current workflow above for default build,
+installation and recovery. The former first-host downloader and pin table are
+removed; their historical protocol descriptions below do not provide a recovery
+route. Native seeds own the current build entry.
+The private process harness and its `BuildWorkflow`, `BuildProcessFixture` and
+`BuildValueLifetime` sources are also retired. Their descriptions below record
+historical evidence; native OS, CLI and supervisor suites cover the surviving
+contracts described in [C test verdicts](c-test-verdicts.md).
+
+### Recording proof
 
 `test/language/BuildWorkflow.chibi` is an ordinary package whose `Build`
 function constructs argv arrays, requests configuration, stops on failure and
@@ -31,12 +101,13 @@ The exact standalone language target was built separately. Broader native,
 materials, projects, language and tooling groups were not run for this proof;
 unexecuted checks are not passed.
 
-## Private process host
+### Private VM process host
 
-The native build produces `chibi-build-host` on Linux and macOS. The SDK installs
-the private executable in `libexec/chibi`; its capabilities stay out of ordinary
-game catalogs and public SDK library exports. Windows retains the
-existing stage-zero path; its equivalent process-tree implementation is pending.
+This milestone produced `chibi-build-host` on Linux and macOS. The SDK then
+installed the private executable in `libexec/chibi`; its capabilities stayed out
+of ordinary game catalogs and public SDK library exports. Windows still used
+the stage-zero path at this checkpoint. Native Windows process operations are
+now implemented; see the current native build runner and its Windows checks.
 
 ```text
 chibi-build-host --root DIR --source FILE [--core DIR] [--collection NAME=DIR]... [--compiler DIR] [--compiler-core DIR] --entry NAME --timeout-ms N [-- ARGUMENTS...]
@@ -130,7 +201,7 @@ against a disposable worker named `cmake`, testing sequence and failure behavior
 without configuring or building the engine. Those original process fixtures are
 separate from the compiler bootstrap and build-program compilation checks.
 
-## Build-program compiler
+### VM build-program compiler
 
 The host compiles the build program with an owned Chibi compiler generation.
 It collects source bytes and target facts, invokes the authored package compiler,
@@ -250,7 +321,7 @@ and CPU play traces through frame 30. It also checks that resource-only assembly
 refuses a behavior source while preserving prior output, and that malformed or
 empty module closures cannot produce an artifact.
 
-## Installed build program
+### CMake and installed build-host programs
 
 `tools/toolchain/Build.chibi` owns native profile selection, compiler and SDK
 precedence, CMake arguments, configuration-cache decisions, process sequencing
@@ -282,20 +353,22 @@ on`, which writes every target's compile commands; it links the root
 `compile_commands.json` to them, as CMake did, for clangd. `LOCAL_CMAKE_FLAGS`
 no longer apply there; the graph finds the profile's toolchain on the
 machine. Without a current host, the driver (`tools/toolchain/Driver.chibi`, run as `chibi build` or
-`tools/build.sh`) fetches the pinned first one with `tools/bootstrap.sh` and the graph builds its own. The SDK, web and Studio builds
+`tools/build.sh`) fetched the first host through the now-removed downloader,
+and the graph built its own. The SDK, web and Studio builds
 still use CMake as below, so a source, define or library CMake gains
 belongs in `tools/graph/engine/Targets.chibi` too.
 
-### Linux native graph
+#### Linux native graph
 
 Linux uses the same default graph for native products and the full
-tooling/language test drivers. `chibi build` builds the Release `chibi-build-host` and `chibi-compiler-host` in `build-release` first and generates the asset compiler with them, because Debug hosts exceed the compiler deadline from a cold tree; `--asset-generator-hosts DIR` names other hosts. For a fast Debug O1 build with Release generators:
+tooling/language test drivers. The native compiler builds the asset compiler
+companion.
+For a Debug O1 build of the C tooling and language drivers:
 
 ```sh
-chibi build --release --target chibi --target chibi-build-host --target chibi-compiler-host
+chibi build --release --target chibi --target chibi-asset-compiler
 chibi build --debug --debug-optimization 1 \
-  --debug-frame-pointers on --host "$PWD/build-release/sdk/chibi-build-host" \
-  --asset-generator-hosts build-release/sdk \
+  --debug-frame-pointers on \
   --target chibi --target chibi-compile --target test_tools --target test_language
 ```
 
@@ -315,15 +388,15 @@ runs; actual compile/link records, assertions and sanitizer symbols are checked
 before the unchanged test groups. Release planning/generation helpers do not
 replace the selected-profile products or test drivers.
 
-The separate `ci-linux-graph` (fast) and `ci-linux-graph-sanitizers` labels request
-full parity, generated/resource, group and compiler-tools relocation proof for
-that exact same-repository PR head. Manual dispatch selects the same profiles.
-These checks are opt-in, not a second full suite on every push.
+The single CI workflow's manual `mode=graph` selects the distinct isolated
+Graph harness, generated/resource, group and compiler-tools relocation proof.
+`sanitizers=true` explicitly selects ASan+UBSan. The former Graph labels are
+retired; this proof is not a second full suite on every push. See [CI modes](ci.md).
 
 The CMake build that supplied the `build-cmake` parity tree (the Makefile's
 `graph-reference` target) and the retained CMake native route were removed in
-ef553b24b, and the Makefile was retired in e4aa7b4e2. The driver fetches the
-pinned first host with `tools/bootstrap.sh`.
+ef553b24b, and the Makefile was retired in e4aa7b4e2. The current driver uses
+the verified native seed; the first-host downloader and pin table have been removed.
 
 The graph parses compiler dependency files in Chibi, reading their bytes once
 and treating line continuations as spaces. It unescapes only paths that need
@@ -353,7 +426,7 @@ results. Older hosts take first-host recovery before a warm full graph can
 exhaust their retained helper storage while trying to rebuild them.
 `--protocol-version` reports the version without loading compiler inputs or
 starting a build. A cold build or an older host
-fetches the pinned host with `tools/bootstrap.sh` (the driver's bootstrap step). `BUILD_HOST` and
+previously fetched the pinned host through the now-removed downloader. `BUILD_HOST` and
 `BUILD_PROGRAM` can select a relocated installation. The explicit recovery
 target remains available if the authored driver cannot run.
 
@@ -397,7 +470,7 @@ reject truncation and embedded NUL bytes, so authored protocol parsing cannot
 accept a partial result. Returned values keep their ordinary language lifetimes
 in VM storage; parent cwd and environment are never mutated.
 
-### Build-host file primitives
+#### Build-host file primitives
 
 The remaining configuration and packaging Python reads file metadata, walks
 trees, copies, renames, removes and hashes. Zig's `std.fs.Dir`, Rust's
@@ -439,7 +512,7 @@ build graph raised it from 100,000 because it parses a dependency file per
 object. `chibi_build_options.instruction_budget` sets a smaller one. The
 deadline still bounds the time.
 
-## Build graph (M6)
+### Build graph (M6)
 
 The build graph replaces CMake's internal build graph one target at a time.
 Its library is the `graph:` collection in `tools/graph`, and
@@ -627,9 +700,12 @@ configures them: the launcher's `BUILD/share/chibi`, which `chibi version`
 and `chibi test` read as installed ones do. Its `engine.json` is the build
 identity the graph writes to `BUILD/sdk/chibi_engine_metadata.json` as
 `sdk/artifact_formats.cmake` does: the SDK version from
-`sdk/VERSION`, the project version from `src/assets/project.h`, the
-platform, processors and backends, and each of `ArtifactFormats`' versions
-with the SHA-256 of the sources and headers that own it. A target's
+`sdk/VERSION` and the project compatibility version from `sdk/PROJECT_VERSION`,
+the platform, processors and backends. Native distributions identify the
+compile-only execution format with the version and source digest of
+`tools/compiler/prepared_writer/Writer.chibi`; they require no C VM decoder or
+retired event catalog. Explicit VM reference builds retain `ArtifactFormats`'
+C codec records, using the same SDK project compatibility version. A target's
 `SourceLists` (`OUTPUT=ROOT`) are written then too: every `.chibi` file below
 ROOT by absolute path, byte-sorted, as
 `test/language/CMakeLists.txt` writes the language corpus `test_language`
@@ -662,7 +738,7 @@ interpreter: with 218 commands it took 7 s, and then 2.4 s.
 
 Windows keeps CMake: the build host has no Windows process support yet.
 
-## Bootstrap and backend milestones
+### Bootstrap and backend milestones
 
 1. Keep the current C compiler as a documented stage-0 recovery path.
 2. Port a narrow, independently testable compiler component to ordinary Chibi,
@@ -682,7 +758,7 @@ Windows keeps CMake: the build host has no Windows process support yet.
    was C runtime value copies and per-call resets that an LLVM backend would
    still call.
 
-## Testing and library replacement
+### Testing and library replacement
 
 Make tests easy to keep near code, with useful assertions, deterministic ECS
 fixtures, seeded replay and explicit allocation/work budgets. Keep one semantic
@@ -693,7 +769,7 @@ Replace libraries selectively when Chibi improves ownership, observability or
 maintenance and passes equivalent correctness/performance tests. OS, graphics,
 codec and security boundaries may continue to depend on external libraries.
 
-## Reference limits
+### Reference limits
 
 The official Odin FAQ describes its current C++ compiler and LLVM backend; it
 explicitly postpones self-hosting. This separates implementation language from
@@ -714,7 +790,7 @@ orchestration can therefore advance separately from compiler self-hosting.
 This proof copies no Jacket code; its compiler/tool licensing needs separate
 review before any reuse.
 
-## Private compiler binary handoff
+### Private compiler binary handoff
 
 The contracts below describe the private compiler transport. They do not
 establish self-hosting completion.
@@ -798,7 +874,7 @@ proof below. Build programs use the compiler-generation path described above;
 public game input export and artifact assembly retain their C catalog path until
 the remaining declaration and native-binding contracts move.
 
-## Bootstrap artifact
+### Bootstrap artifact
 
 The recovery artifact of the stage-one package compiler is checked in at
 `tools/compiler/bootstrap`, as Zig checks in `stage1/zig1.wasm`. It is a seed,
@@ -896,16 +972,22 @@ and the manifest pins the closure's SHA-256, so a damaged closure is refused
 before it loads. Its target is the value layout and prepared ABI rather than an
 operating system, so one artifact serves every host with that ABI.
 
-### Native compiler seed
+#### Native compiler seed
 
 The native compiler is native stage two of `chibi build native-self-host`,
 which the verb checks is byte-identical to the stage three it compiles. The
-Native compiler seed workflow (`native-seed.yml`, dispatched by hand) builds it
-on Linux x64 and macOS arm64 and, with `publish`, releases it as
-`chibi-native-PLATFORM` under the tag `native-seed-COMMIT` and prints the pins.
+[manual native-seed preparation procedure](ci-maintenance.md) builds it on Linux
+x64 and macOS arm64. Explicit publication uses `chibi-native-PLATFORM` under the
+immutable tag `native-seed-COMMIT`; preparation does not publish by itself.
 `tools/bootstrap/native-seed.tsv` records them (platform, tag, asset, SHA-256),
 and `tools/bootstrap/native-seed.sh PLATFORM OUTPUT` fetches and checks one.
-Once a platform is pinned, that workflow and the Native self-host workflow pass
+Windows uses `tools/bootstrap/native-seed.ps1` and the thin `tools/build.ps1`
+checkout entry. Its proposed seed comes from the exact source's successful
+Windows CI fixed-point/runtime artifact, with verified archive and compiler
+hashes and a restored compiler/core source archive. The manual procedure above
+does not publish it or add a Windows pin; an unpinned default fails until that
+separately approved release is available.
+Once a platform is pinned, seed preparation and the canonical CI native phase pass
 it as `--stage-one`, so recovery starts from the native seed: it compiles the
 current sources to stage two, and stage two compiles them to stage three. A
 seed older than the sources gives a stage two built by the older compiler, so
@@ -913,10 +995,10 @@ when the two differ, stage three compiles stage four and those two must be
 byte-identical; the verb prints which stage is the fixed point. The bytecode seed above stays only until the VM is
 deleted.
 
-### Three-platform compiler recovery proof
+#### Three-platform compiler recovery proof
 
-The `Compiler self-build` workflow in `.github/workflows/compiler-recovery.yml`
-runs on every pull request into `main`, push to `main` and manual dispatch.
+The `Compiler self-build` jobs in the single `.github/workflows/ci.yml` run in
+scheduled/manual `full` validation, not on ordinary PRs or every main push.
 Its macOS 15, Ubuntu 24.04 and Windows 2022 jobs download an existing runtime
 binary from the release pinned in `tools/compiler/runtime.json`. The manifest
 records each binary's filename, byte length and SHA-256, plus the source
@@ -964,18 +1046,14 @@ across all three platforms. Every job is nonadvisory; skipped or failed
 platform proofs cannot satisfy the comparison job. Environment and input
 isolation do not restrict the runner's filesystem.
 
-`.github/workflows/compiler-runtime-seed.yml` is the separate manual recovery
-route for preparing replacement runtime binaries. It uses the source-only SDK
-mode (`CHIBI_SDK_COMPILER_HOST_ONLY=ON`), a C compiler and CMake, and retains
-the recovery proof and provenance with each binary. Dispatched with `publish`
-(the `ci-seed` PR label does this), it also publishes a commit-specific
-prerelease and, on a branch other than `main`, commits the new pin to it. The
-release holds the three seeds, `runtime.json`, `SHA256SUMS`, each platform's
-recovery evidence and native imports, the commit's `git archive`, the pinned
-SLJIT and Tree-sitter sources, and the notices. Review the pin commit with the
-change that needed it. Routine compiler self-builds continue to consume the
-pinned release. The initial runtime seeds
-were produced by the predecessor recovery workflow at the recorded revision.
+The [manual runtime-seed procedure](ci-maintenance.md) prepares replacement
+runtime binaries with the explicit `build --release --target chibi-compiler-host` command
+and retains isolated recovery/provenance evidence. It is a C-built dependency,
+not a Chibi-only bootstrap. Publication and pin updates are explicit maintenance
+actions, never a side effect of a label or ordinary validation. Runtime manifests,
+checksums, source archives, third-party sources and notices remain required.
+Review any pin commit with the change that needs it; routine full recovery
+continues to consume the pinned release.
 
 Rewrite the seed only when it can no longer compile the sources on disk or no
 longer loads on the pinned runtime, and then in a PR of its own or in the one
@@ -1017,10 +1095,10 @@ narrow bindings. Current native tools remain construction/recovery inputs during
 migration. Final acceptance also requires the installed clean-checkout proof to
 execute stage one and stage two and build/link a checked game.
 
-## Compiler tools from graph outputs
+### First graph compiler-tools distribution
 
-`tools/toolchain/SDK.chibi` owns the first part of graph SDK installation. It
-packages the graph-built private build and compiler hosts into a fresh prefix,
+At this checkpoint, `tools/toolchain/SDK.chibi` packaged the graph-built private
+build and compiler hosts into a fresh prefix,
 with the complete compiler/bootstrap/core resources, Build/Graph/SDK/StageOne programs,
 graph packages, the configure signature helper and dependency notices. It
 preserves bootstrap manifests and artifacts byte for byte. Public SDK libraries,

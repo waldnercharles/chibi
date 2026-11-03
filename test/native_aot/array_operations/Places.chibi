@@ -1,0 +1,62 @@
+package array_operation_places
+
+Box :: struct { values: int[]; marker: int; }
+Reset :: (values: ^(int[])) -> int { values^ = [9]; return 7; }
+ResetIndex :: (values: ^(int[])) -> int { values^ = [9]; return 0; }
+ResetArray :: (values: ^(int[])) -> int[] { values^ = [9]; return [int(7), 8]; }
+Alias :: (read: ^(int[]), changed: ^(int[])) { read.insert(0, Reset(changed)); }
+ResetBox :: (value: ^Box) -> int { value^ = {values: [int(9)], marker: 9}; return 0; }
+Number :: (order: ^int, digit: int, value: int) -> int { order^ = order^ * 10 + digit; return value; }
+Array :: (order: ^int) -> int[] { order^ = order^ * 10 + 2; return [int(4), 5]; }
+Main :: () -> int {
+    values: int[] = [1, 2];
+    values.append(Reset(&values));
+    assert(length(values) == 2 && values[0] == 9 && values[1] == 7);
+    values = [1, 2];
+    values.insert(0, Reset(&values));
+    assert(length(values) == 2 && values[0] == 7 && values[1] == 9);
+    values = [1, 2];
+    values.insert(ResetIndex(&values), 5);
+    assert(length(values) == 2 && values[0] == 5 && values[1] == 9);
+    values = [1, 2];
+    values.extend(ResetArray(&values));
+    assert(length(values) == 3 && values[0] == 9 && values[1] == 7 && values[2] == 8);
+    values = [1, 2];
+    values.remove_index(ResetIndex(&values));
+    assert(length(values) == 0);
+    values = [1, 2];
+    values.resize(ResetIndex(&values));
+    assert(length(values) == 0);
+    values = [1, 2];
+    Alias(&values, &values);
+    assert(length(values) == 2 && values[0] == 7 && values[1] == 9);
+    values = [1, 2];
+    inserted := insert(values, 0, Reset(&values));
+    assert(length(inserted) == 3 && inserted[0] == 7 && inserted[1] == 1 && inserted[2] == 2);
+    assert(length(values) == 1 && values[0] == 9);
+    values = [1, 2];
+    named := insert(Item: Reset(&values), Array: values, Index: 0);
+    assert(length(named) == 2 && named[0] == 7 && named[1] == 9 && values[0] == 9);
+    values = [1, 2];
+    values.set_array_elem(0, Reset(&values));
+    assert(length(values) == 1 && values[0] == 7);
+    values = [1, 2];
+    values.set_array_elem(1, Reset(&values));
+    assert(length(values) == 1 && values[0] == 9);
+    values = [1, 2];
+    replaced := set_array_elem(values, 0, Reset(&values));
+    assert(length(replaced) == 2 && replaced[0] == 7 && replaced[1] == 2 && values[0] == 9);
+    values = [1, 2];
+    late_replaced := set_array_elem(Item: Reset(&values), Array: values, Index: 0);
+    assert(length(late_replaced) == 1 && late_replaced[0] == 7 && values[0] == 9);
+    order := 0;
+    ordered := insert(Item: Number(&order, 3, 7), Array: Array(&order), Index: Number(&order, 1, 0));
+    assert(order == 321 && length(ordered) == 3 && ordered[0] == 7 && ordered[1] == 4);
+    box: Box = {values: [int(1), 2], marker: 1};
+    box.values.insert(ResetBox(&box), 5);
+    box.values.reverse();
+    assert(length(box.values) == 2 && box.values[0] == 9 && box.values[1] == 5 && box.marker == 9);
+    box.values.set_array_elem(ResetBox(&box), 5);
+    assert(length(box.values) == 1 && box.values[0] == 5 && box.marker == 9);
+    return 0;
+}

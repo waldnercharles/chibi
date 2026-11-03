@@ -37,11 +37,11 @@ RecordLayout :: () -> string { return "native records differ from their field ta
 ChangedRecord :: (index: int, item: native.Instruction, message: string) {
     code := RecordCode();
     code[index] = item;
-    Rejects(RecordModule(code, [{first: 0, count: 2}], [6, 10]), message);
+    Rejects(RecordModule(code, [{first: 0, count: 2, identity: 0}], [6, 10]), message);
 }
 @test
 RecordsKeepFieldsAndInternalValueCalls :: () {
-    text := Emitted(RecordModule(RecordCode(), [{first: 0, count: 2}], [6, 10]));
+    text := Emitted(RecordModule(RecordCode(), [{first: 0, count: 2, identity: 0}], [6, 10]));
     assert(strings.Contains(text, "%record0 = type { i32, float }\n"));
     assert(strings.Contains(text, "store %record0 zeroinitializer, ptr %s0"));
     assert(strings.Contains(text, "%v3 = insertvalue %record0 %a3, i32 %b3, 0"));
@@ -92,31 +92,45 @@ ExportedRecordSignatureIsRejected :: () {
     source: native.Source = {file: "", directory: ""};
     result := native.Emit(abi.LinuxX64(), [Function(32, 1, 0, 1, 0, 4, 0, 0)],
                           [32], [32], empty, [code[10], code[11], code[12], code[13]], empty,
-                          [{first: 0, count: 2}], [6, 10], texts, source, texts, empty, empty, false, 1);
+                          [{first: 0, count: 2, identity: 0}], [6, 10], texts, source, texts, empty, empty, false, 1);
     Rejects(result, "unsupported native scalar signature or table size");
 }
 @test
 RecordFieldsCannotOverrunTable :: () {
-    Rejects(RecordModule(RecordCode(), [{first: 0, count: 3}], [6, 10]), RecordLayout());
+    Rejects(RecordModule(RecordCode(), [{first: 0, count: 3, identity: 0}], [6, 10]), RecordLayout());
 }
 @test
 RecordCannotHoldItself :: () {
-    Rejects(RecordModule(RecordCode(), [{first: 0, count: 2}], [6, 32]), RecordLayout());
+    Rejects(RecordModule(RecordCode(), [{first: 0, count: 2, identity: 0}], [6, 32]), RecordLayout());
 }
 @test
 RecordsCannotHoldEachOther :: () {
-    Rejects(RecordModule(RecordCode(), [{first: 0, count: 2}, {first: 2, count: 1}], [6, 33, 32]), RecordLayout());
+    Rejects(RecordModule(RecordCode(), [{first: 0, count: 2, identity: 0}, {first: 2, count: 1, identity: 0}], [6, 33, 32]), RecordLayout());
 }
 // A record holds another by value, and an array and a string beside it.
 @test
 RecordsNestRecordsArraysAndStrings :: () {
-    text := Emitted(RecordModule(RecordCode(), [{first: 0, count: 2}, {first: 2, count: 3}], [6, 10, 32, 1030, 13]));
-    assert(strings.Contains(text, "%record1 = type { %record0, { i32, i32, ptr }, { ptr, i32, ptr } }\n"));
+    text := Emitted(RecordModule(RecordCode(), [{first: 0, count: 2, identity: 0}, {first: 2, count: 3, identity: 0}], [6, 10, 32, 1030, 13]));
+    assert(strings.Contains(text, "%record1 = type { %record0, { i32, i32, ptr, ptr }, { ptr, i32, ptr } }\n"));
 }
 @test
 WrappedRecordFieldCountsAreRejected :: () {
     // The sum wraps to the field table's length, but none of these ranges fits.
-    Rejects(RecordModule(RecordCode(), [{first: 0, count: 2147483647},
-                                        {first: 2147483647, count: 2147483647},
-                                        {first: -2, count: 4}], [6, 10]), RecordLayout());
+    Rejects(RecordModule(RecordCode(), [{first: 0, count: 2147483647, identity: 0},
+                                        {first: 2147483647, count: 2147483647, identity: 0},
+                                        {first: -2, count: 4, identity: 0}], [6, 10]), RecordLayout());
+}
+
+@test
+SharedInlineRecordGraphKeepsFiniteLayout :: () {
+    records: native.Record[] = [{first: 0, count: 2, identity: 0}];
+    fields := [abi.IntStorage, abi.FloatStorage];
+    // Thirty shared layers have 31 nodes and 62 fields. Traversing every
+    // root-to-leaf path would revisit the same child over two billion times.
+    for (layer in 0..<30) {
+        records.append({first: length(fields), count: 2, identity: 0});
+        fields.extend([native.RecordType + layer, native.RecordType + layer]);
+    }
+    text := Emitted(RecordModule(RecordCode(), records, fields));
+    assert(strings.Contains(text, "%record30 = type { %record29, %record29 }"));
 }

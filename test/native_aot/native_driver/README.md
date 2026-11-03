@@ -1,0 +1,86 @@
+# Native driver options
+
+Run the actual native compiler driver against real LLVM on Linux x86-64:
+
+```
+sh test/native_aot/native_driver/run.sh /absolute/path/to/chibi /absolute/path/to/llvm/bin
+```
+
+The driver must be built from this checkout. The script checks O0/O2 execution,
+Linux dynamic-default and explicit-static linkage, libc calls and allocation,
+macOS/Windows cross-link formats (not execution), DWARF line tables,
+a relative archive and a relocated SDK's `vendor:` archive,
+and shared libraries loaded and called by a native Chibi program. Rejected
+options and missing archives must preserve existing output and write no
+intermediate files. Compiler invocations and compiled programs run with an
+empty `PATH`; the fixture archive is built with LLVM, not a C compiler.
+
+Shared libraries currently use the existing single-source library producer;
+package imports and `--entry` are not supported for that mode. This is focused
+driver coverage, not a whole-language, sanitizer, or self-host fixed-point proof.
+
+The native driver also accepts `--root FILE_OR_DIRECTORY` in place of
+`--source`/`--package` and `--output`. A directory uses `Main.chibi` first and
+includes its package siblings. A file compiles only that source and its import
+closure. Outputs go below the root directory's `build/native/OLEVEL-KEY/` and
+include `program`, `source.ll` and `receipt.txt`.
+
+The cache identifies source contents, compiler and LLVM binaries, target,
+options and foreign archives. A verified hit runs no LLVM process. Incomplete
+receipts, changed programs and interrupted `.work`/`.partial` directories fail
+with a recovery diagnostic. A failed build preserves every published output.
+
+Run the real root/cache checks on Linux x86-64 or macOS arm64:
+
+```
+sh test/native_aot/native_driver/cache.sh /absolute/path/to/chibi /absolute/path/to/llvm/bin
+```
+
+Cached root builds reject thin archives because their object members live outside
+`.a` files. Use a regular archive, or compile directly with `--source` and
+`--output`. The cache regression requires LLVM's `llvm-ar` in the tools folder;
+an optional third argument supplies its path when it is installed elsewhere.
+
+The native driver and bootstrap entry require LLVM/LLD 22 or newer for `opt`,
+`llc` and the target linker. New outputs query each version before compiling;
+verified cache hits trust the recorded tool bytes and run no version processes.
+`chibi doctor` reports an older or unrecognized installation as broken.
+
+```
+sh test/native_aot/native_driver/minimum.sh /absolute/path/to/chibi /absolute/path/to/llvm/bin
+```
+
+The native `format_text` scalar contract is exercised through real O0/O2
+executables, including indexed and mixed placeholders, escaped braces,
+invalid-modifier fallbacks, NUL bytes, integer storage widths, float defaults
+and bounded numeric conversions:
+
+```
+sh test/native_aot/text_format/run.sh /absolute/path/to/chibi /absolute/path/to/llvm/bin
+```
+
+Windows numeric rendering uses UCRT's `__stdio_common_vsprintf`, the function
+behind the SDK's inline `vsnprintf`, with standard snprintf and rounding options.
+The [SDK declaration and wrapper](https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/ucrt/stdio.h)
+and [option constants](https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/ucrt/corecrt_stdio_config.h)
+define that boundary. The Win64 argument list points at one 8-byte scalar word.
+
+
+The former build-host `tools/native_aot` driver and its JSON compiler/emitter
+adapter are retired. Their surviving contracts are exercised by the native
+compiler and link owners:
+
+| Contract | Native coverage |
+| --- | --- |
+| Tool paths, spaces, missing tools, target/link arguments | `native_build/BuildTests.chibi`, `native_link/tests`, `native_driver/run.sh` |
+| O0/O2 object verification and execution without a C compiler | `native_driver/run.sh`, `link/Objects.chibi`, `link/Smoke.chibi` |
+| Source/import/archive identity and unchanged reuse | `native_driver/cache.sh` |
+| Source and opt/llc/linker mutation during a build | `native_driver/cache.sh` |
+| Corrupt/stale entries, exclusive publication, prior output preservation | `native_driver/cache.sh`, `native_build/BuildTests.chibi` |
+| Shared libraries, reloads and retained state | `native_driver/run.sh`, `generations/run.sh`, `native_cli/watch.sh` |
+
+The old raw-IR target/layout scanner, bounded VM arrays, compiler-host JSON calls
+and private `Build`/`Object` wrapper argv were implementation contracts of that
+adapter. Source-native builds select an explicit target, and LLVM verifies its
+module. Direct object/link consumers use `native_link_host`; production builds
+never prepare a bytecode emitter or invoke a compiler host.

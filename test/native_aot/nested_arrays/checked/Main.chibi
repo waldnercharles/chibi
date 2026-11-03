@@ -1,0 +1,50 @@
+package checked_nested_places
+import testing "core:testing"
+
+Right :: () -> int { assert(false, "RHS evaluated"); return 7; }
+Clear :: (rows: ^(int[][])) -> int { empty: int[][] = []; rows^ = empty; return 7; }
+EmptyChild :: (rows: ^(int[][])) -> int { empty: int[][] = [[]]; rows^ = empty; return 7; }
+@test
+BeforeRhs :: () {
+    rows: int[][] = [[1]];
+    testing.ExpectFailure(testing.Failure.AssertionFailed);
+    rows[1][0] = Right();
+}
+@test
+BeforeInnerRhs :: () {
+    rows: int[][] = [[1]];
+    testing.ExpectFailure(testing.Failure.AssertionFailed);
+    rows[0][2] = Right();
+}
+@test
+CompoundBeforeRhs :: () {
+    rows: int[][] = [[1]];
+    testing.ExpectFailure(testing.Failure.AssertionFailed);
+    rows[0][2] += Right();
+}
+@test
+MethodArgumentsFirst :: () {
+    rows: int[][] = [[1]];
+    testing.ExpectFailure(testing.Failure.AssertionFailed);
+    rows[1].append(Right());
+}
+@test
+MethodMissing :: () { rows: int[][] = [[1]]; rows[1].append(7); }
+@test
+MethodWrongCategory :: () {
+    rows: int[][] = [[1]];
+    testing.ExpectFailure(testing.Failure.IndexOutOfRange);
+    rows[1].append(7);
+}
+@test
+LateBracket :: () { rows: int[][] = [[1]]; rows[0][0] = Clear(&rows); }
+@test
+LateInnerBracket :: () { rows: int[][] = [[1]]; rows[0][0] = EmptyChild(&rows); }
+@test
+LateMethod :: () { rows: int[][] = [[1]]; rows[0].append(Clear(&rows)); }
+@test
+ExpressionBounds :: () {
+    rows: int[][] = [[1]];
+    testing.ExpectFailure(testing.Failure.IndexOutOfRange);
+    ignored := rows[1][0];
+}

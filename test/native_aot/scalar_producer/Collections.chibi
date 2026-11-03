@@ -1,0 +1,78 @@
+package native_driver
+
+CollectionRows :: (source: string, natives: compiler.Native[], ports: compiler.Port[]) -> facts.Row[] {
+    return compiler.CollectScalar("/project", "Main.chibi", strings.Concatenate(["package collections\n", source]), TargetFacts(), Names(), natives, ports, Identities());
+}
+CollectionProjection :: () {
+    source := "Main::()->int{a:int[][]=make_array([int(1)]);return length(a);}";
+    rows := CollectionRows(source, Natives(), Ports());
+    if (rows[1].kind == facts.RejectionRow) { os.Print(rows[1].text); }
+    assert(rows[1].kind == facts.DocumentRow && scalar.Validate(rows) == "");
+    collections := 0;
+    scalar_leaf := false;
+    for (index in 0..<length(rows)) {
+        if (rows[index].kind == facts.RecordRow) {
+            // Unused optional-array declarations must never become wrappers.
+            assert(strings.HasPrefix(rows[index].name, "__collection_") && rows[index].count == 1);
+            member := rows[index + 1];
+            assert(member.kind == facts.MemberRow && member.type >= facts.ArrayType && member.type < facts.MapType);
+            scalar_leaf = scalar_leaf || member.type == facts.ArrayType + facts.IntType;
+            for (earlier in 0..<index) {
+                if (rows[earlier].kind == facts.RecordRow) { assert(rows[earlier].name != rows[index].name); }
+            }
+            collections += 1;
+        }
+    }
+    assert(collections > 0 && scalar_leaf);
+    natives := Natives();
+    ports := Ports();
+    for (index in 0..<length(natives)) {
+        if (natives[index].name == "make_array") {
+            native := natives[index];
+            native.variadic = false;
+            natives[index] = native;
+            argument := ports[native.first];
+            argument.storage = 11;
+            ports[native.first] = argument;
+            result := ports[native.first + 1];
+            result.storage = 13;
+            result.container = 0;
+            ports[native.first + 1] = result;
+        }
+    }
+    rejected := CollectionRows("Main::()->int{x:=make_array(f64(2));return 0;}", natives, ports);
+    assert(rejected[1].kind == facts.RejectionRow);
+    unused := CollectionRows("Main::()->int{return 0;}", natives, ports);
+    assert(unused[1].kind == facts.DocumentRow && scalar.Validate(unused) == "");
+    shadow := CollectionRows("Main::()->int{return make_array(f64(2));}make_array::(value:f64)->int{return int(value);}", natives, ports);
+    assert(shadow[1].kind == facts.DocumentRow && scalar.Validate(shadow) == "");
+    reversed := Produced("package scalar\nMain::()->int{xs:int[]=[1,2];total:=0;for < value,index in xs{total+=value+index;}return total;}\n");
+    ValidateRows(reversed, "");
+    loops := 0;
+    for (row, index in reversed) {
+        if (row.kind != facts.ForRow) { continue; }
+        assert(row.literal == i64(facts.RangeArray + facts.RangeKeyed + facts.RangeReverse));
+        RejectChanged(reversed, [Changed(index, LiteralField, i64(facts.RangeArray + facts.RangeExclusive))], "invalid scalar local row");
+        RejectChanged(reversed, [Changed(index, LiteralField, i64(facts.RangeArray + facts.RangeReverse + facts.RangeExclusive))], "invalid scalar local row");
+        RejectChanged(reversed, [Changed(index, LiteralField, i64(facts.RangeArray + facts.RangeKeyed + facts.RangeExclusive))], "invalid scalar local row");
+        RejectChanged(reversed, [Changed(index, LiteralField, i64(facts.RangeArray + facts.RangeKeyed + facts.RangeReverse + facts.RangeExclusive))], "invalid scalar local row");
+        RejectChanged(reversed, [Changed(index, ValueField, i64(row.value + 1))], "invalid scalar local row");
+        RejectChanged(reversed, [Changed(index, TypeField, i64(facts.BoolType))], "scalar range differs from its int bounds");
+        loops += 1;
+    }
+    assert(loops == 1);
+    nested := Produced("package scalar\nMain::()->int{xs:int[][]=[[1]];xs[0].append(2);return xs[0][1];}\n");
+    ValidateRows(nested, "");
+    places := 0;
+    for (row, index in nested) {
+        if (row.kind != facts.ArrayRow || row.literal != i64(facts.NestedArrayPlace)) { continue; }
+        assert(row.value == facts.ArrayPush && row.count == 3);
+        RejectChanged(nested, [Changed(index, CountField, 2)], "scalar array operation differs from its operands");
+        RejectChanged(nested, [Changed(index, TypeField, i64(facts.ArrayType + facts.IntType))], "scalar array operation differs from its operands");
+        RejectChanged(nested, [Changed(index - 2, KindField, i64(facts.LiteralRow)),
+            Changed(index - 2, TypeField, i64(facts.BoolType)), Changed(index - 2, ValueField, 0)],
+            "scalar array operation differs from its operands");
+        places += 1;
+    }
+    assert(places == 1);
+}

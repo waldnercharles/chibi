@@ -1,0 +1,88 @@
+package asset_native_runtime
+
+import os "core:os"
+import strings "core:strings"
+import link "project:native_link"
+import io "graph:asset_io_runtime"
+
+// The runtime retains no process arguments or mutable environment snapshot.
+// A C consumer can call concurrently before any Chibi executable initializer.
+Environment :: (triple: string) -> string {
+    if ((strings.HasPrefix(triple, "aarch64-apple-") || strings.HasPrefix(triple, "arm64-apple-"))) {
+        return "declare ptr @_NSGetEnviron()\ndefine ptr @chibi_environment() {\n  %address = call ptr @_NSGetEnviron()\n  %environment = load ptr, ptr %address\n  ret ptr %environment\n}\n";
+    }
+    if (strings.HasPrefix(triple, "x86_64-unknown-linux")) {
+        return "@environ = external global ptr\ndefine ptr @chibi_environment() {\n  %environment = load ptr, ptr @environ\n  ret ptr %environment\n}\n";
+    }
+    return "";
+}
+
+Executable :: (triple: string) -> string {
+    if (strings.HasPrefix(triple, "x86_64-pc-windows")) {
+        return strings.Concatenate([
+            "declare dllimport i32 @GetModuleFileNameW(ptr, ptr, i32)\ndeclare dllimport i32 @WideCharToMultiByte(i32, i32, ptr, i32, ptr, i32, ptr, ptr)\n",
+            "define i32 @chibi_asset_executable_copy(ptr %buffer, i32 %capacity) {\nentry:\n  %wide = alloca [4096 x i16], align 2\n",
+            "  %count = call i32 @GetModuleFileNameW(ptr null, ptr %wide, i32 4096)\n  %positive = icmp ne i32 %count, 0\n  %fits = icmp ult i32 %count, 4096\n  %valid = and i1 %positive, %fits\n  br i1 %valid, label %copy, label %failure\n",
+            "copy:\n  %size = call i32 @WideCharToMultiByte(i32 65001, i32 128, ptr %wide, i32 %count, ptr %buffer, i32 %capacity, ptr null, ptr null)\n  %converted = icmp sgt i32 %size, 0\n  %result = select i1 %converted, i32 %size, i32 -1\n  ret i32 %result\nfailure:\n  ret i32 -1\n}\n"
+        ]);
+    }
+    if ((strings.HasPrefix(triple, "aarch64-apple-") || strings.HasPrefix(triple, "arm64-apple-"))) {
+        return strings.Concatenate([
+            "declare i32 @_NSGetExecutablePath(ptr, ptr)\n",
+            "define i32 @chibi_asset_executable_copy(ptr %buffer, i32 %capacity) {\n  %size = alloca i32, align 4\n  store i32 %capacity, ptr %size\n  %status = call i32 @_NSGetExecutablePath(ptr %buffer, ptr %size)\n  %valid = icmp eq i32 %status, 0\n  br i1 %valid, label %length, label %failure\nlength:\n  %bound = zext i32 %capacity to i64\n  %wide = call i64 @strnlen(ptr %buffer, i64 %bound)\n  %count = trunc i64 %wide to i32\n  ret i32 %count\nfailure:\n  ret i32 -1\n}\n"
+        ]);
+    }
+    return strings.Concatenate([
+        "@chibi_asset_executable_path = private constant [15 x i8] c\"/proc/self/exe\\00\"\ndeclare i64 @readlink(ptr, ptr, i64)\n",
+        "define i32 @chibi_asset_executable_copy(ptr %buffer, i32 %capacity) {\n  %bound = zext i32 %capacity to i64\n  %wide = call i64 @readlink(ptr @chibi_asset_executable_path, ptr %buffer, i64 %bound)\n  %count = trunc i64 %wide to i32\n  ret i32 %count\n}\n"
+    ]);
+}
+
+Clock :: (triple: string) -> string {
+    if (strings.HasPrefix(triple, "x86_64-pc-windows")) {
+        return "declare dllimport i64 @GetTickCount64()\ndefine i64 @chibi_asset_milliseconds() {\n  %stamp = call i64 @GetTickCount64()\n  ret i64 %stamp\n}\n";
+    }
+    clock := "1";
+    if ((strings.HasPrefix(triple, "aarch64-apple-") || strings.HasPrefix(triple, "arm64-apple-"))) { clock = "6"; }
+    return strings.Concatenate([
+        "declare i32 @clock_gettime(i32, ptr)\ndefine i64 @chibi_asset_milliseconds() {\n  %stamp = alloca [2 x i64], align 8\n  %status = call i32 @clock_gettime(i32 ", clock, ", ptr %stamp)\n  %valid = icmp eq i32 %status, 0\n  br i1 %valid, label %read, label %failure\nread:\n  %seconds = load i64, ptr %stamp\n  %nanos.at = getelementptr i64, ptr %stamp, i32 1\n  %nanos = load i64, ptr %nanos.at\n  %whole = mul i64 %seconds, 1000\n  %part = sdiv i64 %nanos, 1000000\n  %milliseconds = add i64 %whole, %part\n  ret i64 %milliseconds\nfailure:\n  ret i64 -1\n}\n"
+    ]);
+}
+
+// The native Windows reader acquires CRT descriptors only. Omit the POSIX
+// resource cleanup and its imports rather than advertise unsupported cache IO.
+WindowsResources :: (module: string) -> string {
+    lines: string[] = [];
+    dropping := false;
+    for (line in strings.Lines(module)) {
+        if (strings.HasPrefix(line, "define ") &&
+            (strings.Contains(line, "@chibi_asset_native_close_resources(") || strings.Contains(line, "@chibi_asset_temp_remove("))) {
+            dropping = true;
+        }
+        if (dropping) { if (line == "}") { dropping = false; } continue; }
+        if (strings.HasPrefix(line, "declare i32 @close(") || strings.HasPrefix(line, "declare i32 @closedir(") ||
+            strings.HasPrefix(line, "declare i32 @unlink(") || strings.HasPrefix(line, "declare i32 @strcmp(")) { continue; }
+        lines.append(line);
+    }
+    text := strings.Join(lines, "\n");
+    return strings.ReplaceAll(text, "%valid = or i1 %valid.fd, %valid.directory", "%valid = and i1 %ordinary.fd, %fd.fits");
+}
+
+pub Module :: (root: string, triple: string) -> string {
+    source := os.ReadText(strings.Concatenate([root, "/tools/graph/asset_native_runtime/Runtime.ll"]));
+    if (source.error != nil) { return ""; }
+    text := strings.ReplaceAll(source.text, "@TRIPLE@", triple);
+    text = strings.ReplaceAll(text, "declare void @chibi_format_text(ptr, ptr, i32, ptr)\n", "");
+    text = strings.ReplaceAll(text, "declare void @chibi_asset_publication_release()\n", "");
+    text = strings.ReplaceAll(text, "; @COUNT_ALLOCATE@", "");
+    text = strings.ReplaceAll(text, "; @COUNT_RELEASE@", "");
+    windows := strings.HasPrefix(triple, "x86_64-pc-windows");
+    text = strings.Concatenate([text, Environment(triple), Executable(triple), Clock(triple), link.RuntimeFormat(windows)]);
+    if (windows) {
+        source := os.ReadText(strings.Concatenate([root, "/tools/graph/asset_native_runtime/Windows.ll"]));
+        if (source.error != nil) { return ""; }
+        text = strings.ReplaceAll(text, "declare dllimport i32 @__stdio_common_vsprintf(", "declare i32 @__stdio_common_vsprintf(");
+        return io.Append(WindowsResources(text), source.text);
+    }
+    return io.Append(text, io.Module(root, triple));
+}

@@ -1,0 +1,2 @@
+package right
+pub Read :: () -> (value: i64, note: string) { return (5000000000, "right"); }

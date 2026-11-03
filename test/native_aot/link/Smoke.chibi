@@ -8,7 +8,7 @@ import strings "core:strings"
 // Links a real program on this machine with only LLVM's tools: a module that
 // calls `add` from a vendored-style archive, built with llc and llvm-ar. It
 // runs from `chibi build test native-link` (tools/tests.tsv, through run.sh,
-// which gives the build host the two packages as collections) with
+// which gives the native compiler the two packages as collections) with
 // CHIBI_LLVM_BIN naming the folder of llc, llvm-ar and the lld tools; an empty
 // PATH is enough. Without CHIBI_LLVM_BIN it reports that it did not run. The
 // program must exit with status 42.
@@ -92,7 +92,7 @@ Entry :: (triple: string, windows: bool) -> string {
                  "  %bit = zext i1 %all to i32\n  %x = call i32 @add(i32 41, i32 %bit)\n  ret i32 %x\n}\n"]);
 }
 
-// Removes the folder and the files in it, which is all a run leaves.
+// Removes the run's files and its cross-target bundle folders.
 Clear :: (folder: string) -> bool {
     if (os.Kind(folder) == os.KindNone) {
         return true;
@@ -102,7 +102,10 @@ Clear :: (folder: string) -> bool {
         return false;
     }
     for (name in listed.names) {
-        if (os.Remove(Join([folder, "/", name])) != nil) {
+        path := Join([folder, "/", name]);
+        if (os.Kind(path) == os.KindDirectory) {
+            if (!Clear(path)) { return false; }
+        } else if (os.Remove(path) != nil) {
             return false;
         }
     }
@@ -171,7 +174,7 @@ Ensure :: (path: string) -> bool {
 
 // With CHIBI_NATIVE_BUNDLE set (CI's Linux job), links the program for the other targets, which
 // the native-targets job runs on macOS and Windows: `bundle/<directory>/programs/arguments`
-// listed twice in programs.txt, run without arguments and with the two above separated by
+// listed twice in native-link-programs.txt, run without arguments and with the two above separated by
 // tabs. The macOS program links against stubs and the Windows one is static (kernel32 from a
 // generated library), so neither needs an SDK.
 Bundle :: (llvm: string, work: string, bundle: string, triple: string, directory: string) -> int {
@@ -188,6 +191,10 @@ Bundle :: (llvm: string, work: string, bundle: string, triple: string, directory
     if (!Ensure(folder) || !Ensure(bundle) || !Ensure(target) || !Ensure(programs)) {
         return Fail("cannot prepare the bundle folders");
     }
+    list := Join([target, "/native-link-programs.txt"]);
+    if (os.Remove(list) != nil) {
+        return Fail("cannot remove the old native-link program list");
+    }
     archive := Compile(llvm, folder, triple, windows, suffix);
     if (archive == "") {
         return 1;
@@ -198,14 +205,9 @@ Bundle :: (llvm: string, work: string, bundle: string, triple: string, directory
     if (failure != nil) {
         return Fail(format_text("the {} program did not link, kind {} code {}", directory, failure.kind, failure.code));
     }
-    listed := os.ReadText(Join([target, "/programs.txt"]));
-    text := "";
-    if (listed.error == nil) {
-        text = listed.text;
-    }
-    lines := Join([text, "program ", name, " 42\n", "program ", name, " 42\t", SpacedArgument(), "\t", WideArgument(), "\n"]);
-    if (os.WriteText(Join([target, "/programs.txt"]), lines) != nil) {
-        return Fail("cannot write programs.txt");
+    lines := Join(["program ", name, " 42\n", "program ", name, " 42\t", SpacedArgument(), "\t", WideArgument(), "\n"]);
+    if (os.WriteText(list, lines) != nil) {
+        return Fail("cannot write native-link-programs.txt");
     }
     return 0;
 }
@@ -275,14 +277,19 @@ Run :: () -> int {
     }
     bundle := os.Getenv("CHIBI_NATIVE_BUNDLE");
     if (bundle != "") {
-        for (other in [["macos-arm64", "arm64-apple-macosx11.0.0"], ["windows-x64", "x86_64-pc-windows-msvc"]]) {
-            if (other[1] != triple) {
-                built := Bundle(llvm, work, bundle, other[1], other[0]);
+        for (other in ["arm64-apple-macosx11.0.0", "x86_64-pc-windows-msvc"]) {
+            directory := "macos-arm64";
+            if (link.TargetOf(other) == link.WindowsX64) { directory = "windows-x64"; }
+            if (other != triple) {
+                built := Bundle(llvm, work, bundle, other, directory);
                 if (built != 0) {
                     return built;
                 }
             }
         }
+    }
+    if (!Clear(work)) {
+        return Fail("cannot remove the work folder");
     }
     os.Print("native-link: linked and ran a program from an object and an archive; the command-line parser agrees on its cases");
     return 0;

@@ -1,0 +1,100 @@
+package managed_source_probe
+
+import abi "project:native_abi"
+import link "project:native_link"
+import host "project:native_link_host"
+import os "core:os"
+import strings "core:strings"
+
+Main :: () -> int {
+    args := os.Arguments();
+    assertion := length(args) > 0 && args[0] == "--assertion";
+    if (assertion) { args = slice(args, 1, length(args)); }
+    failure := "";
+    if (length(args) > 1 && args[0] == "--failure") {
+        failure = args[1];
+        args = slice(args, 2, length(args));
+    }
+    if (length(args) < 4) { return 2; }
+    work := args[0];
+    llvm := args[1];
+    audit := os.ReadText(args[2]);
+    if (audit.error) { return 2; }
+    target := abi.LinuxX64();
+    if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
+    start := format_text("{}/source-audit-start.ll", work);
+    if (os.WriteText(start, link.ManagedProgramContext(link.ProgramStart(target.triple, false, true, false)))) { return 2; }
+    for (index in 3..<length(args)) {
+        source := os.ReadText(args[index]);
+        if (source.error) { return 2; }
+        text := strings.ReplaceAll(source.text, "define i32 @chibi_scalar(ptr %ctx)",
+            "define i32 @managed_source.entry(ptr %ctx)");
+        // ScopedAliases has no managed values but still proves the scoped
+        // reference ABI. Its audit also needs the poison intrinsic.
+        if (!strings.Contains(text, "declare void @llvm.memset.p0.i64(")) {
+            text = strings.Concatenate([text, "\ndeclare void @llvm.memset.p0.i64(ptr, i8, i64, i1)\n"]);
+        }
+        for (forced in [false, true]) {
+            current := text;
+            if (forced) {
+                current = strings.ReplaceAll(current, "call void @chibi_managed.safepoint(",
+                    "call void @chibi_managed.collect(");
+            }
+            module := format_text("{}/source-audit-{}-{}.ll", work, index, forced);
+            checked_audit := audit.text;
+            // Records keeps 10000 96-byte Link cells live. A later threshold
+            // can retain twice those bytes in smaller 68-byte numeric cells:
+            // fewer than 29000 cells, plus the few independently owned arrays.
+            // Other fixtures retain the tighter dead-allocation bound.
+            if (strings.HasSuffix(args[index], "/Records.ll")) {
+                checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %peak, 30000");
+            }
+            if (strings.HasSuffix(args[index], "/StringArrays.ll")) {
+                // Each 88-byte cell owns backing plus two text allocations.
+                // The 64 KiB threshold permits fewer than 3000 such live
+                // allocations, plus the fixture's few permanent owners.
+                checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %peak, 4096");
+            }
+            if (strings.HasSuffix(args[index], "/ViewAppend.ll")) {
+                // One cell plus geometric backing growth for 4096 appends;
+                // a snapshot copy on each append exceeds this by two orders.
+                checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %total, 32");
+            }
+            if (os.WriteText(module, strings.Concatenate([current, checked_audit]))) { return 2; }
+            for (level in [int(0), 2]) {
+                output := format_text("{}/source-audit-{}-{}-O{}", work, index, forced, level);
+                objects := [strings.Concatenate([output, ".o"]), strings.Concatenate([output, "-start.o"])];
+                if (host.Objects(llvm, [module, start], objects, level, 1)) { return 1; }
+                plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", false);
+                if (os.Platform() == "Darwin") {
+                    runtime: link.Import = {name: "System", symbols: ["malloc", "calloc", "free", "write", "dprintf", "printf", "abort", "memset"]};
+                    plan.imports = [runtime];
+                }
+                if (host.Link(plan)) { return 1; }
+                result := os.Capture([output]);
+                valid := result.status == 0;
+                if (assertion) {
+                    valid = result.status == 134 && strings.Contains(result.stderr, "native failure: AssertionFailed") &&
+                            strings.HasPrefix(result.stdout, "managed source live 0 peak ");
+                }
+                if (failure != "") {
+                    // A fatal helper aborts the process rather than returning
+                    // through the audit wrapper. Poison still checks all frees
+                    // reached before the precise failure category is reported.
+                    valid = result.status == 134 && strings.Contains(result.stderr,
+                        strings.Concatenate(["native failure: ", failure]));
+                }
+                if (!valid) {
+                    os.Print(format_text("managed source {} force={} O{} status={} {}{}", args[index], forced, level,
+                        result.status, result.stdout, result.stderr));
+                    return 1;
+                }
+                checked := "poisoned balance";
+                if (failure != "") { checked = "poisoned failure category"; }
+                os.Print(format_text("PASS managed source {} force={} O{} {}", args[index], forced, level, checked));
+                os.Print(result.stdout);
+            }
+        }
+    }
+    return 0;
+}

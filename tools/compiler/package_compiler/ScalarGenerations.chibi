@@ -1,0 +1,50 @@
+package package_compiler
+
+import facts "project:scalar_facts"
+import strings "core:strings"
+
+// A generation's host entries belong to its root package. Imported functions
+// keep their canonical package identity, including when imports are reordered.
+// The dot prefix cannot collide with an authored identifier and is LLVM-safe.
+ScalarGenerationNames :: (rows: facts.Row[], callables: Callable[], identities: string[], root: int) -> facts.Row[] {
+    prefixes := resize([""], length(identities));
+    names: string[] = [];
+    imported := false;
+    alphabet := "0123456789abcdef";
+    for (callable in callables) {
+        name := callable.name;
+        if (callable.package != root) {
+            imported = true;
+            package := callable.package;
+            assert(package >= 0 && package < length(identities));
+            if (prefixes[package] == "") {
+                encoded: u8[] = [];
+                for (byte in strings.Bytes(identities[package])) {
+                    encoded.append(u8(strings.ByteAt(alphabet, byte / 16)));
+                    encoded.append(u8(strings.ByteAt(alphabet, byte % 16)));
+                }
+                prefixes[package] = strings.Concatenate([".", text_from_bytes(encoded), "."]);
+            }
+            name = strings.Concatenate([prefixes[package], name]);
+            if (callable.identity != 0) { name = format_text("{}.{}", name, callable.identity); }
+        }
+        names.append(name);
+    }
+    if (!imported) { return rows; }
+    output := rows;
+    function := 0;
+    for (index in 0..<length(rows)) {
+        row := rows[index];
+        if (row.kind == facts.FunctionRow) {
+            row.name = names[function];
+            function += 1;
+        } else if (row.kind == facts.CallRow || row.kind == facts.FunctionAddressRow) {
+            row.name = names[row.value];
+        } else {
+            continue;
+        }
+        output[index] = row;
+    }
+    assert(function == length(callables));
+    return output;
+}

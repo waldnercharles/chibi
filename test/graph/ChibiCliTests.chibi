@@ -4,9 +4,8 @@ import os "core:os"
 import strings "core:strings"
 
 // `chibi` as a process: version, doctor, run, run --watch and test. The cases
-// specify the CLI for its native replacement (docs/c-test-verdicts.md, "The
-// CLI"), as test/tools/chibi_cli.c does for the C apphost; each keeps that
-// case's exit codes and text. Run takes the launcher of a build tree.
+// preserve the public CLI behaviors listed in docs/c-test-verdicts.md.
+// Run takes a built or installed native CLI and checks its exit codes and text.
 
 // How long a watched program may take to print after a start or an edit: a
 // first compile takes 8 to 10 s for a small program on a workstation, more on
@@ -170,7 +169,7 @@ Defined :: (path: string, name: string) -> string {
     return "";
 }
 
-// The scratch folder's launcher copy, as chibi_cli.c's setup assembles it.
+// The scratch folder's launcher copy with its own resources and compiler stub.
 NewSuite :: (folder: string, built: string) -> Suite {
     suite: Suite = {root: folder, launcher: Path([folder, "/bin/chibi"]), built: built};
     bin := strings.Slice(built, 0, strings.LastIndex(built, "/"));
@@ -181,7 +180,7 @@ NewSuite :: (folder: string, built: string) -> Suite {
     for (shared in ["apps", "core"]) {
         Clone(Path([bin, "/../share/chibi/", shared]), Path([folder, "/share/chibi/", shared]));
     }
-    project := Defined(Path([os.Root(), "/src/assets/project.h"]), "CHIBI_PROJECT_VERSION");
+    project := strings.TrimSpace(Read(Path([os.Root(), "/sdk/PROJECT_VERSION"])));
     Write(Path([folder, "/game with spaces/project.kdl"]), Path(["version ", project, "\nname \"CLI proof\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n"]));
     Write(Path([folder, "/game with spaces/content/scenes/Start.kdl"]), "version 1\nname \"Start\"\n(array)entities\n");
     stub := Path([folder, "/bin/chibi-compile"]);
@@ -216,7 +215,7 @@ VersionReadsTheBuildIdentity :: (suite: Suite) {
 // The launcher in place reads the identity its build generated.
 VersionOfTheBuiltLauncher :: (suite: Suite) {
     ran := At(suite, [suite.built, "version"]);
-    project := Defined(Path([os.Root(), "/src/assets/project.h"]), "CHIBI_PROJECT_VERSION");
+    project := strings.TrimSpace(Read(Path([os.Root(), "/sdk/PROJECT_VERSION"])));
     assert(ran.status == 0 && strings.HasPrefix(ran.log, "chibi "), "the built identity");
     assert(Says(ran, Path(["\nproject format: ", project, "\n"])) && Says(ran, "\nartifact formats: ") && Says(ran, " execution "), "its formats");
 }
@@ -686,7 +685,7 @@ Scratch :: (name: string) -> string {
     return os.RealPath(folder);
 }
 
-// The build host runs this entry with the launcher of a build tree.
+// The native selector runs this entry with a built or installed CLI.
 pub Run :: () -> int {
     arguments := os.Arguments();
     assert(length(arguments) == 1, "the build tree's launcher");

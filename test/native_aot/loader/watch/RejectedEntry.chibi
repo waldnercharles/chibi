@@ -1,0 +1,3 @@
+package live
+Main :: (value: int) -> int { return value; }
+Frame :: () -> int { return 0; }

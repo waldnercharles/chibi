@@ -1,0 +1,18 @@
+package seed_github_fixture
+
+import os "core:os"
+import strings "core:strings"
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 2 || arguments[0] != "api") { return 9; }
+    path := arguments[1];
+    file := "run.json";
+    if (strings.Contains(path, "/jobs?")) { file = "jobs.json"; }
+    else if (strings.Contains(path, "/artifacts?")) { file = "artifacts.json"; }
+    else if (strings.HasSuffix(path, "/zip")) { file = "archive.zip"; }
+    read := os.ReadText(strings.Concatenate([os.Getenv("CHIBI_SEED_API_FIXTURE"), "/", file]));
+    if (read.error != nil) { return 10; }
+    os.WriteOutput(read.text);
+    return 0;
+}

@@ -1,65 +1,86 @@
 # Native modules on macOS and Windows
 
-`language-scalar-native` (`--package-compiler-chibi-native`) runs every
-native scalar module on Linux x86-64. When `CHIBI_NATIVE_BUNDLE` names a
-directory, it also emits each module it runs for the other targets
-`native_abi` admits and builds them into that directory:
+`language-scalar-native` (`test/native_aot/backend/run.sh`) runs the native
+arithmetic boundary matrix and source-level array corpus without a compiler
+host. When `CHIBI_NATIVE_BUNDLE` names a directory, it publishes the arithmetic
+modules for the other targets `native_abi` admits:
 
-- each module's IR comes from `scalar_llvm` (or `llvm_native` for the
-  arithmetic module) for `MacOSArm64()` or `WindowsX64()`, with the same
+- each module's IR comes from `llvm_native` for `MacOSArm64()` or
+  `WindowsX64()`, with the same 12 operations, eight boundary values and
   probe adapters as the Linux run;
 - `opt` and `llc` build it at O0 and O2 with the native driver's exact
   arguments, and the optimized module must declare the target's triple and
-  the data layout `tools/native_aot/driver/Driver.chibi` admits for it;
+  LLVM's canonical data layout for that explicit destination target;
 - the object must have no undefined symbol, except `_fltused` and
   `__chkstk` on Windows, which the platform runtime defines: Windows code
   that uses floating point references `_fltused`, and a frame larger than a
   page calls `__chkstk`. The bundle's `windows-x64/runtime.o` defines both,
   `__chkstk` as compiler-rt's x86-64 probe;
-- `<target>/modules.txt` lists each object, then each call with the value
-  both VMs and the native Linux runs gave: `call SYMBOL EXPECTED COUNT
-  ARGUMENTS...`.
+- `<target>/modules.txt` lists each object, then each call with the independent
+  wider-integer oracle's result: `call SYMBOL EXPECTED COUNT ARGUMENTS...`.
 
 `native-build` (`test/native_aot/native_build/BuildTests.chibi`) adds programs that
 `chibi build --native --target` links on Linux, at O0 and O2, and one with a
 256 KiB frame, which Windows code probes through the program's `__chkstk`.
-`<target>/programs.txt` lists each as `program NAME STATUS`, optionally
-followed by tab-separated UTF-8 arguments, and the program is
-`<target>/programs/NAME`. The projects group, which runs `native-build`,
-runs before the language group, so CI's bundle holds both.
+`<target>/native-build-programs.txt` lists each as `program NAME STATUS`,
+optionally followed by tab-separated UTF-8 arguments, and the program is
+`<target>/programs/NAME`. Each case writes a private manifest fragment; the
+parent merges those fragments in name order after every case succeeds.
+The parent resets its prior list before starting workers. No worker reads,
+rewrites or deletes another producer's manifest.
 
 `native-link` (`test/native_aot/link/Smoke.chibi`) adds the argument program, linked by
 `native_link` with no SDK: listed once without arguments and once with `a b` and `héllo €`.
+Its own `<target>/native-link-programs.txt` keeps both argument cases, so
+`native-link` and `native-build` may publish concurrently. Both consumers require
+both lists and run their combined eight Windows cases or five macOS cases.
+The two rows for `arguments` are intentional and are both run.
+The consumer checks each producer's execution count and both argument forms,
+so an omitted row or empty list fails the target test.
 It checks `chibi_argument_count`, `chibi_argument` and `chibi_environment`. On Windows
-`run.c` starts it with `_wspawnv`, so the arguments reach `GetCommandLineW` as UTF-16.
+the C reference starts it with `_wspawnv`; the authored runner uses
+`core:os.Run`. Both pass Unicode arguments to `GetCommandLineW` as UTF-16.
 
-The Linux cases that supervise a hung or overflowing native call, and the
-lazy-arm and lookup-table checks that rewrite or hand-write IR, stay on
-Linux.
+Deadlines, descendant cleanup and the O2 PIC lookup-table check run locally
+on Linux and macOS through the native backend fixture.
 
-`run.c` links and runs a bundle on its own target. It links each object as a
-shared library, with `clang -dynamiclib` on macOS and `lld-link /dll
-/noentry /nodefaultlib` with an export per called symbol on Windows, then
-loads it and calls each symbol: `chibi_scalar` with no arguments, returning
-an `int32_t`, and each `probe_` adapter with its `int64_t` arguments,
-returning an `int64_t`. Every value must match. Then it runs each listed
-program and checks its exit status; on macOS it first marks each one
-executable, since artifacts keep no file modes. The engine's test drivers do
-not build on Windows yet, so `run.c` stands alone and clang builds it with
-no other source.
+`Runner.chibi` links and runs a bundle on its own target. It uses
+`native_link_host.Link` with LLVM22's `ld64.lld` on macOS or `lld-link` on
+Windows, loads each resulting image, and calls every listed symbol with the
+original ABI. `chibi_scalar` takes no arguments and returns `i32`; each
+`probe_` adapter takes a pointer to signed 64-bit arguments and returns `i64`.
+Calls and arguments occupy flat arrays; symbols are interned and resolved
+once per module. The Windows DLL plan exports those exact symbols. Loaded
+images are closed before removal.
+Its `--modules DIRECTORY LLD_LINKER` mode uses the same parser, linker and
+call ABI for the backend producer's local Linux/macOS verification.
 
-CI's `native` job writes the bundle, and `native-targets` runs it on
-`macos-15` and `windows-2022`. To do the same by hand:
+The runner then executes every listed program and checks its exit status.
+On macOS it first sets mode 0755 because artifact transfer discards file
+modes. Missing manifests, omitted program rows, changed Unicode argument
+cases and malformed calls fail the test.
+
+CI's Linux `native` job cross-builds the two runner executables with its
+current native compiler and includes them in `native-bundle`. The
+`native-targets` jobs execute their own target runner without compiling a
+compiler there. While the replacement is being verified, both jobs also
+build and execute the existing `run.c` reference against that same artifact.
+The C reference and its MSVC setup remain until actual macOS and Windows
+execution agree. The macOS job also runs `controls.sh`: both consumers must
+reject incomplete manifests, invalid calls, missing symbols, changed
+results and argument cases. Signed 64-bit boundaries and the three-argument
+limit pass through the real adapter ABI; the native parser additionally
+rejects integer overflow.
+
+To cross-build the consumers with a current native compiler and LLVM22:
 
 ```sh
-CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin CHIBI_NATIVE_BUNDLE=/tmp/bundle \
-  build/test/language/test_language --package-compiler-chibi-native
-# then, on a Mac with the bundle copied over:
-clang -std=c2x -O1 -I. test/native_aot/targets/run.c -o run
-./run /tmp/bundle /usr/bin/clang
+sh test/native_aot/targets/build.sh /absolute/path/to/chibi /absolute/path/to/llvm/bin /tmp/bundle
+# On macOS, after copying the complete bundle:
+chmod +x /tmp/bundle/runner-macos-arm64
+/tmp/bundle/runner-macos-arm64 /tmp/bundle /absolute/path/to/llvm/bin/ld64.lld
 ```
 
-On Windows, build `run.c` with `clang -D_CRT_SECURE_NO_WARNINGS` and pass
-`lld-link.exe` as the linker. The objects come from LLVM 18, whose arm64
-layout the driver admits; another LLVM major gives arm64 a different layout,
-and the bundle stops at that check.
+On Windows run `runner-windows-x64.exe BUNDLE LLVM_BIN/lld-link.exe`.
+Each complete bundle also needs both producer-owned program manifests and
+their programs, the module objects, and Windows' `runtime.o`.

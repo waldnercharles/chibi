@@ -274,13 +274,22 @@ ParseSwitch :: (c: ^Cursor, n: ^(Node[])) -> int {
         } else {
             Add(n, arm, ParseBinary(c, n, OrPower), syntax.FieldValue);
         }
-        Expect(c, n, arm, tk.Colon, syntax.FieldNone);
+        colon := Expect(c, n, arm, tk.Colon, syntax.FieldNone);
         if (c.token == tk.OpenBrace) {
             Add(n, arm, ParseBlock(c, n), syntax.FieldBody);
         } else {
             statements := New(n, syntax.Block);
             while (!c.failed && c.token != tk.Case && c.token != tk.CloseBrace && c.token != tk.EOF) {
                 Add(n, statements, ParseStatement(c, n, false), syntax.FieldNone);
+            }
+            if (!c.failed && n^[statements].first < 0) {
+                // An empty unbraced body occupies the position after its
+                // colon. Its absent children must not erase the arm's range.
+                location := n^[colon];
+                n^[statements].start = location.end;
+                n^[statements].end = location.end;
+                n^[statements].row = location.row;
+                n^[statements].column = location.column + location.end - location.start;
             }
             Add(n, arm, statements, syntax.FieldBody);
         }

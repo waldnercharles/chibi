@@ -847,22 +847,24 @@ SpecializePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
             index += 1;
         }
     }
+    return GenericPlan.Ready(concrete, params, GenericRemapBindings(bindings, remap));
+}
+
+// Owners and callable-valued bindings use function ordinals. A permutation of
+// concrete functions remaps those two fields together; types and syntax nodes
+// stay in their original tables. Provisional unowned constants do not survive.
+GenericRemapBindings :: (bindings: GenericBinding[], remap: int[]) -> GenericBinding[] {
     final_bindings: GenericBinding[] = [];
-    index: int = 0;
-    while (index < length(bindings)) {
-        row := bindings[index];
-        if (row.owner < 0) {
-            index += 1;
-            continue;
-        }
+    for (binding in bindings) {
+        if (binding.owner < 0) { continue; }
+        row := binding;
         row.owner = remap[row.owner];
         if (row.place == GenericCallPlace || row.place == GenericFunctionPlace) {
             row.index = remap[row.index];
         }
         final_bindings.append(row);
-        index += 1;
     }
-    return GenericPlan.Ready(concrete, params, final_bindings);
+    return final_bindings;
 }
 
 GenericCheck :: union {
@@ -910,13 +912,7 @@ GenericCallableResults :: (forest: snapshot.SnapshotNode[], documents: snapshot.
 // A callable parameter may never survive a suspension of its consumer.
 GenericSynchronous :: (forest: snapshot.SnapshotNode[], callables: Callable[], bodies: Body[],
                        bindings: GenericBinding[], native_effects: int[]) -> GenericCheck {
-    needed := false;
-    for (bound in bindings) {
-        needed = needed || bound.place == GenericFunctionPlace;
-    }
-    if (!needed) {
-        return GenericCheck.Valid;
-    }
+    if (!GenericNeedsSynchronous(bindings)) { return GenericCheck.Valid; }
     suspended := resize([false], length(callables));
     index: int = 0;
     for (body in bodies) {
@@ -962,6 +958,18 @@ GenericSynchronous :: (forest: snapshot.SnapshotNode[], callables: Callable[], b
             index += 1;
         }
     }
+    return GenericSynchronousBindings(forest, callables, bindings, suspended);
+}
+
+GenericNeedsSynchronous :: (bindings: GenericBinding[]) -> bool {
+    for (bound in bindings) { if (bound.place == GenericFunctionPlace) { return true; } }
+    return false;
+}
+
+// Both front ends apply the callable lifetime rule to their typed suspension
+// closure. The owner and target indices follow the final callable ordering.
+GenericSynchronousBindings :: (forest: snapshot.SnapshotNode[], callables: Callable[],
+                               bindings: GenericBinding[], suspended: bool[]) -> GenericCheck {
     for (bound in bindings) {
         if (bound.place == GenericFunctionPlace && (suspended[bound.owner] || suspended[bound.index])) {
             callable := callables[bound.owner];

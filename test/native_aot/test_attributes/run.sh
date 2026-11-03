@@ -4,14 +4,19 @@ if [ "$#" -ne 2 ]; then
     echo 'usage: run.sh NATIVE_DRIVER LLVM_BIN' >&2
     exit 2
 fi
-root=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)
+root=$(CDPATH='' cd -- "$(dirname "$0")/../../.." && pwd)
 driver=$1
 llvm=$2
+case "$(uname -s)-$(uname -m)" in
+    Darwin-arm64) target=aarch64-apple-darwin ;;
+    Linux-x86_64) target=x86_64-unknown-linux-gnu ;;
+    *) echo 'native test attributes: unsupported test host' >&2; exit 2 ;;
+esac
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/chibi-native-test-attributes.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT HUP INT TERM
 compile() {
     "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
-        --source "$scratch/$1.chibi" --output "$scratch/program" --llvm "$llvm" --jobs 2
+        --source "$scratch/$1.chibi" --output "$scratch/program" --llvm "$llvm" --target "$target" --jobs 2
 }
 cat > "$scratch/Tests.chibi" <<'CHIBI'
 package tests
@@ -67,7 +72,7 @@ Example :: () { assert(Helper(41) == 42); }
 pub ChibiRunTest :: (index: int) { if (index == 0) { Example(); } }
 CHIBI
 "$driver" --compiler "$scratch" --core "$root/packages/core" \
-    --source "$scratch/PackageMain.chibi" --output "$scratch/program" --llvm "$llvm" --jobs 2
+    --source "$scratch/PackageMain.chibi" --output "$scratch/program" --llvm "$llvm" --target "$target" --jobs 2
 "$scratch/program"
 sed 's/@test/@unknown/' "$scratch/cases/Cases.chibi" > "$scratch/cases/rejected"
 mv "$scratch/cases/rejected" "$scratch/cases/Cases.chibi"
@@ -75,12 +80,12 @@ printf 'preserve existing output\n' > "$scratch/program"
 cp "$scratch/program" "$scratch/expected"
 set +e
 "$driver" --compiler "$scratch" --core "$root/packages/core" \
-    --source "$scratch/PackageMain.chibi" --output "$scratch/program" --llvm "$llvm" --jobs 2 \
+    --source "$scratch/PackageMain.chibi" --output "$scratch/program" --llvm "$llvm" --target "$target" --jobs 2 \
     > "$scratch/imported.log" 2>&1
 status=$?
 set -e
 test "$status" -eq 1
-grep -F "Unknown attribute '@unknown' (cases/Cases.chibi:3)" "$scratch/imported.log"
+grep -F "cases/Cases.chibi:3:1: Unknown attribute '@unknown'" "$scratch/imported.log"
 cmp "$scratch/program" "$scratch/expected"
 test ! -e "$scratch/program.0.ll"
 
@@ -140,19 +145,12 @@ reject Duplicate "Duplicate attribute '@test'"
 reject Parameters 'A @test function takes no parameters and returns nothing'
 reject Results 'A @test function takes no parameters and returns nothing'
 reject NamedResults 'A @test function takes no parameters and returns nothing'
+# shellcheck disable=SC2016 # The compiler diagnostic contains literal backticks.
 reject Malformed 'Expected a name, found `(`'
 
-# Marking a void test does not silently relax the native () -> int entry ABI.
-printf 'preserve existing output\n' > "$scratch/program"
-cp "$scratch/program" "$scratch/expected"
-set +e
+# A selected void function uses the same zero-status entry adapter as Main.
 "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$scratch/Tests.chibi" --entry Passing --output "$scratch/program" \
-    --llvm "$llvm" --jobs 2 > "$scratch/entry.log" 2>&1
-status=$?
-set -e
-test "$status" -eq 1
-grep -F 'scalar proof requires its first function to return int' "$scratch/entry.log"
-cmp "$scratch/program" "$scratch/expected"
-test ! -e "$scratch/program.0.ll"
+    --llvm "$llvm" --target "$target" --jobs 2
+"$scratch/program"
 echo 'native test attributes: passed'

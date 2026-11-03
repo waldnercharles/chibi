@@ -1,0 +1,127 @@
+#!/bin/sh
+# Real native task programs at O0 and O2, with allocator-balance checks.
+# Usage: sh test/native_aot/tasks/run.sh NATIVE_COMPILER LLVM_BIN
+set -eu
+root=$(cd "$(dirname "$0")/../../.." && pwd -P)
+driver=${1:?usage: run.sh NATIVE_COMPILER LLVM_BIN}
+llvm=${2:?usage: run.sh NATIVE_COMPILER LLVM_BIN}
+case "$driver" in /*) ;; *) driver=$(pwd -P)/$driver ;; esac
+case "$llvm" in /*) ;; *) llvm=$(pwd -P)/$llvm ;; esac
+case "$(uname -s)-$(uname -m)" in
+    Darwin-arm64) target=aarch64-apple-darwin; linker=ld64.lld ;;
+    Linux-x86_64) target=x86_64-unknown-linux-gnu; linker=ld.lld ;;
+    *) echo 'native tasks: this test requires macOS arm64 or Linux x64' >&2; exit 77 ;;
+esac
+version=$("$llvm/opt" --version | sed -n 's/.*LLVM version \([0-9][0-9]*\).*/\1/p' | head -1)
+if [ -z "$version" ] || [ "$version" -lt 22 ]; then
+    echo 'native tasks: LLVM 22 or later is required' >&2
+    exit 2
+fi
+work=$(mktemp -d "${TMPDIR:-/tmp}/chibi-native-tasks.XXXXXX")
+trap 'rm -rf "$work"' EXIT
+mkdir "$work/llvm"
+cat > "$work/llvm/opt" <<'WRAPPER'
+#!/bin/sh
+set -eu
+for source do
+    case "$source" in
+        *.ll)
+            if grep -q '^declare i32 @TestTime(double)' "$source"; then
+                sed '/^declare i32 @TestTime(double)/d; /^declare double @TestNaN()/d' "$source" > "$source.clock"
+                cat "$CHIBI_TASK_CLOCK" >> "$source.clock"
+                mv "$source.clock" "$source"
+            fi
+            if grep -q 'define i32 @chibi_scalar(ptr %ctx)' "$source"; then
+                sed 's/define i32 @chibi_scalar(ptr %ctx)/define i32 @chibi_task_test_entry(ptr %ctx)/' "$source" > "$source.audit"
+                sed "s/@chibi_task_test_limit = internal constant i64 0/@chibi_task_test_limit = internal constant i64 $CHIBI_TASK_LIMIT/" "$CHIBI_TASK_AUDIT" >> "$source.audit"
+                mv "$source.audit" "$source"
+            fi ;;
+    esac
+done
+remaining=$#
+while [ "$remaining" -gt 0 ]; do
+    argument=$1
+    shift
+    case "$argument" in -passes=*) argument="-passes=default<O$CHIBI_TASK_LEVEL>" ;; esac
+    set -- "$@" "$argument"
+    remaining=$((remaining - 1))
+done
+exec "$CHIBI_TASK_REAL_LLVM/opt" "$@"
+WRAPPER
+cat > "$work/llvm/llc" <<'WRAPPER'
+#!/bin/sh
+set -eu
+remaining=$#
+while [ "$remaining" -gt 0 ]; do
+    argument=$1
+    shift
+    case "$argument" in -O=*) argument="-O=$CHIBI_TASK_LEVEL" ;; esac
+    set -- "$@" "$argument"
+    remaining=$((remaining - 1))
+done
+exec "$CHIBI_TASK_REAL_LLVM/llc" "$@"
+WRAPPER
+chmod +x "$work/llvm/opt" "$work/llvm/llc"
+ln -s "$llvm/$linker" "$work/llvm/$linker"
+export CHIBI_TASK_REAL_LLVM="$llvm" CHIBI_TASK_AUDIT="$root/test/native_aot/tasks/audit.ll"
+export CHIBI_TASK_CLOCK="$root/test/native_aot/tasks/clock.ll"
+# Exercise the facts consumer independently of the source producer, including
+# malformed result contracts and the native running-test instruction.
+"$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_aot/tasks/Validate.chibi" --entry Main \
+    --output "$work/validate" --llvm "$llvm" --target "$target" --jobs 2
+"$work/validate" "$work/facts.ll"
+"$llvm/opt" -passes=verify -disable-output "$work/facts.ll"
+printf 'PASS native task facts validation and LLVM verification\n'
+for level in 0 2; do
+    export CHIBI_TASK_LEVEL=$level
+    for folder in "$root"/test/native_aot/tasks/cases/*; do
+        name=$(basename "$folder")
+        program=$work/$name-O$level
+        CHIBI_TASK_LIMIT=0
+        case "$name" in results|reuse) CHIBI_TASK_LIMIT=32 ;; esac
+        export CHIBI_TASK_LIMIT
+        "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+            --source "$folder/Main.chibi" --entry Main --output "$program" \
+            --llvm "$work/llvm" --target "$target" --jobs 1
+        "$program"
+        printf 'PASS native tasks %s O%s, allocations balanced\n' "$name" "$level"
+    done
+    for folder in "$root"/test/native_aot/tasks/failures/*; do
+        name=$(basename "$folder")
+        program=$work/$name-O$level
+        CHIBI_TASK_LIMIT=0
+        case "$name" in results|reuse) CHIBI_TASK_LIMIT=32 ;; esac
+        export CHIBI_TASK_LIMIT
+        "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+            --source "$folder/Main.chibi" --entry Main --output "$program" \
+            --llvm "$work/llvm" --target "$target" --jobs 1
+        status=0
+        "$program" > "$work/failure" 2>&1 || status=$?
+        test "$status" -eq 134
+        grep -q 'assertion failed' "$work/failure"
+        printf 'PASS native tasks failure %s O%s, allocations balanced\n' "$name" "$level"
+    done
+done
+for folder in "$root"/test/native_aot/tasks/rejected/*; do
+    name=$(basename "$folder")
+    if "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+        --source "$folder/Main.chibi" --entry Main --output "$work/rejected" \
+        --llvm "$llvm" --target "$target" --jobs 1 > "$work/rejection" 2>&1; then
+        printf 'native tasks: unsupported case %s compiled\n' "$name" >&2
+        exit 1
+    fi
+    case "$name" in
+        record_result) grep -q 'waiting results require numeric or bool values yet' "$work/rejection" ;;
+        task_array) grep -q "array item differs from the array's type" "$work/rejection" ;;
+        task_array_parameter) grep -Eq 'scalar proof|native task parameters require cancellation unwind support' "$work/rejection" ;;
+        numeric_handle) grep -q 'conversion needs a number' "$work/rejection" ;;
+        task_parameter) grep -Fq 'await needs a task handle or authored call' "$work/rejection" ;;
+        different_result_producers|void_result) grep -q 'assigned value differs from its local' "$work/rejection" ;;
+        dependency) grep -q 'waiting parameters need scalar values; managed values and dependencies are not supported yet' "$work/rejection" ;;
+    esac
+    test ! -e "$work/rejected"
+    printf 'PASS native tasks rejection %s\n' "$name"
+done
+
+sh "$root/test/native_aot/task_owners/run.sh" "$driver" "$llvm"

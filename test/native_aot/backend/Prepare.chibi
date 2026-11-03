@@ -1,0 +1,200 @@
+package native_driver
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import link "project:native_link"
+import cases "fixtures:cases"
+import os "core:os"
+import strings "core:strings"
+
+Write :: (path: string, text: string) {
+    written := os.WriteText(path, text);
+    assert(written == nil, "write an owned backend fixture");
+}
+Code :: (op: int, output: int, left: int, right: int, literal: i64) -> native.Instruction {
+    type := abi.IntStorage;
+    if (op == native.Check || op == native.Return) { type = 0; }
+    return {op: op, type: type, output: output, left: left, right: right, target: 0, literal: literal};
+}
+Function :: (parameter: int, count: int, slot: int, code: int) -> native.Function {
+    return {result: abi.IntStorage, first_parameter: parameter, parameters: count, first_slot: slot,
+            slots: count + 1, first_local: 0, locals: 0, first_code: code, code: count + 4,
+            first_argument: 0, arguments: 0};
+}
+Operation :: struct { op: int; name: string; arity: int; }
+Operations :: () -> Operation[] {
+    return [{op: native.Add, name: "Add", arity: 2}, {op: native.Sub, name: "Sub", arity: 2},
+            {op: native.Mul, name: "Mul", arity: 2}, {op: native.Div, name: "Div", arity: 2},
+            {op: native.Mod, name: "Mod", arity: 2}, {op: native.Neg, name: "Neg", arity: 1},
+            {op: native.BitAnd, name: "BitAnd", arity: 2}, {op: native.BitOr, name: "BitOr", arity: 2},
+            {op: native.BitXor, name: "BitXor", arity: 2}, {op: native.BitNot, name: "BitNot", arity: 1},
+            {op: native.Shl, name: "Shl", arity: 2}, {op: native.Shr, name: "Shr", arity: 2}];
+}
+
+// A wider integer oracle never executes the i32 overflow or unsafe LLVM
+// divide/shift being checked. Its bounded products fit in signed i64.
+Wrapped32 :: (value: i64) -> i64 {
+    low := value & 4294967295;
+    if (low > 2147483647) { return low - 4294967296; }
+    return low;
+}
+Expected :: (operation: int, a: i64, b: i64) -> i64 {
+    switch operation {
+        case native.Add: return Wrapped32(a + b);
+        case native.Sub: return Wrapped32(a - b);
+        case native.Mul: return Wrapped32(a * b);
+        case native.Div:
+            if (b == 0) { return 0; }
+            return Wrapped32(a / b);
+        case native.Mod:
+            if (b == 0) { return a; }
+            return a % b;
+        case native.Neg: return Wrapped32(0 - a);
+        case native.BitAnd: return a & b;
+        case native.BitOr: return a | b;
+        case native.BitXor: return a ^ b;
+        case native.BitNot: return ~a;
+        case native.Shl:
+            if (b < 0 || b >= 32) { return 0; }
+            return Wrapped32(a * (i64(1) << u32(b)));
+        case native.Shr:
+            if (b < 0 || b >= 32) {
+                if (a < 0) { return -1; }
+                return 0;
+            }
+            return a >> u32(b);
+        case: assert(false, "unknown arithmetic fixture operation");
+    }
+    return 0;
+}
+Arithmetic :: (target: abi.Target) -> string {
+    code := [Code(native.Check, 0, 0, 0, 0), Code(native.Constant, 0, 0, 0, 0),
+             Code(native.Publish, 0, 0, 0, 0), Code(native.Return, 0, 0, 0, 0)];
+    first := Function(0, 0, 0, 0);
+    functions := [first];
+    parameters: int[] = [];
+    slots := [abi.IntStorage];
+    for (operation in Operations()) {
+        count := operation.arity;
+        functions.append(Function(length(parameters), count, length(slots), length(code)));
+        code.append(Code(native.Check, 0, 0, 0, 0));
+        for (argument in 0..<count) {
+            code.append(Code(native.Argument, argument, argument, 0, 0));
+            parameters.append(abi.IntStorage);
+            slots.append(abi.IntStorage);
+        }
+        code.append(Code(operation.op, count, 0, count - 1, 0));
+        slots.append(abi.IntStorage);
+        code.append(Code(native.Publish, 0, count, 0, 0));
+        code.append(Code(native.Return, 0, 0, 0, 0));
+    }
+    empty: int[] = [];
+    records: native.Record[] = [];
+    texts: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    result := native.Emit(target, functions, parameters, slots, empty, code, empty, records,
+                          empty, texts, source, texts, empty, empty, false, 1);
+    switch result {
+        case .Rejected(instruction, message):
+            os.Print(format_text("instruction {}: {}", instruction, message));
+            assert(false, "the original total arithmetic module emits");
+        case .Emitted(text):
+            assert(!strings.Contains(text, "label %trap\n  br") && !strings.Contains(text, " nsw ") &&
+                   !strings.Contains(text, " nuw "), "total arithmetic makes no poison promises");
+            return text;
+    }
+    return "";
+}
+Adapters :: () -> string {
+    out: string[] = [];
+    operations := Operations();
+    for (index in 0..<length(operations)) {
+        operation := operations[index];
+        out.append(format_text("define i64 @probe_{}(ptr %args) {{\n  %w0 = load i64, ptr %args\n  %a0 = trunc i64 %w0 to i32\n", operation.name));
+        if (operation.arity == 2) {
+            out.append("  %p1 = getelementptr i64, ptr %args, i64 1\n  %w1 = load i64, ptr %p1\n  %a1 = trunc i64 %w1 to i32\n");
+        }
+        arguments := "i32 %a0";
+        if (operation.arity == 2) { arguments = "i32 %a0, i32 %a1"; }
+        out.append(format_text("  %r = call i32 @chibi_scalar.{}({})\n  %z = sext i32 %r to i64\n  ret i64 %z\n}}\n", index + 1, arguments));
+    }
+    return strings.Join(out, "");
+}
+Calls :: () -> string {
+    values: i64[] = [-2147483648, -7, -1, 0, 1, 31, 32, 2147483647];
+    operations := Operations();
+    out: string[] = [];
+    for (index in 0..<length(operations)) {
+        operation := operations[index];
+        count := operation.arity;
+        out.append("call chibi_scalar 0 0\n");
+        rights := length(values);
+        if (count == 1) { rights = 1; }
+        for (a in values) {
+            for (right in 0..<rights) {
+                b := values[right];
+                expected := Expected(operation.op, a, b);
+                if (count == 1) {
+                    out.append(format_text("call probe_{} {} 1 {}\n", operation.name, expected, a));
+                } else {
+                    out.append(format_text("call probe_{} {} 2 {} {}\n", operation.name, expected, a, b));
+                }
+            }
+        }
+    }
+    return strings.Join(out, "");
+}
+ArraySources :: (directory: string) {
+    names: string[] = [];
+    aliases := ["readonly_alias_before_writer", "readonly_alias_after_writer"];
+    for (index in 0..<cases.Count()) {
+        name := cases.CaseName(index);
+        if (!strings.HasPrefix(name, "array_") && !strings.HasPrefix(name, "union_array") &&
+            !strings.HasPrefix(name, "record_") && !strings.HasPrefix(name, "switch_on") &&
+            !aliases.contains(name)) { continue; }
+        if (!cases.IsAccepted(index)) { continue; }
+        source := cases.Source(index);
+        // Preserve the full i32 result, including values larger than an exit
+        // status. Only the entry declaration changes; each original body stays.
+        renamed := strings.ReplaceAll(source, "Main ::", "CaseMain ::");
+        assert(renamed != source, "the array fixture has its ordinary Main declaration");
+        wrapped := strings.Concatenate([renamed, format_text("\nMain :: () -> int {{ assert(CaseMain() == {}, \"{}\"); return 0; }}\n", cases.ExpectedValue(index), name)]);
+        Write(format_text("{}/{}.chibi", directory, name), wrapped);
+        names.append(name);
+    }
+    assert(length(names) >= 18, "the retained C array corpus is not reduced");
+    for name in aliases { assert(names.contains(name), "both readonly alias orders execute"); }
+    Write(format_text("{}/arrays.txt", directory), strings.Concatenate([strings.Join(names, "\n"), "\n"]));
+    os.Print(format_text("prepared {} real array/record/union source programs", length(names)));
+}
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 1) { return 2; }
+    directory := arguments[0];
+    arrays := format_text("{}/arrays", directory);
+    made := os.MakeDirectory(arrays);
+    assert(made == nil, "create the array source workspace");
+    ArraySources(arrays);
+    targets := [abi.LinuxX64(), abi.MacOSArm64(), abi.WindowsX64()];
+    names := ["linux-x64", "macos-arm64", "windows-x64"];
+    adapters := Adapters();
+    calls := Calls();
+    levels: int[] = [0, 2];
+    for (index in 0..<length(targets)) {
+        path := format_text("{}/{}", directory, names[index]);
+        made = os.MakeDirectory(path);
+        assert(made == nil, "create a native target fixture");
+        Write(format_text("{}/total.ll", path), strings.Concatenate([Arithmetic(targets[index]), adapters]));
+        manifests: string[] = [];
+        for (level in levels) {
+            manifests.append(format_text("module 0-total-{}.o\n{}", level, calls));
+        }
+        Write(format_text("{}/modules.txt", path), strings.Join(manifests, ""));
+    }
+    // Derive the Windows probe implementation from its sole production owner.
+    // This prefix has the triple, __chkstk and _fltused before the first import.
+    runtime := strings.Partition(link.Start("x86_64-pc-windows-msvc", false, false), "declare dllimport").head;
+    assert(strings.Contains(runtime, "module asm \"__chkstk:\"") && strings.Contains(runtime, "@_fltused"));
+    Write(format_text("{}/windows-x64/runtime.ll", directory), runtime);
+    return 0;
+}

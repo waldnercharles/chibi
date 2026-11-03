@@ -1,0 +1,2 @@
+package rejected_container
+Main :: () -> int { value: int = 1; values: ^int[] = [&value]; pointer := &values; return length(pointer^); }

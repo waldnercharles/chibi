@@ -1,0 +1,64 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+
+NestedAddressCode :: () -> native.Instruction[] {
+    outer := native.ArrayType + native.RecordType;
+    inner := native.ArrayType + abi.IntStorage;
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, outer, 0, 0, 0, 0, 0),
+            Code(native.Save, outer, 0, 0, 0, 0, 0),
+            Code(native.LocalAddress, native.RefType + outer, 1, 0, 0, 0, 0),
+            Code(native.Constant, abi.IntStorage, 2, 0, 0, 0, 0),
+            Code(native.ArrayValueAddress, native.RefType + inner, 3, 1, 2, outer, i64(native.ArrayAddressMethod)),
+            Code(native.Constant, abi.IntStorage, 4, 0, 0, 0, 0),
+            Code(native.Publish, abi.IntStorage, 0, 4, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+NestedAddressModule :: (code: native.Instruction[], fields: int[]) -> native.Result {
+    outer := native.ArrayType + native.RecordType;
+    source: native.Source = {file: "", directory: ""};
+    functions: native.Function[] = [{result: abi.IntStorage, first_parameter: 0, parameters: 0,
+        first_slot: 0, slots: 5, first_local: 0, locals: 1, first_code: 0, code: length(code), first_argument: 0, arguments: 0}];
+    return native.Emit(abi.LinuxX64(), functions, [],
+        [outer, native.RefType + outer, abi.IntStorage, code[5].type, abi.IntStorage], [outer], code, [],
+        [{first: 0, count: length(fields), identity: 0}], fields, [], source, [], [], [], false, 1);
+}
+@test
+NestedArrayAddressesValidateBothFailureModes :: () {
+    code := NestedAddressCode();
+    Emitted(NestedAddressModule(code, [native.ArrayType + abi.IntStorage]));
+    item := code[5];
+    item.literal = i64(native.ArrayAddressBracket);
+    code[5] = item;
+    Emitted(NestedAddressModule(code, [native.ArrayType + abi.IntStorage]));
+}
+@test
+NestedArrayAddressesRejectMalformedOperands :: () {
+    expected := "native nested array reference differs from its wrapper";
+    code := NestedAddressCode();
+    original := code[5];
+    item := original;
+    item.literal = 2;
+    code[5] = item;
+    Rejects(NestedAddressModule(code, [native.ArrayType + abi.IntStorage]), expected);
+    item.literal = -1;
+    code[5] = item;
+    Rejects(NestedAddressModule(code, [native.ArrayType + abi.IntStorage]), expected);
+    item = original;
+    item.left = 0;
+    code[5] = item;
+    Rejects(NestedAddressModule(code, [native.ArrayType + abi.IntStorage]), expected);
+    item = original;
+    item.right = 0;
+    code[5] = item;
+    Rejects(NestedAddressModule(code, [native.ArrayType + abi.IntStorage]), expected);
+    item = original;
+    item.type = native.RefType + native.ArrayType + abi.BoolStorage;
+    code[5] = item;
+    Rejects(NestedAddressModule(code, [native.ArrayType + abi.IntStorage]), expected);
+    code[5] = original;
+    Rejects(NestedAddressModule(code, [abi.IntStorage]), expected);
+    Rejects(NestedAddressModule(code, [native.ArrayType + abi.IntStorage, abi.IntStorage]), expected);
+}

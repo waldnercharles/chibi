@@ -1,5 +1,55 @@
 # Native LLVM ledger
 
+## Current integration, 2 November 2026
+
+The native-default change series is in [PR #1331](https://github.com/waldnercharles/chibi/pull/1331).
+The SHA-256-verified native compiler drives the default build and installed
+tools. The approved Linux x64/macOS arm64 seed at `c5c0a1ac2` is published and
+pinned; both platforms reproduce its compiler byte for byte. Windows has
+self-reproduction evidence but no published native seed yet. [PLAN.md](../PLAN.md)
+records exact revisions, test results and remaining deletion gates.
+
+The `85b37934c` compiler passes 442 compiler tests, including source-ordered
+named callback arguments, primitive optionals, generic bool constants and empty
+switch arms. Native maps, array copy-on-write, owned records/unions, tasks and
+standalone managed pointer roots have focused execution and lifetime proofs.
+Aggregate pointers, remaining array/pattern forms, shared collector ownership
+and deep retained snapshots are being completed.
+
+Native `run --watch` loads shared generations on Linux x64 and macOS arm64.
+Tests cover rejected edits, Main running once, retained primitive arrays and
+tasks continuing in their original generation. A composed retained-record
+readonly-reference reentry regression is being fixed; earlier passing generation
+proofs do not establish acceptance of the current composition. Windows public
+watch execution is wired into CI and still needs fresh acceptance.
+
+The optional browser compiler SDK executes authored code through LLVM Wasm,
+including quota/cancellation and concurrent requests. The live desktop/browser
+compile/cache facade is being replaced with authored policy and LLVM ABI adapters.
+The VM remains for explicit recovery and reference/test consumers. Its unused
+program-service catalog and C-Wasm browser test launcher are retired; final VM
+deletion still depends on the live behavior and platform checks above.
+
+### Native quota scopes
+
+Ordinary standalone closures run without a quota. A closure containing a call
+to `chibi_native_scope_begin` or `chibi_native_test_begin` gets shared checks at
+function-entry CHECK points and backward branches. Calls within the closure
+consume the same counter.
+
+Native test begin arms 100,000,000 checkpoints. Explicit scope begin takes a
+`u64` checkpoint count; scope end returns execution to the unbounded state.
+These counts describe native checkpoints, not VM or LLVM instructions. An
+unexpected budget exhaustion exits with status 125. If the current test expects
+`BudgetExhausted`, that failure ends the test successfully with status 0.
+
+This does not add a native recursion-depth ceiling. Stack overflow handling is
+separate. Typed failures and quotas in shared libraries and live generations
+remain unproven; the standalone proofs do not cover those modes.
+
+The milestone tables and census below preserve the earlier rollout's evidence
+and main-branch status; they do not describe the current integration branch.
+
 This ledger tracks how far ordinary Chibi source reaches native code through
 LLVM. Each feature lists the code that owns its meaning, what is still missing
 natively, the runtime it needs, any open decision, and the selector that
@@ -77,7 +127,7 @@ which have one writer at a time, so they run in order in the LLVM lane.
 | W4 | Text natives: byte length, byte reads, slices | W3 | native catalog input to `CollectScalar` | LLVM lane | no | 17 `core:strings` functions copied into a module (Compare, HasPrefix, Index, LastIndex, Count, EqualFold and others) agree with both VMs at O0 and O2 | yes (#764) | none | decided: a slice is a view of its source's bytes, as Odin's and Rust's string slices are; a byte outside is -1 and a slice clamps, as the runtime's natives do. `for` over a string waits: no census function uses it |
 | W5 | Native runtime library and context | W3 | the hidden context parameter, `execution_native_context` (`src/execution/native.h`): a table of the runtime's operations, versioned with the export ABI (2) | LLVM lane with the runtime owner | partly: each later operation is one more context entry | a library that formats text loads with no undefined symbol and agrees with the VM in a scene; C static assertions pin the context and value layouts to `native_abi.ContextType()` and `ValueType()`; the VM frees each call's heap when it returns, so the native selectors leak nothing under ASan; an out-of-range index ends the program with its named message (with W7 and W11) | yes (#768): the context, its call-scoped heap and `format_text`; so far `language-native-calls` formats every scalar type and text through a context as the VM does and runs a C entry that formats in a Probe, `language-package-compiler-chibi-scalar` checks the format rows, 4 malformed variants, a formatted record's rejection and `llvm_native`'s format IR with 5 changed-plan rejections, and `language-package-compiler-chibi-native` runs a library that formats in a scene | none | decided: D9, D10 |
 | W6 | Allocating text: `format_text`, joins, case conversion | W4, W5 | W5's context | LLVM lane | no | the same `core:strings` functions that build strings agree at O0 and O2, with no leak under ASan | partly (#768): `format_text` calls the VM's formatter through the context, so `ToLower`, `ToUpper`, `Repeat`, `Replace` and `ReplaceAll` agree with both VMs at O0 and O2 in `language-package-compiler-chibi-native`, as does `format_text` of each scalar type, widths, precision, hex, explicit indexes, escaped braces and an embedded NUL; joins wait for W7's arrays | none | decided: every text native that allocates calls the runtime, which formats as the VM does; the byte reads stay inline (W4) |
-| W7 | Arrays (M4d) | W5 | the context's `allocate` and `index_failed` (export ABI 4); `native_abi.ArrayType()`, `{ i32, i32, ptr }` | LLVM lane | no | copy independence, growth, empty arrays, out-of-range panics, `for` over arrays, at O0 and O2 and under ASan | partly: arrays of numbers, `bool`, strings and the source's records as parameters, results, locals, record fields, union payloads and literals; `a[i]`, `a[i].f`, `a[i] = x`, `a[i] += x`, `a[i].f = x`, `a.append(x)`, `a.extend(b)`, `a.remove_index(i)`, `append(a, x)`, `extend(a, b)`, `slice`, `resize`, `contains`, `length(a)`, a switch on any union of the source, `a.length()`, `for x in a`, `for x, i in a`, array literals as receivers and loop subjects, written array and record parameters as the callee's copy, array and string results among several, and `text_bytes`, copy independence and growth in the `array_*` corpus cases and the `Arrays` emitter tests; the out-of-range panic and ASan runs wait for a Linux run | none | decided: D10's arrays, native values for now (below), the VM boundary waits for W16 |
+| W7 | Arrays (M4d) | W5 | the context's `allocate` and `index_failed` (export ABI 4); `native_abi.ArrayType()`, `{ i32, i32, ptr, ptr }` | LLVM lane | no | copy independence, growth, empty arrays, out-of-range panics, `for` over arrays, at O0 and O2 and under ASan | partly: arrays of numbers, `bool`, strings and the source's records as parameters, results, locals, record fields, union payloads and literals; `a[i]`, `a[i].f`, `a[i] = x`, `a[i] += x`, `a[i].f = x`, `a.append(x)`, `a.extend(b)`, `a.remove_index(i)`, `append(a, x)`, `extend(a, b)`, `slice`, `resize`, `contains`, `length(a)`, a switch on any union of the source, `a.length()`, `for x in a`, `for x, i in a`, array literals as receivers and loop subjects, written array and record parameters as the callee's copy, array and string results among several, and `text_bytes`, copy independence and growth in the `array_*` corpus cases and the `Arrays` emitter tests; the out-of-range panic and ASan runs wait for a Linux run | none | decided: D10's arrays, native values for now (below), the VM boundary waits for W16 |
 | W8 | Maps (M4e) | W7 | #694's map operations | LLVM lane | no | as W7, plus hashing and iteration order matching the VM | no | none | decided: D10 |
 | W9 | Strings and arrays in records and unions (M4f) | W3, W7 | record layout with managed fields | LLVM lane | no | copy independence of nested values; corpus `struct` accepted | no | none | open: field copy and drop placement |
 | W10 | Pointers (`^T`) in place of references | #695, #698 merged; W5 | #695's managed heap | LLVM lane | no | corpus `reference` replaced by a pointer case; cycles collected after native calls return | no | #695, #698 (dependencies) | decided: D10, quiescent collection |
@@ -91,7 +141,7 @@ which have one writer at a time, so they run in order in the LLVM lane.
 | W18 | Linking without `cc` | W17 | the platform linker and runtime libraries, named in receipts | proposed lane | yes | an executable links with `cc`, `clang` and `gcc` unavailable, through a linker the receipt names | yes on Linux x86-64: by default a dynamic link against libc through its C runtime (`crt1.o`, `crti.o`, `crtn.o`, `-lc`, the system dynamic linker) as Odin's default does, so `dlopen` and the file and process calls work, and `--static` keeps `ld.lld -flavor gnu -static` with a start object shaped like Odin's no-CRT `_start` (#735); `native-build` runs it with an empty `PATH`. Linux also cross-links macOS arm64 programs with `ld.lld -flavor darwin` against a `libSystem` stub (as Zig does) and Windows x64 programs with `-flavor link` against a `kernel32` import library it writes (as rustc's `raw-dylib` does); `native-targets` runs them on `macos-15` and `windows-2022` | none | decided: rustc's direct `ld.lld` path on every target, linked from Linux (D7) |
 | W19 | Debug information and native diagnostics | W3 (emitter churn) | `llvm_native`'s output | LLVM lane | no | a debugger's backtrace of a native panic shows source lines at O0 and O2 | yes: `chibi build --native -g` emits DWARF 4 line tables, rustc's `line-tables-only` shape, and IR without it is unchanged; `native-build` places a program's functions at their source lines with `llvm-symbolizer` at O0 and O2, and gdb's backtrace of a stack overflow shows them | none | decided: line tables only, as rustc; frames are named by their symbols, so source-named symbols follow in the LLVM lane; the panic report itself stays with D6 and D9 |
 | W20 | Workloads and measurements | none | none | proposed lane, or the LLVM lane | yes | defined kernels (game math, compiler passes) with compile time, peak memory, size and run time recorded per milestone | in progress: four kernels and `native-workload-benchmark`, recorded under [Baseline and measurements](#baseline-and-measurements); a string kernel can follow W3; compiler-pass kernels wait for arrays (W7) | none | decided: correctness first, no promised speedups |
-| W21 | Compiler-source census | none | `CollectScalar` rejections | proposed lane | yes | a selector runs the producer over each compiler function and records the first unsupported feature of each; the ledger records its counts, which fall as packages land | yes: `chibi build native-census` writes the [census](native-compiler-census.md); counts are under [Census](#census) | none | decided |
+| W21 | Compiler-source census | none | `CollectScalar` rejections | proposed lane | yes | a selector runs the producer over each compiler function and records the first unsupported feature of each; the ledger records its counts, which fall as packages land | retired: the [historical census](native-compiler-census.md) is superseded by the complete native compiler fixed point | none | decided |
 | W22 | Native stage one and stage two | W1 to W14 as the census requires | the bootstrap generation | LLVM lane with the generation coordinator | no | a native stage one builds stage two and a checking rebuild with identical or normalized bytes, and the corpus gives the same results as the VM stages | no | none | decided: no C-frontend delegation |
 | W23 | Recovery and installed proof without `cmake`, `clang` or `gcc` | W18, W22 | CI recovery job | LLVM lane | no | a CI job with those executables unavailable goes from a clean checkout through stage one and stage two and links a checked game | no | none | decided: clean installed recovery |
 | W24 | Game scenarios | none | game fixtures | proposed lane | yes | deterministic scenarios for each feature the inventory finds in games | no | none | decided |
@@ -143,9 +193,9 @@ literal, which waits for W7. Of the 131 that pass, 71 need neither flattening.
 In all, 370 functions name another package and 302 a package constant.
 
 The producer checks every signature before any body, so a count shows the
-first blocker only, and the next one appears when its package lands. Rerun
-`chibi build native-census` (about three minutes under ASan) after each package lands
-and update this table.
+first blocker only, and the next one appears when its package lands. These counts
+are historical. The census command and C transport are retired; the complete
+native compiler fixed point now proves compiler-source support.
 
 ## What blocks W22
 
@@ -158,7 +208,7 @@ mean native, since `scalar_llvm` and `Driver.Object` must also take the function
 | W2 functions without a result (most pointer writers are void) | 13 | sdk-cmake |
 | W14 `compiler_json_value_string`, `compiler_json_string` | 33 | landed (#1126, Chibi `json_string`), census not rerun |
 | W9 optionals and record fields of map, pointer or optional type | 7 | sdk-cmake |
-| `insert` on arrays | 1 | open |
+| `insert` on arrays | 1 | implemented natively, 2 November 2026; mutable and functional insertion/reversal, named arguments, callback ordering and counted ownership at O0/O2 in `test/native_aot/array_operations` |
 | Converge `core:sys/os` into `core:os`: one package whose bodies are `build.*` on the VM and `core:sys/posix` or `core:sys/windows` natively under `core:os`'s signatures, chosen by a package-level `when`. Needs (1) imports in a kept `when` branch bound by the VM compile (repro: `else { import bytes "core:bytes" ... bytes.FromString(...) }` fails "Unknown function 'bytes.FromString'" while an import in an unkept branch is fine), (2) a `core:target` fact for native vs VM, (3) tuples holding an array (`List`, `ReadBytes`) native, or those two lose their `Error?` first. Then delete `core:sys/os` and Reach's path resolution | 2 packages | open |
 | Producer passes but native emission untested over the closure | unknown | W22 driver: compile the 973 through `Driver.Object` and list the rejections |
 | Maps (W8), `string[]` literals in natives, host catalog calls | open | not yet counted |
@@ -284,7 +334,7 @@ decision.
 | D1 | Integer arithmetic | No integer operation fails at run time (owner, 24 October 2026, approving the integer semantics thread's contract): overflow wraps, `x / 0` is 0, `x % 0` is `x`, `MIN / -1` is `MIN`, `MIN % -1` is 0, a shift at or past the width gives 0 or the sign fill, `T(v)` between integers clamps and `T(wrap: v)` wraps. Mixed integer types, signed shift counts, inexact or out-of-range constants and a constant zero divisor are compile errors. Development builds report each site; shipped native code has no checks. | none | decided for M2 |
 | D2 | Comparing two untyped literals | Follow stage zero. | none: each literal takes its spelled type. | decided in M1 |
 | D3 | Floating math | `number` is a 32-bit float everywhere, on the CPU and the GPU, and `f64` appears only where a type spells it, such as long timers and the engine's total time. Float arithmetic is IEEE at its type's width: nothing computes at reduced precision or is fast-math-like. Typed `f32` to `f64` widening may be implicit. Typed `f64` to `f32` narrowing needs an explicit `number(value)` or `f32(value)` at assignments, arguments and returns alike, and rounds to nearest, ties to even: overflow gives a signed infinity, and NaN stays NaN with no payload guarantee. Nothing panics, clamps or checks precision. Untyped literals stay contextual, and one past the `number` range needs an explicit `f64` context, such as a declaration, `f64(value)` or an argument whose typed operands select an `f64` overload. Helpers stay Odin-style, with no blanket finite checks. Game code spells `number` and `int`, and sized types take Odin's names (`i8`-`u64`, `f32`, `f64`). (Owner, 24 October 2026.) | #687 gave stage one conversions, implicit widening and typed floating constants. Project version 35 makes `number` 32-bit, renames the sized types and the conversions to `number(value)` and `f64(value)`, and rejects implicit narrowing in stage zero and stage one; its migration renames them in sources and graph pins. Changing `number` from 64 to 32 bits moves recorded results in their low bits. Native lowering of `number` and `f64` arithmetic, comparisons and conversions is in the scalar path, IEEE at width with no fast-math flags. The engine has no total-time native yet; one should return `f64`. | implemented |
-| D4 | Budget and recursion | Native loops and recursion run unchecked, as Odin's and Rust's do: an endless loop runs until its host or test deadline stops it, and no `mustprogress` lets LLVM remove it. Recursion has no depth limit: every native function probes its stack (`"probe-stack"="inline-asm"`, or `__chkstk` on Windows), so an overflow always faults in the guard page. A host that calls `stack_overflow_init` reports that fault as "stack overflow" and aborts, as Rust's runtime does; so far only the Linux native test host does. The VM keeps its instruction budget, which stops runaway scripts in the editor, and stage zero's VM output keeps its 64-call limit; stage one's has no limit yet. (Owner, 25 October 2026.) | Cancellation and scheduler interaction (M6). The named overflow report in production hosts: a standalone program the driver links installs no handler and ends with SIGSEGV, and no engine host runs native code yet. Threads other than the one that ran `stack_overflow_init`. On macOS and Windows, recursion below 64 calls and a program with a 256 KiB frame run in CI; deep recursion and overflow are untested. | decided for M3 |
+| D4 | Budget and recursion | The original M3 default leaves ordinary native closures unbounded: an endless loop runs until its host or test deadline stops it, and no `mustprogress` lets LLVM remove it. The current standalone exceptions are [native quota scopes](#native-quota-scopes). Recursion has no depth limit: every native function probes its stack (`"probe-stack"="inline-asm"`, or `__chkstk` on Windows), so an overflow always faults in the guard page. A host that calls `stack_overflow_init` reports that fault as "stack overflow" and aborts, as Rust's runtime does; so far only the Linux native test host does. The VM keeps its instruction budget, which stops runaway scripts in the editor, and stage zero's VM output keeps its 64-call limit; stage one's has no limit yet. (Owner, 25 October 2026.) | Cancellation and scheduler interaction (M6). The named overflow report in production hosts: a standalone program the driver links installs no handler and ends with SIGSEGV, and no engine host runs native code yet. Threads other than the one that ran `stack_overflow_init`. On macOS and Windows, recursion below 64 calls and a program with a 256 KiB frame run in CI; deep recursion and overflow are untested. | decided for M3 |
 | D5 | Native ABI | An explicit target, ownership and effect contract. Probes use a validation-only adapter, and internal ownership follows D10. Inside a module `bool` is a plain `i1`. An exported or foreign `bool` parameter or result is `zeroext i1`, as clang passes C's `_Bool` on Linux, macOS and Windows and as rustc and Odin pass theirs (owner, 27 October 2026). Windows code that uses floating point references `_fltused`, which the MSVC runtime defines; a program linked without it must define it. | The exported and foreign ABI of aggregates and strings, and the calling conventions they need (W14, W16). | open, needed for M5 |
 | D6 | Failure handling | Observable errors, effects and cleanup are preserved. A failed assert fails the call from the VM, as the VM's own assert fails a behavior call, rather than aborting as Odin does (owner, 28 October 2026; W11, #774). Native code stores the failure in the context and returns through every native frame, each caller checking the slot after a call of a function that can fail; native functions hold nothing to clean up, since the call's heap is freed when it returns. | Failures other than asserts (a `format_text` error still aborts, and D9's indexes); a native program's report, with W17 and W19. | implemented for asserts in VM calls |
 | D7 | Targets and defaults | Prove each target, and keep current behavior working. `native_abi` admits `x86_64-unknown-linux-gnu`, `arm64-apple-macosx11.0.0` (versioned, so the object records its platform, as Odin's default does) and `x86_64-pc-windows-msvc`, and `Driver.Target` admits each with the layouts LLVM 18 to 23 give it, as measured; `Driver.Object` emits objects for all three, and `Driver.Build` links programs for all three on Linux or macOS with `ld.lld` (W18). Line tables (W19) and libraries (W16) are Linux x86-64 only, and the emitter rejects them for the other two. The x86-64 layouts are the same from LLVM 18 to 23; the arm64 one changed with LLVM 19 and 22, and each measured layout is admitted. | The pinned LLVM for macOS and Windows hosts (CI builds their objects and programs with Linux's LLVM 18) and when native output becomes a default. | open, M6 and M8 |
@@ -374,13 +424,15 @@ of scalars is one `release`), records and unions call their fields', a string
 is a null test, a decrement and a release. Types that own nothing emit
 nothing, so scalar-only modules are unchanged.
 
-**`x := arr`.** The VM copies on write; the native lane copies eagerly at
-`x := arr` (ArrayCopy), which is correct with drops (both own their buffers)
-but O(n) where the VM shares. The amendment keeps the eager copy and adds one
-elision for later: when `arr` is a local that nothing reads after the
-statement in its scope, the copy is a move, and `arr`'s drop is skipped. The
-rows have no liveness today, so the elision is its own stage and its own
-measurement; until then the cost is the copy and the temporary's drop.
+**`x := arr`.** Source ArrayCopy facts lower to native ValueCopy, which shares
+owned backing and imports borrowed external storage. Set, append, extend, remove and foreign buffer writes make
+their current destination unique before mutation. Record field places resolve
+after argument evaluation, so a later callback can replace the owner safely.
+Slices still copy their elements. A future liveness pass can move a dying
+source instead of retaining and releasing its backing; that optimization is
+separate from value semantics.
+Explicit native ArrayCopy retains its physical clone contract for raw foreign
+callers that do not use source buffer loans.
 
 **Stages and tests.**
 

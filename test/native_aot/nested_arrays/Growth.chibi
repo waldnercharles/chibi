@@ -1,0 +1,19 @@
+package nested_growth
+
+foreign import audit "system:c"
+foreign audit { chibi_value_test_allocations :: () -> u64; }
+
+Allocated :: (count: int) -> u64 {
+    before := chibi_value_test_allocations();
+    rows: int[][] = [[]];
+    for (index in 0..<count) { rows[0].append(index); }
+    completed := chibi_value_test_allocations();
+    assert(length(rows[0]) == count && rows[0][count - 1] == count - 1);
+    return completed - before;
+}
+Main :: () -> int {
+    small := Allocated(64);
+    large := Allocated(1024);
+    assert(large <= small + 6 && large < 32, "unique nested append grows backing geometrically");
+    return 0;
+}

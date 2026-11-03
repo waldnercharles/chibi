@@ -1,0 +1,387 @@
+package package_compiler
+
+import facts "project:scalar_facts"
+import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+
+// Native maps have scalar/string keys and scalar/string/record or array values.
+// The ordinary compiler supplies the types; lowering checks record ownership.
+ScalarMapArrayValue :: (types: TypeDecl[], record: int) -> bool {
+    return record >= 0 && record < length(types) && types[record].kind == MapDecl &&
+           types[record].value_container == ArrayContainer && types[record].value_storage != PointerStorage &&
+           ScalarArrayType(types, types[record].value_storage, types[record].value_record) != 0;
+}
+ScalarMapType :: (types: TypeDecl[], record: int) -> int {
+    if (record < 0 || record >= length(types) || types[record].kind != MapDecl) {
+        return 0;
+    }
+    declared := types[record];
+    key := ScalarTypeOf(declared.key);
+    value := ScalarTypeOf(declared.value_storage);
+    if (declared.value_storage == StructStorage) { value = ScalarRecordType(types, declared.value_record); }
+    array := ScalarMapArrayValue(types, record);
+    if (array) { value = ScalarArrayType(types, declared.value_storage, declared.value_record); }
+    if ((facts.Bits(key) == 0 && key != facts.BoolType && key != facts.StringType) ||
+        value == 0 || declared.value_storage == TaskStorage || (declared.value_container != 0 && !array) ||
+        (declared.value_record >= 0 && declared.value_storage != StructStorage && !array)) {
+        return 0;
+    }
+    return facts.MapType + value * 16 + key;
+}
+
+// The declared map type of a variable or a function result, -1 otherwise.
+ScalarMapShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[],
+                   names: Name[], types: TypeDecl[], package: int, operand: int) -> int {
+    node := Unparenthesized(forest, operand);
+    if (Is(forest, node, syntax.Identifier)) {
+        found := Lookup(names, Text(forest, text, node));
+        if (found >= 0 && names[found].container == MapContainer && ScalarMapType(types, names[found].record) != 0) {
+            return names[found].record;
+        }
+    } else if (Is(forest, node, syntax.CallExpression)) {
+        callee := CalledFunction(forest, text, callables, [], names, package, node);
+        if (callee >= 0 && callables[callee].result_container == MapContainer &&
+            ScalarMapType(types, callables[callee].result_record) != 0) {
+            return callables[callee].result_record;
+        }
+    }
+    return -1;
+}
+
+// A declaration's map type, including a copy of a map variable or call.
+ScalarLocalMap :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
+                   types: TypeDecl[], callable: Callable, statement: int) -> int {
+    declared := Field(forest, statement, syntax.FieldType);
+    if (declared < 0) {
+        return ScalarMapShape(forest, text, callables, names, types, callable.package,
+                              Field(forest, statement, syntax.FieldValue));
+    }
+    table := types;
+    value := ReadType(forest, text, &table, names, callable.package, declared);
+    if (value.container == MapContainer && ScalarMapType(types, value.record) != 0) {
+        return value.record;
+    }
+    return -1;
+}
+
+ScalarMapSnapshot :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], callable: Callable,
+                      names: Name[], types: TypeDecl[], object: int, changed: string[]) -> bool {
+    node := Unparenthesized(forest, object);
+    if (!Is(forest, node, syntax.Identifier)) { return false; }
+    name := Text(forest, text, node);
+    if (changed.contains(name)) { return true; }
+    found := Lookup(names, name);
+    if (found < 0 || names[found].index < 0 || names[found].index >= callable.count ||
+        !params[callable.first + names[found].index].reference) { return false; }
+    mapped := ScalarMapType(types, names[found].record);
+    for (written in changed) {
+        other := Lookup(names, written);
+        if (other >= 0 && names[other].index >= 0 && names[other].index < callable.count) {
+            param := params[callable.first + names[other].index];
+            if (param.reference && param.container == MapContainer && ScalarMapType(types, param.record) == mapped) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// A map read, literal or call. Copies are explicit when another variable or
+// a returned value will own a borrowed descriptor.
+ScalarMapValue :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                   constants: ConstDecl[], operand: int, record: int, copied: bool, rows: facts.Row[]) -> ScalarOperands {
+    node := Unparenthesized(forest, operand);
+    mapped := ScalarMapType(types, record);
+    output := rows;
+    if (mapped == 0) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native maps require scalar or string keys and supported value types"));
+    }
+    if (Is(forest, node, syntax.MapExpression)) {
+        pairs := Members(forest, node);
+        for (pair in pairs) {
+            for (part in [syntax.FieldKey, syntax.FieldValue]) {
+                value := Field(forest, pair, part);
+                storage := types[record].key;
+                if (part == syntax.FieldValue) {
+                    storage = types[record].value_storage;
+                }
+                shape: ValueType = {storage: storage, container: 0, record: -1};
+                if (part == syntax.FieldValue) {
+                    shape.record = types[record].value_record;
+                    shape.container = types[record].value_container;
+                }
+                switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                                          value, shape, output) {
+                    case .Failed(diagnostic):
+                        return ScalarOperands.Failed(diagnostic);
+                    case .Built(built):
+                        output = built;
+                }
+            }
+        }
+        output.append(ScalarAt(forest, node, facts.MapRow, mapped, facts.MapNew, length(pairs) * 2, ""));
+        return ScalarOperands.Built(output);
+    }
+    held := ScalarMapShape(forest, text, callables, names, types, callable.package, node);
+    if (held < 0 || ScalarMapType(types, held) != mapped) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native map value differs from its declared type"));
+    }
+    if (Is(forest, node, syntax.Identifier)) {
+        output.append(ScalarAt(forest, node, facts.ReadRow, mapped, ScalarVariable(names, Text(forest, text, node)).index, 0, ""));
+        if (copied) {
+            output.append(ScalarAt(forest, node, facts.MapRow, mapped, facts.MapCopy, 1, ""));
+        }
+        return ScalarOperands.Built(output);
+    }
+    return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, node, UnionStorage, output);
+}
+
+// The object and key of m.has(k), k in m, k not in m, or m[k]. An operator
+// of zero means this is another expression.
+ScalarMapCall :: struct {
+    operator: int;
+    object: int;
+    key: int;
+}
+ScalarMapRead :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
+                  types: TypeDecl[], package: int, node: int) -> ScalarMapCall {
+    found: ScalarMapCall = {operator: 0, object: -1, key: -1};
+    if (Is(forest, node, syntax.IndexExpression)) {
+        found = {operator: facts.MapGet, object: Field(forest, node, syntax.FieldObject),
+                 key: Field(forest, node, syntax.FieldIndex)};
+    } else if (Is(forest, node, syntax.BinaryExpression) &&
+               (Operator(forest, node) == tk.In || Operator(forest, node) == syntax.NotIn)) {
+        found = {operator: facts.MapHas, object: Field(forest, node, syntax.FieldRight), key: Field(forest, node, syntax.FieldLeft)};
+    } else if (Is(forest, node, syntax.CallExpression)) {
+        function := Field(forest, node, syntax.FieldFunction);
+        arguments := Members(forest, Field(forest, node, syntax.FieldArguments));
+        if (Is(forest, function, syntax.MemberExpression)) {
+            name := Text(forest, text, Field(forest, function, syntax.FieldMember));
+            if (NameMatches(name, "has") && length(arguments) == 1) {
+                found = {operator: facts.MapHas, object: Field(forest, function, syntax.FieldObject), key: arguments[0]};
+            }
+        }
+    }
+    if (found.object < 0 || ScalarMapShape(forest, text, callables, names, types, package, found.object) < 0) {
+        return {operator: 0, object: -1, key: -1};
+    }
+    if (Is(forest, node, syntax.CallExpression) && CalledFunction(forest, text, callables, [], names, package, node) >= 0) {
+        return {operator: 0, object: -1, key: -1};
+    }
+    return found;
+}
+ScalarMapReadRows :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                      callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                      constants: ConstDecl[], node: int, read: ScalarMapCall, rows: facts.Row[]) -> ScalarOperands {
+    record := ScalarMapShape(forest, text, callables, names, types, callable.package, read.object);
+    output := rows;
+    changed := EvaluationChanges(forest, text, callables, params, [], names, callable.package, read.key, true);
+    copied := ScalarMapSnapshot(forest, text, params, callable, names, types, read.object, changed);
+    switch ScalarMapValue(forest, text, callables, params, callable, names, types, members, constants,
+                          read.object, record, copied, output) {
+        case .Failed(diagnostic):
+            return ScalarOperands.Failed(diagnostic);
+        case .Built(built):
+            output = built;
+    }
+    count := 1;
+    if (read.key >= 0) {
+        switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                             read.key, read.key, types[record].key, types[record].key, facts.Clamp, output) {
+            case .Failed(diagnostic):
+                return ScalarOperands.Failed(diagnostic);
+            case .Built(built):
+                output = built;
+        }
+        count += 1;
+    }
+    type := facts.IntType;
+    if (read.operator == facts.MapHas) {
+        type = facts.BoolType;
+    } else if (read.operator == facts.MapGet) {
+        type = ScalarValueType(types, types[record].value_storage, types[record].value_container,
+                               types[record].value_record);
+    }
+    row := ScalarAt(forest, node, facts.MapRow, type, read.operator, count, "");
+    row.literal = i64(ScalarMapType(types, record));
+    output.append(row);
+    if (Operator(forest, node) == syntax.NotIn) {
+        output.append(ScalarAt(forest, node, facts.UnaryRow, facts.BoolType, facts.Not, 1, ""));
+    }
+    return ScalarOperands.Built(output);
+}
+
+// Map changes are assignments of the map descriptor, even delete statements.
+ScalarMapChange :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
+                    types: TypeDecl[], package: int, statement: int) -> ScalarMapCall {
+    target := Field(forest, statement, syntax.FieldTarget);
+    if ((Is(forest, statement, syntax.Assignment) || Is(forest, statement, syntax.DeleteStatement)) &&
+        Is(forest, target, syntax.IndexExpression)) {
+        object := Field(forest, target, syntax.FieldObject);
+        if (ScalarMapShape(forest, text, callables, names, types, package, object) >= 0) {
+            operator := facts.MapSet;
+            if (Is(forest, statement, syntax.DeleteStatement)) { operator = facts.MapDelete; }
+            return {operator: operator, object: object, key: Field(forest, target, syntax.FieldIndex)};
+        }
+        if (Is(forest, statement, syntax.Assignment)) {
+            read := ScalarMapRead(forest, text, callables, names, types, package, object);
+            record := ScalarMapShape(forest, text, callables, names, types, package, read.object);
+            if (read.operator == facts.MapGet && ScalarMapArrayValue(types, record)) {
+                return {operator: facts.MapArraySet, object: read.object, key: read.key};
+            }
+        }
+    }
+    call := FirstMember(forest, statement);
+    if (Is(forest, statement, syntax.ExpressionStatement) && Is(forest, call, syntax.CallExpression)) {
+        function := Field(forest, call, syntax.FieldFunction);
+        arguments := Members(forest, Field(forest, call, syntax.FieldArguments));
+        if (Is(forest, function, syntax.MemberExpression) && length(arguments) == 1) {
+            read := ScalarMapRead(forest, text, callables, names, types, package, Field(forest, function, syntax.FieldObject));
+            record := ScalarMapShape(forest, text, callables, names, types, package, read.object);
+            if (read.operator == facts.MapGet && ScalarMapArrayValue(types, record)) {
+                method := ScalarChangeKind(forest, text, statement);
+                operator := 0;
+                if (method == facts.ArrayPush) { operator = facts.MapArrayPush; }
+                else if (method == facts.ArrayExtend) { operator = facts.MapArrayExtend; }
+                else if (method == facts.ArrayRemove) { operator = facts.MapArrayRemove; }
+                else if (method == facts.ArrayResize) { operator = facts.MapArrayResize; }
+                if (operator != 0) { return {operator: operator, object: read.object, key: read.key}; }
+            }
+        }
+        if (Is(forest, function, syntax.MemberExpression) && length(arguments) == 1 &&
+            NameMatches(Text(forest, text, Field(forest, function, syntax.FieldMember)), "delete")) {
+            object := Field(forest, function, syntax.FieldObject);
+            if (ScalarMapShape(forest, text, callables, names, types, package, object) >= 0) {
+                return {operator: facts.MapDelete, object: object, key: arguments[0]};
+            }
+        }
+    }
+    return {operator: 0, object: -1, key: -1};
+}
+ScalarMapChanged :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                     callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                     constants: ConstDecl[], statement: int, change: ScalarMapCall, rows: facts.Row[]) -> ScalarOperands {
+    if (change.operator == facts.MapArraySet && Operator(forest, statement) != tk.Eq) {
+        return ScalarOperands.Failed(Diagnose(forest, statement, 0, "native mapped array elements currently assign only by ="));
+    }
+    object := Unparenthesized(forest, change.object);
+    if (!Is(forest, object, syntax.Identifier)) {
+        return ScalarOperands.Failed(Diagnose(forest, object, 0, "native map changes require a map variable"));
+    }
+    record := ScalarMapShape(forest, text, callables, names, types, callable.package, object);
+    output := rows;
+    // Capture the place, not its descriptor: key/value evaluation may replace
+    // the map before the mutation reads its current contents.
+    output.append(ScalarAt(forest, object, facts.RefRow, ScalarMapType(types, record),
+                           ScalarVariable(names, Text(forest, text, object)).index, 0, ""));
+    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                         change.key, change.key, types[record].key, types[record].key, facts.Clamp, output) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): output = built;
+    }
+    count := 2;
+    if (change.operator >= facts.MapArrayPush && change.operator <= facts.MapArrayResize) {
+        if (change.operator == facts.MapArraySet) {
+            index := Field(forest, Field(forest, statement, syntax.FieldTarget), syntax.FieldIndex);
+            switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                                 index, index, IntStorage, IntStorage, facts.Clamp, output) {
+                case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                case .Built(built): output = built;
+            }
+            count += 1;
+        }
+        value := Field(forest, statement, syntax.FieldValue);
+        if (change.operator != facts.MapArraySet) {
+            value = FirstMember(forest, Field(forest, FirstMember(forest, statement), syntax.FieldArguments));
+        }
+        if (change.operator == facts.MapArrayExtend) {
+            shape: ValueType = {storage: types[record].value_storage, container: ArrayContainer,
+                                record: types[record].value_record};
+            switch ScalarArrayValue(forest, text, callables, params, callable, names, types, members, constants,
+                                    value, shape, output) {
+                case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                case .Built(built): output = built;
+            }
+        } else if (change.operator == facts.MapArrayPush || change.operator == facts.MapArraySet) {
+            shape: ValueType = {storage: types[record].value_storage, container: 0,
+                                record: types[record].value_record};
+            switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                                      value, shape, output) {
+                case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                case .Built(built): output = built;
+            }
+        } else {
+            switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                                 value, value, IntStorage, IntStorage, facts.Clamp, output) {
+                case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                case .Built(built): output = built;
+            }
+        }
+        count += 1;
+    }
+    if (change.operator == facts.MapSet) {
+        value := Field(forest, statement, syntax.FieldValue);
+        shape: ValueType = {storage: types[record].value_storage, container: types[record].value_container,
+                            record: types[record].value_record};
+        switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                                  value, shape, output) {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): output = built;
+        }
+        count += 1;
+    }
+    output.append(ScalarAt(forest, statement, facts.MapRow, ScalarMapType(types, record), change.operator, count, ""));
+    return ScalarOperands.Built(output);
+}
+
+// Read the old numeric value after evaluating the key, before the RHS. The
+// final store resolves the map variable again, so RHS replacement is preserved.
+// A missing numeric key reads zero through the ordinary MapGet contract.
+ScalarMapCompound :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                       callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                       constants: ConstDecl[], statement: int, change: ScalarMapCall, variables: ^int) -> ScalarOperands {
+    object := Unparenthesized(forest, change.object);
+    if (!Is(forest, object, syntax.Identifier)) {
+        return ScalarOperands.Failed(Diagnose(forest, object, 0, "native map changes require a map variable"));
+    }
+    record := ScalarMapShape(forest, text, callables, names, types, callable.package, object);
+    shape := types[record];
+    if (!Numeric(shape.value_storage) || shape.value_container != 0) {
+        return ScalarOperands.Failed(Diagnose(forest, statement, 0, "compound assignment needs numeric operands"));
+    }
+    mapped := ScalarMapType(types, record);
+    binding := ScalarVariable(names, Text(forest, text, object)).index;
+    key_type := ScalarTypeOf(shape.key);
+    value_type := ScalarTypeOf(shape.value_storage);
+    key := variables^;
+    previous := key + 1;
+    output := [ScalarAt(forest, statement, facts.ScopeRow, 0, 0, 0, "")];
+    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                         change.key, change.key, shape.key, shape.key, facts.Clamp, []) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): output.extend(ScalarCapture(forest, statement, key_type, key, built));
+    }
+    read_key := ScalarAt(forest, change.key, facts.ReadRow, key_type, key, 0, "");
+    get := ScalarAt(forest, statement, facts.MapRow, value_type, facts.MapGet, 2, "");
+    get.literal = i64(mapped);
+    output.extend(ScalarCapture(forest, statement, value_type, previous,
+        [ScalarAt(forest, object, facts.ReadRow, mapped, binding, 0, ""), read_key, get]));
+    incoming := [ScalarAt(forest, object, facts.RefRow, mapped, binding, 0, ""), read_key,
+                 ScalarAt(forest, statement, facts.ReadRow, value_type, previous, 0, "")];
+    value := Field(forest, statement, syntax.FieldValue);
+    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                         value, value, shape.value_storage, shape.value_storage, facts.Clamp, incoming) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): incoming = built;
+    }
+    incoming.append(ScalarAt(forest, statement, facts.ArithmeticRow, value_type,
+                             ScalarArithmetic(CompoundOperator(Operator(forest, statement))), 2, ""));
+    incoming.append(ScalarAt(forest, statement, facts.MapRow, mapped, facts.MapSet, 3, ""));
+    output.append(ScalarAt(forest, statement, facts.AssignRow, mapped, binding, length(incoming), ""));
+    output.extend(incoming);
+    output.append(ScalarAt(forest, statement, facts.EndRow, 0, 0, 0, ""));
+    variables^ += 2;
+    return ScalarOperands.Built(output);
+}

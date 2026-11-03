@@ -1,0 +1,24 @@
+package task_nested_order
+Main :: () -> int {
+    Parent();
+    yield
+    yield
+    if (Log(0) != 21) { return 1; }
+    return 0;
+}
+Parent :: () -> int {
+    Child();
+    yield
+    Log(1);
+    return 0;
+}
+Child :: () -> int {
+    yield
+    Log(2);
+    return 0;
+}
+Log :: (digit: int) -> int {
+    order: retain int = 0;
+    if (digit != 0) { order = order * 10 + digit; }
+    return order;
+}

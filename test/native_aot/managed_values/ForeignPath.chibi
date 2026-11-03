@@ -1,0 +1,11 @@
+package foreign_path
+foreign import libc "system:c"
+foreign libc { memset :: (data: u8[], value: i32, count: u64) -> rawptr }
+Inner :: struct { data: u8[]; }
+Outer :: struct { inner: Inner; }
+Main :: () -> int {
+    value: Outer = {inner: {data: [u8(65)]}};
+    changed := memset(value.inner.data, 0, 1);
+    assert(value.inner.data[0] == 0);
+    return 0;
+}

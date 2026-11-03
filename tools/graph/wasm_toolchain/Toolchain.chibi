@@ -1,0 +1,102 @@
+package wasm_toolchain
+
+import os "core:os"
+import strings "core:strings"
+
+Join :: (parts: string[]) -> string { return strings.Concatenate(parts); }
+
+pub ToolchainInputs :: struct {
+    files: string[];
+    configuration: string;
+    error: string;
+}
+
+Parent :: (path: string) -> string {
+    return strings.Slice(path, 0, strings.LastIndex(path, "/"));
+}
+
+ImplementationFiles :: (directory: string) -> string[] {
+    listed := os.List(directory);
+    if (listed.error != nil) { return []; }
+    files := [directory];
+    for (name in listed.names) {
+        if (name == "__pycache__") { continue; }
+        path := Join([directory, "/", name]);
+        kind := os.Kind(path);
+        if (kind == os.KindDirectory) {
+            nested := ImplementationFiles(path);
+            if (length(nested) == 0) { return []; }
+            files.extend(nested);
+        } else {
+            canonical := os.RealPath(path);
+            if (os.Kind(canonical) != os.KindFile) { return []; }
+            files.append(canonical);
+        }
+    }
+    return files;
+}
+
+// Resolve the implementation behind a launcher through Emscripten's own
+// em-config tool. The graph receipt and cold compiler fence consume this same
+// inventory. SDK-managed generated caches are not source inputs.
+pub Toolchain :: (emcc: string, llvm: string) -> ToolchainInputs {
+    for (name in ["EMCC_CFLAGS", "EM_COMPILER_WRAPPER", "EM_LLVM_ADD_VERSION", "EM_CLANG_ADD_VERSION",
+                  "CPATH", "C_INCLUDE_PATH", "CPLUS_INCLUDE_PATH", "LIBRARY_PATH"]) {
+        if (os.Getenv(name) != "") {
+            return {files: [], configuration: "", error: Join(["asset wasm: unsupported implicit tool option ", name])};
+        }
+    }
+    launcher := os.RealPath(emcc);
+    configuration_tool := os.RealPath(Join([Parent(launcher), "/em-config"]));
+    if (!os.IsFile(launcher) || !os.IsFile(configuration_tool)) {
+        return {files: [], configuration: "", error: "asset wasm: --emcc requires its matching em-config tool"};
+    }
+    files := [launcher, configuration_tool];
+    configuration: string[] = [];
+    root := "";
+    binaryen := "";
+    for (key in ["EMSCRIPTEN_ROOT", "EM_CONFIG", "LLVM_ROOT", "BINARYEN_ROOT", "NODE_JS", "COMPILER_WRAPPER"]) {
+        result := os.Capture([configuration_tool, key]);
+        if (result.status != 0) {
+            return {files: [], configuration: "", error: Join(["asset wasm: cannot resolve Emscripten setting ", key])};
+        }
+        value := strings.TrimSpace(result.stdout);
+        configuration.append(format_text("{}:{}:{}", key, strings.ByteLength(value), value));
+        if (key == "COMPILER_WRAPPER") {
+            if (value != "None" && value != "[]" && value != "") {
+                return {files: [], configuration: "", error: "asset wasm: Emscripten compiler wrappers are not supported"};
+            }
+        } else if (key != "NODE_JS") {
+            canonical := os.RealPath(value);
+            if (canonical == "") {
+                return {files: [], configuration: "", error: Join(["asset wasm: unavailable Emscripten setting ", key])};
+            }
+            if (key == "EMSCRIPTEN_ROOT") { root = canonical; }
+            else if (key == "BINARYEN_ROOT") { binaryen = canonical; }
+            else if (key == "LLVM_ROOT" && canonical != os.RealPath(llvm)) {
+                return {files: [], configuration: "", error: "asset wasm: --wasm-llvm must match Emscripten's LLVM_ROOT"};
+            }
+            files.append(canonical);
+        }
+    }
+    top := os.List(root);
+    if (top.error != nil) { return {files: [], configuration: "", error: "asset wasm: cannot inventory Emscripten"}; }
+    for (name in top.names) {
+        path := Join([root, "/", name]);
+        if (os.Kind(path) == os.KindFile) { files.append(path); }
+    }
+    for (directory in [Join([root, "/tools"]), Join([root, "/src"]), Join([root, "/system"]),
+                       Join([root, "/third_party"]), Join([binaryen, "/bin"])]) {
+        nested := ImplementationFiles(directory);
+        if (length(nested) == 0) {
+            return {files: [], configuration: "", error: Join(["asset wasm: cannot inventory tool sources ", directory])};
+        }
+        files.extend(nested);
+    }
+    for (name in ["opt", "llc", "llvm-link", "llvm-ar", "clang", "wasm-ld", "llvm-nm", "llvm-objcopy"]) {
+        path := os.RealPath(Join([llvm, "/", name]));
+        if (!os.IsFile(path)) { return {files: [], configuration: "", error: Join(["asset wasm: missing LLVM tool ", name])}; }
+        files.append(path);
+    }
+    return {files: files, configuration: Join(configuration), error: ""};
+}

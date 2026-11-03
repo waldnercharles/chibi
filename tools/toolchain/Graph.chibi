@@ -2,6 +2,7 @@ package toolchain
 
 import c "graph:c"
 import engine "graph:engine"
+import paths "graph:install"
 import os "core:os"
 import strings "core:strings"
 
@@ -16,7 +17,7 @@ import strings "core:strings"
 //   --debug-frame-pointers on|off (Debug only, default off)
 //   --launcher PATH --archiver PATH --ranlib PATH --libclang-include DIR
 //   --libclang-library PATH --clang-resource-include DIR --third-party DIR --reflect PATH
-//   --asset-generator-hosts DIR --libclang-root DIR
+//   --libclang-root DIR
 //   --opengl-library PATH --glx-library PATH --opengl-include DIR
 // The explicit profile performs no toolchain discovery; every required tool
 // and platform option must be provided. It can write commands without native
@@ -81,6 +82,9 @@ SDKReflect :: () -> int {
 // compilation without sharing a profile or a build result.
 LibrariesWithArguments :: (arguments: string[]) -> int {
     targets := engine.Targets();
+    web_targets := engine.WebAssemblyProducts();
+    archive_targets := engine.NativeArchives();
+    targets.extend(web_targets);
     unknown := engine.TargetError(arguments, targets);
     if (unknown != "") {
         os.Print(unknown);
@@ -88,6 +92,63 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
     }
     build_dir := Option(arguments, "--build", "");
     jobs := Count(Option(arguments, "--jobs", "8"));
+    selected: string[] = [];
+    native_products: string[] = [];
+    native_archives: string[] = [];
+    web_products: string[] = [];
+    for (target in targets) {
+        if (engine.Selected(arguments, target)) {
+            if (web_targets.contains(target)) { web_products.append(target); }
+            else if (archive_targets.contains(target)) { native_archives.append(target); }
+            else if (length(engine.NativeArguments(target)) == 0) { selected.append(target); }
+            else { native_products.append(target); }
+        }
+    }
+    native_commands := "[\n\n]\n";
+    archive_commands := "[\n\n]\n";
+    web_commands := "[\n\n]\n";
+    emcc := Option(arguments, "--emcc", os.Getenv("CHIBI_EMCC"));
+    wasm_llvm := Option(arguments, "--wasm-llvm", os.Getenv("CHIBI_WASM_LLVM_BIN"));
+    if (length(native_products) != 0 || length(native_archives) != 0 || length(web_products) != 0) {
+        driver := Option(arguments, "--native-driver", "");
+        llvm := Option(arguments, "--llvm", "");
+        if (!paths.IsAbsolute(build_dir) || driver == "" || llvm == "" || jobs < 1) {
+            os.Print("graph: native products require absolute --build, --native-driver FILE, --llvm DIR and positive --jobs");
+            return 2;
+        }
+        if (length(native_products) != 0) {
+            native_commands = engine.NativeCommands(driver, llvm, os.Root(), build_dir, native_products, jobs);
+        }
+        if (length(native_archives) != 0) { archive_commands = engine.NativeArchiveCommands(llvm, os.Root(), build_dir); }
+        if (length(web_products) != 0) {
+            if (!paths.IsAbsolute(emcc) || !paths.IsAbsolute(wasm_llvm)) {
+                os.Print("graph: the optional Wasm compiler requires --emcc FILE and --wasm-llvm DIR, or CHIBI_EMCC and CHIBI_WASM_LLVM_BIN");
+                return 2;
+            }
+            web_commands = engine.WebAssemblyCommands(driver, llvm, emcc, wasm_llvm, os.Root(), build_dir);
+        }
+        if (length(selected) == 0) {
+            if (Option(arguments, "--commands-only", "") != "on") {
+                if (length(native_products) != 0 &&
+                    engine.BuildNative(driver, llvm, os.Root(), build_dir, native_products, jobs) < 0) { return 1; }
+                if (length(native_archives) != 0 && engine.BuildNativeArchives(llvm, os.Root(), build_dir) < 0) { return 1; }
+                if (length(native_archives) != 0) {
+                    archive_commands = engine.NativeArchiveRecordedCommands(build_dir);
+                    if (archive_commands == "") { return 1; }
+                }
+                if (length(web_products) != 0 &&
+                    engine.BuildWebAssembly(driver, llvm, emcc, wasm_llvm, os.Root(), build_dir, jobs) < 0) { return 1; }
+                if (length(web_products) != 0) {
+                    web_commands = engine.WebAssemblyRecordedCommands(build_dir);
+                    if (web_commands == "") { return 1; }
+                }
+            }
+            if (os.MakeDirectory(build_dir) ||
+                os.WriteText(strings.Concatenate([build_dir, "/compile_commands.json"]), "[]\n") ||
+                os.WriteText(strings.Concatenate([build_dir, "/link_commands.json"]), MergeCommands(MergeCommands(native_commands, archive_commands), web_commands))) { return 1; }
+            return 0;
+        }
+    }
     // The named profile as this machine provides it; each option overrides
     // what it names.
     profile_name := Option(arguments, "--profile", "sanitizer");
@@ -97,7 +158,7 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
         debug_optimization: "", debug_frame_pointers: false, architecture: "", sysroot: "", warnings: true, sanitizers: "",
         debug_compilation_dir: "", libclang_include: "", libclang_library: "",
         opengl_library: "", opengl_include: "", glx_library: "",
-        clang_resource_include: "", third_party: "", reflect: "", asset_generator_hosts: ""
+        clang_resource_include: "", third_party: "", reflect: ""
     };
     if (discover) {
         found = engine.Discover(profile_name, os.Root(), build_dir, Option(arguments, "--libclang-root", ""));
@@ -153,8 +214,7 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
         clang_resource_include: Option(arguments, "--clang-resource-include", resource_include),
         // The archive for the profile as overridden.
         third_party: Option(arguments, "--third-party", third_party),
-        reflect: Option(arguments, "--reflect", ""),
-        asset_generator_hosts: Option(arguments, "--asset-generator-hosts", "")
+        reflect: Option(arguments, "--reflect", "")
     };
     rejection := engine.ProfileOptionError(arguments, profile.build_type);
     if (rejection != "") {
@@ -173,12 +233,6 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
         tools.archiver == "" || tools.ranlib == "" || jobs < 1) {
         os.Print("graph: --build must be absolute, a compiler, archiver and ranlib must be found, and --jobs must be positive");
         return 2;
-    }
-    selected: string[] = [];
-    for (target in targets) {
-        if (engine.Selected(arguments, target)) {
-            selected.append(target);
-        }
     }
     if (Option(arguments, "--commands-only", "") != "on" &&
         engine.Selected(arguments, "reflect") && profile.reflect == "" &&
@@ -211,6 +265,22 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
             }
         }
     }
+    if (length(native_products) != 0 && Option(arguments, "--commands-only", "") != "on" &&
+        engine.BuildNative(Option(arguments, "--native-driver", ""), Option(arguments, "--llvm", ""),
+                           os.Root(), build_dir, native_products, jobs) < 0) { return 1; }
+    if (length(native_archives) != 0 && Option(arguments, "--commands-only", "") != "on" &&
+        engine.BuildNativeArchives(Option(arguments, "--llvm", ""), os.Root(), build_dir) < 0) { return 1; }
+    if (length(native_archives) != 0 && Option(arguments, "--commands-only", "") != "on") {
+        archive_commands = engine.NativeArchiveRecordedCommands(build_dir);
+        if (archive_commands == "") { return 1; }
+    }
+    if (length(web_products) != 0 && Option(arguments, "--commands-only", "") != "on" &&
+        engine.BuildWebAssembly(Option(arguments, "--native-driver", ""), Option(arguments, "--llvm", ""),
+                                emcc, wasm_llvm, os.Root(), build_dir, jobs) < 0) { return 1; }
+    if (length(web_products) != 0 && Option(arguments, "--commands-only", "") != "on") {
+        web_commands = engine.WebAssemblyRecordedCommands(build_dir);
+        if (web_commands == "") { return 1; }
+    }
     if (os.MakeDirectory(build_dir)) {
         os.Print("graph: creating the build directory failed");
         return 1;
@@ -227,7 +297,11 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
         return 1;
     }
     links := strings.Join([build_dir, "/link_commands.json"], "");
-    if (os.WriteText(links, engine.LinkCommands(tools, profile, os.Root(), build_dir, selected))) {
+    link_commands := engine.LinkCommands(tools, profile, os.Root(), build_dir, selected);
+    if (length(native_products) != 0 || length(native_archives) != 0 || length(web_products) != 0) {
+        link_commands = MergeCommands(MergeCommands(MergeCommands(native_commands, archive_commands), web_commands), link_commands);
+    }
+    if (os.WriteText(links, link_commands)) {
         os.Print("graph: writing link_commands.json failed");
         return 1;
     }
@@ -241,4 +315,12 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
     }
     os.Print(format_text("graph: compiled {} sources", total));
     return 0;
+}
+
+MergeCommands :: (first: string, second: string) -> string {
+    left := strings.TrimSuffix(strings.TrimPrefix(first, "[\n"), "\n]\n");
+    right := strings.TrimSuffix(strings.TrimPrefix(second, "[\n"), "\n]\n");
+    if (left == "") { return second; }
+    if (right == "") { return first; }
+    return strings.Concatenate(["[\n", left, ",\n", right, "\n]\n"]);
 }

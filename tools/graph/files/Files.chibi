@@ -1,6 +1,7 @@
 package files
 
 import os "core:os"
+import strings "core:strings"
 
 // What the build graph reads of a path that may not be there. A missing path
 // reads as nothing, so a stamp, an inventory or a previous output that is not
@@ -24,6 +25,33 @@ pub Digest :: (path: string) -> string {
         return "";
     }
     return hashed.digest;
+}
+
+// Windows can give same-size rewrites identical metadata, so build records
+// also bind the content digest there. Keep the existing stat-only POSIX path.
+// Empty means the input cannot be verified and must never count as current.
+pub Fingerprint :: (path: string) -> string {
+    stamp := os.Stamp(path);
+    if (stamp == "" || os.Platform() != "Windows") {
+        return stamp;
+    }
+    digest := "";
+    if (os.IsDirectory(path)) {
+        listed := os.List(path);
+        if (listed.error != nil) {
+            return "";
+        }
+        // Directory dependencies include their immediate sorted inventory.
+        // Windows names cannot contain line endings, so that inventory
+        // has one unambiguous entry per line without reading file contents twice.
+        digest = os.HashText(strings.Join(listed.names, "\n"));
+    } else {
+        digest = Digest(path);
+    }
+    if (digest == "") {
+        return "";
+    }
+    return strings.Join([stamp, "\t", digest], "");
 }
 
 // The names in a directory in byte order, none when the path is not a directory.

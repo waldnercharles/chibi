@@ -25,7 +25,7 @@ pub Targets :: () -> string[] {
         "chibi_arithmetic_capabilities", "chibi_native_types", "chibi_native_bindings", "chibi_task_pool_runtime", "chibi_host_native_default",
 
         "chibi_source_catalog", "chibi_program", "chibi_build_host", "chibi-build-host", "chibi_compiler_host",
-        "chibi-compiler-host", "chibi_asset_compiler_host", "chibi_application", "chibi"
+        "chibi-compiler-host", "chibi", "chibi-asset-compiler", "chibi_asset_compiler_host"
     ];
     // The native products and full test drivers share the platform's archive.
     if (os.Platform() == "Darwin" || os.Platform() == "Linux") {
@@ -35,7 +35,7 @@ pub Targets :: () -> string[] {
         targets.extend(ToolConsumers());
         targets.append("test_tools");
     }
-    targets.extend(["test_host", "concurrent_runner", "policy_worker", "benchmark_trials", "reflect"]);
+    targets.extend(["chibi_graph_fixture", "graph_headerless", "reflect"]);
     return targets;
 }
 
@@ -43,10 +43,6 @@ pub Targets :: () -> string[] {
 // `build/` entry, which a step of the graph writes, or below the third-party
 // archive for a `third-party/` entry.
 Files :: (target: string) -> string[] {
-    if (target == "chibi_asset_compiler_host") {
-        return ["src/authoring/asset_compiler_host.c", "src/authoring/package_compile.c",
-                "src/support/binary_cache.c", "build/sdk/generated/assets/asset_compiler_packaged.c"];
-    }
     if (target == "reflect") {
         return [
             "tools/reflect/reflect.c", "tools/reflect/collect.c", "tools/reflect/identity.c", "tools/reflect/emit.c",
@@ -176,7 +172,7 @@ Files :: (target: string) -> string[] {
         return ["src/host/native_default.c"];
     }
     if (target == "chibi_source_catalog") {
-        return ["src/authoring/source_package_files.c", "src/authoring/package_tests.c"];
+        return ["src/authoring/source_package_files.c", "src/authoring/package_tests.c", "src/authoring/package_compile.c"];
     }
     if (target == "chibi_build_host") {
         return [
@@ -200,17 +196,10 @@ Files :: (target: string) -> string[] {
         ];
     }
     if (target == "chibi_program") {
-        return ["src/authoring/program.c", "src/authoring/program_service.c"];
-    }
-    if (target == "chibi_application") {
-        return ["src/host/application.c", "src/host/application_tools.c", "src/host/application_io.c",
-                "src/host/process.c"];
+        return ["src/authoring/program.c"];
     }
     if (target == "chibi_program_consumer") {
         return ["test/tools/program_consumer.c"];
-    }
-    if (target == "chibi") {
-        return ["src/host/chibi_main.c"];
     }
     if (target == "chibi-compile") {
         return [
@@ -218,21 +207,11 @@ Files :: (target: string) -> string[] {
             "src/toolchain/compiler_artifact.c"
         ];
     }
-    if (target == "test_host") {
-        return [
-            "test/host/main.c", "test/host/process.c", "test/host/state_file.c",
-            "src/host/process.c", "src/host/state_file.c", "src/support/xalloc.c",
-            "third_party/yyjson/yyjson.c"
-        ];
+    if (target == "chibi_graph_fixture") {
+        return ["test/graph/fixtures/archive/first.c", "test/graph/fixtures/archive/second.c", "test/graph/fixtures/archive/third.c"];
     }
-    if (target == "concurrent_runner") {
-        return ["test/host/concurrent.c", "src/host/process.c"];
-    }
-    if (target == "policy_worker") {
-        return ["test/tools/policy_worker.c"];
-    }
-    if (target == "benchmark_trials") {
-        return ["tools/benchmark.c", "src/host/process.c"];
+    if (target == "graph_headerless") {
+        return ["test/graph/fixtures/headerless.c"];
     }
     if (target == "test_language") {
         return [
@@ -244,11 +223,6 @@ Files :: (target: string) -> string[] {
             "test/language/execution.c",
             "test/language/capture.c",
             "test/language/ranges.c",
-            "test/language/text_format.c", "test/language/host_packages_compiler.c",
-            "test/language/program_session.c",
-            "test/language/package_compiler_chibi.c",
-            "src/host/native_libraries.c", "src/host/process.c", "src/host/stack_overflow.c",
-            "test/language/native_census.c", "test/language/scalar_host.c",
             "test/language/execution_scope.c",
             "test/parallel.c", "test/language/parallel.c"
         ];
@@ -258,18 +232,8 @@ Files :: (target: string) -> string[] {
             "test/tools/types.c"
         ];
     }
-    if (target == "chibi_native_consumer") {
-        return [
-            "test/tools/native_values.c"
-        ];
-    }
-    if (target == "chibi_asset_values_consumer") {
-        return ["test/support/asset_value.c"];
-    }
     if (target == "chibi_source_runtime_consumer") {
         return [
-            "test/runtime/whole_math.c", "test/runtime/whole_integer.c",
-            "test/runtime/whole_conversion.c",
             "test/runtime/persistent_store.c", "test/support/reflected_types.c"
         ];
     }
@@ -277,14 +241,9 @@ Files :: (target: string) -> string[] {
         return [
             "test/tools/main.c", "test/tools/case_timings.c", "test/tools/case_timings_test.c",
             "test/tools/fixture.c",
-            "test/tools/chibi_cli.c", "test/tools/native_workloads.c",
-            "test/tools/collab.c",
-            "test/tools/web_storage.c", "test/tools/browser.c",
-            "test/tools/wasm_browser.c", "test/support/arena.c",
             "src/host/process.c", "third_party/yyjson/yyjson.c",
-            "test/tools/build_process.c",
             "test/tools/compiler_bootstrap.c",
-            "src/host/native_libraries.c", "test/support/fmt.c", "test/tools/box3d.c", "test/runtime/reference_cave.c"
+            "src/host/native_libraries.c", "test/tools/box3d.c"
         ];
     }
     return [];
@@ -294,6 +253,7 @@ Files :: (target: string) -> string[] {
 // `third-party/`, whose files a target publishes as its headers, keeping their
 // paths below it.
 pub HeaderSource :: (target: string) -> string {
+    if (target == "chibi_graph_fixture") { return "test/graph/fixtures/include"; }
     if (target == "chibi_json") {
         return "third_party/yyjson";
     }
@@ -306,11 +266,12 @@ pub HeaderSource :: (target: string) -> string {
 // The headers a target publishes, below its HeaderSource. Windows adds posix
 // shims to chibi_support; this graph does not build Windows yet.
 pub PublicHeaders :: (target: string) -> string[] {
+    if (target == "chibi_graph_fixture") { return ["graph_fixture/fixture.h"]; }
     if (target == "chibi_compiler_host") {
         return ["toolchain/compiler_host.h"];
     }
     if (target == "chibi_asset_compiler_host") {
-        return ["authoring/asset_compiler_host.h", "authoring/package_compile.h"];
+        return ["authoring/asset_compiler_host.h"];
     }
     if (target == "chibi_support") {
         return [
@@ -429,10 +390,10 @@ pub PublicHeaders :: (target: string) -> string[] {
         return ["host/native_default.h"];
     }
     if (target == "chibi_source_catalog") {
-        return ["authoring/package_tests.h", "authoring/source_package_io.h"];
+        return ["authoring/package_tests.h", "authoring/source_package_io.h", "authoring/package_compile.h"];
     }
     if (target == "chibi_program") {
-        return ["authoring/program.h", "authoring/program_service.h"];
+        return ["authoring/program.h"];
     }
     return [];
 }
@@ -441,8 +402,8 @@ pub PublicHeaders :: (target: string) -> string[] {
 // no target, such as chibi_physics, is a private/NAME directory several
 // libraries share, which CMake stages for none of them alone.
 pub PrivateHeaders :: (target: string) -> string[] {
-    if (target == "chibi_asset_compiler_host") {
-        return ["support/binary_cache.h", "support/sha256.h"];
+    if (target == "chibi_source_catalog") {
+        return ["support/sha256.h"];
     }
     if (target == "chibi_types") {
         return ["types/array_internal.h"];
@@ -476,17 +437,8 @@ pub PrivateHeaders :: (target: string) -> string[] {
             "toolchain/compiler_host.h", "toolchain/compiler_target.h"
         ];
     }
-    if (target == "chibi_launcher") {
-        return ["host/application.h", "host/application_tools.h", "host/application_io.h",
-                "host/process.h"];
-    }
     if (target == "chibi_compiler-target") {
         return ["toolchain/compiler_artifact.h", "toolchain/compiler_target.h"];
-    }
-    if (target == "chibi_host_tests") {
-        // The headers the host tests include, as root CMakeLists.txt stages
-        // them below its binary directory.
-        return ["host/process.h", "host/state_file.h", "support/array.h", "support/xalloc.h"];
     }
     return [];
 }
@@ -506,9 +458,6 @@ HeadersIn :: (directory: string) -> string[] {
 // BUILD/sdk/private: the language's sit in its CMake subdirectory's binary
 // directory.
 pub PrivateDirectory :: (target: string) -> string {
-    if (target == "chibi_host_tests") {
-        return "build/testing/host/include";
-    }
     if (target == "chibi_language_testing") {
         return "build/test/language/testing/include";
     }
@@ -524,16 +473,12 @@ pub PrivateDirectory :: (target: string) -> string {
 ToolConsumers :: () -> string[] {
     return [
         "chibi_sdk_contracts",
-        "chibi_native_consumer", "chibi_asset_values_consumer",
         "chibi_source_runtime_consumer", "chibi_program_consumer"
     ];
 }
 
 // The header set staged in a `build/` include directory, or empty.
 pub DirectorySet :: (include: string) -> string {
-    if (include == "build/testing/host/include") {
-        return "chibi_host_tests";
-    }
     if (include == "build/test/language/testing/include") {
         return "chibi_language_testing";
     }
@@ -551,9 +496,6 @@ pub Rewrites :: (target: string) -> string[] {
         // The players' Vorbis decoder, as sdk/project_preparation.cmake writes it.
         return ["vendor/sound_vorbis.h=third-party/source/cute_framework/libraries/stb/stb_vorbis.c"];
     }
-    if (target == "chibi_host_tests") {
-        return ["third_party/pico_headers/pico_unit.h=third_party/pico_headers/pico_unit.h"];
-    }
     return [];
 }
 pub Renames :: (target: string) -> string[] {
@@ -568,6 +510,7 @@ pub Renames :: (target: string) -> string[] {
 // path is below the source root, or below the third-party archive for
 // `third-party/`.
 pub Includes :: (target: string) -> string[] {
+    if (target == "chibi_graph_fixture") { return ["public/graph_fixture"]; }
     if (target == "chibi_program_consumer") {
         return [
             "build/test/tools/testing/include", "public/program", "public/source_catalog",
@@ -588,13 +531,9 @@ pub Includes :: (target: string) -> string[] {
         ];
     }
     if (target == "chibi_asset_compiler_host") {
-        return [
-            "public/asset_compiler_host", "private/asset_compiler_host", "build/sdk/generated/assets",
-            "third_party/yyjson", "public/asset_values", "public/support", "public/compiler_host",
-            "public/behavior_runtime", "public/execution", "public/types", "public/execution_contract", "public/capabilities", "public/tasks", "public/events", "public/asset_json", "public/json",
-            "public/source_catalog", "private/compiler-target", "public/native_prepared",
-            "public/native_capabilities"
-        ];
+        // This compile-only ABI runs the native service; the legacy VM
+        // decoder belongs to chibi_source_catalog, not the facade archive.
+        return ["public/asset_compiler_host"];
     }
     if (target == "reflect") {
         return ["public/capabilities", "public/types", "public/support", "public/execution_contract"];
@@ -754,7 +693,8 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_source_catalog") {
         return [
             "public/source_catalog", "private/source_catalog", "third_party/yyjson",
-            "public/support",
+            "public/support", "public/asset_compiler_host", "public/compiler_host",
+            "private/compiler-target", "public/native_prepared",
             "public/capabilities", "public/types", "public/execution",
             "public/execution_contract", "public/tasks", "public/native_capabilities",
             "public/input_action",
@@ -793,29 +733,6 @@ pub Includes :: (target: string) -> string[] {
             "public/tasks", "public/events", "public/asset_values", "public/json"
         ];
     }
-    if (target == "chibi_application") {
-        return [
-            "private/launcher", "third_party/yyjson", "public/program", "public/source_catalog",
-            "public/support", "public/capabilities", "public/types", "public/execution",
-            "public/execution_contract", "public/tasks", "public/native_capabilities",
-            "public/input_action",
-            "public/asset_values", "public/behavior_runtime",
-            "public/events", "public/native_types",
-            "public/task_pool_runtime", "public/native_prepared",
-            "public/host_native_default", "public/host_native_catalog", "public/core_capabilities",
-            "public/text_capabilities", "public/array_capabilities", "public/json"
-        ];
-    }
-    if (target == "chibi") {
-        return [
-            "private/launcher", "public/program", "public/source_catalog",
-            "public/support",
-            "public/capabilities", "public/types", "public/execution", "public/execution_contract", "public/tasks", "public/native_capabilities", "public/input_action", "public/asset_values",
-            "public/behavior_runtime", "public/events",
-            "public/native_types", "public/task_pool_runtime", "public/native_prepared", "public/host_native_default", "public/host_native_catalog", "public/core_capabilities",
-            "public/text_capabilities", "public/array_capabilities", "public/json"
-        ];
-    }
     if (target == "chibi-compile") {
         return [
             "private/compiler-target", "public/source_catalog",
@@ -827,15 +744,6 @@ pub Includes :: (target: string) -> string[] {
             "public/json", "public/asset_compiler_host", "public/compiler_host",
             "public/host_native_default", "public/host_native_catalog"
         ];
-    }
-    if (target == "test_host") {
-        return ["third_party/yyjson", "build/testing/host/include"];
-    }
-    if (target == "concurrent_runner") {
-        return ["build/testing/host/include"];
-    }
-    if (target == "benchmark_trials") {
-        return ["src"];
     }
     if (target == "test_language") {
         return [
@@ -858,26 +766,6 @@ pub Includes :: (target: string) -> string[] {
             "public/native_types", "public/native_capabilities"
         ];
     }
-    if (target == "chibi_native_consumer") {
-        return [
-            "build/test/tools/testing/include", "public/behavior_runtime", "public/execution", "public/types", "public/support",
-            "public/execution_contract", "public/capabilities", "public/tasks", "public/events",
-            "public/native_types", "public/native_capabilities",
-            "public/task_pool_runtime",
-            "public/asset_values",
-            "public/input_action",
-            "public/comparison_capabilities",
-            "public/conversion_capabilities", "public/host_native_default",
-            "public/host_native_catalog", "public/source_catalog",
-            "public/native_prepared"
-        ];
-    }
-    if (target == "chibi_asset_values_consumer") {
-        return [
-            "build/test/tools/testing/include", "public/asset_values",
-            "public/support", "public/asset_json", "public/json"
-        ];
-    }
     if (target == "chibi_source_runtime_consumer") {
         return [
             "build/test/tools/testing/include",
@@ -896,7 +784,7 @@ pub Includes :: (target: string) -> string[] {
             "public/value_document", "public/asset_values", "public/program",
             "public/source_catalog",
             "public/native_capabilities", "public/input_action",
-            "public/core_capabilities", "private/build-host", "public/compiler_host", "public/array_capabilities", "public/native_types", "public/task_pool_runtime", "public/native_prepared",
+            "public/core_capabilities", "public/compiler_host", "public/array_capabilities", "public/native_types", "public/task_pool_runtime", "public/native_prepared",
             "public/comparison_capabilities", "public/conversion_capabilities", "public/host_native_default",
             "public/host_native_catalog", "public/asset_json", "public/json", "public/arithmetic_capabilities", "public/math_capabilities", "public/vector_capabilities"
         ];
@@ -909,16 +797,6 @@ pub Includes :: (target: string) -> string[] {
 // Cute's Linux interface links s2n after PhysicsFS and before SDL. Preserve
 // that transitive include order; other platforms do not link s2n.
 pub SystemIncludes :: (target: string) -> string[] {
-    if (target == "chibi") {
-        return [
-            "public/math"
-        ];
-    }
-    if (target == "chibi_application") {
-        return [
-            "public/math"
-        ];
-    }
     includes: string[] = [];
     for (include in CommonSystemIncludes(target)) {
         if (os.Platform() == "Linux" && include == "third-party/include/chibi/vendor/physfs_static/1") {
@@ -959,9 +837,6 @@ CommonSystemIncludes :: (target: string) -> string[] {
     if (target == "chibi_sdk_contracts") {
         return ["public/math"];
     }
-    if (target == "chibi_native_consumer") {
-        return ["public/math"];
-    }
     if (target == "chibi_source_runtime_consumer") {
         return ["public/math"];
     }
@@ -995,12 +870,6 @@ pub Defines :: (target: string) -> string[] {
     if (target == "chibi_task_pool_runtime") {
         return ["CHIBI_HAS_ENKITS=1", "ENKITS_TASK_PRIORITIES_NUM=3"];
     }
-    if (target == "policy_worker") {
-        return ["_DEFAULT_SOURCE", "_POSIX_C_SOURCE=200809L"];
-    }
-    if (target == "benchmark_trials") {
-        return ["_POSIX_C_SOURCE=200809L"];
-    }
     if (target == "test_language") {
         return [
             "CHIBI_PACKAGE_TEST_POOL=1", "CHIBI_TEST_ENKITS=1",
@@ -1012,19 +881,12 @@ pub Defines :: (target: string) -> string[] {
             "CHIBI_TEST_SOURCE_RUNTIME=1"
         ];
     }
-    if (target == "chibi_native_consumer") {
-        return [
-            "CHIBI_SOURCE_ROOT=\"{source_root}\"", "CHIBI_TEST_NATIVE_RUNTIME=1",
-            "CHIBI_TEST_PREPARATION=1"
-        ];
-    }
     if (target == "test_tools") {
         return [
             "CF_RUNTIME_SHADER_COMPILATION", "CF_STATIC",
-            "CHIBI_POLICY_WORKER_PATH=\"{program:policy_worker}\"",
-            "CHIBI_SOURCE_ROOT=\"{source_root}\"", "CHIBI_TEST_ASSET_VALUES=1",
-            "CHIBI_TEST_BOX3D=1", "CHIBI_TEST_BUILD_PROCESS=1", "CHIBI_TEST_COMPILER_ARTIFACT=1",
-            "CHIBI_TEST_FMT=1", "CHIBI_TEST_NATIVE_RUNTIME=1", "CHIBI_TEST_PROGRAM=1",
+            "CHIBI_SOURCE_ROOT=\"{source_root}\"",
+            "CHIBI_TEST_BOX3D=1", "CHIBI_TEST_COMPILER_ARTIFACT=1",
+            "CHIBI_TEST_PROGRAM=1",
             "CHIBI_TEST_SOURCE_RUNTIME=1",
             "IMGUI_USE_WCHAR32", "ImDrawIdx=unsigned int", "_DARWIN_C_SOURCE", "_DEFAULT_SOURCE",
             "_POSIX_C_SOURCE=200809L"
@@ -1055,25 +917,13 @@ pub Options :: (target: string) -> string[] {
     if (target == "chibi_math_capabilities") {
         return ["-ffp-contract=off"];
     }
-    if (target == "test_host") {
-        return ["-UNDEBUG"];
-    }
-    if (target == "concurrent_runner") {
-        return ["-UNDEBUG"];
-    }
-    if (target == "policy_worker") {
+    if (target == "graph_headerless") {
         return ["-UNDEBUG"];
     }
     if (target == "test_language") {
         return ["-UNDEBUG"];
     }
     if (target == "chibi_sdk_contracts") {
-        return ["-UNDEBUG"];
-    }
-    if (target == "chibi_native_consumer") {
-        return ["-UNDEBUG"];
-    }
-    if (target == "chibi_asset_values_consumer") {
         return ["-UNDEBUG"];
     }
     if (target == "chibi_source_runtime_consumer") {
@@ -1095,14 +945,10 @@ pub SourceOptions :: (target: string, file: string) -> string[] {
 // test/language/CMakeLists.txt gives them.
 LanguageTestsOverSource :: () -> string[] {
     return [
-        "src/host/process.c", "src/host/native_libraries.c", "src/host/stack_overflow.c",
         "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
         "src/toolchain/compiler_target.c",
         "test/language/capture.c",
         "test/language/execution.c", "test/language/execution_scope.c",
-        "test/language/host_packages_compiler.c",
-        "test/language/native_census.c", "test/language/scalar_host.c",
-        "test/language/package_compiler_chibi.c",
         "test/language/ranges.c",
         "test/language/record_prepared.c"
     ];
@@ -1112,14 +958,6 @@ LanguageTestsOverSource :: () -> string[] {
 // source property adds them; Expand fills {source_root}, {build_type},
 // {sha256:PATH} and {program:NAME}.
 pub SourceDefines :: (target: string, file: string) -> string[] {
-    if (target == "test_language" && file == "test/language/package_compiler_chibi.c") {
-        return ["CHIBI_CORE_MATH_ROOT=\"{source_root}/packages/core/math\""];
-    }
-    if (target == "test_language" &&
-        (file == "test/language/host_packages_compiler.c" || file == "test/language/native_census.c" ||
-         file == "test/language/scalar_host.c")) {
-        return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
-    }
     return [];
 }
 
@@ -1162,25 +1000,12 @@ Listed :: (names: string[], name: string) -> bool {
 
 // Headers a header set configures below its private root, `HEADER=INPUT`, as
 // CMake's configure_file writes them: a `.in` INPUT with its Substitutions,
-// any other copied. The language tests embed the Chibi sources they compile;
-// the tooling tests copy the fixtures their consumers include.
+// any other copied. Test targets copy the fixtures their consumers include.
 pub Configures :: (target: string) -> string[] {
     if (target == "chibi_language_testing") {
         return [
             "third_party/pico_headers/pico_unit.h=third_party/pico_headers/pico_unit.h",
-            "test/parallel.h=test/parallel.h",
-            "package_core_source.h=test/language/package_core_source.h.in",
-            "host_packages_source.h=test/language/host_packages_source.h.in",
-            "package_graph_chibi_source.h=test/language/package_graph_chibi_source.h.in",
-            "syntax_chibi_source.h=test/language/syntax_chibi_source.h.in",
-            "package_syntax_chibi_source.h=test/language/package_syntax_chibi_source.h.in",
-            "package_paths_chibi_source.h=test/language/package_paths_chibi_source.h.in",
-            "json_string_chibi_source.h=test/language/json_string_chibi_source.h.in",
-            "package_routes_chibi_source.h=test/language/package_routes_chibi_source.h.in",
-            "package_snapshot_chibi_source.h=test/language/package_snapshot_chibi_source.h.in",
-            "lexical_binding_chibi_source.h=test/language/lexical_binding_chibi_source.h.in",
-            "prepared_writer_chibi_source.h=test/language/prepared_writer_chibi_source.h.in",
-            "package_compiler_chibi_source.h=test/language/package_compiler_chibi_source.h.in"
+            "test/parallel.h=test/parallel.h"
         ];
     }
     if (target == "chibi_tools_testing") {
@@ -1201,58 +1026,6 @@ pub Configures :: (target: string) -> string[] {
 // its exported C builds with. `test-sources:PREFIX:PACKAGE:DIR` and
 // `test-inputs:PREFIX:PACKAGE:DIR` discover a test package's direct .chibi files.
 pub Substitutions :: (target: string) -> string[] {
-    if (target == "chibi_language_testing") {
-        return [
-            "CHIBI_COMPILER_SYNTAX_BYTES=bytes:tools/compiler/compiler_syntax/Syntax.chibi",
-            "CHIBI_CORE_STRINGS_BYTES=bytes:packages/core/strings/Strings.chibi",
-            "CHIBI_CORE_TIME_BYTES=bytes:packages/core/time/Time.chibi",
-            "CHIBI_CORE_TIME_TEST_BYTES=bytes:test/standard_library/time/TimeTests.chibi",
-            "CHIBI_HOST_CLOCK_BYTES=bytes:packages/host/clock/Clock.chibi",
-            "CHIBI_LEXICAL_BINDING_BYTES=bytes:tools/compiler/lexical_binding/Binding.chibi",
-            "CHIBI_LLVM_NATIVE_BYTES=bytes:tools/compiler/llvm_native/Emit.chibi",
-            "CHIBI_NATIVE_ABI_BYTES=bytes:tools/compiler/native_abi/Abi.chibi",
-            "CHIBI_PACKAGE_COMPILER_BEHAVIOR_BYTES=bytes:tools/compiler/package_compiler/Behavior.chibi",
-            "CHIBI_PACKAGE_COMPILER_BODY_BYTES=bytes:tools/compiler/package_compiler/Body.chibi",
-            "CHIBI_PACKAGE_COMPILER_GENERICS_BYTES=bytes:tools/compiler/package_compiler/Generics.chibi",
-            "CHIBI_PACKAGE_COMPILER_COMPTIME_BYTES=bytes:tools/compiler/package_compiler/Comptime.chibi",
-            "CHIBI_PACKAGE_COMPILER_COMPILE_BYTES=bytes:tools/compiler/package_compiler/Compile.chibi",
-            "CHIBI_PACKAGE_COMPILER_MAPS_BYTES=bytes:tools/compiler/package_compiler/Maps.chibi",
-            "CHIBI_PACKAGE_COMPILER_MATH_BYTES=bytes:tools/compiler/package_compiler/Math.chibi",
-            "CHIBI_MATH_TYPES_BYTES=bytes:tools/compiler/math_types/Types.chibi",
-            "CHIBI_MATH_FUNCTIONS_BYTES=bytes:tools/compiler/math_types/Functions.chibi",
-            "CHIBI_PACKAGE_COMPILER_NUMBER_BYTES=bytes:tools/compiler/package_compiler/Number.chibi",
-            "CHIBI_PACKAGE_COMPILER_OPTIONAL_BYTES=bytes:tools/compiler/package_compiler/Optional.chibi",
-            "CHIBI_PACKAGE_COMPILER_REFERENCES_BYTES=bytes:tools/compiler/package_compiler/References.chibi",
-            "CHIBI_PACKAGE_COMPILER_POINTERS_BYTES=bytes:tools/compiler/package_compiler/Pointers.chibi",
-            "CHIBI_PACKAGE_COMPILER_SCALAR_BYTES=bytes:tools/compiler/package_compiler/Scalar.chibi",
-            "CHIBI_PACKAGE_COMPILER_SCALARARRAYS_BYTES=bytes:tools/compiler/package_compiler/ScalarArrays.chibi",
-            "CHIBI_PACKAGE_COMPILER_FALLIBLE_BYTES=bytes:tools/compiler/package_compiler/Fallible.chibi",
-            "CHIBI_PACKAGE_COMPILER_SEQUENCES_BYTES=bytes:tools/compiler/package_compiler/Sequences.chibi",
-            "CHIBI_PACKAGE_COMPILER_TASKS_BYTES=bytes:tools/compiler/package_compiler/Tasks.chibi",
-            "CHIBI_PACKAGE_COMPILER_TASKRESULTS_BYTES=bytes:tools/compiler/package_compiler/TaskResults.chibi",
-            "CHIBI_PACKAGE_COMPILER_STEPS_BYTES=bytes:tools/compiler/package_compiler/Steps.chibi",
-            "CHIBI_PACKAGE_COMPILER_TREE_BYTES=bytes:tools/compiler/package_compiler/Tree.chibi",
-            "CHIBI_PACKAGE_GRAPH_BYTES=bytes:tools/compiler/package_graph/Graph.chibi",
-            "CHIBI_PACKAGE_PATHS_BYTES=bytes:tools/compiler/package_paths/Paths.chibi",
-            "CHIBI_JSON_STRING_BYTES=bytes:tools/compiler/json_string/JsonString.chibi",
-            "CHIBI_PACKAGE_ROUTES_BYTES=bytes:tools/compiler/package_routes/Routes.chibi",
-            "CHIBI_PACKAGE_SNAPSHOT_BYTES=bytes:tools/compiler/source_snapshot/Snapshot.chibi",
-            "CHIBI_PACKAGE_SYNTAX_BYTES=bytes:tools/compiler/package_syntax/Extract.chibi",
-            "CHIBI_PREPARED_WRITER_BYTES=bytes:tools/compiler/prepared_writer/Writer.chibi",
-            "CHIBI_SCALAR_CASES_BYTES=bytes:test/scalar_facts/cases/Cases.chibi",
-            "CHIBI_SCALAR_FACTS_BYTES=bytes:tools/compiler/scalar_facts/Facts.chibi",
-            "CHIBI_SCALAR_LLVM_BYTES=bytes:tools/compiler/scalar_llvm/Emit.chibi",
-            "CHIBI_SOURCE_TOKENIZER_BYTES=bytes:tools/compiler/source_tokenizer/Tokenizer.chibi",
-            "CHIBI_SOURCE_PARSER_TREE_BYTES=bytes:tools/compiler/source_parser/Tree.chibi",
-            "CHIBI_SOURCE_PARSER_TYPES_BYTES=bytes:tools/compiler/source_parser/Types.chibi",
-            "CHIBI_SOURCE_PARSER_EXPRESSIONS_BYTES=bytes:tools/compiler/source_parser/Expressions.chibi",
-            "CHIBI_SOURCE_PARSER_STATEMENTS_BYTES=bytes:tools/compiler/source_parser/Statements.chibi",
-            "CHIBI_SOURCE_PARSER_DECLARATIONS_BYTES=bytes:tools/compiler/source_parser/Declarations.chibi",
-            "CHIBI_SOURCE_PARSER_PARSER_BYTES=bytes:tools/compiler/source_parser/Parser.chibi",
-            "CHIBI_SYNTAX_DIAGNOSTICS_BYTES=bytes:tools/compiler/syntax_diagnostics/Diagnostics.chibi",
-            "CHIBI_BUILD_WORKFLOW_SOURCE=cstring:test/language/BuildWorkflow.chibi"
-        ];
-    }
     if (target == "chibi_tools_testing") {
         return ["CHIBI_EXPORT_COMPILER_ARGUMENTS=compiler:-UNDEBUG"];
     }
@@ -1273,13 +1046,14 @@ pub Generator :: (target: string) -> string {
 // places it; empty for the build directory itself.
 pub ProgramDirectory :: (target: string) -> string {
     if (target == "chibi-compile" || target == "chibi-build-host" ||
-        target == "chibi-compiler-host" || target == "chibi") {
+        target == "chibi-compiler-host" || length(NativeArguments(target)) != 0) {
         return "sdk";
     }
     if (target == "test_language") {
         return "test/language";
     }
-    if (target == "policy_worker" || target == "test_tools" || target == "benchmark_trials") {
+    if (target == "graph_headerless") { return "test/graph"; }
+    if (target == "test_tools") {
         return "test/tools";
     }
     return "";
@@ -1295,18 +1069,22 @@ pub Resources :: (target: string) -> string[] {
     if (target == "chibi-build-host") {
         return [
             "build/share/chibi/compiler=tools/compiler",
-            "build/share/chibi/core=packages/core",
-            "build/share/chibi/tools/native_aot=tools/native_aot"
+            "build/share/chibi/core=packages/core"
         ];
     }
     if (target == "chibi") {
-        return [
+        resources := [
             "build/share/chibi/engine.json=build/sdk/chibi_engine_metadata.json",
-            "build/share/chibi/apps/chibi=apps/chibi",
+            "build/share/chibi/compiler=tools/compiler",
             "build/share/chibi/apps/host=apps/host",
             "build/share/chibi/core=packages/core",
-            "build/lib/chibi-vendor/libchibi_vendor_freetype.a=third-party/lib/chibi-vendor/libchibi_vendor_freetype.a"
+            "build/share/chibi/graph=tools/graph",
+            "build/share/chibi/tools/toolchain=tools/toolchain"
         ];
+        if (os.Platform() == "Darwin" || os.Platform() == "Linux") {
+            resources.append("build/lib/chibi-vendor/libchibi_vendor_freetype.a=third-party/lib/chibi-vendor/libchibi_vendor_freetype.a");
+        }
+        return resources;
     }
     return [];
 }
@@ -1334,14 +1112,14 @@ pub ArtifactFormats :: () -> string[] {
 // builds them: test_tools runs the workers and tools whose paths it compiles
 // in, and the launcher the compiler and player beside it.
 pub Runs :: (target: string) -> string[] {
-    if (target == "chibi_asset_compiler_host") {
-        return ["chibi-build-host", "chibi-compiler-host"];
+    if (target == "chibi-asset-compiler") {
+        return ["chibi"];
     }
-    if (target == "chibi") {
-        return ["chibi-compile"];
+    if (target == "chibi_asset_compiler_host") {
+        return ["chibi-asset-compiler"];
     }
     if (target == "test_tools") {
-        return ["policy_worker", "benchmark_trials", "chibi-build-host", "chibi-compiler-host", "chibi-compile"];
+        return ["chibi-compiler-host", "chibi-compile"];
     }
     return [];
 }
@@ -1349,43 +1127,40 @@ pub Runs :: (target: string) -> string[] {
 // The executables the graph builds; every other target is a library.
 pub Programs :: () -> string[] {
     programs := [
-        "reflect", "chibi-build-host", "chibi-compiler-host", "chibi", "test_host", "concurrent_runner",
-        "policy_worker", "benchmark_trials"
+        "reflect", "chibi-build-host", "chibi-compiler-host",
+        "graph_headerless"
     ];
     if (os.Platform() == "Darwin" || os.Platform() == "Linux") {
         programs.extend(["chibi-compile", "test_language", "test_tools"]);
     }
+    programs.extend(NativeProducts());
     return programs;
 }
 
 // Whether an executable links with the C++ compiler, as CMake does when a
 // library it links has C++ sources.
 pub LinksCxx :: (target: string) -> bool {
-    return target == "chibi" || target == "chibi-compile" || target == "test_language" ||
+    return target == "chibi-compile" || target == "test_language" ||
            target == "test_tools";
 }
 
 // The libraries whose objects executables link directly, as CMake's OBJECT
 // libraries, rather than archive.
 pub ObjectLibrary :: (target: string) -> bool {
-    return target == "chibi_application" || target == "chibi_build_host" ||
+    return target == "chibi_build_host" ||
            Listed(ToolConsumers(), target);
 }
 
 // The object libraries an executable links, whose objects come before its
 // own, as CMake orders them.
 pub LinkedObjects :: (target: string) -> string[] {
-    if (target == "chibi") {
-        return ["chibi_application"];
-    }
     if (target == "chibi-build-host") {
         return ["chibi_build_host"];
     }
     if (target == "test_tools") {
         return [
-            "chibi_sdk_contracts", "chibi_program_consumer", "chibi_native_consumer",
-            "chibi_asset_values_consumer", "chibi_source_runtime_consumer",
-            "chibi_build_host"
+            "chibi_sdk_contracts", "chibi_program_consumer",
+            "chibi_source_runtime_consumer"
         ];
     }
     return [];
@@ -1439,26 +1214,8 @@ pub Links :: (target: string) -> string[] {
             "chibi_asset_values", "chibi_json", "chibi_support", "-lm"
         ];
     }
-    if (target == "chibi" && os.Platform() == "Darwin") {
-        return [
-            "chibi_program", "chibi_source_catalog",
-            "chibi_asset_compiler_host", "chibi_compiler_host", "chibi_asset_json", "chibi_native_prepared",
-            "chibi_host_native_default", "chibi_host_native_catalog",
-            "chibi_selection_capabilities",
-            "chibi_set_capabilities", "chibi_comparison_capabilities", "chibi_conversion_capabilities",
-            "chibi_native_bindings", "chibi_vector_capabilities",
-            "chibi_math_capabilities", "chibi_arithmetic_capabilities", "chibi_value_document", "chibi_asset_values", "chibi_behavior_runtime", "chibi_events", "chibi_native_types",
-            "chibi_core_capabilities", "chibi_execution",
-            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_text_capabilities", "chibi_fmt",
-            "chibi_array_capabilities", "chibi_task_pool_runtime",
-            "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lc++", "chibi_json", "chibi_native_capabilities", "chibi_capabilities",
-            "chibi_types", "chibi_support", "-lm"
-        ];
-    }
-    if (target == "chibi" && os.Platform() == "Linux") {
-        links := ["chibi_program"];
-        links.extend(LinuxLinks("chibi-compile"));
-        return links;
+    if (length(NativeArguments(target)) != 0) {
+        return [];
     }
     if (os.Platform() == "Linux") {
         links: string[] = [];
@@ -1470,13 +1227,13 @@ pub Links :: (target: string) -> string[] {
     }
     if (target == "chibi-compile" && os.Platform() == "Darwin") {
         return [
-            "chibi_behavior_runtime",
+            "chibi_source_catalog", "chibi_behavior_runtime",
             "chibi_asset_json", "chibi_asset_compiler_host", "chibi_compiler_host", "chibi_asset_json", "chibi_native_prepared",
             "chibi_host_native_default",
             "chibi_host_native_catalog", "chibi_native_bindings",
             "chibi_task_pool_runtime",
             "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lc++",
-            "chibi_source_catalog", "chibi_text_capabilities", "chibi_fmt",
+            "chibi_text_capabilities", "chibi_fmt",
             "chibi_array_capabilities", "chibi_core_capabilities", "chibi_selection_capabilities", "chibi_set_capabilities", "chibi_comparison_capabilities",
             "chibi_conversion_capabilities", "chibi_vector_capabilities", "chibi_math_capabilities",
             "chibi_arithmetic_capabilities", "chibi_value_document", "chibi_json", "chibi_behavior_runtime", "chibi_events",

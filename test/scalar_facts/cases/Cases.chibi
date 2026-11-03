@@ -104,8 +104,8 @@ Cases :: () -> Case[] {
         Rejected("scoped pointer entry", "package scalar\nMain :: (x: ^int) -> int { return 42; }", "scalar proof requires its first function to take no parameters", "(x: ^int)"),
         Accepted("scoped pointer read", "package scalar\nMain :: () -> int { v := 41; return Next(&v); }\nNext :: (x: ^int) -> int { return x^ + 1; }", 42, "Main,Next", ""),
         Accepted("scoped pointer write", "package scalar\nMain :: () -> int { v := 41; return Bump(&v); }\nBump :: (x: ^int) -> int { x^ += 1; return x^; }", 42, "Main,Bump", ""),
-        Rejected("bool_result", "package scalar\nMain :: () -> bool { return true; }", "scalar proof requires its first function to return int", "bool"),
-        Rejected("i64_result", "package scalar\nMain :: () -> i64 { return 42; }", "scalar proof requires its first function to return int", "i64"),
+        Rejected("bool_result", "package scalar\nMain :: () -> bool { return true; }", "scalar proof requires its first function to return int or nothing", "bool"),
+        Rejected("i64_result", "package scalar\nMain :: () -> i64 { return 42; }", "scalar proof requires its first function to return int or nothing", "i64"),
         
         Rejected("nominal_result", "package scalar\nMain :: () -> Missing { return 42; }", "result type is not supported yet", "Missing"),
         Accepted("named_result", "package scalar\nMain :: () -> (x: int) { return 42; }", 42, "Main", "x := x return 42"),
@@ -119,12 +119,12 @@ Cases :: () -> Case[] {
         Rejected("attribute_pure", "package scalar\n@pure Main :: () -> int { return 42; }", "Unknown attribute '@pure'", "@pure"),
         Rejected("empty", "package scalar\nMain :: () -> int {}", "Missing return", "{}"),
         Rejected("bare_return", "package scalar\nMain :: () -> int { return; }", "return needs a value", "return;"),
-        Rejected("no_result", "package scalar\nMain :: () { return; }", "scalar proof requires its first function to return int", "Main :: () { return; }"),
+        Accepted("no_result", "package scalar\nMain :: () { return; }", 0, "Main", ""),
         Rejected("no_function", "package scalar\n", "scalar proof requires at least one function", "package scalar\n"),
         Rejected("malformed", "package scalar\nMain :: () -> int { return 42;", "Expected `}`, found the end of the file (to close the `{` at 2:19)", ""),
         Rejected("nul", "package scalar\nMain :: () -> int { return 42; }\u0000", "Package source contains NUL bytes", "\u0000"),
-        Rejected("string_result", "package scalar\nMain :: () -> string { return \"42\"; }", "scalar proof requires its first function to return int", "string"),
-        Rejected("map_result", "package scalar\nMain :: () -> [int: int] { return [1: 42]; }", "scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result", "[int: int]"),
+        Rejected("string_result", "package scalar\nMain :: () -> string { return \"42\"; }", "scalar proof requires its first function to return int or nothing", "string"),
+        Rejected("map_result", "package scalar\nMain :: () -> [int: int] { return [1: 42]; }", "scalar proof requires its first function to return int or nothing", "[int: int]"),
         Accepted("assert_before", "package scalar\nMain :: () -> int {\n    x: int = 41;\n    assert(Message: \"x is 41\", Condition: x == 41);\n    assert(true);\n    return x + 1;\n}", 42, "Main", "x := 41 assert x ; 41 ; x == 41 assert true return x ; 1 ; x + 1"),
         Rejected("return_outcome", "package scalar\nMain :: () -> int { return .Done 42; }", "scalar proof does not support return outcomes", "Done"),
         Accepted("float_one", "package scalar\nMain :: () -> int { return 1.0; }", 1, "Main", "return 1.0"),
@@ -208,6 +208,10 @@ Cases :: () -> Case[] {
         // the point to (6, 7), Twice passes the parameter on for two more, (8, 9),
         // Fill appends 0, 1, 2 to the caller's array and Add raises its total by 4.
         Accepted("reference_parameters", "package scalar\nPoint :: struct { x: int; y: int; }\nMain :: () -> int {\n    p: Point = {x: 1, y: 2};\n    items: int[] = [];\n    total: int = 0;\n    a := Bump(&p, 5);\n    b := Twice(&p);\n    c := Fill(&items, 3);\n    d := Add(&total, 4);\n    return p.x * 100 + p.y * 10 + length(items) + total + a + b + c + d;\n}\nBump :: (point: ^Point, by: int) -> int {\n    point.x += by;\n    point.y = point.y + by;\n    return 1;\n}\nTwice :: (point: ^Point) -> int {\n    a := Bump(point, 1);\n    b := Bump(point, 1);\n    return a + b;\n}\nFill :: (items: ^(int[]), n: int) -> int {\n    for (i in 0..<n) { items.append(i); }\n    return n;\n}\nAdd :: (sum: ^int, by: int) -> int {\n    sum^ += by;\n    return 0;\n}\n", 903, "Main,Bump,Twice,Fill,Add", ""),
+        // A readonly scoped alias observes the writable alias's update in either
+        // parameter order: both the observation and the caller's field are 2.
+        Accepted("readonly_alias_before_writer", "package scalar\nCounter :: struct { count: int; }\nMain :: () -> int {\n    counter: Counter = {count: 1};\n    observed := Change(&counter, &counter);\n    return observed * 10 + counter.count;\n}\nChange :: (reader: ^Counter, writer: ^Counter) -> int {\n    writer.count += 1;\n    return reader.count;\n}\n", 22, "Main,Change", ""),
+        Accepted("readonly_alias_after_writer", "package scalar\nCounter :: struct { count: int; }\nMain :: () -> int {\n    counter: Counter = {count: 1};\n    observed := Change(&counter, &counter);\n    return observed * 10 + counter.count;\n}\nChange :: (writer: ^Counter, reader: ^Counter) -> int {\n    writer.count += 1;\n    return reader.count;\n}\n", 22, "Main,Change", ""),
         // rawptr is an opaque 64-bit word that an authored function takes and gives
         // back: 7 through Id, and one more is 8.
         Accepted("rawptr_parameter", "package scalar\nMain :: () -> int {\n    x: u64 = 7;\n    r: rawptr = Id(x);\n    y: u64 = r;\n    return int(y) + 1;\n}\nId :: (p: rawptr) -> rawptr { return p; }\n", 8, "Main,Id", ""),
@@ -312,6 +316,16 @@ Cases :: () -> Case[] {
         // A union a function is lent keeps its payloads for the caller: the arm that binds one of a parameter (`Total`) or
         // of a local that is also passed on (`built`) borrows it, and frees nothing.
         Accepted("param_union_drops", "package scalar\nResult :: union {\n    Failed(code: int) | Built(rows: int[])\n}\nMain :: () -> int {\n    total: int = 0;\n    out: int[] = [];\n    for (round in 0..<30) {\n        built := Make(round);\n        total += Total(built);\n        switch built {\n            case .Failed(code):\n                total += code;\n            case .Built(rows):\n                out.extend(rows);\n                total += length(rows);\n        }\n        if (round % 10 == 9) {\n            total += length(out);\n            out = [];\n        }\n    }\n    return total % 251;\n}\nMake :: (n: int) -> Result {\n    if (n % 7 == 0) {\n        return Result.Failed(n);\n    }\n    rows: int[] = [];\n    for (i in 0..<n % 5 + 1) {\n        rows.append(i);\n    }\n    return Result.Built(rows);\n}\nTotal :: (result: Result) -> int {\n    switch result {\n        case .Failed(code):\n            return code;\n        case .Built(rows):\n            return length(rows) + rows[0];\n    }\n}\n", 114, "Main,Make,Total", ""),
+        // Unary minus on a float or a double (`-x`) flips the sign (`fneg`), as the VM's negation does.
+        Accepted("float_negation", "package scalar\nMain :: () -> int {\n    x: f64 = 2.5;\n    y: f32 = 1.5;\n    z: f64 = -x + 10.0;\n    w: f32 = -y * 2.0;\n    n: int = 7;\n    back: f64 = -(-x);\n    return int(z) + int(-w) + int(-(x * x)) + (-n) + int(back * 4.0) + 100;\n}\n", 107, "Main", ""),
+        // A reference to a local's field (`&point.x`) is lent to a callee that changes it, and the local sees the change.
+        Accepted("field_reference", "package scalar\nPoint :: struct {\n    x: int;\n    y: int;\n}\nMain :: () -> int {\n    point: Point = {x: 3, y: 4};\n    a := Bump(&point.x, 10);\n    b := Bump(&point.y, 20);\n    return (point.x * 100 + point.y + a + b) % 251;\n}\nBump :: (value: ^int, by: int) -> int {\n    value^ += by;\n    return 1;\n}\n", 71, "Main,Bump", ""),
+        // A reference to a record parameter's field points into the caller's record.
+        Accepted("field_reference_forwarded", "package scalar\nPoint :: struct {\n    x: int;\n    y: int;\n}\nMain :: () -> int {\n    point: Point = {x: 3, y: 4};\n    count := Update(&point);\n    return (point.x * 100 + point.y + count) % 251;\n}\nUpdate :: (point: ^Point) -> int {\n    return Bump(&point.x, 10) + Bump(&point.y, 20);\n}\nBump :: (value: ^int, by: int) -> int {\n    value^ += by;\n    return 1;\n}\n", 71, "Main,Update,Bump", ""),
+        // Field addresses keep each scalar width and type, including bool and floating point.
+        Accepted("field_reference_scalars", "package scalar\nValues :: struct {\n    a: f64;\n    b: f32;\n    flag: bool;\n    wide: i64;\n    small: u8;\n}\nMain :: () -> int {\n    values: Values = {a: 2.5, b: 1.5, flag: false, wide: 5, small: 3};\n    Change(&values.a, &values.b, &values.flag, &values.wide, &values.small);\n    total := int(-values.a * 4.0) + int(values.b * 2.0) + int(values.wide) + int(values.small);\n    if (values.flag) { total += 100; }\n    return total;\n}\nChange :: (a: ^f64, b: ^f32, flag: ^bool, wide: ^i64, small: ^u8) {\n    a^ = -a^;\n    b^ = -b^;\n    flag^ = !flag^;\n    wide^ += 7;\n    small^ += 1;\n}\n", 123, "Main,Change", ""),
+        // An element of a temporary array keeps its owned text after the array is released, including on a logical RHS.
+        Accepted("temporary_array_string", "package scalar\nMain :: () -> int {\n    text := Make()[0];\n    for (index in 0..<50) {\n        churn := Make();\n        assert(churn[0] == \"value\");\n    }\n    assert(text == \"value\");\n    assert(true && Make()[0] == \"value\");\n    assert(false || (true && Make()[0] == \"value\"));\n    assert(!(false && Make()[0] == \"value\"));\n    assert(true || Make()[0] == \"value\");\n    return text_byte_length(text);\n}\nMake :: () -> string[] {\n    bytes: u8[] = [118, 97, 108, 117, 101];\n    return [text_from_bytes(bytes)];\n}\n", 5, "Main,Make", ""),
         // A loop over an array literal whose first element is a package constant, then one of a conversion.
         Accepted("for_array_literal_constants", "package scalar\nFirst: int : 3;\nSecond: int : 40;\nMain :: () -> int {\n    total: int = 0;\n    for (kind in [First, Second, 500]) { total += kind; }\n    for (n in [int(1), 2]) { total += n * 10000; }\n    return total;\n}\n", 30543, "Main", ""),
         // An element of an array of unions is a local, and a switch takes it apart. 2 + 7 + 100.
@@ -322,8 +336,8 @@ Cases :: () -> Case[] {
         Accepted("array_value_forms", "package scalar\nMain :: () -> int {\n    base: int[] = [1, 2];\n    three: int = 3;\n    more := append(base, three);\n    joined := extend(more, base);\n    grown := Add(base, 9);\n    return length(base) * 1000 + length(more) * 100 + length(joined) * 10 + joined[4] + grown[2] * 10000;\n}\nAdd :: (items: int[], value: int) -> int[] { return append(items, value); }\n", 92352, "Main,Add", ""),
         // A switch on a call evaluates it once, and the arms bind its payloads.
         Accepted("switch_on_call", "package scalar\nShape :: union { Dot | Box(w: int, h: int) | Line(items: int[]) }\nMain :: () -> int { return Sizes(0) + Sizes(1) * 10 + Sizes(2) * 100; }\nMake :: (kind: int) -> Shape {\n    if (kind == 0) { return Shape.Dot; }\n    if (kind == 1) { return Shape.Box(3, 4); }\n    items: int[] = [5, 6, 7];\n    return Shape.Line(items);\n}\nSizes :: (kind: int) -> int {\n    switch Make(kind) {\n        case .Dot: return 1;\n        case .Box(w, h): return w * h;\n        case .Line(items): return length(items);\n    }\n}\n", 421, "Main,Make,Sizes", ""),
-        Rejected("array_main_result", "package scalar\nMain :: () -> int[] { return [42]; }", "scalar proof requires its first function to return int", "int[]"),
-        Rejected("nested_arrays", "package scalar\nMain :: () -> int {\n    rows: int[][] = [[1]];\n    return 1;\n}\n", "scalar proof supports only arrays of numbers, bool, strings, records and unions with a value", "rows: int[][] = [[1]];")];
+        Rejected("array_main_result", "package scalar\nMain :: () -> int[] { return [42]; }", "scalar proof requires its first function to return int or nothing", "int[]"),
+        Accepted("nested_arrays", "package scalar\nMain :: () -> int {\n    rows: int[][] = [[1]];\n    return 1;\n}\n", 1, "Main", "")];
 }
 pub Count :: () -> int {
     return length(Cases());
@@ -340,6 +354,10 @@ pub CaseName :: (index: int) -> string {
 pub ExpectedValue :: (index: int) -> int {
     cases := Cases();
     return cases[index].value;
+}
+pub IsAccepted :: (index: int) -> bool {
+    cases := Cases();
+    return cases[index].accepted;
 }
 Excerpt :: (text: string, row: facts.Row) -> string {
     return strings.Slice(text, row.start, row.end - row.start);
@@ -699,10 +717,10 @@ pub Check :: (rows: facts.Row[]) -> int {
     if (Names(rows) != expected.functions) {
         return -8;
     } // "functions differ"
-    // A 64-bit word is not modeled by this evaluation; the VMs and the native code give its value.
+    // A 64-bit word and a float's negation are not modeled by this evaluation; the VMs and the native code give the value.
     wide := false;
     for (row in rows) {
-        wide = wide || row.type == facts.WordType;
+        wide = wide || row.type == facts.WordType || (row.kind == facts.UnaryRow && facts.Floating(row.type));
     }
     empty: i64[] = [];
     // Arrays, references and loops are evaluated by the VMs and the native code, which

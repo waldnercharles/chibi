@@ -18,6 +18,9 @@ pub MacOSArm64 :: () -> Target {
 pub WindowsX64 :: () -> Target {
     return {triple: "x86_64-pc-windows-msvc", pointer_bits: 64};
 }
+pub WebAssembly32 :: () -> Target {
+    return {triple: "wasm32-unknown-emscripten", pointer_bits: 32};
+}
 
 pub Same :: (target: Target, supported: Target) -> bool {
     return target.triple == supported.triple && target.pointer_bits == supported.pointer_bits;
@@ -38,6 +41,9 @@ pub DebugFormat :: (target: Target) -> string {
 // probe function instead, so code calls __chkstk there, as MSVC's and
 // rustc's do, and the program that links it defines __chkstk.
 pub StackProbe :: (target: Target) -> string {
+    // The Wasm linker must instrument shadow-stack updates, as Emscripten's
+    // STACK_OVERFLOW_CHECK=2 does. Native inline probes do not apply there.
+    if (Same(target, WebAssembly32())) { return "\"frame-pointer\"=\"none\""; }
     if (Same(target, WindowsX64())) {
         return "\"probe-stack\"=\"__chkstk\"";
     }
@@ -47,7 +53,7 @@ pub StackProbe :: (target: Target) -> string {
 // Reject other targets rather than silently applying another target's ABI.
 // The backend supplies its data layout; no unverified layout is embedded here.
 pub Supported :: (target: Target) -> bool {
-    return Same(target, LinuxX64()) || Same(target, MacOSArm64()) || Same(target, WindowsX64());
+    return Same(target, LinuxX64()) || Same(target, MacOSArm64()) || Same(target, WindowsX64()) || Same(target, WebAssembly32());
 }
 
 // Current compiler storage ordinals, not byte widths or foreign type IDs.
@@ -158,6 +164,11 @@ pub ValueType :: () -> string {
 // EXECUTION_NATIVE_TEXT, the type of a string the runtime is passed, after
 // ExportType's.
 TextTag: int : 12;
+// Native formatter-only summaries use length as an element/entry count.
+// They keep the 24-byte value layout, carry no backing pointer, and are not
+// accepted by the legacy C context or by an exported scalar signature.
+pub FormatArrayTag: int : 13;
+pub FormatMapTag: int : 14;
 // The type a runtime value of this storage records: ExportType's, or a
 // string's, or 0 when none carries it.
 pub ValueTag :: (storage: int) -> int {
@@ -175,14 +186,72 @@ pub ValueTag :: (storage: int) -> int {
 pub ContextType :: () -> string {
     return "{ ptr, ptr, ptr, ptr, ptr }";
 }
-// The LLVM type of an array: its length, its capacity and its elements, by
-// value. An array of no elements, with a length and capacity of 0 and no
-// elements, is its zero.
+// Standalone managed execution extends the legacy prefix with one stable
+// execution-family heap owner. Generic C-bundle/library admission stays
+// separate until its embedding contract supplies this owner explicitly.
+pub ManagedOwnerField: int : 5;
+// Bump when heap, context or typed cell-layout contracts change. The host owns
+// opaque bytes and admits only images matching its first image's version/size.
+pub ManagedFamilyABI: i64 : 2;
+pub ManagedImageCounter :: () -> string { return "chibi_generation_cells"; }
+pub ManagedContextType :: () -> string {
+    return "{ ptr, ptr, ptr, ptr, ptr, ptr }";
+}
+// Native program/family clock reads borrow one grant configured by their
+// embedding host while execution is quiescent. An empty grant denies access.
+pub ClockGrantField: int : 6;
+pub ClockContextType :: () -> string {
+    return "{ ptr, ptr, ptr, ptr, ptr, ptr, ptr }";
+}
+// The embedding host owns this record and its provider state for every call.
+// Only that host's factory allocates process-local domains, never its images.
+pub ClockGrantType :: () -> string { return "{ i64, ptr, ptr }"; }
+pub ClockSampleType :: () -> string { return "{ i64, i64, i32, i32 }"; }
+pub ManagedHeapType :: () -> string {
+    // Cells, stack roots, work, used bytes, threshold, epoch, suspended roots.
+    return "{ ptr, ptr, ptr, i64, i64, i64, ptr }";
+}
+// Trace callback, typed address validator and nullable per-image cell counter.
+// A null counter denotes code that remains mapped for the whole process.
+pub ManagedLayoutType :: () -> string {
+    return "{ ptr, ptr, ptr }";
+}
+// Root cell, payload byte offset and complete semantic pointee identity.
+// None is all zero; local type-table ordinals never cross module boundaries.
+pub ManagedPointerType :: () -> string {
+    return "{ ptr, i64, i64 }";
+}
+// A fixed window follows the current value of one nonmoving array cell.
+// Its pointer descriptor plus two i32 bounds occupy 32 bytes on 64-bit hosts.
+pub ManagedViewType :: () -> string {
+    return "{ { ptr, i64, i64 }, i32, i32 }";
+}
+// Pointer-array sharing must key tracing by both heap identity and epoch.
+// Existing scalar/record backings keep their own smaller owner layouts.
+pub ManagedArrayPrefix: int : 24;
+pub ManagedArrayEpochOffset: int : 8;
+pub ManagedArrayOwnerOffset: int : 16;
+// A 24-byte array descriptor: length, capacity, elements and nullable backing
+// owner. The all-zero descriptor is empty; a null owner borrows its elements.
+// Foreign calls still use field 2, so the added owner never reaches C.
 pub ArrayType :: () -> string {
-    return "{ i32, i32, ptr }";
+    return "{ i32, i32, ptr, ptr }";
+}
+// A map's live count, physical span, entries capacity, index slot count,
+// entries and index. The all-zero header, 32 bytes on 64-bit targets and 24
+// on Wasm32, owns nothing. Each map in a
+// record pays this budget; the physical span permits amortized O(1) deletion
+// while retaining insertion order (docs/native-maps.md).
+pub MapType :: () -> string {
+    return "{ i32, i32, i32, i32, ptr, ptr }";
 }
 // The LLVM type of execution_native_failure: the stable ID of the function
 // whose assert failed, and the assert's source range.
 pub FailureType :: () -> string {
     return "{ i64, i32, i32 }";
+}
+// Program-mode assertions preserve that 16-byte prefix and append immutable
+// diagnostic bytes and their count: 32 bytes on 64-bit, 24 bytes on Wasm32.
+pub ProgramFailureType :: () -> string {
+    return "{ i64, i32, i32, ptr, i32 }";
 }

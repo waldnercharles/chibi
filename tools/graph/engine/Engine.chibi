@@ -44,10 +44,6 @@ pub Profile :: struct {
     // A reflect program to run instead of the one the graph builds, as a
     // cross build's CHIBI_REFLECT_EXECUTABLE names one; empty to build it.
     reflect: string;
-    // Another build's sdk directory whose chibi-build-host and
-    // chibi-compiler-host generate the asset compiler, as
-    // CHIBI_ASSET_GENERATOR_HOSTS names one; empty to run this build's.
-    asset_generator_hosts: string;
 }
 
 // The builtin headers of the clang that a libclang belongs to, as
@@ -155,10 +151,12 @@ pub Program :: (target: string) -> bool {
 // Where an executable is written: below the build directory where CMake
 // writes it (ProgramDirectory).
 pub Executable :: (build_dir: string, target: string) -> string {
+    suffix := "";
+    if (os.Platform() == "Windows" && length(NativeArguments(target)) != 0) { suffix = ".exe"; }
     if (ProgramDirectory(target) == "") {
-        return Join([build_dir, "/", target]);
+        return Join([build_dir, "/", target, suffix]);
     }
-    return Join([build_dir, "/", ProgramDirectory(target), "/", target]);
+    return Join([build_dir, "/", ProgramDirectory(target), "/", target, suffix]);
 }
 
 // What CMake gives an executable's link before its objects: the language
@@ -400,11 +398,6 @@ pub SDKVersion :: (source_root: string) -> string {
 // format its version and the SHA-256 of the sources and headers that own it.
 // Empty when an owner declares no version.
 Identity :: (source_root: string, profile: Profile) -> string {
-    sdk := SDKVersion(source_root);
-    project := Version(Join([source_root, "/src/assets/project.h"]), "CHIBI_PROJECT_VERSION");
-    if (sdk == "" || project == "") {
-        return "";
-    }
     processor := profile.architecture;
     if (processor == "") {
         uname := os.Capture(["uname", "-m"]);
@@ -412,6 +405,13 @@ Identity :: (source_root: string, profile: Profile) -> string {
             processor = strings.TrimSpace(uname.stdout);
         }
     }
+    return IdentityFor(source_root, processor, "[\"bytecode\", \"sljit\"]");
+}
+
+IdentityFor :: (source_root: string, processor: string, backends: string) -> string {
+    sdk := SDKVersion(source_root);
+    project := ProjectVersion(source_root);
+    if (sdk == "" || project == "") { return ""; }
     records: string[] = [];
     for (format in ArtifactFormats()) {
         record := FormatRecord(source_root, strings.Split(format, " "));
@@ -420,10 +420,14 @@ Identity :: (source_root: string, profile: Profile) -> string {
         }
         records.append(record);
     }
+    return IdentityText(sdk, project, processor, backends, records);
+}
+
+IdentityText :: (sdk: string, project: string, processor: string, backends: string, records: string[]) -> string {
     return Join([
         "{\"sdk_version\": \"", sdk, "\", \"system\": \"",
         os.Platform(), "\", \"processors\": [\"", processor,
-        "\"], \"backends\": [\"bytecode\", \"sljit\"], \"project_version\": ", project,
+        "\"], \"backends\": ", backends, ", \"project_version\": ", project,
         ", \"artifact_formats\": {\n", strings.Join(records, ",\n"), "\n}}\n"
     ]);
 }
@@ -486,7 +490,17 @@ Version :: (path: string, define: string) -> string {
 // Writes the build identity to build/sdk/chibi_engine_metadata.json, where
 // CMake writes it, when its text changed. False when it cannot.
 pub WriteIdentity :: (source_root: string, build_dir: string, profile: Profile) -> bool {
-    text := Identity(source_root, profile);
+    return WriteIdentityText(build_dir, Identity(source_root, profile));
+}
+
+pub WriteNativeIdentity :: (source_root: string, build_dir: string) -> bool {
+    processor := "x86_64";
+    if (os.Platform() == "Darwin") { processor = "arm64"; }
+    if (os.Platform() == "Windows") { processor = "AMD64"; }
+    return WriteIdentityText(build_dir, NativeIdentity(source_root, processor));
+}
+
+WriteIdentityText :: (build_dir: string, text: string) -> bool {
     path := Join([build_dir, "/sdk/chibi_engine_metadata.json"]);
     if (text == "") {
         return false;
@@ -502,7 +516,7 @@ pub WriteIdentity :: (source_root: string, build_dir: string, profile: Profile) 
 
 // Removes a file, or a directory and what is below it.
 RemoveTree :: (path: string) -> bool {
-    if (os.IsDirectory(path)) {
+    if (os.Kind(path) == os.KindDirectory) {
         for (name in files.Names(path)) {
             if (!RemoveTree(Join([path, "/", name]))) {
                 return false;
@@ -597,6 +611,13 @@ WriteSourceLists :: (source_root: string, build_dir: string, target: string) -> 
 // Installs a target's resources into the build tree (Resources).
 Install :: (source_root: string, build_dir: string, third_party: string, target: string) -> bool {
     for (resource in Resources(target)) {
+        // This tree is a runnable legacy compiler distribution. Prepare its
+        // pinned bytecode before copying, including host-only SDK builds.
+        if (strings.Partition(resource, "=").tail == "tools/compiler" &&
+            os.Run(["sh", Join([source_root, "/tools/bootstrap/seed.sh"])]) != 0) {
+            os.Print("graph: preparing the legacy compiler resources failed");
+            return false;
+        }
         if (!CopyChanged(Resolve(source_root, build_dir, third_party, strings.Partition(resource, "=").tail),
                          Resolve(source_root, build_dir, third_party, strings.Partition(resource, "=").head))) {
             return false;
@@ -750,64 +771,6 @@ Substituted :: (source_root: string, build_dir: string, profile: Profile, target
     return parts;
 }
 
-// Builds the existing host tools first, then runs the authored asset generator
-// with them, or with the profile's asset_generator_hosts: the resource is the
-// same whichever build's hosts generate it. Sibling outputs are tracked
-// inputs so deleting one regenerates the resource.
-AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string) -> int {
-    prerequisites: string[] = [];
-    for (target in Targets()) {
-        if (target == "chibi-build-host" || target == "chibi-compiler-host" ||
-            Needed("chibi-build-host", target) || Needed("chibi-compiler-host", target)) {
-            prerequisites.append(target);
-        }
-    }
-    compiled := Build(tools, profile, root, folder, prerequisites);
-    if (compiled < 0) {
-        return -1;
-    }
-    output := Join([folder, "/sdk/generated/assets"]);
-    // Compiling the asset compiler takes minutes; this outer deadline leaves room
-    // for the generator's own 600 s compiler deadline.
-    timeout := "900000";
-    build_host := Executable(folder, "chibi-build-host");
-    compiler_host := Executable(folder, "chibi-compiler-host");
-    if (profile.asset_generator_hosts != "") {
-        build_host = Join([profile.asset_generator_hosts, "/chibi-build-host"]);
-        compiler_host = Join([profile.asset_generator_hosts, "/chibi-compiler-host"]);
-    }
-    command := [build_host, "--compiler", "tools/compiler",
-                "--compiler-core", "packages/core", "--root", root,
-                "--source", "tools/toolchain/AssetCompiler.chibi", "--core", "packages/core",
-                "--collection", "graph=tools/graph", "--entry", "Build", "--timeout-ms", timeout, "--",
-                compiler_host, output];
-    inputs := [build_host, compiler_host];
-    for (directory in ["tools/compiler", "packages/core", "tools/graph/asset_compiler", "tools/graph/files"]) {
-        inputs.extend(ChibiSources(Join([root, "/", directory])));
-    }
-    for (path in ["tools/compiler/bootstrap/compiler.chibip", "tools/compiler/bootstrap/bootstrap.json",
-                  "tools/compiler/asset_compiler/CompilerSources.txt", "tools/toolchain/AssetCompiler.chibi",
-                  "tools/graph/engine/Engine.chibi", "tools/graph/engine/Targets.chibi"]) {
-        inputs.append(Join([root, "/", path]));
-    }
-    for (name in ["asset_compiler.chibip", "asset_compiler_blob.inc", "manifest.json", "sources.sha256",
-                  "inventory.txt", "inventory-directories.txt", "target.json"]) {
-        inputs.append(Join([output, "/", name]));
-    }
-    inventory := Join([output, "/input-inventory.txt"]);
-    listing := strings.Join(inputs, "\n");
-    if (!os.Exists(inventory) || files.Text(inventory) != listing) {
-        if (os.MakeDirectory(output) || os.WriteText(inventory, listing)) {
-            return -1;
-        }
-    }
-    inputs.append(inventory);
-    if (c.Step(command, inputs, Join([output, "/asset_compiler_packaged.c"])) < 0) {
-        return -1;
-    }
-    return compiled;
-}
-
 // Whether building the targets runs reflect first: one compiles a source it
 // writes.
 Reflects :: (targets: string[]) -> bool {
@@ -869,8 +832,15 @@ pub Needed :: (program: string, target: string) -> bool {
         return true;
     }
     for (run in Runs(program)) {
-        if (run == target || Linked(run, target)) {
+        if (run == target || Needed(run, target)) {
             return true;
+        }
+    }
+    linked := Links(program);
+    linked.extend(LinkedObjects(program));
+    for (dependency in linked) {
+        for (run in Runs(dependency)) {
+            if (run == target || Needed(run, target)) { return true; }
         }
     }
     return false;
@@ -1196,13 +1166,6 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         if (generated < 0) {
             return -1;
         }
-    }
-    if (Listed(targets, "chibi_asset_compiler_host")) {
-        assets_built := AssetCompiler(tools, profile, source_root, build_dir);
-        if (assets_built < 0) {
-            return -1;
-        }
-        generated += assets_built;
     }
     for (target in Staged(targets)) {
         published := Resolve(source_root, build_dir, profile.third_party, HeaderSource(target));

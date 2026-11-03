@@ -16,20 +16,26 @@ entrypoints and measurement-only loops from regression commands. A short unit
 result does not satisfy unrelated integration requirements or clear a PR hold.
 
 The scalar lane (`language-package-compiler-chibi-scalar`) runs the authored
-compiler, as `compiler_bootstrap_load` recovers it, through `test/language/scalar_host.c`:
-`CollectScalar` produces rows, and a closure of the consumer packages (`scalar_llvm`,
-`llvm_native`, `native_abi`, the `scalar_cases` corpus) validates and emits them.
-Nothing is prepared with stage zero.
+producer and consumer through the native compiler. `CollectScalar` produces
+rows; `scalar_llvm` and `llvm_native` validate and emit them against the real
+source corpus. The old VM-hosted compiler census and its C transport are retired.
 
 ### Authored package tests
 
 `chibi test DIR` runs every `@test` in the packages below `DIR`. The end-user
-command runs eligible tests on the bounded runtime thread pool;
+native compiler builds one executable per package, then runs each test in its
+own process. Eligible pure tests use a bounded worker pool;
 `CHIBI_TEST_WORKERS=1` keeps it serial (see the
 [package testing guide](guide/testing.md#parallel-execution)). The `chibi-test-*`
 rows of `tools/tests.tsv` run it over the compiler (`tools/compiler`), `core`
-(`packages/core`), `test/integer_arithmetic` and each folder of
-`test/compiler/samples`, all in the `language` group.
+(`packages/core`), `test/integer_arithmetic`, `test/core_strings`,
+`test/standard_library/time`, `test/packages/portable_consumer` and each
+registered folder of `test/compiler/samples`, all in the `language` group.
+
+`chibi-test-samples-native` stages the whole native sample folder in a private
+working directory with `Main.chibi` and `Inter.ttf`. It uses the selected SDK's
+core and FreeType archive even when `CHIBI_CORE` names another source tree.
+Missing SDK resources or the font fail before the sample tests run.
 
 The compiler's packages keep their tests beside them in `tools/compiler/*/tests`:
 the tokenizer, parser, package paths, routes, syntax and graph, source snapshot,
@@ -62,9 +68,9 @@ benchmark loops.
 `test/core_strings` holds the 174 string behavior rows and the formatting
 fallback rows of the retired `language-package-core` C selector as `@test`s
 against the production `core:strings` package. Its README maps each test to the
-C row it replaced. `chibi test test/core_strings` runs all 191; no
-`tools/tests.tsv` row runs them yet. Native byte ownership, read counters,
-metadata and binary/hash witnesses stay in C.
+C row it replaced. `chibi test test/core_strings` runs all 191;
+`chibi-test-core-strings` runs them in the `language` group. Native byte
+ownership, read counters, metadata and binary/hash witnesses stay in C.
 
 ### Portable byte-library regressions
 
@@ -88,17 +94,21 @@ after another.
 The same `CI` workflow runs full **ASan + UBSan** coverage daily at **08:00 UTC**
 on the latest default-branch commit (GitHub may delay scheduled starts). To run
 it on demand, choose **Actions → CI → Run workflow**, select the candidate
-branch, and enable **sanitizers**. A manual run without that option uses the
-fast profile. Run titles identify `ASan + UBSan` versus `fast Debug O1`; native
-profile artifacts record the selected instrumentation and checked build evidence.
-The event and profile have separate concurrency keys, so a scheduled sanitizer
-run cannot cancel ordinary CI. Job/check names and 45-minute native timeouts
-are unchanged. Sanitizer-only defects can now be discovered after merge rather
-than blocking every PR; a scheduled workflow by itself does not automatically
+branch, choose **mode=full**, and enable **sanitizers**. Manual `mode=ci` runs
+the canonical five jobs without sanitizers; `mode=full` without that option also
+uses the fast profile. Run titles show the mode/event and ref; native-profile
+artifacts record the selected instrumentation and checked build evidence.
+The event and manual mode have separate concurrency keys, so a scheduled
+sanitizer run cannot cancel ordinary CI. Job/check names remain stable. Linux
+keeps separate 45-minute core and 90-minute native budgets within a 135-minute
+job; macOS core keeps 45 minutes and target-module jobs keep 10 minutes. Windows
+native self-host keeps 60 minutes without sanitizers. Sanitizer-only defects
+can now be discovered after merge rather than blocking every PR; a scheduled
+workflow by itself does not automatically
 triage or fix failures.
 
-Before a major release, dispatch with **sanitizers enabled** on the exact release
-candidate; require both Linux and macOS native jobs and all existing functional
+Before a major release, use **mode=full with sanitizers enabled** on the exact
+release candidate when dispatch is authorized; require both Linux and macOS native jobs and all existing functional
 checks to pass. Check the run's commit SHA and profile receipts, investigate any
 sanitizer failure, and rerun on the fixed candidate. A passing fast run is not
 a substitute for sanitizer evidence. Explicit holds and required repository checks
@@ -109,8 +119,9 @@ steps to prevent drift. Graph frame pointers are a separate Debug-only opt-in
 ## Run the checks
 
 The engine build compiles the test drivers, `test_tools` and `test_language`.
-CI runs the groups below on every push to `main` and every pull request into it
-that changes more than documentation.
+CI runs the correctness groups on every push to `main` and every pull request
+into it, including documentation-only changes. Benchmarks and bootstrap asset
+maintenance below remain explicit opt-in operations.
 
 ```sh
 # Unsanitized Release tools in build-release/
@@ -141,28 +152,30 @@ does. Mark a selector exclusive when it starts its own worker pool
 has a deadline, set by `--timeout SECONDS` (600 by default) or by a
 `timeout NAME SECONDS` row. A selector that passes it is killed with its process
 tree and reported as `FAIL NAME (timed out after Ns)`; the others still run.
-CI runs the `projects language` invocation with `--jobs 3` on Linux (4 cores,
-16 GB) and `--jobs 2` on macOS (3 cores, 7 GB).
+CI runs `bootstrap-load projects language` with `--jobs 3` on Linux and
+`chibi-cli language` with `--jobs 2` on macOS. Other groups retain their explicit
+invocations and worker limits.
 
-The `projects` group runs `chibi-cli`, `chibi-cli-authored` and `native-build` against the Release
-`chibi` launcher in `build-release/sdk/`, with its `chibi-compile` beside it.
+The `projects` group runs `chibi-cli` and `native-build`
+against the Release native `chibi` in `build-release/sdk/`, plus the
+`native-build-entry` regression. `chibi` implements build/run/test directly.
+The explicitly requested `chibi-compile`, `chibi-build-host` and
+`chibi-compiler-host` targets remain C comparison and recovery tools; they are
+not default native products.
 `native-build` links real programs only when `CHIBI_LLVM_BIN` names the LLVM
 tools; without it, LLVM stand-ins cover the process contract.
 
-`chibi-cli` runs twenty-three launcher cases: `version` and `doctor`, over a
-fake sibling and the built launcher; `chibi test` through the real
-`chibi-compile` beside it; `build --native` argument forwarding; and programs
-run from files and directories, with `--watch`, cancellation and child
-processes.
-
-`chibi-cli-authored` (`test/graph/ChibiCliTests.chibi`) runs the `chibi-cli`
-cases that outlive the VM, through the same launcher, for its native
-replacement.
+`chibi-cli` compiles and runs `test/graph/ChibiCliTests.chibi` natively, then
+runs the POSIX signal and terminal cases in `test/native_cli/foreground.py`.
+The suite covers identity and diagnosis, source and package dispatch, test
+reporting, relocation, physical diagnostics, watch edits and retained state,
+cancellation, child-group cleanup and terminal suspend/resume. It requires LLVM.
+`chibi-cli-process` runs the process and terminal cases alone.
 
 `chibi build test <name>` runs one selector against the drivers in `build/` and
-the Release tools in `build-release/`; `--build`, `--release-build` and
-`--build-host` select other builds. Some selectors run separately from the
-groups; `chibi build test --list` shows every selector and group.
+the Release tools in `build-release/`; `--build` and `--release-build` select other
+builds. Some selectors run separately from the groups; `chibi build test --list`
+shows every selector and group.
 
 Add a case to the selector that owns its area; add a selector to its group's
 row in `tools/tests.tsv` so the group, and therefore CI, runs it. Studio's
@@ -173,7 +186,7 @@ The groups of `tools/tests.tsv`:
 | Group | Current coverage |
 | --- | --- |
 | `native` | CPU `test_tools` and build-graph selectors with checked-in inputs. |
-| `projects` | The Release `chibi` launcher (`chibi-cli`, `chibi-cli-authored`) and its native builds (`native-build`). |
+| `projects` | The Release native `chibi` (`chibi-cli`), native builds (`native-build`) and native build entry (`native-build-entry`). |
 | `language` | `test_language` selectors, `chibi test` over the compiler, `core` and the compiler samples, and stage-one bootstrap and recovery. |
 | `compiler` | The scalar package-compiler route. |
 | `wasm` | The browser `test_language` build under Node. No build currently produces `build-wasm-language`. |
@@ -182,53 +195,32 @@ The groups of `tools/tests.tsv`:
 The groups list their members explicitly; they do not include every standalone
 selector. Registering a selector alone does not add it to a group.
 
-CI runs the build, the `short` selector and the `native`, `projects` and
-`language` groups on Linux and macOS.
+Linux CI runs the build, `short`, and the `native`, `projects` and `language`
+groups. macOS retains `short`, `native`, `language`, and selected project/native-driver checks.
 The general Windows engine and Studio jobs are paused pending desktop archives.
-The independent `Compiler self-build` workflow runs nonadvisory macOS, Linux and
-Windows proofs on every PR into `main` and push to `main`. Each downloads a
+The single CI workflow runs nonadvisory macOS, Linux and Windows prepared
+compiler recovery on its daily schedule and manual `full` mode. Each downloads a
 checksum-pinned runtime seed and uses the checked-in Chibi compiler to compile
 the current compiler/core sources. It then executes that output to compile them
-again. This workflow installs and invokes neither a C compiler nor CMake, and
-has no native-build job dependency. Both compiler processes use an isolated
+again. These recovery jobs install and invoke neither a C compiler nor CMake, and
+have no native-build job dependency. Both compiler processes use an isolated
 input directory and an empty tool search path. The two stages must agree locally,
 and the three platforms must produce identical compiler bytes. See the
 [compiler recovery proof](self-hosting-build.md#three-platform-compiler-recovery-proof)
 for the exact command, isolation and uploaded evidence.
-The separate manual runtime-seed workflow retains the C/CMake recovery route
-for updating the explicitly prebuilt runtime dependency.
+The [manual maintenance scripts](ci-maintenance.md) retain the C recovery route
+for preparing updates to the explicitly prebuilt runtime dependency.
 
-### Starting CI with labels
+### Continuous integration
 
-The `CI control` workflow starts runs for maintainers and agents whose GitHub
-access cannot re-run or dispatch workflows. It acts only when the person who
-added the label or retargeted the PR has write access, which GitHub requires
-for re-runs and dispatches anyway. It only acts on branches of this repository
-and on the head commit that the event named, and removes the label when it is
-done.
-
-- `ci-rerun` re-runs the failed jobs of the PR's own CI and compiler
-  self-build runs on the head commit. It never re-runs a push or publishing
-  run that shares the commit. On a PR into `main`, it dispatches a workflow
-  that never ran on the head branch.
-- `ci-seed` dispatches the runtime-seed workflow on the head branch with
-  `publish` set. Once all three platforms recover identical compiler bytes, it
-  publishes the seeds as a commit-specific prerelease and commits the new pin in
-  `tools/compiler/runtime.json` to that branch, then starts CI and the compiler
-  self-build on the pin commit. Pull before pushing again. If the branch moved
-  after the seed run started, unrelated branch movement fails the pin step.
-  Rerunning the same workflow can resume its verified one-file pin commit and
-  dispatch only checks not already started on that exact pin. Existing published
-  seeds are reused only after verifying their tag target, source identity,
-  complete asset inventory, checksums and three-platform recovery evidence;
-  a mismatch fails without replacing published assets. Runs for the same source
-  SHA serialize across refs and do not cancel an active publication/pin.
-
-A dispatched run must build the head commit the event named. If the branch
-moved in between, the workflow cancels the run and fails, and the PR needs the
-label again. Retargeting a stacked PR to `main` does the same as `ci-rerun`, so
-it gets CI without a new push. A dispatched run checks the head branch, not the
-merge with `main`.
+[CI modes and proof mapping](ci.md) describe the single workflow. Ordinary PRs
+run Linux core/native acceptance, macOS core, two real macOS/Windows target
+module jobs and native Windows self-host validation. Main pushes repeat those
+checks. Daily/manual full validation adds prepared recovery and clean-machine
+proofs, with scheduled or explicitly selected
+manual sanitizers. Label-driven `ci-rerun`, `ci-seed` and Graph
+workflows are retired. Use Actions' normal rerun/dispatch controls; seed
+preparation and publication follow the [manual maintenance procedure](ci-maintenance.md).
 
 ## Focused regression coverage
 
@@ -284,8 +276,6 @@ selectors. The counts describe coverage and do not record a pass.
   restrictions and cycle collection.
 - `language-record-document`: five cases, adding three tiny JSON roundtrips,
   four malformed byte tags and one rejected NUL name.
-- `build-process`: the helper case adds seven operations on at most seven bytes
-  and no processes. Binary-output and file assertions replace text rejection.
 
 These extensions add no rendering, GPU or network work and no additional child
 process launches.
@@ -298,64 +288,57 @@ discard path-specific intervals, and opaque calls that end a proof. Allocation
 and instruction assertions establish removed work; elapsed time is not an
 optimization oracle.
 
-`asset-values` runs nine cases on KDL asset text and the native value tree:
-typed scalars at the 64-bit limits, slashdash, annotated arrays and source
-ranges; reals and floats that read back bit for bit and write plainly;
-escaped separators; thirteen malformed documents reported with a line and
-column; owned snapshots and subtrees; ordered objects; exact numeric
-equality; and JSON that owns its strings. 172 assertions in 0.05 seconds with
-ASan/UBSan; in memory, CPU only.
+The C `arena`, `asset-values`, `native-values` and `whole-integer` selectors
+were retired on 2026-11-02 under [the C test verdicts](c-test-verdicts.md).
+Their allocator, asset-document and native-capability ABI checks belonged to
+the C implementation. Production support and asset libraries remain for live
+C consumers. Admitted integer behavior remains in
+[`test/integer_arithmetic`](../test/integer_arithmetic/README.md) and the
+[native backend suite](../test/native_aot/backend/README.md). This retirement
+does not admit exact integer `abs`, `min`, `max` or `clamp` overloads. Source
+math converts integer operands to `number`.
 
-`fmt` runs two cases on the vendored fmt library: positional, typed and
-aligned arguments with escaped braces, and the runtime specifier path Format
-Text takes, where an out-of-range placeholder renders empty. 12 assertions in
-0.05 seconds with ASan/UBSan.
+The C `fmt` selector is retired. Its language behavior is covered by
+`text-format`, including ten positional inputs and empty arguments or missing
+placeholders. The vendored C library remains for its live runtime callers.
 
-The independently reviewed `text-format` selector runs two fixed public native
-formatting cases, with 41 assertions covering scalar formats, owned string and
-array display, rejected printf modifiers and bounded placeholder indices. It
-passes in 0.799 seconds under ASan/UBSan; there is no world, process or GPU work.
+The `text-format` selector compiles and runs the authored formatter fixtures at
+O0/O2, including scalar conversions, raw/NUL text, modifier rejection, bounded
+indices, array/map count snapshots and owned results. It also exercises a shared
+execution-family context and checks standalone Windows imports: scalar numeric
+formatting uses UCRT; text/count-only formatting does not. The former C boundary cases are
+retired. `managed_values/run.sh` audits all four fixtures with poisoned frees and
+requires zero live allocations.
 
-`native-values` selects one independently reviewed native SDK case. It checks
-canonical ABI lookup, NaN comparisons, integer saturation, nominal enums, vector
-conversion and output ownership after input/table retirement. The scoped native
-consumer passes 43 assertions in 0.403 seconds, without files, processes or GPU.
 `box3d` selects one in-tree check of the archive's prebuilt Box3D (v0.1.0,
 the copy Cute pins). A box falls onto static ground and comes to rest, then
 closest raycasts hit the box, hit the ground and miss. It needs a native tools
 build and passes 14 assertions in 0.052 seconds, without files, processes or GPU.
-`arena` checks the support arena allocator: growth that keeps earlier
-allocations intact and aligned, a reset that hands back the retained blocks in
-order, a zero-initialized arena, and collectable values found by address
-through the page index across sweeps and a reset. It passes 360 assertions in
-0.06 seconds.
 
-The focused room-service check is `chibi build test collab` after
-`chibi build --target test_tools`. It runs the real Node server from the C
-dispatcher. Health readiness must succeed before the existing 401/201/403
-authority checks. Unexpected responses report the method, path, expected and
-actual status, byte count, transport errno or parse error, and the server's JSON
-error code when available. A failed case prints its server output and retains
-the temporary `server.log` at the reported path; passing cases remove their
-files. Failure cases exercise invalid server configuration, an occupied port, a
-live process without health readiness, and real receive timeout/connection
-refusal. They use process signals and sockets rather than replacement server
-responses. These cases also run in `short`; the focused command does not
-certify that selector or the groups.
+The focused room-service check is `chibi build test collab`, or
+`node --test tools/collab/server/server.test.mjs`. It runs the real Node server
+without a C host. Health readiness must succeed before the 401/201/403 authority
+checks. A failed case reports its server output and retains the temporary
+`server.log`; passing cases remove their files. Failure cases exercise invalid
+server configuration, an occupied port, a live process without health readiness,
+and real receive timeout/connection refusal. The two process-signal cases run on
+POSIX; the other three also run on Windows. The `short` and `native-tools` groups
+include the same room-service cases alongside the existing type tests.
 
 Routine CI and the correctness groups exclude benchmark selectors.
 `chibi build test benchmarks` runs the benchmarks, or name one:
 
 - `native-workload-benchmark` builds the four kernels in
   `test/native_aot/workloads` with `chibi build --native` and the LLVM tools in
-  `CHIBI_LLVM_BIN`, checks each program's status against the VM's, and prints the
-  build time, peak memory, size and median run time at O0 and O2. Each build
-  runs under a Linux subreaper, so a timeout, an interrupt or the launcher's exit
-  kills every process the build started, including those in groups or sessions
-  of their own; a fake-launcher case checks that no descendant survives. It runs
-  on Linux x86-64, the one target the driver admits, against the Release
-  launcher, and skips the builds without `CHIBI_LLVM_BIN`. It takes about
-  70 seconds.
+  `CHIBI_LLVM_BIN`, checks the recorded checksums, and prints build time,
+  per-child peak RSS, size and median-of-three run time at O0 and O2. Its
+  authored runner keeps subreaper and signal-mask state in an isolated worker,
+  restoring the command's mask and reaping descendants across groups and sessions.
+  Grouped/detached timeout and early-exit controls plus parent-only and worker-only
+  TERM checks run before measurement. It requires the Release native CLI and
+  LLVM 22+ on Linux x86-64; other hosts report it as unsupported. The C test
+  driver is retired; [the workload guide](../test/native_aot/workloads/README.md)
+  describes direct use.
 
 Each fixture owns its fixed trial count and reports timings alongside correctness
 assertions. Setup and correctness checks stay outside timed loops; no
@@ -409,50 +392,29 @@ compiler without recovering. Interned strings keep the compiler near 23 MB, and
 package sources are capped at 8 MiB, so this case can't cross the artifact
 bound; the sparse cases above cover it.
 
-## Private build-host process checks
+## Native build and process checks
 
-`chibi build test build-process` selects the C cases in the existing tooling
-dispatcher; `chibi build` builds `chibi-build-host`, `test_tools` and its
-`policy_worker` dependency. The route uses one disposable directory,
-fixed authored sources and at most 58 controlled process launches or failed
-spawn attempts. It performs no
-engine configure/build, network, renderer or GPU work. Case deadlines are at
-most two seconds, with shorter deliberate timeout/cancellation budgets.
-
-Cases cover exact argv and cwd, explicit environment and parent isolation,
-separate output bounds, a step's 1,023-argument bound, exits/signals, spawn
-errors, timeout, active cancellation,
-and descendants whose leader exits first. The private host executes both the
-controlled source and unchanged recording workflow on bytecode and SLJIT, with
-actual backend counters and failure-path assertions. Compiler-enabled full
-native builds also verify absence from the ordinary game catalog; minimal
-compiler-only builds verify rejection by a catalog without build capabilities.
-Two CLI invocations cover source loading, a nonzero authored result and a missing
-entry. Seven additional cases cover argument and returned-value lifetimes,
-string operations, truncated or binary output rejection, regular-file and size
-limits, and atomic write failure cleanup. Five more cover a step's 1 MiB output
-and unreported probes, file kinds, stamps and sorted directory entries with
-their limits, atomic copies, renames and removals, SHA-256 against FIPS 180-4
-vectors, and environment names. Their fixed file workload is about 10 MiB and 8,193 empty
-files.
+The private `build-process`, `build-process-files` and `build-timings` selectors
+are retired. Native `core:os` file and process suites, CLI foreground tests and
+the Linux workload supervisor cover the surviving public behavior. The mapping
+and retired private contracts are recorded in [C test verdicts](c-test-verdicts.md).
 
 `graph-engine`, `graph-driver`, `graph-discovery`, `graph-c` and `graph-build`
-run the authored programs in `test/graph` under the build host: the profile's
+run the authored programs in `test/graph` natively: the profile's
 flags, argument checks and target selection; the driver's plans; toolchain
 discovery against fixture installations; `tools/graph/c`'s steps,
 response-file links and dependency files; and, in `graph-build`, Debug builds
-of `chibi_support` in a copy of the sources that rebuild only what changed,
-retry a failed compile alone and link an archive that runs, plus a launcher
-build whose failing compiler leaves the staged headers in place. `graph-build`
-compiles about fifteen C files and takes about 2.5 minutes.
+of the three-source `chibi_graph_fixture` archive in a private fixture copy.
+It checks source and header changes, deleted objects, changed flags, retrying
+only a failed compile, and a consumer that calls all three archive members.
+The `graph_headerless` program checks executable staging, successful execution
+and preservation of the archive's published headers after compiler failure.
 
-`chibi-cli-installed` runs an installed launcher in place, `dist/sdk/bin/chibi`,
-so run `chibi build install --prefix dist/sdk` first. Its cases cover `version`
-and `doctor`, `chibi test` on package trees, including one that imports the
-installed `core:` collection, and programs run from files and directories, with
-`--watch`, cancellation and child processes.
+`chibi-cli-installed` runs the same native CLI and process suite against
+`dist/sdk/bin/chibi`; run `chibi build install --prefix dist/sdk` first.
 
-`build-process` and `chibi-cli-installed` are in no group; run them by name.
+`chibi-cli-process` and `chibi-cli-installed` are in no group;
+run them by name.
 Windows does not build or select the private host.
 
 ## Batch validation (CUT62)

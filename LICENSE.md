@@ -38,7 +38,7 @@ The GPL host-tool files are:
 - `src/host/build_io.c`, `src/host/build_io.h`
 - `src/host/build_main.c`
 - `src/host/build_values.c`, `src/host/build_values.h`
-- `src/host/chibi_main.c`, `src/host/compile_main.c`
+- `src/host/compile_main.c`
 - `archive/src/host/export.c`, `archive/src/host/export.h`
 - `src/host/process.c`, `src/host/process.h`
 - `archive/src/host/serve.c`, `archive/src/host/serve.h`

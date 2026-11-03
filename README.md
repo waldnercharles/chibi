@@ -10,20 +10,33 @@ run it with `chibi`. Game projects add scenes, components and resources.
 
 ## Install
 
-Native builds need a C23 compiler and libclang for reflection.
-Run these commands from the engine checkout:
+The native compiler and CLI need LLVM/LLD 22 or newer. Set
+`CHIBI_LLVM_BIN` to the directory containing `opt`, `llc`, `llvm-link`,
+`llvm-ar` and the platform linker. Windows uses `llvm-lib` for archives. Run
+these commands from the engine checkout:
 
 ```sh
-chibi build install
+sh tools/build.sh install
 export PATH="$HOME/.local/bin:$PATH"
 chibi doctor
 ```
 
-The default install directory is `~/.local`. Use `chibi build install --prefix /absolute/prefix`
-to select another directory. The SDK includes the `chibi` command, compiler,
-player, headers and libraries.
+The default install directory is `~/.local`. Use
+`chibi build install --prefix /absolute/prefix` to select another directory.
+The SDK includes the native `chibi` compiler and CLI, authored core and graph
+packages, the native asset compiler, its compile-only C API archive and header,
+and their resources. Installed tools find
+these resources beside their prefix, so the prefix can move.
 
-For a development build, use `tools/build.sh build` (once a `chibi` exists, `chibi build` inside the checkout does the same). It builds everything: the launcher, the compiler, the private hosts and the test drivers; `--target chibi` builds one product. Run the command as `build/sdk/chibi`. From a cold tree it first builds the Release hosts in `build-release` so the asset compiler is generated quickly, then the Debug build. A cold Release build of everything took 238 seconds on a 10-core Apple M-series machine (`--release` builds `build-release`).
+For a development build, use `sh tools/build.sh build`. Once `chibi` is installed,
+`chibi build` inside the checkout does the same. The default products are the
+native CLI/compiler, asset compiler and compile-only archive; `--target chibi` builds the CLI/compiler
+alone. Run it as `build/sdk/chibi`. Explicit C engine and test targets still
+require a C23 compiler and libclang for reflection.
+
+The compiler and toolchain self-host natively. Engine runtime APIs and browser
+execution still use the retained VM. The [native ledger](docs/native-llvm-ledger.md)
+records native language support and the remaining runtime work.
 
 ## Hello World
 
@@ -51,16 +64,18 @@ Every program source needs a `package` header. Running a file compiles that
 file and the core library. To include sibling source files and local package
 imports, run the package directory with `chibi .`.
 
-To keep a program running while you edit it, add a `Frame :: ()` function and
-use `chibi --watch Hello.chibi`. The runner calls `Main` once and `Frame` every
-frame; each valid save patches the running code, keeps `retain` state, and does
-not call `Main` again. Invalid edits report diagnostics and keep the last valid
-code running. See [program reload](docs/guide/toolchain.md#reload-a-program)
-for a complete example.
+To keep a program running while you edit it, use `chibi --watch Hello.chibi`.
+A watched program can provide `Main`, `Frame`, or both. Without either entry,
+it waits for another save. The runner calls `Main` once if the first runnable
+generation provides it, and calls `Frame` every frame when present. Each valid save patches
+the running code, keeps `retain` state, and does not call `Main` again. Invalid
+edits report diagnostics and keep the last valid code running. See
+[program reload](docs/guide/toolchain.md#reload-a-program) for a complete example.
 
-The CLI is itself an ordinary Chibi program in
-[apps/chibi/Main.chibi](apps/chibi/Main.chibi). The native launcher locates the
-SDK and starts its `Main`; command parsing and reload policy live in Chibi.
+The CLI is compiled from
+[tools/compiler/native_driver](tools/compiler/native_driver). It finds core and
+graph packages beside the installed SDK, compiles programs natively, and runs
+them. Command parsing and reload policy live in Chibi.
 
 ## Run a project
 

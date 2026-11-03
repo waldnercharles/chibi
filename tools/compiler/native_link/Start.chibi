@@ -1,5 +1,37 @@
 package native_link
 
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Only programs marked by the managed emitter use the extended context.
+// The heap remains stable for this program; library/C-bundle contexts retain
+// their existing prefix and reject managed values before emitting code.
+pub ManagedProgramContext :: (module: string) -> string {
+    prefix := strings.Concatenate(["@chibi_context = global ", abi.ContextType(), " "]);
+    allocation := ", ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release }";
+    assert(strings.Contains(module, prefix) && strings.Contains(module, allocation));
+    extended := strings.Concatenate(["@chibi_managed_owner = internal global ", abi.ManagedHeapType(),
+        " zeroinitializer\n@chibi_context = global ", abi.ManagedContextType(), " "]);
+    result := strings.ReplaceAll(module, prefix, extended);
+    return strings.ReplaceAll(result, allocation,
+        ", ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release, ptr @chibi_managed_owner }");
+}
+
+// Shared images borrow the same stable program owner. No image allocates a
+// private heap; the host adopts this context before invoking any source code.
+pub ManagedFamilyContext :: (module: string, context: bool) -> string {
+    result := module;
+    if (context) {
+        prefix := strings.Concatenate(["@chibi_context = hidden global ", abi.ContextType(), " "]);
+        allocation := ", ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release }";
+        assert(strings.Contains(result, prefix) && strings.Contains(result, allocation));
+        result = strings.ReplaceAll(result, prefix, strings.Concatenate(["@chibi_context = hidden global ", abi.ClockContextType(), " "]));
+        result = strings.ReplaceAll(result, allocation,
+            ", ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release, ptr null, ptr null }");
+    }
+    return strings.Concatenate([result, "\n@", abi.ManagedImageCounter(), " = hidden global i64 0, align 8\n"]);
+}
+
 // The start modules: the LLVM IR of the shim that starts a native program,
 // calls its entry `chibi_scalar() -> i32` (`chibi_scalar(ptr)` with a runtime
 // context when `context` is set) and makes the result the exit status. Link it
@@ -12,13 +44,52 @@ package native_link
 //
 // A context's allocate is libc's calloc (HeapAlloc on Windows) and its release
 // libc's free (HeapFree on Windows); its index
-// failure aborts; formatting text is not available to a program. A failed
+// failure aborts; format_text shares the scalar language formatting contract. A failed
 // assert ends the entry early with its failure in the context, which the shim
 // reports on stderr before it exits with status 134.
+
+// LLVM can introduce these C-ABI calls while lowering aggregate stores and
+// copies, even when source imports no CRT. Keep them in the Windows runtime;
+// no-builtins prevents their loops from becoming recursive library calls.
+// Weak definitions let an explicitly linked native/CRT implementation own the
+// symbols, including dllimport thunks, without adding an implicit dependency.
+WindowsMemoryRuntime :: () -> string {
+    return Join([
+        "define weak ptr @memset(ptr %to, i32 %value, i64 %bytes) noinline nounwind \"no-builtins\" {\n",
+        "entry:\n  %byte = trunc i32 %value to i8\n  br label %head\n",
+        "head:\n  %at = phi i64 [ 0, %entry ], [ %next, %body ]\n",
+        "  %done = icmp eq i64 %at, %bytes\n  br i1 %done, label %exit, label %body\n",
+        "body:\n  %slot = getelementptr inbounds i8, ptr %to, i64 %at\n",
+        "  store i8 %byte, ptr %slot, align 1\n  %next = add i64 %at, 1\n  br label %head\n",
+        "exit:\n  ret ptr %to\n}\n",
+        "define weak ptr @memcpy(ptr noalias %to, ptr noalias %from, i64 %bytes) noinline nounwind \"no-builtins\" {\n",
+        "entry:\n  br label %head\n",
+        "head:\n  %at = phi i64 [ 0, %entry ], [ %next, %body ]\n",
+        "  %done = icmp eq i64 %at, %bytes\n  br i1 %done, label %exit, label %body\n",
+        "body:\n  %source = getelementptr inbounds i8, ptr %from, i64 %at\n",
+        "  %byte = load i8, ptr %source, align 1\n  %slot = getelementptr inbounds i8, ptr %to, i64 %at\n",
+        "  store i8 %byte, ptr %slot, align 1\n  %next = add i64 %at, 1\n  br label %head\n",
+        "exit:\n  ret ptr %to\n}\n",
+        "define weak ptr @memmove(ptr %to, ptr %from, i64 %bytes) noinline nounwind \"no-builtins\" {\n",
+        "entry:\n  %empty = icmp eq i64 %bytes, 0\n  br i1 %empty, label %exit, label %nonempty\n",
+        "nonempty:\n  %same = icmp eq ptr %to, %from\n  br i1 %same, label %exit, label %direction\n",
+        "direction:\n  %to.address = ptrtoint ptr %to to i64\n  %from.address = ptrtoint ptr %from to i64\n",
+        "  %backward = icmp ugt i64 %to.address, %from.address\n  %last = sub i64 %bytes, 1\n",
+        "  %first = select i1 %backward, i64 %last, i64 0\n  %step = select i1 %backward, i64 -1, i64 1\n  br label %body\n",
+        "body:\n  %at = phi i64 [ %first, %direction ], [ %next, %body ]\n",
+        "  %remaining = phi i64 [ %bytes, %direction ], [ %left, %body ]\n",
+        "  %source = getelementptr inbounds i8, ptr %from, i64 %at\n  %byte = load i8, ptr %source, align 1\n",
+        "  %slot = getelementptr inbounds i8, ptr %to, i64 %at\n  store i8 %byte, ptr %slot, align 1\n",
+        "  %next = add i64 %at, %step\n  %left = sub i64 %remaining, 1\n",
+        "  %done = icmp eq i64 %left, 0\n  br i1 %done, label %exit, label %body\n",
+        "exit:\n  ret ptr %to\n}\n"
+    ]);
+}
 
 WindowsPrelude :: () -> string {
     return Join([
         "target triple = \"x86_64-pc-windows-msvc\"\n",
+        WindowsMemoryRuntime(),
         "module asm \".text\"\n",
         "module asm \".globl __chkstk\"\n",
         "module asm \"__chkstk:\"\n",
@@ -46,217 +117,6 @@ WindowsPrelude :: () -> string {
     ]);
 }
 
-// The runtime context's format_text for a program with no VM to call, as the
-// VM formats: each `{}` of the format, the first value, is replaced by the next
-// value (decimal text for an integer, signed by its tag; `true` or `false` for
-// a bool; a string's bytes), or by nothing when no value is left; `{{` and
-// `}}` are one brace; any other brace stays. Floats are not formatted yet and
-// trap. The result is made once, in memory chibi_allocate gives, sized from
-// the format and the values. Written as a byte copy loop so a program that
-// links nothing needs no memcpy.
-RuntimeFormat :: () -> string {
-    return Join([
-        "@chibi_true = private unnamed_addr constant [4 x i8] c\"true\"\n",
-        "@chibi_false = private unnamed_addr constant [5 x i8] c\"false\"\n",
-        "declare void @llvm.trap()\n",
-        "define internal void @chibi_copy(ptr %to, ptr %from, i32 %count) {\n",
-        "entry:\n",
-        "  br label %loop\n",
-        "loop:\n",
-        "  %at = phi i32 [ 0, %entry ], [ %next, %body ]\n",
-        "  %more = icmp slt i32 %at, %count\n",
-        "  br i1 %more, label %body, label %done\n",
-        "body:\n",
-        "  %source = getelementptr inbounds i8, ptr %from, i32 %at\n",
-        "  %byte = load i8, ptr %source\n",
-        "  %target = getelementptr inbounds i8, ptr %to, i32 %at\n",
-        "  store i8 %byte, ptr %target\n",
-        "  %next = add i32 %at, 1\n",
-        "  br label %loop\n",
-        "done:\n",
-        "  ret void\n",
-        "}\n",
-        "define internal void @chibi_format_text(ptr %ctx, ptr %values, i32 %count, ptr %result) {\n",
-        "entry:\n",
-        "  %i.slot = alloca i32\n",
-        "  %o.slot = alloca i32\n",
-        "  %a.slot = alloca i32\n",
-        "  %digits = alloca [20 x i8]\n",
-        "  store i32 0, ptr %i.slot\n",
-        "  store i32 0, ptr %o.slot\n",
-        "  store i32 1, ptr %a.slot\n",
-        "  %fmt.length.at = getelementptr inbounds { i32, i32, i64, ptr }, ptr %values, i32 0, i32 1\n",
-        "  %fmt.length = load i32, ptr %fmt.length.at\n",
-        "  %fmt.bytes.at = getelementptr inbounds { i32, i32, i64, ptr }, ptr %values, i32 0, i32 3\n",
-        "  %fmt = load ptr, ptr %fmt.bytes.at\n",
-        "  %fmt.wide = zext i32 %fmt.length to i64\n",
-        "  br label %size\n",
-        "size:\n",
-        "  %k = phi i32 [ 1, %entry ], [ %k.next, %size.arg ]\n",
-        "  %bound = phi i64 [ %fmt.wide, %entry ], [ %bound.next, %size.arg ]\n",
-        "  %counting = icmp slt i32 %k, %count\n",
-        "  br i1 %counting, label %size.arg, label %alloc\n",
-        "size.arg:\n",
-        "  %value = getelementptr inbounds { i32, i32, i64, ptr }, ptr %values, i32 %k\n",
-        "  %tag.at = getelementptr inbounds { i32, i32, i64, ptr }, ptr %value, i32 0, i32 0\n",
-        "  %tag = load i32, ptr %tag.at\n",
-        "  %length.at = getelementptr inbounds { i32, i32, i64, ptr }, ptr %value, i32 0, i32 1\n",
-        "  %length = load i32, ptr %length.at\n",
-        "  %length.wide = zext i32 %length to i64\n",
-        "  %is.text = icmp eq i32 %tag, 12\n",
-        "  %extra = select i1 %is.text, i64 %length.wide, i64 24\n",
-        "  %bound.next = add i64 %bound, %extra\n",
-        "  %k.next = add i32 %k, 1\n",
-        "  br label %size\n",
-        "alloc:\n",
-        "  %total = add i64 %bound, 1\n",
-        "  %buffer = call ptr @chibi_allocate(ptr %ctx, i64 %total)\n",
-        "  br label %walk\n",
-        "walk:\n",
-        "  %i = load i32, ptr %i.slot\n",
-        "  %ended = icmp sge i32 %i, %fmt.length\n",
-        "  br i1 %ended, label %finish, label %step\n",
-        "step:\n",
-        "  %c.at = getelementptr inbounds i8, ptr %fmt, i32 %i\n",
-        "  %c = load i8, ptr %c.at\n",
-        "  %after = add i32 %i, 1\n",
-        "  %has.after = icmp slt i32 %after, %fmt.length\n",
-        "  br i1 %has.after, label %peek, label %literal\n",
-        "peek:\n",
-        "  %n.at = getelementptr inbounds i8, ptr %fmt, i32 %after\n",
-        "  %n = load i8, ptr %n.at\n",
-        "  %c.open = icmp eq i8 %c, 123\n",
-        "  %c.close = icmp eq i8 %c, 125\n",
-        "  %n.open = icmp eq i8 %n, 123\n",
-        "  %n.close = icmp eq i8 %n, 125\n",
-        "  %open.open = and i1 %c.open, %n.open\n",
-        "  %open.close = and i1 %c.open, %n.close\n",
-        "  %close.close = and i1 %c.close, %n.close\n",
-        "  %escaped = or i1 %open.open, %close.close\n",
-        "  br i1 %escaped, label %escape, label %hole.check\n",
-        "hole.check:\n",
-        "  br i1 %open.close, label %hole, label %literal\n",
-        "escape:\n",
-        "  %oe = load i32, ptr %o.slot\n",
-        "  %te = getelementptr inbounds i8, ptr %buffer, i32 %oe\n",
-        "  store i8 %c, ptr %te\n",
-        "  %oe.one = add i32 %oe, 1\n",
-        "  store i32 %oe.one, ptr %o.slot\n",
-        "  %skip.escape = add i32 %i, 2\n",
-        "  store i32 %skip.escape, ptr %i.slot\n",
-        "  br label %walk\n",
-        "hole:\n",
-        "  %a = load i32, ptr %a.slot\n",
-        "  %have = icmp slt i32 %a, %count\n",
-        "  br i1 %have, label %argument, label %unfilled\n",
-        "unfilled:\n",
-        "  %skip.hole = add i32 %i, 2\n",
-        "  store i32 %skip.hole, ptr %i.slot\n",
-        "  br label %walk\n",
-        "literal:\n",
-        "  %o = load i32, ptr %o.slot\n",
-        "  %to = getelementptr inbounds i8, ptr %buffer, i32 %o\n",
-        "  store i8 %c, ptr %to\n",
-        "  %o.one = add i32 %o, 1\n",
-        "  store i32 %o.one, ptr %o.slot\n",
-        "  store i32 %after, ptr %i.slot\n",
-        "  br label %walk\n",
-        "argument:\n",
-        "  %arg = getelementptr inbounds { i32, i32, i64, ptr }, ptr %values, i32 %a\n",
-        "  %arg.tag.at = getelementptr inbounds { i32, i32, i64, ptr }, ptr %arg, i32 0, i32 0\n",
-        "  %arg.tag = load i32, ptr %arg.tag.at\n",
-        "  %arg.length.at = getelementptr inbounds { i32, i32, i64, ptr }, ptr %arg, i32 0, i32 1\n",
-        "  %arg.length = load i32, ptr %arg.length.at\n",
-        "  %arg.word.at = getelementptr inbounds { i32, i32, i64, ptr }, ptr %arg, i32 0, i32 2\n",
-        "  %arg.word = load i64, ptr %arg.word.at\n",
-        "  %arg.bytes.at = getelementptr inbounds { i32, i32, i64, ptr }, ptr %arg, i32 0, i32 3\n",
-        "  %arg.bytes = load ptr, ptr %arg.bytes.at\n",
-        "  %a.next = add i32 %a, 1\n",
-        "  store i32 %a.next, ptr %a.slot\n",
-        "  %skip = add i32 %i, 2\n",
-        "  store i32 %skip, ptr %i.slot\n",
-        "  %o.arg = load i32, ptr %o.slot\n",
-        "  %out = getelementptr inbounds i8, ptr %buffer, i32 %o.arg\n",
-        "  %text.arg = icmp eq i32 %arg.tag, 12\n",
-        "  br i1 %text.arg, label %text, label %scalar\n",
-        "text:\n",
-        "  call void @chibi_copy(ptr %out, ptr %arg.bytes, i32 %arg.length)\n",
-        "  %o.text = add i32 %o.arg, %arg.length\n",
-        "  store i32 %o.text, ptr %o.slot\n",
-        "  br label %walk\n",
-        "scalar:\n",
-        "  %is.bool = icmp eq i32 %arg.tag, 2\n",
-        "  br i1 %is.bool, label %boolean, label %number\n",
-        "boolean:\n",
-        "  %truth = icmp ne i64 %arg.word, 0\n",
-        "  %word.ptr = select i1 %truth, ptr @chibi_true, ptr @chibi_false\n",
-        "  %word.len = select i1 %truth, i32 4, i32 5\n",
-        "  call void @chibi_copy(ptr %out, ptr %word.ptr, i32 %word.len)\n",
-        "  %o.bool = add i32 %o.arg, %word.len\n",
-        "  store i32 %o.bool, ptr %o.slot\n",
-        "  br label %walk\n",
-        "number:\n",
-        "  %float.a = icmp eq i32 %arg.tag, 10\n",
-        "  %float.b = icmp eq i32 %arg.tag, 11\n",
-        "  %floating = or i1 %float.a, %float.b\n",
-        "  br i1 %floating, label %trap, label %decimal\n",
-        "trap:\n",
-        "  call void @llvm.trap()\n",
-        "  unreachable\n",
-        "decimal:\n",
-        "  %s1 = icmp eq i32 %arg.tag, 1\n",
-        "  %s3 = icmp eq i32 %arg.tag, 3\n",
-        "  %s5 = icmp eq i32 %arg.tag, 5\n",
-        "  %s8 = icmp eq i32 %arg.tag, 8\n",
-        "  %s13 = or i1 %s1, %s3\n",
-        "  %s58 = or i1 %s5, %s8\n",
-        "  %signed = or i1 %s13, %s58\n",
-        "  %below = icmp slt i64 %arg.word, 0\n",
-        "  %negative = and i1 %signed, %below\n",
-        "  %flipped = sub i64 0, %arg.word\n",
-        "  %magnitude = select i1 %negative, i64 %flipped, i64 %arg.word\n",
-        "  br label %emit\n",
-        "emit:\n",
-        "  %rest = phi i64 [ %magnitude, %decimal ], [ %rest.next, %emit ]\n",
-        "  %at.now = phi i32 [ 20, %decimal ], [ %at.back, %emit ]\n",
-        "  %digit = urem i64 %rest, 10\n",
-        "  %char = add i64 %digit, 48\n",
-        "  %digit.byte = trunc i64 %char to i8\n",
-        "  %at.back = sub i32 %at.now, 1\n",
-        "  %slot = getelementptr inbounds [20 x i8], ptr %digits, i32 0, i32 %at.back\n",
-        "  store i8 %digit.byte, ptr %slot\n",
-        "  %rest.next = udiv i64 %rest, 10\n",
-        "  %again = icmp ne i64 %rest.next, 0\n",
-        "  br i1 %again, label %emit, label %placed\n",
-        "placed:\n",
-        "  %width = sub i32 20, %at.back\n",
-        "  br i1 %negative, label %minus, label %plain\n",
-        "minus:\n",
-        "  store i8 45, ptr %out\n",
-        "  %out.one = getelementptr inbounds i8, ptr %out, i32 1\n",
-        "  br label %plain\n",
-        "plain:\n",
-        "  %dest = phi ptr [ %out, %placed ], [ %out.one, %minus ]\n",
-        "  %sign.width = phi i32 [ 0, %placed ], [ 1, %minus ]\n",
-        "  %first = getelementptr inbounds [20 x i8], ptr %digits, i32 0, i32 %at.back\n",
-        "  call void @chibi_copy(ptr %dest, ptr %first, i32 %width)\n",
-        "  %o.sum = add i32 %o.arg, %width\n",
-        "  %o.signed = add i32 %o.sum, %sign.width\n",
-        "  store i32 %o.signed, ptr %o.slot\n",
-        "  br label %walk\n",
-        "finish:\n",
-        "  %o.final = load i32, ptr %o.slot\n",
-        "  %r.bytes = getelementptr inbounds { ptr, i32, ptr }, ptr %result, i32 0, i32 0\n",
-        "  store ptr %buffer, ptr %r.bytes\n",
-        "  %r.length = getelementptr inbounds { ptr, i32, ptr }, ptr %result, i32 0, i32 1\n",
-        "  store i32 %o.final, ptr %r.length\n",
-        "  %r.owner = getelementptr inbounds { ptr, i32, ptr }, ptr %result, i32 0, i32 2\n",
-        "  store ptr null, ptr %r.owner\n",
-        "  ret void\n",
-        "}\n"
-    ]);
-}
-
 WindowsStart :: () -> string {
     return Join([
         WindowsPrelude(),
@@ -265,26 +125,58 @@ WindowsStart :: () -> string {
         "  %line = call ptr @GetCommandLineW()\n",
         "  store ptr %line, ptr @chibi_command_line\n",
         "  %status = call i32 @chibi_scalar()\n",
-        "  call void @ExitProcess(i32 %status)\n",
+        "  %checked = call i32 @chibi_native_exit_status(i32 %status)\n",
+        "  call void @ExitProcess(i32 %checked)\n",
         "  unreachable\n",
         "}\n"
     ]);
 }
 
-WindowsContextStart :: () -> string {
+AssertionReport :: (windows: bool, rich: bool) -> string {
+    if (rich) {
+        return "  call void @chibi_native_assertion(ptr %failure)\n  unreachable\n";
+    }
+    report := [
+        "  %function = load i64, ptr %failure\n",
+        "  %start.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 1\n",
+        "  %start = load i32, ptr %start.at\n",
+        "  %end.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 2\n",
+        "  %end = load i32, ptr %end.at\n"
+    ];
+    if (windows) {
+        report.extend([
+            "  %start.wide = zext i32 %start to i64\n  %end.wide = zext i32 %end to i64\n",
+            "  call void @chibi_write(ptr @chibi_report_head, i32 29)\n",
+            "  call void @chibi_write_decimal(i64 %function)\n",
+            "  call void @chibi_write(ptr @chibi_report_from, i32 17)\n",
+            "  call void @chibi_write_decimal(i64 %start.wide)\n",
+            "  call void @chibi_write(ptr @chibi_report_to, i32 4)\n",
+            "  call void @chibi_write_decimal(i64 %end.wide)\n",
+            "  call void @chibi_write(ptr @chibi_report_end, i32 1)\n"
+        ]);
+    } else {
+        report.append("  call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @chibi_report, i64 %function, i32 %start, i32 %end)\n");
+    }
+    report.append("  call void @chibi_native_failure(i32 4)\n  unreachable\n");
+    return Join(report);
+}
+
+WindowsContextStart :: (rich_assertions: bool, formatting: bool, numeric_formatting: bool) -> string {
+    format := "";
+    callback := "null";
+    if (formatting) { format = RuntimeFormat(true, numeric_formatting); callback = "@chibi_format_text"; }
     return Join([
         WindowsPrelude(),
         "declare dllimport ptr @GetProcessHeap()\n",
         "declare dllimport ptr @HeapAlloc(ptr, i32, i64)\n",
         "declare dllimport i32 @HeapFree(ptr, i32, ptr)\n",
-        "declare dllimport ptr @GetStdHandle(i32)\n",
-        "declare dllimport i32 @WriteFile(ptr, ptr, i32, ptr, ptr)\n",
+        OutputRuntime(true, false),
         "declare i32 @chibi_scalar(ptr)\n",
         "@chibi_report_head = private unnamed_addr constant [29 x i8] c\"assertion failed in function \"\n",
         "@chibi_report_from = private unnamed_addr constant [17 x i8] c\" at source bytes \"\n",
         "@chibi_report_to = private unnamed_addr constant [4 x i8] c\" to \"\n",
         "@chibi_report_end = private unnamed_addr constant [1 x i8] c\"\\0A\"\n",
-        RuntimeFormat(),
+        format,
         "define internal ptr @chibi_allocate(ptr %ctx, i64 %size) {\n",
         "  %heap = call ptr @GetProcessHeap()\n",
         "  %memory = call ptr @HeapAlloc(ptr %heap, i32 8, i64 %size)\n",
@@ -296,7 +188,7 @@ WindowsContextStart :: () -> string {
         "  ret void\n",
         "}\n",
         "define internal void @chibi_index_failed(ptr %ctx, i32 %index, i32 %length) {\n",
-        "  call void @ExitProcess(i32 134)\n",
+        "  call void @chibi_native_index_failed(i32 %index, i32 %length)\n",
         "  unreachable\n",
         "}\n",
         "define internal void @chibi_write(ptr %bytes, i32 %count) {\n",
@@ -328,7 +220,8 @@ WindowsContextStart :: () -> string {
         "  ret void\n",
         "}\n",
         "@chibi_context = global { ptr, ptr, ptr, ptr, ptr } ",
-        "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release }\n",
+        "{ ptr ", callback,
+        ", ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release }\n",
         "define void @mainCRTStartup() {\n",
         "  %line = call ptr @GetCommandLineW()\n",
         "  store ptr %line, ptr @chibi_command_line\n",
@@ -338,24 +231,10 @@ WindowsContextStart :: () -> string {
         "  %failed = icmp ne ptr %failure, null\n",
         "  br i1 %failed, label %report, label %done\n",
         "report:\n",
-        "  %function = load i64, ptr %failure\n",
-        "  %start.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 1\n",
-        "  %start = load i32, ptr %start.at\n",
-        "  %end.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 2\n",
-        "  %end = load i32, ptr %end.at\n",
-        "  %start.wide = zext i32 %start to i64\n",
-        "  %end.wide = zext i32 %end to i64\n",
-        "  call void @chibi_write(ptr @chibi_report_head, i32 29)\n",
-        "  call void @chibi_write_decimal(i64 %function)\n",
-        "  call void @chibi_write(ptr @chibi_report_from, i32 17)\n",
-        "  call void @chibi_write_decimal(i64 %start.wide)\n",
-        "  call void @chibi_write(ptr @chibi_report_to, i32 4)\n",
-        "  call void @chibi_write_decimal(i64 %end.wide)\n",
-        "  call void @chibi_write(ptr @chibi_report_end, i32 1)\n",
-        "  call void @ExitProcess(i32 134)\n",
-        "  unreachable\n",
+        AssertionReport(true, rich_assertions),
         "done:\n",
-        "  call void @ExitProcess(i32 %status)\n",
+        "  %checked = call i32 @chibi_native_exit_status(i32 %status)\n",
+        "  call void @ExitProcess(i32 %checked)\n",
         "  unreachable\n",
         "}\n"
     ]);
@@ -379,6 +258,8 @@ LinuxStart :: () -> string {
         "module asm \"andq $-16, %rsp\"\n",
         "module asm \"callq chibi_scalar\"\n",
         "module asm \"movl %eax, %edi\"\n",
+        "module asm \"callq chibi_native_exit_status\"\n",
+        "module asm \"movl %eax, %edi\"\n",
         "module asm \"movl $231, %eax\"\n",
         "module asm \"syscall\"\n",
         "module asm \"ud2\"\n",
@@ -388,7 +269,7 @@ LinuxStart :: () -> string {
     ]);
 }
 
-DynamicStart :: (triple: string, context: bool) -> string {
+DynamicStart :: (triple: string, context: bool, rich_assertions: bool, formatting: bool, numeric_formatting: bool) -> string {
     if (!context) {
         return Join([
             "target triple = \"", triple, "\"\n",
@@ -400,10 +281,14 @@ DynamicStart :: (triple: string, context: bool) -> string {
             "  store ptr %argv, ptr @chibi_argv\n",
             "  store ptr %envp, ptr @chibi_envp\n",
             "  %status = call i32 @chibi_scalar()\n",
-            "  ret i32 %status\n",
+            "  %checked = call i32 @chibi_native_exit_status(i32 %status)\n",
+            "  ret i32 %checked\n",
             "}\n"
         ]);
     }
+    format := "";
+    callback := "null";
+    if (formatting) { format = RuntimeFormat(false, numeric_formatting); callback = "@chibi_format_text"; }
     return Join([
         "target triple = \"", triple, "\"\n",
         "declare ptr @calloc(i64, i64)\n",
@@ -413,7 +298,8 @@ DynamicStart :: (triple: string, context: bool) -> string {
         "@chibi_report = private unnamed_addr constant [59 x i8] ",
         "c\"assertion failed in function %lu at source bytes %d to %d\\0A\\00\"\n",
         "declare i32 @chibi_scalar(ptr)\n",
-        RuntimeFormat(),
+        format,
+        OutputRuntime(false, false),
         "define internal ptr @chibi_allocate(ptr %ctx, i64 %size) {\n",
         "  %memory = call ptr @calloc(i64 1, i64 %size)\n",
         "  ret ptr %memory\n",
@@ -423,11 +309,12 @@ DynamicStart :: (triple: string, context: bool) -> string {
         "  ret void\n",
         "}\n",
         "define internal void @chibi_index_failed(ptr %ctx, i32 %index, i32 %length) {\n",
-        "  call void @abort()\n",
+        "  call void @chibi_native_index_failed(i32 %index, i32 %length)\n",
         "  unreachable\n",
         "}\n",
         "@chibi_context = global { ptr, ptr, ptr, ptr, ptr } ",
-        "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release }\n",
+        "{ ptr ", callback,
+        ", ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release }\n",
         "@chibi_argc = dso_local global i32 0\n",
         "@chibi_argv = dso_local global ptr null\n",
         "define i32 @main(i32 %argc, ptr %argv, ptr %envp) {\n",
@@ -440,15 +327,10 @@ DynamicStart :: (triple: string, context: bool) -> string {
         "  %failed = icmp ne ptr %failure, null\n",
         "  br i1 %failed, label %report, label %done\n",
         "report:\n",
-        "  %function = load i64, ptr %failure\n",
-        "  %start.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 1\n",
-        "  %start = load i32, ptr %start.at\n",
-        "  %end.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 2\n",
-        "  %end = load i32, ptr %end.at\n",
-        "  call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @chibi_report, i64 %function, i32 %start, i32 %end)\n",
-        "  ret i32 134\n",
+        AssertionReport(false, rich_assertions),
         "done:\n",
-        "  ret i32 %status\n",
+        "  %checked = call i32 @chibi_native_exit_status(i32 %status)\n",
+        "  ret i32 %checked\n",
         "}\n"
     ]);
 }
@@ -456,10 +338,10 @@ DynamicStart :: (triple: string, context: bool) -> string {
 // The start module for the triple. A static Linux program has no C library, so
 // it takes no context: "" for that combination and for a triple this link step
 // does not know.
-Module :: (triple: string, static: bool, context: bool) -> string {
+Module :: (triple: string, static: bool, context: bool, rich_assertions: bool, formatting: bool, numeric_formatting: bool) -> string {
     target := TargetOf(triple);
     if (target == WindowsX64 && context) {
-        return WindowsContextStart();
+        return WindowsContextStart(rich_assertions, formatting, numeric_formatting);
     }
     if (target == WindowsX64) {
         return WindowsStart();
@@ -473,7 +355,7 @@ Module :: (triple: string, static: bool, context: bool) -> string {
     if (target < 0) {
         return "";
     }
-    return DynamicStart(triple, context);
+    return DynamicStart(triple, context, rich_assertions, formatting, numeric_formatting);
 }
 
 // The process arguments as C-ABI functions, appended to every start module:
@@ -489,6 +371,8 @@ PosixArguments :: () -> string {
         "  %w = sext i32 %n to i64\n",
         "  ret i64 %w\n",
         "}\n",
+        "define ptr @chibi_process_argv() {\n",
+        "  %a = load ptr, ptr @chibi_argv\n  ret ptr %a\n}\n",
         "define ptr @chibi_environment() {\n",
         "  %e = load ptr, ptr @chibi_envp\n",
         "  ret ptr %e\n",
@@ -919,13 +803,79 @@ pub StartImports :: (triple: string) -> Import {
     return kernel32;
 }
 
+// External linkage keeps the helper reachable from Linux's module-asm entry.
+// Shared generations have no process entry and do not emit this helper.
+ExitStatusRuntime :: () -> string {
+    return Join([
+        "@chibi_exit_status_message = private constant [44 x i8] c\"Main returned an exit status outside 0..255\\0A\"\n",
+        "define i32 @chibi_native_exit_status(i32 %status) {\n",
+        "  %valid = icmp ule i32 %status, 255\n",
+        "  br i1 %valid, label %done, label %report\n",
+        "report:\n",
+        "  call void @chibi_failure_write(ptr @chibi_exit_status_message, i32 44)\n",
+        "  ret i32 1\n",
+        "done:\n",
+        "  ret i32 %status\n",
+        "}\n"
+    ]);
+}
+
 pub Start :: (triple: string, static: bool, context: bool) -> string {
-    module := Module(triple, static, context);
+    return ProgramStart(triple, static, context, true);
+}
+
+// Program-mode modules mark formatting use across their complete body bundle.
+// Omitting an unused callback keeps allocating Windows programs kernel32-only.
+pub ProgramStart :: (triple: string, static: bool, context: bool, formatting: bool, numeric_formatting: bool = true) -> string {
+    module := Module(triple, static, context, false, formatting, numeric_formatting);
     if (module == "") {
         return "";
     }
     if (TargetOf(triple) == WindowsX64) {
-        return Join([module, WindowsArguments()]);
+        return Join([module, FailureRuntime(true, context, false, false), ExitStatusRuntime(), WindowsArguments()]);
     }
-    return Join([module, PosixArguments()]);
+    return Join([module, FailureRuntime(false, context, static && TargetOf(triple) == LinuxX64, false), ExitStatusRuntime(), PosixArguments()]);
+}
+
+// Public run commands link program-mode diagnostic metadata. Raw and shared
+// consumers keep their prefix-only reporting and failure status.
+pub RunStart :: (triple: string, static: bool, context: bool, formatting: bool, numeric_formatting: bool = true) -> string {
+    module := Module(triple, static, context, true, formatting, numeric_formatting);
+    if (module == "") { return ""; }
+    if (TargetOf(triple) == WindowsX64) {
+        return Join([module, FailureRuntime(true, context, false, true), ExitStatusRuntime(), WindowsArguments()]);
+    }
+    return Join([module, FailureRuntime(false, context, static && TargetOf(triple) == LinuxX64, true), ExitStatusRuntime(), PosixArguments()]);
+}
+
+// A shared generation has no process entry. Its host-call wrappers use the
+// same platform runtime as an executable, held privately by this generation.
+pub SharedContext :: (triple: string, context: bool) -> string {
+    target := TargetOf(triple);
+    if (target == WindowsX64) {
+        module := "";
+        if (context) { module = WindowsContextStart(false, true, true); }
+        else { module = WindowsStart(); }
+        boundary := strings.Index(module, "define void @mainCRTStartup()");
+        assert(boundary > 0);
+        module = strings.Slice(module, 0, boundary);
+        module = strings.ReplaceAll(module, "@chibi_context = global", "@chibi_context = hidden global");
+        module = Join([module, FailureRuntime(true, context, false, false), WindowsArguments(),
+            "define dllexport i32 @chibi_host_set_process(i64 %count, ptr %arguments, ptr %environment) {\n",
+            "  %line = call ptr @GetCommandLineW()\n  store ptr %line, ptr @chibi_command_line\n  ret i32 0\n}\n"]);
+        return strings.ReplaceAll(module, "= dso_local global", "= hidden global");
+    }
+    if (target != LinuxX64 && target != MacOSArm64) {
+        return "";
+    }
+    module := DynamicStart(triple, context, false, true, true);
+    boundary := strings.Index(module, "define i32 @main(");
+    assert(boundary > 0);
+    module = strings.Slice(module, 0, boundary);
+    module = strings.ReplaceAll(module, "@chibi_context = global", "@chibi_context = hidden global");
+    module = Join([module, FailureRuntime(false, context, false, false), PosixArguments(),
+        "define i32 @chibi_host_set_process(i64 %count, ptr %arguments, ptr %environment) {\n",
+        "  %n = trunc i64 %count to i32\n  store i32 %n, ptr @chibi_argc\n",
+        "  store ptr %arguments, ptr @chibi_argv\n  store ptr %environment, ptr @chibi_envp\n  ret i32 0\n}\n"]);
+    return strings.ReplaceAll(module, "= dso_local global", "= hidden global");
 }

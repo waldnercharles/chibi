@@ -1,0 +1,9 @@
+package rejected_waiting_array
+foreign import libc "system:c"
+foreign libc { memset :: (values: u8[], byte: i32, count: u64) -> rawptr }
+Main :: () -> int {
+    values: u8[] = [0, 0];
+    yield;
+    result := memset(values, 1, 2);
+    return int(result);
+}

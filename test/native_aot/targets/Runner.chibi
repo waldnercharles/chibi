@@ -1,0 +1,283 @@
+package native_target_runner
+
+import os "core:os"
+import strings "core:strings"
+import target "core:target"
+import link "project:native_link"
+import host "project:native_link_host"
+
+when target.Os == target.Windows {
+    import loader "bundle:loader_windows"
+} else {
+    import loader "bundle:loader_posix"
+}
+
+MaximumCalls: int : 1024;
+MaximumArguments: int : 3;
+MaximumProgramArguments: int : 8;
+
+// 24 bytes per call on both supported 64-bit targets. Names are interned per
+// module, and argument words occupy one flat array rather than one per call.
+Call :: struct { symbol: int; expected: i64; first: int; count: int; }
+Module :: struct { name: string; first: int; count: int; symbol_first: int; symbols: int; }
+Program :: struct { name: string; expected: int; first: int; count: int; }
+Bundle :: struct {
+    modules: Module[];
+    calls: Call[];
+    symbols: string[];
+    numbers: i64[];
+    programs: Program[];
+    arguments: string[];
+}
+
+Invalid :: (path: string, line: int, message: string) -> bool {
+    os.Print(format_text("{}:{}: {}", path, line, message));
+    return false;
+}
+
+// Accumulate negatively so INT64_MIN needs no overflowing positive magnitude.
+Number :: (text: string) -> (value: i64, valid: bool) {
+    if (text == "") { return (0, false); }
+    at := 0;
+    negative := strings.ByteAt(text, 0) == 45;
+    if (negative || strings.ByteAt(text, 0) == 43) { at = 1; }
+    if (at == strings.ByteLength(text)) { return (0, false); }
+    limit: i64 = -9223372036854775807;
+    if (negative) { limit -= 1; }
+    threshold := limit / 10;
+    value: i64 = 0;
+    while (at < strings.ByteLength(text)) {
+        byte := strings.ByteAt(text, at);
+        if (byte < 48 || byte > 57 || value < threshold) { return (0, false); }
+        digit := i64(byte - 48);
+        value *= 10;
+        if (value < limit + digit) { return (0, false); }
+        value -= digit;
+        at += 1;
+    }
+    if (!negative) { value = -value; }
+    return (value, true);
+}
+
+Modules :: (path: string, bundle: ^Bundle) -> bool {
+    read := os.ReadText(path);
+    if (read.error != nil) { return Invalid(path, 0, "cannot read module manifest"); }
+    if (!strings.HasSuffix(read.text, "\n")) { return Invalid(path, 0, "module lines must end with a newline"); }
+    lines := strings.Split(read.text, "\n");
+    name := "";
+    first := 0;
+    symbol_first := 0;
+    seen: [string: int] = [:];
+    for (at in 0..<length(lines) - 1) {
+        line := lines[at];
+        if (strings.ByteLength(line) > 510) { return Invalid(path, at + 1, "module line exceeds 511 bytes including newline"); }
+        if (strings.HasPrefix(line, "module ")) {
+            if (name != "") {
+                bundle.modules.append({name: name, first: first, count: length(bundle.calls) - first,
+                                       symbol_first: symbol_first, symbols: length(bundle.symbols) - symbol_first});
+            }
+            name = strings.Slice(line, 7, strings.ByteLength(line) - 7);
+            if (strings.ByteLength(name) < 2 || strings.ByteLength(name) > 255) {
+                return Invalid(path, at + 1, "module name must occupy 2..255 bytes");
+            }
+            first = length(bundle.calls);
+            symbol_first = length(bundle.symbols);
+            seen = [:];
+            continue;
+        }
+        if (!strings.HasPrefix(line, "call ") || name == "" || length(bundle.calls) - first >= MaximumCalls) {
+            return Invalid(path, at + 1, "expected module or at most 1024 calls after a module");
+        }
+        fields := strings.Fields(strings.Slice(line, 5, strings.ByteLength(line) - 5));
+        if (length(fields) < 3 || strings.ByteLength(fields[0]) > 63) {
+            return Invalid(path, at + 1, "call needs a symbol, signed result and argument count");
+        }
+        expected := Number(fields[1]);
+        count := Number(fields[2]);
+        if (!expected.valid || !count.valid || count.value < 0 || count.value > i64(MaximumArguments) ||
+            length(fields) != 3 + int(count.value)) {
+            return Invalid(path, at + 1, "call needs a signed 64-bit result and zero to three arguments");
+        }
+        number_first := length(bundle.numbers);
+        for (argument in 0..<int(count.value)) {
+            parsed := Number(fields[3 + argument]);
+            if (!parsed.valid) { return Invalid(path, at + 1, "call argument is not a signed 64-bit integer"); }
+            bundle.numbers.append(parsed.value);
+        }
+        symbol := seen[fields[0]];
+        if (symbol == 0) {
+            symbol = length(bundle.symbols) + 1;
+            seen[fields[0]] = symbol;
+            bundle.symbols.append(fields[0]);
+        }
+        bundle.calls.append({symbol: symbol - 1, expected: expected.value, first: number_first, count: int(count.value)});
+    }
+    if (name == "") { return Invalid(path, 0, "module manifest is empty"); }
+    bundle.modules.append({name: name, first: first, count: length(bundle.calls) - first,
+                           symbol_first: symbol_first, symbols: length(bundle.symbols) - symbol_first});
+    return true;
+}
+
+Programs :: (path: string, linked: bool, expected_count: int, bundle: ^Bundle) -> bool {
+    read := os.ReadText(path);
+    if (read.error != nil) { return Invalid(path, 0, "cannot read program manifest"); }
+    lines := strings.Split(read.text, "\n");
+    count := 0;
+    for (at in 0..<length(lines)) {
+        if (at == length(lines) - 1 && lines[at] == "") { break; }
+        line := lines[at];
+        bytes := strings.ByteLength(line);
+        if (at < length(lines) - 1) { bytes += 1; }
+        if (bytes > 511) { return Invalid(path, at + 1, "program line exceeds 511 bytes"); }
+        parts := strings.Split(strings.TrimSuffix(line, "\r"), "\t");
+        fields := strings.Fields(parts[0]);
+        if (length(fields) != 3 || fields[0] != "program" || strings.ByteLength(fields[1]) > 255) {
+            return Invalid(path, at + 1, "expected program NAME STATUS followed by tab-separated arguments");
+        }
+        status := Number(fields[2]);
+        if (!status.valid || status.value < -2147483648 || status.value > 2147483647 ||
+            length(parts) - 1 > MaximumProgramArguments) {
+            return Invalid(path, at + 1, "invalid program status or more than eight arguments");
+        }
+        arguments := length(parts) - 1;
+        if ((!linked && arguments != 0) || (linked &&
+            !((count == 0 && arguments == 0) || (count == 1 && arguments == 2 && parts[1] == "a b" && parts[2] == "héllo €")))) {
+            return Invalid(path, at + 1, "producer program argument cases differ");
+        }
+        first := length(bundle.arguments);
+        for (argument in 1..<length(parts)) { bundle.arguments.append(parts[argument]); }
+        bundle.programs.append({name: fields[1], expected: int(status.value), first: first, count: arguments});
+        count += 1;
+    }
+    if (count != expected_count) { return Invalid(path, 0, format_text("listed {} programs, expected {}", count, expected_count)); }
+    return true;
+}
+
+Directory :: (path: string) -> string {
+    slash := strings.LastIndex(strings.ReplaceAll(path, "\\", "/"), "/");
+    if (slash < 0) { return "."; }
+    return strings.Slice(path, 0, slash);
+}
+
+ModuleRuns :: (directory: string, linker: string, module: Module, bundle: ^Bundle) -> bool {
+    suffix := ".dylib";
+    triple := "aarch64-apple-darwin";
+    if (os.Platform() == "Windows") { suffix = ".dll"; triple = "x86_64-pc-windows-msvc"; }
+    else if (os.Platform() == "Linux") { suffix = ".so"; triple = "x86_64-unknown-linux-gnu"; }
+    object := format_text("{}/{}", directory, module.name);
+    image := format_text("{}/{}{}", directory, strings.Slice(module.name, 0, strings.ByteLength(module.name) - 2), suffix);
+    objects := [object];
+    if (os.Platform() == "Windows") { objects.append(format_text("{}/runtime.o", directory)); }
+    plan := link.Program(triple, Directory(linker), objects, [], [], [], image, "", true);
+    plan.shared = true;
+    if (os.Platform() == "Windows") {
+        for (index in module.symbol_first..<module.symbol_first + module.symbols) {
+            plan.exports.append(bundle.symbols[index]);
+        }
+    }
+    linked := host.Link(plan);
+    if (linked != nil) { return Invalid(object, 0, format_text("link failure kind {} status {}", linked.kind, linked.code)); }
+    opened := loader.Open(image);
+    if (opened == 0) {
+        Invalid(image, 0, "cannot load module image");
+        removed := os.Remove(image);
+        if (removed != nil) { Invalid(image, 0, "cannot remove the failed module image"); }
+        return false;
+    }
+    addresses: rawptr[] = [];
+    agreed := true;
+    for (index in module.symbol_first..<module.symbol_first + module.symbols) {
+        address := loader.Symbol(opened, bundle.symbols[index]);
+        if (address == 0) { agreed = Invalid(image, 0, strings.Concatenate(["missing symbol ", bundle.symbols[index]])); break; }
+        addresses.append(address);
+    }
+    // The OS adapter obtains this owned buffer's actual data pointer. Both
+    // targets are little-endian and the native allocator aligns it for i64.
+    // It is never resized or shared while the synchronous call borrows it.
+    words := resize([u8(0)], MaximumArguments * 8);
+    pointer := loader.Address(&words);
+    if (pointer == 0) { agreed = Invalid(image, 0, "cannot address the fixed argument buffer"); }
+    if (agreed) {
+        for (index in module.first..<module.first + module.count) {
+            call := bundle.calls[index];
+            address := addresses[call.symbol - module.symbol_first];
+            value: i64 = 0;
+            name := bundle.symbols[call.symbol];
+            if (strings.HasPrefix(name, "probe_")) {
+                for (argument in 0..<call.count) {
+                    bits := u64(wrap: bundle.numbers[call.first + argument]);
+                    for (byte in 0..<8) {
+                        words[argument * 8 + byte] = u8(bits & 255);
+                        bits = bits >> 8;
+                    }
+                }
+                adapter: fn(arguments: rawptr) -> i64 = address;
+                value = adapter(pointer);
+            } else {
+                scalar: fn() -> i32 = address;
+                value = i64(scalar());
+            }
+            if (value != call.expected) {
+                agreed = Invalid(object, 0, format_text("{} gave {}, expected {}", name, value, call.expected));
+                break;
+            }
+        }
+    }
+    closed := loader.Close(opened);
+    removed := os.Remove(image);
+    if (removed != nil) { return Invalid(image, 0, "cannot remove module image"); }
+    if (!closed) { return Invalid(image, 0, "cannot close module image"); }
+    return agreed;
+}
+
+ProgramRuns :: (directory: string, program: Program, arguments: string[]) -> bool {
+    path := format_text("{}/programs/{}", directory, program.name);
+    if (!loader.Executable(path)) { return Invalid(path, 0, "cannot make program executable"); }
+    command := [path];
+    for (index in program.first..<program.first + program.count) { command.append(arguments[index]); }
+    status := os.Run(command);
+    if (status != program.expected) { return Invalid(path, 0, format_text("exited {}, expected {}", status, program.expected)); }
+    return true;
+}
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    bundle: Bundle = {modules: [], calls: [], symbols: [], numbers: [], programs: [], arguments: []};
+    // The backend producer runs this same parser, linker and call ABI locally
+    // before publishing its modules for the two cross-target consumers.
+    if (length(arguments) == 3 && arguments[0] == "--modules") {
+        if (!Modules(format_text("{}/modules.txt", arguments[1]), &bundle)) { return 1; }
+        for (module in bundle.modules) {
+            if (!ModuleRuns(arguments[1], arguments[2], module, &bundle)) { return 1; }
+        }
+        os.WriteOutput(format_text("{}: {} modules and {} calls ran\n", os.Platform(), length(bundle.modules), length(bundle.calls)));
+        return 0;
+    }
+    if (length(arguments) != 2) { os.Print("usage: native-target-runner BUNDLE LLD_LINKER"); return 2; }
+    platform := "macos-arm64";
+    builds := 3;
+    if (os.Platform() == "Windows") { platform = "windows-x64"; builds = 6; }
+    else if (os.Platform() != "Darwin") { os.Print("native target bundles require macOS arm64 or Windows x64"); return 2; }
+    directory := format_text("{}/{}", arguments[0], platform);
+    if (!Modules(format_text("{}/modules.txt", directory), &bundle) ||
+        !Programs(format_text("{}/native-build-programs.txt", directory), false, builds, &bundle) ||
+        !Programs(format_text("{}/native-link-programs.txt", directory), true, 2, &bundle)) { return 1; }
+    modules := 0;
+    calls := 0;
+    modules_agreed := true;
+    for (module in bundle.modules) {
+        if (!ModuleRuns(directory, arguments[1], module, &bundle)) { modules_agreed = false; break; }
+        modules += 1;
+        calls += module.count;
+    }
+    os.WriteOutput(format_text("{}: {} modules and {} calls ran\n", platform, modules, calls));
+    programs := 0;
+    programs_agreed := true;
+    for (program in bundle.programs) {
+        if (!ProgramRuns(directory, program, bundle.arguments)) { programs_agreed = false; break; }
+        programs += 1;
+    }
+    os.WriteOutput(format_text("{}: {} programs ran\n", platform, programs));
+    if (!modules_agreed || !programs_agreed) { return 1; }
+    return 0;
+}

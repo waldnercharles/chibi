@@ -1,0 +1,110 @@
+package native_worker_test
+
+import os "core:os"
+import strings "core:strings"
+
+Cancellation :: (compiler: string, llvm: string, folder: string, stdout: string, stderr: string) {
+    written := os.WriteText(format_text("{}/Tests.chibi", folder),
+        "package worker_cases\nimport os \"core:os\"\n@test Busy :: () { os.WriteOutput(\"busy-test-ready\\n\"); while (true) {} }\n");
+    assert(written == nil, "write busy test fixture");
+    process := os.StartRedirected([compiler, "test", "-O0", "--llvm", llvm, folder], stdout, stderr);
+    assert(process > 0, "start busy test command");
+    ready := false;
+    status := os.StillRunning;
+    for (attempt in 0..<400) {
+        status = os.Wait(process, 5);
+        if (status != os.StillRunning) { break; }
+        output := os.ReadText(stdout);
+        if (output.error == nil && strings.Contains(output.text, "busy-test-ready\n")) { ready = true; break; }
+    }
+    listed := os.Capture(["/bin/ps", "-axo", "pid=,command="]);
+    child := "";
+    for (line in strings.SplitLines(listed.stdout)) {
+        if (strings.Contains(line, strings.Concatenate([folder, "/build/native/test/"])) && strings.Contains(line, "/program ")) {
+            child = strings.Fields(line)[0];
+        }
+    }
+    cancelled := status;
+    if (status == os.StillRunning) { cancelled = os.Kill(process); }
+    assert(ready && cancelled == -9 && child != "", "a running test forwards readiness before cancellation");
+    dead := false;
+    for (attempt in 0..<100) {
+        observed := os.Capture(["/bin/ps", "-o", "stat=", "-p", child]);
+        if (observed.status == 1 || strings.HasPrefix(strings.TrimSpace(observed.stdout), "Z")) { dead = true; break; }
+    }
+    assert(dead, "cancelling chibi test leaves no active test child");
+}
+
+// A successful test must not be reported as passing when its private output
+// disappears before the command reads it. POSIX permits unlinking an open file.
+MissingOutput :: (compiler: string, llvm: string, folder: string) {
+    source := strings.Concatenate([
+        "package worker_cases\nimport os \"core:os\"\nimport strings \"core:strings\"\n",
+        "@test DropsError :: () {\n",
+        "    program := os.ProgramPath();\n",
+        "    folder := strings.Slice(program, 0, strings.LastIndex(program, \"/\"));\n",
+        "    removed := os.Remove(strings.Concatenate([folder, \"/0.stderr\"]));\n",
+        "    assert(removed == nil);\n}\n"
+    ]);
+    written := os.WriteText(format_text("{}/Tests.chibi", folder), source);
+    assert(written == nil, "write missing-output fixture");
+    ran := os.Capture([compiler, "test", "-O0", "--llvm", llvm, folder]);
+    assert(ran.status == 1, "missing test output fails the command");
+    assert(strings.Contains(ran.stdout, "FAIL project.DropsError\n"), "missing test output is never a pass");
+    assert(strings.Contains(ran.stdout, "cannot read the native test error output"), "the read failure names the lost stream");
+}
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 3) { return 2; }
+    folder := format_text("{}/worker cases", arguments[2]);
+    made := os.MakeDirectory(folder);
+    assert(made == nil, "make worker fixture");
+    folder = os.RealPath(folder);
+    source := strings.Concatenate([
+        "package worker_cases\nimport os \"core:os\"\nimport strings \"core:strings\"\n",
+        "Burn :: () { value := 0; for (index in 0..<30000000) { value ^= index & 255; } assert(value >= 0); }\n",
+        "@test First :: () { Burn(); }\n@test Second :: () { Burn(); }\n",
+        "@test Isolated :: () {\n    listed := os.Capture([\"/bin/ps\", \"-axo\", \"command=\"]);\n",
+        "    assert(listed.status == 0); count := 0;\n    for (line in strings.SplitLines(listed.stdout)) {\n",
+        "        if (strings.Contains(line, \"", folder, "/build/native/test/\") && strings.Contains(line, \"/program \")) { count += 1; }\n",
+        "    }\n    assert(count == 1, \"an effectful test has no concurrent test workers\");\n",
+        "    os.WriteOutput(\"isolated output\\n\");\n}\n@test Last :: () { Burn(); }\n"]);
+    written := os.WriteText(format_text("{}/Tests.chibi", folder), source);
+    assert(written == nil, "write worker fixture");
+    stdout := format_text("{}/workers.stdout", arguments[2]);
+    stderr := format_text("{}/workers.stderr", arguments[2]);
+    process := os.StartRedirected(["/usr/bin/env", "CHIBI_TEST_WORKERS=2", arguments[0], "test", "-O0", "--llvm", arguments[1], folder], stdout, stderr);
+    assert(process > 0, "start the real native test command");
+    online := os.Capture(["getconf", "_NPROCESSORS_ONLN"]);
+    expected := 2;
+    if (online.status == 0 && strings.TrimSpace(online.stdout) == "1") { expected = 1; }
+    status := os.StillRunning;
+    overlap := false;
+    maximum := 0;
+    for (attempt in 0..<2000) {
+        status = os.Wait(process, 1);
+        if (status != os.StillRunning) { break; }
+        listed := os.Capture(["/bin/ps", "-axo", "command="]);
+        assert(listed.status == 0, "inspect live native workers");
+        count := 0;
+        for (line in strings.SplitLines(listed.stdout)) {
+            if (strings.Contains(line, strings.Concatenate([folder, "/build/native/test/"])) && strings.Contains(line, "/program ")) { count += 1; }
+        }
+        if (count > maximum) { maximum = count; }
+        overlap = overlap || count == expected;
+    }
+    if (status == os.StillRunning) { status = os.Kill(process); }
+    output := os.ReadText(stdout);
+    error := os.ReadText(stderr);
+    assert(output.error == nil, "read worker standard output");
+    assert(error.error == nil, "read worker standard error");
+    if (status != 0) { os.Print(output.text); os.Print(error.text); }
+    if (!overlap || maximum != expected) { os.Print(format_text("observed workers: maximum {}, overlap {}", maximum, overlap)); }
+    assert(status == 0 && overlap && maximum == expected, "pure native tests share the requested hardware-capped pool");
+    assert(output.text == "PASS project.First\nPASS project.Second\nisolated output\nPASS project.Isolated\nPASS project.Last\n4 tests, 0 failed\n", "reports and effectful output follow source order");
+    Cancellation(arguments[0], arguments[1], folder, stdout, stderr);
+    MissingOutput(arguments[0], arguments[1], folder);
+    os.Print("native workers: bounded pure overlap, effect barriers and ordered output passed");
+    return 0;
+}

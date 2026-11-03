@@ -1,0 +1,44 @@
+package array_checked_index
+
+import testing "core:testing"
+
+Item :: struct { value: int; }
+Box :: struct { values: Item[]; }
+Right :: () -> int { assert(false, "RHS evaluated"); return 9; }
+Clear :: (box: ^Box) -> int { box^ = {values: []}; return 7; }
+@test
+BracketNegative :: () { values := [int(1), 2]; values[-1] = 9; }
+@test
+BracketPastEnd :: () { values := [int(1), 2]; values[2] = 9; }
+@test
+PlainBeforeRhs :: () {
+    values := [int(1), 2];
+    testing.ExpectFailure(testing.Failure.AssertionFailed);
+    values[-1] = Right();
+}
+@test
+CompoundBeforeRhs :: () {
+    values := [int(1), 2];
+    testing.ExpectFailure(testing.Failure.AssertionFailed);
+    values[-1] += Right();
+}
+@test
+FieldBeforeRhs :: () {
+    values: Item[] = [{value: 1}];
+    testing.ExpectFailure(testing.Failure.AssertionFailed);
+    values[-1].value = Right();
+}
+@test
+WrongIndexCategory :: () {
+    values := [int(1), 2];
+    testing.ExpectFailure(testing.Failure.IndexOutOfRange);
+    values[-1] = 9;
+}
+@test
+LateUnavailable :: () { box: Box = {values: [{value: 1}]}; box.values[0].value = Clear(&box); }
+@test
+ExpressionBounds :: () {
+    values := [int(1), 2];
+    testing.ExpectFailure(testing.Failure.IndexOutOfRange);
+    ignored := values[-1];
+}

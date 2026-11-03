@@ -1,0 +1,46 @@
+package native_driver
+
+import compiler "project:package_compiler"
+import facts "project:scalar_facts"
+import strings "core:strings"
+
+LibraryRows :: (source: string) -> facts.Row[] {
+    return compiler.CollectScalar("/project", "libraries/Tools.chibi", source,
+                                  TargetFacts(), Names(), Natives(), Ports(), Identities());
+}
+LibraryContracts :: () {
+    source := "Tools :: library {\n    Add :: (a: int, b: int) -> int { return a + b; }\n    Name :: () -> string { return \"tools\"; }\n}\n";
+    rows := LibraryRows(source);
+    assert(rows[1].kind == facts.DocumentRow && rows[1].text == "Tools");
+    // Independent literal values from the stable C catalog's FNV-1a IDs.
+    ids: i64[] = [8142356760778695737, -4666415818573129415];
+    functions := 0;
+    for row in rows {
+        if row.kind == facts.FunctionRow {
+            assert(functions < 2 && row.literal == ids[functions]);
+            functions += 1;
+        }
+    }
+    assert(functions == 2);
+    sources := ["Tools :: library {\n    Point :: struct { x: int; }\n}\n",
+                "Tools :: library {\n}\n",
+                "Tools :: library {\n    One :: () -> int { return 1; }\n    One :: () -> int { return 2; }\n}\n"];
+    messages := ["a native library holds only functions without attributes",
+                 "scalar proof requires at least one function", "Duplicate declaration 'One'"];
+    for index in 0..<length(sources) {
+        rejected := LibraryRows(sources[index]);
+        assert(length(rejected) == 2 && rejected[1].kind == facts.RejectionRow);
+        assert(rejected[1].text == messages[index]);
+    }
+}
+RetainedLibraryRows :: () {
+    source := "Tools :: library {\n    Frame :: () -> int {\n        count: retain int = 4;\n        count += 1;\n        return count;\n    }\n}\n";
+    rows := LibraryRows(source);
+    assert(length(rows) > 2 && rows[1].kind == facts.DocumentRow);
+    text := IR(rows);
+    assert(strings.Contains(text, "@chibi_scalar.retained.0 = internal global i32 4\n"));
+    assert(strings.Contains(text, "load i32, ptr @chibi_scalar.retained.0"));
+    assert(strings.Contains(text, "store i32 %a"));
+    assert(strings.Contains(text, "c\"Frame.count\\00\""));
+    assert(strings.Contains(text, "@chibi_retained_Tools = constant { i32, i32, ptr, ptr, ptr, ptr } { i32 1, i32 1, "));
+}

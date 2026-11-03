@@ -1,0 +1,41 @@
+package text_arguments
+
+Number :: (order: ^int, digit: int, value: int) -> int { order^ = order^ * 10 + digit; return value; }
+Text :: (order: ^int) -> string { order^ = order^ * 10 + 2; return Make(); }
+Make :: () -> string { return text_from_bytes([u8(97), u8(98), u8(99), u8(100)]); }
+Replace :: (value: ^string) -> int { value^ = text_from_bytes([u8(122)]); return 1; }
+Aliased :: (read: ^string, changed: ^string) -> string {
+    return text_slice(Value: read^, Count: 2, Start: Replace(changed));
+}
+Main :: () -> int {
+    a := text_slice(Value: "abcd", Start: 1, Count: 2);
+    b := text_slice(Value: "abcd", Count: 2, Start: 1);
+    c := text_slice(Start: 1, Value: "abcd", Count: 2);
+    d := text_slice(Start: 1, Count: 2, Value: "abcd");
+    e := text_slice(Count: 2, Value: "abcd", Start: 1);
+    f := text_slice(Count: 2, Start: 1, Value: "abcd");
+    assert(a == "bc" && b == a && c == a && d == a && e == a && f == a);
+    assert(text_slice(count: 2, value: "abcd", start: 1) == a);
+    assert(text_slice("abcd", Count: 2, Start: 1) == a);
+    assert(text_byte_length(Value: "abcd") == 4);
+    assert(text_byte_at(Index: 2, Value: "abcd") == 99);
+    assert(text_byte_at(Value: "abcd", Index: -1) == -1);
+    assert(text_byte_at(Index: 9, Value: "abcd") == -1);
+    assert(text_equal(B: "same", A: "same") && !text_equal(A: "same", B: "different"));
+    assert(text_equal(A: "a\u0000b", B: "a\u0000b") && !text_equal(B: "a", A: "a\u0000b"));
+    order := 0;
+    sliced := text_slice(Count: Number(&order, 3, 2), Value: Text(&order), Start: Number(&order, 1, 1));
+    assert(sliced == "bc" && order == 321);
+    order = 0;
+    byte := text_byte_at(Index: Number(&order, 1, 2), Value: Text(&order));
+    assert(byte == 99 && order == 12);
+    order = 0;
+    same := text_equal(B: Text(&order), A: Text(&order));
+    assert(same && order == 22);
+    owned := text_slice(Count: 2, Value: Make(), Start: 1);
+    assert(owned == "bc");
+    shared := Make();
+    captured := Aliased(&shared, &shared);
+    assert(captured == "bc" && shared == "z");
+    return 0;
+}

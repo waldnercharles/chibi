@@ -1,0 +1,34 @@
+package retained_source
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fclose :: (file: rawptr) -> i32
+}
+Padding :: struct { number: int; }
+Node :: struct { message: string; values: int[]; }
+Payload :: union { Text(value: string) | Nodes(value: Node[]) }
+State :: struct { nodes: Node[]; bonus: int; payload: Payload; names: string[]; }
+Mark :: (path: string) {
+    file := fopen(path, "w");
+    assert(file != 0);
+    assert(fclose(file) == 0);
+}
+Text :: (n: int) -> string { return text_from_bytes([u8(65), u8(0), u8(n)]); }
+Main :: () -> int { return 99; }
+Frame :: () -> int {
+    padding: Padding = {number: 1};
+    assert(padding.number == 1);
+    count: retain int = 9;
+    progress: retain State = {nodes: [], bonus: 100, payload: Payload.Text("wrong"), names: []};
+    assert(count >= 3 && progress.bonus == 100);
+    assert(length(progress.names) == 2 && text_byte_at(progress.names[0], 2) == 1);
+    assert(length(progress.nodes) == 1 && progress.nodes[0].values[1] == 9);
+    switch progress.payload {
+        case .Nodes(value): assert(value[0].values[0] == 7 && text_byte_at(value[0].message, 2) == 3);
+        case .Text(value): assert(false);
+    }
+    saved := progress;
+    progress.names[0] = Text(9);
+    assert(text_byte_at(saved.names[0], 2) == 1 && text_byte_at(progress.names[0], 2) == 9);
+    return 42;
+}

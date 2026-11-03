@@ -5,10 +5,13 @@ import strings "core:strings"
 
 // The record graph is closed after type validation. Reverse edges propagate
 // ownership and unsupported leaves once, including recursion through arrays.
-pub ValueLayout :: struct { valid: bool[]; owned: bool[]; backed: bool[]; }
+pub ValueLayout :: struct {
+    valid: bool[]; owned: bool[]; backed: bool[];
+    collector_copyable: bool[]; collector_owned: bool[]; collector_backed: bool[];
+}
 pub ValueLayouts :: (records: Record[], fields: int[]) -> ValueLayout {
     found: ValueLayout = {valid: resize([true], length(records)), owned: resize([false], length(records)),
-                           backed: resize([false], length(records))};
+                           backed: resize([false], length(records)), collector_copyable: [], collector_owned: [], collector_backed: []};
     heads := resize([int(0)], length(records));
     for (index in 0..<length(records)) { heads[index] = -1; found.valid[index] = true; }
     parents: int[] = [];
@@ -16,10 +19,12 @@ pub ValueLayouts :: (records: Record[], fields: int[]) -> ValueLayout {
     invalid: int[] = [];
     owned: int[] = [];
     backed: int[] = [];
+    collector := false;
     for (parent in 0..<length(records)) {
         record := records[parent];
         for (at in record.first..<record.first + record.count) {
             type := fields[at];
+            collector = collector || type == PointerType || type == ArrayType + PointerType;
             child := type;
             if (type >= ArrayType && type < MapType) {
                 child = ElementType(records, type);
@@ -67,10 +72,79 @@ pub ValueLayouts :: (records: Record[], fields: int[]) -> ValueLayout {
             at += 1;
         }
     }
+    if (collector) {
+        found.collector_copyable = resize([false], length(records));
+        found.collector_owned = resize([false], length(records));
+        found.collector_backed = resize([false], length(records));
+        pending: int[] = [];
+        for (parent in 0..<length(records)) {
+            found.collector_copyable[parent] = true;
+            record := records[parent];
+            for (at in record.first..<record.first + record.count) {
+                type := fields[at];
+                if (type == PointerType || type == ArrayType + PointerType) { continue; }
+                child := type;
+                container := false;
+                if (type >= ArrayType && type < MapType) { child = ElementType(records, type); container = true; }
+                else if (type >= MapType && type < RefType) {
+                    container = true;
+                    if (!MapShaped(records, type)) { child = 0; }
+                    else {
+                        child = MapValue(type);
+                        if (MapArrayValue(child)) { child = ElementType(records, child); }
+                    }
+                }
+                supported := child == abi.TextStorage || abi.ScalarType(child) != "";
+                if (child >= RecordType && child < ArrayType) {
+                    // Container payloads keep their rootless domain. Inline
+                    // children instead propagate this collector domain below.
+                    supported = !container || found.valid[child - RecordType];
+                }
+                if (!supported) { found.collector_copyable[parent] = false; pending.append(parent); break; }
+            }
+        }
+        at := 0;
+        while (at < length(pending)) {
+            edge := heads[pending[at]];
+            while (edge >= 0) {
+                parent := parents[edge];
+                if (found.collector_copyable[parent]) { found.collector_copyable[parent] = false; pending.append(parent); }
+                edge = next[edge];
+            }
+            at += 1;
+        }
+        for (index in 0..<length(records)) {
+            found.collector_owned[index] = found.owned[index] && found.collector_copyable[index];
+            found.collector_backed[index] = found.backed[index] && found.collector_copyable[index];
+        }
+    }
     for (index in 0..<length(records)) {
         found.owned[index] = found.owned[index] && found.valid[index];
         found.backed[index] = found.backed[index] && found.valid[index];
     }
+    if (!collector) {
+        // Pointer-free programs reuse their existing tables without another
+        // allocation or graph walk.
+        found.collector_copyable = found.valid;
+        found.collector_owned = found.owned;
+        found.collector_backed = found.backed;
+    }
+    return found;
+}
+// Collector copies require active roots at every collecting boundary. This
+// property does not admit those values into maps, cells or retained snapshots.
+pub ValueCollectorCopyable :: (layout: ValueLayout, type: int) -> bool {
+    if (type == PointerType || type == ArrayType + PointerType) { return true; }
+    if (type < RecordType) { return type == abi.TextStorage || abi.ScalarType(type) != ""; }
+    index := type - RecordType;
+    return type < ArrayType && Index(index, length(layout.collector_copyable)) && layout.collector_copyable[index];
+}
+// Reuse the same field lifecycle with collector-aware ownership after its
+// caller establishes roots. Rootless admission remains unchanged in valid.
+pub ValueRootedOwners :: (layout: ValueLayout) -> ValueLayout {
+    found := layout;
+    found.owned = layout.collector_owned;
+    found.backed = layout.collector_backed;
     return found;
 }
 ValueValid :: (layout: ValueLayout, type: int) -> bool {

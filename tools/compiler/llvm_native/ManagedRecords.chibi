@@ -101,7 +101,7 @@ ManagedStorageClass :: (type: int) -> int {
     return type;
 }
 ManagedPayload :: (records: Record[], layout: ManagedRecordLayout, values: ValueLayout, type: int, tag: i64) -> bool {
-    return abi.ScalarType(type) != "" ||
+    return abi.ScalarType(type) != "" || type == abi.TextStorage ||
            (ManagedArray(type) && ElementType(records, type) != 0 && ValueValid(values, type - ArrayType)) ||
            (ManagedCellRecord(records, layout, type) && records[type - RecordType].identity == tag);
 }
@@ -130,6 +130,25 @@ ManagedArrayModule :: (code: Instruction[], counter: string) -> string {
         out.append(format_text("define internal i1 @chibi_managed.validate.array{}(i64 %offset, i64 %tag, i64 %bytes, i32 %storage) {{\nentry:\n", key));
         out.append(format_text("  %tag.ok = icmp eq i64 %tag, {}\n  %storage.ok = icmp eq i32 %storage, {}\n", item.literal, ManagedStorageClass(type)));
         out.append(format_text("  %bytes.ok = icmp eq i64 %bytes, ptrtoint (ptr getelementptr ({}, ptr null, i32 1) to i64)\n", abi.ArrayType()));
+        out.append("  %offset.ok = icmp eq i64 %offset, 0\n  %type.ok = and i1 %tag.ok, %storage.ok\n  %range.ok = and i1 %bytes.ok, %offset.ok\n  %valid = and i1 %type.ok, %range.ok\n  ret i1 %valid\n}\n");
+    }
+    return strings.Join(out, "");
+}
+// The cell owns a shared/imported text descriptor. No collector edges live in
+// its bytes; its image lease encloses the last owner release and validator use.
+ManagedTextModule :: (code: Instruction[], counter: string) -> string {
+    out: string[] = [];
+    seen: [i64: bool] = [:];
+    for (item in code) {
+        if (item.op != ManagedNew || item.right != abi.TextStorage || seen.has(item.literal)) { continue; }
+        if (length(out) == 0) {
+            out.append(format_text("define internal void @chibi_managed.drop.text(ptr %ctx, ptr %payload) {{\nentry:\n  %value = load {}, ptr %payload\n  %owner = extractvalue {} %value, 2\n  call void @chibi_scalar.free(ptr %ctx, ptr %owner)\n  ret void\n}}\n", abi.TextType(), abi.TextType()));
+        }
+        seen[item.literal] = true;
+        out.append(format_text("@chibi_managed.layout.text{} = private constant %chibi.managed.layout {{ ptr null, ptr @chibi_managed.validate.text{}, ptr {} }}\n", item.literal, item.literal, counter));
+        out.append(format_text("define internal i1 @chibi_managed.validate.text{}(i64 %offset, i64 %tag, i64 %bytes, i32 %storage) {{\nentry:\n", item.literal));
+        out.append(format_text("  %tag.ok = icmp eq i64 %tag, {}\n  %storage.ok = icmp eq i32 %storage, {}\n", item.literal, abi.TextStorage));
+        out.append(format_text("  %bytes.ok = icmp eq i64 %bytes, ptrtoint (ptr getelementptr ({}, ptr null, i32 1) to i64)\n", abi.TextType()));
         out.append("  %offset.ok = icmp eq i64 %offset, 0\n  %type.ok = and i1 %tag.ok, %storage.ok\n  %range.ok = and i1 %bytes.ok, %offset.ok\n  %valid = and i1 %type.ok, %range.ok\n  ret i1 %valid\n}\n");
     }
     return strings.Join(out, "");

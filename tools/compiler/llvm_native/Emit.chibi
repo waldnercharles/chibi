@@ -303,9 +303,9 @@ pub MapLiveAt: int : 70;
 // field's type; type is that reference type. The field is a scalar or array,
 // and the reference lives as long as the local does.
 pub FieldAddress: int : 71;
-// An independent owned value in output: a managed aggregate or an
+// An independent owned value in output: text, a managed aggregate, an
 // array of counted elements, or a map. Owned backing can be shared until mutation;
-// a null-owner array imports its caller-owned storage. Use ArrayLoan before
+// null-owner text and arrays import caller-owned storage. Use ArrayLoan before
 // exposing shared backing to a mutable foreign call; raw ForeignCall does not
 // supply uniqueness or write a replaced descriptor back to its source.
 pub ValueCopy: int : 72;
@@ -1304,7 +1304,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if ((item.op == ValueCopy || item.op == ValueDrop) &&
             (!Typed(slots, item.left, item.type) ||
              (ElementType(records, item.type) != 0 && item.type != ArrayType + PointerType && !ValueValid(lifecycle, item.type - ArrayType)) ||
-             (ElementType(records, item.type) == 0 &&
+             (item.type != abi.TextStorage && ElementType(records, item.type) == 0 &&
               !MapPayloadValid(records, lifecycle, item.type) &&
               (item.type < RecordType || item.type >= ArrayType || !ValueCollectorCopyable(lifecycle, item.type) ||
                !lifecycle.collector_owned[item.type - RecordType] || (!ValueValid(lifecycle, item.type) && !ProgramMode(mode) && !family))) ||
@@ -1882,7 +1882,10 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, TextCounted(item, pc));
     } else if (item.op == ValueCopy) {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
-        if (item.type >= MapType && item.type < RefType) {
+        if (item.type == abi.TextStorage) {
+            out = format_text("{}  %copied{} = call {} @chibi_text.share(ptr %ctx, {} %a{})\n", out, pc, type, type, pc);
+            out = format_text("{}{}", out, Store(format_text("%copied{}", pc), item.type, "s", item.output));
+        } else if (item.type >= MapType && item.type < RefType) {
             out = format_text("{}  %copied{} = call {} @chibi_map.share({} %a{})\n", out, pc, type, type, pc);
             out = format_text("{}{}", out, Store(format_text("%copied{}", pc), item.type, "s", item.output));
         } else if (item.type >= ArrayType && item.type < MapType) {
@@ -1893,7 +1896,9 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
             out = format_text("{}  call void @chibi_value.{}.keep_at(ptr %ctx, ptr %s{})\n", out, item.type, item.output);
         }
     } else if (item.op == ValueDrop) {
-        if (item.type >= MapType && item.type < RefType) {
+        if (item.type == abi.TextStorage) {
+            out = format_text("{}{}", out, TextCounted(item, pc));
+        } else if (item.type >= MapType && item.type < RefType) {
             out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
             out = format_text("{}  call void @chibi_map.{}.drop(ptr %ctx, {} %a{})\n", out, item.type, type, pc);
         } else if (item.type >= ArrayType && item.type < MapType) {
@@ -2152,7 +2157,7 @@ Counts :: (code: Instruction[]) -> bool {
             if (MapHolds(item.type)) { return true; }
             continue;
         }
-        if (TextSequenceOperation(item.op) || item.op == ArrayValueAddress || item.op == OwnerPin || item.op == TextRetain || item.op == TextRelease || item.op == ValueCopy || item.op == ValueDrop || item.op == ArrayDrop || Holding(item.type) ||
+        if ((item.op == ManagedNew && item.right == abi.TextStorage) || TextSequenceOperation(item.op) || item.op == ArrayValueAddress || item.op == OwnerPin || item.op == TextRetain || item.op == TextRelease || item.op == ValueCopy || item.op == ValueDrop || item.op == ArrayDrop || Holding(item.type) ||
             ((item.op == StateLoad || item.op == StateStore) && (item.type == abi.TextStorage || item.type >= RecordType))) {
             return true;
         }
@@ -3384,7 +3389,8 @@ StatesNumbered :: (code: Instruction[]) -> bool {
 // Whether `code` moves array elements, which the module's copy does.
 Copies :: (code: Instruction[]) -> bool {
     for (item in code) {
-        if (TextSequenceOperation(item.op) ||
+        if (TextSequenceOperation(item.op) || (item.op == ManagedNew && item.right == abi.TextStorage) ||
+            (item.op == ValueCopy && item.type == abi.TextStorage) ||
             item.op == ArrayInsert || item.op == ArrayReverse || item.op == ArrayPush || item.op == ArrayCopy || (item.op >= ArrayExtend && item.op <= ArrayRemove && item.op != ArrayContains) ||
             MapOperation(item.op)) {
             return true;
@@ -3770,6 +3776,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             counter := "null";
             if (family) { counter = strings.Concatenate(["@", abi.ManagedImageCounter()]); }
             out.append(ManagedArrayModule(held, counter));
+            out.append(ManagedTextModule(held, counter));
             out.append(ViewModule(held));
         }
         // One piece holds every text; each of several, the ones it reads.

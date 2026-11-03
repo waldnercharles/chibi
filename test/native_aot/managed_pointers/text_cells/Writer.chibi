@@ -1,0 +1,4 @@
+package text_cell_writer
+Literal :: () -> string { return "new image literal"; }
+Write :: (pointer: ^string) -> ^string { alias := pointer; alias^ = Literal(); return alias; }
+Main :: () -> int { value := "old"; pointer := &value; changed := Write(pointer); return text_byte_length(changed^); }

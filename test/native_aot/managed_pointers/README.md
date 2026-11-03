@@ -150,6 +150,17 @@ inside optional cells remain outside this slice. The original four fallible
 pointer cases run at O0/O2, and the poisoned source proof checks escaped cells,
 early returns and forced collection with bounded peak allocation.
 
+Scalar string cells own an immutable text descriptor. Copies retain counted
+owners and import borrowed bytes; replacing through a pointer, boxed variable
+or scoped reference acquires the incoming owner before dropping the old one.
+Evaluated reads survive later replacements. The cell's validator and final text
+release carry the same image lease as other managed payload callbacks. Source
+and raw probes cover dynamic NULs, returned cells, borrowed-byte clobbering,
+scoped aliases, empty replacement, and precise tag/storage rejection. The
+image proof writes a returned literal through actual source lowering into an
+older cell, clobbers the writer bytes, unloads that image, and reads the old cell
+before its final owner release. Bypassing only that source copy fails at O0/O2.
+
 String-array cells use the same descriptor and backing lifecycle as numeric
 array cells. Last cell release drops the backing and its owned text values;
 evaluated reads hold independent array owners before later callbacks can

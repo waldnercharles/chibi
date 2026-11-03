@@ -1035,11 +1035,28 @@ ArrayChanges :: (operator: int) -> bool {
 MappedArrayChange :: (value: int) -> bool {
     return value >= facts.MapArrayPush && value <= facts.MapArrayResize;
 }
+NestedMapChange :: (value: int) -> bool {
+    return value >= facts.ArrayMapSet && value <= facts.NestedMapDelete;
+}
+// A collection carrier holds one immediate map descriptor, never a union or
+// an authored multi-field record. Both reads and canonical writes use it.
+MapCarrierMember :: (rows: facts.Row[], records: int[], type: int) -> int {
+    if (type < facts.RecordType || type >= facts.ArrayType || type - facts.RecordType >= length(records)) { return 0; }
+    head := records[type - facts.RecordType];
+    if (rows[head].kind != facts.RecordRow || rows[head].count != 1) { return 0; }
+    member := rows[head + 1].type;
+    if (member < facts.MapType || member >= facts.ReferenceType || !Valued(records, member)) { return 0; }
+    return member;
+}
 MapGets :: (value: int) -> bool {
     return value == facts.MapGet || value == facts.MapGetOptional || value == facts.MapGetWrapped;
 }
 // The postfix operands of one map operator; -1 means no such operator.
 MapOperands :: (operand: facts.Row) -> int {
+    if (NestedMapChange(operand.value)) {
+        if (operand.value == facts.ArrayMapSet || operand.value == facts.NestedMapSet) { return 4; }
+        return 3;
+    }
     if (operand.value == facts.MapNew) {
         return operand.count;
     }
@@ -1067,6 +1084,27 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
     consumed := MapOperands(operand);
     base := length(stack) - consumed;
     mismatch := "scalar map operation differs from its operands";
+    if (NestedMapChange(operand.value)) {
+        arrayed := operand.value == facts.ArrayMapSet || operand.value == facts.ArrayMapDelete;
+        outer_key := facts.IntType;
+        carrier := Element(records, operand.type);
+        if (!arrayed) {
+            if (operand.type < facts.MapType || operand.type >= facts.ReferenceType || !Valued(records, operand.type)) { return mismatch; }
+            outer_key = (operand.type - facts.MapType) % 16;
+            carrier = (operand.type - facts.MapType) / 16;
+        }
+        inner := MapCarrierMember(rows, records, carrier);
+        if (inner == 0 || operand.count != consumed || base < floor || operand.name != "" || operand.literal != 0 ||
+            stack[base] != facts.ReferenceType + operand.type || stack[base + 1] != outer_key ||
+            stack[base + 2] != (inner - facts.MapType) % 16 ||
+            (consumed == 4 && stack[base + 3] != (inner - facts.MapType) / 16)) { return mismatch; }
+        if (rows[at].kind != facts.AssignRow || base != 0 || row != last - 1 ||
+            rows[at + 1].kind != facts.RefRow || rows[at + 1].type != rows[at].type ||
+            rows[at + 1].value != rows[at].value || operand.type != rows[at].type) {
+            return "scalar nested map change is not the assignment of its collection";
+        }
+        return "";
+    }
     changed := operand.value == facts.MapSet || operand.value == facts.MapDelete || MappedArrayChange(operand.value);
     mapped := operand.type;
     if (operand.value != facts.MapNew && operand.value != facts.MapCopy && !changed) {
@@ -1116,10 +1154,7 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
     if (operand.value == facts.MapArrayLoan && (operand.type != value || stack[base + 1] != mapped ||
         !Scalar(Element(records, value)) || Element(records, value) == facts.BoolType)) { return mismatch; }
     if (operand.value == facts.MapGetWrapped) {
-        if (value < facts.RecordType || value >= facts.ArrayType || value - facts.RecordType >= length(records)) { return mismatch; }
-        head := records[value - facts.RecordType];
-        if (rows[head].kind != facts.RecordRow || rows[head].count != 1 || rows[head + 1].type < facts.MapType ||
-            rows[head + 1].type >= facts.ReferenceType || !Valued(records, rows[head + 1].type)) { return mismatch; }
+        if (MapCarrierMember(rows, records, value) == 0) { return mismatch; }
     }
     if (operand.value == facts.MapKeyAt && operand.type != key) {
         return mismatch;
@@ -3789,7 +3824,44 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 } else if (operand.kind == facts.MapRow) {
                     base := length(stack) - MapOperands(operand);
                     op := operand.value;
-                    if (op == facts.MapArrayLoan) {
+                    if (NestedMapChange(op)) {
+                        arrayed := op == facts.ArrayMapSet || op == facts.ArrayMapDelete;
+                        carrier := Element(declared, operand.type);
+                        if (!arrayed) { carrier = (operand.type - facts.MapType) / 16; }
+                        inner_type := MapCarrierMember(rows, declared, carrier);
+                        inner := NativeType(inner_type);
+                        payload := (inner_type - facts.MapType) / 16;
+                        inserting := op == facts.ArrayMapSet || op == facts.NestedMapSet;
+                        incoming := 0;
+                        if (inserting) {
+                            incoming = stack[base + 3];
+                            if (Holds(fresh, incoming)) { fresh = Without(fresh, incoming); }
+                            else {
+                                kept := KeepValue(managed, payload, incoming, slot + 1 + extra);
+                                slots.extend(kept.slot_types); body.extend(kept.code);
+                                extra += length(kept.slot_types); incoming = kept.value;
+                            }
+                            key := stack[base + 2];
+                            if (slots[shape.first_slot + key] == abi.TextStorage) {
+                                if (Holds(fresh, key)) { fresh = Without(fresh, key); }
+                                else { body.append(Op(native.TextRetain, abi.TextStorage, 0, key, 0, 0)); }
+                            }
+                        }
+                        current := slot + extra;
+                        slots.extend([native.RefType + inner, inner, inner]);
+                        address := Op(native.ArrayValueAddress, native.RefType + inner, current + 1, stack[base], stack[base + 1], type);
+                        if (!arrayed) {
+                            address.op = native.MapValueAddress; address.target = 1; address.literal = i64(type);
+                        }
+                        mutation := Op(native.MapDelete, inner, current + 3, current + 2, stack[base + 2], 0);
+                        if (inserting) { mutation.op = native.MapSet; mutation.target = incoming; }
+                        mutation.literal = 1;
+                        body.extend([address, Op(native.Deref, inner, current + 2, current + 1, 0, 0), mutation]);
+                        item = Op(native.Poke, inner, 0, current + 1, current + 3, 0);
+                        slots[shape.first_slot + slot] = native.RefType + inner;
+                        published_place = true;
+                        extra += 3;
+                    } else if (op == facts.MapArrayLoan) {
                         mapped := NativeType(int(operand.literal));
                         slots.append(type);
                         read := Op(native.MapGet, type, slot, stack[base + 1], stack[base + 2], 0);

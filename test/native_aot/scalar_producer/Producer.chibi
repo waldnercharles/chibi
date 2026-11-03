@@ -175,6 +175,7 @@ Main :: () -> int {
     InlineArrayPlacesProjection();
     MapForeignPlacesProjection();
     NestedMapsProjection();
+    NestedMapPlacesProjection();
     MapArrayPlacesProjection();
     SynchronousProjection();
     Corpus();

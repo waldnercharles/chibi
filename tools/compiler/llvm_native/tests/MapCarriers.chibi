@@ -40,3 +40,36 @@ ArrayMapCarrierPlacesRejectWrongTypesModesAndGcPayloads :: () {
         Rejects(MapCarrierPlace(kind), "native nested array reference differs from its wrapper");
     }
 }
+
+NestedMapCarrierPlace :: (kind: int) -> native.Result {
+    inner := native.MapOf(abi.IntStorage, abi.IntStorage);
+    if (kind == 5) { inner = native.MapOf(abi.IntStorage, native.ArrayType + native.PointerType); }
+    outer := native.MapOf(abi.IntStorage, native.RecordType);
+    reference := native.RefType + inner;
+    if (kind == 1) { reference = native.RefType + abi.IntStorage; }
+    address := Code(native.MapValueAddress, reference, 3, 1, 2, 1, i64(outer));
+    if (kind == 2) { address.target = 0; address.left = 0; }
+    if (kind == 3) { address.left = 0; }
+    if (kind == 6) { address.literal = -1; }
+    fields := [inner];
+    count := 1;
+    if (kind == 4) { fields.append(abi.IntStorage); count = 2; }
+    records: native.Record[] = [{first: 0, count: count, identity: 0}];
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0), Code(native.Constant, outer, 0, 0, 0, 0, 0),
+        Code(native.Save, outer, 0, 0, 0, 0, 0), Code(native.LocalAddress, native.RefType + outer, 1, 0, 0, 0, 0),
+        Code(native.Constant, abi.IntStorage, 2, 0, 0, 0, 0), address,
+        Code(native.Publish, abi.IntStorage, 0, 2, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    function: native.Function = {result: abi.IntStorage, first_parameter: 0, parameters: 0,
+        first_slot: 0, slots: 4, first_local: 0, locals: 1, first_code: 0, code: length(code), first_argument: 0, arguments: 0};
+    empty: int[] = [];
+    texts: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    return native.Emit(abi.LinuxX64(), [function], empty, [outer, native.RefType + outer, abi.IntStorage, reference],
+        [outer], code, empty, records, fields, texts, source, texts, empty, empty, false, 1);
+}
+
+@test
+CanonicalMapCarriersProjectOnlyOneImmediateMap :: () {
+    assert(Emitted(NestedMapCarrierPlace(0)) != "");
+    for (kind in 1..<7) { Rejects(NestedMapCarrierPlace(kind), "native map operation differs from its operands"); }
+}

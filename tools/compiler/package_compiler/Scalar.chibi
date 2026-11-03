@@ -3683,6 +3683,14 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                                            value, record, copied, operands);
                 }
             case .MapEdited(change):
+                if (Is(forest, Unparenthesized(forest, change.object), syntax.IndexExpression)) {
+                    switch ScalarNestedMapAssigned(forest, text, callables, params, callable, names, types, members, constants,
+                                                     statement, change, &variables) {
+                        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                        case .Built(assigned): rows.extend(assigned);
+                    }
+                    continue;
+                }
                 if (change.operator == facts.MapArraySet) {
                     switch ScalarMapArrayAssigned(forest, text, callables, params, callable, names, types, members, constants,
                                                    statement, change, &variables) {

@@ -15,7 +15,7 @@ when target.Os == target.Windows {
 
 foreign import faults "@ARCHIVE@"
 foreign faults { chibi_directory_mode :: (mode: i32) -> i32 }
-foreign { chibi_native_scope_begin :: (steps: i64) -> i32 }
+foreign { chibi_native_scope_begin :: (steps: u64) -> i32 }
 
 Mode :: (mode: int) {
     selected := chibi_directory_mode(i32(mode));
@@ -29,7 +29,7 @@ Main :: () -> int {
     arguments := os.Arguments();
     assert(length(arguments) == 5, "files, empty directory, cache project, compiler and LLVM");
     // Exercise the instrumented backedges too, without a practical quota.
-    begun := chibi_native_scope_begin(i64(9223372036854775807));
+    begun := chibi_native_scope_begin(u64(9223372036854775807));
     assert(begun == 0, "the program owns its instrumented runtime scope");
     Mode(0);
     empty := os.List(arguments[1]);

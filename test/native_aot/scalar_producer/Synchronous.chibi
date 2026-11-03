@@ -1,0 +1,26 @@
+package native_driver
+
+SynchronousProjection :: () {
+    source := "package synchronous\nMain :: () -> int { return Apply(One); }\nApply :: (function: fn() -> int) -> int { return function() + Work(); }\nOne :: () -> int { return 1; }\nWork :: () -> int { text := format_text(\"ready\"); return text_byte_length(text); }\n";
+    rows := Produced(source);
+    assert(rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+    natives := Natives();
+    for (native, index in natives) {
+        if (native.name == "format_text") {
+            changed := native;
+            // SCRIPT_EFFECT_SUSPEND, a declared runtime capability. The plain
+            // collector must retain it through typed checking and call closure.
+            changed.effects = 16;
+            natives[index] = changed;
+        }
+    }
+    rejected := compiler.CollectScalar("/project", "Facts.chibi", source, TargetFacts(), Names(), natives, Ports(), Identities());
+    assert(length(rejected) == 2 && rejected[1].kind == facts.RejectionRow);
+    assert(rejected[1].text == "Non-escaping callable parameters require synchronous function bodies");
+    assert(rejected[1].line == 3 && rejected[1].column == 1);
+    unused := compiler.CollectScalar("/project", "Facts.chibi", "package synchronous\nMain :: () -> int { return 0; }\n",
+        TargetFacts(), Names(), natives, Ports(), Identities());
+    assert(unused[1].kind == facts.DocumentRow);
+    ValidateRows(unused, "");
+}

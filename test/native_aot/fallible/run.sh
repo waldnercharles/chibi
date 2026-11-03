@@ -40,6 +40,10 @@ CHIBI_CORE="$root/packages/core" "$compiler" test --llvm "$llvm" \
     --root "$root/test/compiler/samples/collections" \
     "$root/test/compiler/samples/collections/managed_pointer_named_result/facts" > "$work/case.log" 2>&1 || { cat "$work/case.log"; exit 1; }
 grep -q '^PASS .*compile_error$' "$work/case.log"
+CHIBI_CORE="$root/packages/core" "$compiler" test --llvm "$llvm" \
+    --root "$root/test/compiler/samples/imports" \
+    "$root/test/compiler/samples/imports/callable_consumer_cannot_suspend/facts" > "$work/case.log" 2>&1 || { cat "$work/case.log"; exit 1; }
+grep -q '^PASS .*compile_error$' "$work/case.log"
 test "$negative" -gt 0
 printf 'PASS native fallible ownership: %s original diagnostics and seven positive controls\n' "$negative"
 

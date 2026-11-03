@@ -4093,6 +4093,10 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         if (emitted.message != "") { return ScalarOperands.Failed(emitted); }
         assertion_offsets.append(length(assertions));
     }
+    switch ScalarSynchronous(forest, callables, generic_bindings, summary^) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Valid: { }
+    }
     // Source diagnostics precede restrictions of the native representation or
     // process entry ABI. In particular, an invalid math expression must keep
     // the ordinary checker's diagnostic even when its signature uses vectors.
@@ -4726,6 +4730,7 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
                             return ScalarFailed(packaged, path, text, documents, rejected);
                         }
                     }
+                    foreign_effects: int[] = [];
                     switch ForeignNatives(nodes, documents, text_natives, text_ports, text_identities,
                                           resize([int(0)], text_count)) {
                         case .Failed(diagnostic):
@@ -4734,6 +4739,7 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
                             text_natives = declared_natives;
                             text_ports = declared_ports;
                             text_identities = declared_identities;
+                            foreign_effects = declared_effects;
                     }
                     if (summary.wanted) {
                         for (native in text_natives) { summary.natives.append(native.effects); }
@@ -4759,6 +4765,14 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
                                 case .Failed(diagnostic):
                                     return ScalarFailed(packaged, path, text, documents, diagnostic);
                                 case .Ready(concrete, concrete_params, bindings):
+                                    if (!summary.wanted && GenericNeedsSynchronous(bindings)) {
+                                        summary.wanted = true;
+                                        // Foreign admission quiets effects on its private native rows.
+                                        // Retain the original masks for this semantic lifetime check.
+                                        for (native, index in text_natives) {
+                                            summary.natives.append(native.effects | foreign_effects[index]);
+                                        }
+                                    }
                                     if (generation && length(concrete) == 0) {
                                         empty_head: facts.Row = {kind: facts.DocumentRow, type: 0, value: 0, count: 0,
                                             literal: 0, name: document.key, text: "", start: 0, end: 0, line: 0, column: 0};

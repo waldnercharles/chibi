@@ -538,7 +538,7 @@ printf 'package rejected\nHolder :: struct { character: char; }\nFrame :: () -> 
 rejected 'record fields require a scalar, pointer, record, union or array of those types'
 
 printf 'package rejected\nInner :: struct { values: int[]; }\nOuter :: struct { inner: Inner; }\nFrame :: () -> int { value: retain Outer = {inner: {values: []}}; value.inner.values.append(1); return 0; }\n' > "$project/Main.chibi"
-rejected 'scalar proof supports only locals, assignments, asserts, if statements, switches, loops and returns'
+rejected 'native array mutation requires a writable inline record array field'
 
 # The raw library ABI proves migration allocates independent backing before
 # dropping its old root, and releases every state owner even on repeated close.

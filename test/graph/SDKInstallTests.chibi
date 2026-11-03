@@ -302,6 +302,9 @@ CloneGraph :: (fixture: Fixture, name: string) -> string {
 // A wrong native compiler is rejected after staging, which is then removed.
 FailedStagedCompilerValidationRemovesOwnedStaging :: (fixture: Fixture) {
     clone := CloneGraph(fixture, "corrupt build");
+    // Empty scratch directories can outlive their source-side counterpart.
+    // They must not hide the later compiler identity rejection.
+    Make(Path([clone, "/share/chibi/compiler/removed-test-scratch/nested"]));
     output := Path([fixture.suite, "/corrupt output"]);
     compiler := Path([clone, "/sdk/chibi"]);
     removed := os.Remove(compiler);
@@ -344,13 +347,20 @@ StaleCompilerResourcesFailBeforeStaging :: (fixture: Fixture) {
 }
 
 UnexpectedCompilerResourcesFailBeforeStaging :: (fixture: Fixture) {
-    for (kind in ["directory", "link"]) {
+    for (kind in ["directory", "link", "authored file", "other file"]) {
         clone := CloneGraph(fixture, Path(["unexpected resource ", kind]));
         // This exists in the source tree as a non-authored file. Its name
         // cannot authorize an unrelated directory or an external symlink.
         extra := Path([clone, "/share/chibi/compiler/bootstrap.kdl"]);
         if (kind == "directory") { Make(extra); }
-        else { Link(fixture.checkout, extra); }
+        else if (kind == "link") { Link(fixture.checkout, extra); }
+        else {
+            extra = Path([clone, "/share/chibi/compiler/removed-test-scratch/nested"]);
+            Make(extra);
+            name := "unexpected.txt";
+            if (kind == "authored file") { name = "Unexpected.chibi"; }
+            Write(Path([extra, "/", name]), "unexpected staged input\n");
+        }
         output := Path([fixture.suite, "/unexpected output ", kind]);
         result := Install(fixture, fixture.checkout, clone, output);
         assert(result.status == 1 && Says(result, "sdk: graph compiler/core resources are missing or stale"), "extra resource kinds are refused");
@@ -575,7 +585,7 @@ CompilerToolsPackageAndRunAfterRelocation :: (fixture: Fixture) {
     head := [host, "run", "--llvm", fixture.llvm, "--root", fixture.checkout,
              "--collection", Path(["graph=", relocated, "/share/chibi/graph"]), "--entry", "Libraries",
              Path([relocated, "/share/chibi/tools/toolchain/Graph.chibi"]), "--"];
-    profile := ["--target", "chibi_support", "--commands-only", "on", "--profile", "explicit", "--compiler", "/usr/bin/false",
+    profile := ["--target", "chibi_graph_fixture", "--commands-only", "on", "--profile", "explicit", "--compiler", "/usr/bin/false",
                 "--cxx-compiler", "/usr/bin/false", "--compiler-id", "Clang", "--build-type", "Release", "--warnings", "off",
                 "--architecture", "", "--sysroot", "", "--sanitizers", "", "--debug-compilation-dir", "",
                 "--ranlib", "/usr/bin/false", "--third-party", fixture.archive, "--libclang-include", "", "--libclang-library", ""];
@@ -584,7 +594,7 @@ CompilerToolsPackageAndRunAfterRelocation :: (fixture: Fixture) {
     commands.extend(profile);
     result = Bare(commands);
     assert(result.status == 0, "the installed graph writes commands");
-    assert(length(json.JsonItems(Read(Path([graph_build, "/compile_commands.json"])))) == 3, "chibi_support's three compiles");
+    assert(length(json.JsonItems(Read(Path([graph_build, "/compile_commands.json"])))) == 3, "the fixture archive's three compiles");
 
     // An explicit profile rejects an omitted archiver even when PATH has an ar:
     // no machine default enters it.

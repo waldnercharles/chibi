@@ -106,3 +106,20 @@ SnapshotCharacterMetadataMustAgree :: () {
     text = Emitted(SnapshotCharacterLibrary(14, [true]));
     assert(text != "");
 }
+
+@test
+RetainedStoresRejectUnknownCompositeOrdinals :: () {
+    source: native.Source = {file: "", directory: ""};
+    for type in [native.RecordType + 100, native.ArrayType + native.RecordType + 100] {
+        code := [Code(native.Check, 0, 0, 0, 0, 0, 0), Code(native.StateLoad, abi.IntStorage, 0, 0, 0, 0, 0),
+                 Code(native.StateStore, type, 0, 0, 0, 0, 0), Code(native.Publish, abi.IntStorage, 0, 0, 0, 0, 0),
+                 Code(native.Return, 0, 0, 0, 0, 0, 0)];
+        functions := [Function(abi.IntStorage, 0, 0, 1, 0, length(code), 0, 0)];
+        diagnostic := "native retained state differs from its operands";
+        Rejects(native.EmitProgramTyped(abi.LinuxX64(), functions, [], [abi.IntStorage], [], code, [], [], [], [], ["Frame.value"],
+                                        source, [], [], []), diagnostic);
+        shapes: native.SnapshotShapes = {nodes: [], edges: [], roots: [-1]};
+        Rejects(native.EmitSnapshotLibrary(abi.LinuxX64(), "InvalidStore", ["Frame"], [i64(1)], functions, [],
+            [abi.IntStorage], [], code, [], [], [], ["Frame.value"], 1, [], -1, [], shapes), diagnostic);
+    }
+}

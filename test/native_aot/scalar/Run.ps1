@@ -284,6 +284,7 @@ try {
         'scalar_cases/Cases.chibi' = 'test/scalar_facts/cases/Cases.chibi'
         'scalar_facts/Facts.chibi' = 'tools/compiler/scalar_facts/Facts.chibi'
         'scalar_llvm/Emit.chibi' = 'tools/compiler/scalar_llvm/Emit.chibi'
+        'scalar_llvm/Snapshots.chibi' = 'tools/compiler/scalar_llvm/Snapshots.chibi'
         'scalar_llvm/Managed.chibi' = 'tools/compiler/scalar_llvm/Managed.chibi'
         'scalar_llvm/Views.chibi' = 'tools/compiler/scalar_llvm/Views.chibi'
         'llvm_native/Emit.chibi' = 'tools/compiler/llvm_native/Emit.chibi'

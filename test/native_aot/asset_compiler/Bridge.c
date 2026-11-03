@@ -1,6 +1,4 @@
 #include "authoring/asset_compiler_host.h"
-#include "support/file_io.h"
-#include "support/sha256.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -11,6 +9,28 @@
 #else
 #include <pthread.h>
 #endif
+
+/* Fixture IO uses only libc. The authored verifier checks the frozen closure
+ * digest before this consumer compares the public API's exact output bytes. */
+static unsigned char *read_fixture(const char *path, size_t *length)
+{
+    FILE *file = fopen(path, "rb");
+    assert(file);
+    int positioned = fseek(file, 0, SEEK_END);
+    assert(positioned == 0);
+    long size = ftell(file);
+    assert(size >= 0 && (uint64_t)size <= ASSET_COMPILER_MAX_REQUEST_BYTES);
+    positioned = fseek(file, 0, SEEK_SET);
+    assert(positioned == 0);
+    unsigned char *bytes = malloc((size_t)size + 1);
+    assert(bytes);
+    size_t read = fread(bytes, 1, (size_t)size, file);
+    int closed = fclose(file);
+    assert(read == (size_t)size && closed == 0);
+    bytes[size] = 0;
+    *length = (size_t)size;
+    return bytes;
+}
 
 typedef struct
 {
@@ -78,10 +98,13 @@ static bool cancelled(void *user)
 }
 int main(int argc, char **argv)
 {
-    assert(argc == 6);
-    char *request = file_read_text(argv[2]);
-    char *rejected = file_read_text(argv[3]);
-    assert(request && rejected);
+    assert(argc == 7);
+    size_t request_length, rejected_length, expected_length;
+    char *request = (char *)read_fixture(argv[2], &request_length);
+    char *rejected = (char *)read_fixture(argv[3], &rejected_length);
+    unsigned char *expected = read_fixture(argv[6], &expected_length);
+    assert(request_length == strlen(request) && rejected_length == strlen(rejected));
+    assert(expected_length == 329);
     asset_compiler_options options = { .program = argv[1],
                                        .cache_directory = argv[4] };
     asset_compiler_diagnostic diagnostic;
@@ -94,9 +117,7 @@ int main(int argc, char **argv)
         &diagnostic
     );
     assert(bytes && length == 329 && !diagnostic.message[0]);
-    char digest[65];
-    sha256_hex(bytes, length, digest);
-    assert(!strcmp(digest, "08b7ec6ca8d209820e44ddbda3151b5f8b866334fd45cc7f06124794279f3dc9"));
+    assert(length == expected_length && !memcmp(bytes, expected, length));
     free(bytes);
     bytes = asset_compiler_compile_closure(rejected, strlen(rejected), &length, &options, &diagnostic);
     assert(
@@ -236,6 +257,7 @@ int main(int argc, char **argv)
     options.program = argv[5];
     bytes = asset_compiler_compile_closure(request, strlen(request), &length, &options, &diagnostic);
     assert(!bytes && !length && !strcmp(diagnostic.message, "The native package compiler failed"));
+    free(expected);
     free(rejected);
     free(request);
     puts("native C asset facade: closures, diagnostics, quota, cancellation, cache and relocation passed");

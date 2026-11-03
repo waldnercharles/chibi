@@ -89,5 +89,6 @@ pub Selected :: (arguments: string[], target: string) -> bool {
             }
         }
     }
-    return !named && !WebAssemblyProducts().contains(target);
+    return !named && !WebAssemblyProducts().contains(target) &&
+           target != "chibi_graph_fixture" && target != "graph_headerless";
 }

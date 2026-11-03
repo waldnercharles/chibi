@@ -24,7 +24,7 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/language/execution_scope.c`, `capture.c`, `ranges.c` | 8, 6, 7 | VM scopes, budgets, intrinsics, the interval optimizer | goes |
 | `test/language/record_values.c`, `record_document.c`, `record_compatibility.c`, `record_prepared.c` | 15, 5, 1, 0 | `src/types` records, value documents, legacy array callbacks | goes (`text_keys_preserve_suffix_after_nul` is ported) |
 | `test/language/text_format.c` | 2 | `src/runtime/text_format.c`, `src/types/value_format.c` | retired; authored `test/native_aot/text_format` preserves scalar specifiers, owned results and array/map count summaries |
-| `test/language/host_packages_compiler.c` | 2 | `src/host/clock_package`, grants, the compiler host | the unused C program-service catalog case is retired; native formatting/target checks remain, and `base/unknown_parameter_type` preserves its missing-type rejection. Clock cases remain until authored `host:clock` behavior has a native replacement. |
+| `test/language/host_packages_compiler.c` (retired 2026-11-02) | 2 | `src/host/clock_package`, grants, the compiler host | retired; the same selector runs native `host_clock` catalog/private-import checks, public clock policy, two-image grants and collector reentry. The oversized compiler-argument document was private VM transport, not a native quota. |
 | `test/language/native_census.c`, `census_tree.h` | 3 | the C census flattener over CollectScalar | retired after the combined native compiler reproduced byte for byte; the historical report remains |
 | `test/language/program_session.c` | 11 | `src/authoring/program.c` sessions | goes, except 3 Edit-and-Continue cases |
 | `test/language/package_compiler_chibi.c`, `scalar_host.c` | 6, 0 | native backend execution through the C compiler host | six backend cases retired through `test/native_aot/backend`, retained generations and process supervision; `scalar_host.c` is retired with the obsolete C census |
@@ -141,7 +141,8 @@ Private build-host implementation contracts retire with this harness: pipe wait
 order, its job/result tables, bounded buffers, environment allowlists, VM quotas,
 recovery deadlines and private namespace are not native API requirements. The
 native process and CLI tests cover the surviving cancellation and child lifetime
-behavior. `policy_worker` remains only as a graph executable-staging fixture.
+behavior. Graph compilation, archives and executable staging use the independent
+C fixtures in `test/graph/fixtures`; the old `policy_worker` is retired.
 
 `core:os.WriteText` and `WriteBytes` are truncating writes; they do not inherit the
 private `build.write_file` atomic replacement contract. Accepted compiler outputs
@@ -231,6 +232,23 @@ generations and process supervision. The native bounds callback preserves the
 original index/length diagnostic and status134 without allocating. The obsolete C census and `scalar_host.c` are now retired. The complete native
 compiler reproduced at stages three and four from the combined `813b93875` source;
 445 compiler tests and managed-record, pattern, array and generation proofs pass.
+
+### Host clock compiler coverage (ported)
+
+`language-host-packages-compiler` now runs `test/native_aot/host_clock/run.sh`
+through the current native compiler. Pure source checks retain missing imports,
+private authored and kernel members, exact case, owning-package permissions,
+unavailable capabilities and ambient-name precedence. Real O0/O2 programs retain
+public `Now`/`Between` normalization, denied/failed/unavailable outcomes, samples
+above `2^53`, repeated reads, domain mismatch, revocation and separate loaded-image
+grants. The provider can collect synchronously without losing live managed roots.
+The explicit seven-slot Wasm owner has its own source, callback and recovery proof.
+
+The C fixture's second case passed 2,200,000 empty path strings to the private
+compiler-host value-document decoder and checked its 4,000,000-value/256 MiB bound
+before compilation. That VM serialization limit retires with the fixture. Native
+asset requests retain their byte/depth bounds and CHECK budget/recovery tests;
+this change does not alter them.
 
 ## Owner decisions
 

@@ -13,7 +13,6 @@ void test_language_execution();
 void test_language_execution_scope();
 void test_language_capture();
 void test_numeric_ranges();
-void test_language_host_packages_compiler();
 int main(int argc, char **argv)
 {
     if (!test_parallel_init()) {
@@ -33,16 +32,13 @@ int main(int argc, char **argv)
     bool record_values = argc == 2 && !strcmp(argv[1], "--record-values");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
-    bool host_packages_compiler = argc == 2 &&
-                                  !strcmp(argv[1], "--host-packages-compiler");
     if ((!execution && !execution_scope && !record_values && !record_document &&
-         !record_compatibility && !program && !ranges && !host_packages_compiler)) {
+         !record_compatibility && !program && !ranges)) {
         fprintf(
             stderr,
             "Usage: %s --test-parallel | --execution | --execution-scope | "
             "--program | "
             "--ranges | "
-            "--host-packages-compiler | "
             "--record-values | --record-document | --record-compatibility\n",
             argv[0]
         );
@@ -55,8 +51,6 @@ int main(int argc, char **argv)
         test_language_record_document();
     } else if (record_values) {
         test_language_record_values();
-    } else if (host_packages_compiler) {
-        test_language_host_packages_compiler();
     } else if (ranges) {
         test_numeric_ranges();
     } else if (program) {

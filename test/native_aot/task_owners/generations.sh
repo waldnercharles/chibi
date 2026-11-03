@@ -20,17 +20,17 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 for level in 0 2; do
-    for source in Generation Edited ResizeGeneration; do
+    for source in Generation Edited ResizeGeneration TypedGeneration; do
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$root/test/native_aot/task_owners/$source.chibi" --shared \
             --output "$work/$source-$level.so" --llvm "$audit_llvm" --target "$target" --level "$level" --jobs 1
     done
-    for mode in complete cancel failure resize resize-functional; do
+    for mode in complete cancel failure resize resize-functional unwrap unwrap-await unwrap-immediate; do
         run="$work/$mode-O$level"
         mkdir "$run"
         if [ "$mode" != complete ]; then touch "$run/$mode-case"; fi
         source=Generation
-        case "$mode" in resize*) source=ResizeGeneration ;; esac
+        case "$mode" in resize*) source=ResizeGeneration ;; unwrap*) source=TypedGeneration ;; esac
         cp "$work/$source-$level.so" "$run/live-0.so"
         (cd "$run" && exec timeout 90 "$work/host") > "$run/host.log" 2>&1 &
         child=$!
@@ -47,10 +47,33 @@ for level in 0 2; do
         wait "$child" || result=$?
         child=
         expected=7
-        case "$mode" in failure|resize*) expected=134 ;; esac
+        case "$mode" in failure|resize*|unwrap*) expected=134 ;; esac
         if [ "$result" -ne "$expected" ]; then cat "$run/host.log"; echo "owned generation $mode O$level status$result"; exit 1; fi
         if [ "$mode" = complete ]; then [ "$(cat "$run/old-done")" = old:48 ]; fi
+        case "$mode" in unwrap*)
+            grep -Fx 'native failure: UnwrappedNil' "$run/host.log"
+            test ! -e "$run/after-unwrap"
+            test ! -e "$run/after-await" ;;
+        esac
         printf 'PASS owned old generation %s O%s, image close balanced\n' "$mode" "$level"
+    done
+    for mode in positive sync frame spawn-immediate; do
+        run="$work/unwrap-$mode-O$level"
+        mkdir "$run"
+        touch "$run/$mode-case"
+        cp "$work/TypedGeneration-$level.so" "$run/live-0.so"
+        result=0
+        (cd "$run" && timeout 90 "$work/host") > "$run/host.log" 2>&1 || result=$?
+        expected=134
+        if [ "$mode" = positive ]; then expected=42; fi
+        if [ "$result" -ne "$expected" ]; then cat "$run/host.log"; echo "shared unwrap $mode O$level status$result"; exit 1; fi
+        if [ "$mode" = positive ]; then test -e "$run/after-unwrap"
+        else
+            grep -Fx 'native failure: UnwrappedNil' "$run/host.log"
+            test ! -e "$run/after-unwrap"
+            test ! -e "$run/after-spawn"
+        fi
+        printf 'PASS shared unwrap %s O%s, image close balanced\n' "$mode" "$level"
     done
 done
 

@@ -718,7 +718,7 @@ ManagedPinsValid :: (code: Instruction[], slots: int[]) -> string {
             // Frame cleanup memberships can surround the same collecting call.
         } else if (length(active) > 0) {
             composite_find := item.op == ArrayContains && item.target > 0 && item.literal >= i64(RecordType);
-            if (called || (!composite_find && item.op != ClockSample && item.op != Call && item.op != ForeignCall && item.op != Format && item.op != ManagedNew && item.op != Suspend && item.op != Delay && item.op != AwaitHandle && item.op != AwaitResult && item.op != Fail)) {
+            if (called || (!composite_find && item.op != ClockSample && item.op != Call && item.op != ForeignCall && item.op != Format && item.op != ManagedNew && item.op != Suspend && item.op != Delay && item.op != AwaitHandle && item.op != AwaitResult && item.op != Fail && item.op != TypedFail)) {
                 return "native collector pins must bracket one collecting call";
             }
             called = true;

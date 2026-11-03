@@ -82,8 +82,11 @@ whole-variable and pointer assignments acquire or transfer the incoming value
 before dropping the old one; evaluated reads keep independent value owners.
 The source proof covers escaped array cells, pointer-array owners, scoped
 aliases, value copies, variable element writes/append and canonical foreign
-byte-buffer writes. Inline pointer-bearing record arrays and array-backed
-record cells still need their respective tracing and place lowering.
+byte-buffer writes. Arrays of pointer-bearing records use typed backing tracers
+and the same active-owner table, including nested record-owned arrays and task
+results. Each backing is scanned once per collection epoch. Collector-valued
+inline/array type cycles are rejected; pointer-linked runtime cycles use the
+iterative cell queue. Array-backed record cells retain their separate gate.
 
 Pointer-backed views use a 32-byte cell/start/count descriptor.
 They follow replacement and growth of that cell while retaining a fixed window;
@@ -239,5 +242,6 @@ The source proof includes completed-before-join collection, repeated joins,
 copy-on-write mutation, nested pointer and text fields, cancellation and both
 caller and child failures with poisoned zero-live-allocation checks. Reload
 keeps an old completed array promise alive and preserves independent joins.
-Arrays/maps whose elements contain collector edges and view promises remain
-outside this result domain.
+Record arrays whose elements contain collector edges now use typed backing
+tracers in this result domain. Map payloads retain their rootless restrictions;
+view promises remain separate.

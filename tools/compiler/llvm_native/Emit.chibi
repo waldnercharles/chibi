@@ -1303,7 +1303,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if ((item.op == ValueCopy || item.op == ValueDrop) &&
             (!Typed(slots, item.left, item.type) ||
-             (ElementType(records, item.type) != 0 && item.type != ArrayType + PointerType && !ValueValid(lifecycle, item.type - ArrayType)) ||
+             (ElementType(records, item.type) != 0 && !ValueCollectorCopyable(lifecycle, item.type - ArrayType)) ||
              (item.type != abi.TextStorage && ElementType(records, item.type) == 0 &&
               !MapPayloadValid(records, lifecycle, item.type) &&
               (item.type < RecordType || item.type >= ArrayType || !ValueCollectorCopyable(lifecycle, item.type) ||
@@ -3551,6 +3551,9 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     }
     managed_records := ManagedRecordLayouts(records, fields);
     lifecycle := ValueLayouts(records, fields);
+    if (!ManagedCollectorShapesValid(records, fields, lifecycle)) {
+        return Result.Rejected(-1, "native collector values require an acyclic inline and array layout");
+    }
     for (index in 0..<length(records)) {
         record := records[index];
         if (ManagedTraced(RecordType + index, managed_records.traced) &&
@@ -3575,6 +3578,8 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     }
     managed := ManagedRootTypes(parameters, managed_records.traced) || ManagedRootTypes(slots, managed_records.traced) ||
                ManagedRootTypes(locals, managed_records.traced);
+    // Optional-view carriers have their own frame tracer, but no general
+    // collector-array ownership. Keep that separate domain closed here.
     for (part in 0..<4) {
         types := parameters;
         if (part == 1) { types = slots; }
@@ -3583,12 +3588,21 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         for (type in types) {
             held := type;
             if (held >= RefType) { held -= RefType; }
-            if (held >= ArrayType && held < MapType && ManagedTraced(held - ArrayType, managed_records.traced)) {
-                return Result.Rejected(-1, "native pointer-record array roots are not implemented yet");
+            if (held >= ArrayType && held < MapType && ManagedTraced(held - ArrayType, managed_records.traced) &&
+                !ValueCollectorCopyable(lifecycle, held - ArrayType)) {
+                return Result.Rejected(-1, "native collector array elements require a supported traced value");
             }
         }
     }
-    for (shape in functions) { managed = managed || ManagedStorage(shape.result) || ManagedTraced(shape.result, managed_records.traced); }
+    for (shape in functions) {
+        held := shape.result;
+        if (held >= ArrayType && held < MapType) { held -= ArrayType; }
+        if (shape.result >= ArrayType && shape.result < MapType && ManagedTraced(held, managed_records.traced) &&
+            !ValueCollectorCopyable(lifecycle, held)) {
+            return Result.Rejected(-1, "native collector array elements require a supported traced value");
+        }
+        managed = managed || ManagedStorage(shape.result) || ManagedTraced(held, managed_records.traced);
+    }
     polling := false;
     for (item in code) { polling = polling || item.op == ManagedPending || item.op == ManagedPoll || item.op == ManagedTrack; }
     managed = managed || polling;
@@ -3598,7 +3612,8 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     if (managed && !ProgramMode(mode) && !family) {
         return Result.Rejected(-1, "native managed pointers require a standalone collector owner");
     }
-    if (managed && !family && (ManagedStorage(functions[0].result) || ManagedTraced(functions[0].result, managed_records.traced))) {
+    if (managed && !family && (ManagedStorage(functions[0].result) || ManagedTraced(functions[0].result, managed_records.traced) ||
+        ValueCollectorArray(lifecycle, functions[0].result))) {
         return Result.Rejected(-1, "a standalone entry cannot export managed pointers");
     }
     if (source.file != "" && abi.DebugFormat(target) == "") {
@@ -3745,10 +3760,14 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             // Each object emits only the metadata its constructors and local
             // inline roots use. Other pieces' cells carry their own callbacks.
             record_roots := resize([false], length(records));
+            array_roots := resize([false], length(records));
             for (function in first..<last) {
                 shape := functions[function];
-                if (ManagedTraced(shape.result, managed_records.traced)) {
-                    record_roots[shape.result - RecordType] = true;
+                result := shape.result;
+                if (result >= ArrayType && result < MapType) { result -= ArrayType; }
+                if (ManagedTraced(result, managed_records.traced)) {
+                    record_roots[result - RecordType] = true;
+                    if (shape.result >= ArrayType && shape.result < MapType) { array_roots[result - RecordType] = true; }
                 }
                 for (part in 0..<2) {
                     types := slots;
@@ -3756,7 +3775,14 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
                     count := shape.slots;
                     if (part == 1) { types = locals; begin = shape.first_local; count = shape.locals; }
                     for (at in begin..<begin + count) {
-                        if (ManagedTraced(types[at], managed_records.traced)) { record_roots[types[at] - RecordType] = true; }
+                        type := types[at];
+                        if (type >= RefType) { type -= RefType; }
+                        held_type := type;
+                        if (type >= ArrayType && type < MapType) { held_type -= ArrayType; }
+                        if (ManagedTraced(held_type, managed_records.traced)) {
+                            record_roots[held_type - RecordType] = true;
+                            if (type >= ArrayType && type < MapType) { array_roots[held_type - RecordType] = true; }
+                        }
                     }
                 }
             }
@@ -3770,7 +3796,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             }
             counter := "null";
             if (family) { counter = strings.Concatenate(["@", abi.ManagedImageCounter()]); }
-            out.append(ManagedRecordModule(records, fields, field_tags, managed_records, lifecycle, record_roots, counter));
+            out.append(ManagedRecordModule(records, fields, field_tags, managed_records, lifecycle, record_roots, counter, array_roots));
         }
         if (managed) {
             counter := "null";
@@ -3883,7 +3909,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
                 loan.instruction < functions[last - 1].first_code + functions[last - 1].code) { loan_arrays.append(loan.type); }
         }
         value_uses := ValueUses(held, records, fields, record_owners, promises, loan_arrays);
-        array_helpers := ArrayModule(value_uses.arrays, record_owners, rooted_lifecycle.backed, guarded);
+        array_helpers := ArrayModule(value_uses.arrays, record_owners, rooted_lifecycle.backed, managed_records.traced, guarded);
         out.append(array_helpers);
         value_comparisons := piece == 0 && length(comparison_roots) > 0;
         if (value_comparisons) {

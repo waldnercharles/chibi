@@ -56,8 +56,8 @@ room, `slots` a power of two with `capacity * 4 <= slots * 3` (set whenever the 
 is all zero and owns nothing. Capacity starts at 4 and becomes `max(4, 2 * count)` when the entries are full.
 The entries owner also owns the index. Native `ValueCopy` shares this owner in O(1); mutation detaches shared entries.
 Native `MapCopy` preserves the raw API's independent-entry allocation contract, copying only immediate entries and
-sharing their counted children. Its cost is O(n). Authored copies still use that physical operation until all source
-mutation and foreign-loan routes resolve a canonical owning place.
+sharing their counted children. Its cost is O(n). Authored copies share the entries owner; source mutation and
+foreign-loan routes resolve the canonical owning place before detaching.
 Nonzero map descriptors must originate from map operations or counted copies. The native API does not import
 ownerless external map buffers; map parameters carry this same internal ownership contract.
 
@@ -80,6 +80,12 @@ entry of capacity, and about 16 bytes per live entry in a map that has just grow
 ## Keys and values
 
 Keys: ints of every width, bool, string; floats are not keys (NaN). Authored values include scalars, strings, supported pointer-free arrays and records or authored unions with native value layouts. Aggregate values use the shared value copy/drop helpers.
+Nested arrays of maps, map-valued map payloads and maps of arrays of maps use
+the ordinary collection identity. A one-field physical record carries each
+immediate descriptor, so map type encoding never recursively packs another map
+type. The shared value graph selects each reachable record, array and map helper
+once. Authored record fields containing maps remain rejected by the ordinary
+checker; synthetic collection carriers do not change that rule.
 Array payloads use the shared array lifecycle. Reads acquire an owned descriptor; source map copies share entries, and projected writes detach shared entries and array backing after their callback arguments finish. Other nested containers remain gated by their type and ownership proofs. A map owns its strings:
 `MapSet` consumes one reference of a string key and of a string value (a repeated key's new key is released, the replaced
 value is released), `MapDelete` releases the entry's strings, `MapCopy` retains them, `MapDrop` releases them (D10).
@@ -107,3 +113,12 @@ Projected array updates support append, extend, remove_index, resize and element
 `managed_values/MapCopies.chibi` checks zero backing allocations for 4,096 readonly source copies, then each of the five mapped-array mutations from a newly shared copy with an unchanged original. `map_programs/ForeignLoans.chibi` covers scoped writes, by-value isolation, repeated buffers, key callbacks, map growth, replacement and deletion with balanced allocations at O0/O2.
 
 Numeric mapped-array compound assignments save the key, index and old leaf before the RHS. Bracket writes check the initial place before the RHS and resolve its current entry again afterward. Both unavailable-place checks stay unclassified; ordinary expression indexing still reports `IndexOutOfRange`. The `array_places` fixtures keep that distinction and the different post-argument lookup order of methods. Other nested containers and cross-platform runtime coverage have separate gates. Map equality and inferred map literal types retain the ordinary authored compiler's limitations. Host and VM retirement still requires migrating their remaining consumers.
+
+`NestedContainers` covers nested literals, value reads, arguments and returns
+with poisoned frees and zero outstanding allocations. `NestedMapCopies` requires
+4,096 nested copies and payload reads to allocate nothing; changing one leaf
+detaches each shared map once. Direct nested owner writes remain a separate gate.
+An inner map read from a missing key can be changed independently without adding
+an outer key, following the zero-map rule in `docs/code-language.md`. The recovered
+ordinary runtime instead fails that mutation with `Cannot retain Map update`;
+that discrepancy is recorded rather than used as the expected native result.

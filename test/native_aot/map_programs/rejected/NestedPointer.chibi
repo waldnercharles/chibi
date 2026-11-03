@@ -1,0 +1,6 @@
+package rejected_nested_pointer
+Main :: () -> int {
+    cell := 7;
+    values: [string:[string:^int]] = ["group":["p":&cell]];
+    return 0;
+}

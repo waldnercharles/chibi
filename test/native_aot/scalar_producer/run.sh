@@ -14,7 +14,7 @@ trap 'rm -rf "$work"' EXIT HUP INT TERM
 # source. No metadata export, separate catalog snapshot or compiler-host is involved.
 cat "$root/test/native_aot/scalar_producer/Producer.chibi" > "$work/Producer.chibi"
 awk 'copy { print } /^TargetFacts ::/ { copy = 1; print }' "$root/tools/compiler/native_driver/Catalog.chibi" >> "$work/Producer.chibi"
-for source in Positions Matrices Shapes Packages Libraries Rejections Collections TextArguments CallArguments Synchronous ArrayEdits Corpus Declarations; do
+for source in Positions Matrices Shapes Packages Libraries Rejections Collections TextArguments CallArguments Synchronous ArrayEdits NestedMaps Corpus Declarations; do
     sed '/^package /d; /^import /d' "$root/test/native_aot/scalar_producer/$source.chibi" >> "$work/Producer.chibi"
 done
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \

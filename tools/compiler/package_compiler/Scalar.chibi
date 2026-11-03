@@ -498,7 +498,7 @@ ScalarOptionalRoot :: (types: TypeDecl[], storage: int, container: int, record: 
 ScalarResults :: (callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
                   body_optionals: int[]) -> ScalarView {
     seen: Callable[] = [];
-    records := types;
+    records := ScalarMapCarriers(types);
     fields := members;
     for (callable in callables) {
         viewed := callable;
@@ -715,7 +715,7 @@ ScalarRecordOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     }
     // An element of an array of records.
     if (Is(forest, value, syntax.IndexExpression)) {
-        mapped := ScalarMapShape(forest, text, callables, names, types, package, Field(forest, value, syntax.FieldObject));
+        mapped := ScalarMapShape(forest, text, callables, names, types, members, package, Field(forest, value, syntax.FieldObject));
         if (mapped >= 0 && types[mapped].value_storage == StructStorage) { return types[mapped].value_record; }
         element := ScalarArrayShape(forest, text, callables, params, names, types, members, package, Field(forest, value, syntax.FieldObject));
         if (element.storage == StructStorage) {
@@ -1000,10 +1000,10 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         }
         return callables[function].result;
     }
-    mapped := ScalarMapRead(forest, text, callables, names, types, callable.package, node);
+    mapped := ScalarMapRead(forest, text, callables, names, types, members, callable.package, node);
     if (mapped.operator == facts.MapHas) { return BoolStorage; }
     if (mapped.operator == facts.MapGet) {
-        return types[ScalarMapShape(forest, text, callables, names, types, callable.package, mapped.object)].value_storage;
+        return types[ScalarMapShape(forest, text, callables, names, types, members, callable.package, mapped.object)].value_storage;
     }
     if (Is(forest, node, syntax.UnaryExpression) && Operator(forest, node) == tk.Add) {
         return ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldOperand),
@@ -1195,7 +1195,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (Is(forest, node, syntax.ForceUnwrapExpression)) {
         return ScalarUnwrapRows(forest, text, callables, params, callable, names, types, members, constants, node, rows);
     }
-    mapped_read := ScalarMapRead(forest, text, callables, names, types, callable.package, node);
+    mapped_read := ScalarMapRead(forest, text, callables, names, types, members, callable.package, node);
     if (mapped_read.operator != 0) {
         return ScalarMapReadRows(forest, text, callables, params, callable, names, types, members, constants, node, mapped_read, rows);
     }
@@ -1337,7 +1337,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     }
     mapped := -1;
     if (storage == UnionStorage) {
-        mapped = ScalarMapShape(forest, text, callables, names, types, callable.package, node);
+        mapped = ScalarMapShape(forest, text, callables, names, types, members, callable.package, node);
     }
     if (mapped >= 0) { type = ScalarMapType(types, mapped); }
     if (storage == PointerStorage && !arrayed) {
@@ -1966,7 +1966,7 @@ ScalarTextArgument :: (forest: snapshot.SnapshotNode[], text: string, callables:
     } else {
         array := ScalarVisitedShape(forest, text, callables, params, callable, names, types, members, constants, node);
         if (array.container == ArrayContainer && ScalarArrayType(types, array.storage, array.record) != 0) { return array; }
-        mapped := ScalarMapShape(forest, text, callables, names, types, callable.package, node);
+        mapped := ScalarMapShape(forest, text, callables, names, types, members, callable.package, node);
         if (mapped >= 0) { return {storage: UnionStorage, container: MapContainer, record: mapped}; }
     }
     storage := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants,
@@ -2130,7 +2130,7 @@ ScalarHeldUnion :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
     }
     // A map value or an element of an array of unions.
     if (Is(forest, value, syntax.IndexExpression)) {
-        mapped := ScalarMapShape(forest, text, callables, names, types, package, Field(forest, value, syntax.FieldObject));
+        mapped := ScalarMapShape(forest, text, callables, names, types, members, package, Field(forest, value, syntax.FieldObject));
         if (mapped >= 0 && types[mapped].value_storage == UnionStorage && types[mapped].value_container == 0) {
             return types[mapped].value_record;
         }
@@ -2918,7 +2918,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], statement: int,
                   mutated: string[], stored: string[]) -> ScalarPlan {
     value := Field(forest, statement, syntax.FieldValue);
-    map_change := ScalarMapChange(forest, text, callables, names, types, callable.package, statement);
+    map_change := ScalarMapChange(forest, text, callables, names, types, members, callable.package, statement);
     if (map_change.operator != 0) { return ScalarPlan.MapEdited(map_change); }
     if (Is(forest, statement, syntax.ReturnStatement)) {
         returned := ScalarReturned(forest, statement);
@@ -2950,7 +2950,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         first := Field(forest, statement, syntax.FieldFirst);
         if (first < 0) {
             visited := Field(forest, statement, syntax.FieldValue);
-            map := ScalarMapShape(forest, text, callables, names, types, callable.package, visited);
+            map := ScalarMapShape(forest, text, callables, names, types, members, callable.package, visited);
             if (map >= 0 && Field(forest, statement, syntax.FieldReference) < 0 &&
                 Field(forest, statement, syntax.FieldReverse) < 0) {
                 body := Field(forest, statement, syntax.FieldBody);
@@ -3080,7 +3080,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         return ScalarPlan.Failed(Diagnose(forest, statement, 0,
                                           "scalar proof supports only locals, assignments, asserts, if statements, switches, loops and returns"));
     }
-    local_map := ScalarLocalMap(forest, text, callables, names, types, callable, statement);
+    local_map := ScalarLocalMap(forest, text, callables, names, types, members, callable, statement);
     if (local_map >= 0) { return ScalarPlan.Mapped(value, local_map, true); }
     shape := ScalarLocalArray(forest, text, callables, params, callable, names, types, members, constants, statement);
     if (shape.storage != 0) {
@@ -3924,7 +3924,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             record: int = -1;
             container: int = 0;
             shape := ScalarLocalArray(forest, text, callables, params, callable, names, types, members, constants, statement);
-            map_record := ScalarLocalMap(forest, text, callables, names, types, callable, statement);
+            map_record := ScalarLocalMap(forest, text, callables, names, types, members, callable, statement);
             if (map_record >= 0) {
                 storage = UnionStorage;
                 container = MapContainer;

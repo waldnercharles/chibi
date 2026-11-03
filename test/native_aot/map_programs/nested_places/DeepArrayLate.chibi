@@ -1,0 +1,3 @@
+package deep_map_failure
+Value::(values:^([int:[int:int][]]))->int{values^[1]=[];return 9;}
+Main::()->int{values:[int:[int:int][]]=[1:[[2:1]]];values[1][0][2]+=Value(&values);return 0;}

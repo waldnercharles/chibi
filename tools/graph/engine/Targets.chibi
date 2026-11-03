@@ -220,7 +220,6 @@ Files :: (target: string) -> string[] {
             "test/language/execution.c",
             "test/language/capture.c",
             "test/language/ranges.c",
-            "test/language/host_packages_compiler.c",
             "test/language/execution_scope.c",
             "test/parallel.c", "test/language/parallel.c"
         ];
@@ -947,7 +946,6 @@ LanguageTestsOverSource :: () -> string[] {
         "src/toolchain/compiler_target.c",
         "test/language/capture.c",
         "test/language/execution.c", "test/language/execution_scope.c",
-        "test/language/host_packages_compiler.c",
         "test/language/ranges.c",
         "test/language/record_prepared.c"
     ];
@@ -957,9 +955,6 @@ LanguageTestsOverSource :: () -> string[] {
 // source property adds them; Expand fills {source_root}, {build_type},
 // {sha256:PATH} and {program:NAME}.
 pub SourceDefines :: (target: string, file: string) -> string[] {
-    if (target == "test_language" && file == "test/language/host_packages_compiler.c") {
-        return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
-    }
     return [];
 }
 
@@ -1002,14 +997,12 @@ Listed :: (names: string[], name: string) -> bool {
 
 // Headers a header set configures below its private root, `HEADER=INPUT`, as
 // CMake's configure_file writes them: a `.in` INPUT with its Substitutions,
-// any other copied. The language tests embed the Chibi sources they compile;
-// the tooling tests copy the fixtures their consumers include.
+// any other copied. Test targets copy the fixtures their consumers include.
 pub Configures :: (target: string) -> string[] {
     if (target == "chibi_language_testing") {
         return [
             "third_party/pico_headers/pico_unit.h=third_party/pico_headers/pico_unit.h",
-            "test/parallel.h=test/parallel.h",
-            "host_packages_source.h=test/language/host_packages_source.h.in"
+            "test/parallel.h=test/parallel.h"
         ];
     }
     if (target == "chibi_tools_testing") {
@@ -1030,13 +1023,6 @@ pub Configures :: (target: string) -> string[] {
 // its exported C builds with. `test-sources:PREFIX:PACKAGE:DIR` and
 // `test-inputs:PREFIX:PACKAGE:DIR` discover a test package's direct .chibi files.
 pub Substitutions :: (target: string) -> string[] {
-    if (target == "chibi_language_testing") {
-        return [
-            "CHIBI_CORE_TIME_BYTES=bytes:packages/core/time/Time.chibi",
-            "CHIBI_CORE_TIME_TEST_BYTES=bytes:test/standard_library/time/TimeTests.chibi",
-            "CHIBI_HOST_CLOCK_BYTES=bytes:packages/host/clock/Clock.chibi"
-        ];
-    }
     if (target == "chibi_tools_testing") {
         return ["CHIBI_EXPORT_COMPILER_ARGUMENTS=compiler:-UNDEBUG"];
     }

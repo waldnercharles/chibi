@@ -54,7 +54,7 @@ tool	chibi-test-samples-native-arguments	@release@/sdk/chibi	test	test/compiler/
 tool	chibi-test-samples-types	@release@/sdk/chibi	test	test/compiler/samples/types
 tool	language-package-compiler-chibi-scalar	sh	test/native_aot/scalar_producer/run.sh	@compiler@	@llvm@
 tool	language-scalar-native	sh	test/native_aot/backend/run.sh	@compiler@	@llvm@
-tool	language-host-packages-compiler	@build@/test/language/test_language	--host-packages-compiler
+tool	language-host-packages-compiler	sh	test/native_aot/host_clock/run.sh	@compiler@	@llvm@
 tool	language-record-compatibility	@build@/test/language/test_language	--record-compatibility
 tool	language-record-document	@build@/test/language/test_language	--record-document
 tool	language-record-values	@build@/test/language/test_language	--record-values

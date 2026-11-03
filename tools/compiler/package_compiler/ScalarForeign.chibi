@@ -81,6 +81,47 @@ ScalarForeignNames :: (forest: snapshot.SnapshotNode[], text: string, body: int,
     return names;
 }
 
+// Resolve inline authored-record fields once, from the canonical variable.
+// References point into inline records, never into growable container backing.
+ScalarInlinePlace :: struct { variable: int; root: int; shape: ValueType; rows: facts.Row[]; }
+ScalarInlineReference :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], types: TypeDecl[],
+                          members: TypeMember[], operand: int) -> ScalarInlinePlace {
+    absent: ScalarInlinePlace = {variable: -1, root: 0, shape: {storage: 0, container: 0, record: -1}, rows: []};
+    node := Unparenthesized(forest, operand);
+    fields: int[] = [];
+    while (Is(forest, node, syntax.MemberExpression)) {
+        fields.append(node);
+        node = Unparenthesized(forest, Field(forest, node, syntax.FieldObject));
+    }
+    if (length(fields) == 0 || !Is(forest, node, syntax.Identifier)) { return absent; }
+    found := Lookup(names, Text(forest, text, node));
+    if (found < 0) { return absent; }
+    binding := names[found];
+    record := Canonical(types, binding.record);
+    if (binding.storage != StructStorage || binding.container != 0 || record < 0 ||
+        types[record].kind != RecordDecl || (binding.place == LocalPlace && !binding.writable) ||
+        (binding.node >= 0 && Is(forest, forest[binding.node].parent, syntax.StateDeclaration))) { return absent; }
+    root := ScalarRecordType(types, record);
+    if (root == 0) { return absent; }
+    rows := [ScalarAt(forest, operand, facts.RefRow, root, binding.index, 0, "")];
+    shape: ValueType = {storage: binding.storage, container: 0, record: record};
+    index := length(fields) - 1;
+    while (index >= 0) {
+        field := FindField(types, members, record, Text(forest, text, Field(forest, fields[index], syntax.FieldMember)));
+        if (field < 0) { return absent; }
+        shape = ScalarMemberShape(members, field);
+        type := ScalarValueType(types, shape.storage, shape.container, shape.record);
+        if (type == 0) { return absent; }
+        rows.append(ScalarAt(forest, operand, facts.FieldReferenceRow, type, field - types[record].first, 1, ""));
+        if (index > 0) {
+            record = Canonical(types, shape.record);
+            if (shape.storage != StructStorage || shape.container != 0 || record < 0 || types[record].kind != RecordDecl) { return absent; }
+        }
+        index -= 1;
+    }
+    return {variable: binding.index, root: root, shape: shape, rows: rows};
+}
+
 // A foreign buffer's writable place is retained alongside its evaluated
 // value. Temporaries have no place; they are independent values for the call.
 ScalarForeignArrayRows :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
@@ -91,8 +132,14 @@ ScalarForeignArrayRows :: (forest: snapshot.SnapshotNode[], text: string, callab
     place := Unparenthesized(forest, argument);
     found := -1;
     if (Is(forest, place, syntax.MemberExpression)) {
-        return ScalarOperands.Failed(Diagnose(forest, argument, 0,
-            "native foreign record buffer needs recursive array-backed value ownership"));
+        inline := ScalarInlineReference(forest, text, names, types, members, place);
+        if (inline.variable < 0 || ScalarValueType(types, inline.shape.storage, inline.shape.container, inline.shape.record) != type) {
+            return ScalarOperands.Failed(Diagnose(forest, argument, 0,
+                "native foreign record buffer needs a writable inline record array field"));
+        }
+        output.extend(inline.rows);
+        output.append(ScalarAt(forest, argument, facts.ArrayRow, type, facts.ArrayLoan, 1, ""));
+        return ScalarOperands.Built(output);
     }
     if (Is(forest, place, syntax.Identifier)) {
         found = Lookup(names, Text(forest, text, place));

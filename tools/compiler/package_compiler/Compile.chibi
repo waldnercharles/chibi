@@ -1240,7 +1240,8 @@ RecordFieldType :: (types: TypeDecl[], value: ValueType) -> bool {
     }
     if (value.storage == StructStorage) {
         return value.record >= 0 &&
-               (types[value.record].kind == RecordDecl || types[value.record].kind == NativeDecl);
+               (types[value.record].kind == RecordDecl || types[value.record].kind == NativeDecl ||
+                types[value.record].kind == MathDecl);
     }
     if (value.storage == UnionStorage) {
         return value.container == 0 && value.record >= 0 && types[value.record].kind == UnionDecl;

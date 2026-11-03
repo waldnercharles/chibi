@@ -49,3 +49,17 @@ ScopedPackages :: () {
     assert(length(rows) > 2 && rows[1].kind == facts.DocumentRow);
     ValidateRows(rows, "");
 }
+
+ScopedParameterModes :: () {
+    source := "package aliases\nCounter :: struct { count: int; }\nMain :: () -> int { counter: Counter = {count: 1}; return Change(&counter, &counter); }\nChange :: (reader: ^Counter, writer: ^Counter) -> int { writer.count += 1; return Read(reader); }\nRead :: (value: ^Counter) -> int { return value.count; }\n";
+    rows := Produced(source);
+    ValidateRows(rows, "");
+    parameters := 0;
+    for row in rows {
+        if row.kind != facts.ParameterRow { continue; }
+        if row.name == "writer" { assert(row.literal == i64(facts.ParameterReference)); }
+        else { assert(row.literal == i64(facts.ParameterReadonlyReference)); }
+        parameters += 1;
+    }
+    assert(parameters == 3, "forwarded readonly and writable parameter classifications");
+}

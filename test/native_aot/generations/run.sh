@@ -253,8 +253,8 @@ Step :: () -> int {
 SOURCE
 expect_status 3
 
-# Readonly scoped parameters lower by value. A recursive state write reached
-# through that reader must not be overwritten by the outer cached record.
+# A readonly scoped reference must not publish the outer cached record over
+# a recursive call's retained state write.
 cat > "$project/Main.chibi" <<'SOURCE'
 package loop
 Counter :: struct { count: int; }
@@ -267,6 +267,51 @@ Step :: () -> int {
     return counter.count;
 }
 Observe :: (value: ^Counter) -> int { ignored := Step(); return value.count; }
+SOURCE
+expect_status 3
+
+# A readonly alias comes before a writable alias of the same retained record.
+# It still observes the write by reference; only the writable alias publishes.
+cat > "$project/Main.chibi" <<'SOURCE'
+package loop
+Counter :: struct { count: int; }
+Main :: () -> int { return 0; }
+Frame :: () -> int { first := Step(); if first != 2 { return first; } return Step(); }
+Step :: () -> int {
+    counter: retain Counter = {count: 0};
+    counter.count += 1;
+    if counter.count == 1 {
+        observed := Change(&counter, &counter);
+        if observed != 2 { return 80; }
+    }
+    return counter.count;
+}
+Change :: (reader: ^Counter, writer: ^Counter) -> int {
+    writer.count += 1;
+    return reader.count;
+}
+SOURCE
+expect_status 3
+
+# Reversing the alias order preserves the same reference and publication rules.
+cat > "$project/Main.chibi" <<'SOURCE'
+package loop
+Counter :: struct { count: int; }
+Main :: () -> int { return 0; }
+Frame :: () -> int { first := Step(); if first != 2 { return first; } return Step(); }
+Step :: () -> int {
+    counter: retain Counter = {count: 0};
+    counter.count += 1;
+    if counter.count == 1 {
+        observed := Change(&counter, &counter);
+        if observed != 2 { return 80; }
+    }
+    return counter.count;
+}
+Change :: (writer: ^Counter, reader: ^Counter) -> int {
+    writer.count += 1;
+    return reader.count;
+}
 SOURCE
 expect_status 3
 

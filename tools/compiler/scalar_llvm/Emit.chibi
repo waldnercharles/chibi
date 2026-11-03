@@ -283,7 +283,7 @@ Referenced :: (rows: facts.Row[], head: int, variable: int) -> bool {
     if (variable >= rows[head].count) {
         return false;
     }
-    return rows[head + 1 + variable].literal == 1;
+    return facts.ReferenceParameter(rows[head + 1 + variable].literal);
 }
 // The row after the declaration at `at`: a Record row and its members, or a
 // Union row and its variants, each with its members; -1 when a count is
@@ -1398,7 +1398,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             }
             for (argument in 0..<taken.count) {
                 parameter := rows[heads[operand.value] + 1 + argument];
-                if (!Scalar(parameter.type) || parameter.literal == 1) {
+                if (!Scalar(parameter.type) || facts.ReferenceParameter(parameter.literal)) {
                     return "scalar function address needs a function of numbers and bools";
                 }
             }
@@ -1467,7 +1467,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             for (argument in 0..<operand.count) {
                 parameter := rows[heads[operand.value] + 1 + argument];
                 wanted := parameter.type;
-                if (parameter.literal == 1) {
+                if (facts.ReferenceParameter(parameter.literal)) {
                     wanted += facts.ReferenceType;
                 }
                 if (stack[base + argument] != wanted) {
@@ -1673,13 +1673,15 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
     for (index in 0..<declaration.count) {
         param := rows[head + 1 + index];
         if (param.type == facts.TaskType) { return "scalar task parameters require cancellation unwind support"; }
-        if (param.literal == 1 && ManagedVariable(boxes.boxed, index)) {
+        reference := facts.ReferenceParameter(param.literal);
+        if (reference && ManagedVariable(boxes.boxed, index)) {
             return "a borrowed reference cannot be promoted to an escaping managed cell";
         }
         if (param.kind != facts.ParameterRow || param.name == "" || param.text != "" || !Valued(records, param.type) ||
-            param.value != index || param.count != 0 || (param.literal != 0 && param.literal != 1 && param.literal != 2) ||
-            (param.literal == 1 && (identified || function == 0)) ||
-            (param.literal == 2 && !ArrayTyped(NativeType(param.type))) ||
+            param.value != index || param.count != 0 ||
+            (param.literal != i64(facts.ParameterValue) && param.literal != i64(facts.ParameterOwnedArray) && !reference) ||
+            (reference && (identified || function == 0)) ||
+            (param.literal == i64(facts.ParameterOwnedArray) && !ArrayTyped(NativeType(param.type))) ||
             !Located(param, starts, size) ||
             !Within(param, declaration)) {
             return "invalid scalar parameter row";
@@ -2480,7 +2482,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 owned_vars.append(index);
                 owned_types.append(type);
             }
-            if (waiting_function && type == native.ArrayType + native.PointerType && rows[head + 1 + index].literal != 2) {
+            if (waiting_function && type == native.ArrayType + native.PointerType &&
+                rows[head + 1 + index].literal != i64(facts.ParameterOwnedArray)) {
                 // A suspended callee owns its value parameter independently of
                 // the caller's lifetime, including discarded task observers.
                 kept := KeepValue(managed, rows[head + 1 + index].type, slot, slot + 1);
@@ -2491,7 +2494,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 owned_vars.append(index);
                 owned_types.append(type);
             }
-            if (rows[head + 1 + index].literal == 2) {
+            if (rows[head + 1 + index].literal == i64(facts.ParameterOwnedArray)) {
                 // A parameter the function changes is its own container.
                 owned_vars.append(index);
                 owned_types.append(type);
@@ -3081,7 +3084,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         // is the callee's own.
                         if (Holds(fresh, stack[base + argument]) &&
                             ArrayTyped(slots[shape.first_slot + stack[base + argument]])) {
-                            if (rows[heads[operand.value] + 1 + argument].literal == 2) {
+                            if (rows[heads[operand.value] + 1 + argument].literal == i64(facts.ParameterOwnedArray)) {
                                 fresh = Without(fresh, stack[base + argument]);
                             } else {
                                 pending.append(stack[base + argument]);
@@ -3796,6 +3799,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     // retained local. Publish it before later expression calls
                     // or control-flow exits, while the binding is in scope.
                     for (argument in 0..<item.target) {
+                        // A readonly alias cannot replace a recursive call's
+                        // state with the outer invocation's cached snapshot.
+                        // Filter before deduplication: a later alias may write.
+                        if (item.op == native.Call && rows[heads[item.left] + 1 + argument].literal ==
+                            i64(facts.ParameterReadonlyReference)) { continue; }
                         passed := arguments[shape.first_argument + item.right + argument];
                         origin := SortedIndex(reference_slots, passed);
                         if (origin < 0) { continue; }

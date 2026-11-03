@@ -42,6 +42,11 @@ flag and sanitizer handling are tested through the test-owned foreign-code
 Graph fixtures. C ABI consumers link the authored facade archive and exercise
 its public header without a C compiler host or VM.
 
+The initial Release build uses the verified seed. Later core evidence and
+selector preparation pass that Release compiler explicitly through
+`--native-driver`. The independent native fixed-point proof retains its
+verified-seed starting point.
+
 Normal CI job timeouts bound each job. Individual process regressions retain
 checks for deadlines, cancellation, exit status and descendant cleanup. Test
 selection follows the affected behavior and the registered suites, without a

@@ -465,6 +465,22 @@ jobs:
       - name: Check native Windows host clocks
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: ./test/native_aot/host_clock/Run.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -LLVM $env:CHIBI_WINDOWS_LLVM
+      - name: Check native Windows typed failures and image ownership
+        id: windows-typed-proof
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        run: ./test/native_aot/task_owners/RunWindows.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM -Root $PWD.Path
+      - name: Preserve failed Windows typed failure evidence
+        if: ${{ failure() && steps.windows-typed-proof.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-typed-failure-evidence
+          path: ${{ runner.temp }}/chibi-typed-generation-*/**
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
       - name: Check native Windows directory errors and source inventories
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: ./test/native_aot/directories/Run.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM

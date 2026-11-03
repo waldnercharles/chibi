@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const {mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync} = require('node:fs');
+const {mkdtempSync, realpathSync, mkdirSync, writeFileSync, readFileSync, rmSync} = require('node:fs');
 const {spawnSync} = require('node:child_process');
 const {tmpdir} = require('node:os');
 const path = require('node:path');
@@ -10,7 +10,7 @@ const core = path.resolve(__dirname, '../../.github/ci/linux-core.sh');
 // propagation. Language and ownership cases execute in their owning suites.
 for (const failure of ['', 'native']) {
   test(`core builds native products once and preserves selector failure (${failure || 'success'})`, () => {
-    const root = mkdtempSync(path.join(tmpdir(), 'chibi-ci-core-'));
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'chibi-ci-core-')));
     try {
       mkdirSync(path.join(root, 'tools'));
       mkdirSync(path.join(root, 'test/native_aot/targets'), {recursive: true});
@@ -47,7 +47,7 @@ esac
       assert.equal(commands.filter(line => line.startsWith('build --release')).length, 1);
       assert.equal(commands.filter(line => line.startsWith('native-evidence ')).length, 1);
       assert.equal(commands.includes('target-runners'), process.platform === 'linux');
-      assert.ok(commands.some(line => line === 'test short native projects language language-scalar-native'));
+      assert.ok(commands.some(line => line === `test --native-driver ${root}/build-release/sdk/chibi short native projects language language-scalar-native`));
       assert.ok(commands.every(line => !/--host|--compiler-host|--sanitizers/.test(line)));
     } finally { rmSync(root, {recursive: true, force: true}); }
   });

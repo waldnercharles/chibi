@@ -103,6 +103,17 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
                      names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
     value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.AwaitExpression)) {
+        awaited := Unparenthesized(forest, Field(forest, value, syntax.FieldValue));
+        if (Is(forest, awaited, syntax.CallExpression)) {
+            callee := CalledFunction(forest, text, callables, [], names, package, awaited);
+            if (callee >= 0 && callables[callee].waits) {
+                shape := TaskSuccessValue(callables[callee], params);
+                if (shape.container == ArrayContainer) { return shape; }
+            }
+        }
+        return none;
+    }
     if (Is(forest, value, syntax.ArrayExpression)) {
         return ScalarLiteralShape(forest, text, callables, params, names, types, members, package, value);
     }
@@ -121,6 +132,11 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         found := Lookup(names, Text(forest, text, value));
         if (found >= 0 && names[found].container == ArrayContainer) {
             return {storage: names[found].storage, container: ArrayContainer, record: names[found].record};
+        }
+        if (found >= 0 && names[found].container == 0 && names[found].storage == UnionStorage &&
+            names[found].record >= 0 && types[names[found].record].kind == TaskResultDecl) {
+            shape := TaskResultSuccess(types, names[found].record);
+            if (shape.container == ArrayContainer && TaskResultPresent(forest, text, names[found], value)) { return shape; }
         }
         if (found >= 0 && names[found].container == 0 && names[found].storage == UnionStorage &&
             ScalarOptional(types, names[found].record)) {
@@ -160,7 +176,8 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
             return ScalarMadeShape(forest, text, callables, params, names, types, members, package, value);
         }
         callee := CalledFunction(forest, text, callables, [], names, package, value);
-        if (callee >= 0 && callables[callee].result_container == ArrayContainer) {
+        if (callee >= 0 && callables[callee].result_container == ArrayContainer &&
+            (!callables[callee].waits || ImmediatelyAwaited(forest, value))) {
             return {storage: callables[callee].result, container: ArrayContainer,
                     record: callables[callee].result_record};
         }
@@ -561,7 +578,7 @@ ScalarArrayValue :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         if (type != held) { output.append(ScalarAt(forest, node, facts.PayloadRow, held, 0, 1, "")); }
         return ScalarOperands.Built(output);
     }
-    if ((Is(forest, node, syntax.CallExpression) || Is(forest, node, syntax.MemberExpression) || Is(forest, node, syntax.DereferenceExpression) ||
+    if ((Is(forest, node, syntax.AwaitExpression) || Is(forest, node, syntax.CallExpression) || Is(forest, node, syntax.MemberExpression) || Is(forest, node, syntax.DereferenceExpression) ||
          Is(forest, node, syntax.IndexExpression)) && held != 0) {
         return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, node, 0, rows);
     }

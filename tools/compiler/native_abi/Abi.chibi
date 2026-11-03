@@ -169,6 +169,15 @@ TextTag: int : 12;
 // accepted by the legacy C context or by an exported scalar signature.
 pub FormatArrayTag: int : 13;
 pub FormatMapTag: int : 14;
+// A record summary carries its already truncated nominal name as text. Its
+// modifiers are ignored, unlike an ordinary string's modifiers.
+pub FormatRecordTag: int : 15;
+// Format's literal marks record-name arguments 1..12; argument 0 is the format.
+// Later operands still execute, but the existing formatter cannot select them.
+pub FormatRecordMask: i64 : 8190;
+pub FormatRecordArgument :: (mask: i64, argument: int) -> bool {
+    return argument > 0 && argument <= 12 && (mask & (i64(1) << u32(argument))) != 0;
+}
 // The type a runtime value of this storage records: ExportType's, or a
 // string's, or 0 when none carries it.
 pub ValueTag :: (storage: int) -> int {
@@ -186,6 +195,15 @@ pub ValueTag :: (storage: int) -> int {
 pub ContextType :: () -> string {
     return "{ ptr, ptr, ptr, ptr, ptr }";
 }
+// Foreign calls keep an internal zero int for a discarded void action;
+// these modes select its actual C signature, never a fabricated C result.
+pub ForeignDirect: int : 0;
+pub ForeignIndirect: int : 1;
+pub ForeignDirectVoid: int : 2;
+pub ForeignIndirectVoid: int : 3;
+pub ForeignCallMode :: (mode: int) -> bool { return mode >= ForeignDirect && mode <= ForeignIndirectVoid; }
+pub ForeignIsIndirect :: (mode: int) -> bool { return mode == ForeignIndirect || mode == ForeignIndirectVoid; }
+pub ForeignIsVoid :: (mode: int) -> bool { return mode == ForeignDirectVoid || mode == ForeignIndirectVoid; }
 // Standalone managed execution extends the legacy prefix with one stable
 // execution-family heap owner. Generic C-bundle/library admission stays
 // separate until its embedding contract supplies this owner explicitly.

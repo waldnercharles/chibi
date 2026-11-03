@@ -1,0 +1,30 @@
+package owned_resize_generation
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fclose :: (stream: rawptr) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+}
+Payload :: struct { words: string[]; numbers: int[]; }
+Exists :: (path: string) -> bool { return access(path, 0) == 0; }
+Text :: (count: int) -> string { return text_from_bytes(resize([u8(120)], count)); }
+Worker :: () -> int {
+    payload: Payload = {words: [Text(3), Text(5)], numbers: [int(11), 37]};
+    while !Exists("allow-old") { yield; }
+    rows := [payload];
+    if Exists("resize-functional-case") {
+        changed := resize(rows, 2);
+        return length(changed);
+    }
+    rows.resize(2);
+    return length(rows);
+}
+Main :: () -> int {
+    worker := Worker();
+    stream := fopen("owner-ready", "wb");
+    assert(stream != 0);
+    closed := fclose(stream);
+    assert(closed == 0);
+    return 0;
+}
+Frame :: () -> int { return 0; }

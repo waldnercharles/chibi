@@ -976,7 +976,7 @@ FactModule :: () -> facts.Row[] {
     return rows;
 }
 FactRejections :: (accepted: facts.Row[]) {
-    for (which in 0..<6) {
+    for (which in 0..<7) {
         rows := accepted;
         changed := false;
         for (at in 3..<length(rows)) {
@@ -1010,6 +1010,10 @@ FactRejections :: (accepted: facts.Row[]) {
                 changed = true;
             } else if (which == 5 && row.value == facts.MapGet) {
                 row.literal += i64(1) << u32(32);
+                rows[at] = row;
+                changed = true;
+            } else if (which == 6 && row.value == facts.MapGet) {
+                row.value = facts.MapGetOptional;
                 rows[at] = row;
                 changed = true;
             }

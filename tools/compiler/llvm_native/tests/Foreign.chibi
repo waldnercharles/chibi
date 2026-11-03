@@ -40,6 +40,40 @@ ForeignCallDeclaresTheSymbol :: () {
     assert(strings.Contains(text, "%v3 = call i32 @chibi_probe_add(i32 %c3_0, i32 %c3_1)\n"));
     assert(strings.Contains(text, "br label %p4\n"));
 }
+@test
+ForeignVoidCallUsesTheCSignature :: () {
+    code := Foreigns();
+    code[3].left = abi.ForeignDirectVoid;
+    text := Emitted(ForeignModule(code, [6, 6, 6], ["chibi_probe_notify"]));
+    assert(strings.Contains(text, "declare void @chibi_probe_notify(i32, i32)\n"));
+    assert(strings.Contains(text, "call void @chibi_probe_notify(i32 %c3_0, i32 %c3_1)\n"));
+    assert(!strings.Contains(text, "%v3 = call"));
+    assert(strings.Contains(text, "store i32 0, ptr %s2"));
+}
+@test
+ForeignVoidModesHaveOnlyTheInternalIntResult :: () {
+    for (mode in [abi.ForeignDirectVoid, abi.ForeignIndirectVoid, int(-1), 4]) {
+        ChangedForeign(Code(native.ForeignCall, abi.BoolStorage, 2, mode, 0, 2, 0),
+                       [6, 6, abi.BoolStorage], ["chibi_probe_notify"], ForeignMismatch());
+    }
+    for (symbol in ["chibi_native_test_index", "chibi_native_test_begin", "chibi_native_test_end", "chibi_native_scope_end"]) {
+        ChangedForeign(Code(native.ForeignCall, abi.IntStorage, 2, abi.ForeignDirectVoid, 0, 0, 0),
+                       [6, 6, 6], [symbol], ForeignMismatch());
+    }
+    ChangedForeign(Code(native.ForeignCall, abi.IntStorage, 2, abi.ForeignDirectVoid, 0, 1, 0),
+                   [6, 6, 6], ["chibi_native_test_expect"], ForeignMismatch());
+    code := Foreigns();
+    code[1] = Code(native.Constant, abi.WordStorage, 0, 0, 0, 0, 100);
+    code[3] = Code(native.ForeignCall, abi.IntStorage, 2, abi.ForeignDirectVoid, 0, 1, 0);
+    Rejects(ForeignModule(code, [abi.WordStorage, 6, 6], ["chibi_native_scope_begin"]), ForeignMismatch());
+    for (symbol in ["chibi_native_test_busy", "chibi_native_step"]) {
+        code = Foreigns();
+        count := 0;
+        if (symbol == "chibi_native_test_busy") { count = 1; }
+        code[3] = Code(native.ForeignCall, abi.IntStorage, 2, abi.ForeignDirectVoid, 0, count, 0);
+        Emitted(ForeignModule(code, [6, 6, 6], [symbol]));
+    }
+}
 // A bool crosses the C ABI zero-extended, as an argument and as a result.
 @test
 ForeignBoolsAreZeroExtended :: () {
@@ -110,6 +144,19 @@ ForeignCallThroughAnAddress :: () {
     assert(strings.Contains(text, "%v4 = call i32 %callee4(i32 %c4_1, i32 %c4_2)\n"));
     assert(strings.Contains(text, "%null4 = icmp eq ptr %callee4, null\n  br i1 %null4, label %trap, label %call4\ncall4:\n"));
     assert(!strings.Contains(text, "declare i32 @"));
+}
+@test
+ForeignVoidProcedureConsumesAndChecksItsAddress :: () {
+    code := Indirects();
+    code[4].left = abi.ForeignIndirectVoid;
+    text := Emitted(IndirectModule(code, [9, 6, 6, 6], [""]));
+    assert(strings.Contains(text, "%null4 = icmp eq ptr %callee4, null"));
+    assert(strings.Contains(text, "call void %callee4(i32 %c4_1, i32 %c4_2)\n"));
+    assert(!strings.Contains(text, "%v4 = call"));
+    assert(strings.Contains(text, "store i32 0, ptr %s3"));
+    Rejects(IndirectModule(code, [9, 6, 6, 6], ["named"]), ForeignMismatch());
+    code[4].target = 0;
+    Rejects(IndirectModule(code, [9, 6, 6, 6], [""]), ForeignMismatch());
 }
 @test
 IndirectCallNeedsAWordAddress :: () {

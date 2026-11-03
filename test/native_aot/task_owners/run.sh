@@ -20,7 +20,7 @@ chmod +x "$work/llvm/opt" "$work/llvm/llc"
 ln -s "$llvm/$linker" "$work/llvm/$linker"
 export CHIBI_TASK_OWNER_LLVM=$llvm CHIBI_TASK_OWNER_AUDIT=$root/test/native_aot/task_owners
 for level in 0 2; do
-    for source in Main Patterns Failure Mixed Promises PromiseFailure; do
+    for source in Main Patterns Failure Mixed Promises PromiseFailure NamedPromises; do
         input=$root/test/native_aot/task_owners/$source.chibi
         if [ "$source" = Patterns ]; then input=$root/test/native_aot/patterns/OwnedWaiting.chibi; fi
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \

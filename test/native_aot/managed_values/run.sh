@@ -22,7 +22,15 @@ set -eu
 for source do
     case "$source" in *.ll)
         if grep -q 'define i32 @chibi_scalar(ptr %ctx)' "$source"; then
-            sed -e "s/define i32 @chibi_scalar(ptr %ctx)/define i32 @$CHIBI_VALUE_ENTRY(ptr %ctx)/" -e '/^declare i64 @chibi_value_test_allocations()$/d' -e '/^declare i64 @chibi_pattern_test_live()$/d' "$source" > "$source.audit"
+            sed -e "s/define i32 @chibi_scalar(ptr %ctx)/define i32 @$CHIBI_VALUE_ENTRY(ptr %ctx)/" -e '/^declare i64 @chibi_value_test_allocations()$/d' -e '/^declare i64 @chibi_pattern_test_live()$/d' -e '/^declare i64 @chibi_value_test_owner_calls()$/d' "$source" > "$source.audit"
+            if [ "${CHIBI_VALUE_OWNER_AUDIT:-0}" = 1 ]; then
+                awk '
+                    /^define internal .*@chibi_array\.[0-9]+\.(copy|drop)\(/ { counted = 1 }
+                    { print }
+                    counted && /^entry:/ { print "  %owner.audit = atomicrmw add ptr @chibi_value_test_owner_calls_total, i64 1 monotonic"; counted = 0 }
+                ' "$source.audit" > "$source.owners"
+                mv "$source.owners" "$source.audit"
+            fi
             cat "$CHIBI_VALUE_AUDIT" >> "$source.audit"
             mv "$source.audit" "$source"
         fi ;;
@@ -45,14 +53,17 @@ entry:
   ret i64 %live
 }
 LIVE
+cat "$root/test/native_aot/managed_values/Audit.ll" "$root/test/native_aot/managed_values/OwnerCalls.ll" > "$work/width-audit.ll"
 for level in 0 2; do
-    for source in Records Foreign ForeignPlaces ForeignRecord ForeignPath Backed Growth Fields Clock Hash ConditionalOptionals NestedMath MathScopes Patterns PatternLeases TextFormat TextFormatMain TextFormatStrings TextFormatFamily; do
+    for source in Records Foreign ForeignVoid ForeignPlaces ForeignRecord ForeignPath DeepArrayFields DeepArrayGrowth DeepArrayWidth Backed Growth Fields Clock Hash ConditionalOptionals NestedMath MathScopes Patterns PatternLeases TextFormat TextFormatMain TextFormatStrings TextFormatFamily TextFormatRecords TextFormatOptionalRecords; do
         input=$root/test/native_aot/managed_values/$source.chibi
-        export CHIBI_VALUE_ENTRY=chibi_value_test_entry CHIBI_VALUE_AUDIT=$root/test/native_aot/managed_values/Audit.ll
+        project=$root/tools/compiler
+        export CHIBI_VALUE_ENTRY=chibi_value_test_entry CHIBI_VALUE_AUDIT=$root/test/native_aot/managed_values/Audit.ll CHIBI_VALUE_OWNER_AUDIT=0
+        if [ "$source" = DeepArrayWidth ]; then export CHIBI_VALUE_OWNER_AUDIT=1 CHIBI_VALUE_AUDIT=$work/width-audit.ll; fi
         if [ "$source" = Records ]; then input=$records_source; fi
         if [ "$source" = NestedMath ]; then input=$root/test/native_aot/math_builtin/Nested.chibi; fi
         if [ "$source" = MathScopes ]; then input=$root/test/native_aot/math_builtin/Scopes.chibi; fi
-        if [ "$source" = ConditionalOptionals ] || [ "$source" = Patterns ] || [ "$source" = PatternLeases ] || [ "$source" = TextFormat ] || [ "$source" = TextFormatMain ] || [ "$source" = TextFormatStrings ] || [ "$source" = TextFormatFamily ]; then
+        if [ "$source" = ConditionalOptionals ] || [ "$source" = Patterns ] || [ "$source" = PatternLeases ] || [ "$source" = TextFormat ] || [ "$source" = TextFormatMain ] || [ "$source" = TextFormatStrings ] || [ "$source" = TextFormatFamily ] || [ "$source" = TextFormatRecords ] || [ "$source" = TextFormatOptionalRecords ]; then
             case "$source" in
                 Patterns) input=$root/test/native_aot/patterns/Main.chibi ;;
                 PatternLeases) input=$root/test/native_aot/patterns/Leases.chibi ;;
@@ -61,16 +72,45 @@ for level in 0 2; do
                 TextFormatMain) input=$root/test/native_aot/text_format/Main.chibi ;;
                 TextFormatStrings) input=$root/test/native_aot/text_format/Strings.chibi ;;
                 TextFormatFamily) input=$root/test/native_aot/text_format/Family.chibi ;;
+                TextFormatRecords) input=$root/test/native_aot/text_format/Records.chibi; project=$root/test/native_aot/text_format ;;
+                TextFormatOptionalRecords) input=$root/test/native_aot/text_format/OptionalRecords.chibi ;;
             esac
             export CHIBI_VALUE_ENTRY=managed_source.entry CHIBI_VALUE_AUDIT=$work/conditional-audit.ll
         fi
-        "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+        "$compiler" --compiler "$project" --core "$root/packages/core" \
             --source "$input" --entry Main \
             --output "$work/$source-O$level" --llvm "$work/llvm" --target "$triple" --level "$level" --jobs 1
         "$work/$source-O$level"
         printf 'PASS native managed %s O%s, allocations balanced\n' "$source" "$level"
     done
 done
+# Logical bracket writes check the initial place before RHS effects and the
+# current place again after callbacks. These failures keep category zero.
+for level in 0 2; do
+    for source in Initial Late LateField; do
+        "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+            --source "$root/test/native_aot/managed_values/deep_places/$source.chibi" --entry Main \
+            --output "$work/deep-$source-O$level" --llvm "$llvm" --target "$triple" --level "$level" --jobs 1
+        set +e
+        "$work/deep-$source-O$level" > "$work/deep-$source.log" 2>&1
+        failed=$?
+        set -e
+        test "$failed" -eq 134
+        grep -q 'Referenced array element is unavailable' "$work/deep-$source.log"
+        if grep -q 'RHS evaluated\|IndexOutOfRange' "$work/deep-$source.log"; then cat "$work/deep-$source.log"; exit 1; fi
+    done
+done
+# Mutating method labels follow the ordinary parameter-order rule.
+printf 'preserved\n' > "$work/deep-labels"
+set +e
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_aot/managed_values/deep_places/RejectedLabels.chibi" --entry Main \
+    --output "$work/deep-labels" --llvm "$llvm" --target "$triple" --level 0 --jobs 1 > "$work/deep-labels.log" 2>&1
+failed=$?
+set -e
+test "$failed" -eq 1
+test "$(cat "$work/deep-labels")" = preserved
+grep -q "name an array update's arguments in parameter order" "$work/deep-labels.log"
 # The public native lifecycle operations also run directly, independently of
 # scalar lowering's ownership decisions.
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
@@ -88,4 +128,22 @@ if [ -n "$reference" ]; then
     printf '%s\n' 'package field_places' '@test' 'Calls :: () { result := Main(); assert(result == 0); }' > "$work/reference-fields/Tests.chibi"
     "$reference" --project-root "$work/reference-fields" --test > "$work/reference-fields.log" 2>&1 || { cat "$work/reference-fields.log"; exit 1; }
     cat "$work/reference-fields.log"
+    mkdir "$work/reference-deep-fields"
+    cp "$root/test/native_aot/managed_values/DeepArrayFields.chibi" "$work/reference-deep-fields/Main.chibi"
+    printf '%s\n' 'package deep_array_fields' '@test' 'Calls :: () { Cases(); }' > "$work/reference-deep-fields/Tests.chibi"
+    "$reference" --project-root "$work/reference-deep-fields" --test > "$work/reference-deep-fields.log" 2>&1 || { cat "$work/reference-deep-fields.log"; exit 1; }
+    cat "$work/reference-deep-fields.log"
+    for source in Initial Late LateField; do
+        mkdir "$work/reference-deep-$source"
+        input=$root/test/native_aot/managed_values/deep_places/$source.chibi
+        cp "$input" "$work/reference-deep-$source/Main.chibi"
+        printf '%s\n' "$(sed -n '1p' "$input")" '@test' 'Check :: () { result := Main(); assert(result == 0); }' > "$work/reference-deep-$source/Tests.chibi"
+        set +e
+        "$reference" --project-root "$work/reference-deep-$source" --test > "$work/reference-deep-$source.log" 2>&1
+        failed=$?
+        set -e
+        test "$failed" -eq 1
+        grep -Eq 'Referenced (array element|storage) is unavailable' "$work/reference-deep-$source.log"
+        if grep -q 'RHS evaluated' "$work/reference-deep-$source.log"; then cat "$work/reference-deep-$source.log"; exit 1; fi
+    done
 fi

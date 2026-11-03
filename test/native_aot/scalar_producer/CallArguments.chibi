@@ -1,5 +1,25 @@
 package native_driver
 
+ForeignVoidProjection :: () {
+    rows := Produced("package scalar\nforeign import libc \"system:c\"\nforeign libc {\nresolve::()->rawptr\nnotify::(value:int)\n}\nMain::()->int{p:fn(value:int)=resolve();p(1);notify(2);return 0;}");
+    ValidateRows(rows, "");
+    direct := -1;
+    indirect := -1;
+    for (row, index in rows) {
+        if (row.kind != facts.ForeignRow) { continue; }
+        if (row.value == abi.ForeignDirectVoid) { direct = index; }
+        if (row.value == abi.ForeignIndirectVoid) { indirect = index; }
+    }
+    assert(direct >= 0 && indirect >= 0);
+    mismatch := "scalar foreign call differs from its operands";
+    RejectChanged(rows, [Changed(direct, TypeField, i64(facts.BoolType))], mismatch);
+    RejectChanged(rows, [Changed(direct, ValueField, 4)], mismatch);
+    RejectChanged(rows, [Named(direct, NameField, "")], mismatch);
+    RejectChanged(rows, [Named(indirect, NameField, "notify")], mismatch);
+    RejectChanged(rows, [Changed(indirect, CountField, 0)], mismatch);
+    RejectChanged(rows, [Changed(indirect, LiteralField, i64(facts.ForeignReversed))], mismatch);
+}
+
 CallArgumentsProjection :: () {
     rows := Produced("package scalar\nMain :: () -> int { return Apply(Pick); }\nApply :: (op: fn(first: int, second: bool) -> int) -> int { return op(second: true, first: 7); }\nPick :: (x: int, flag: bool) -> int { if flag { return x; } return 0; }\n");
     assert(rows[1].kind == facts.DocumentRow);

@@ -454,7 +454,79 @@ ScalarManagedOptionalChecksForwardPayloadExtent :: () {
     }
 }
 
+ScalarRecordSummariesValidateTheirOperands :: () {
+    original := TaskFacts(facts.CallPlain, false);
+    summary := TaskFact(facts.TextRow, facts.StringType, facts.TextRecordSummary, 1, "", 4, 5);
+    summary.text = "sample.Point";
+    format := TaskFact(facts.TextRow, facts.StringType, facts.TextFormat, 2, "", 5, 6);
+    format.literal = 2;
+    rows := [original[0], original[1],
+             TaskFact(facts.RecordRow, 0, 0, 1, "sample.Point", 0, 1),
+             TaskFact(facts.MemberRow, facts.IntType, 0, 0, "x", 0, 1),
+             TaskFact(facts.FunctionRow, facts.IntType, 0, 0, "Main", 1, 64),
+             TaskFact(facts.LocalRow, facts.StringType, 0, 4, "summary", 2, 10),
+             TaskFact(facts.LiteralRow, facts.StringType, 0, 0, "", 3, 4),
+             TaskFact(facts.ZeroRow, facts.RecordType, 0, 0, "", 3, 4), summary, format,
+             TaskFact(facts.ReturnRow, 0, 0, 1, "", 11, 13),
+             TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 12, 13)];
+    validated := scalar.Validate(rows);
+    if (validated != "") { print_string(validated); }
+    assert(validated == "");
+    expected := "scalar record summary differs from its operands";
+    assert(scalar.Validate(Changed(rows, 8, Count, 0)) == expected);
+    assert(scalar.Validate(Changed(rows, 8, LiteralValue, 1)) == expected);
+    assert(scalar.Validate(Changed(rows, 8, Type, facts.IntType)) == expected);
+    assert(scalar.Validate(Renamed(rows, 8, "name", summary.text)) == expected);
+    assert(scalar.Validate(Renamed(rows, 8, "", text_from_bytes(resize([u8(120)], 64)))) == expected);
+    for (mask in [int(1), 8192, -1]) {
+        assert(scalar.Validate(Changed(rows, 9, LiteralValue, mask)) == "scalar text read differs from its operands");
+    }
+    assert(scalar.Validate(Changed(rows, 9, LiteralValue, 4)) == "scalar record summary mask differs from its operands");
+    wrong := Changed(Changed(rows, 7, Kind, facts.LiteralRow), 7, Type, facts.IntType);
+    assert(scalar.Validate(wrong) == expected);
+    // A marked argument must remain text even when it is fabricated without
+    // the record projection, as with any public facts input.
+    wrong = [rows[0], rows[1], rows[2], rows[3], rows[4],
+             TaskFact(facts.LocalRow, facts.StringType, 0, 3, "summary", 2, 10), rows[6], wrong[7], format,
+             rows[10], rows[11]];
+    assert(scalar.Validate(wrong) == "scalar record summary mask differs from its operands");
+}
+
+ScalarBorrowedRecordSummaryDoesNotAcquireFields :: () {
+    original := TaskFacts(facts.CallPlain, false);
+    for (width in [int(1), 128]) {
+        rows := [original[0], original[1], TaskFact(facts.RecordRow, 0, 0, width, "sample.Wide", 0, 1)];
+        for (field in 0..<width) {
+            rows.append(TaskFact(facts.MemberRow, facts.StringType, field, 0, format_text("field{}", field), 0, 1));
+        }
+        summary := TaskFact(facts.TextRow, facts.StringType, facts.TextRecordSummary, 1, "", 38, 39);
+        summary.text = "sample.Wide";
+        rows.extend([TaskFact(facts.FunctionRow, facts.IntType, 0, 0, "Main", 1, 32),
+                     TaskFact(facts.ReturnRow, 0, 0, 1, "", 2, 4),
+                     TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 3, 4),
+                     TaskFact(facts.FunctionRow, facts.StringType, 0, 1, "Summary", 33, 64),
+                     TaskFact(facts.ParameterRow, facts.RecordType, 0, 0, "record", 34, 35),
+                     TaskFact(facts.ReturnRow, 0, 0, 2, "", 36, 40),
+                     TaskFact(facts.ReadRow, facts.RecordType, 0, 0, "", 37, 38), summary]);
+        switch scalar.EmitProgramFor(abi.LinuxX64(), rows, "") {
+            case .Emitted(text):
+                start := strings.Index(text, "@chibi_scalar.1(");
+                assert(start >= 0);
+                body := strings.Slice(text, start, strings.ByteLength(text) - start);
+                body = strings.Slice(body, 0, strings.Index(body, "\n}"));
+                assert(!strings.Contains(body, "@chibi_value."));
+                // One copy saves the by-value parameter. The summary adds no
+                // record read; returning its constant text may retain once.
+                assert(strings.Index(body, "load %record0") == strings.LastIndex(body, "load %record0"));
+                assert(strings.Index(body, "@chibi_scalar.retain") == strings.LastIndex(body, "@chibi_scalar.retain"));
+            case: assert(false, "borrowed record summaries emit without field ownership work");
+        }
+    }
+}
+
 pub Tests :: () -> int {
+    ScalarBorrowedRecordSummaryDoesNotAcquireFields();
+    ScalarRecordSummariesValidateTheirOperands();
     ScalarManagedOptionalChecksForwardPayloadExtent();
     ScalarForeignArgumentOrderIsBounded();
     ScalarReversedRemainderChecksFloatingOperands();

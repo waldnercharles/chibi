@@ -1,0 +1,80 @@
+package string_views
+
+Window :: union { Missing | Present(window: view string[]) }
+Text :: (value: int) -> string { return text_from_bytes([u8(65), u8(0), u8(wrap: value)]); }
+Owner :: (value: int) -> ^(string[]) { values: string[] = [Text(value), Text(value + 1)]; return &values; }
+ChangeRight :: (owner: ^(string[]), result: int) -> string { owner^ = [Text(9), Text(10)]; return Text(result); }
+Owned :: () -> Window {
+    owner := Owner(21);
+    selected := owner.view(0..<2);
+    if selected { return Window.Present(selected); }
+    return Window.Missing;
+}
+Churn :: () { for (index in 0..<4096) { transient := Owner(index % 127); } }
+ReadBeforeRight :: () -> bool {
+    values: string[] = [Text(1), Text(2)]; owner := &values; selected := owner.view(0..<2);
+    if selected {
+        same := selected[0] == ChangeRight(owner, 1);
+        return same && text_byte_at(selected[0], 2) == 9;
+    }
+    return false;
+}
+CloneOwns :: () -> int {
+    owner := Owner(3); selected := owner.view(0..<2);
+    if selected {
+        copied := selected.clone();
+        owner^ = [];
+        return text_byte_at(copied[0], 2) * 10 + text_byte_at(copied[1], 2);
+    }
+    return -1;
+}
+SliceOwns :: () -> int {
+    owner := Owner(5); selected := owner.view(0..<2);
+    if selected {
+        copied := selected[0..<1];
+        owner^ = [];
+        if copied {
+            before := text_byte_at(copied[0], 2);
+            copied[0] = Text(7);
+            return before * 10 + text_byte_at(copied[0], 2);
+        }
+    }
+    return -1;
+}
+WriteOwns :: () -> bool {
+    values: string[] = [Text(1)]; original := values; owner := &values; selected := owner.view(0..<1);
+    if selected {
+        incoming := Text(7);
+        selected[0] = incoming;
+        incoming = Text(8);
+        selected[0] = selected[0];
+        return text_byte_at(selected[0], 2) == 7 && text_byte_at(values[0], 2) == 7 &&
+               text_byte_at(original[0], 2) == 1 && text_byte_at(incoming, 2) == 8;
+    }
+    return false;
+}
+AppendAfterRight :: () -> int {
+    owner := Owner(1); selected := owner.view(0..<2);
+    if selected {
+        owner.append(ChangeRight(owner, 11));
+        return text_byte_at(selected[0], 2) * 100 + text_byte_at(owner^[2], 2);
+    }
+    return -1;
+}
+UnionRoot :: () -> int {
+    value := Owned();
+    Churn();
+    switch value {
+        case .Present(window): return text_byte_at(window[0], 2) * 100 + text_byte_at(window[1], 2);
+        case: return -1;
+    }
+}
+Main :: () -> int {
+    before := ReadBeforeRight(); assert(before);
+    cloned := CloneOwns(); assert(cloned == 34);
+    sliced := SliceOwns(); assert(sliced == 57);
+    written := WriteOwns(); assert(written);
+    appended := AppendAfterRight(); assert(appended == 911);
+    rooted := UnionRoot(); assert(rooted == 2122);
+    return 0;
+}

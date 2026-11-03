@@ -1,0 +1,7 @@
+package rejected_map_search
+Main :: () -> int {
+    values: [int:int][] = [[1:2]];
+    wrong: [string:int] = ["one":2];
+    copy := remove_item(values,wrong);
+    return length(copy);
+}

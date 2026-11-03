@@ -1,0 +1,19 @@
+package map_value_search
+RemovalOracle :: () -> int {
+    left:[int:int]=[1:2,3:4];right:[int:int]=[3:4,1:2];tail:[int:int]=[9:10];
+    values:[int:int][]=[left,right,tail];
+    first:[int:int]=[:];second:[int:int]=[:];
+    skipped:=false;kept:int=0;
+    for(value in values){
+        if(!skipped && contains([value],right)){skipped=true;continue;}
+        for(key,number in value){if(kept==0){first[key]=number;}else{second[key]=number;}}
+        kept+=1;
+    }
+    copy:[int:int][]=[first,second];
+    assert(skipped && kept==2 && length(copy)==2 && copy[0][1]==2 && copy[0][3]==4 && copy[1][9]==10);
+    assert(length(values)==3 && values[0][1]==2 && values[1][3]==4 && values[2][9]==10);
+    return 0;
+}
+
+@test
+EqualityAndIndependentRemoval :: () { Equality(); assert(RemovalOracle()==0); }

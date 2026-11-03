@@ -1,0 +1,85 @@
+package map_value_search
+Choice :: union { Number(value: f64) | Words(text: string, values: int[]) }
+Main :: () -> int {
+    Equality();
+    Removal();
+    Ordering();
+    return 0;
+}
+Equality :: () {
+    left:[int:int]=[1:2,3:4];
+    right:[int:int]=[3:4,1:2];
+    assert(contains([left],right));
+    duplicate:[int:int]=[1:2,1:3];
+    duplicate_equal:[int:int]=[1:3];
+    assert(duplicate[1]==3 && contains([duplicate],duplicate_equal));
+    replaced:=left;replaced[1]=3;
+    replaced_equal:[int:int]=[3:4,1:3];
+    assert(!contains([left],replaced) && contains([replaced],replaced_equal));
+    tombstones:=left;delete tombstones[1];tombstones[1]=2;
+    assert(contains([tombstones],right));
+    empty:[int:int]=[:];
+    empty_equal:[int:int]=[:];zero_entry:[int:int]=[1:0];
+    assert(contains([empty],empty_equal) && !contains([empty],zero_entry));
+    nested:[string:[int:int][]]=["rows":[left,right]];
+    nested_equal:[string:[int:int][]]=["rows":[right,left]];
+    assert(contains([nested],nested_equal));
+    choices:[int:Choice]=[1:Choice.Number(1)];
+    choices_equal:[int:Choice]=[1:Choice.Number(1)];choices_other:[int:Choice]=[1:Choice.Words("",[])];
+    assert(contains([choices],choices_equal));
+    assert(!contains([choices],choices_other));
+    zero:f64=0;invalid:=zero/zero;
+    nan_map:[int:f64]=[1:invalid];
+    assert(!contains([nan_map],nan_map));
+    distinct_nan:[int:f64]=[1:invalid];
+    assert(!contains([nan_map],distinct_nan));
+    nan_array:[int:f64[]]=[1:[invalid]];
+    assert(!contains([nan_array],nan_array));
+    distinct_array:[int:f64[]]=[1:[invalid]];
+    assert(!contains([nan_array],distinct_array));
+    negative:[int:f64]=[1:-0.0];
+    positive:[int:f64]=[1:0.0];
+    assert(contains([negative],positive));
+}
+Removal :: () {
+    left: [int:int] = [1:2,3:4];
+    right: [int:int] = [3:4,1:2];
+    tail: [int:int] = [9:10];
+    values: [int:int][] = [left,right,tail];
+    copy := remove_item(values,right);
+    // The recovered ordinary runtime zeroes surviving map payloads here.
+    // Its equality tests and an explicit entry-copy loop establish this result.
+    assert(length(copy)==2 && copy[0][1]==2 && copy[0][3]==4 && copy[1][9]==10);
+    second := remove_item(copy,right);
+    assert(length(second)==1 && second[0][9]==10);
+    second[0][9]=11;
+    assert(copy[1][9]==10 && values[2][9]==10 && second[0][9]==11);
+    absent: [int:int] = [99:100];
+    unchanged := remove_item(values,absent);
+    unchanged[0][1]=9;
+    assert(length(unchanged)==3 && unchanged[0][1]==9 && values[0][1]==2);
+    assert(length(values)==3 && values[0][1]==2 && values[1][3]==4 && values[2][9]==10);
+}
+Replace :: (values: ^([int:int][]), trace: ^int) -> [int:int] {
+    trace^ = trace^*10+1;
+    values^ = [[9:10]];
+    return [1:2];
+}
+Make :: () -> [int:int] { return [1:2]; }
+Ordering :: () {
+    item: [int:int] = [1:2];
+    values: [int:int][] = [item];
+    trace: int = 0;
+    assert(contains(Array:values,Item:Replace(&values,&trace)));
+    assert(trace==1 && values[0][9]==10);
+    values=[item]; trace=0;
+    assert(!contains(Item:Replace(&values,&trace),Array:values));
+    assert(trace==1 && values[0][9]==10);
+    values=[item]; trace=0;
+    removed:=remove_item(Array:values,Item:Replace(&values,&trace));
+    assert(length(removed)==0 && trace==1 && values[0][9]==10);
+    values=[item]; trace=0;
+    kept:=remove_item(Item:Replace(&values,&trace),Array:values);
+    assert(length(kept)==1 && kept[0][9]==10 && trace==1);
+    assert(contains([Make()],item));
+}

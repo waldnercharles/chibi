@@ -624,6 +624,7 @@ jobs:
             @{ name = 'deep-mapped-methods'; source = 'test/native_aot/map_programs/DeepMethods.chibi' },
             @{ name = 'nested-map-iteration'; source = 'test/native_aot/map_programs/NestedIteration.chibi' },
             @{ name = 'map-array-promises'; source = 'test/native_aot/map_programs/TaskMaps.chibi' },
+            @{ name = 'map-value-search'; source = 'test/native_aot/remove_item/Maps.chibi' },
             @{ name = 'sdk-paths'; source = 'test/bootstrap/fixtures/InstallPaths.chibi' },
             @{ name = 'library-loader'; source = 'test/native_aot/loader/Windows.chibi' }
           )

@@ -171,3 +171,16 @@ NestedMapIterationProjection :: () {
         ValidateRows(rows, "");
     }
 }
+
+MapValueSearchProjection :: () {
+    rows := Produced("package map_search\nMain::()->int{left:[int:int]=[1:2];right:[int:int]=[1:2];values:[int:int][]=[left];assert(contains(values,right));assert(contains([left],right));copy:=remove_item(values,right);return length(copy); }\n");
+    assert(rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+    found:=0;
+    for(row,index in rows){
+        if(row.kind != facts.ArrayRow || (row.value != facts.ArrayContains && row.value != facts.ArrayWithoutItem)){continue;}
+        found+=1;
+        RejectChanged(rows,[Changed(index,CountField,i64(row.count+1))],"scalar array operation differs from its operands");
+    }
+    assert(found==3);
+}

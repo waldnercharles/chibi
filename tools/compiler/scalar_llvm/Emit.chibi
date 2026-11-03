@@ -178,6 +178,18 @@ Converts :: (from: int, to: int) -> bool {
     }
     return Integer(to) && Number(from);
 }
+// Result-bank projection has no native cell pointers: one plain record value.
+ClockSampleType :: (rows: facts.Row[], records: int[], type: int) -> bool {
+    if (type < facts.RecordType || type >= facts.ArrayType || type - facts.RecordType >= length(records)) { return false; }
+    head := records[type - facts.RecordType];
+    if (rows[head].kind != facts.RecordRow || rows[head].count != 4) { return false; }
+    expected := [facts.Int64Type, facts.WordType, facts.IntType, facts.IntType];
+    for (field, index in expected) {
+        member := rows[head + 1 + index];
+        if (member.type != field || member.literal != 0) { return false; }
+    }
+    return true;
+}
 // The backend's storage ordinal of a value type: the storages of int, bool,
 // i8, u8, i16, u16, u32, i64, u64, number, f64 and string in facts type
 // order. Record r is the backend's record r.
@@ -1544,6 +1556,10 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 }
             }
             stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.ClockSampleRow) {
+            if (operand.name != "" || operand.value != 0 || operand.count != 0 || !ClockSampleType(rows, records, operand.type)) {
+                return "scalar clock sample differs from its four-field transport record";
+            }
         } else if (operand.kind == facts.ZeroRow) {
             captured_union := rows[at].kind == facts.LocalRow && rows[at].literal == i64(facts.PatternStorage) &&
                               rows[at].count == 1 && UnionHead(rows, records, operand.type) >= 0;
@@ -2429,7 +2445,11 @@ pub EmitLines :: (rows: facts.Row[], directory: string) -> Result {
 pub EmitProgramFor :: (target: abi.Target, rows: facts.Row[], directory: string) -> Result {
     return Lower(target, rows, directory, directory != "", false, true);
 }
-Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool, shared: bool, program: bool, family: bool = false) -> Result {
+// Explicit seven-slot embedding boundary; ordinary Wasm emission has no clock owner.
+pub EmitClockProgramFor :: (target: abi.Target, rows: facts.Row[], directory: string) -> Result {
+    return Lower(target, rows, directory, directory != "", false, true, false, true);
+}
+Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool, shared: bool, program: bool, family: bool = false, clock_owner: bool = false) -> Result {
     error := ValidateWith(rows, shared);
     if (error != "") {
         return Result.Invalid(error);
@@ -3295,6 +3315,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                     shape.arguments += operand.count;
                     stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.ClockSampleRow) {
+                    item = Op(native.ClockSample, type, slot, 0, 0, 0);
                 } else if (operand.kind == facts.ForeignRow) {
                     item = Op(native.ForeignCall, type, slot, operand.value, shape.arguments, operand.count);
                     item.literal = i64(length(texts));
@@ -3913,7 +3935,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                 }
                 stored = [];
-                if (pointer_program && (item.op == native.Call || item.op == native.ForeignCall || item.op == native.AwaitResult)) {
+                if (pointer_program && (item.op == native.ClockSample || item.op == native.Call || item.op == native.ForeignCall || item.op == native.AwaitResult)) {
                     glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
                         fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root);
                     next_root = glue.next;
@@ -4042,7 +4064,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                     moving = -1;
                 }
-                if (length(retained_variables) > 0 && (item.op == native.Call || item.op == native.ForeignCall)) {
+                if (length(retained_variables) > 0 && (item.op == native.ClockSample || item.op == native.Call || item.op == native.ForeignCall)) {
                     // A scoped call or writable foreign loan can mutate a
                     // retained local. Publish it before later expression calls
                     // or control-flow exits, while the binding is in scope.
@@ -4681,7 +4703,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
     // manifest name, not a prepared artifact's stable library identity.
     emitted: native.Result = native.Result.Rejected(-1, "");
     if (rows[1].text == "" && !generation && program) {
-        if (pointer_program) {
+        if (clock_owner) {
+            emitted = native.EmitClockProgramTyped(target, functions, parameters, slots, locals, code, arguments, records, fields,
+                                                  field_tags, texts, source, names, lines, columns);
+        } else if (pointer_program) {
             emitted = native.EmitProgramTyped(target, functions, parameters, slots, locals, code, arguments, records, fields,
                                              field_tags, texts, source, names, lines, columns);
         } else {

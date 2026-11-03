@@ -1,0 +1,13 @@
+package clock_default
+
+import clock "host:clock"
+
+Main :: () -> int {
+    result := clock.Now();
+    if result.error != nil {
+        assert(result.error.kind == clock.Denied && result.error.code == 0);
+        assert(result.instant.nanoseconds == 0 && result.instant.domain == 0);
+        return 0;
+    }
+    return 1;
+}

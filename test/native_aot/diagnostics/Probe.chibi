@@ -42,11 +42,12 @@ Main :: () -> int {
             [root_source, parse_import, "package unused\n"],
             "rejected Value: Expected `}`, found the end of the file (to close the `{` at 2:24) (lib/Lib.chibi:3)");
 
-    // This is valid front-end syntax but rejected by the scalar body producer.
-    unsupported := "package lib\nPoint :: struct { x: int; }\npub Value :: () -> int { p: Point = {x: 1}; return text_byte_length(format_text(\"{}\", p)); }\n";
-    Rejected(["Main.chibi"], [unsupported], unsupported, "p", "scalar proof formats only numbers, bools and strings", 3, 87);
+    // Pointer-free record summaries are supported. Pointer-bearing records still
+    // reject at the ordinary native-call boundary, with the same imported span.
+    unsupported := "package lib\nPoint :: struct { x: ^int; }\npub Value :: () -> int { value := 1; p: Point = {x: &value}; return text_byte_length(format_text(\"{}\", p)); }\n";
+    Rejected(["Main.chibi"], [unsupported], unsupported, "p", "Native calls cannot retain managed pointer arguments", 3, 104);
     Rejected(["Main.chibi", "lib/Lib.chibi"], [root_source, unsupported], strings.Concatenate([root_source, unsupported]),
-             "p", "scalar proof formats only numbers, bools and strings", 6, 87);
+             "p", "Native calls cannot retain managed pointer arguments", 6, 104);
 
     // The on-disk target is deliberately a different length from its replacement.
     uses_target := "package main\nimport target \"core:target\"\nimport lib \"project:lib\"\nMain :: () -> int { return lib.Value() + target.Native; }\n";

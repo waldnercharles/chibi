@@ -29,15 +29,18 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/language/program_session.c` | 11 | `src/authoring/program.c` sessions | goes, except 3 Edit-and-Continue cases |
 | `test/language/package_compiler_chibi.c`, `scalar_host.c` | 6, 0 | native backend execution through the C compiler host | six backend cases retired through `test/native_aot/backend`, retained generations and process supervision; `scalar_host.c` is retired with the obsolete C census |
 | `test/language/parallel.c`, `main.c`, `backend.h`, `compiler_cache.h` | 9, 0 | the C test runner | goes |
-| `test/runtime/whole_integer.c`, `whole_conversion.c`, `whole_math.c` | 3, 1, 2 | hand-built IR, bytecode against SLJIT | goes; the conversion, negation and comparison rules are ported, and integer `abs`/`min`/`max`/`clamp` and the math specials wait on owner decisions |
+| `test/runtime/whole_integer.c` (retired 2026-11-02) | 3 | hand-built integer IR, bytecode against SLJIT | retired; admitted integer rules remain in the authored all-width arithmetic suite and native backend; exact integer math in this file used BF-only instructions, not exact integer source overloads |
+| `test/runtime/whole_conversion.c`, `whole_math.c` | 1, 2 | hand-built IR, bytecode against SLJIT | goes; the conversion, negation and comparison rules are ported; the math specials wait on owner decisions |
 | `test/runtime/persistent_store.c` | 1 | `execution_program_set_state` | goes, except retained records across a swap |
 | `test/runtime/reference_cave.c`, `reference_cave.h` (retired 2026-11-02) | 0 | a helper with no live caller | retired with its unused test-driver source entry |
-| `test/support/arena.c`, `asset_value.c`, `reflected_types.c` | 5, 3, 0 | `src/support` used only by the VM | goes |
+| `test/support/arena.c`, `asset_value.c` (retired 2026-11-02) | 5, 3 | C allocator internals and `av_doc` ownership, cloning and JSON representation | retired; production support and asset libraries remain for their live C consumers |
+| `test/support/reflected_types.c` | 0 | C reflected type hooks used by the source-runtime tests | goes with its remaining consumers |
 | `test/support/fmt.c` | 2 | `third_party/fmt` behind `src/runtime/text_format.c` | goes; `{}` holes are covered by `FormatsTextWithoutTheVM` |
 | `test/host/process.c`, `state_file.c`, `concurrent.c`, `main.c` (retired 2026-11-02) | 1, 1, 0, 0 | `src/host` | unselected utilities retired with their graph targets; unused `src/host/state_file.c/.h` retired with its only test caller |
 | `test/parallel.c` | 0 | the pico_unit scheduler | goes |
 | `test/native_aot/targets/run.c` | 2 | LLVM-built bundles on macOS and Windows | survives, since no VM is in it; it is first-party C, so it becomes a native Chibi runner later |
-| `test/tools/types.c`, `native_values.c`, `program_consumer.c` | 42, 1, 2 | `src/types`, `src/runtime`, `src/authoring/program.h` | goes |
+| `test/tools/native_values.c` (retired 2026-11-02) | 1 | C native-capability lookup and `pin_value` ABI | retired; canonical source conversions remain in the authored native suites |
+| `test/tools/types.c`, `program_consumer.c` | 42, 2 | `src/types`, `src/authoring/program.h` | goes |
 | `test/tools/compiler_bootstrap.c` | 17 | the bytecode seed loader | goes with the bytecode seed |
 | `test/tools/wasm_browser.c`, `browser.c`, `browser.h` (retired 2026-11-02) | 1 | the C VM built to wasm and its otherwise unused browser launcher | retired with the selector and graph sources; the live LLVM Wasm compile-only service has separate tests |
 | `test/tools/case_timings_test.c`, `case_timings.c`, `fixture.c`, `policy_worker.c`, `main.c` | 9, 0 | the C test runner and its workers | goes |
@@ -234,8 +237,9 @@ compiler reproduced at stages three and four from the combined `813b93875` sourc
   `{:x}` and `{:<5.3s}` (`fmt.c`, `text_format.c`). The native one takes only `{}`. Either
   native code gains the specifiers and they become samples, or they leave the language
   along with these tests.
-- **Integer `abs`, `min`, `max` and `clamp`.** `whole_integer.c` asserts them on graph
-  nodes, but the source language rejects math functions on integers.
+- **Integer `abs`, `min`, `max` and `clamp`.** The retired `whole_integer.c`
+  asserted exact integer BF instructions. Source math converts integer operands
+  to `number`; retiring this C test does not admit exact integer overloads.
 - **IEEE special values in `core:math`.** `whole_math.c` asserts tan, asin, acos, atan,
   exp, log, log10, pow, atan2 and clamp at NaN, ±inf, ±0, subnormals and 1e20. The samples
   pin only finite values. Should the language guarantee libm's results at the specials?

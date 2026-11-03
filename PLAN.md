@@ -7,7 +7,37 @@ following CI merge `a76ea8005`. Further work is composed on
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
-## Current composition: 1adf9004f
+## Current composition: 2ec95de3f
+
+Source map copies now share counted backing, with canonical mapped-array
+mutation and foreign-buffer loans. Nested map ownership helpers and array-held
+map descriptors are integrated; the nested-map source projection and indexed
+record-array field writes remain in progress. The exact source at `240d47d52`
+reproduces between macOS stages three and four, SHA-256
+`7b60b3ef3f556f8621b09ed85deb202091c60e022bc3aa6bc062052588e11d38`.
+Its 485 compiler tests pass in 23.82 seconds, map ownership checks at O0/O2
+with poisoned frees in 73.00, and character/UTF-8/callback checks in 10.41.
+The directory fixture then needed its scope ID corrected from `i64` to `u64`
+and an explicit working directory; the corrected suite passes in 7.75 seconds.
+Evidence is in `/private/tmp/chibi-240d-proof/receipt.json`.
+
+The intermediate seed candidate uses exact source `14f7a46a0`, including those
+fixture corrections. macOS stages two and three match byte for byte after
+19.09 and 21.93 seconds; all 485 compiler tests pass in 24.64. Linux's
+consecutive builds with the canonical `chibi` basename match after 53.67 and
+53.80 seconds, and all 485 tests pass in 71.73. Earlier Linux builds named
+`stage3` and `stage4` differed in ELF source-file basename records and are not
+the accepted fixed-point pair. Both platforms build with CC/CXX disabled.
+`/private/tmp/chibi-native-seed-14f7-proof` holds the exact source, builders,
+commands and logs. This package is being prepared; it is not published and the
+approved c5 seed pins have not advanced to it.
+
+The composition also fixes Windows synchronous process exit-code bit
+preservation and the successful compiler-proof step's final PowerShell status.
+A fully pinned manual CI dispatch can now schedule Windows without waiting for
+another Linux bootstrap. Actual hosted acceptance of these changes, the private
+generation fixture correction and the LLVM float-absolute lowering remains
+required.
 
 The newer composition adds counted map backing with canonical writable entries,
 strict array ranges and lazy optional-array fallbacks, synchronous assertion
@@ -25,8 +55,9 @@ blobs are unchanged. Only `collections/view_element_lending/facts.Calls` remains
 uncompiled; aggregate view ownership is in progress. The inventory and original
 foreign/font setup receipts are in `/private/tmp/chibi-original-nine-matrix`.
 Checked directory enumeration still needs the pending GC poll's OS-error
-preservation proof and hosted Windows execution. Map source sharing and nested
-map dependencies are separate work beyond the composed ownership foundation.
+preservation proof and hosted Windows execution. Full callback routing,
+safe-point polls and managed task promises are being proved together before
+integration.
 
 ### Published-seed chain at 72598f131
 
@@ -63,8 +94,14 @@ adds them to the desktop and Wasm runtime templates. The unchanged C consumer
 passes in 7.00 seconds against the rebuilt archive; Wasm resource cleanup and
 successful-call recovery pass at O0/O2 in 2.19. Hosted macOS job `125743532364`
 of run `41583508859` has the same missing-symbol failure at published `6b46f9261`.
-Linux's fixed-point phase is still active; the downstream Windows job has not
-started. A separate dispatch, `41589954388`, validates `72598f131` on
+That run completed with failures. Linux reproduced its compiler, but its core
+phase hit the existing deadline and its obsolete VM Driver comparison failed
+before Graph parity. Windows passed native products and public watch at O0/O2;
+it failed the C facade's same missing helper, a private generation fixture's
+missing managed context, process exit-code interpretation, an unavailable
+`fabsf` import, and the final PowerShell status after successful checks. These
+are distinct failures, with fixes integrated or under focused validation.
+A separate dispatch, `41589954388`, validates `72598f131` on
 `codex/native-platform-validation-20261102-v2` without cancelling that run. It
 reuses the byte-verified Windows bootstrap from successful Linux producer job
 `125487999272` in run `41506782159`; the new Windows job must establish that

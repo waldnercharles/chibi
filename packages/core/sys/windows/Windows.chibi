@@ -675,7 +675,9 @@ pub Wait :: (process: int) -> int {
     if waited != 0 || found == 0 {
         return -1;
     }
-    return int(code[0]);
+    // Win32 exit codes are DWORD bit patterns, including high-bit NTSTATUS
+    // failures. Match WaitFor rather than clamping them to INT_MAX.
+    return int(wrap: code[0]);
 }
 
 // Runs the program, keeping the standard streams, and returns its exit status;

@@ -1,0 +1,37 @@
+package native_schema_bench
+
+import schema "project:native_schema"
+import posix "core:sys/posix"
+import os "core:os"
+
+Run :: (count: int, dense: bool, cycle: bool) {
+    nodes: schema.Node[] = [];
+    edges: int[] = [];
+    for (index in 0..<count) {
+        first := length(edges);
+        if (dense) { for (child in 0..<count) { edges.append(child); } }
+        else if (index + 1 < count) { edges.append(index + 1); }
+        else if (cycle) { edges.append(0); }
+        nodes.append({key: u64(index + 1), body: u64(index + 100), first: first,
+                      count: length(edges) - first, supported: true});
+    }
+    scratch := resize([u8(0)], 16);
+    started := posix.MonotonicMilliseconds(&scratch);
+    if (started < 0) { assert(false, "schema benchmark needs the monotonic clock"); }
+    hashes := schema.Fingerprints(nodes, edges);
+    finished := posix.MonotonicMilliseconds(&scratch);
+    assert(finished >= started);
+    switch hashes {
+        case .Rejected(message): os.Print(message); assert(false);
+        case .Ready(values): assert(length(values) == count && values[0] != 0 && values[count - 1] != 0);
+    }
+    os.Print(format_text("native schema nodes={} edges={} dense={} cycle={} milliseconds={}",
+                          count, length(edges), dense, cycle, finished - started));
+}
+Main :: () -> int {
+    Run(64, false, false);
+    Run(992, false, false);
+    Run(992, false, true);
+    Run(992, true, false);
+    return 0;
+}

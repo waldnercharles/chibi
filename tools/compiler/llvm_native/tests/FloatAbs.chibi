@@ -1,0 +1,50 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+FloatAbsCode :: (type: int) -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0), Code(native.Constant, abi.IntStorage, 0, 0, 0, 0, 0),
+            Code(native.Publish, abi.IntStorage, 0, 0, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0),
+            Code(native.Check, 0, 0, 0, 0, 0, 0), Code(native.Argument, type, 0, 0, 0, 0, 0),
+            Code(native.FloatAbs, type, 1, 0, 0, 0, 0), Code(native.Publish, type, 0, 1, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+FloatAbsModule :: (target: abi.Target, type: int, code: native.Instruction[]) -> native.Result {
+    empty: int[] = [];
+    records: native.Record[] = [];
+    texts: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    return native.Emit(target, [Function(abi.IntStorage, 0, 0, 1, 0, 4, 0, 0), Function(type, 1, 1, 2, 4, 5, 0, 0)],
+                       [type], [abi.IntStorage, type, type], empty, code, empty, records, empty, texts, source, texts,
+                       empty, empty, false, 1);
+}
+
+@test
+FloatingAbsUsesTheExactIntrinsicOnEveryTarget :: () {
+    for (target in [abi.LinuxX64(), abi.MacOSArm64(), abi.WindowsX64()]) {
+        for (type in [abi.FloatStorage, abi.DoubleStorage]) {
+            text := Emitted(FloatAbsModule(target, type, FloatAbsCode(type)));
+            suffix := "f64";
+            if (type == abi.FloatStorage) { suffix = "f32"; }
+            assert(strings.Contains(text, format_text("@llvm.fabs.{}", suffix)));
+            assert(!strings.Contains(text, "@fabs("), "no platform abs import");
+        }
+    }
+}
+
+@test
+FloatingAbsRejectsMalformedAndNonFloatingOperands :: () {
+    mismatch := "native floating absolute value requires one f32 or f64 operand";
+    type := abi.FloatStorage;
+    for (bad in [Code(native.FloatAbs, type, 1, 8, 0, 0, 0), Code(native.FloatAbs, type, 1, 0, 1, 0, 0),
+                 Code(native.FloatAbs, type, 1, 0, 0, 1, 0), Code(native.FloatAbs, type, 1, 0, 0, 0, 1)]) {
+        code := FloatAbsCode(type);
+        code[6] = bad;
+        Rejects(FloatAbsModule(abi.LinuxX64(), type, code), mismatch);
+    }
+    for (invalid in [abi.BoolStorage, abi.IntStorage]) {
+        Rejects(FloatAbsModule(abi.LinuxX64(), invalid, FloatAbsCode(invalid)), mismatch);
+    }
+}

@@ -20,10 +20,13 @@ for (const line of source.slice(source.indexOf('\njobs:\n') + 7).split('\n')) {
   else if (condition && /^      \S/.test(line)) jobs.set(current, jobs.get(current) + ' ' + line.trim());
   else if (/^    \S/.test(line)) condition = false;
 }
-function active(event, mode = '', sanitizers = false, nativeResult, bootstrapRun = '') {
-  const context = {github: {event_name: event}, inputs: {mode, sanitizers, windows_bootstrap_run: bootstrapRun},
-    needs: {native: {result: nativeResult || (event !== 'workflow_dispatch' || ['ci', 'full'].includes(mode) ? 'success' : 'skipped')}},
-    always: () => true, cancelled: () => false};
+function active(event, mode = '', sanitizers = false, nativeResult, bootstrap = {}, stopped = false) {
+  const context = {github: {event_name: event}, inputs: {mode, sanitizers,
+    windows_bootstrap_run: bootstrap.run || '', windows_bootstrap_commit: bootstrap.commit || '',
+    windows_bootstrap_sha256: bootstrap.sha256 || ''}, needs: {native: {}},
+    always: () => true, cancelled: () => stopped};
+  context.needs.native.result = nativeResult ||
+    (vm.runInNewContext(jobs.get('native'), context, {timeout: 100}) ? 'success' : 'skipped');
   return [...jobs].filter(([, condition]) => {
     assert.notEqual(condition, '', 'every job explicitly states its trigger');
     return vm.runInNewContext(condition, context, {timeout: 100});
@@ -47,6 +50,38 @@ test('full proofs are explicit, and Graph stays opt-in', () => {
   assert.deepEqual(active('workflow_dispatch', 'full'), full);
   assert.deepEqual(active('workflow_dispatch', 'graph'), ['graph']);
   assert.deepEqual(active('workflow_dispatch', 'unknown'), []);
+});
+test('only fully pinned manual ci admits Windows without the Linux or macOS work', () => {
+  const pins = {run: '123', commit: 'a'.repeat(40), sha256: 'b'.repeat(64)};
+  const ordinary = ['native', 'native-macos', 'native-self-host-windows', 'native-targets'];
+  for (let mask = 0; mask < 8; mask++) {
+    const bootstrap = Object.fromEntries(Object.entries(pins).filter((_, index) => mask & (1 << index)));
+    assert.deepEqual(active('workflow_dispatch', 'ci', false, undefined, bootstrap),
+      mask === 7 ? ['native-self-host-windows'] : ordinary, `pin subset ${mask}`);
+  }
+  assert.deepEqual(active('workflow_dispatch', 'ci', true, undefined, pins), ['native-self-host-windows']);
+  for (const [event, mode] of [['pull_request', ''], ['push', ''], ['schedule', ''],
+    ['workflow_dispatch', 'full'], ['workflow_dispatch', 'graph'], ['workflow_dispatch', 'unknown']]) {
+    assert.deepEqual(active(event, mode, false, undefined, pins), active(event, mode));
+  }
+  assert.ok(!active('workflow_dispatch', 'ci', false, undefined, pins, true).includes('native-self-host-windows'));
+});
+test('the run name identifies a pinned Windows proof separately from complete ci', () => {
+  const expression = /\$\{\{([\s\S]+?)\}\}/.exec(source.split('run-name: ')[1])[1];
+  const pins = {windows_bootstrap_run: '123', windows_bootstrap_commit: 'a'.repeat(40), windows_bootstrap_sha256: 'b'.repeat(64)};
+  for (const [event, mode, bootstrap, expected] of [
+    ['workflow_dispatch', 'ci', pins, 'Windows proof'],
+    ['workflow_dispatch', 'ci', {}, 'ci'],
+    ['workflow_dispatch', 'ci', {...pins, windows_bootstrap_run: ''}, 'ci'],
+    ['workflow_dispatch', 'ci', {...pins, windows_bootstrap_commit: ''}, 'ci'],
+    ['workflow_dispatch', 'ci', {...pins, windows_bootstrap_sha256: ''}, 'ci'],
+    ['workflow_dispatch', 'full', pins, 'full'],
+    ['workflow_dispatch', 'graph', pins, 'graph'],
+    ['pull_request', '', pins, 'pull_request'], ['push', '', pins, 'push'], ['schedule', '', pins, 'schedule'],
+  ]) {
+    const inputs = {mode, windows_bootstrap_run: '', windows_bootstrap_commit: '', windows_bootstrap_sha256: '', ...bootstrap};
+    assert.equal(vm.runInNewContext(expression, {github: {event_name: event}, inputs}), expected);
+  }
 });
 test('both canonical phase budgets and nested source gate are enforced', () => {
   assert.match(source, /CHIBI_CORE_DEADLINE=\$\(\(\$\(date \+%s\) \+ 2700\)\)/);
@@ -118,11 +153,11 @@ test('ordinary platform validation never enables sanitizer or full-only certific
 });
 
 test('pinned Windows bootstrap keeps canonical modes and validates producer identities', () => {
-  assert.deepEqual(active('workflow_dispatch', 'ci', false, 'success', '123'), active('workflow_dispatch', 'ci'));
-  assert.deepEqual(active('workflow_dispatch', 'full', false, 'success', '123'), active('workflow_dispatch', 'full'));
-  assert.deepEqual(active('workflow_dispatch', 'graph', false, 'skipped', '123'), ['graph']);
-  assert.ok(active('workflow_dispatch', 'ci', false, 'skipped', '123').includes('native-self-host-windows'));
-  assert.ok(!active('pull_request', '', false, 'skipped', '123').includes('native-self-host-windows'));
+  assert.deepEqual(active('workflow_dispatch', 'ci', false, 'success', {run: '123'}), active('workflow_dispatch', 'ci'));
+  assert.deepEqual(active('workflow_dispatch', 'full', false, 'success', {run: '123'}), active('workflow_dispatch', 'full'));
+  assert.deepEqual(active('workflow_dispatch', 'graph', false, 'skipped', {run: '123'}), ['graph']);
+  assert.ok(active('workflow_dispatch', 'ci', false, 'skipped', {run: '123'}).includes('native-self-host-windows'));
+  assert.ok(!active('pull_request', '', false, 'skipped', {run: '123'}).includes('native-self-host-windows'));
   for (const input of ['windows_bootstrap_run', 'windows_bootstrap_commit', 'windows_bootstrap_sha256']) {
     assert.match(source, new RegExp(`^      ${input}:$`, 'm'));
   }

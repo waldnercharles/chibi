@@ -15,6 +15,20 @@ Shape :: (slots: int[], code: native.Instruction[]) -> native.Function {
         first_slot: 0, slots: length(slots), first_local: 0, locals: 0, first_code: 0, code: length(code),
         first_argument: 0, arguments: 0};
 }
+// A canonical scoped place starts null before any Save. Its initialized
+// empty registration must not become a descriptor load through null.
+NullPollEmission :: (target: abi.Target) -> native.Result {
+    array := native.ArrayType + native.PointerType;
+    slots := [abi.IntStorage];
+    track := Op(native.ManagedTrack, native.RefType + array, 0, 0, 0, 0);
+    track.target = native.ManagedTrackLocal;
+    code := [track, Op(native.ManagedPoll, 0, 0, 0, 0, 0), Op(native.Constant, abi.IntStorage, 0, 0, 0, 0),
+        Op(native.Publish, abi.IntStorage, 0, 0, 0, 0), Op(native.Return, 0, 0, 0, 0, 0)];
+    shape := Shape(slots, code);
+    shape.locals = 1;
+    source: native.Source = {file: "", directory: ""};
+    return native.EmitProgramTyped(target, [shape], [], slots, [native.RefType + array], code, [], [], [], [], [], source, [], [], []);
+}
 RecordEmission :: (target: abi.Target, mode: int) -> native.Result {
     number := abi.IntStorage;
     pointer := native.PointerType;
@@ -117,6 +131,14 @@ Rejected :: (target: abi.Target, slots: int[], code: native.Instruction[], embed
 }
 Main :: () -> int {
     args := os.Arguments();
+    if (length(args) == 2 && args[0] == "--weak-null") {
+        switch NullPollEmission(abi.LinuxX64()) {
+            case .Rejected(instruction, message): os.Print(message); return 1;
+            case .Emitted(text):
+                if (os.WriteText(args[1], text)) { return 2; }
+        }
+        return 0;
+    }
     if (length(args) != 4) { return 2; }
     work := args[0];
     llvm := args[1];
@@ -249,7 +271,7 @@ Main :: () -> int {
     if (os.WriteText(start, link.ManagedProgramContext(link.ProgramStart(target.triple, false, true, false)))) { return 2; }
     for (mode in ["positive", "persistent", "typed_layout", "untraced_layout", "bad_layout_storage", "bad_layout_identity", "bad_layout_root",
                   "wrong_tag", "wrong_storage", "wrong_range", "nil", "wrong_owner", "array_owner", "epoch_wrap",
-                  "code_underflow", "code_overflow", "no_layout_drop", "record", "record_parent",
+                  "code_underflow", "code_overflow", "no_layout_drop", "poll_null", "record", "record_parent",
                   "array_cell", "array_cell_tag", "array_cell_storage", "text_array_cell", "optional_cell", "optional_cell_tag", "optional_cell_storage"]) {
         module := format_text("{}/native-{}.ll", work, mode);
         body := format_text("\ndefine i32 @managed_source.entry(ptr %ctx) {{\n  %native = call i32 @managed_native.entry(ptr %ctx)\n  %runtime = call i32 @managed_runtime.{}(ptr %ctx)\n  %result = or i32 %native, %runtime\n  ret i32 %result\n}}\n", mode);
@@ -287,6 +309,15 @@ Main :: () -> int {
                         "define i32 @managed_source.entry(ptr %ctx)");
             }
         }
+        if (mode == "poll_null") {
+            switch NullPollEmission(target) {
+                case .Rejected(instruction, message): os.Print(message); return 1;
+                case .Emitted(emitted):
+                    current = strings.ReplaceAll(emitted, "define i32 @chibi_scalar(ptr %ctx)",
+                        "define i32 @managed_poll.entry(ptr %ctx)");
+                    current = strings.Concatenate([current, format_text("\ndefine i32 @managed_source.entry(ptr %ctx) {{\n  %heap = call ptr @chibi_managed.owner(ptr %ctx)\n  %at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 {}\n  store i1 true, ptr %at\n  %result = call i32 @managed_poll.entry(ptr %ctx)\n  ret i32 %result\n}}\n", abi.ManagedRequestedField)]);
+            }
+        }
         if (os.WriteText(module, strings.Concatenate([current, audit.text]))) { return 2; }
         for (level in [int(0), 2]) {
             output := format_text("{}/native-{}-O{}", work, mode, level);
@@ -294,14 +325,14 @@ Main :: () -> int {
             if (host.Objects(llvm, [module, start], objects, level, 1)) { return 1; }
             plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", false);
             if (os.Platform() == "Darwin") {
-                runtime: link.Import = {name: "System", symbols: ["malloc", "calloc", "free", "printf", "write", "dprintf", "abort"]};
+                runtime: link.Import = {name: "System", symbols: ["malloc", "calloc", "free", "printf", "write", "dprintf", "abort", "__error"]};
                 plan.imports = [runtime];
             }
             if (host.Link(plan)) { return 1; }
             result := os.Capture([output]);
             valid := result.status == 0;
             trapped := mode == "epoch_wrap" || mode == "code_underflow" || mode == "code_overflow" || mode == "no_layout_drop";
-            if (mode != "positive" && mode != "persistent" && mode != "typed_layout" && mode != "untraced_layout" && mode != "record" && mode != "array_cell" && mode != "text_array_cell" && mode != "optional_cell" && !trapped) {
+            if (mode != "positive" && mode != "persistent" && mode != "typed_layout" && mode != "untraced_layout" && mode != "record" && mode != "poll_null" && mode != "array_cell" && mode != "text_array_cell" && mode != "optional_cell" && !trapped) {
                 valid = result.status == 134 && strings.Contains(result.stderr, "native failure: another failure");
             }
             // Capture preserves negative signals; some runners encode 128+sig.

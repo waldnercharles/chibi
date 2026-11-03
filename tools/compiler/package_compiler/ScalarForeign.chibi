@@ -146,9 +146,9 @@ ScalarForeignArrayRows :: (forest: snapshot.SnapshotNode[], text: string, callab
     type := facts.ArrayType + ScalarTypeOf(element);
     place := Unparenthesized(forest, argument);
     found := -1;
-    mapped := ScalarMapRead(forest, text, callables, names, types, callable.package, place);
+    mapped := ScalarMapRead(forest, text, callables, names, types, members, callable.package, place);
     if (mapped.operator == facts.MapGet && Is(forest, Unparenthesized(forest, mapped.object), syntax.Identifier)) {
-        record := ScalarMapShape(forest, text, callables, names, types, callable.package, mapped.object);
+        record := ScalarMapShape(forest, text, callables, names, types, members, callable.package, mapped.object);
         map_type := ScalarMapType(types, record);
         variable := ScalarVariable(names, Text(forest, text, Unparenthesized(forest, mapped.object)));
         if (record < 0 || !ScalarMapArrayValue(types, record) ||

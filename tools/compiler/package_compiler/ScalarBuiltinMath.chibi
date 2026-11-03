@@ -148,7 +148,6 @@ ScalarBuiltinComparison :: (op: int, ops: Ops) -> int {
 }
 
 ScalarBuiltinLibrary :: (op: int, ops: Ops) -> string {
-    if (op == ops.math_abs) { return "fabs"; }
     if (op == ops.math_floor) { return "floor"; }
     if (op == ops.math_ceil) { return "ceil"; }
     if (op == ops.math_round) { return "round"; }
@@ -262,6 +261,9 @@ ScalarBuiltinCode :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], member
                 } else if (op == ops.convert || op == ops.cast) {
                     expression.append(ScalarBuiltinRead(forest, node, slot_types, slot_locals, instruction.left));
                     expression.append(ScalarAt(forest, node, facts.ConvertRow, type, facts.Clamp, 1, ""));
+                } else if (op == ops.math_abs) {
+                    expression.append(ScalarBuiltinRead(forest, node, slot_types, slot_locals, instruction.left));
+                    expression.append(ScalarAt(forest, node, facts.UnaryRow, type, facts.FloatAbsolute, 1, ""));
                 } else if (op == ops.neg) {
                     expression.append(ScalarBuiltinRead(forest, node, slot_types, slot_locals, instruction.left));
                     expression.append(ScalarAt(forest, node, facts.UnaryRow, type, facts.Negate, 1, ""));

@@ -46,8 +46,8 @@ Scalar :: (type: int) -> bool {
 // Whether a record field or union payload may have `type`: a scalar or a
 // string.
 Stored :: (records: int[], type: int) -> bool {
-    // Nested maps and task observers need recursive ownership before admission.
-    return type != facts.TaskType && type < facts.MapType && Valued(records, type);
+    // Maps use the shared counted value graph; task observers remain closed.
+    return type != facts.TaskType && type < facts.ReferenceType && Valued(records, type);
 }
 // Whether the record or union of type RecordType + `from` holds the one of
 // type RecordType + `wanted` by value, directly or through others it holds by
@@ -845,7 +845,7 @@ KeepValue :: (managed: bool[], type: int, held: int, next: int) -> HeldValue {
     found: HeldValue = {code: [], slot_types: [], value: held};
     if (type == facts.StringType) {
         found.code.append(Op(native.TextRetain, abi.TextStorage, 0, held, 0, 0));
-    } else if (TrackedRecord(managed, type) || (type >= facts.ArrayType && type < facts.MapType)) {
+    } else if (TrackedRecord(managed, type) || (type >= facts.ArrayType && type < facts.ReferenceType)) {
         found.code.append(Op(native.ValueCopy, NativeType(type), next, held, 0, 0));
         found.slot_types.append(NativeType(type));
         found.value = next;
@@ -857,7 +857,7 @@ DropValue :: (managed: bool[], type: int, held: int) -> Drops {
     found: Drops = {code: [], slot_types: []};
     if (type == facts.StringType) {
         found.code.append(Op(native.TextRelease, abi.TextStorage, 0, held, 0, 0));
-    } else if (TrackedRecord(managed, type) || (type >= facts.ArrayType && type < facts.MapType)) {
+    } else if (TrackedRecord(managed, type) || (type >= facts.ArrayType && type < facts.ReferenceType)) {
         found.code.append(Op(native.ValueDrop, NativeType(type), 0, held, 0, 0));
     }
     return found;
@@ -946,6 +946,7 @@ DropAll :: (rows: facts.Row[], records: int[], managed: bool[], vars: int[], typ
     next := slot;
     while (at >= from) {
         if (types[at] != 0 && !Holds(skips, vars[at])) {
+            found.code.extend(ManagedOwnerLocal(types[at], places[vars[at]], false));
             payloads := UnionPayloads(rows, records, types[at]);
             if (TrackedRecord(managed, types[at])) {
                 found.code.append(Op(native.Local, types[at], next, places[vars[at]], 0, 0));
@@ -976,6 +977,7 @@ DropAll :: (rows: facts.Row[], records: int[], managed: bool[], vars: int[], typ
     if (held) {
         for (frame in frames) {
             if (frame.held >= 0) {
+                found.code.extend(ManagedOwnerLocal(frame.held_type, frame.held, false));
                 found.code.extend([Op(native.Local, frame.held_type, next, frame.held, 0, 0),
                                    Giving(frame.held_type, next)]);
                 found.slot_types.append(frame.held_type);
@@ -1034,7 +1036,7 @@ MappedArrayChange :: (value: int) -> bool {
     return value >= facts.MapArrayPush && value <= facts.MapArrayResize;
 }
 MapGets :: (value: int) -> bool {
-    return value == facts.MapGet || value == facts.MapGetOptional;
+    return value == facts.MapGet || value == facts.MapGetOptional || value == facts.MapGetWrapped;
 }
 // The postfix operands of one map operator; -1 means no such operator.
 MapOperands :: (operand: facts.Row) -> int {
@@ -1052,7 +1054,7 @@ MapOperands :: (operand: facts.Row) -> int {
         return 3;
     }
     if (operand.value == facts.MapArrayLoan) { return 3; }
-    if ((operand.value >= facts.MapGet && operand.value <= facts.MapValueAt) || operand.value == facts.MapGetOptional) {
+    if ((operand.value >= facts.MapGet && operand.value <= facts.MapValueAt) || MapGets(operand.value)) {
         return 2;
     }
     return -1;
@@ -1113,6 +1115,12 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
     if (operand.value == facts.MapGetOptional && OptionalPayloadType(rows, records, value) == 0) { return mismatch; }
     if (operand.value == facts.MapArrayLoan && (operand.type != value || stack[base + 1] != mapped ||
         !Scalar(Element(records, value)) || Element(records, value) == facts.BoolType)) { return mismatch; }
+    if (operand.value == facts.MapGetWrapped) {
+        if (value < facts.RecordType || value >= facts.ArrayType || value - facts.RecordType >= length(records)) { return mismatch; }
+        head := records[value - facts.RecordType];
+        if (rows[head].kind != facts.RecordRow || rows[head].count != 1 || rows[head + 1].type < facts.MapType ||
+            rows[head + 1].type >= facts.ReferenceType || !Valued(records, rows[head + 1].type)) { return mismatch; }
+    }
     if (operand.value == facts.MapKeyAt && operand.type != key) {
         return mismatch;
     }
@@ -1578,7 +1586,8 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                        (facts.Floating(operand.type) && operand.value == facts.Negate);
             nots := operand.type == facts.BoolType && operand.value == facts.Not;
             roots := operand.type == facts.FloatType && operand.value == facts.SquareRoot;
-            if (operand.name != "" || operand.count != 1 || (!negates && !nots && !roots) || base < floor ||
+            absolute := facts.Floating(operand.type) && operand.value == facts.FloatAbsolute;
+            if (operand.name != "" || operand.count != 1 || (!negates && !nots && !roots && !absolute) || base < floor ||
                 stack[base] != operand.type) {
                 return "scalar arithmetic differs from its number operands";
             }
@@ -2442,6 +2451,7 @@ Arithmetic :: (operator: int) -> int {
     return operations[operator - facts.Add];
 }
 Unary :: (operator: int) -> int {
+    if (operator == facts.FloatAbsolute) { return native.FloatAbs; }
     if (operator == facts.SquareRoot) {
         return native.Sqrt;
     }
@@ -2570,7 +2580,7 @@ MapLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: int
     if (operand.value == facts.MapSet) {
         target = stack[base + 2];
     }
-    if (operand.value == facts.MapGetOptional) { target = native.MapGetZero; }
+    if (operand.value == facts.MapGetOptional || operand.value == facts.MapGetWrapped) { target = native.MapGetZero; }
     item := Op(op, type, slot, stack[base], right, target);
     if (operand.literal != 0) {
         item.literal = i64(NativeType(int(operand.literal)));
@@ -2663,6 +2673,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         pointer_program = pointer_program || row.type == facts.PointerType || row.type == facts.ViewType || row.kind == facts.ViewRow || row.type == facts.ArrayType + facts.PointerType ||
                           row.kind == facts.ManagedRow || row.kind == facts.ManagedAddressRow || row.kind == facts.ManagedFieldRow;
     }
+    // A complete pointer-free standalone has no collector edges. A shared
+    // image can still allocate while older images own cells in its family.
+    polling := (family || (program && pointer_program)) && !abi.Same(target, abi.WebAssembly32());
     if (pointer_program && !program && !family) {
         return Result.Invalid("managed pointer roots require a standalone native program");
     }
@@ -2811,6 +2824,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 }
                 owned_vars.append(index);
                 owned_types.append(type);
+                body.extend(ManagedOwnerLocal(type, places[index], true));
             }
             if (waiting_function && (type == native.ArrayType + native.PointerType ||
                 (ArrayTyped(type) && native.TaskOwnedType(records, value_layout, type))) &&
@@ -2824,11 +2838,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 slot += length(kept.slot_types);
                 owned_vars.append(index);
                 owned_types.append(type);
+                body.extend(ManagedOwnerLocal(type, places[index], true));
             }
             if (rows[head + 1 + index].literal == i64(facts.ParameterOwnedArray) && !boxed) {
                 // A parameter the function changes is its own container.
                 owned_vars.append(index);
                 owned_types.append(type);
+                body.extend(ManagedOwnerLocal(type, places[index], true));
             }
             slot += 1;
             local += 1;
@@ -3086,6 +3102,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 jumps = slice(jumps, 0, frame.escape);
                 continuing = slice(continuing, 0, frame.escape);
                 if (frame.held >= 0) {
+                    body.extend(ManagedOwnerLocal(frame.held_type, frame.held, false));
                     slots.append(frame.held_type);
                     body.extend([Op(native.Local, frame.held_type, slot, frame.held, 0, 0),
                                  Giving(frame.held_type, slot)]);
@@ -3248,6 +3265,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         slot += 1 + length(dropped.slot_types);
                     }
                     body.append(Op(native.Save, type, 0, held, 0, places[operand.value]));
+                    body.extend(ManagedOwnerLocal(type, places[operand.value], true));
                     continue;
                 }
                 type := NativeType(operand.type);
@@ -4503,8 +4521,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         extra += length(kept.slot_types);
                         produced = kept.value;
                         if (type == abi.TextStorage && length(closes) > 0) { logical_strings.append(produced); }
-                        else if (type == abi.TextStorage || TrackedRecord(managed, type) ||
-                                 (type >= native.ArrayType && type < native.MapType)) { fresh.append(produced); }
+                        else if (type == abi.TextStorage || TrackedRecord(managed, type) || ArrayTyped(type)) { fresh.append(produced); }
                     }
                     if (Holds(fresh, item.left)) {
                         dropped := DropValue(managed, item.right, item.left);
@@ -4610,6 +4627,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                 }
             }
+            // Every operand has acquired its result ownership before a
+            // callback's deferred request can observe the live owner set.
+            if (polling && row.kind != facts.ForRow) {
+                body.extend(ManagedPollCode(slot, length(body), fresh, slots, shape.first_slot));
+                slots.append(abi.BoolStorage);
+                slot += 1;
+            }
             value := stack[0];
             ends = false;
             // A record that took an owning variable's array without a copy now
@@ -4619,6 +4643,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 for (taken in escaped) {
                     for (at_var in 0..<length(owned_vars)) {
                         if (owned_vars[at_var] == taken) {
+                            body.extend(ManagedOwnerLocal(owned_types[at_var], places[taken], false));
                             owned_types[at_var] = 0;
                         }
                     }
@@ -4741,6 +4766,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                              Op(native.Save, integer, 0, slot, 0, local + 1)]);
                 slot += 1;
                 frame.head = length(body);
+                if (polling) {
+                    body.extend(ManagedPollCode(slot, length(body), fresh, slots, shape.first_slot));
+                    slots.append(abi.BoolStorage);
+                    slot += 1;
+                }
                 span := Op(native.MapSpan, integer, slot + 2, slot + 1, 0, 0);
                 span.literal = i64(map);
                 slots.extend([integer, map, integer, abi.BoolStorage]);
@@ -4795,6 +4825,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     places.append(local + 1);
                 }
                 body.append(Op(native.Save, array, 0, stack[0], 0, local));
+                if (frame.held >= 0) { body.extend(ManagedOwnerLocal(array, frame.held, true)); }
                 if (reverse) {
                     // Length zero starts at the signed sentinel -1. The
                     // head rejects it before any element access.
@@ -4812,6 +4843,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     slot += 1;
                 }
                 frame.head = length(body);
+                if (polling) {
+                    body.extend(ManagedPollCode(slot, length(body), fresh, slots, shape.first_slot));
+                    slots.append(abi.BoolStorage);
+                    slot += 1;
+                }
                 if (reverse) {
                     slots.extend([integer, integer, abi.BoolStorage]);
                     body.extend([Op(native.Local, integer, slot, local + 1, 0, 0),
@@ -4871,6 +4907,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 body.extend([Op(native.Save, integer, 0, begin, 0, frame.index),
                              Op(native.Save, integer, 0, stop, 0, frame.bound)]);
                 frame.head = length(body);
+                if (polling) {
+                    body.extend(ManagedPollCode(slot, length(body), fresh, slots, shape.first_slot));
+                    slots.append(abi.BoolStorage);
+                    slot += 1;
+                }
                 compare := native.Lt;
                 if (reverse) {
                     compare = native.Ge;
@@ -4970,6 +5011,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     body.append(Op(native.TextRetain, type, 0, lowered.value, 0, 0));
                     owned_vars.append(row.value);
                     owned_types.append(type);
+                    body.extend(ManagedOwnerLocal(type, places[row.value], true));
                 } else if (TrackedRecord(managed, type) || (type >= native.ArrayType && type < native.MapType)) {
                     kept := KeepValue(managed, row.type, lowered.value, slot);
                     slots.extend(kept.slot_types);
@@ -4978,6 +5020,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     slot += length(kept.slot_types);
                     owned_vars.append(row.value);
                     owned_types.append(type);
+                    body.extend(ManagedOwnerLocal(type, places[row.value], true));
                 }
             } else if (row.kind == facts.LocalRow) {
                 type := NativeType(row.type);
@@ -5015,11 +5058,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     } else {
                         owned_vars.append(row.value);
                         owned_types.append(type);
+                        body.extend(ManagedOwnerLocal(type, places[row.value], true));
                     }
                 }
                 if (keeps || record_keeps) {
                     owned_vars.append(row.value);
                     owned_types.append(type);
+                    body.extend(ManagedOwnerLocal(type, places[row.value], true));
                 }
                 // A variable holding a fresh union that holds arrays owns it, unless it is
                 // read for more than its tag and payloads or addressed; a discarded one is
@@ -5034,6 +5079,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     } else if (!Holds(stale_unions, row.value) && !Referenced(rows, head, row.value)) {
                         owned_vars.append(row.value);
                         owned_types.append(type);
+                        body.extend(ManagedOwnerLocal(type, places[row.value], true));
                     }
                 }
                 // The arm that binds an array payload of an owned union takes it over when
@@ -5061,6 +5107,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     if (taken) {
                         owned_vars.append(row.value);
                         owned_types.append(type);
+                        body.extend(ManagedOwnerLocal(type, places[row.value], true));
                         union_type := owned_types[union_at];
                         slots.extend([union_type, type, union_type]);
                         empty := Op(native.Constant, type, slot + 1, 0, 0, 0);
@@ -5136,6 +5183,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 // An owning variable given a fresh array drops its old one,
                 // after the new one is made, so `a = f(a)` reads it first.
                 if (ArrayTyped(type) && Holds(owned_vars, row.value) && Holds(fresh, value)) {
+                    body.extend(ManagedOwnerLocal(type, places[row.value], false));
                     fresh = Without(fresh, value);
                     slots.append(type);
                     body.extend([Op(native.Local, type, slot, places[row.value], 0, 0),
@@ -5150,6 +5198,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     body.extend(glue.code);
                 }
                 body.append(Op(native.Save, type, 0, value, 0, places[row.value]));
+                if (Holds(owned_vars, row.value)) { body.extend(ManagedOwnerLocal(type, places[row.value], true)); }
                 // A retained variable's state follows it.
                 for (retained in 0..<length(retained_variables)) {
                     if (retained_variables[retained] == row.value) {

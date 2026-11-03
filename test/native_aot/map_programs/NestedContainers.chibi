@@ -1,0 +1,55 @@
+package nested_map_containers
+
+Item :: struct { name: string; values: int[]; }
+Rows :: () -> [string:int][] { return [["a":1], ["b":2]]; }
+CopyRows :: (values: [string:int][]) -> [string:int][] { return values; }
+Groups :: () -> [string:[string:string]] {
+    first := text_from_bytes([u8(111), 108, 100]);
+    return ["group":["one":first]];
+}
+CopyGroups :: (values: [string:[string:string]]) -> [string:[string:string]] { return values; }
+
+Main :: () -> int {
+    rows := CopyRows(Rows());
+    first := rows[0];
+    first["a"] = 9;
+    assert(rows[0]["a"] == 1 && first["a"] == 9);
+    copy := rows;
+    rows = [];
+    assert(copy[1]["b"] == 2);
+
+    groups := CopyGroups(Groups());
+    old := groups;
+    inner := groups["group"];
+    inner["one"] = "changed";
+    assert(groups["group"]["one"] == "old" && inner["one"] == "changed");
+    groups["new"] = ["two":"second"];
+    assert(!old.has("new") && groups["new"]["two"] == "second");
+    delete groups["group"];
+    assert(old["group"]["one"] == "old");
+    groups = [:];
+    assert(old["group"]["one"] == "old");
+
+    arrays: [string:[string:int][]] = ["rows":[["one":1], ["two":2]]];
+    values := arrays["rows"];
+    arrays = [:];
+    item := values[1];
+    item["two"] = 8;
+    assert(values[1]["two"] == 2 && item["two"] == 8);
+
+    word := text_from_bytes([u8(110), 97, 109, 101]);
+    records: [string:[string:Item]] = ["group":["item":{name:word, values:[1,2]}]];
+    kept := records["group"]["item"];
+    records = [:];
+    kept.values.append(3);
+    assert(kept.name == "name" && length(kept.values) == 3 && kept.values[2] == 3);
+
+    // The authored zero-map rule makes an absent inner map independently
+    // mutable. The recovered VM oracle has a retain-update bug on this case.
+    missing: [string:[string:int]] = ["present":["a":1]];
+    absent := missing["absent"];
+    assert(!absent.has("a"));
+    absent["new"] = 7;
+    assert(!missing.has("absent") && absent["new"] == 7 && missing["present"]["a"] == 1);
+    return 0;
+}

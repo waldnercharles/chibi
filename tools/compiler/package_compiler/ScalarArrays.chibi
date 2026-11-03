@@ -162,8 +162,8 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         outer := ScalarArrayShape(forest, text, callables, params, names, types, members, package,
                                    Field(forest, value, syntax.FieldObject));
         if (outer.record >= 0 && ScalarNestedCollection(types[outer.record])) { return SequenceElement(types, outer); }
-        read := ScalarMapRead(forest, text, callables, names, types, package, value);
-        record := ScalarMapShape(forest, text, callables, names, types, package, read.object);
+        read := ScalarMapRead(forest, text, callables, names, types, members, package, value);
+        record := ScalarMapShape(forest, text, callables, names, types, members, package, read.object);
         if (read.operator == facts.MapGet && ScalarMapArrayValue(types, record)) {
             return {storage: types[record].value_storage, container: ArrayContainer, record: types[record].value_record};
         }
@@ -675,7 +675,7 @@ ScalarArrayStored :: (forest: snapshot.SnapshotNode[], text: string, callables: 
         case .Built(built):
             output := built;
             node := Unparenthesized(forest, operand);
-            mapped := ScalarMapRead(forest, text, callables, names, types, callable.package, node);
+            mapped := ScalarMapRead(forest, text, callables, names, types, members, callable.package, node);
             // A map array read already owns its evaluated value. Keeping it
             // transfers that reference without copying its backing again.
             if (copied && (ScalarBorrowed(forest, node) || ScalarScopedDereference(forest, text, names, node)) && mapped.operator != facts.MapGet) {

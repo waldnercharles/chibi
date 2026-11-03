@@ -13,8 +13,8 @@ captures `GetLastError` before loop cleanup or the next OS call; `ERROR_NO_MORE_
 finishes a search, while `ERROR_FILE_NOT_FOUND` from the first search succeeds
 only for a directory that still exists. Names remain sorted by `os.List`.
 
-Private core staging replaces only the three exact enumeration call signatures.
-The LLVM providers retain real OS handles and inject open, partial-read and
+Private core staging replaces three exact enumeration call signatures and the
+checked error-read checkpoints. The LLVM providers retain real OS handles and inject open, partial-read and
 close failures. Windows also forces the documented empty no-match condition.
 Both providers actually close their handles even when reporting a close failure.
 
@@ -24,7 +24,12 @@ before a failed source walk. An armed runtime scope exercises instrumented
 backedges. Failed workspaces are retained; successful owned workspaces are
 removed. Actual Windows execution remains a hosted gate until its run passes.
 
-Integration gate: compiler-inserted GC statement polls must preserve errno and
-Windows last-error while running deferred callbacks. The original O0/O2 proof
-uses a compiler without those polls. A callback-clobbering composition control
-is required before accepting this listing implementation with the new poll runtime.
+`Poll.chibi` leaves a managed cell unreachable before enumeration. The provider
+requests collection exactly when returning EOF, partial-read failure or empty
+no-match. Its release proxy deliberately replaces errno or Windows last-error.
+The result must stay correct, an actual release callback must run, and the heap
+byte count must decrease before the OS error capture. Test-only LLVM wrappers
+freeze that assertion at the real read, so a later caller poll cannot satisfy
+it. This pins the ABI3 owner/requested layout and requires
+GC statement polls to preserve thread-local OS error state. Both source probes
+run at O0/O2; actual Windows execution remains the hosted acceptance gate.

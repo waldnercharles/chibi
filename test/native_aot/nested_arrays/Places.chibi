@@ -1,0 +1,69 @@
+package nested_places
+
+Text :: (n: int) -> string { return text_from_bytes([u8(65), u8(n)]); }
+Reset :: (rows: ^(int[][]), calls: ^int) -> int {
+    calls^ += 1;
+    replacement: int[][] = [[20, 21], [30]];
+    rows^ = replacement;
+    return 7;
+}
+Index :: (calls: ^int) -> int { calls^ += 1; return 0; }
+Right :: (calls: ^int) -> int { calls^ += 10; return 5; }
+Retarget :: (index: ^int) -> int { index^ = 1; return 9; }
+Edit :: (rows: int[][]) -> int[][] { rows[0].append(9); rows[1][0] = 7; return rows; }
+OldText :: (rows: ^(string[][])) -> string {
+    old := rows^[0][0];
+    replacement: string[][] = [[Text(20)]];
+    rows^ = replacement;
+    return old;
+}
+Main :: () -> int {
+    original: int[][] = [[1, 2], [3]];
+    copied := original;
+    copied[0].append(7);
+    copied[1][0] = 8;
+    assert(length(original[0]) * 1000 + original[1][0] * 100 + length(copied[0]) * 10 + copied[1][0] == 2338);
+    changed := Edit(original);
+    assert(length(changed[0]) == 3 && changed[1][0] == 7 && original[1][0] == 3);
+    copied[0].insert(1, 9);
+    copied[0].reverse();
+    copied[0].set_array_elem(1, 6);
+    copied[0].remove_index(2);
+    copied[0].extend([4, 5]);
+    copied[0].resize(6);
+    copied[0].set_array_elem(99, 8);
+    copied[0].remove_index(-1);
+    assert(length(copied[0]) == 6 && copied[0][0] == 7 && copied[0][1] == 6 && copied[0][2] == 1);
+    assert(copied[0][3] == 4 && copied[0][4] == 5 && copied[0][5] == 0 && original[0][1] == 2);
+    calls := 0;
+    rows: int[][] = [[1]];
+    rows[Index(&calls)].append(Reset(&rows, &calls));
+    assert(calls == 2 && rows[0][0] == 20 && rows[0][2] == 7 && rows[1][0] == 30);
+    rows = [[1]];
+    rows[0][0] += Reset(&rows, &calls);
+    assert(rows[0][0] == 8 && rows[0][1] == 21 && rows[1][0] == 30);
+    rows = [[1]];
+    calls = 0;
+    rows[Index(&calls)][Index(&calls)] += Right(&calls);
+    assert(calls == 12 && rows[0][0] == 6);
+    rows = [[1], [2]];
+    index := 0;
+    rows[index].append(Retarget(&index));
+    assert(index == 1 && length(rows[0]) == 2 && rows[0][1] == 9 && length(rows[1]) == 1);
+    words: string[][] = [[Text(1), Text(2)]];
+    saved_words := words;
+    words[0].append(Text(3));
+    words[0][1] = words[0][0];
+    assert(text_byte_at(words[0][1], 1) == 1 && text_byte_at(saved_words[0][1], 1) == 2);
+    words[0].append(OldText(&words));
+    assert(length(words[0]) == 2 && text_byte_at(words[0][0], 1) == 20 && text_byte_at(words[0][1], 1) == 1);
+    flags: bool[][] = [[false, true]];
+    flags[0][0] = true;
+    flags[0].append(false);
+    assert(flags[0][0] && flags[0][1] && !flags[0][2]);
+    numbers: f64[][] = [[f64(1.25)]];
+    numbers[0][0] += f64(2);
+    numbers[0].append(f64(4.5));
+    assert(numbers[0][0] == f64(3.25) && numbers[0][1] == f64(4.5));
+    return 0;
+}

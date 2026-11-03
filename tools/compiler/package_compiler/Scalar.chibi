@@ -3535,6 +3535,14 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 }
                 continue;
             case .Changed(object, operator):
+                if (Is(forest, object, syntax.IndexExpression)) {
+                    switch ScalarNestedAssigned(forest, text, callables, params, callable, names, types, members, constants,
+                                                 statement, &variables) {
+                        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                        case .Built(assigned): rows.extend(assigned);
+                    }
+                    continue;
+                }
                 appended = object;
                 built = ScalarChanged(forest, text, callables, params, callable, names, types, members, constants, statement,
                                       object, operator, operands);

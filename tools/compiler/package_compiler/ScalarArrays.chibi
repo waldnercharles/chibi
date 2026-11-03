@@ -250,6 +250,8 @@ ScalarArrayCall :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
         wanted = 2;
     } else if (NameMatches(name, "reverse") && Is(forest, function, syntax.Identifier)) {
         operator = facts.ArrayReversed;
+    } else if (NameMatches(name, "clone") && Is(forest, function, syntax.MemberExpression)) {
+        operator = facts.ArrayCopy;
     } else if (NameMatches(name, "contains")) {
         operator = facts.ArrayContains;
         wanted = 1;
@@ -369,6 +371,10 @@ ScalarChangeOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
           Is(forest, Unparenthesized(forest, Field(forest, object, syntax.FieldObject)), syntax.Identifier) &&
           ScalarMember(forest, text, callables, params, names, types, members, package, object) >= 0)) &&
         ScalarArrayShape(forest, text, callables, params, names, types, members, package, object).storage != 0) {
+        return object;
+    }
+    if (Is(forest, object, syntax.IndexExpression) &&
+        ScalarNestedPlaceShape(forest, text, callables, params, names, types, members, package, object).storage != 0) {
         return object;
     }
     return -1;
@@ -647,6 +653,10 @@ ScalarElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, callabl
     place := destination;
     if (fielded) { place = Unparenthesized(forest, Field(forest, destination, syntax.FieldObject)); }
     object := Unparenthesized(forest, Field(forest, place, syntax.FieldObject));
+    if (Is(forest, object, syntax.IndexExpression)) {
+        return ScalarNestedAssigned(forest, text, callables, params, callable, names, types, members, constants,
+                                     statement, next_variable);
+    }
     index_node := Field(forest, place, syntax.FieldIndex);
     shape := ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, object);
     array := ScalarArrayHeld(forest, text, callables, params, names, types, members, callable.package, object);

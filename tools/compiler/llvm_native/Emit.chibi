@@ -360,7 +360,14 @@ pub ManagedProject: int : 94;
 pub ArrayInsert: int : 95;
 // Consume one array descriptor and reverse its elements without changing owners.
 pub ArrayReverse: int : 96;
-pub InstructionCount: int : 97;
+// Uniquify/store the outer array at left (RefType + target), then borrow
+// its right-indexed wrapper's one array field. The RefInner output lasts
+// only until the outer backing changes, as MapValueAddress does. A producer
+// consumes it in one contiguous deref/mutate/poke sequence after all callbacks.
+pub ArrayValueAddress: int : 106;
+pub ArrayAddressBracket: int : 0;
+pub ArrayAddressMethod: int : 1;
+pub InstructionCount: int : 107;
 // A Call's `literal`: an ordinary call, an awaited call (the callee is a waiting
 // function, run inline in the waiting caller, giving its result), or a spawn (the
 // callee is a waiting function, started as a task of its own, giving an owning
@@ -378,7 +385,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
     return Index(slot, length(slots)) && slots[slot] == type;
 }
 Produces :: (op: int) -> bool {
-    return op == ManagedProject || op == ArrayInsert || op == ArrayReverse || op == Select || op == ManagedNew || op == ManagedAddress || op == Print || op == TaskCopy || op == TaskRunning || op == AwaitResult || op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
+    return op == ArrayValueAddress || op == ManagedProject || op == ArrayInsert || op == ArrayReverse || op == Select || op == ManagedNew || op == ManagedAddress || op == Print || op == TaskCopy || op == TaskRunning || op == AwaitResult || op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
            op == ForeignCall || op == StateLoad || op == FunctionAddress || op == Sqrt || op == ValueCopy || op == ArrayLoan || (MapOperation(op) && op != MapDrop);
 }
 Comparison :: (op: int) -> bool {
@@ -388,7 +395,7 @@ Unary :: (op: int) -> bool {
     return op == Neg || op == BitNot || op == Sqrt;
 }
 ReadsLeft :: (op: int) -> bool {
-    return op == ManagedProject || op == ArrayInsert || op == ArrayReverse || op == Select || op == ManagedNew || op == ManagedAddress || op == ManagedPin || op == Print || op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
+    return op == ArrayValueAddress || op == ManagedProject || op == ArrayInsert || op == ArrayReverse || op == Select || op == ManagedNew || op == ManagedAddress || op == ManagedPin || op == Print || op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
            (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText || op == ArrayDrop || op == TextRetain ||
            op == TextRelease || op == StateStore || op == Deref || op == Poke || op == ValueCopy || op == ValueDrop || op == ArrayLoan || op == AwaitHandle || op == Cancel ||
            op == CancelAfter || op == Delay || op == Sqrt || (op >= TaskCopy && op <= AwaitResult) || MapOperation(op);
@@ -420,7 +427,7 @@ Fits :: (literal: i64, type: int) -> bool {
     return literal >= 0 - half && literal < half;
 }
 ReadsRight :: (op: int) -> bool {
-    return op == Select || (op >= Add && op <= Ne && !Unary(op)) || op == Insert || op == Poke || (op >= TextByte && op <= TextTake) ||
+    return op == ArrayValueAddress || op == Select || (op >= Add && op <= Ne && !Unary(op)) || op == Insert || op == Poke || (op >= TextByte && op <= TextTake) ||
            ArrayReadsRight(op) || (op >= MapGet && op <= MapDelete && op != MapCopy && op != MapDrop) || op == MapKeyAt ||
            op == MapValueAt || op == MapLiveAt || op == MapValueAddress || op == CancelAfter || op == ArrayLoan;
 }
@@ -437,7 +444,7 @@ ReadsTarget :: (op: int) -> bool {
 // Whether an array instruction calls the runtime context: an index check, or
 // an allocation.
 ArrayCalls :: (op: int) -> bool {
-    return op == ArrayGet || op == ArraySet || op == ArrayPush || op == ArrayCopy || op == ArrayExtend ||
+    return op == ArrayValueAddress || op == ArrayGet || op == ArraySet || op == ArrayPush || op == ArrayCopy || op == ArrayExtend ||
            op == ArraySlice || op == ArrayResize || op == ArrayBytes || op == ArrayText || op == ArrayDrop ||
            op == TextRelease || op == ArrayRemove || op == ArrayLoan || op == ArrayInsert || op == ArrayReverse;
 }
@@ -994,7 +1001,8 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         item := code[pc];
         pins = pins || item.op == ManagedPin || item.op == ManagedUnpin;
         if (item.op < Constant || item.op >= InstructionCount ||
-            (item.op > Cancel && item.op < CancelAfter && item.op != TypedFail)) {
+            (item.op > Cancel && item.op < CancelAfter && item.op != TypedFail) ||
+            (item.op > ArrayReverse && item.op < ArrayValueAddress)) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {
@@ -1085,6 +1093,14 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             if (field == 0 || item.type != RefType + field || (abi.ScalarType(field) == "" && ElementType(records, field) == 0) ||
                 (item.target != 0 && item.target != 1) || !Typed(locals, item.left, held)) {
                 return Result.Rejected(base + pc, "native field reference differs from its record");
+            }
+        }
+        if (item.op == ArrayValueAddress) {
+            member := NestedArrayElement(records, fields, item.target);
+            if (member == 0 || item.type != RefType + member || !Typed(slots, item.left, RefType + item.target) ||
+                !Typed(slots, item.right, abi.IntStorage) ||
+                (item.literal != i64(ArrayAddressBracket) && item.literal != i64(ArrayAddressMethod))) {
+                return Result.Rejected(base + pc, "native nested array reference differs from its wrapper");
             }
         }
         if (item.op == Insert) {
@@ -1635,6 +1651,8 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}  %v{} = getelementptr inbounds {}, ptr {}, i32 0, i32 {}\n", out, pc, TypeName(item.right),
                            base_address, item.literal);
         out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    } else if (item.op == ArrayValueAddress) {
+        out = format_text("{}{}", out, ArrayValueReference(item, pc, program));
     } else if (item.op == Deref) {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), RefType + item.type, "s", item.left));
         out = format_text("{}  %v{} = load {}, ptr %a{}\n", out, pc, type, pc);
@@ -1873,7 +1891,7 @@ TextHelpers :: () -> string {
 // Whether `code` counts references, so the module has the helpers.
 Counts :: (code: Instruction[]) -> bool {
     for (item in code) {
-        if (item.op == TextRetain || item.op == TextRelease || item.op == ValueCopy || item.op == ValueDrop || item.op == ArrayDrop || Holding(item.type) ||
+        if (item.op == ArrayValueAddress || item.op == TextRetain || item.op == TextRelease || item.op == ValueCopy || item.op == ValueDrop || item.op == ArrayDrop || Holding(item.type) ||
             ((item.op == StateLoad || item.op == StateStore) && (item.type == abi.TextStorage || StateArray(item.type)))) {
             return true;
         }
@@ -3376,7 +3394,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             out.append(StateDeclarations(states, held));
         }
         if (ProgramMode(mode)) {
-            out.append("declare void @chibi_native_step()\ndeclare void @chibi_native_failure(i32) noreturn\ndeclare void @chibi_native_reference_unavailable() noreturn\n");
+            out.append("declare void @chibi_native_step()\ndeclare void @chibi_native_failure(i32) noreturn\ndeclare void @chibi_native_reference_unavailable() noreturn\ndeclare void @chibi_native_array_mutation_unavailable() noreturn\n");
         } else if (family && managed) {
             out.append("declare void @chibi_native_failure(i32) noreturn\n");
         }

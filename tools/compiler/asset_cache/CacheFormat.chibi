@@ -24,19 +24,33 @@ pub ValidKey :: (key: string) -> bool {
 // Same key as the C interface: 64 ASCII compiler digest bytes, salt including
 // its NUL, and the exact request bytes. No concatenated request copy is made.
 pub ClosureKey :: (identity: string, salt: u8[], request: u8[]) -> string {
-    if (strings.ByteLength(identity) != 64 || length(request) > RequestLimit) { return ""; }
-    for (byte in strings.Bytes(identity)) {
-        if (!((byte >= 48 && byte <= 57) || (byte >= 97 && byte <= 102))) { return ""; }
-    }
+    if (!ValidIdentity(identity) || length(request) > RequestLimit) { return ""; }
     stream := sha256.Begin();
     compiler_added := sha256.Update(&stream, bytes.FromString(identity));
     salt_size := 0;
     while salt_size < length(salt) && salt[salt_size] != u8(0) { salt_size += 1; }
     salt_added := sha256.Update(&stream, salt, 0, salt_size);
-    terminated := sha256.Update(&stream, [u8(0)]);
-    request_added := sha256.Update(&stream, request);
-    assert(compiler_added && salt_added && terminated && request_added, "bounded closure key inputs fit SHA-256");
-    return strings.Concatenate(["closure-", sha256.FinishHex(stream)]);
+    assert(compiler_added && salt_added, "bounded closure key inputs fit SHA-256");
+    return FinishClosureKey(stream, request);
+}
+
+pub ValidIdentity :: (identity: string) -> bool {
+    if (strings.ByteLength(identity) != 64) { return false; }
+    for (byte in strings.Bytes(identity)) {
+        if (!((byte >= 48 && byte <= 57) || (byte >= 97 && byte <= 102))) { return false; }
+    }
+    return true;
+}
+
+// The stream already contains the compiler's 64-byte identity and salt bytes.
+// Both array-backed and borrowed C salts use this exact NUL/request framing.
+pub FinishClosureKey :: (stream: sha256.State, request: u8[]) -> string {
+    if (length(request) > RequestLimit) { return ""; }
+    view := stream;
+    terminated := sha256.Update(&view, [u8(0)]);
+    request_added := sha256.Update(&view, request);
+    if (!terminated || !request_added) { return ""; }
+    return strings.Concatenate(["closure-", sha256.FinishHex(view)]);
 }
 
 // CHIBIC01 is a fixed 144-byte header: magic, little-endian u64 payload size,

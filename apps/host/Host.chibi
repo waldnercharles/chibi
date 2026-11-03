@@ -11,6 +11,7 @@ import target "core:target"
 RetainedText: int : 12;
 RetainedArray: int : 13;
 RetainedChar: int : 14;
+RetainedSnapshot: int : 15;
 RtldNow: i32 : 2;
 DarwinRtldLocal: i32 : 4;
 DarwinRtldFirst: i32 : 256;
@@ -416,6 +417,11 @@ Migrate :: (old: rawptr, incoming: rawptr) -> bool {
     new_hash: fn(index: i32) -> i64 = Symbol(incoming, "chibi_host_retained_hash");
     new_set: fn(index: i32, word: i64) -> i32 = Symbol(incoming, "chibi_host_retained_set");
     new_set_as: fn(index: i32, from: i32, word: i64) -> i32 = Symbol(incoming, "chibi_host_retained_set_as");
+    begin_address := Symbol(incoming, "chibi_host_retained_begin");
+    accept_address := Symbol(incoming, "chibi_host_retained_accept");
+    stage_address := Symbol(incoming, "chibi_host_retained_stage");
+    finish_address := Symbol(incoming, "chibi_host_retained_finish");
+    if begin_address != 0 && (accept_address == 0 || stage_address == 0 || finish_address == 0) { return false; }
     hashes: i64[] = [];
     for source in 0..<int(old_count()) { hashes.append(old_hash(i32(source))); }
     order := Order(hashes);
@@ -432,6 +438,10 @@ Migrate :: (old: rawptr, incoming: rawptr) -> bool {
         source := -1;
         if low < length(order) && hashes[order[low]] == wanted { source = order[low]; }
         sources.append(source);
+        if new_type(i32(target)) == RetainedSnapshot && begin_address == 0 { return false; }
+        if source >= 0 && (old_type(i32(source)) == RetainedSnapshot || new_type(i32(target)) == RetainedSnapshot) {
+            if old_type(i32(source)) != new_type(i32(target)) || begin_address == 0 { return false; }
+        }
         if source >= 0 && (old_type(i32(source)) == RetainedArray || new_type(i32(target)) == RetainedArray ||
                           old_type(i32(source)) == RetainedChar || new_type(i32(target)) == RetainedChar) {
             if old_type(i32(source)) != new_type(i32(target)) || old_schema_address == 0 || new_schema_address == 0 {
@@ -445,6 +455,24 @@ Migrate :: (old: rawptr, incoming: rawptr) -> bool {
             return false;
         }
     }
+    // A snapshot transaction owns staged roots. Schema rejection occurs
+    // before value copying; no incoming binding is published until finish.
+    session: i64 = 0;
+    if begin_address != 0 {
+        begin: fn() -> i64 = begin_address;
+        session = begin();
+        if session == 0 { return false; }
+        accept: fn(handle: i64, index: i32, from: i32, word: i64) -> i32 = accept_address;
+        finish: fn(handle: i64, commit: i32) -> i32 = finish_address;
+        for target in 0..<length(sources) {
+            source := sources[target];
+            if source < 0 { continue; }
+            if accept(session, i32(target), old_type(i32(source)), old_get(i32(source))) != 1 {
+                aborted := finish(session, 0);
+                return false;
+            }
+        }
+    }
     for target in 0..<length(sources) {
         source := sources[target];
         if source < 0 { continue; }
@@ -452,13 +480,24 @@ Migrate :: (old: rawptr, incoming: rawptr) -> bool {
             initialized: fn(index: i32) -> i32 = ready_address;
             if initialized(i32(source)) == 0 { continue; }
         }
-        if old_type(i32(source)) == new_type(i32(target)) {
+        if session != 0 {
+            stage: fn(handle: i64, index: i32, from: i32, word: i64) -> i32 = stage_address;
+            if stage(session, i32(target), old_type(i32(source)), old_get(i32(source))) != 1 {
+                finish: fn(handle: i64, commit: i32) -> i32 = finish_address;
+                aborted := finish(session, 0);
+                return false;
+            }
+        } else if old_type(i32(source)) == new_type(i32(target)) {
             carried := new_set(i32(target), old_get(i32(source)));
             if carried != 1 { return false; }
         } else {
             converted := new_set_as(i32(target), old_type(i32(source)), old_get(i32(source)));
             if converted != 1 { return false; }
         }
+    }
+    if session != 0 {
+        finish: fn(handle: i64, commit: i32) -> i32 = finish_address;
+        return finish(session, 1) == 1;
     }
     return true;
 }

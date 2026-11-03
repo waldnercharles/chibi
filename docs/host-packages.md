@@ -1,5 +1,9 @@
 # Imported host packages
 
+The native compiler and embedding contract is documented in
+[native-host-clock.md](native-host-clock.md). The C VM registration described
+below remains only for its existing consumers.
+
 This clock-first foundation supplies private host kernel lookup, explicit
 clock grants, macOS/Linux sampling, portable time values and the public
 `Now`/`Between` clock API.
@@ -98,21 +102,18 @@ acknowledge the error.
 
 ## Validation
 
-`language-host-packages` exercises the native boundary and ordinary imports on
-bytecode and SLJIT, with authored tests for time values. The independent
-`language-host-packages-compiler` route recovers the current stage-one compiler,
-compiles source-backed host wrappers against an explicit target, links their
-prepared closure and executes it on both VMs. A transport wrapper test-local to the
-suite exercises the scalar boundary; the shipped package is compiled and run
-separately through `Now` and `Between`.
+`language-host-packages-compiler` runs the authored native clock suite. It checks
+private package lookup and catalog identity, then compiles the public `Now` and
+`Between` policy and executes two loaded images with distinct host-owned grants
+at O0/O2. Coverage includes denial, failed/unavailable providers, exact samples
+above `2^53`, repeated reads, domain mismatch, revocation, invalid bindings and
+provider reentry into the collector. Pure checks preserve missing imports,
+private and inexact names, owning-package permissions and target unavailability.
 
-Coverage includes private-kernel precedence over a same-named ambient native,
-denied/failed/unavailable grants, retained samples above
-`2^53`, successive reads, domain uniqueness, host effects, private and inexact
-names, target unavailability, and a real nondecreasing native-clock smoke check.
-Tests use injected outcomes rather than sleeps or precision thresholds. Actual
-platform execution, build settings and elapsed results belong to the validation
-report; source support alone is not platform execution proof.
+The explicit Wasm suite supplies a seven-slot owner and checks legacy-context
+rejection, callback identity, grant restoration and recovery after source failure.
+Tests inject outcomes instead of relying on sleeps or precision thresholds. See
+[native-host-clock.md](native-host-clock.md) for the runner arguments and ABI.
 
 ## Prior art and next services
 

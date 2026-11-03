@@ -134,6 +134,15 @@ pub Module :: (collections: string[], directories: string[], paths: string[], so
     return ModuleWith(collections, directories, paths, sources, triple, chosen, directory, false, {root: "", source: "", directories: [], entry: "", runtime_assertions: false});
 }
 
+// A Wasm embedding adapter supplies the seven-slot context and borrowed grant.
+// The ordinary Wasm program boundary deliberately does not grant this capability.
+pub ModuleClock :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
+                    chosen: string, directory: string) -> Output {
+    if (!abi.Same(Target(triple), abi.WebAssembly32())) { return Output.Rejected("explicit clock module requires WebAssembly"); }
+    return ModuleWith(collections, directories, paths, sources, triple, chosen, directory, false,
+                      {root: "", source: "", directories: [], entry: "", runtime_assertions: false}, true);
+}
+
 // Package generations expose Main/Frame and retained states to the native host.
 pub ModuleShared :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
                      chosen: string, directory: string) -> Output {
@@ -144,7 +153,7 @@ pub ModuleShared :: (collections: string[], directories: string[], paths: string
 }
 
 ModuleWith :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
-               chosen: string, directory: string, shared: bool, origins: DiagnosticOrigins) -> Output {
+               chosen: string, directory: string, shared: bool, origins: DiagnosticOrigins, clock_owner: bool = false) -> Output {
     target := Target(triple);
     if (!abi.Supported(target)) { return Output.Rejected("unsupported native target"); }
     platform := PlatformFor(target);
@@ -156,7 +165,7 @@ ModuleWith :: (collections: string[], directories: string[], paths: string[], so
         rows = compiler.CollectScalarProgram("/project", collections, directories, paths, sources, PointerFacts(target), Names(),
                                             Natives(), Ports(), Identities(), platform.os, platform.arch, chosen);
     }
-    return EmitRows(collections, directories, paths, sources, platform.os, platform.arch, rows, target, directory, shared, origins);
+    return EmitRows(collections, directories, paths, sources, platform.os, platform.arch, rows, target, directory, shared, origins, clock_owner);
 }
 
 // Program rows already checked by the collector, with the same diagnostics,
@@ -199,7 +208,7 @@ LibraryModule :: (path: string, source: string, triple: string, origins: Diagnos
 // rejection names its file and line in the closure the producer read, with
 // the target `os` and `arch` (core:target's numbers) that chose its text.
 EmitRows :: (collections: string[], directories: string[], paths: string[], sources: string[], os: int, arch: int,
-             rows: facts.Row[], target: abi.Target, directory: string, shared: bool, origins: DiagnosticOrigins) -> Output {
+             rows: facts.Row[], target: abi.Target, directory: string, shared: bool, origins: DiagnosticOrigins, clock_owner: bool = false) -> Output {
     if (length(rows) < 2 || rows[1].kind == facts.RejectionRow) {
         rejected := rows[length(rows) - 1];
         place := Where(collections, directories, paths, sources, os, arch, target.pointer_bits,
@@ -218,6 +227,8 @@ EmitRows :: (collections: string[], directories: string[], paths: string[], sour
     }
     if (shared) {
         emitted = scalar.EmitFamilyShared(target, rows);
+    } else if (clock_owner) {
+        emitted = scalar.EmitClockProgramFor(target, prepared, directory);
     } else if (directory == "") {
         emitted = scalar.EmitProgramFor(target, prepared, "");
     } else {

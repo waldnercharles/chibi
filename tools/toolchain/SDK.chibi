@@ -140,11 +140,16 @@ WasmInputs :: (root: string, build_dir: string) -> bool {
 // Staged compiler sources exclude non-authored files such as legacy seeds.
 // Verify both directions so extra or missing authored sources cannot pass.
 SameSources :: (source: string, staged: string) -> bool {
-    if (os.Kind(source) != os.KindDirectory) { return false; }
+    source_kind := os.Kind(source);
+    if (source_kind != os.KindNone && source_kind != os.KindDirectory) { return false; }
     kind := os.Kind(staged);
     if (kind != os.KindNone && kind != os.KindDirectory) { return false; }
-    original := os.List(source);
-    if (original.error) { return false; }
+    original_names: string[] = [];
+    if (source_kind == os.KindDirectory) {
+        original := os.List(source);
+        if (original.error) { return false; }
+        original_names = original.names;
+    }
     copied_names: string[] = [];
     if (kind == os.KindDirectory) {
         copied := os.List(staged);
@@ -153,7 +158,7 @@ SameSources :: (source: string, staged: string) -> bool {
     }
     // Empty directories, including test scratch parents, do not change the
     // authored source inventory. A missing .chibi file still fails below.
-    for (name in original.names) {
+    for (name in original_names) {
         from := Join([source, "/", name]);
         to := Join([staged, "/", name]);
         if (os.IsDirectory(from)) {
@@ -165,6 +170,10 @@ SameSources :: (source: string, staged: string) -> bool {
         to := Join([staged, "/", name]);
         if (os.Kind(from) == os.KindDirectory) {
             if (os.Kind(to) != os.KindDirectory) { return false; }
+        } else if (os.Kind(from) == os.KindNone && os.Kind(to) == os.KindDirectory) {
+            // A test may remove an empty scratch directory after the build
+            // copies it. Its staged descendants must also contain no files.
+            if (!SameSources(from, to)) { return false; }
         } else if (!strings.HasSuffix(name, ".chibi") || os.Kind(from) != os.KindFile || os.Kind(to) != os.KindFile) {
             return false;
         }
@@ -274,7 +283,9 @@ CompilerTools :: () -> int {
             return 2;
         }
     }
-    if (!SameSources(Join([root, "/tools/compiler"]), Join([build_dir, "/share/chibi/compiler"])) ||
+    if (os.Kind(Join([root, "/tools/compiler"])) != os.KindDirectory ||
+        os.Kind(Join([root, "/packages/core"])) != os.KindDirectory ||
+        !SameSources(Join([root, "/tools/compiler"]), Join([build_dir, "/share/chibi/compiler"])) ||
         !SameSources(Join([root, "/packages/core"]), Join([build_dir, "/share/chibi/core"]))) {
         os.Print("sdk: graph compiler/core resources are missing or stale; rebuild the native products");
         return 1;

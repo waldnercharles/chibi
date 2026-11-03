@@ -39,6 +39,7 @@ Main :: () -> int {
         for mode in 0..<3 {
             source := format_text("{}/factory-{}-{}.ll", work, index, mode);
             output := format_text("{}/factory-{}-O{}", work, mode, level);
+            if index == 2 { output = strings.Concatenate([output, ".exe"]); }
             objects := [strings.Concatenate([output, ".o"]), strings.Concatenate([output, "-start.o"])];
             if host.Objects(llvm, [source, start], objects, level, 1) != nil { return 1; }
             plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", static);

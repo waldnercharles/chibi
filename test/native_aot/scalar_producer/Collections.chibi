@@ -46,4 +46,33 @@ CollectionProjection :: () {
     assert(unused[1].kind == facts.DocumentRow && scalar.Validate(unused) == "");
     shadow := CollectionRows("Main::()->int{return make_array(f64(2));}make_array::(value:f64)->int{return int(value);}", natives, ports);
     assert(shadow[1].kind == facts.DocumentRow && scalar.Validate(shadow) == "");
+    reversed := Produced("package scalar\nMain::()->int{xs:int[]=[1,2];total:=0;for < value,index in xs{total+=value+index;}return total;}\n");
+    ValidateRows(reversed, "");
+    loops := 0;
+    for (row, index in reversed) {
+        if (row.kind != facts.ForRow) { continue; }
+        assert(row.literal == i64(facts.RangeArray + facts.RangeKeyed + facts.RangeReverse));
+        RejectChanged(reversed, [Changed(index, LiteralField, i64(facts.RangeArray + facts.RangeExclusive))], "invalid scalar local row");
+        RejectChanged(reversed, [Changed(index, LiteralField, i64(facts.RangeArray + facts.RangeReverse + facts.RangeExclusive))], "invalid scalar local row");
+        RejectChanged(reversed, [Changed(index, LiteralField, i64(facts.RangeArray + facts.RangeKeyed + facts.RangeExclusive))], "invalid scalar local row");
+        RejectChanged(reversed, [Changed(index, LiteralField, i64(facts.RangeArray + facts.RangeKeyed + facts.RangeReverse + facts.RangeExclusive))], "invalid scalar local row");
+        RejectChanged(reversed, [Changed(index, ValueField, i64(row.value + 1))], "invalid scalar local row");
+        RejectChanged(reversed, [Changed(index, TypeField, i64(facts.BoolType))], "scalar range differs from its int bounds");
+        loops += 1;
+    }
+    assert(loops == 1);
+    nested := Produced("package scalar\nMain::()->int{xs:int[][]=[[1]];xs[0].append(2);return xs[0][1];}\n");
+    ValidateRows(nested, "");
+    places := 0;
+    for (row, index in nested) {
+        if (row.kind != facts.ArrayRow || row.literal != i64(facts.NestedArrayPlace)) { continue; }
+        assert(row.value == facts.ArrayPush && row.count == 3);
+        RejectChanged(nested, [Changed(index, CountField, 2)], "scalar array operation differs from its operands");
+        RejectChanged(nested, [Changed(index, TypeField, i64(facts.ArrayType + facts.IntType))], "scalar array operation differs from its operands");
+        RejectChanged(nested, [Changed(index - 2, KindField, i64(facts.LiteralRow)),
+            Changed(index - 2, TypeField, i64(facts.BoolType)), Changed(index - 2, ValueField, 0)],
+            "scalar array operation differs from its operands");
+        places += 1;
+    }
+    assert(places == 1);
 }

@@ -2,6 +2,7 @@ param(
     [Parameter(Mandatory = $true)][string]$Compiler,
     [Parameter(Mandatory = $true)][string]$Llvm,
     [string]$CCompiler = "",
+    [string]$FacadeArchive = "",
     [string]$Work = ""
 )
 $ErrorActionPreference = 'Stop'
@@ -17,13 +18,14 @@ $Work = [IO.Path]::GetFullPath($Work).Replace('\', '/')
 if (Test-Path -LiteralPath $Work) { throw "Scratch directory already exists: $Work" }
 New-Item -ItemType Directory -Path $Work | Out-Null
 
-function Build-Native([string]$Source, [string]$Output) {
+function Build-Native([string]$Source, [string]$Output, [string[]]$Extra = @()) {
     & $Compiler --compiler "$root/tools/compiler" --core "$root/packages/core" `
         --source $Source --entry Main --output $Output --llvm $Llvm `
-        --target x86_64-pc-windows-msvc --level 0 --jobs 2
+        --target x86_64-pc-windows-msvc --level 0 --jobs 2 @Extra
     if ($LASTEXITCODE) { throw "Native compilation failed: $Source ($LASTEXITCODE)" }
 }
 
+$passed = $false
 try {
     if (!$CCompiler) {
         $clang = Get-Command clang-cl.exe -ErrorAction SilentlyContinue
@@ -54,6 +56,16 @@ try {
     Build-Native "$root/test/native_aot/asset_compiler/Verify.chibi" "$Work/verify.exe"
     Build-Native "$root/test/native_aot/asset_compiler/Crash.chibi" "$Work/crash.exe"
 
+    if ($FacadeArchive) {
+        $FacadeArchive = (Resolve-Path -LiteralPath $FacadeArchive).Path.Replace('\', '/')
+    } else {
+        Write-Host 'Build the authored facade archive and LLVM call boundary'
+        Build-Native "$root/tools/graph/asset_native/Build.chibi" "$Work/asset-native-build.exe" @('--collection', "graph=$root/tools/graph")
+        $FacadeArchive = "$Work/chibi_asset_compiler_host.lib"
+        & "$Work/asset-native-build.exe" $root $Compiler $Llvm x86_64-pc-windows-msvc $FacadeArchive
+        if ($LASTEXITCODE) { throw "The authored facade archive failed to build ($LASTEXITCODE)" }
+    }
+
     $consumer = "$sdk/bin/asset-consumer.exe"
     $compile = [Diagnostics.ProcessStartInfo]::new()
     $compile.FileName = $CCompiler
@@ -66,10 +78,7 @@ try {
     }
     $arguments = @('/nologo', '/TC', '/std:c11', '/MT', '/W4', '/WX', '/D_CRT_SECURE_NO_WARNINGS',
         '/D_CRT_NONSTDC_NO_DEPRECATE', "/I$root/src", "/Fo$Work/objects/", "/Fe$consumer",
-        "$root/test/native_aot/asset_compiler/Bridge.c", "$root/src/authoring/asset_compiler_host.c",
-        "$root/src/authoring/asset_compiler_native.c", "$root/src/host/process.c",
-        "$root/src/support/binary_cache.c", "$root/src/support/file_io.c",
-        "$root/src/support/sha256.c", "$root/src/support/xalloc.c", '/link', '/MANIFEST:EMBED',
+        "$root/test/native_aot/asset_compiler/Bridge.c", $FacadeArchive, '/link', '/MANIFEST:EMBED',
         "/MANIFESTINPUT:$root/src/host/windows/chibi.manifest")
     foreach ($argument in $arguments) { $compile.ArgumentList.Add($argument) }
     Write-Host 'Build the C consumer without compiler-host or VM objects'
@@ -98,13 +107,15 @@ try {
         Write-Host 'Run the relocated native service and C consumer without runtime build tools'
         & "$Work/verify.exe" $asset "$root/test/native_aot/asset_compiler/catalog.json" $Work
         if ($LASTEXITCODE) { throw "The native service verifier failed ($LASTEXITCODE)" }
-        & $consumer $asset "$Work/simple.json" "$Work/source-error.json" "$Work/cache" "$Work/crash.exe"
+        & $consumer $asset "$Work/simple.json" "$Work/source-error.json" "$Work/cache" "$Work/crash.exe" "$Work/simple.chibip"
         if ($LASTEXITCODE) { throw "The C asset consumer failed ($LASTEXITCODE)" }
         if (@(Get-ChildItem -LiteralPath "$Work/temp" -Force).Count) { throw 'The native compiler left temporary files' }
     } finally {
         foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
     }
     Write-Host 'Windows native asset quota, cancellation, diagnostics and UTF-8 SDK relocation passed'
+    $passed = $true
 } finally {
-    Remove-Item -LiteralPath $Work -Recurse -Force
+    if ($passed) { Remove-Item -LiteralPath $Work -Recurse -Force }
+    else { Write-Host "Failed native facade evidence retained at $Work" }
 }

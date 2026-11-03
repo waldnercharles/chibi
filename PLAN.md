@@ -9,6 +9,56 @@ independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
 ## Current checkpoint, 2 November
 
+The composition at `95ec7d976` includes the bounded constructor fix, authored
+asset-compiler facade and archive builder, native host clock projection and
+embedding, retained snapshot infrastructure, nested/reverse array iteration,
+whole-array managed cells, and aggregate formatting. Its macOS stages two,
+three and four are byte-identical:
+`340210ff3cfa3bc32472fa3a027a32d65a6caf9691002e7d5995ef8718b33ad0`.
+Build times were 23.40, 22.66 and 25.22 seconds under shared machine load;
+these are verification timings, not a controlled performance comparison.
+The same source passes 455 compiler tests in 26.10 seconds and the complete
+native clock projection/factory/two-image suite in 27.52 seconds.
+
+The preceding `bba9ddaae` composition passes the generation/family/snapshot
+suite in 49.92 seconds, builds native compiler/service/archive products in
+53.91 seconds, and passes the actual C facade consumer in 7.71 seconds.
+The SDK source check exposed a copied empty test directory whose original was
+removed after the build. `7212c8c6e` makes the empty-directory rule symmetric;
+missing, changed and extra source files remain rejected. The full SDK suite,
+including archive receipts, failure cleanup, installation and relocation,
+passes in 86.87 seconds against the frozen product source with this SDK fix.
+
+The authored facade also passes actual Linux and plain/threaded WebAssembly
+consumer proofs. Its Windows archive cross-build is verified; actual hosted
+Windows discovery, Unicode paths and relocation remain open. Clock ownership
+is registered in both POSIX and Windows CI. Studio commit `69ca96dbb` owns all
+19 browser-storage cases plus two process supervision controls (21/21 pass);
+engine `450f8f2e6` removes their C dispatcher. The host-clock C fixture and its
+embedded-source header are retired in `de7a751c6` after the native selector
+passes, preserving the live clock behavior and removing a private VM transport
+quota. Native asset byte/depth/CHECK limits remain unchanged.
+
+Completed CI `41563501452` Linux phases proved a fixed point for published
+`d4451f6be`, SHA-256
+`19333fe99140e067510ed7925c964142ed8ba5d5f5a5e6a358bf1a6b5a7819b6`.
+This run failed broader acceptance. Core tests rejected an unchecked fixture file-read result, then the
+existing core phase deadline expired. Native CLI validation found three more
+unchecked fixture reads. `a3853c327` and `5dee31198` correct those fixtures.
+The platform module bundle held only runners because its producer had stopped;
+those consumer failures occurred before native module execution.
+
+Pointer views, owned values across task suspension, retained aggregate source
+admission and nested collection places remain active implementation lanes.
+The final VM/build/recovery removal is being prepared separately and will be
+integrated after the replacement behavior passes. Graph C fixtures now use the three-source `chibi_graph_fixture` archive and
+`graph_headerless` program; `ca08e2a35` removes the 552-line `policy_worker`.
+Incremental/archive/headerless controls pass on macOS (14.49 seconds) and
+Linux (36.42 seconds), preserving foreign-library build checks after VM deletion.
+This is not full platform acceptance and PR #1331 is not ready to merge.
+
+## Earlier integration evidence
+
 The later composition `3e038edf1` adds explicit clock grant/context support,
 ordered array-place writes, managed-record image leases, and the private
 build-host test retirement. An experimental constructor-growth builder compiles

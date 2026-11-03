@@ -1,0 +1,96 @@
+package scalar_llvm
+
+import abi "project:native_abi"
+import native "project:llvm_native"
+import facts "project:scalar_facts"
+
+// The complete graph is shared by every opaque retained root in an image.
+// Facts/native type ordinals identify nodes only while building this table.
+RetainedShapes :: struct {
+    nodes: native.SnapshotShapeNode[];
+    edges: native.SnapshotShapeEdge[];
+    roots: int[];
+    types: int[];
+    heads: int[];
+    canonical: int[];
+}
+RetainedShapeNode :: (build: ^RetainedShapes, rows: facts.Row[], records: int[], type: int, character: bool) -> int {
+    storage := type;
+    key := storage;
+    if (character) { key = native.MapType; }
+    known := build^.canonical[key];
+    if (known >= 0) { return known; }
+    kind := native.SnapshotScalar;
+    extra := abi.ValueTag(storage);
+    head := -1;
+    if (character) { extra = 14; }
+    else if (type >= native.ArrayType) { kind = native.SnapshotArray; extra = 0; }
+    else if (type >= native.RecordType) {
+        head = records[type - native.RecordType];
+        kind = native.SnapshotRecord;
+        if (rows[head].kind == facts.UnionRow) { kind = native.SnapshotUnion; }
+        extra = 0;
+    }
+    index := length(build^.nodes);
+    build^.canonical[key] = index;
+    build^.nodes.append({kind: kind, type: storage, extra: extra, first: 0, count: 0});
+    build^.types.append(type);
+    build^.heads.append(head);
+    return index;
+}
+// Called only after facts and retained-value admission validate every reachable
+// type. One worklist visits each type/variant and appends each edge once.
+RetainedShapeGraph :: (rows: facts.Row[], records: int[], code: native.Instruction[], count: int, characters: bool[]) -> native.SnapshotShapes {
+    build: RetainedShapes = {nodes: [], edges: [], roots: [], types: [], heads: [], canonical: []};
+    states := resize([Op(native.Check, 0, 0, 0, 0, 0)], count);
+    for (item in code) {
+        if (item.op == native.StateLoad) { states[item.target] = item; }
+    }
+    for (binding, index in states) {
+        type := binding.type;
+        opaque := type >= native.RecordType && type < native.ArrayType;
+        if (type >= native.ArrayType && type < native.MapType) {
+            opaque = abi.ScalarType(type - native.ArrayType) == "";
+        }
+        if (!opaque) { build.roots.append(-1); continue; }
+        if (length(build.canonical) == 0) {
+            canonical := resize([int(0)], native.MapType + 1);
+            for (slot in 0..<length(canonical)) { canonical[slot] = -1; }
+            build.canonical = canonical;
+        }
+        root := RetainedShapeNode(&build, rows, records, type, characters[index]);
+        build.roots.append(root);
+    }
+    at := 0;
+    while (at < length(build.nodes)) {
+        node := build.nodes[at];
+        type := build.types[at];
+        head := build.heads[at];
+        node.first = length(build.edges);
+        if (node.kind == native.SnapshotArray) {
+            child := RetainedShapeNode(&build, rows, records, type - native.ArrayType, false);
+            build.edges.append({name: "", target: child});
+        } else if (node.kind == native.SnapshotUnion) {
+            variant := head + 1;
+            for (ordinal in 0..<rows[head].count) {
+                child := length(build.nodes);
+                build.nodes.append({kind: native.SnapshotVariant, type: 0, extra: 0, first: 0, count: 0});
+                build.types.append(0);
+                build.heads.append(variant);
+                build.edges.append({name: rows[variant].name, target: child});
+                variant += rows[variant].count + 1;
+            }
+        } else if (node.kind == native.SnapshotRecord || node.kind == native.SnapshotVariant) {
+            for (field in head + 1..<head + 1 + rows[head].count) {
+                member := rows[field];
+                child := RetainedShapeNode(&build, rows, records, NativeType(member.type), member.literal == i64(facts.CharNominal));
+                build.edges.append({name: member.name, target: child});
+            }
+        }
+        node.count = length(build.edges) - node.first;
+        if (node.count == 0) { node.first = 0; }
+        build.nodes[at] = node;
+        at += 1;
+    }
+    return {nodes: build.nodes, edges: build.edges, roots: build.roots};
+}

@@ -1,0 +1,103 @@
+package asset_call
+
+import strings "core:strings"
+
+// The sole foreign declaration owner for the compile-only call boundary.
+// Buffers are borrowed for one synchronous copy; no pointer enters authored IR.
+foreign {
+    chibi_asset_request_length :: () -> int
+    chibi_asset_request_copy :: (buffer: u8[], count: int) -> int
+    chibi_asset_option_length :: (which: int) -> int
+    chibi_asset_option_copy :: (which: int, buffer: u8[], count: int) -> int
+    chibi_asset_executable_copy :: (buffer: u8[], capacity: int) -> int
+    chibi_asset_milliseconds :: () -> i64
+    chibi_asset_cancelled :: () -> int
+    chibi_asset_budget :: () -> u64
+    chibi_asset_publish :: (data: u8[], count: int) -> int
+    chibi_asset_rejected :: (document: int, line: int, column: int, message: cstring) -> int
+    chibi_asset_file_open :: (path: cstring) -> int
+    chibi_asset_service_open :: (path: cstring) -> int
+    chibi_asset_file_info :: (fd: int, buffer: u8[]) -> int
+    chibi_asset_name_info :: (path: cstring, buffer: u8[]) -> int
+    chibi_asset_file_read :: (fd: int, buffer: u8[], first: int, count: int) -> int
+    chibi_asset_file_write :: (fd: int, buffer: u8[], first: int, count: int) -> int
+    chibi_asset_file_close :: (fd: int) -> int
+    chibi_asset_file_sync :: (fd: int) -> int
+    chibi_asset_file_remove :: (path: cstring) -> int
+    chibi_asset_file_rename :: (from: cstring, to: cstring) -> int
+    chibi_asset_file_temporary :: (path: u8[]) -> int
+    chibi_asset_file_lock :: (path: cstring) -> int
+    chibi_asset_directory_make :: (path: cstring) -> int
+    chibi_asset_directory_open :: (path: cstring) -> u64
+    chibi_asset_directory_next :: (handle: u64, buffer: u8[], capacity: int) -> int
+    chibi_asset_directory_close :: (handle: u64) -> int
+    chibi_asset_cached :: () -> int
+    chibi_asset_identity_copy :: (buffer: u8[], count: int) -> int
+
+    chibi_asset_environment_length :: (name: cstring) -> int
+    chibi_asset_environment_copy :: (name: cstring, buffer: u8[], count: int) -> int
+
+    chibi_asset_salt_length :: () -> u64
+    chibi_asset_salt_read :: (first: u64, buffer: u8[], count: int) -> int
+
+}
+
+pub RequestLength :: () -> int { return chibi_asset_request_length(); }
+pub RequestCopy :: (buffer: ^(u8[]), count: int) -> int { return chibi_asset_request_copy(buffer^, count); }
+pub ExecutableCopy :: (buffer: ^(u8[]), capacity: int) -> int { return chibi_asset_executable_copy(buffer^, capacity); }
+pub Milliseconds :: () -> i64 { return chibi_asset_milliseconds(); }
+pub Cancelled :: () -> int { return chibi_asset_cancelled(); }
+pub Budget :: () -> u64 { return chibi_asset_budget(); }
+pub Publish :: (data: u8[], count: int) -> int { return chibi_asset_publish(data, count); }
+pub Rejected :: (document: int, line: int, column: int, message: string) -> int {
+    count := strings.ByteLength(message);
+    if (count > 255) { count = 255; }
+    for (index in 0..<count) {
+        if (strings.ByteAt(message, index) == 0) { count = index; break; }
+    }
+    safe := strings.Slice(message, 0, count);
+    return chibi_asset_rejected(document, line, column, safe);
+}
+
+pub FileOpen :: (path: string) -> int { return chibi_asset_file_open(path); }
+pub FileInfo :: (fd: int, buffer: ^(u8[])) -> int { return chibi_asset_file_info(fd, buffer^); }
+pub NameInfo :: (path: string, buffer: ^(u8[])) -> int { return chibi_asset_name_info(path, buffer^); }
+pub FileRead :: (fd: int, buffer: ^(u8[]), first: int, count: int) -> int { return chibi_asset_file_read(fd, buffer^, first, count); }
+pub FileWrite :: (fd: int, buffer: u8[], first: int, count: int) -> int { return chibi_asset_file_write(fd, buffer, first, count); }
+pub FileClose :: (fd: int) -> int { return chibi_asset_file_close(fd); }
+pub FileSync :: (fd: int) -> int { return chibi_asset_file_sync(fd); }
+pub FileRemove :: (path: string) -> int { return chibi_asset_file_remove(path); }
+pub FileRename :: (from: string, to: string) -> int { return chibi_asset_file_rename(from, to); }
+pub FileTemporary :: (path: ^(u8[])) -> int { return chibi_asset_file_temporary(path^); }
+pub FileLock :: (path: string) -> int { return chibi_asset_file_lock(path); }
+pub DirectoryMake :: (path: string) -> int { return chibi_asset_directory_make(path); }
+pub DirectoryOpen :: (path: string) -> u64 { return chibi_asset_directory_open(path); }
+pub DirectoryNext :: (handle: u64, buffer: ^(u8[]), capacity: int) -> int { return chibi_asset_directory_next(handle, buffer^, capacity); }
+pub DirectoryClose :: (handle: u64) -> int { return chibi_asset_directory_close(handle); }
+pub Cached :: () -> bool { return chibi_asset_cached() != 0; }
+pub Identity :: () -> string {
+    bytes := resize([u8(0)], 64);
+    if (chibi_asset_identity_copy(bytes, 64) != 0) { return ""; }
+    return text_from_bytes(bytes);
+}
+
+pub Option :: (which: int) -> (size: int, text: string) {
+    size := chibi_asset_option_length(which);
+    if (size <= 0) { return (size, ""); }
+    data := resize([u8(0)], size);
+    if (chibi_asset_option_copy(which, data, size) != 0) { return (-2, ""); }
+    return (size, text_from_bytes(data));
+}
+pub Environment :: (name: string) -> (size: int, text: string) {
+    size := chibi_asset_environment_length(name);
+    if (size <= 0) { return (size, ""); }
+    data := resize([u8(0)], size);
+    if (chibi_asset_environment_copy(name, data, size) != 0) { return (-2, ""); }
+    return (size, text_from_bytes(data));
+}
+
+pub NoSalt: u64 : 18446744073709551615;
+pub SaltLength :: () -> u64 { return chibi_asset_salt_length(); }
+pub SaltRead :: (first: u64, buffer: ^(u8[]), count: int) -> int { return chibi_asset_salt_read(first, buffer^, count); }
+
+pub ServiceOpen :: (path: string) -> int { return chibi_asset_service_open(path); }

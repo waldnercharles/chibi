@@ -1,0 +1,202 @@
+package package_compiler
+
+import facts "project:scalar_facts"
+import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
+import strings "core:strings"
+import math "project:math_types"
+
+ScalarMathCapture :: (forest: snapshot.SnapshotNode[], statement: int, type: int, variable: int,
+                      expression: facts.Row[]) -> facts.Row[] {
+    row := ScalarAt(forest, statement, facts.LocalRow, type, variable, length(expression), format_text("math capture {}", variable));
+    row.literal = i64(facts.Captured);
+    rows := [row];
+    rows.extend(expression);
+    return rows;
+}
+
+ScalarMathReceiver :: (forest: snapshot.SnapshotNode[], statement: int, type: int, variable: int,
+                       array: int, index: int, path: facts.Row[]) -> facts.Row[] {
+    rows := [ScalarAt(forest, statement, facts.ReadRow, type, variable, 0, "")];
+    if (array != 0) {
+        rows = [ScalarAt(forest, statement, facts.ReadRow, array, variable, 0, ""),
+                ScalarAt(forest, statement, facts.ReadRow, facts.IntType, index, 0, ""),
+                ScalarAt(forest, statement, facts.ArrayRow, type, facts.ArrayPlaceGet, 2, "")];
+    }
+    field := length(path) - 1;
+    while (field >= 0) { rows.append(path[field]); field -= 1; }
+    return rows;
+}
+
+ScalarMathAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                       callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
+                       statement: int, next_variable: ^int) -> ScalarOperands {
+    destination := Field(forest, statement, syntax.FieldTarget);
+    receiver := destination;
+    desired: int = 0;
+    selection: int[] = [];
+    switch MathDestinationPlan(forest, text, types, members, callables, [], [], names, callable.package, destination) {
+        case .Rejected(node, message): return ScalarOperands.Built([]);
+        case .Selected(root, kind, components): receiver = ScalarTarget(forest, root); desired = kind; selection = components;
+    }
+    variable_node := receiver;
+    // Gather without resolving each prefix again. Inline record parents are
+    // acyclic, so the root-first walk visits each owning field table once.
+    nodes: int[] = [];
+    while (Is(forest, variable_node, syntax.MemberExpression)) {
+        nodes.append(variable_node);
+        variable_node = ScalarTarget(forest, Field(forest, variable_node, syntax.FieldObject));
+    }
+    index_node := -1;
+    if (Is(forest, variable_node, syntax.IndexExpression)) {
+        index_node = Field(forest, variable_node, syntax.FieldIndex);
+        variable_node = ScalarTarget(forest, Field(forest, variable_node, syntax.FieldObject));
+    }
+    if (!Is(forest, variable_node, syntax.Identifier)) {
+        return ScalarOperands.Failed(Diagnose(forest, receiver, 0, "native math writes require a record variable or its array element"));
+    }
+    binding := ScalarVariable(names, Text(forest, text, variable_node));
+    root_type := ScalarRecordType(types, binding.record);
+    path: facts.Row[] = [];
+    record := binding.record;
+    node := length(nodes) - 1;
+    while (node >= 0) {
+        field := FindField(types, members, record, Text(forest, text, Field(forest, nodes[node], syntax.FieldMember)));
+        if (field < 0 || types[record].kind != RecordDecl ||
+            members[field].storage != StructStorage || members[field].container != 0) {
+            return ScalarOperands.Failed(Diagnose(forest, nodes[node], 0,
+                "native math writes require plain record fields above a record variable or its array element"));
+        }
+        path.append(ScalarAt(forest, nodes[node], facts.FieldRow,
+            ScalarRecordType(types, members[field].record), field - types[record].first, 1, ""));
+        record = members[field].record;
+        node -= 1;
+    }
+    for (left in 0..<length(path) / 2) {
+        right := length(path) - 1 - left;
+        field := path[left];
+        path[left] = path[right];
+        path[right] = field;
+    }
+    type := ScalarRecordType(types, record);
+    array: int = 0;
+    if (index_node >= 0) { array = ScalarArrayType(types, binding.storage, binding.record); }
+    rows: facts.Row[] = [];
+    if (length(path) > 0) {
+        // Parent snapshots may own managed siblings. Their lexical scope
+        // releases those leases immediately after the writeback.
+        rows.append(ScalarAt(forest, statement, facts.ScopeRow, 0, 0, 0, ""));
+    }
+    variables := next_variable^;
+    index := -1;
+    if (index_node >= 0) {
+        converted := ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                                    index_node, index_node, IntStorage, IntStorage, facts.Clamp, []);
+        switch converted {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): rows.extend(ScalarMathCapture(forest, statement, facts.IntType, variables, built));
+        }
+        index = variables;
+        variables += 1;
+    }
+    // Check the logical location before RHS effects, and retain its old value
+    // for compound assignments. The final read follows RHS effects instead.
+    old := variables;
+    rows.extend(ScalarMathCapture(forest, statement, type, variables,
+                                  ScalarMathReceiver(forest, receiver, root_type, binding.index, array, index, path)));
+    variables += 1;
+    selected := MathStaticType(types, desired);
+    selected_type := ScalarValueType(types, selected.storage, 0, selected.record);
+    spelling := "";
+    identity := length(selection) == math.Components(MathKind(types, record));
+    for (component, ordinal in selection) {
+        identity = identity && component == ordinal;
+    }
+    if (!identity) {
+        for (component in selection) { spelling = strings.Concatenate([spelling, strings.Slice("xyzw", component, 1)]); }
+    }
+    operator := CompoundOperator(Operator(forest, statement));
+    prior := old;
+    if (operator != NoOperator && !identity) {
+        call := ScalarAt(forest, destination, facts.CallRow, selected_type, BuiltinMember, 1, spelling);
+        rows.extend(ScalarMathCapture(forest, statement, selected_type, variables,
+            [ScalarAt(forest, destination, facts.ReadRow, type, old, 0, ""), call]));
+        prior = variables;
+        variables += 1;
+    }
+    value := Field(forest, statement, syntax.FieldValue);
+    incoming := selected;
+    if (operator != NoOperator) {
+        incoming = ScalarBuiltinShape(forest, text, callables, names, types, members, callable.package, value);
+        if (incoming.storage != StructStorage) { incoming = {storage: FloatStorage, container: 0, record: -1}; }
+    }
+    incoming_type := ScalarValueType(types, incoming.storage, 0, incoming.record);
+    switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants, value, incoming, []) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): rows.extend(ScalarMathCapture(forest, statement, incoming_type, variables, built));
+    }
+    replacement := variables;
+    variables += 1;
+    if (operator != NoOperator) {
+        expression := [ScalarAt(forest, statement, facts.ReadRow, selected_type, prior, 0, ""),
+                       ScalarAt(forest, statement, facts.ReadRow, incoming_type, replacement, 0, "")];
+        if (selected.storage == FloatStorage) {
+            expression.append(ScalarAt(forest, statement, facts.ArithmeticRow, selected_type, ScalarArithmetic(operator), 2, ""));
+        } else {
+            call := ScalarAt(forest, statement, facts.CallRow, selected_type, BuiltinBinary, 2, "");
+            call.literal = i64(operator);
+            expression.append(call);
+        }
+        rows.extend(ScalarMathCapture(forest, statement, selected_type, variables, expression));
+        replacement = variables;
+        variables += 1;
+    }
+    changed: facts.Row[] = [];
+    parents: int[] = [];
+    parent_types: int[] = [];
+    if (length(path) > 0) {
+        current := variables;
+        rows.extend(ScalarMathCapture(forest, statement, root_type, variables,
+            ScalarMathReceiver(forest, receiver, root_type, binding.index, array, index, [])));
+        variables += 1;
+        current_type := root_type;
+        field := length(path) - 1;
+        while (field >= 0) {
+            parents.append(current);
+            parent_types.append(current_type);
+            rows.extend(ScalarMathCapture(forest, statement, path[field].type, variables,
+                [ScalarAt(forest, receiver, facts.ReadRow, current_type, current, 0, ""), path[field]]));
+            current = variables;
+            current_type = path[field].type;
+            variables += 1;
+            field -= 1;
+        }
+        changed = [];
+        for (parent, ordinal in parents) {
+            changed.append(ScalarAt(forest, receiver, facts.ReadRow, parent_types[ordinal], parent, 0, ""));
+        }
+        changed.append(ScalarAt(forest, receiver, facts.ReadRow, type, current, 0, ""));
+    } else {
+        changed = ScalarMathReceiver(forest, receiver, type, binding.index, array, index, []);
+    }
+    changed.extend([ScalarAt(forest, statement, facts.ReadRow, selected_type, replacement, 0, ""),
+                    ScalarAt(forest, statement, facts.CallRow, type, BuiltinUpdate, 2, spelling)]);
+    for (field, ordinal in path) {
+        changed.append(ScalarAt(forest, receiver, facts.UpdateRow,
+            parent_types[length(path) - 1 - ordinal], field.value, 2, ""));
+    }
+    stored := root_type;
+    if (array != 0) {
+        expression := [ScalarAt(forest, statement, facts.ReadRow, array, binding.index, 0, ""),
+                       ScalarAt(forest, statement, facts.ReadRow, facts.IntType, index, 0, "")];
+        expression.extend(changed);
+        expression.append(ScalarAt(forest, statement, facts.ArrayRow, array, facts.ArraySet, 3, ""));
+        changed = expression;
+        stored = array;
+    }
+    rows.append(ScalarAt(forest, statement, facts.AssignRow, stored, binding.index, length(changed), ""));
+    rows.extend(changed);
+    if (length(path) > 0) { rows.append(ScalarAt(forest, statement, facts.EndRow, 0, 0, 0, "")); }
+    next_variable^ = variables;
+    return ScalarOperands.Built(rows);
+}

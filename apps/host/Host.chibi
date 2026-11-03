@@ -20,6 +20,7 @@ foreign import kernel32 "system:kernel32"
 foreign kernel32 { GetFileAttributesA :: (path: cstring) -> u32 }
 foreign import libc "system:c"
 foreign libc {
+    memchr :: (buffer: u8[], value: i32, count: u64) -> rawptr
     dlopen :: (path: cstring, flags: i32) -> rawptr
     dlsym :: (handle: rawptr, name: cstring) -> rawptr
     dlclose :: (handle: rawptr) -> i32
@@ -68,21 +69,94 @@ foreign {
     chibi_environment :: () -> rawptr
 }
 
+// A single byte owner keeps the execution-family heap stable until every
+// generation has released its roots and callback metadata. Its final drop
+// follows the final dlclose. Only native images with this ABI may adopt it.
+Family :: struct { storage: u8[]; address: rawptr; version: i64; }
+AdoptFamily :: (family: ^Family, handle: rawptr) -> bool {
+    version_address := Symbol(handle, "chibi_host_family_abi");
+    if version_address == 0 { return true; }
+    for name in ["chibi_host_family_size", "chibi_host_set_family", "chibi_host_cells_pending", "chibi_host_family_collect"] {
+        if Symbol(handle, name) == 0 { return false; }
+    }
+    version: fn() -> i64 = version_address;
+    size: fn() -> i64 = Symbol(handle, "chibi_host_family_size");
+    bytes := size();
+    incoming_version := version();
+    if incoming_version <= 0 || bytes <= 0 || bytes > 4096 {
+        print_string("Incompatible native collector family ABI");
+        return false;
+    }
+    if length(family.storage) == 0 {
+        storage := resize([u8(0)], int(bytes));
+        // The first byte is zero now. Move this same backing into Main's
+        // owner after borrowing its address, and never replace it afterward.
+        // The native array's eight-byte owner prefix preserves heap alignment.
+        address := memchr(storage, 0, 1);
+        family.storage = storage;
+        family.address = address;
+        family.version = incoming_version;
+    } else if family.version != incoming_version || length(family.storage) != int(bytes) {
+        print_string("Incompatible native collector family ABI or heap size");
+        return false;
+    }
+    adopt: fn(heap: rawptr) -> i32 = Symbol(handle, "chibi_host_set_family");
+    return adopt(family.address) == 0;
+}
+CellsPending :: (handle: rawptr) -> bool {
+    address := Symbol(handle, "chibi_host_cells_pending");
+    if address == 0 { return false; }
+    pending: fn() -> i64 = address;
+    return pending() != 0;
+}
+Collect :: (handle: rawptr) -> bool {
+    address := Symbol(handle, "chibi_host_family_collect");
+    if address == 0 { return false; }
+    collect: fn() -> i32 = address;
+    status := collect();
+    assert(status == 0 || status == 1, "an adopted family has a collector owner");
+    return status == 0;
+}
+
 // Windows keeps a mapped DLL's file until its loader reference is released.
-// A retired generation owns both until its suspended tasks finish.
-Generation :: struct { handle: rawptr; path: string; }
+// A rejected image is renamed only after closing; accepted images are removed.
+Generation :: struct { handle: rawptr; path: string; destination: string; }
 Discard :: (generation: Generation) -> int {
-    released := Release(generation.handle);
-    removed := RetiredFile(generation.path);
+    closed := CloseGeneration(generation.handle);
+    if generation.destination != "" {
+        moved := MoveGeneration(generation.path, generation.destination);
+    } else { removed := RetiredFile(generation.path); }
+    return 0;
+}
+CollectFamily :: (active: rawptr, retired: Generation[], pinned: Generation[]) -> int {
+    if Collect(active) { return 0; }
+    for previous in retired { if Collect(previous.handle) { return 0; } }
+    for previous in pinned { if Collect(previous.handle) { return 0; } }
+    return 0;
+}
+ClosePinned :: (pinned: ^(Generation[])) -> int {
+    kept := 0;
+    for index in 0..<length(pinned^) {
+        if CellsPending(pinned^[index].handle) {
+            if kept != index { pinned^[kept] = pinned^[index]; }
+            kept += 1;
+        } else {
+            discarded := Discard(pinned^[index]);
+        }
+    }
+    if kept != length(pinned^) { pinned^ = resize(pinned^, kept); }
     return 0;
 }
 
 Main :: () -> int {
-    active: Generation = {handle: OpenGeneration("./live-0.so"), path: "./live-0.so"};
-    if active.handle == 0 {
+    active: Generation = {handle: OpenGeneration("./live-0.so"), path: "./live-0.so", destination: ""};
+    if active.handle == 0 { return 2; }
+    if !Complete(active.handle) {
+        released := Release(active.handle);
         return 2;
     }
-    if !Complete(active.handle) {
+    family: Family = {storage: [], address: 0, version: 0};
+    if !AdoptFamily(&family, active.handle) {
         released := Release(active.handle);
         return 2;
     }
@@ -100,71 +174,80 @@ Main :: () -> int {
     else if entries == 0 { print_string("No runnable Main in the root package"); }
     generation := 0;
     retired: Generation[] = [];
+    pinned: Generation[] = [];
     while status == 0 {
         if (entries & 2) != 0 {
             framing = true;
             status = int(frame());
         }
-        if Failed(active.handle) {
-            status = 134;
-        } else if status == 0 {
+        if Failed(active.handle) { status = 134; }
+        else if status == 0 {
             polled_active := Poll(active.handle);
-            if Failed(active.handle) {
-                status = 134;
-            }
+            if Failed(active.handle) { status = 134; }
         }
-        if status != 0 {
-            break;
-        }
+        if status != 0 { break; }
+        changed := false;
         index := 0;
+        kept := 0;
         while index < length(retired) {
             polled := Poll(retired[index].handle);
-            if Failed(retired[index].handle) {
-                status = 134;
-                break;
-            }
+            if Failed(retired[index].handle) { status = 134; break; }
             if Pending(retired[index].handle) {
-                index += 1;
+                if kept != index { retired[kept] = retired[index]; }
+                kept += 1;
             } else {
-                released := Discard(retired[index]);
-                retired.remove_index(index);
+                released_roots := ReleaseRoots(retired[index].handle);
+                pinned.append(retired[index]);
+                changed = true;
             }
+            index += 1;
         }
-        if status != 0 {
-            break;
+        // A failure leaves the unpolled suffix owned for shutdown cleanup.
+        for unread in index..<length(retired) {
+            if kept != unread { retired[kept] = retired[unread]; }
+            kept += 1;
         }
+        if kept != length(retired) { retired = resize(retired, kept); }
+        if status != 0 { break; }
+        if changed { collected := CollectFamily(active.handle, retired, pinned); }
+        closed := ClosePinned(&pinned);
         slept := PauseFrame();
-        if !HasNext() {
-            continue;
-        }
+        if !HasNext() { continue; }
         generation += 1;
         name := format_text("./generation-{}.so", generation);
         moved := MoveGeneration("./next.so", name);
-        if !moved {
-            continue;
-        }
+        if !moved { continue; }
         incoming := OpenGeneration(name);
         if incoming == 0 {
             set_aside := MoveGeneration(name, "./rejected.so");
             continue;
         }
-        initialized_incoming := Process(incoming);
         incoming_entries := Entries(incoming);
-        if incoming_entries < 0 || incoming_entries > 3 || !Complete(incoming) || !Migrate(active.handle, incoming) {
+        if incoming_entries < 0 || incoming_entries > 3 || !Complete(incoming) || !AdoptFamily(&family, incoming) {
             released := Release(incoming);
             set_aside := MoveGeneration(name, "./rejected.so");
             continue;
         }
+        initialized_incoming := Process(incoming);
+        if !Migrate(active.handle, incoming) {
+            released_roots := ReleaseRoots(incoming);
+            pinned.append({handle: incoming, path: name, destination: "./rejected.so"});
+            collected := CollectFamily(active.handle, retired, pinned);
+            closed_rejected := ClosePinned(&pinned);
+            continue;
+        }
         removed := LoadedFile(name);
         next_frame: fn() -> i32 = Symbol(incoming, "chibi_host_call_Frame");
-        if Pending(active.handle) {
-            retired.append(active);
-        } else {
-            released := Discard(active);
+        if Pending(active.handle) { retired.append(active); }
+        else {
+            released_roots := ReleaseRoots(active.handle);
+            pinned.append(active);
         }
-        active = {handle: incoming, path: name};
+        active = {handle: incoming, path: name, destination: ""};
         frame = next_frame;
         entries = incoming_entries;
+        collected := CollectFamily(active.handle, retired, pinned);
+        closed_retired := ClosePinned(&pinned);
         if framing && (entries & 2) == 0 { print_string("No runnable Frame in the root package"); }
         if !started {
             if entries == 0 { print_string("No runnable Main in the root package"); }
@@ -174,9 +257,23 @@ Main :: () -> int {
             }
         }
     }
-    released := Discard(active);
+    // Clear every generation's roots before one final collection, while every
+    // trace/validate/drop callback is still mapped. Only then close the images.
+    released_active := ReleaseRoots(active.handle);
+    for previous in retired { released_previous := ReleaseRoots(previous.handle); }
+    collected := CollectFamily(active.handle, retired, pinned);
+    active_cells := CellsPending(active.handle);
+    assert(!active_cells, "active generation has no callback cells after shutdown");
+    closed_active := Discard(active);
     for previous in retired {
-        released_previous := Discard(previous);
+        cells := CellsPending(previous.handle);
+        assert(!cells, "retired generation has no callback cells after shutdown");
+        closed_previous := Discard(previous);
+    }
+    for previous in pinned {
+        cells := CellsPending(previous.handle);
+        assert(!cells, "pinned generation has no callback cells after shutdown");
+        closed_previous := Discard(previous);
     }
     return status;
 }
@@ -244,7 +341,7 @@ Poll :: (handle: rawptr) -> int {
     return 0;
 }
 
-Release :: (handle: rawptr) -> int {
+ReleaseRoots :: (handle: rawptr) -> int {
     cancel_address := Symbol(handle, "chibi_host_tasks_cancel_all");
     if cancel_address != 0 {
         cancel_tasks: fn() -> i32 = cancel_address;
@@ -255,6 +352,11 @@ Release :: (handle: rawptr) -> int {
         release_states: fn() -> i32 = release_address;
         released := release_states();
     }
+    return 0;
+}
+// Before adoption/entry, an invalid image has created no roots or allocations.
+// Do not invoke cleanup from an image whose family ABI was just rejected.
+Release :: (handle: rawptr) -> int {
     closed := CloseGeneration(handle);
     return 0;
 }

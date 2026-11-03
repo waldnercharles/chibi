@@ -16,7 +16,7 @@ tool	program-sdk	@build@/test/tools/test_tools	--program-sdk
 tool	chibi-cli-process	python3	test/native_cli/foreground.py	@compiler@	@llvm@
 tool	chibi-cli	sh	test/native_cli/survivors.sh	@compiler@	@llvm@	@release@/sdk/chibi
 tool	native-build	env	CHIBI_LLVM_BIN=@llvm@	@compiler@	run	--llvm	@llvm@	--root	tools/compiler	--core	packages/core	--entry	Run	test/native_aot/native_build/BuildTests.chibi	--	@compiler@	@release@/sdk/chibi
-tool	native-workload-benchmark	@build@/test/tools/test_tools	--native-workload-benchmark	@release@/sdk/chibi
+tool	native-workload-benchmark	sh	@root@/test/native_aot/workloads/run.sh	@compiler@	@llvm@
 tool	chibi-cli-installed	sh	test/native_cli/survivors.sh	@compiler@	@llvm@	dist/sdk/bin/chibi
 tool	native-link	sh	test/native_aot/link/run.sh	@compiler@	@llvm@
 tool	native-build-entry	sh	test/bootstrap/native-entry.sh
@@ -35,7 +35,7 @@ tool	graph-build	@program@	test/graph/BuildTests.chibi	Run	@compiler@	@llvm@
 tool	graph-wasm	@program@	test/graph/WebAssemblyTests.chibi	Run
 tool	graph-os	@program@	test/graph/OsTests.chibi	Run
 tool	graph-sdk-install	@release@/sdk/chibi	run	--core	@root@/packages/core	--llvm	@llvm@	--root	@root@	--collection	graph=@root@/tools/graph	--entry	Run	@root@/test/graph/SDKInstallTests.chibi	--	@release@/sdk/chibi	@release@	@llvm@
-tool	collab	@build@/test/tools/test_tools	--collab
+tool	collab	node	--test	@root@/tools/collab/server/server.test.mjs
 tool	whole-integer	@build@/test/tools/test_tools	--whole-integer
 tool	whole-select	@build@/test/tools/test_tools	--whole-select
 tool	whole-math	@build@/test/tools/test_tools	--whole-math
@@ -72,10 +72,9 @@ tool	language-record-document	@build@/test/language/test_language	--record-docum
 tool	language-record-values	@build@/test/language/test_language	--record-values
 tool	language-program	@build@/test/language/test_language	--program
 tool	language-execution	@build@/test/language/test_language	--execution
-tool	wasm-browser	@build@/test/tools/test_tools	--wasm-browser
 tool	web-storage	@build@/test/tools/test_tools	--web-storage
-tool	native-tools	@build@/test/tools/test_tools
-tool	short	@build@/test/tools/test_tools
+group	native-tools	types	collab
+group	short	types	collab
 timeout	chibi-cli	900
 timeout	native-build	1500
 timeout	build-process	1800

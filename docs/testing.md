@@ -323,32 +323,30 @@ order, a zero-initialized arena, and collectable values found by address
 through the page index across sweeps and a reset. It passes 360 assertions in
 0.06 seconds.
 
-The focused room-service check is `chibi build test collab` after
-`chibi build --target test_tools`. It runs the real Node server from the C
-dispatcher. Health readiness must succeed before the existing 401/201/403
-authority checks. Unexpected responses report the method, path, expected and
-actual status, byte count, transport errno or parse error, and the server's JSON
-error code when available. A failed case prints its server output and retains
-the temporary `server.log` at the reported path; passing cases remove their
-files. Failure cases exercise invalid server configuration, an occupied port, a
-live process without health readiness, and real receive timeout/connection
-refusal. They use process signals and sockets rather than replacement server
-responses. These cases also run in `short`; the focused command does not
-certify that selector or the groups.
+The focused room-service check is `chibi build test collab`, or
+`node --test tools/collab/server/server.test.mjs`. It runs the real Node server
+without a C host. Health readiness must succeed before the 401/201/403 authority
+checks. A failed case reports its server output and retains the temporary
+`server.log`; passing cases remove their files. Failure cases exercise invalid
+server configuration, an occupied port, a live process without health readiness,
+and real receive timeout/connection refusal. The two process-signal cases run on
+POSIX; the other three also run on Windows. The `short` and `native-tools` groups
+include the same room-service cases alongside the existing type tests.
 
 Routine CI and the correctness groups exclude benchmark selectors.
 `chibi build test benchmarks` runs the benchmarks, or name one:
 
 - `native-workload-benchmark` builds the four kernels in
   `test/native_aot/workloads` with `chibi build --native` and the LLVM tools in
-  `CHIBI_LLVM_BIN`, checks each program's status against the VM's, and prints the
-  build time, peak memory, size and median run time at O0 and O2. Each build
-  runs under a Linux subreaper, so a timeout, an interrupt or the launcher's exit
-  kills every process the build started, including those in groups or sessions
-  of their own; a fake-launcher case checks that no descendant survives. It runs
-  on Linux x86-64, the one target the driver admits, against the Release
-  launcher, and skips the builds without `CHIBI_LLVM_BIN`. It takes about
-  70 seconds.
+  `CHIBI_LLVM_BIN`, checks the recorded checksums, and prints build time,
+  per-child peak RSS, size and median-of-three run time at O0 and O2. Its
+  authored runner keeps subreaper and signal-mask state in an isolated worker,
+  restoring the command's mask and reaping descendants across groups and sessions.
+  Grouped/detached timeout and early-exit controls plus parent-only and worker-only
+  TERM checks run before measurement. It requires the Release native CLI and
+  LLVM 22+ on Linux x86-64; other hosts report it as unsupported. The C test
+  driver is retired; [the workload guide](../test/native_aot/workloads/README.md)
+  describes direct use.
 
 Each fixture owns its fixed trial count and reports timings alongside correctness
 assertions. Setup and correctness checks stay outside timed loops; no

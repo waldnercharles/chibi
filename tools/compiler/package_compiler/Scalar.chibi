@@ -380,7 +380,7 @@ ScalarTypeOf :: (storage: int) -> int {
 ScalarDeclares :: (types: TypeDecl[], declared: TypeDecl) -> bool {
     // An optional is the union of nil and its payload; ScalarResults leaves
     // the kind only on those with a payload of this subset.
-    return declared.kind == TaskResultDecl || declared.kind == OptionalDecl || ScalarNestedCollection(declared) || ((declared.kind == RecordDecl || declared.kind == UnionDecl) && declared.node >= 0);
+    return declared.kind == MathDecl || declared.kind == TaskResultDecl || declared.kind == OptionalDecl || ScalarNestedCollection(declared) || ((declared.kind == RecordDecl || declared.kind == UnionDecl) && declared.node >= 0);
 }
 // Whether `held` is the record of an optional.
 ScalarOptional :: (types: TypeDecl[], held: int) -> bool {
@@ -397,7 +397,7 @@ ScalarRecordType :: (types: TypeDecl[], record: int) -> int {
     ordinal: int = 0;
     for (index in 0..<record) {
         kind := types[index].kind;
-        if (kind == TaskResultDecl || kind == OptionalDecl || ScalarNestedCollection(types[index]) || ((kind == RecordDecl || kind == UnionDecl) && types[index].node >= 0)) {
+        if (kind == MathDecl || kind == TaskResultDecl || kind == OptionalDecl || ScalarNestedCollection(types[index]) || ((kind == RecordDecl || kind == UnionDecl) && types[index].node >= 0)) {
             ordinal += 1;
         }
     }
@@ -630,6 +630,10 @@ ScalarVariable :: (names: Name[], name: string) -> Name {
 ScalarRecordOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                    names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> int {
     value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.BinaryExpression) || Is(forest, value, syntax.UnaryExpression)) {
+        shape := ScalarBuiltinShape(forest, text, callables, names, types, members, package, value);
+        if (shape.storage == StructStorage && MathKind(types, shape.record) != 0) { return shape.record; }
+    }
     if (Is(forest, value, syntax.DereferenceExpression) && !ScalarScopedDereference(forest, text, names, value)) {
         pointer := ScalarPointerRecord(forest, text, callables, params, names, types, members, package,
                                         Field(forest, value, syntax.FieldOperand));
@@ -659,6 +663,8 @@ ScalarRecordOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
         if (field >= 0 && members[field].storage == StructStorage && members[field].container == 0) {
             return members[field].record;
         }
+        shape := ScalarBuiltinShape(forest, text, callables, names, types, members, package, value);
+        if (shape.storage == StructStorage && MathKind(types, shape.record) != 0) { return shape.record; }
         return -1;
     }
     // An element of an array of records.
@@ -677,6 +683,10 @@ ScalarRecordOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     callee := CalledFunction(forest, text, callables, [], names, package, value);
     if (callee >= 0 && callables[callee].result == StructStorage && callables[callee].result_container == 0) {
         return callables[callee].result_record;
+    }
+    if (ScalarBuiltinCall(forest, text, callables, names, package, value) != 0) {
+        shape := ScalarBuiltinShape(forest, text, callables, names, types, members, package, value);
+        if (shape.storage == StructStorage) { return shape.record; }
     }
     return -1;
 }
@@ -878,6 +888,17 @@ ScalarTaskCallee :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     }
     return -1;
 }
+// A checked primitive optional read uses its payload in a value context.
+// A union context keeps the original descriptor for copying and nil tests.
+ScalarOptionalRead :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], types: TypeDecl[],
+                       node: int, record: int, context: int) -> bool {
+    if (context == UnionStorage || !ScalarOptional(types, record)) { return false; }
+    payload := types[record];
+    if (payload.value_container != 0 || (!Numeric(payload.value_storage) && payload.value_storage != BoolStorage)) { return false; }
+    shape: ValueType = {storage: UnionStorage, container: 0, record: record};
+    return OptionalValuePresent(forest, text, names, node, shape);
+}
+
 ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                          callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], operand: int, context: int) -> int {
     original := Unparenthesized(forest, operand);
@@ -893,6 +914,14 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (record >= 0) { return ScalarPointerElement(types, record).storage; }
     }
     node := ScalarTarget(forest, operand);
+    if (Is(forest, node, syntax.OptionalMemberExpression)) {
+        if (ScalarOptionalFieldRecord(forest, text, callables, params, names, types, members, callable.package, node) >= 0) { return UnionStorage; }
+        return 0;
+    }
+    if (Is(forest, node, syntax.BinaryExpression) && Operator(forest, node) == tk.Coalesce) {
+        return ScalarOptionalPrimitive(types, ScalarHeldUnion(forest, text, callables, params, names, types, members,
+            callable.package, Field(forest, node, syntax.FieldLeft))).storage;
+    }
     if (Is(forest, node, syntax.ForceUnwrapExpression)) {
         payload := ScalarUnwrappedType(forest, text, callables, params, names, types, members, callable.package, node);
         if (payload.container == 0) { return payload.storage; }
@@ -930,7 +959,7 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
     if (Is(forest, node, syntax.String)) {
         return TextStorage;
     }
-    if (ScalarVariantMade(forest, text, callables, names, callable.package, node) && ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, node) >= 0) {
+    if (ScalarVariantMade(forest, text, callables, names, callable.package, node) && ScalarUnionOf(forest, text, callables, names, types, callable.package, node) >= 0) {
         return UnionStorage;
     }
     named := ConstantOf(forest, text, constants, names, callable.package, node);
@@ -949,6 +978,9 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
     }
     if (Is(forest, node, syntax.Identifier)) {
         binding := ScalarVariable(names, Text(forest, text, node));
+        if (binding.storage == UnionStorage && ScalarOptionalRead(forest, text, names, types, node, binding.record, context)) {
+            return types[binding.record].value_storage;
+        }
         if (binding.storage == UnionStorage && binding.record >= 0 && types[binding.record].kind == TaskResultDecl &&
             TaskResultPresent(forest, text, binding, node)) {
             return TaskResultSuccess(types, binding.record).storage;
@@ -977,6 +1009,10 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (callee_foreign >= 0) {
             return ScalarForeignResult(forest, text, callee_foreign);
         }
+        if (ScalarBuiltinCall(forest, text, callables, names, callable.package, node) != 0) {
+            shape := ScalarBuiltinShape(forest, text, callables, names, types, members, callable.package, node);
+            if (shape.storage != 0 && (shape.storage == StructStorage || !ScalarMathCall(forest, text, node))) { return shape.storage; }
+        }
         if (ScalarMathCall(forest, text, node)) {
             return ScalarMathStorage(forest, text, callables, params, callable, names, types, members, constants, node);
         }
@@ -997,6 +1033,7 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
             return ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, node).storage;
         }
         operator := ScalarTextOperator(forest, text, node);
+        if (operator == ScalarTextEqual) { return BoolStorage; }
         if (operator == facts.TextSlice || operator == facts.TextFormat) {
             return TextStorage;
         }
@@ -1018,7 +1055,11 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         }
         field := ScalarMember(forest, text, callables, params, names, types, members, callable.package, node);
         if (field < 0) {
-            return 0;
+            return ScalarBuiltinShape(forest, text, callables, names, types, members, callable.package, node).storage;
+        }
+        if (members[field].storage == UnionStorage &&
+            ScalarOptionalRead(forest, text, names, types, node, members[field].record, context)) {
+            return types[members[field].record].value_storage;
         }
         return members[field].storage;
     }
@@ -1032,8 +1073,10 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
     }
     left := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldLeft), 0);
     if (!ScalarShifts(forest, text, node)) {
-        common := ScalarCommon(left, ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants,
-                                                          Field(forest, node, syntax.FieldRight), 0));
+        right := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants,
+                                       Field(forest, node, syntax.FieldRight), 0);
+        if (left == StructStorage || right == StructStorage) { return StructStorage; }
+        common := ScalarCommon(left, right);
         if (common == 0) {
             return context;
         }
@@ -1082,6 +1125,12 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         }
     }
     node := ScalarTarget(forest, operand);
+    if (Is(forest, node, syntax.OptionalMemberExpression)) {
+        return ScalarOptionalFieldRows(forest, text, callables, params, callable, names, types, members, constants, node, rows);
+    }
+    if (Is(forest, node, syntax.BinaryExpression) && Operator(forest, node) == tk.Coalesce) {
+        return ScalarCoalesce(forest, text, callables, params, callable, names, types, members, constants, node, rows);
+    }
     if (Is(forest, node, syntax.ForceUnwrapExpression)) {
         return ScalarUnwrapRows(forest, text, callables, params, callable, names, types, members, constants, node, rows);
     }
@@ -1185,6 +1234,27 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
                                 rows);
     }
     storage := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, node, expected);
+    builtin := ScalarBuiltinCall(forest, text, callables, names, callable.package, node);
+    if (builtin != 0 && (storage == StructStorage || !ScalarMathCall(forest, text, node))) {
+        shape := ScalarBuiltinShape(forest, text, callables, names, types, members, callable.package, node);
+        if (shape.storage != 0) {
+            return ScalarBuiltinOperands(forest, text, callables, params, callable, names, types, members, constants,
+                                          node, builtin, rows);
+        }
+    }
+    if (storage == StructStorage && (Is(forest, node, syntax.BinaryExpression) || Is(forest, node, syntax.UnaryExpression))) {
+        operation := BuiltinBinary;
+        if (Is(forest, node, syntax.UnaryExpression)) { operation = BuiltinNegate; }
+        return ScalarBuiltinOperands(forest, text, callables, params, callable, names, types, members, constants,
+                                      node, operation, rows);
+    }
+    if (Is(forest, node, syntax.MemberExpression) &&
+        ScalarMember(forest, text, callables, params, names, types, members, callable.package, node) < 0 &&
+        MathKind(types, ScalarRecordOf(forest, text, callables, params, names, types, members, callable.package,
+                                       Field(forest, node, syntax.FieldObject))) != 0) {
+        return ScalarBuiltinOperands(forest, text, callables, params, callable, names, types, members, constants,
+                                      node, BuiltinMember, rows);
+    }
     type := ScalarTypeOf(storage);
     arrayed := Is(forest, node, syntax.CallExpression) &&
                ScalarArrayHeld(forest, text, callables, params, names, types, members, callable.package, node) != 0;
@@ -1210,7 +1280,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         ScalarProjected(forest, text, callables, params, names, callable.package, node) < 0) {
         field := ScalarMember(forest, text, callables, params, names, types, members, callable.package, node);
         if (field >= 0) {
-            type = ScalarMemberType(types, members, field);
+            if (storage == members[field].storage) { type = ScalarMemberType(types, members, field); }
             fielded = true;
         }
     }
@@ -1261,8 +1331,14 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     // A constant expression is the one constant EmitBody folds it to
     // exactly, not rows that would wrap, and a package constant alone is its
     // folded value.
-    named := ConstantOf(forest, text, constants, names, callable.package, node) >= 0;
-    if ((named || Folds(forest, text, constants, names, callable.package, node, storage)) &&
+    named := ConstantOf(forest, text, constants, names, callable.package, node);
+    // Specialized bool parameters already carry the checker's folded value;
+    // the numeric constant evaluator does not accept boolean storage.
+    if (named >= 0 && storage == BoolStorage && constants[named].folded) {
+        output.append(ScalarLiteral(forest, node, type, constants[named].bits));
+        return ScalarOperands.Built(output);
+    }
+    if ((named >= 0 || Folds(forest, text, constants, names, callable.package, node, storage)) &&
         !ShadowedConversion(forest, text, callables, callable.package, node)) {
         switch FoldConstant(forest, text, callable.document, constants, names, callable.package, node, storage) {
             case .Failed(diagnostic):
@@ -1285,8 +1361,9 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (Is(forest, node, syntax.Identifier)) {
         binding := ScalarVariable(names, Text(forest, text, node));
         ordinal := binding.index;
-        if (binding.storage == UnionStorage && binding.record >= 0 && types[binding.record].kind == TaskResultDecl &&
-            TaskResultPresent(forest, text, binding, node)) {
+        if (binding.storage == UnionStorage &&
+            ((ScalarOptional(types, binding.record) && storage != UnionStorage) ||
+             (binding.record >= 0 && types[binding.record].kind == TaskResultDecl && TaskResultPresent(forest, text, binding, node)))) {
             output.append(ScalarAt(forest, node, facts.ReadRow, ScalarRecordType(types, binding.record), ordinal, 0, ""));
             output.append(ScalarAt(forest, node, facts.PayloadRow, type, 0, 1, ""));
         } else {
@@ -1309,7 +1386,11 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             case .Built(built):
                 output = built;
         }
-        output.append(ScalarAt(forest, node, facts.FieldRow, type, field - types[record].first, 1, ""));
+        field_type := type;
+        narrowed := members[field].storage == UnionStorage && ScalarOptional(types, members[field].record) && storage != UnionStorage;
+        if (narrowed) { field_type = ScalarMemberType(types, members, field); }
+        output.append(ScalarAt(forest, node, facts.FieldRow, field_type, field - types[record].first, 1, ""));
+        if (narrowed) { output.append(ScalarAt(forest, node, facts.PayloadRow, type, 0, 1, "")); }
         return ScalarOperands.Built(output);
     }
     if (ScalarCompares(forest, text, node)) {
@@ -1326,6 +1407,10 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             compared = ScalarSpelled(contexts[0], contexts[1]);
         }
         operator := ScalarComparison(Operator(forest, node));
+        if (compared == StructStorage) {
+            return ScalarBuiltinOperands(forest, text, callables, params, callable, names, types, members, constants,
+                                          node, BuiltinBinary, rows);
+        }
         equality := operator == facts.Equal || operator == facts.NotEqual;
         if (!Integer(compared) && !Floating(compared) &&
             !((compared == BoolStorage || compared == TextStorage || compared == PointerStorage) && equality)) {
@@ -1382,6 +1467,8 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     }
     target := callables[callee];
     count: int = 0;
+    position: int = 0;
+    order: int[] = [];
     argument_changes: string[] = [];
     argument_changes_read := false;
     // A float argument widens to a double parameter, as the call step widens
@@ -1393,16 +1480,23 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             continue;
         }
         argument := supplied;
+        parameter := position;
         if (Is(forest, supplied, syntax.NamedArgument)) {
             signature := GenericCallbackSignature(forest, text, names, node);
-            if ((signature < 0 && !GenericResolvedCall(names, node)) ||
-                GenericCallParameter(forest, text, callables, params, names, callee, node, supplied, count) != count) {
+            if (signature < 0 && !GenericResolvedCall(names, node)) {
                 return ScalarOperands.Failed(Diagnose(forest, supplied, 0,
-                                                      "scalar proof passes callable arguments in order"));
+                                                      "scalar proof names arguments only for resolved callable signatures"));
             }
+            parameter = GenericCallParameter(forest, text, callables, params, names, callee, node, supplied, position);
             argument = Field(forest, supplied, syntax.FieldValue);
+        } else { position += 1; }
+        assert(parameter >= 0 && parameter < target.count, "checked call argument has a parameter");
+        // Positional and already ordered calls need no permutation storage.
+        if (parameter != count && length(order) == 0) {
+            for previous in 0..<count { order.append(previous); }
         }
-        param := params[target.first + count];
+        if (parameter != count || length(order) > 0) { order.append(parameter); }
+        param := params[target.first + parameter];
         if (param.reference) {
             switch ScalarReferenceArgument(forest, text, callables, params, callable, names, types, members, constants, argument, param, output) {
                 case .Failed(diagnostic):
@@ -1498,12 +1592,34 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     }
     // An omitted argument is its parameter's default, a literal of the
     // parameter's type at the call, as the call step fills it in.
-    while (count < target.count) {
-        param := params[target.first + count];
-        omitted := ScalarLiteral(forest, node, ScalarTypeOf(param.storage), param.default_bits);
-        omitted.text = param.default_text;
-        output.append(omitted);
-        count += 1;
+    if (length(order) == 0) {
+        while (count < target.count) {
+            param := params[target.first + count];
+            omitted := ScalarLiteral(forest, node, ScalarTypeOf(param.storage), param.default_bits);
+            omitted.text = param.default_text;
+            output.append(omitted);
+            count += 1;
+        }
+    } else {
+        // Labeled calls supply the complete signature. A one-based inverse
+        // checks uniqueness, then places each value with at most one exchange.
+        assert(count == target.count, "checked labeled call supplies every parameter");
+        positions := resize([int(0)], target.count);
+        for index in 0..<length(order) {
+            assert(positions[order[index]] == 0, "checked call arguments are unique");
+            positions[order[index]] = index + 1;
+        }
+        for index in 0..<target.count {
+            other := positions[index] - 1;
+            if (other == index) { continue; }
+            output.append(ScalarAt(forest, node, facts.OperandSwapRow, 0,
+                                   count - 1 - other, count - 1 - index, ""));
+            moved := order[index];
+            order[index] = index;
+            order[other] = moved;
+            positions[moved] = other + 1;
+            positions[index] = index + 1;
+        }
     }
     call := ScalarAt(forest, node, facts.CallRow, type, callee, count, target.name);
     if (target.waits) {
@@ -1575,15 +1691,18 @@ ScalarCharacter :: (forest: snapshot.SnapshotNode[], text: string, node: int) ->
     callee := Field(forest, node, syntax.FieldFunction);
     return Is(forest, callee, syntax.Identifier) && Text(forest, text, callee) == "char";
 }
-// The Text operator of `node` when it calls text_byte_length, text_byte_at,
-// text_slice or format_text by name, 0 otherwise. When no function of the
-// source has that name, EmitBody binds the call to that runtime native.
+// text_equal reuses the ordinary string Compare row rather than adding
+// a second facts operator for the same value comparison.
+ScalarTextEqual: int : -1;
+// The text operation of `node`, 0 otherwise. Authored functions, procedure
+// values and foreign calls resolve before these runtime capabilities.
 ScalarTextOperator :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
     function := Field(forest, node, syntax.FieldFunction);
     if (!Is(forest, function, syntax.Identifier)) {
         return 0;
     }
     name := Text(forest, text, function);
+    if (name == "text_equal") { return ScalarTextEqual; }
     if (name == "print_string") { return facts.TextPrint; }
     if (name == "text_byte_length") {
         return facts.TextLength;
@@ -1599,54 +1718,88 @@ ScalarTextOperator :: (forest: snapshot.SnapshotNode[], text: string, node: int)
     }
     return 0;
 }
-// Appends the rows of `node`, a text native's call, after `rows`: its string,
-// then its int index, or start and count, each converted as the call step
-// converts it, or for format_text each argument as it is, then its Text row.
+// The ordinary binder has validated these ports. Preserve supplied order;
+// only the final operation selects parameter order, never reevaluating a value.
+ScalarTextParameter :: (operator: int, index: int) -> string {
+    if (operator == ScalarTextEqual) { if (index == 0) { return "A"; } return "B"; }
+    if (operator == facts.TextPrint) { return "InString"; }
+    if (index == 0) { return "Value"; }
+    if (operator == facts.TextByte) { return "Index"; }
+    if (index == 1) { return "Start"; }
+    return "Count";
+}
 ScalarText :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
                node: int, rows: facts.Row[]) -> ScalarOperands {
     operator := ScalarTextOperator(forest, text, node);
+    inputs := Members(forest, Field(forest, node, syntax.FieldArguments));
+    // Each fixed source operand stores its parameter in two bits. Variadic
+    // formats need no permutation and no temporary argument table.
+    parameters := 0;
     output := rows;
-    count: int = 0;
-    for (input in Members(forest, Field(forest, node, syntax.FieldArguments))) {
+    for (input, ordinal in inputs) {
         argument := input;
+        parameter := ordinal;
         if (Is(forest, argument, syntax.NamedArgument)) {
-            if (operator == facts.TextPrint) { argument = Field(forest, argument, syntax.FieldValue); }
-            else {
+            if (operator == facts.TextFormat) {
                 return ScalarOperands.Failed(Diagnose(forest, argument, 0,
-                                                      "scalar proof passes a text native's arguments in order"));
+                    "scalar proof passes format_text arguments in order"));
             }
+            supplied := Text(forest, text, Field(forest, argument, syntax.FieldName));
+            parameter = -1;
+            // Fixed text natives have at most three checked parameters.
+            for (index in 0..<length(inputs)) {
+                if (NameMatches(supplied, ScalarTextParameter(operator, index))) { parameter = index; }
+            }
+            argument = Field(forest, argument, syntax.FieldValue);
+            if (argument < 0) { argument = Field(forest, input, syntax.FieldSource); }
         }
+        if (operator != facts.TextFormat) { parameters |= parameter << u32(ordinal * 2); }
         expected := ScalarTextArgument(forest, text, callables, params, callable, names, types, members, constants,
-                                       operator, count, argument);
+                                       operator, parameter, argument);
         if (expected == 0) {
             return ScalarOperands.Failed(Diagnose(forest, argument, 0,
                                                   "scalar proof formats only numbers, bools and strings"));
         }
         switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants, argument,
                              argument, expected, expected, facts.Clamp, output) {
-            case .Failed(diagnostic):
-                return ScalarOperands.Failed(diagnostic);
-            case .Built(built):
-                output = built;
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): output = built;
         }
-        count += 1;
+    }
+    count := length(inputs);
+    if (operator == ScalarTextEqual) {
+        output.append(ScalarAt(forest, node, facts.CompareRow, facts.BoolType, facts.Equal, count, ""));
+        return ScalarOperands.Built(output);
     }
     type := facts.IntType;
-    if (operator == facts.TextSlice || operator == facts.TextFormat) {
-        type = facts.StringType;
+    if (operator == facts.TextSlice || operator == facts.TextFormat) { type = facts.StringType; }
+    operation := ScalarAt(forest, node, facts.TextRow, type, operator, count, "");
+    if (operator != facts.TextFormat && count > 1) {
+        orders := 2;
+        if (count == 3) { orders = 6; }
+        found := false;
+        for (order in 0..<orders) {
+            matches := true;
+            for (parameter in 0..<count) {
+                source := facts.TextArgument(count, order, parameter);
+                matches = matches && ((parameters >> u32(source * 2)) & 3) == parameter;
+            }
+            if (matches) { operation.literal = i64(order); found = true; break; }
+        }
+        assert(found);
     }
-    output.append(ScalarAt(forest, node, facts.TextRow, type, operator, count, ""));
+    output.append(operation);
     return ScalarOperands.Built(output);
 }
-// The storage a text native's argument `index`, `argument`, takes, or 0 when
+// The storage a text native's parameter `index`, `argument`, takes, or 0 when
 // none can carry it: a text native's string, then its ints, and for
 // format_text its format then any number, bool or string as it is. The call
 // step rejects an untyped number there first.
 ScalarTextArgument :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                        callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
                        constants: ConstDecl[], operator: int, index: int, argument: int) -> int {
-    if (index == 0) {
+    if (index == 0 || operator == ScalarTextEqual) {
         return TextStorage;
     }
     if (operator != facts.TextFormat) {
@@ -1658,6 +1811,53 @@ ScalarTextArgument :: (forest: snapshot.SnapshotNode[], text: string, callables:
         return 0;
     }
     return storage;
+}
+// Only the runtime's fixed text signatures use the compact permutation.
+// Reject calls through a different capability with ordinary catalog binding;
+// unused capabilities and authored declarations keep their own meaning.
+ScalarTextCatalog :: (natives: ResolvedNative[], ports: ^(ResolvedPort[])) {
+    for (name in ["text_equal", "text_byte_length", "text_byte_at", "text_slice"]) {
+        count := 0;
+        canonical := true;
+        operator := facts.TextLength;
+        parameters := 1;
+        if (name == "text_equal") { operator = ScalarTextEqual; parameters = 2; }
+        if (name == "text_byte_at") { operator = facts.TextByte; parameters = 2; }
+        if (name == "text_slice") { operator = facts.TextSlice; parameters = 3; }
+        for (native in natives) {
+            if (!NativeNameMatches(native, name)) { continue; }
+            count += 1;
+            if (native.name != name || native.parameters != parameters || native.results != 1 || native.variadic ||
+                !native.direct || native.intrinsic != 0 || native.kind != NativeFunctionKind || native.effects != 0) {
+                canonical = false;
+                continue;
+            }
+            for (index in 0..<parameters + 1) {
+                port := ports^[native.first + index];
+                expected := TextStorage;
+                port_name := "Result";
+                if (index < parameters) {
+                    port_name = ScalarTextParameter(operator, index);
+                    if (index > 0 && operator != ScalarTextEqual) { expected = IntStorage; }
+                } else {
+                    expected = IntStorage;
+                    if (operator == ScalarTextEqual) { expected = BoolStorage; }
+                    if (operator == facts.TextSlice) { expected = TextStorage; }
+                }
+                if (port.storage != expected || port.container != 0 || port.record >= 0 || port.c_string ||
+                    port.has_default || !NameMatches(port_name, port.name)) { canonical = false; }
+            }
+        }
+        if (count == 0 || (count == 1 && canonical)) { continue; }
+        for (native in natives) {
+            if (!NativeNameMatches(native, name)) { continue; }
+            for (index in native.first..<native.first + native.parameters + native.results) {
+                port := ports^[index];
+                port.storage = UnsupportedPort;
+                ports^[index] = port;
+            }
+        }
+    }
 }
 // Appends the rows of `node`, the variant `U.V` or `U.V(payloads)` of union
 // `held`, after `rows`: each payload converted to its field's storage, as the
@@ -1727,6 +1927,9 @@ ScalarIs :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[
 ScalarHeldUnion :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                     names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> int {
     value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.OptionalMemberExpression)) {
+        return ScalarOptionalFieldRecord(forest, text, callables, params, names, types, members, package, value);
+    }
     if (Is(forest, value, syntax.ForceUnwrapExpression)) {
         payload := ScalarUnwrappedType(forest, text, callables, params, names, types, members, package, value);
         if (payload.storage == UnionStorage && payload.container == 0) { return payload.record; }
@@ -1923,6 +2126,10 @@ ScalarRecordValue :: (forest: snapshot.SnapshotNode[], text: string, callables: 
                              rows);
     }
     if (!Is(forest, node, syntax.StructExpression)) {
+        if (MathKind(types, record) != 0) {
+            return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants,
+                                  node, StructStorage, rows);
+        }
         return ScalarOperands.Failed(Diagnose(forest, node, 0,
                                               "scalar proof takes records only from literals, variables and calls"));
     }
@@ -2003,24 +2210,15 @@ ScalarConversion :: (forest: snapshot.SnapshotNode[], text: string, callables: C
             ScalarAt(forest, node, facts.CompareRow, facts.BoolType, facts.NotEqual, 2, "")]);
         return ScalarOperands.Built(output);
     }
-    // Before presence is known, a bool context tests the optional's tag.
-    // The ordinary checker narrows a proven bool payload first, so false
-    // remains false inside its guard. Nil comparisons still inspect the tag.
-    if (own == UnionStorage && storage == BoolStorage) {
-        optional := ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, operand);
-        if (ScalarOptional(types, optional)) {
-            output := rows;
-            shape: ValueType = {storage: UnionStorage, container: 0, record: optional};
-            if (types[optional].value_storage == BoolStorage && types[optional].value_container == 0 &&
-                OptionalValuePresent(forest, text, names, Unparenthesized(forest, operand), shape)) {
-                output.append(ScalarAt(forest, operand, facts.PayloadRow, facts.BoolType, 0, 1, ""));
-            } else {
-                output.extend([ScalarAt(forest, operand, facts.TagRow, facts.IntType, 0, 1, ""),
-                               ScalarLiteral(forest, operand, facts.IntType, 0),
-                               ScalarAt(forest, node, facts.CompareRow, facts.BoolType, facts.NotEqual, 2, "")]);
-            }
-            return ScalarOperands.Built(output);
-        }
+    // Unproven optionals still test presence in a bool context. Proven
+    // primitive reads have already emitted their payload at its own storage.
+    if (own == UnionStorage && storage == BoolStorage &&
+        ScalarOptional(types, ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, operand))) {
+        output := rows;
+        output.extend([ScalarAt(forest, operand, facts.TagRow, facts.IntType, 0, 1, ""),
+                       ScalarLiteral(forest, operand, facts.IntType, 0),
+                       ScalarAt(forest, node, facts.CompareRow, facts.BoolType, facts.NotEqual, 2, "")]);
+        return ScalarOperands.Built(output);
     }
     converts := [ScalarAt(forest, node, facts.ConvertRow, ScalarTypeOf(storage), mode, 1, "")];
     if (Integer(own) && storage == FloatStorage) {
@@ -2711,7 +2909,7 @@ ScalarAsserted :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
 ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], callables: Callable[],
                    params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], function: int, ops: Ops,
                    target: Target, aliases: Name[], changed_fields: string[], assertions: ScalarAssertion[],
-                   first_assertion: int, last_assertion: int) -> ScalarOperands {
+                   first_assertion: int, last_assertion: int, math_values: bool) -> ScalarOperands {
     callable := callables[function];
     result := ScalarValueType(types, callable.result, callable.result_container, callable.result_record);
     rows: facts.Row[] = [ScalarAt(forest, callable.node, facts.FunctionRow, result, 0, callable.count, callable.name)];
@@ -2720,11 +2918,12 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
         type := ScalarValueType(types, param.storage, param.container, param.record);
         parameter := ScalarAt(forest, param.node, facts.ParameterRow, type, index, 0, param.name);
         if (param.reference) {
-            parameter.literal = 1;
+            parameter.literal = i64(facts.ParameterReadonlyReference);
+            if (param.written) { parameter.literal = i64(facts.ParameterReference); }
         } else if (param.written) {
             // A parameter the function changes is its own: the caller gives it
             // an array no one else holds.
-            parameter.literal = 2;
+            parameter.literal = i64(facts.ParameterOwnedArray);
         }
         rows.append(parameter);
     }
@@ -2779,7 +2978,8 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
     // A written array parameter is a local copy of the caller's array, which
     // a call lends; a record is copied by value.
     written := MutatedNames(forest, text, body, []);
-    kept_whole := ScalarStoredNames(forest, text, body, changed_fields);
+    usage := ScalarStoredNames(forest, text, body, changed_fields);
+    kept_whole := usage.names;
     opening := forest[body].first_child;
     for (index in 0..<callable.count) {
         param := params[callable.first + index];
@@ -3033,7 +3233,17 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 continue;
             }
         }
+        if (math_values && Is(forest, statement, syntax.Assignment)) {
+            switch ScalarMathAssigned(forest, text, callables, params, callable, names, types, members, constants,
+                                       statement, &variables) {
+                case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                case .Built(assigned):
+                    if (length(assigned) > 0) { rows.extend(assigned); continue; }
+            }
+        }
         first := length(operands);
+        pattern_scope := false;
+        pattern_mark := length(names);
         built := ScalarOperands.Built(operands);
         // The storage a converted value takes, which types a switch's arms,
         // and a switch's union variable, or -1.
@@ -3061,8 +3271,25 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                                             record, field, operands);
             case .Converted(value, context, storage):
                 planned = storage;
-                built = ScalarConvert(forest, text, callables, params, callable, names, types, members, constants, value, value, context, storage,
-                                      facts.Clamp, operands);
+                if (usage.patterns && (Is(forest, statement, syntax.IfStatement) || Is(forest, statement, syntax.WhileStatement))) {
+                    switch ScalarPatternCondition(forest, text, callables, params, callable, names, types, members, constants,
+                                                   statement, value, variables, operands) {
+                        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                        case .Built(captures, evaluated, bound, next_variable):
+                            pattern_scope = length(captures) > 0;
+                            if (pattern_scope) {
+                                rows.append(ScalarAt(forest, statement, facts.ScopeRow, 0, 0, 0, ""));
+                                rows.extend(captures);
+                                work.append({node: statement, phase: ScalarClose, mark: pattern_mark});
+                            }
+                            names = bound;
+                            variables = next_variable;
+                            built = ScalarOperands.Built(evaluated);
+                    }
+                } else {
+                    built = ScalarConvert(forest, text, callables, params, callable, names, types, members, constants, value, value, context, storage,
+                                          facts.Clamp, operands);
+                }
             case .Range(first_bound, last_bound):
                 // As the range step types them: each bound an int, an
                 // untyped one taking int and a narrower one widening.
@@ -3153,10 +3380,12 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
         row := ScalarAt(forest, statement, facts.ReturnRow, 0, 0, count, "");
         if (Is(forest, statement, syntax.WhileStatement) || Is(forest, statement, syntax.ForStatement)) {
             mark := length(names);
+            if (pattern_scope) { mark = pattern_mark; }
             close: ScalarWork = {node: statement, phase: ScalarClose, mark: mark};
             work.append(close);
             if (Is(forest, statement, syntax.WhileStatement)) {
                 row.kind = facts.WhileRow;
+                if (pattern_scope) { row.literal = i64(facts.PatternLoop); }
             } else {
                 // `for x, i in xs` names the item, then the index.
                 declared := Field(forest, statement, syntax.FieldName);
@@ -3257,6 +3486,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
         } else if (Is(forest, statement, syntax.IfStatement)) {
             row.kind = facts.IfRow;
             mark := length(names);
+            if (pattern_scope) { mark = pattern_mark; }
             close: ScalarWork = {node: statement, phase: ScalarClose, mark: mark};
             work.append(close);
             if (Field(forest, statement, syntax.FieldAlternative) >= 0) {
@@ -3429,7 +3659,7 @@ ScalarClaimCells :: (claimed: ^(bool[]), first: int, end: int) {
 }
 
 // Each cell belongs to an admitted value, invocation or host, or was copied
-// into a result bank by the ordinary typed copier. Index ownership once;
+// into a result bank or conditional by the ordinary checker. Index ownership once;
 // scanning every call/host for every cell would multiply their table sizes.
 ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], semantic: SemanticFact[], lent: bool) -> bool {
     claimed := resize([false], length(cells));
@@ -3449,8 +3679,8 @@ ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], semantic: Sem
         ScalarClaimCells(&claimed, host.first, host.result_first + host.result_count);
     }
     for (fact in semantic) {
-        if (fact.kind == ResultCopyCellFact) {
-            if (fact.target < 0 || fact.target >= length(cells) || !ScalarResultCell(cells[fact.target])) { return false; }
+        if (fact.kind == ScalarValueCellFact) {
+            if (fact.target < 0 || fact.target >= length(cells) || !ScalarValueCell(cells[fact.target])) { return false; }
             claimed[fact.target] = true;
         }
     }
@@ -3461,12 +3691,14 @@ ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], semantic: Sem
 NativePrintEffect: int : 8;
 // The text, output, array and scalar math natives this producer lowers.
 ScalarTextNative :: (native: ResolvedNative) -> bool {
-    return ScalarMathNative(native) || NativeNameMatches(native, "make_array") || NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
+    return ScalarMathNative(native) || NativeNameMatches(native, "make_array") || NativeNameMatches(native, "text_equal") || NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
            NativeNameMatches(native, "text_slice") || NativeNameMatches(native, "format_text") ||
            NativeNameMatches(native, "print_string") ||
            NativeNameMatches(native, "length") || NativeNameMatches(native, "append") ||
            NativeNameMatches(native, "extend") || NativeNameMatches(native, "slice") ||
            NativeNameMatches(native, "resize") || NativeNameMatches(native, "contains") ||
+           NativeNameMatches(native, "insert") || NativeNameMatches(native, "reverse") ||
+           NativeNameMatches(native, "set_array_elem") ||
            NativeNameMatches(native, "remove_index") ||
            NativeNameMatches(native, "text_bytes") || NativeNameMatches(native, "text_from_bytes");
 }
@@ -3626,7 +3858,7 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], authored: snapshot.SnapshotNode
                 table: ^(TypeDecl[]), body_optionals: ^(int[]), members: TypeMember[], constants: ConstDecl[], solid: int[], function: int,
                 ops: Ops, target: Target, natives: ResolvedNative[], ports: ResolvedPort[],
                 identities: u64[], aliases: Name[], retained: Name[], summary: ^ScalarEffectSummary,
-                assertions: ^(ScalarAssertion[])) -> syntax.Diagnostic {
+                assertions: ^(ScalarAssertion[]), math_values: ^bool) -> syntax.Diagnostic {
     operators: NumericOperator[] = [];
     makes: NativeMake[] = [];
     indices: int[] = [];
@@ -3661,6 +3893,9 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], authored: snapshot.SnapshotNode
             if (summary.wanted) { ScalarBodyEffects(summary, function, callables[function].waits, effects, ops, code, hosts, calls); }
             while (length(body_optionals^) < length(table^)) { body_optionals.append(0); }
             for (cell in cells) {
+                if (!math_values^ && cell.storage == StructStorage && MathKind(table^, cell.record) != 0) {
+                    math_values^ = true;
+                }
                 if (cell.storage == UnionStorage && cell.container == 0 && ScalarOptional(table^, cell.record)) {
                     body_optionals^[cell.record] = 1;
                 }
@@ -3833,8 +4068,10 @@ ScalarNameUses :: (forest: snapshot.SnapshotNode[], text: string, node: int, nam
 // assignment or a local, a returned value, a record literal's field, or a union
 // variant's payload. A field that `changed_fields` lacks, of a literal that
 // ScalarViewLocal accepts, borrows the array instead.
-ScalarStoredNames :: (forest: snapshot.SnapshotNode[], text: string, node: int, changed_fields: string[]) -> string[] {
+ScalarStorageUse :: struct { names: string[]; patterns: bool; }
+ScalarStoredNames :: (forest: snapshot.SnapshotNode[], text: string, node: int, changed_fields: string[]) -> ScalarStorageUse {
     found: string[] = [];
+    patterned := false;
     viewed: int[] = [];
     refused: int[] = [];
     pending: int[] = [node];
@@ -3842,6 +4079,8 @@ ScalarStoredNames :: (forest: snapshot.SnapshotNode[], text: string, node: int, 
     while (top > 0) {
         top -= 1;
         at := pending[top];
+        if (Is(forest, at, syntax.IsExpression) &&
+            FirstMember(forest, Field(forest, Field(forest, at, syntax.FieldType), syntax.FieldBindings)) >= 0) { patterned = true; }
         if (Is(forest, at, syntax.Identifier)) {
             value := at;
             while (Is(forest, forest[value].parent, syntax.ParenthesizedExpression)) {
@@ -3893,7 +4132,7 @@ ScalarStoredNames :: (forest: snapshot.SnapshotNode[], text: string, node: int, 
             child = forest[child].next_sibling;
         }
     }
-    return found;
+    return {names: found, patterns: patterned};
 }
 // `params` with `written` set on parameters whose targets their function
 // changes. Scoped parameters always stay references; these flags drive value
@@ -3931,7 +4170,7 @@ ScalarWritten :: (scoped: snapshot.SnapshotNode[], text: string, callables: Call
             callable := callables[function];
             body := Field(scoped, callable.node, syntax.FieldBody);
             mutated := MutatedNames(scoped, text, body, []);
-            stored := ScalarStoredNames(scoped, text, body, changed_fields);
+            stored := ScalarStoredNames(scoped, text, body, changed_fields).names;
             calls := ScopedCalls(scoped, text, callables, marked, natives,
                                  ScalarAliases(callables, documents, links, generic_bindings, function),
                                  callable.package, body, true);
@@ -4089,6 +4328,17 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
     body_optionals: int[] = [];
     assertions: ScalarAssertion[] = [];
     assertion_offsets: int[] = [0];
+    // DeclareMath always provides every built-in type. Only actual values and
+    // authored fields need logical math-write analysis, not that catalog.
+    math_values := false;
+    for (param in params) {
+        if (param.storage == StructStorage && MathKind(records, param.record) != 0) { math_values = true; break; }
+    }
+    if (!math_values) {
+        for (field in fields) {
+            if (field.storage == StructStorage && MathKind(records, field.record) != 0) { math_values = true; break; }
+        }
+    }
     for (function in 0..<length(callables)) {
         aliases := ScalarAliases(callables, documents, links, generic_bindings, function);
         used := constants;
@@ -4097,9 +4347,13 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         }
         emitted := ScalarEmits(scoped, forest, documents, text, key, callables, marked, &checked, &body_optionals, members, used, solid, function,
                                ops, target, natives, ports, identities, aliases,
-                               ScalarRetainedNames(scoped, text, checked, callables[function]), summary, &assertions);
+                               ScalarRetainedNames(scoped, text, checked, callables[function]), summary, &assertions, &math_values);
         if (emitted.message != "") { return ScalarOperands.Failed(emitted); }
         assertion_offsets.append(length(assertions));
+    }
+    switch ScalarSynchronous(forest, callables, generic_bindings, summary^) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Valid: { }
     }
     // Source diagnostics precede restrictions of the native representation or
     // process entry ABI. In particular, an invalid math expression must keep
@@ -4174,14 +4428,17 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         }
         switch ScalarFunction(scoped, text, key, solid, seen, marked, records, fields, used,
                               function, ops, target, aliases, changed_fields, assertions,
-                              assertion_offsets[function], assertion_offsets[function + 1]) {
+                              assertion_offsets[function], assertion_offsets[function + 1], math_values) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
             case .Built(function_rows):
                 rows.extend(function_rows);
         }
     }
-    return ScalarManagedRecords(forest, records, fields, rows);
+    switch ScalarBuiltinKernels(forest, text, records, fields, rows, length(callables), ops, target, summary) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(kernels): return ScalarManagedRecords(forest, records, fields, kernels);
+    }
 }
 // The name of a record or union row: its own, or `package.Name` when an
 // earlier row of `named` has it, as another package's declaration may. The
@@ -4206,6 +4463,14 @@ ScalarRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: T
         }
         if (ScalarNestedCollection(declared)) {
             rows.extend(ScalarCollectionRows(forest, types, declared));
+            continue;
+        }
+        if (declared.kind == MathDecl) {
+            rows.append(ScalarAt(forest, 0, facts.RecordRow, 0, 0, declared.count, declared.name));
+            for (field in 0..<declared.count) {
+                rows.append(ScalarAt(forest, 0, facts.MemberRow, facts.FloatType, field, 0,
+                                      members[declared.first + field].name));
+            }
             continue;
         }
         if (declared.kind == TaskResultDecl) {
@@ -4546,9 +4811,8 @@ ScalarInCollection :: (collection_names: string[], identity: string) -> bool {
 }
 // The facts rows of `text` at `path`. `names`, `natives`, `ports` and
 // `identities` are the host's instruction names and native catalog, as
-// Compile takes them. Its text_byte_length, text_byte_at, text_slice and
-// format_text are the only natives the source calls; any other is an unknown
-// function.
+// Compile takes them. Supported text, math and collection capabilities pass
+// through their ordinary catalog binding before native projection.
 pub CollectScalar :: (project: string, path: string, text: string, target: Target, names: string[], natives: Native[],
                       ports: Port[], identities: u64[]) -> facts.Row[] {
     return ScalarCollect(project, [], [], [path], [text], target, names, natives, ports, identities, false, 0, 0, "", false);
@@ -4625,6 +4889,8 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
     text_ports := ScalarTextPorts(resolved, resolved_ports);
     text_identities := ScalarTextIdentities(resolved, identities);
     ScalarCollectionCatalog(text_natives, &text_ports);
+    ScalarArrayCatalog(text_natives, &text_ports);
+    ScalarTextCatalog(text_natives, &text_ports);
     ScalarMathCatalog(&text_natives, &text_ports, &text_identities);
     // The bootstrap catalog contains data functions only. Printing is a void
     // action, supplied here for the ordinary body checker and lowered below.
@@ -4734,6 +5000,7 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
                             return ScalarFailed(packaged, path, text, documents, rejected);
                         }
                     }
+                    foreign_effects: int[] = [];
                     switch ForeignNatives(nodes, documents, text_natives, text_ports, text_identities,
                                           resize([int(0)], text_count)) {
                         case .Failed(diagnostic):
@@ -4742,6 +5009,7 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
                             text_natives = declared_natives;
                             text_ports = declared_ports;
                             text_identities = declared_identities;
+                            foreign_effects = declared_effects;
                     }
                     if (summary.wanted) {
                         for (native in text_natives) { summary.natives.append(native.effects); }
@@ -4767,6 +5035,14 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
                                 case .Failed(diagnostic):
                                     return ScalarFailed(packaged, path, text, documents, diagnostic);
                                 case .Ready(concrete, concrete_params, bindings):
+                                    if (!summary.wanted && GenericNeedsSynchronous(bindings)) {
+                                        summary.wanted = true;
+                                        // Foreign admission quiets effects on its private native rows.
+                                        // Retain the original masks for this semantic lifetime check.
+                                        for (native, index in text_natives) {
+                                            summary.natives.append(native.effects | foreign_effects[index]);
+                                        }
+                                    }
                                     if (generation && length(concrete) == 0) {
                                         empty_head: facts.Row = {kind: facts.DocumentRow, type: 0, value: 0, count: 0,
                                             literal: 0, name: document.key, text: "", start: 0, end: 0, line: 0, column: 0};

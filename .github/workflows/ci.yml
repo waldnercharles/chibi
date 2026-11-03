@@ -265,11 +265,6 @@ jobs:
         include-hidden-files: true
         if-no-files-found: warn
         retention-days: 7
-    - name: Build timing host regressions (ready drivers)
-      env:
-        CHIBI_TOOLS_BUILD_DIR: build/test/tools
-        CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
-      run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" build-timings
     - name: Tooling and process integrations
       env:
         CHIBI_TEST_TIMINGS: ${{ runner.temp }}/case-timings
@@ -406,7 +401,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/clang+llvm-22.1.8-x86_64-pc-windows-msvc/bin
-          key: llvm-windows-x64-22.1.8-d96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234
+          key: llvm-windows-x64-22.1.8-archive-tools-v2-d96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234
       - name: Install the LLVM optimizer and code generator
         # The runner's LLVM installer has clang and lld, not opt and llc.
         # The full upstream archive supplies those tools; verify its bytes.
@@ -418,9 +413,10 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $name = 'clang+llvm-22.1.8-x86_64-pc-windows-msvc'
           $llvm = "$env:RUNNER_TEMP/$name/bin"
-          foreach ($tool in 'opt', 'llc', 'lld-link') {
+          foreach ($tool in 'opt', 'llc', 'lld-link', 'llvm-link', 'llvm-lib') {
             if (!(Test-Path "$llvm/$tool.exe" -PathType Leaf)) { throw "missing LLVM tool $tool" }
-            & "$llvm/$tool.exe" --version
+            if ($tool -eq 'llvm-lib') { & "$llvm/$tool.exe" /? }
+            else { & "$llvm/$tool.exe" --version }
             if ($LASTEXITCODE) { throw "LLVM tool $tool is unusable" }
           }
           "CHIBI_WINDOWS_LLVM=$llvm" >> $env:GITHUB_ENV
@@ -576,6 +572,10 @@ jobs:
               "PASS native Windows $($case.name) O$level" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
             }
           }
+      - name: Check native Windows built-in math
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
+        run: |
+          & ./test/native_aot/math_builtin/RunWindows.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
       - name: Check native Windows characters and UTF-8
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         env:
@@ -637,7 +637,7 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ runner.temp }}/clang+llvm-22.1.8-x86_64-pc-windows-msvc/bin
-        key: llvm-windows-x64-22.1.8-d96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234
+        key: llvm-windows-x64-22.1.8-archive-tools-v2-d96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234
     - name: Install the verified Windows linker
       if: runner.os == 'Windows' && steps.targets-llvm-cache.outputs.cache-hit != 'true'
       shell: pwsh

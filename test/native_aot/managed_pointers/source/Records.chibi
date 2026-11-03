@@ -141,6 +141,10 @@ Main :: () -> int {
     borrowed := BorrowedRoot();
     assert(escaped == 94);
     assert(field == 54);
+    // Math lowering walks every function's operands, including the record
+    // addresses and field descriptors above. Their metadata is not arity.
+    pair := vec2(number(field), number(copies));
+    assert(pair.x == 54 && pair.y == 379);
     assert(copies == 379);
     assert(cycle == 12);
     assert(scoped == 2);

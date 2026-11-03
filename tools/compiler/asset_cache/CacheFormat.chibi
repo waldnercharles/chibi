@@ -1,0 +1,79 @@
+package asset_cache
+
+import bytes "core:bytes"
+import sha256 "core:hash/sha256"
+import strings "core:strings"
+
+pub RequestLimit: int : 67108864;
+pub OutputLimit: int : 16777216;
+pub HeaderBytes: int : 144;
+pub CacheEntries: int : 16;
+pub ScanLimit: int : 4096;
+
+pub ValidKey :: (key: string) -> bool {
+    size := strings.ByteLength(key);
+    if (size == 0 || size > 160) { return false; }
+    for (index in 0..<size) {
+        byte := strings.ByteAt(key, index);
+        if (!((byte >= 97 && byte <= 122) || (byte >= 65 && byte <= 90) ||
+              (byte >= 48 && byte <= 57) || byte == 45 || byte == 95)) { return false; }
+    }
+    return true;
+}
+
+// Same key as the C interface: 64 ASCII compiler digest bytes, salt including
+// its NUL, and the exact request bytes. No concatenated request copy is made.
+pub ClosureKey :: (identity: string, salt: u8[], request: u8[]) -> string {
+    if (strings.ByteLength(identity) != 64 || length(request) > RequestLimit) { return ""; }
+    for (byte in strings.Bytes(identity)) {
+        if (!((byte >= 48 && byte <= 57) || (byte >= 97 && byte <= 102))) { return ""; }
+    }
+    stream := sha256.Begin();
+    compiler_added := sha256.Update(&stream, bytes.FromString(identity));
+    salt_size := 0;
+    while salt_size < length(salt) && salt[salt_size] != u8(0) { salt_size += 1; }
+    salt_added := sha256.Update(&stream, salt, 0, salt_size);
+    terminated := sha256.Update(&stream, [u8(0)]);
+    request_added := sha256.Update(&stream, request);
+    assert(compiler_added && salt_added && terminated && request_added, "bounded closure key inputs fit SHA-256");
+    return strings.Concatenate(["closure-", sha256.FinishHex(stream)]);
+}
+
+// CHIBIC01 is a fixed 144-byte header: magic, little-endian u64 payload size,
+// ASCII SHA-256 of the key, then ASCII SHA-256 of the payload.
+pub CacheHeader :: (key: string, payload: u8[]) -> u8[] {
+    if (!ValidKey(key) || length(payload) > OutputLimit) { return []; }
+    header := resize([u8(0)], HeaderBytes);
+    magic := bytes.FromString("CHIBIC01");
+    for (index in 0..<8) { header[index] = magic[index]; }
+    size := u64(length(payload));
+    for (index in 0..<8) { header[8 + index] = u8((size >> u32(index * 8)) & u64(255)); }
+    key_hash := sha256.Hex(key);
+    payload_hash := sha256.HexOf(payload);
+    for (index in 0..<64) {
+        header[16 + index] = u8(strings.ByteAt(key_hash, index));
+        header[80 + index] = u8(strings.ByteAt(payload_hash, index));
+    }
+    return header;
+}
+
+// Validate the header before allocating the payload. framed_bytes comes from
+// the opened regular file; -1 reports unavailable/corrupt cache storage.
+pub CachePayloadSize :: (key: string, header: u8[], framed_bytes: u64) -> int {
+    if (!ValidKey(key) || length(header) != HeaderBytes || framed_bytes < u64(HeaderBytes)) { return -1; }
+    magic := bytes.FromString("CHIBIC01");
+    for (index in 0..<8) { if (header[index] != magic[index]) { return -1; } }
+    size: u64 = 0;
+    for (index in 0..<8) { size |= u64(header[8 + index]) << u32(index * 8); }
+    if (size > u64(OutputLimit) || size != framed_bytes - u64(HeaderBytes)) { return -1; }
+    expected := sha256.Hex(key);
+    for (index in 0..<64) { if (header[16 + index] != u8(strings.ByteAt(expected, index))) { return -1; } }
+    return int(size);
+}
+
+pub CachePayloadMatches :: (header: u8[], payload: u8[]) -> bool {
+    if (length(header) != HeaderBytes || length(payload) > OutputLimit) { return false; }
+    expected := sha256.HexOf(payload);
+    for (index in 0..<64) { if (header[80 + index] != u8(strings.ByteAt(expected, index))) { return false; } }
+    return true;
+}

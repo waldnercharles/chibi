@@ -1,10 +1,11 @@
 package package_compiler
 
 import facts "project:scalar_facts"
+import snapshot "project:source_snapshot"
 
-// Optional typed side data for test scheduling. The ordinary scalar collector
-// does not allocate these tables. Each effect mask follows one FunctionRow in
-// the returned rows; rejected collections have no masks.
+// Typed side data for test scheduling and non-escaping callable checks. A plain
+// collection allocates it only when callable bindings need it. Each mask follows
+// one FunctionRow in the returned rows; rejected collections have no masks.
 pub ScalarCollection :: struct {
     rows: facts.Row[];
     effects: int[];
@@ -75,6 +76,24 @@ ScalarClosedEffects :: (summary: ScalarEffectSummary) -> int[] {
         }
     }
     return effects;
+}
+
+// Reuse the already checked bodies and typed call edges. Only suspension is
+// relevant here; declared waiting functions seed the same rule as assembly.
+ScalarSynchronous :: (forest: snapshot.SnapshotNode[], callables: Callable[], bindings: GenericBinding[],
+                       summary: ScalarEffectSummary) -> GenericCheck {
+    if (!GenericNeedsSynchronous(bindings)) { return GenericCheck.Valid; }
+    checked := summary;
+    direct := checked.direct;
+    for (index in 0..<length(direct)) {
+        direct[index] &= SuspendEffect;
+        if (checked.waiting[index]) { direct[index] |= SuspendEffect; }
+    }
+    checked.direct = direct;
+    effects := ScalarClosedEffects(checked);
+    suspended := checked.waiting;
+    for (index in 0..<length(suspended)) { suspended[index] = (effects[index] & SuspendEffect) != 0; }
+    return GenericSynchronousBindings(forest, callables, bindings, suspended);
 }
 
 // Collect a program once, retaining closed typed effects for its functions.

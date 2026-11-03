@@ -172,6 +172,10 @@ ArrayGetRejectsArrayIndex :: () {
     ChangedArray(6, Code(native.ArrayGet, 6, 5, 4, 4, 0, 0));
 }
 @test
+ArrayGetRejectsUnknownPlaceMode :: () {
+    ChangedArray(6, Code(native.ArrayGet, 6, 5, 4, 3, 0, 2));
+}
+@test
 ArraySetRejectsWrongValueType :: () {
     ChangedArray(5, Code(native.ArraySet, 1030, 4, 2, 3, 0, 0));
 }

@@ -81,7 +81,7 @@ ControlRows :: () -> facts.Row[] {
     RejectChanged(rows, [Changed(16, CountField, 5)], "scalar logic differs from its bool operands");
     RejectChanged(rows, [Changed(16, CountField, 1)], "scalar logic differs from its bool operands");
     RejectChanged(rows, [Changed(16, CountField, 2147483647)], "scalar logic differs from its bool operands");
-    RejectChanged(rows, [Changed(16, ValueField, 3)], "scalar logic differs from its bool operands");
+    RejectChanged(rows, [Changed(16, ValueField, i64(facts.LogicalCoalesce + 1))], "scalar logic differs from its bool operands");
     RejectChanged(rows, [Changed(16, TypeField, 1)], "scalar logic differs from its bool operands");
     RejectChanged(rows, [Changed(20, TypeField, 1)], "scalar arithmetic differs from its number operands");
     RejectChanged(rows, [Changed(11, ValueField, 2)], "scalar read differs from its variable");

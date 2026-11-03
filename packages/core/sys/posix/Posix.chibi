@@ -444,7 +444,7 @@ pub Wait :: (process: int) -> int {
     while (true) {
         done := waitpid(i32(process), status, 2);
         if (done < 0) {
-            if (ForegroundError() == 4) { continue; }
+            if (ErrorNumber() == 4) { continue; }
             return -1;
         }
         word := Word32(status, 0);
@@ -996,7 +996,9 @@ when target.Os == target.Darwin {
     ForegroundErrno :: () -> rawptr { return __errno_location(); }
 }
 
-ForegroundError :: () -> int {
+// Thread-local errno from the last failed libc call. Read it immediately,
+// before another OS call can replace it on this thread.
+pub ErrorNumber :: () -> int {
     bytes := Block(4);
     copied := memcpy(bytes, ForegroundErrno(), 4);
     return Word32(bytes, 0);
@@ -1007,7 +1009,7 @@ ForegroundReap :: (pid: int) -> ForegroundReaped {
     status := Block(8);
     done := waitpid(i32(pid), status, 0);
     while (done < 0) {
-        error := ForegroundError();
+        error := ErrorNumber();
         if (error != 4) { return {status: 1, error: error}; }
         done = waitpid(i32(pid), status, 0);
     }
@@ -1145,9 +1147,11 @@ pub ForegroundStart :: (command: string[]) -> Foreground {
     if (scope.input == 0 || scope.output == 0) {
         scope.problem = "cannot make the foreground signal channel";
     } else {
-        saved_interrupt := Block(128);
-        saved_terminate := Block(128);
-        saved_hangup := Block(128);
+        // glibc's action includes a 128-byte signal set: 152 bytes total on
+        // Linux x86-64. The opaque scratch also covers Darwin's smaller action.
+        saved_interrupt := Block(256);
+        saved_terminate := Block(256);
+        saved_hangup := Block(256);
         saved := sigaction(2, empty, saved_interrupt);
         if (saved == 0) { scope.interrupt = saved_interrupt; saved = sigaction(15, empty, saved_terminate); }
         if (saved == 0) { scope.terminate = saved_terminate; saved = sigaction(1, empty, saved_hangup); }
@@ -1272,7 +1276,7 @@ pub ForegroundWait :: (scope: ^Foreground, timeout_ms: int) -> int {
         for (byte in ForegroundInfoPid..<ForegroundInfoPid + 4) { information[byte] = 0; }
         checked := waitid(1, u32(scope^.pid), information, i32(1 + 4 + ForegroundStopped + ForegroundNowait));
         if (checked < 0) {
-            error := ForegroundError();
+            error := ErrorNumber();
             if (error == 4) { continue; }
             // ECHILD proves that this process no longer owns the PID; never
             // signal a group through a handle whose leader was reaped elsewhere.

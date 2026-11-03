@@ -47,8 +47,16 @@ aliases and once-only compound assignment through a replaced pointer variable.
 Generic embedded modules and Wasm require a collector-owner adapter before
 managed admission. Nominal char, inline-nested and container cells remain
 closed in this slice, as do pointer buffers at the foreign boundary.
-Inline pointer-bearing record frames and retained values require scheduler roots,
-collector-family adoption and generation metadata retention before admission.
+Standalone waiting frames keep scalar pointer roots until completion and pin
+pointer-array owners across each suspension. A by-value array parameter owns
+its descriptor independently of its caller. Cancellation and failed assertions
+release active owner pins before freeing the coroutine frame. Source tests
+cover observer drops, inline awaits, parent-child cancellation and reuse under
+normal and forced collection; raw failure remains 134 and public run reports 1
+with its source and custom message.
+
+Inline pointer-bearing record frames and retained values still require scheduler
+roots, collector-family adoption and generation metadata retention before admission.
 Trace and drop callbacks must outlive their cells. Drop callbacks release
 external value owners without following managed pointer edges.
 

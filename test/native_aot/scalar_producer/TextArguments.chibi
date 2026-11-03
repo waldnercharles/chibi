@@ -1,0 +1,51 @@
+package native_driver
+
+TextArgumentsProjection :: () {
+    // These exact migrated sources were rejected before text argument parity.
+    for (source in ["package scalar\nMain :: () -> int { return text_byte_length(Value: \"ab\"); }\n",
+                    "package scalar\nMain :: () -> int { if (text_equal(\"a\", \"b\")) { return 1; } return 0; }\n"]) {
+        rows := Produced(source);
+        assert(rows[1].kind == facts.DocumentRow);
+        ValidateRows(rows, "");
+    }
+    slices := ["Value: \"abcd\", Start: 1, Count: 2", "Value: \"abcd\", Count: 2, Start: 1",
+               "Start: 1, Value: \"abcd\", Count: 2", "Count: 2, Value: \"abcd\", Start: 1",
+               "Start: 1, Count: 2, Value: \"abcd\"", "Count: 2, Start: 1, Value: \"abcd\""];
+    for (arguments, order in slices) {
+        rows := Produced(format_text("package scalar\nMain::()->int{return text_byte_length(text_slice({}));}", arguments));
+        assert(rows[1].kind == facts.DocumentRow);
+        ValidateRows(rows, "");
+        found := false;
+        for (row in rows) {
+            if (row.kind == facts.TextRow && row.value == facts.TextSlice) {
+                assert(row.literal == i64(order));
+                found = true;
+            }
+        }
+        assert(found);
+    }
+    rows := TextRows();
+    RejectChanged(rows, [Changed(7, LiteralField, -1)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(7, LiteralField, 6)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(7, LiteralField, 2)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(13, LiteralField, 2)], "scalar text read differs from its operands");
+    accepted := ChangedRows(rows, [Changed(7, LiteralField, 1)]);
+    ValidateRows(accepted, "");
+    formats := FormatsRows();
+    RejectChanged(formats, [Changed(8, LiteralField, 1)], "scalar text read differs from its operands");
+    natives := Natives();
+    ports := Ports();
+    for (native in natives) {
+        if (native.name == "text_slice") {
+            parameter := ports[native.first + 2];
+            parameter.name = "End";
+            ports[native.first + 2] = parameter;
+        }
+    }
+    rejected := CollectionRows("Main::()->int{s:=text_slice(\"abcd\",1,2);return 0;}", natives, ports);
+    assert(rejected[1].kind == facts.RejectionRow);
+    unused := CollectionRows("Main::()->int{return 0;}", natives, ports);
+    assert(unused[1].kind == facts.DocumentRow && scalar.Validate(unused) == "");
+    shadow := CollectionRows("Main::()->int{return text_slice(1);}text_slice::(n:int)->int{return n;}", natives, ports);
+    assert(shadow[1].kind == facts.DocumentRow && scalar.Validate(shadow) == "");
+}

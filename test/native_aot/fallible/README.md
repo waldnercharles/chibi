@@ -14,3 +14,15 @@ runtime controls.
 Three original record-alias cases run at both optimization levels. A result-bank
 copy fixture checks independent i8/u64/bool/f64 values, mutation and shadowed
 locals. The ordinary reference runs the same accepted cases.
+
+Primitive optional reads also cover four original imports samples and the
+original typed-local descriptor-growth case. Value contexts read a guarded
+payload; optional arguments/assignments and nil tests keep the descriptor.
+The fixture includes f64 arithmetic, i16 optional forwarding, inferred false
+bool locals and present numeric zero. Each category keeps its own import root.
+
+Lazy coalescing and plain optional record fields run the six original imports
+samples and a source fixture with calls that count evaluations, false/zero
+payloads, nested fallbacks and absent records. Eighteen malformed facts cases
+reject before LLVM publication. The managed-values runner checks the same
+source with poisoned frees and balanced allocations at O0/O2.

@@ -912,13 +912,7 @@ GenericCallableResults :: (forest: snapshot.SnapshotNode[], documents: snapshot.
 // A callable parameter may never survive a suspension of its consumer.
 GenericSynchronous :: (forest: snapshot.SnapshotNode[], callables: Callable[], bodies: Body[],
                        bindings: GenericBinding[], native_effects: int[]) -> GenericCheck {
-    needed := false;
-    for (bound in bindings) {
-        needed = needed || bound.place == GenericFunctionPlace;
-    }
-    if (!needed) {
-        return GenericCheck.Valid;
-    }
+    if (!GenericNeedsSynchronous(bindings)) { return GenericCheck.Valid; }
     suspended := resize([false], length(callables));
     index: int = 0;
     for (body in bodies) {
@@ -964,6 +958,18 @@ GenericSynchronous :: (forest: snapshot.SnapshotNode[], callables: Callable[], b
             index += 1;
         }
     }
+    return GenericSynchronousBindings(forest, callables, bindings, suspended);
+}
+
+GenericNeedsSynchronous :: (bindings: GenericBinding[]) -> bool {
+    for (bound in bindings) { if (bound.place == GenericFunctionPlace) { return true; } }
+    return false;
+}
+
+// Both front ends apply the callable lifetime rule to their typed suspension
+// closure. The owner and target indices follow the final callable ordering.
+GenericSynchronousBindings :: (forest: snapshot.SnapshotNode[], callables: Callable[],
+                               bindings: GenericBinding[], suspended: bool[]) -> GenericCheck {
     for (bound in bindings) {
         if (bound.place == GenericFunctionPlace && (suspended[bound.owner] || suspended[bound.index])) {
             callable := callables[bound.owner];

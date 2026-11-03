@@ -31,7 +31,7 @@ typedef struct
     const execution_program *caller;
     /* The application handles cancellation through its own service calls and
      * completes its cleanup and exit policy. Enclosing scope constraints still
-     * apply; authored program.call always remains interruptible. */
+     * apply. */
     bool cooperative;
 } authoring_program_call_options;
 

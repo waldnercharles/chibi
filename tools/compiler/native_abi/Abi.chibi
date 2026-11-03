@@ -185,6 +185,10 @@ pub ContextType :: () -> string {
 // execution-family heap owner. Generic C-bundle/library admission stays
 // separate until its embedding contract supplies this owner explicitly.
 pub ManagedOwnerField: int : 5;
+// Bump when heap, context or typed cell-layout contracts change. The host owns
+// opaque bytes and admits only images matching its first image's version/size.
+pub ManagedFamilyABI: i64 : 1;
+pub ManagedImageCounter :: () -> string { return "chibi_generation_cells"; }
 pub ManagedContextType :: () -> string {
     return "{ ptr, ptr, ptr, ptr, ptr, ptr }";
 }

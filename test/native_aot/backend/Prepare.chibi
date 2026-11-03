@@ -146,10 +146,12 @@ Calls :: () -> string {
 }
 ArraySources :: (directory: string) {
     names: string[] = [];
+    aliases := ["readonly_alias_before_writer", "readonly_alias_after_writer"];
     for (index in 0..<cases.Count()) {
         name := cases.CaseName(index);
         if (!strings.HasPrefix(name, "array_") && !strings.HasPrefix(name, "union_array") &&
-            !strings.HasPrefix(name, "record_") && !strings.HasPrefix(name, "switch_on")) { continue; }
+            !strings.HasPrefix(name, "record_") && !strings.HasPrefix(name, "switch_on") &&
+            !aliases.contains(name)) { continue; }
         if (!cases.IsAccepted(index)) { continue; }
         source := cases.Source(index);
         // Preserve the full i32 result, including values larger than an exit
@@ -161,6 +163,7 @@ ArraySources :: (directory: string) {
         names.append(name);
     }
     assert(length(names) >= 18, "the retained C array corpus is not reduced");
+    for name in aliases { assert(names.contains(name), "both readonly alias orders execute"); }
     Write(format_text("{}/arrays.txt", directory), strings.Concatenate([strings.Join(names, "\n"), "\n"]));
     os.Print(format_text("prepared {} real array/record/union source programs", length(names)));
 }

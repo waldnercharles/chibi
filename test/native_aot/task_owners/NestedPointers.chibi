@@ -1,16 +1,23 @@
 package owned_nested_pointers
 
+import target "core:target"
+
 foreign import libc "system:c"
 foreign libc {
     fopen :: (path: cstring, mode: cstring) -> rawptr
     fclose :: (stream: rawptr) -> i32
     access :: (path: cstring, mode: i32) -> i32
+    _access :: (path: cstring, mode: i32) -> i32
 }
 Make :: () -> ^^int { value := 1; pointer := &value; return &pointer; }
 Box :: (value: int) -> ^int { return &value; }
 Capture :: (value: ^^int) -> ^^^int { return &value; }
 Churn :: () { for index in 0..<3000 { discarded := Capture(Make()); } }
-Exists :: (path: string) -> bool { return access(path, 0) == 0; }
+when target.Os == target.Windows {
+    Exists :: (path: string) -> bool { return _access(path, 0) == 0; }
+} else {
+    Exists :: (path: string) -> bool { return access(path, 0) == 0; }
+}
 Mark :: (path: string) {
     stream := fopen(path, "wb");
     assert(stream != 0);

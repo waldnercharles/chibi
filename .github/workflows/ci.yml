@@ -671,6 +671,38 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
+      - name: Check native Windows nested-pointer collection and schema guards
+        id: windows-nested-pointer-proof
+        if: ${{ !cancelled() && steps['windows-fixed-point'].outcome == 'success' }}
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        run: ./test/native_aot/managed_pointers/RunNestedWindows.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM -Root $PWD.Path
+      - name: Preserve failed Windows nested-pointer evidence
+        if: ${{ failure() && steps['windows-nested-pointer-proof'].outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-nested-pointer-evidence
+          path: ${{ runner.temp }}/chibi-nested-pointers-*/**
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+      - name: Check native Windows Text imports across image lifetimes
+        id: windows-text-import-proof
+        if: ${{ !cancelled() && steps['windows-fixed-point'].outcome == 'success' }}
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        run: ./test/native_aot/managed_pointers/RunTextWindows.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM -Root $PWD.Path
+      - name: Preserve failed Windows Text importer evidence
+        if: ${{ failure() && steps['windows-text-import-proof'].outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-text-import-evidence
+          path: ${{ runner.temp }}/chibi-text-import-*/**
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
       - name: Check native Windows directory errors and source inventories
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: ./test/native_aot/directories/Run.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM

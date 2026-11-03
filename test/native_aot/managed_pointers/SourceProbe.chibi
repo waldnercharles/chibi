@@ -54,6 +54,38 @@ Main :: () -> int {
     llvm := args[1];
     audit := os.ReadText(args[2]);
     if (audit.error) { return 2; }
+    if (os.Platform() == "Windows") {
+        audit.text = strings.ReplaceAll(audit.text, "\r\n", "\n");
+        // The UCRT has no POSIX dprintf, and Win64 long is only 32 bits.
+        // Format three i64 arguments into a fixed stack buffer, then write it
+        // directly so ExitProcess cannot discard a buffered audit report.
+        report := "@managed_source.report = private constant [44 x i8] c\"managed source live %ld peak %ld total %ld\\0A\\00\"";
+        assert(length(strings.Split(audit.text, report)) == 2);
+        audit.text = strings.ReplaceAll(audit.text, report,
+            "@managed_source.report = private constant [47 x i8] c\"managed source live %lld peak %lld total %lld\\0A\\00\"");
+        printed := "  %printed = call i32 (i32, ptr, ...) @dprintf(i32 1, ptr @managed_source.report, i64 %live, i64 %peak, i64 %total)";
+        assert(length(strings.Split(audit.text, printed)) == 2);
+        audit.text = strings.ReplaceAll(audit.text, printed,
+            "  %printed = call i32 @managed_source.print(i64 %live, i64 %peak, i64 %total)");
+        audit.text = strings.ReplaceAll(audit.text, "declare i32 @dprintf(i32, ptr, ...)\n", "");
+        audit.text = strings.Concatenate([audit.text, "\n",
+            "; chibi-import system:c malloc\n; chibi-import system:c free\n; chibi-import system:c __stdio_common_vsprintf\n",
+            "; chibi-import system:kernel32 GetStdHandle\n; chibi-import system:kernel32 WriteFile\n",
+            "declare i32 @__stdio_common_vsprintf(i64, ptr, i64, ptr, ptr, ptr)\n",
+            "declare ptr @GetStdHandle(i32)\ndeclare i32 @WriteFile(ptr, ptr, i32, ptr, ptr)\n",
+            "define internal i32 @managed_source.print(i64 %live, i64 %peak, i64 %total) {\nentry:\n",
+            "  %buffer = alloca [128 x i8]\n  %arguments = alloca [3 x i64]\n",
+            "  %peak.at = getelementptr [3 x i64], ptr %arguments, i32 0, i32 1\n",
+            "  %total.at = getelementptr [3 x i64], ptr %arguments, i32 0, i32 2\n",
+            "  store i64 %live, ptr %arguments\n  store i64 %peak, ptr %peak.at\n  store i64 %total, ptr %total.at\n",
+            "  %count = call i32 @__stdio_common_vsprintf(i64 34, ptr %buffer, i64 128, ptr @managed_source.report, ptr null, ptr %arguments)\n",
+            "  %fits = icmp ult i32 %count, 128\n  br i1 %fits, label %write, label %bad\nwrite:\n",
+            "  %output = call ptr @GetStdHandle(i32 -11)\n  %written = alloca i32\n  store i32 0, ptr %written\n",
+            "  %status = call i32 @WriteFile(ptr %output, ptr %buffer, i32 %count, ptr %written, ptr null)\n",
+            "  %okay = icmp ne i32 %status, 0\n  %actual = load i32, ptr %written\n",
+            "  %complete = icmp eq i32 %actual, %count\n  %valid = and i1 %okay, %complete\n",
+            "  br i1 %valid, label %done, label %bad\nbad:\n  call void @llvm.trap()\n  unreachable\ndone:\n  ret i32 %count\n}\n"]);
+    }
     if (callbacks) {
         // Real allocator callbacks may request collection and construct cells
         // outside sweep. Nested allocations use the same audited allocator;
@@ -77,6 +109,7 @@ Main :: () -> int {
 
     target := abi.LinuxX64();
     if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
+    if (os.Platform() == "Windows") { target = abi.WindowsX64(); }
     start := format_text("{}/source-audit-start.ll", work);
     for (index in 3..<length(args)) {
         source := os.ReadText(args[index]);
@@ -89,7 +122,8 @@ Main :: () -> int {
         // fixtures need the same owned-text runtime as public native programs.
         formatting := strings.Contains(source.text, "; chibi-format\n");
         numbers := strings.Contains(source.text, "; chibi-format-numbers\n");
-        if (os.WriteText(start, link.ManagedProgramContext(link.ProgramStart(target.triple, false, true, formatting, numbers)))) { return 2; }
+        start_text := link.ManagedProgramContext(link.ProgramStart(target.triple, false, true, formatting, numbers));
+        if (os.WriteText(start, start_text)) { return 2; }
         text := strings.ReplaceAll(source.text, "define i32 @chibi_scalar(ptr %ctx)",
             "define i32 @managed_source.entry(ptr %ctx)");
         // ScopedAliases has no managed values but still proves the scoped
@@ -143,12 +177,16 @@ Main :: () -> int {
             if (os.WriteText(module, strings.Concatenate([current, checked_audit]))) { return 2; }
             for (level in [int(0), 2]) {
                 output := format_text("{}/source-audit-{}-{}-O{}", work, index, forced, level);
+                if (os.Platform() == "Windows") { output = strings.Concatenate([output, ".exe"]); }
                 objects := [strings.Concatenate([output, ".o"]), strings.Concatenate([output, "-start.o"])];
                 if (host.Objects(llvm, [module, start], objects, level, 1)) { return 1; }
                 plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", false);
                 if (os.Platform() == "Darwin") {
                     runtime: link.Import = {name: "System", symbols: ["malloc", "calloc", "free", "write", "dprintf", "printf", "abort", "memset", "__error"]};
                     plan.imports = [runtime];
+                } else if (os.Platform() == "Windows") {
+                    plan.static = true;
+                    plan.imports = link.SystemImports(strings.SplitLines(strings.Concatenate([current, checked_audit, start_text])), target.triple);
                 }
                 if (host.Link(plan)) { return 1; }
                 result := os.Capture([output]);

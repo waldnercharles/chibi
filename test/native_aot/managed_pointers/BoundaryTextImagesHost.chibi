@@ -10,9 +10,18 @@ foreign libc {
     calloc :: (count: u64, width: u64) -> rawptr
     free :: (memory: rawptr)
 }
-Required :: (image: rawptr, name: string) -> rawptr { address := dlsym(image, name); assert(address != 0); return address; }
-when target.Os == target.Darwin { Open :: (path: string) -> rawptr { return dlopen(path, 262); } }
-else { Open :: (path: string) -> rawptr { return dlopen(path, 2); } }
+when target.Os == target.Windows {
+    import windows "core:sys/windows"
+    Open :: (path: string) -> rawptr { return windows.OpenLibrary(path); }
+    Symbol :: (image: rawptr, name: string) -> rawptr { return windows.LibrarySymbol(image, name); }
+    Close :: (image: rawptr) -> bool { return windows.CloseLibrary(image); }
+} else {
+    when target.Os == target.Darwin { Open :: (path: string) -> rawptr { return dlopen(path, 262); } }
+    else { Open :: (path: string) -> rawptr { return dlopen(path, 2); } }
+    Symbol :: (image: rawptr, name: string) -> rawptr { return dlsym(image, name); }
+    Close :: (image: rawptr) -> bool { return dlclose(image) == 0; }
+}
+Required :: (image: rawptr, name: string) -> rawptr { address := Symbol(image, name); assert(address != 0); return address; }
 Main :: () -> int {
     args := os.Arguments();
     if (length(args) != 4 || (args[2] != "Labels" && args[2] != "Leaf")) { return 2; }
@@ -112,7 +121,7 @@ Main :: () -> int {
     old_cells := pending_old(); writer_cells := pending_writer(); assert(old_cells == 1 && writer_cells == 0);
     collected := collect(); assert(collected == 0);
     before_close := check(expected_rows); assert(before_close == expected);
-    closed_writer := dlclose(writer); assert(closed_writer == 0);
+    closed_writer := Close(writer); assert(closed_writer, "the real image close succeeds");
     after_close := check(expected_rows); assert(after_close == expected, "owned Text survives writer unload");
     collected = collect(); assert(collected == 0);
     rooted := pending_old(); assert(rooted == 1);
@@ -120,7 +129,7 @@ Main :: () -> int {
     collected = collect(); assert(collected == 0);
     remaining := pending_old(); assert(remaining == 0);
     live := allocations(); assert(live == 0, "all cross-image allocations are released before the counter");
-    closed_old := dlclose(old); assert(closed_old == 0);
+    closed_old := Close(old); assert(closed_old, "the real image close succeeds");
     free(value); free(heap); free(counter);
     return 0;
 }

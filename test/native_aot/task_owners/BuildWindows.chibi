@@ -12,13 +12,14 @@ import strings "core:strings"
 Main :: () -> int {
     arguments := os.Arguments();
     if length(arguments) != 6 {
-        os.Print("usage: BuildWindows CHECKOUT LLVM typed|edited OUTPUT 0|2 good|bad");
+        os.Print("usage: BuildWindows CHECKOUT LLVM typed|edited|nested OUTPUT 0|2 good|bad");
         return 2;
     }
     root := arguments[0];
     llvm := arguments[1];
     name := "TypedGeneration";
     if arguments[2] == "edited" { name = "Edited"; }
+    else if arguments[2] == "nested" { name = "NestedPointers"; }
     else if arguments[2] != "typed" { return 2; }
     output := arguments[3];
     level := 0;

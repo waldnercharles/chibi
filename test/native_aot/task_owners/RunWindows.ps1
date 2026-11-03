@@ -38,6 +38,7 @@ function Invoke-TypedGeneration {
     [IO.File]::WriteAllText("$run/$Mode-case", '')
     $image = "$work/typed-O$Level.so"
     if ($Bad) { $image = "$work/bad-O$Level.so" }
+    if ($Mode -eq 'nested') { $image = "$work/nested-O$Level.so" }
     [IO.File]::Copy($image, "$run/live-0.so")
     $process = $null
     $started = $false
@@ -83,6 +84,7 @@ function Invoke-TypedGeneration {
     $reported = @([IO.File]::ReadAllLines("$run/stdout.txt")) + @([IO.File]::ReadAllLines("$run/stderr.txt"))
     $expected = 134
     if ($Mode -eq 'positive') { $expected = 42 }
+    if ($Mode -eq 'nested') { $expected = 7 }
     # LLVM's Win64 trap is an illegal-instruction exception, distinct from the
     # typed failure's controlled return134. A generic assertion cannot pass it.
     if ($Bad) { $expected = -1073741795 }
@@ -102,6 +104,11 @@ function Invoke-TypedGeneration {
     if ($Swap) { $expectedClosed = 2 }
     if ($closed -ne $expectedClosed) { throw "$label O$Level did not audit and close every mapped image" }
     if (@(Get-ChildItem -LiteralPath $run -Filter '*.so').Count -ne 0) { throw "$label O$Level left a mapped generation file" }
+    if ($Mode -eq 'nested') {
+        if (-not (Test-Path -LiteralPath "$run/old-done")) { throw 'the nested-pointer task did not finish in its retired image' }
+        "PASS Windows nested pointer task survives reload O$Level, poisoned frees and actual image close"
+        return
+    }
     if ($Mode -eq 'positive') {
         if (-not (Test-Path -LiteralPath "$run/after-unwrap")) { throw 'the successful unwrap did not continue' }
     } else {
@@ -129,7 +136,7 @@ try {
             --source "$work/host-source/Host.chibi" --entry Main --output $hostProgram `
             --llvm $llvmPath --target x86_64-pc-windows-msvc --level $level --jobs 2
         if ($LASTEXITCODE) { throw "could not compile the audited Windows host at O$level" }
-        foreach ($name in 'typed', 'edited', 'bad') {
+        foreach ($name in 'typed', 'edited', 'bad', 'nested') {
             $source = $name
             $audit = 'good'
             if ($name -eq 'bad') { $source = 'typed'; $audit = 'bad' }
@@ -139,6 +146,7 @@ try {
         foreach ($mode in 'positive', 'sync', 'frame', 'spawn-immediate') { Invoke-TypedGeneration $mode $level }
         foreach ($mode in 'unwrap', 'unwrap-await', 'unwrap-immediate') { Invoke-TypedGeneration $mode $level -Swap $true }
         Invoke-TypedGeneration 'positive' $level -Bad $true
+        Invoke-TypedGeneration 'nested' $level -Swap $true
     }
     $completed = $true
 } finally {

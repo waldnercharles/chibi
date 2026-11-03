@@ -166,6 +166,7 @@ Main :: () -> int {
     target_source := os.ReadText(strings.Concatenate([core, "/target/Target.chibi"]));
     if (target_source.error) { return 2; }
     target := abi.LinuxX64(); if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
+    if (os.Platform() == "Windows") { target = abi.WindowsX64(); }
     visible := route.Visible(core);
     old.text = Shared(old.text, visible, target_source.text, target.triple);
     writer.text = Shared(writer.text, visible, target_source.text, target.triple);
@@ -199,7 +200,8 @@ Main :: () -> int {
         contexts += 1;
     }
     assert(contexts == 1, "one real context owns the audited callbacks");
-    if (os.WriteText(start, strings.Concatenate([strings.Join(context, "\n"), "\n", allocations.text]))) { return 2; }
+    start_text := strings.Concatenate([strings.Join(context, "\n"), "\n", allocations.text]);
+    if (os.WriteText(start, start_text)) { return 2; }
     for (name in ["old", "writer", "broken"]) {
         module := old_module; if (name == "writer") { module = writer_module; } if (name == "broken") { module = broken_module; }
         path := format_text("{}/boundary-{}.ll", work, name);
@@ -210,7 +212,22 @@ Main :: () -> int {
             if (host.Objects(llvm, [path, start], objects, level, 1)) { return 1; }
             plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", false); plan.shared = true;
             if (os.Platform() == "Darwin") { plan.imports = [{name: "System", symbols: ["malloc", "calloc", "free", "write", "abort", "memcpy", "memset", "__error"]}]; }
-            else { plan.libraries = ["c"]; }
+            else if (os.Platform() == "Windows") {
+                plan.static = true;
+                lines := strings.SplitLines(strings.Concatenate([module, "\n", start_text]));
+                plan.imports = link.SystemImports(lines, target.triple);
+                // The host looks up only public fixture adapters. Keep all
+                // compiler-generated/internal helpers private to their image.
+                for (line in lines) {
+                    if (!strings.HasPrefix(line, "define ") || strings.HasPrefix(line, "define internal ")) { continue; }
+                    begin := strings.Index(line, " @boundary_");
+                    if (begin < 0) { continue; }
+                    end := strings.Index(line, "(");
+                    assert(end > begin + 2);
+                    plan.exports.append(strings.Slice(line, begin + 2, end - begin - 2));
+                }
+                assert(length(plan.exports) > 0, "each image exports its host-facing audit adapters");
+            } else { plan.libraries = ["c"]; }
             if (host.Link(plan)) { return 1; }
         }
     }

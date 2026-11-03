@@ -1,0 +1,48 @@
+package record_field_arrays
+Leaf :: struct { text:string; number:int; }
+Inner :: struct { values:int[]; words:string[]; flags:bool[]; leaves:Leaf[]; }
+Entry :: struct { inner:Inner; sibling:int; }
+Text :: (value:u8) -> string { return text_from_bytes([u8(65),u8(0),value]); }
+Make :: (value:int) -> Entry {
+    return {inner:{values:[value],words:[Text(u8(wrap:value))],flags:[true],
+                   leaves:[{text:Text(u8(wrap:value)),number:value}]},sibling:value * 10};
+}
+Incoming :: (rows:^(Entry[])) -> int[] { rows^ = [Make(8)]; return [int(7)]; }
+Index :: (rows:^(Entry[]), calls:^int) -> int { calls^ += 1; rows^ = [Make(9)]; return 0; }
+Scoped :: (read:^(Entry[]), changed:^(Entry[])) { read^[0].inner.values = Incoming(changed); }
+ByValue :: (rows:Entry[]) -> int { rows[0].inner.values=[int(12)]; return rows[0].inner.values[0]; }
+Main :: () -> int {
+    original := [Make(1)];
+    rows := original;
+    rows[0].inner.values=[int(6)];
+    rows[0].inner.words=[Text(6)];
+    rows[0].inner.flags=[false,true];
+    rows[0].inner.leaves=[{text:Text(6),number:6}];
+    assert(rows[0].inner.values[0]==6 && original[0].inner.values[0]==1);
+    assert(rows[0].inner.words[0]==Text(6) && original[0].inner.words[0]==Text(1));
+    assert(!rows[0].inner.flags[0] && original[0].inner.flags[0]);
+    assert(rows[0].inner.leaves[0].text==Text(6) && original[0].inner.leaves[0].number==1);
+    before := rows[0].inner.values;
+    rows[0].inner.values=before;
+    assert(rows[0].inner.values[0]==6 && before[0]==6);
+    rows[0].inner.values=Incoming(&rows);
+    assert(rows[0].inner.values[0]==7 && rows[0].sibling==80);
+    calls := 0;
+    rows[Index(&rows,&calls)].inner.values=[int(5)];
+    assert(calls==1 && rows[0].inner.values[0]==5 && rows[0].sibling==90);
+    Scoped(&rows,&rows);
+    assert(rows[0].inner.values[0]==7 && rows[0].sibling==80);
+    isolated := ByValue(original);
+    assert(isolated==12 && original[0].inner.values[0]==1);
+    for index in 0..<128 {
+        rows[0].inner.words=[Text(u8(wrap:index))];
+        if (index<4) { continue; }
+        if (index==8) { break; }
+    }
+    assert(rows[0].inner.words[0]==Text(8));
+    rows[0].inner.values=[];
+    assert(length(rows[0].inner.values)==0);
+    rows[0].inner.values=[int(3)];
+    assert(rows[0].inner.values[0]==3);
+    return 0;
+}

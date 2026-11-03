@@ -1000,6 +1000,7 @@ Holds :: (values: int[], wanted: int) -> bool {
 // two ints or an index and an element; 0 for no operator.
 ArrayOperands :: (operand: facts.Row) -> int {
     if (operand.value == facts.ArrayRange) { return 3; }
+    if (operand.value == facts.ArrayAssign) { return 2; }
     extra := 0;
     if (operand.literal == i64(facts.NestedArrayPlace)) {
         if (!ArrayChanges(operand.value) && operand.value != facts.ArrayResize) { return 0; }
@@ -1026,11 +1027,11 @@ NestedArrayMember :: (rows: facts.Row[], records: int[], type: int) -> int {
         (!Scalar(inner - facts.ArrayType) && inner - facts.ArrayType != facts.StringType)) { return 0; }
     return inner;
 }
-// Whether the operator changes the elements of the array it consumes.
+// Whether the operator mutates a canonical array value.
 ArrayChanges :: (operator: int) -> bool {
     return operator == facts.ArraySet || operator == facts.ArrayPush || operator == facts.ArrayExtend ||
            operator == facts.ArrayRemove || operator == facts.ArrayInsert || operator == facts.ArrayReverse ||
-           operator == facts.ArrayReplace;
+           operator == facts.ArrayReplace || operator == facts.ArrayAssign;
 }
 MappedArrayChange :: (value: int) -> bool {
     return value >= facts.MapArrayPush && value <= facts.MapArrayResize;
@@ -1261,6 +1262,7 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         return mismatch;
     }
     operator := operand.value;
+    if (operator == facts.ArrayAssign && operand.literal != i64(facts.ArrayReferencePlace)) { return mismatch; }
     if (operator == facts.ArrayRange) {
         if (operand.literal != 0 || Element(records, stack[base]) == 0 ||
             OptionalPayloadType(rows, records, operand.type) != stack[base] ||
@@ -1306,7 +1308,7 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         if (operator == facts.ArrayReverse) { return ""; }
         wanted := facts.IntType;
         if (operator == facts.ArrayPush) { wanted = element; }
-        if (operator == facts.ArrayExtend) { wanted = field; }
+        if (operator == facts.ArrayExtend || operator == facts.ArrayAssign) { wanted = field; }
         if (stack[argument] != wanted ||
             ((operator == facts.ArraySet || operator == facts.ArrayInsert || operator == facts.ArrayReplace) && stack[argument + 1] != element)) { return mismatch; }
         return "";
@@ -4164,10 +4166,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     argument := root;
                     if (operand.count > first_argument - base) { argument = stack[first_argument]; }
                     if (op == facts.ArraySet || op == facts.ArrayInsert || op == facts.ArrayReplace) { argument = stack[first_argument + 1]; }
-                    if (op == facts.ArrayPush || op == facts.ArraySet || op == facts.ArrayInsert || op == facts.ArrayReplace) {
+                    if (op == facts.ArrayPush || op == facts.ArraySet || op == facts.ArrayInsert || op == facts.ArrayReplace || op == facts.ArrayAssign) {
                         if (Holds(fresh, argument)) { fresh = Without(fresh, argument); }
                         else {
-                            kept := KeepValue(managed, element, argument, slot + 1 + extra);
+                            incoming_type := element;
+                            if (op == facts.ArrayAssign) { incoming_type = member; }
+                            kept := KeepValue(managed, incoming_type, argument, slot + 1 + extra);
                             slots.extend(kept.slot_types);
                             body.extend(kept.code);
                             extra += length(kept.slot_types);
@@ -4212,8 +4216,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         extra += 1;
                         local += 1;
                     }
-                    changed := current + 1;
-                    slots.extend([array, array]);
+                    changed := argument;
+                    reserved := 1;
+                    slots.append(array);
+                    if (op != facts.ArrayAssign) { changed = current + 1; slots.append(array); reserved = 2; }
                     body.append(Op(native.Deref, array, current, address, 0, 0));
                     mutation := Op(native.ArrayPush, array, changed, current, argument, 0);
                     mutation.literal = 1;
@@ -4230,6 +4236,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                     if (op == facts.ArrayInsert) { mutation = Op(native.ArrayInsert, array, changed, current, stack[first_argument], argument); }
                     if (op == facts.ArrayReverse) { mutation = Op(native.ArrayReverse, array, changed, current, 0, 0); }
+                    if (op == facts.ArrayAssign) { mutation = Op(native.ArrayDrop, array, 0, current, 0, 0); }
                     state_index := RetainedArrayState(retained_array_variables, retained_array_fields, retained_array_states,
                         rows[at].value, int(operand.literal) - 1);
                     state_type := array;
@@ -4245,8 +4252,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         // and publication. Keep the local owner while dropping
                         // the extra global lease, so unique backing can grow.
                         slots.append(state_type);
-                        body.extend([Op(native.Constant, state_type, changed + 1, 0, 0, 0),
-                            Op(native.StateStore, state_type, 0, changed + 1, 0, state_index)]);
+                        body.extend([Op(native.Constant, state_type, current + reserved, 0, 0, 0),
+                            Op(native.StateStore, state_type, 0, current + reserved, 0, state_index)]);
                         extra += 1;
                     }
                     if (waiting_function && mutation.op == native.ArrayResize && mutation.literal == i64(native.ArrayResizeInitialized)) {
@@ -4258,7 +4265,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     // Resize returns an independent backing rather than
                     // consuming its input, unlike the in-place operations.
                     if (op == facts.ArrayResize) { body.append(Giving(array, current)); }
-                    extra += 2;
+                    extra += reserved;
                     if (referenced && SortedIndex(retained_variables, rows[at].value) < 0) {
                         // Poke already changes the canonical variable. No full
                         // root value is needed: copying it would visit every

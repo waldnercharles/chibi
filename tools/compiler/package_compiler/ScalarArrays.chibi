@@ -770,6 +770,13 @@ ScalarElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, callabl
     fielded := Is(forest, destination, syntax.MemberExpression);
     place := destination;
     if (fielded) { place = Unparenthesized(forest, Field(forest, destination, syntax.FieldObject)); }
+    if (fielded && Is(forest, place, syntax.IndexExpression)) {
+        field := ScalarMember(forest, text, callables, params, names, types, members, callable.package, destination);
+        if (field >= 0 && members[field].container == ArrayContainer) {
+            return ScalarIndexedFieldAssigned(forest, text, callables, params, callable, names, types, members, constants,
+                                              statement, destination, next_variable);
+        }
+    }
     object := Unparenthesized(forest, Field(forest, place, syntax.FieldObject));
     if (Is(forest, object, syntax.IndexExpression)) {
         return ScalarNestedAssigned(forest, text, callables, params, callable, names, types, members, constants,
@@ -1282,5 +1289,45 @@ ScalarInlineArrayAssigned :: (forest: snapshot.SnapshotNode[], text: string, cal
     rows.extend(changed);
     rows.append(ScalarAt(forest, statement, facts.EndRow, 0, 0, 0, ""));
     next_variable^ = variables;
+    return ScalarOperands.Built(rows);
+}
+
+// An indexed record's inline array field is a logical place. Check its
+// outer index before RHS effects, then resolve the current unique backing
+// after those effects. Captured incoming ownership precedes that resolution.
+ScalarIndexedFieldAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                               callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
+                               statement: int, destination: int, next_variable: ^int) -> ScalarOperands {
+    index_variable := next_variable^;
+    place := ScalarInlineReference(forest, text, names, types, members, destination, index_variable);
+    if (place.variable < 0 || place.index_node < 0 || place.shape.container != ArrayContainer ||
+        CompoundOperator(Operator(forest, statement)) != NoOperator) {
+        return ScalarOperands.Failed(Diagnose(forest, destination, 0, "native indexed field replacement requires a writable inline array field"));
+    }
+    array := ScalarValueType(types, place.shape.storage, place.shape.container, place.shape.record);
+    rows := [ScalarAt(forest, statement, facts.ScopeRow, 0, 0, 0, "")];
+    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                          place.index_node, place.index_node, IntStorage, IntStorage, facts.Clamp, []) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): rows.extend(ScalarCapture(forest, statement, facts.IntType, index_variable, built));
+    }
+    checked := index_variable + 1;
+    rows.extend(ScalarCapture(forest, statement, facts.BoolType, checked,
+        [place.rows[0], place.rows[1], ScalarAt(forest, destination, facts.ArrayRow, facts.BoolType, facts.ArrayPlaceCheck, 2, "")]));
+    replacement := checked + 1;
+    value := Field(forest, statement, syntax.FieldValue);
+    switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants, value, place.shape, []) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): rows.extend(ScalarCapture(forest, statement, array, replacement, built));
+    }
+    changed := place.rows;
+    changed.append(ScalarAt(forest, value, facts.ReadRow, array, replacement, 0, ""));
+    assigned := ScalarAt(forest, statement, facts.ArrayRow, place.root, facts.ArrayAssign, 2, "");
+    assigned.literal = i64(facts.ArrayReferencePlace);
+    changed.append(assigned);
+    rows.append(ScalarAt(forest, statement, facts.AssignRow, place.root, place.variable, length(changed), ""));
+    rows.extend(changed);
+    rows.append(ScalarAt(forest, statement, facts.EndRow, 0, 0, 0, ""));
+    next_variable^ = replacement + 1;
     return ScalarOperands.Built(rows);
 }

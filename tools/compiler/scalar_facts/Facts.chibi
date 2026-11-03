@@ -158,7 +158,7 @@ package scalar_facts
 // then a start and a count, to give the string of those bytes, its start
 // clamped to the string and its count to the bytes after the start; and
 // TextFormat consumes the `count` most recent, at least one, a string format
-// then each argument, a number, bool or string of its own type, to give the
+// then each argument, a scalar/text value or an array/map descriptor, to give the
 // string format_text makes of them, which the runtime allocates. The
 // indexes, starts, counts and byte counts are ints. A fixed text row's
 // `literal` selects its source operand permutation through TextArgument;
@@ -326,7 +326,11 @@ pub TaskRunningRow: int : 51;
 // pointee value. `value` is ManagedRead/ManagedWrite; literal retains the full
 // semantic pointee identity as u64 bits, independent of module type ordinals.
 pub ManagedRow: int : 52;
-// A zero-arity address of variable `value`, giving PointerType. The variable
+// An address of variable `value`, giving PointerType and consuming no operand.
+// Count is zero for a scalar, or the exact record pointee type for a record.
+// A tagged RecordRow.literal is its full nominal+layout identity; its Member
+// literals are full value identities, distinct from ordinary char flags.
+// The variable
 // is promoted to one typed heap cell from initialization; literal is the same
 // semantic identity every address/read/write of that pointee carries.
 pub ManagedAddressRow: int : 53;
@@ -338,6 +342,10 @@ pub ManagedBorrow: int : 4;
 // Eager scalar selection: bool condition, then same-typed yes and no values.
 // Values are numeric or bool, never managed values or references.
 pub SelectRow: int : 54;
+// A field descriptor from one managed pointer operand. Type is the parent
+// record, value its field ordinal, literal the complete field value identity;
+// the produced value is PointerType, not the parent metadata type.
+pub ManagedFieldRow: int : 55;
 // Maps Nil | Some(record) to Nil | Some(field), selecting plain numeric/bool
 // field `value`. Both optional shapes are canonical; count is one.
 pub OptionalFieldRow: int : 56;
@@ -345,9 +353,16 @@ pub OptionalFieldRow: int : 56;
 // `count` are depths below the top, 0 <= value < count; type and literal are 0.
 // Named calls evaluate arguments in source order, then arrange their slots.
 pub OperandSwapRow: int : 57;
+// Store one typed value in a PatternStorage local without leaving an operand.
+// The local was declared in the enclosing Scope; count is one, value its index.
+pub OperandBindRow: int : 58;
 // A lexical scope without operands. Its header has type/value/count/literal 0
 // and empty names/text; End repeats its located range and releases its owners.
 pub ScopeRow: int : 59;
+pub PatternStorage: int : 16;
+// A While immediately after PatternStorage declarations in a Scope. Its
+// captures are released/cleared after each pass, before its next test.
+pub PatternLoop: int : 32;
 // A source void waiting function has no success payload despite its internal int.
 pub FunctionVoid: int : 1;
 pub CallPlain: int : 0;

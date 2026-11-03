@@ -418,7 +418,7 @@ ManagedTypes :: (types: int[]) -> bool {
 }
 // All roots refer to initialized stable slots. Plain functions pay nothing;
 // suspended frames attach their persistent roots after coroutine allocation.
-ManagedRoots :: (shape: Function, slots: int[], locals: int[]) -> string {
+ManagedRoots :: (shape: Function, slots: int[], locals: int[], traced: bool[]) -> string {
     output: string[] = ["  %managed.heap = call ptr @chibi_managed.owner(ptr %ctx)\n",
         "  %managed.head = getelementptr %chibi.managed.heap, ptr %managed.heap, i32 0, i32 1\n",
         "  %managed.previous = load ptr, ptr %managed.head\n"];
@@ -433,11 +433,13 @@ ManagedRoots :: (shape: Function, slots: int[], locals: int[]) -> string {
             // Only GC releases cells, so scalar pointer snapshots are safe
             // roots. Array reads may borrow freed backing; explicit pins
             // instead cover actual owning places across collecting calls.
-            if (type != PointerType) { continue; }
+            if (type != PointerType && !ManagedTraced(type, traced)) { continue; }
+            trace := "pointer";
+            if (type != PointerType) { trace = format_text("record{}", type - RecordType); }
             output.append(Store(Zero(type), type, prefix, index));
             output.append(format_text("  %managed.{}{} = alloca %chibi.managed.root\n", prefix, index));
             output.append(format_text("  call void @chibi_managed.push(ptr %managed.heap, ptr %managed.{}{}, ptr %{}{}, ptr @chibi_managed.trace.{})\n",
-                                      prefix, index, prefix, index, "pointer"));
+                                      prefix, index, prefix, index, trace));
         }
     }
     return strings.Join(output, "");
@@ -490,15 +492,24 @@ ManagedUnroots :: (is_entry: bool) -> string {
     if (is_entry) { output = strings.Concatenate([output, "  call void @chibi_managed.collect(ptr %ctx, ptr %managed.heap)\n"]); }
     return output;
 }
-ManagedInstruction :: (item: Instruction, pc: int, persistent: bool) -> string {
+ManagedInstruction :: (item: Instruction, pc: int, records: Record[], persistent: bool) -> string {
     out := format_text("p{}:\n", pc);
     if (item.op == ManagedNew) {
         out = format_text("{}  call void @chibi_managed.safepoint(ptr %ctx, ptr %managed.heap)\n", out);
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.right, "s", item.left));
         out = format_text("{}{}", out, Sized(format_text("bytes{}", pc), item.right));
-        out = format_text("{}  %cell{} = call ptr @chibi_managed.new(ptr %ctx, ptr %managed.heap, i64 %bytes{}, ptr null, ptr null, i32 {})\n", out, pc, pc, item.right);
+        layout := "null";
+        drop := "null";
+        value := format_text("%a{}", pc);
+        if (ManagedArray(item.right)) {
+            layout = format_text("@chibi_managed.layout.array{}.{}", item.right, item.literal);
+            drop = format_text("@chibi_managed.drop.array{}", item.right);
+            out = format_text("{}  %owned{} = call {} @chibi_array.{}.copy(ptr %ctx, {} %a{})\n", out, pc, TypeName(item.right), item.right, TypeName(item.right), pc);
+            value = format_text("%owned{}", pc);
+        } else if (item.right >= RecordType) { layout = format_text("@chibi_managed.layout{}", item.right - RecordType); }
+        out = format_text("{}  %cell{} = call ptr @chibi_managed.new(ptr %ctx, ptr %managed.heap, i64 %bytes{}, ptr {}, ptr {}, i32 {})\n", out, pc, pc, layout, drop, ManagedStorageClass(item.right));
         out = format_text("{}  %payload{} = getelementptr %chibi.managed.cell, ptr %cell{}, i32 1\n", out, pc, pc);
-        out = format_text("{}  store {} %a{}, ptr %payload{}\n", out, TypeName(item.right), pc, pc);
+        out = format_text("{}  store {} {}, ptr %payload{}\n", out, TypeName(item.right), value, pc);
         pointer := abi.ManagedPointerType();
         out = format_text("{}  %root{} = insertvalue {} zeroinitializer, ptr %cell{}, 0\n", out, pc, pointer, pc);
         out = format_text("{}  %value{} = insertvalue {} %root{}, i64 {}, 2\n", out, pc, pointer, pc, item.literal);
@@ -507,8 +518,18 @@ ManagedInstruction :: (item: Instruction, pc: int, persistent: bool) -> string {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), PointerType, "s", item.left));
         out = format_text("{}{}", out, Sized(format_text("bytes{}", pc), item.type - RefType));
         out = format_text("{}  %address{} = call ptr @chibi_managed.address(ptr %managed.heap, {} %a{}, i64 {}, i64 %bytes{}, i32 {})\n",
-                          out, pc, abi.ManagedPointerType(), pc, item.literal, pc, item.type - RefType);
+                          out, pc, abi.ManagedPointerType(), pc, item.literal, pc, ManagedStorageClass(item.type - RefType));
         out = format_text("{}{}", out, Store(format_text("%address{}", pc), item.type, "s", item.output));
+    } else if (item.op == ManagedProject) {
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), PointerType, "s", item.left));
+        out = format_text("{}{}", out, Sized(format_text("bytes{}", pc), item.right));
+        out = format_text("{}  %address{} = call ptr @chibi_managed.address(ptr %managed.heap, {} %a{}, i64 {}, i64 %bytes{}, i32 {})\n",
+                          out, pc, abi.ManagedPointerType(), pc, records[item.right - RecordType].identity, pc, RecordType);
+        out = format_text("{}  %offset{} = extractvalue {} %a{}, 1\n", out, pc, abi.ManagedPointerType(), pc);
+        out = format_text("{}  %field.offset{} = add i64 %offset{}, ptrtoint (ptr getelementptr ({}, ptr null, i32 0, i32 {}) to i64)\n", out, pc, pc, TypeName(item.right), item.target);
+        out = format_text("{}  %field{} = insertvalue {} %a{}, i64 %field.offset{}, 1\n", out, pc, abi.ManagedPointerType(), pc, pc);
+        out = format_text("{}  %projected{} = insertvalue {} %field{}, i64 {}, 2\n", out, pc, abi.ManagedPointerType(), pc, item.literal);
+        out = format_text("{}{}", out, Store(format_text("%projected{}", pc), PointerType, "s", item.output));
     } else if (item.op == ManagedPin) {
         address := format_text("%s{}", item.left);
         if (item.target == 1) {

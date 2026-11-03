@@ -52,3 +52,8 @@ that it is running. The worker then resumes an old-only helper that records a
 marker and fails an assertion. The host must return 134, proving that a retired
 generation's task failure reaches the caller. The CLI watch regression owns
 the corresponding successful old-generation continuation case.
+
+The shared-family cases also keep typed cyclic record cells in an old worker
+while a new generation changes the record layout and churns its own heap cells.
+A direct image probe checks that generated metadata holds a live code lease,
+and that cancellation and collection release every lease before image close.

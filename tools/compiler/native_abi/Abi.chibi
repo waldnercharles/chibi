@@ -164,6 +164,11 @@ pub ValueType :: () -> string {
 // EXECUTION_NATIVE_TEXT, the type of a string the runtime is passed, after
 // ExportType's.
 TextTag: int : 12;
+// Native formatter-only summaries use length as an element/entry count.
+// They keep the 24-byte value layout, carry no backing pointer, and are not
+// accepted by the legacy C context or by an exported scalar signature.
+pub FormatArrayTag: int : 13;
+pub FormatMapTag: int : 14;
 // The type a runtime value of this storage records: ExportType's, or a
 // string's, or 0 when none carries it.
 pub ValueTag :: (storage: int) -> int {
@@ -187,11 +192,21 @@ pub ContextType :: () -> string {
 pub ManagedOwnerField: int : 5;
 // Bump when heap, context or typed cell-layout contracts change. The host owns
 // opaque bytes and admits only images matching its first image's version/size.
-pub ManagedFamilyABI: i64 : 1;
+pub ManagedFamilyABI: i64 : 2;
 pub ManagedImageCounter :: () -> string { return "chibi_generation_cells"; }
 pub ManagedContextType :: () -> string {
     return "{ ptr, ptr, ptr, ptr, ptr, ptr }";
 }
+// Native program/family clock reads borrow one grant configured by their
+// embedding host while execution is quiescent. An empty grant denies access.
+pub ClockGrantField: int : 6;
+pub ClockContextType :: () -> string {
+    return "{ ptr, ptr, ptr, ptr, ptr, ptr, ptr }";
+}
+// The embedding host owns this record and its provider state for every call.
+// Only that host's factory allocates process-local domains, never its images.
+pub ClockGrantType :: () -> string { return "{ i64, ptr, ptr }"; }
+pub ClockSampleType :: () -> string { return "{ i64, i64, i32, i32 }"; }
 pub ManagedHeapType :: () -> string {
     // Cells, stack roots, work, used bytes, threshold, epoch, suspended roots.
     return "{ ptr, ptr, ptr, i64, i64, i64, ptr }";

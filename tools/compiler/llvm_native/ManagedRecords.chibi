@@ -1,0 +1,165 @@
+package llvm_native
+
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Inline pointer records own no backing allocations. Their initialized stack
+// slots can remain GC roots for the frame, just like scalar descriptors.
+// Backed aggregates need canonical owner pins and are admitted separately.
+ManagedRecordLayout :: struct { flat: bool[]; traced: bool[]; }
+ManagedRecordLayouts :: (records: Record[], fields: int[]) -> ManagedRecordLayout {
+    needed := false;
+    for (record in records) { if (record.identity != 0) { needed = true; break; } }
+    if (!needed) {
+        for (type in fields) {
+            if (type == PointerType || type == ArrayType + PointerType) { needed = true; break; }
+        }
+    }
+    if (!needed) { return {flat: [], traced: []}; }
+    found: ManagedRecordLayout = {flat: resize([true], length(records)), traced: resize([false], length(records))};
+    heads := resize([int(-1)], length(records));
+    for (index in 0..<length(records)) { heads[index] = -1; found.flat[index] = true; }
+    parents: int[] = [];
+    next: int[] = [];
+    pending: int[] = [];
+    for (parent in 0..<length(records)) {
+        record := records[parent];
+        for (at in record.first..<record.first + record.count) {
+            type := fields[at];
+            if (type == PointerType || type == ArrayType + PointerType) {
+                if (!found.traced[parent]) { found.traced[parent] = true; pending.append(parent); }
+            }
+            if (abi.ScalarType(type) == "" && type != PointerType) { found.flat[parent] = false; }
+            child := type;
+            if (type >= ArrayType && type < MapType) { child -= ArrayType; }
+            if (child >= RecordType && child < ArrayType) {
+                parents.append(parent);
+                next.append(heads[child - RecordType]);
+                heads[child - RecordType] = length(parents) - 1;
+            }
+        }
+    }
+    at := 0;
+    while (at < length(pending)) {
+        edge := heads[pending[at]];
+        while (edge >= 0) {
+            parent := parents[edge];
+            if (!found.traced[parent]) { found.traced[parent] = true; pending.append(parent); }
+            edge = next[edge];
+        }
+        at += 1;
+    }
+    return found;
+}
+ManagedRecord :: (records: Record[], layout: ManagedRecordLayout, type: int) -> bool {
+    return type >= RecordType && type < ArrayType && type - RecordType < length(layout.flat) &&
+           layout.flat[type - RecordType] && records[type - RecordType].identity != 0;
+}
+ManagedTraced :: (type: int, traced: bool[]) -> bool {
+    return type >= RecordType && type < ArrayType && type - RecordType < length(traced) && traced[type - RecordType];
+}
+ManagedStorageClass :: (type: int) -> int {
+    if (type >= RecordType && type < ArrayType) { return RecordType; }
+    return type;
+}
+ManagedPayload :: (records: Record[], layout: ManagedRecordLayout, type: int, tag: i64) -> bool {
+    return abi.ScalarType(type) != "" || ManagedArray(type) ||
+           (ManagedRecord(records, layout, type) && records[type - RecordType].identity == tag);
+}
+ManagedArray :: (type: int) -> bool {
+    return type >= ArrayType && type < MapType && abi.ScalarType(type - ArrayType) != "";
+}
+// Array cells own one descriptor. Scalar elements have no collector edges;
+// the last cell release drops its backing while its image lease is held.
+ManagedArrayModule :: (code: Instruction[], counter: string) -> string {
+    out: string[] = [];
+    seen: [string: bool] = [:];
+    dropped: [int: bool] = [:];
+    for (item in code) {
+        if (item.op != ManagedNew || !ManagedArray(item.right)) { continue; }
+        type := item.right;
+        key := format_text("{}.{}", type, item.literal);
+        if (seen.has(key)) { continue; }
+        seen[key] = true;
+        if (!dropped.has(type)) {
+            dropped[type] = true;
+            out.append(format_text("define internal void @chibi_managed.drop.array{}(ptr %ctx, ptr %payload) {{\nentry:\n", type));
+            out.append(format_text("  %value = load {}, ptr %payload\n  call void @chibi_array.{}.drop(ptr %ctx, {} %value)\n  ret void\n}}\n", abi.ArrayType(), type, abi.ArrayType()));
+        }
+        out.append(format_text("@chibi_managed.layout.array{} = private constant %chibi.managed.layout {{ ptr null, ptr @chibi_managed.validate.array{}, ptr {} }}\n", key, key, counter));
+        out.append(format_text("define internal i1 @chibi_managed.validate.array{}(i64 %offset, i64 %tag, i64 %bytes, i32 %storage) {{\nentry:\n", key));
+        out.append(format_text("  %tag.ok = icmp eq i64 %tag, {}\n  %storage.ok = icmp eq i32 %storage, {}\n", item.literal, type));
+        out.append(format_text("  %bytes.ok = icmp eq i64 %bytes, ptrtoint (ptr getelementptr ({}, ptr null, i32 1) to i64)\n", abi.ArrayType()));
+        out.append("  %offset.ok = icmp eq i64 %offset, 0\n  %type.ok = and i1 %tag.ok, %storage.ok\n  %range.ok = and i1 %bytes.ok, %offset.ok\n  %valid = and i1 %type.ok, %range.ok\n  ret i1 %valid\n}\n");
+    }
+    return strings.Join(out, "");
+}
+ManagedTarget :: (records: Record[], layout: ManagedRecordLayout, type: int, tag: i64) -> bool {
+    return type == PointerType || ManagedPayload(records, layout, type, tag);
+}
+ManagedRootTypes :: (types: int[], traced: bool[]) -> bool {
+    if (ManagedTypes(types)) { return true; }
+    for (type in types) {
+        held := type;
+        if (held >= RefType) { held -= RefType; }
+        if (ManagedTraced(held, traced)) { return true; }
+    }
+    return false;
+}
+// The same nominal type may have different versions in mapped generations.
+// Only its complete identity plus actual LLVM byte layout permits resolution.
+ManagedRecordModule :: (records: Record[], fields: int[], tags: i64[], layout: ManagedRecordLayout,
+                        wanted: bool[], counter: string) -> string {
+    out: string[] = [];
+    for (index in 0..<length(records)) {
+        record := records[index];
+        if (!wanted[index] || !layout.flat[index] || record.identity == 0) { continue; }
+        type := RecordType + index;
+        name := TypeName(type);
+        trace := "null";
+        if (layout.traced[index]) {
+            trace = format_text("@chibi_managed.trace.record{}", index);
+            out.append(format_text("define internal void {}(ptr %heap, ptr %value) {{\nentry:\n", trace));
+            for (field in 0..<record.count) {
+                if (fields[record.first + field] != PointerType) { continue; }
+                out.append(format_text("  %field{} = getelementptr inbounds {}, ptr %value, i32 0, i32 {}\n", field, name, field));
+                out.append(format_text("  call void @chibi_managed.trace.pointer(ptr %heap, ptr %field{})\n", field));
+            }
+            out.append("  ret void\n}\n");
+        }
+        out.append(format_text("@chibi_managed.layout{} = private constant %chibi.managed.layout {{ ptr {}, ptr @chibi_managed.validate.record{}, ptr {} }}\n", index, trace, index, counter));
+        out.append(format_text("define internal i1 @chibi_managed.validate.record{}(i64 %offset, i64 %tag, i64 %bytes, i32 %storage) {{\nentry:\n", index));
+        out.append(format_text("  %whole.tag = icmp eq i64 %tag, {}\n", record.identity));
+        out.append(format_text("  %whole.bytes = icmp eq i64 %bytes, ptrtoint (ptr getelementptr ({}, ptr null, i32 1) to i64)\n", name));
+        out.append(format_text("  %whole.storage = icmp eq i32 %storage, {}\n", RecordType));
+        out.append(format_text("  %whole.offset = icmp eq i64 %offset, 0\n  %whole.type = and i1 %whole.tag, %whole.bytes\n  %whole.place = and i1 %whole.storage, %whole.offset\n  %whole = and i1 %whole.type, %whole.place\n  br i1 %whole, label %valid, label %find0.{}\n", record.count));
+        // LLVM switch cases require literal integers, while actual field
+        // offsets are target-derived constant expressions. A balanced tree
+        // preserves O(log fields) resolution without duplicating ABI sizes.
+        lows := [int(0)];
+        highs := [record.count];
+        at := 0;
+        while (at < length(lows)) {
+            low := lows[at];
+            high := highs[at];
+            out.append(format_text("find{}.{}:\n", low, high));
+            if (high - low > 1) {
+                middle := low + (high - low) / 2;
+                out.append(format_text("  %before{}.{} = icmp ult i64 %offset, ptrtoint (ptr getelementptr ({}, ptr null, i32 0, i32 {}) to i64)\n", low, high, name, middle));
+                out.append(format_text("  br i1 %before{}.{}, label %find{}.{}, label %find{}.{}\n", low, high, low, middle, middle, high));
+                lows.extend([low, middle]);
+                highs.extend([middle, high]);
+            } else {
+                field := low;
+                member := fields[record.first + field];
+                out.append(format_text("  %tag{} = icmp eq i64 %tag, {}\n", field, tags[record.first + field]));
+                out.append(format_text("  %bytes{} = icmp eq i64 %bytes, ptrtoint (ptr getelementptr ({}, ptr null, i32 1) to i64)\n", field, TypeName(member)));
+                out.append(format_text("  %offset{} = icmp eq i64 %offset, ptrtoint (ptr getelementptr ({}, ptr null, i32 0, i32 {}) to i64)\n", field, name, field));
+                out.append(format_text("  %storage{} = icmp eq i32 %storage, {}\n  %type{} = and i1 %tag{}, %bytes{}\n  %place{} = and i1 %storage{}, %offset{}\n  %valid{} = and i1 %type{}, %place{}\n  ret i1 %valid{}\n", field, member, field, field, field, field, field, field, field, field, field, field));
+            }
+            at += 1;
+        }
+        out.append("valid:\n  ret i1 true\n}\n");
+    }
+    return strings.Join(out, "");
+}

@@ -1,0 +1,32 @@
+package waiting_patterns
+
+// Ordinary accepted behavior, temporarily gated by the native task frame's
+// managed-value domain. The task owner must promote this case when that opens.
+
+Value :: union { Nothing | Count(number: int) }
+TextValue :: union { Nothing | Word(text: string) }
+Worker :: () -> int {
+    value := Value.Count(7);
+    if value is .Count(number) {
+        value = Value.Count(99);
+        yield;
+        return number;
+    }
+    return 0;
+}
+OwnedWorker :: () -> int {
+    value := TextValue.Word(text_from_bytes([u8(119), 111, 114, 100]));
+    if value is .Word(text) {
+        value = TextValue.Nothing;
+        yield;
+        return text_byte_length(text);
+    }
+    return 0;
+}
+Main :: () -> int {
+    number := await Worker();
+    if number != 7 { return 1; }
+    size := await OwnedWorker();
+    if size != 4 { return 2; }
+    return 0;
+}

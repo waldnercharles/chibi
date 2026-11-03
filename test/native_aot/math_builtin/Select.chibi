@@ -11,6 +11,21 @@ Code :: (op: int, type: int, output: int, left: int, right: int, target: int, li
     return {op: op, type: type, output: output, left: left, right: right, target: target, literal: literal};
 }
 
+// Both conditions use the same distinct operands. The fixed expected values
+// catch swapped arms and any narrowing of the selected scalar representation.
+Width :: (code: ^(native.Instruction[]), slots: ^(int[]), storage: int, left: i64, right: i64) -> int {
+    at := length(slots^);
+    slots.extend([storage, storage, storage, storage, abi.BoolStorage, abi.BoolStorage, abi.BoolStorage]);
+    code.extend([Code(native.Constant, storage, at, 0, 0, 0, left),
+                 Code(native.Constant, storage, at + 1, 0, 0, 0, right),
+                 Code(native.Select, storage, at + 2, 0, at, at + 1, 0),
+                 Code(native.Select, storage, at + 3, 1, at, at + 1, 0),
+                 Code(native.Eq, storage, at + 4, at + 2, at, 0, 0),
+                 Code(native.Eq, storage, at + 5, at + 3, at + 1, 0, 0),
+                 Code(native.Select, abi.BoolStorage, at + 6, at + 4, at + 5, 1, 0)]);
+    return at + 6;
+}
+
 Main :: () -> int {
     arguments := os.Arguments();
     if (length(arguments) != 2) { return 2; }
@@ -37,15 +52,32 @@ Main :: () -> int {
              Code(native.Select, abi.FloatStorage, 14, 0, 8, 7, 0),
              Code(native.Ne, abi.FloatStorage, 15, 14, 14, 0, 0),
              Code(native.Select, abi.BoolStorage, 16, 6, 13, 1, 0),
-             Code(native.Select, abi.BoolStorage, 17, 16, 15, 1, 0),
-             Code(native.Branch, 0, 0, 17, 0, 21, 0),
-             Code(native.TypedFail, 0, 0, 0, 0, 0, 4),
-             Code(native.Publish, abi.IntStorage, 0, 4, 0, 0, 0),
-             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+             Code(native.Select, abi.BoolStorage, 17, 16, 15, 1, 0)];
     slots := [abi.BoolStorage, abi.BoolStorage, abi.IntStorage, abi.IntStorage, abi.IntStorage, abi.IntStorage,
               abi.BoolStorage, abi.FloatStorage, abi.FloatStorage, abi.FloatStorage, abi.FloatStorage,
               abi.FloatStorage, abi.FloatStorage, abi.BoolStorage, abi.FloatStorage, abi.BoolStorage,
               abi.BoolStorage, abi.BoolStorage];
+    // ExportOrder's eighth scalar is signed i64. Its alternatives share the
+    // low 32 bits; the f64 alternatives both round to 1 at f32 precision.
+    order := abi.ExportOrder();
+    signed64 := order[7];
+    assert(abi.IntegerBits(signed64) == 64 && !abi.Unsigned(signed64), "the signed i64 storage");
+    storages := [abi.BoolStorage, abi.ByteStorage, signed64, abi.DoubleStorage];
+    left: i64[] = [1, 3, 0x100000007, 0x3ff0000000000001];
+    right: i64[] = [0, 246, 0x200000007, 0x3ff0000000000002];
+    matched := 17;
+    for (storage, index in storages) {
+        checked := Width(&code, &slots, storage, left[index], right[index]);
+        combined := length(slots);
+        slots.append(abi.BoolStorage);
+        code.append(Code(native.Select, abi.BoolStorage, combined, matched, checked, 1, 0));
+        matched = combined;
+    }
+    accepted := length(code) + 2;
+    code.extend([Code(native.Branch, 0, 0, matched, 0, accepted, 0),
+                 Code(native.TypedFail, 0, 0, 0, 0, 0, 4),
+                 Code(native.Publish, abi.IntStorage, 0, 4, 0, 0, 0),
+                 Code(native.Return, 0, 0, 0, 0, 0, 0)]);
     functions: native.Function[] = [{result: abi.IntStorage, first_parameter: 0, parameters: 0, first_slot: 0,
                                      slots: length(slots), first_local: 0, locals: 0, first_code: 0, code: length(code),
                                      first_argument: 0, arguments: 0}];
@@ -70,7 +102,7 @@ Main :: () -> int {
         if (linked.kind != 0) { return 1; }
         status := os.Run([program]);
         if (status != 42) { os.Print(format_text("scalar select O{} exited {}", level, status)); return 1; }
-        os.Print(format_text("PASS scalar select O{}: both outcomes, bool, NaN and signed zero", level));
+        os.Print(format_text("PASS scalar select O{}: bool/u8/i32/i64/f32/f64, both outcomes, NaN and signed zero", level));
     }
     return 0;
 }

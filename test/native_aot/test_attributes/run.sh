@@ -85,7 +85,7 @@ set +e
 status=$?
 set -e
 test "$status" -eq 1
-grep -F "Unknown attribute '@unknown' (cases/Cases.chibi:3)" "$scratch/imported.log"
+grep -F "cases/Cases.chibi:3:1: Unknown attribute '@unknown'" "$scratch/imported.log"
 cmp "$scratch/program" "$scratch/expected"
 test ! -e "$scratch/program.0.ll"
 

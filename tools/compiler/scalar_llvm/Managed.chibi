@@ -8,6 +8,7 @@ import native "project:llvm_native"
 ManagedBoxes :: struct {
     boxed: bool[];
     tags: i64[];
+    records: int[];
     error: string;
 }
 ManagedVariables :: (rows: facts.Row[], head: int, last: int) -> ManagedBoxes {
@@ -16,30 +17,35 @@ ManagedVariables :: (rows: facts.Row[], head: int, last: int) -> ManagedBoxes {
         if (rows[at].kind != facts.ManagedAddressRow) { continue; }
         value := rows[at].value;
         if (value < 0 || value > last - head || rows[at].literal == 0) {
-            return {boxed: [], tags: [], error: "invalid managed variable identity"};
+            return {boxed: [], tags: [], records: [], error: "invalid managed variable identity"};
         }
         if (value > maximum) { maximum = value; }
     }
-    if (maximum < 0) { return {boxed: [], tags: [], error: ""}; }
+    if (maximum < 0) { return {boxed: [], tags: [], records: [], error: ""}; }
     found: ManagedBoxes = {boxed: resize([false], maximum + 1),
-        tags: resize([i64(0)], maximum + 1), error: ""};
+        tags: resize([i64(0)], maximum + 1), records: resize([int(0)], maximum + 1), error: ""};
     for (at in head + 1..<last) {
         row := rows[at];
         if (row.kind != facts.ManagedAddressRow) { continue; }
-        if (found.boxed[row.value] && found.tags[row.value] != row.literal) {
+        if (found.boxed[row.value] && (found.tags[row.value] != row.literal || found.records[row.value] != row.count)) {
             found.error = "managed variable has conflicting pointee identities";
             return found;
         }
         found.boxed[row.value] = true;
         found.tags[row.value] = row.literal;
+        found.records[row.value] = row.count;
     }
     return found;
 }
 ManagedVariable :: (boxed: bool[], variable: int) -> bool {
     return variable >= 0 && variable < length(boxed) && boxed[variable];
 }
-ManagedScalar :: (type: int) -> bool {
-    return Scalar(type);
+ManagedValue :: (rows: facts.Row[], records: int[], type: int, tag: i64) -> bool {
+    if (Scalar(type) || type == facts.PointerType) { return tag != 0; }
+    if (type >= facts.ArrayType && type < facts.MapType && Scalar(type - facts.ArrayType)) { return tag != 0; }
+    if (type < facts.RecordType || type >= facts.ArrayType || type - facts.RecordType >= length(records)) { return false; }
+    head := records[type - facts.RecordType];
+    return rows[head].kind == facts.RecordRow && rows[head].literal != 0 && rows[head].literal == tag;
 }
 
 ManagedPins :: struct {

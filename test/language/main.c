@@ -14,10 +14,6 @@ void test_language_execution_scope();
 void test_language_capture();
 void test_numeric_ranges();
 void test_language_host_packages_compiler();
-void test_language_text_format();
-void test_language_native_census(const char *report);
-void test_language_native_census_flattening();
-
 int main(int argc, char **argv)
 {
     if (!test_parallel_init()) {
@@ -37,24 +33,16 @@ int main(int argc, char **argv)
     bool record_values = argc == 2 && !strcmp(argv[1], "--record-values");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
-    bool native_census = (argc == 2 || argc == 3) &&
-                         !strcmp(argv[1], "--native-census");
-    bool native_census_flattening = argc == 2 &&
-                                    !strcmp(argv[1], "--native-census-flattening");
     bool host_packages_compiler = argc == 2 &&
                                   !strcmp(argv[1], "--host-packages-compiler");
-    bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     if ((!execution && !execution_scope && !record_values && !record_document &&
-         !record_compatibility && !program && !ranges && !native_census &&
-         !native_census_flattening && !host_packages_compiler && !text_format)) {
+         !record_compatibility && !program && !ranges && !host_packages_compiler)) {
         fprintf(
             stderr,
             "Usage: %s --test-parallel | --execution | --execution-scope | "
             "--program | "
             "--ranges | "
-            "--native-census [report] | "
-            "--native-census-flattening | --host-packages-compiler | "
-            "--text-format | "
+            "--host-packages-compiler | "
             "--record-values | --record-document | --record-compatibility\n",
             argv[0]
         );
@@ -67,12 +55,6 @@ int main(int argc, char **argv)
         test_language_record_document();
     } else if (record_values) {
         test_language_record_values();
-    } else if (text_format) {
-        test_language_text_format();
-    } else if (native_census) {
-        test_language_native_census(argc == 3 ? argv[2] : NULL);
-    } else if (native_census_flattening) {
-        test_language_native_census_flattening();
     } else if (host_packages_compiler) {
         test_language_host_packages_compiler();
     } else if (ranges) {

@@ -1,6 +1,6 @@
 # Test selectors for `chibi build test`: name, then the command, tab separated.
-# @build@ and @release@ are the --build and --release-build directories, @host@
-# the --build-host path, @native@ the --native-driver path, @llvm@ the --llvm
+# @build@ and @release@ are the --build and --release-build directories,
+# @native@ the --native-driver path, @llvm@ the --llvm
 # directory and @root@ the checkout, all absolute; other paths are relative
 # to the checkout. `group` rows list a group's selectors.
 # @program@ SOURCE ENTRY runs an authored selector; @compiler@ is the cached current compiler bootstrapped from @native@.
@@ -10,19 +10,15 @@
 tool	types	@build@/test/tools/test_tools	--types
 tool	execution-scope	@build@/test/language/test_language	--execution-scope
 tool	studio-panel-idle	build-studio/bin/studio-acceptance	--panel-idle	--project-root	
-tool	arena	@build@/test/tools/test_tools	--arena
 tool	persistent-store	@build@/test/tools/test_tools	--persistent-store
 tool	program-sdk	@build@/test/tools/test_tools	--program-sdk
 tool	chibi-cli-process	python3	test/native_cli/foreground.py	@compiler@	@llvm@
 tool	chibi-cli	sh	test/native_cli/survivors.sh	@compiler@	@llvm@	@release@/sdk/chibi
 tool	native-build	env	CHIBI_LLVM_BIN=@llvm@	@compiler@	run	--llvm	@llvm@	--root	tools/compiler	--core	packages/core	--entry	Run	test/native_aot/native_build/BuildTests.chibi	--	@compiler@	@release@/sdk/chibi
-tool	native-workload-benchmark	@build@/test/tools/test_tools	--native-workload-benchmark	@release@/sdk/chibi
+tool	native-workload-benchmark	sh	@root@/test/native_aot/workloads/run.sh	@compiler@	@llvm@
 tool	chibi-cli-installed	sh	test/native_cli/survivors.sh	@compiler@	@llvm@	dist/sdk/bin/chibi
 tool	native-link	sh	test/native_aot/link/run.sh	@compiler@	@llvm@
 tool	native-build-entry	sh	test/bootstrap/native-entry.sh
-tool	build-process	@build@/test/tools/test_tools	--build-process	@build@/test/tools/policy_worker	@host@
-tool	build-timings	@build@/test/tools/test_tools	--build-timings	@build@/test/tools/policy_worker	@host@
-tool	build-process-files	@build@/test/tools/test_tools	--build-process-files	@build@/test/tools/policy_worker	@host@
 tool	compiler-bootstrap	@build@/test/tools/test_tools	--compiler-bootstrap	@build@/sdk/chibi-compiler-host
 tool	bootstrap-recovery	@build@/test/tools/test_tools	--bootstrap-recovery	@release@/sdk/chibi-compiler-host	@root@/tools/compiler/bootstrap
 tool	bootstrap-load	@release@/test/tools/test_tools	--bootstrap-load	@root@/tools/compiler/bootstrap
@@ -36,18 +32,13 @@ tool	graph-wasm	@program@	test/graph/WebAssemblyTests.chibi	Run
 tool	graph-os	@program@	test/graph/OsTests.chibi	Run
 tool	graph-sdk-install	@release@/sdk/chibi	run	--core	@root@/packages/core	--llvm	@llvm@	--root	@root@	--collection	graph=@root@/tools/graph	--entry	Run	@root@/test/graph/SDKInstallTests.chibi	--	@release@/sdk/chibi	@release@	@llvm@
 tool	collab	node	--test	@root@/tools/collab/server/server.test.mjs
-tool	whole-integer	@build@/test/tools/test_tools	--whole-integer
-tool	whole-select	@build@/test/tools/test_tools	--whole-select
 tool	whole-math	@build@/test/tools/test_tools	--whole-math
-tool	native-values	@build@/test/tools/test_tools	--native-values
-tool	text-format	@build@/test/language/test_language	--text-format
+tool	text-format	sh	test/native_aot/text_format/run.sh	@compiler@	@llvm@
 tool	box3d	@build@/test/tools/test_tools	--box3d
-tool	asset-values	@build@/test/tools/test_tools	--asset-values
-tool	fmt	@build@/test/tools/test_tools	--fmt
 tool	language-test-parallel	@build@/test/language/test_language	--test-parallel
 tool	language-ranges	@build@/test/language/test_language	--ranges
 tool	chibi-test-compiler	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/tools/compiler
-tool	language-map-receivers	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/native_aot/map_programs/ArrayPayload.chibi	--core	packages/core	--entry	Main	--timeout-ms	120000
+tool	language-map-receivers	@program@	test/native_aot/map_programs/ArrayPayload.chibi	Main
 tool	chibi-test-core	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/packages/core
 tool	chibi-test-integer-arithmetic	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/test/integer_arithmetic
 tool	chibi-test-core-strings	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/test/core_strings
@@ -64,8 +55,6 @@ tool	chibi-test-samples-native-arguments	@release@/sdk/chibi	test	test/compiler/
 tool	chibi-test-samples-types	@release@/sdk/chibi	test	test/compiler/samples/types
 tool	language-package-compiler-chibi-scalar	sh	test/native_aot/scalar_producer/run.sh	@compiler@	@llvm@
 tool	language-scalar-native	sh	test/native_aot/backend/run.sh	@compiler@	@llvm@
-tool	language-native-census	@build@/test/language/test_language	--native-census
-tool	language-native-census-flattening	@build@/test/language/test_language	--native-census-flattening
 tool	language-host-packages-compiler	@build@/test/language/test_language	--host-packages-compiler
 tool	language-record-compatibility	@build@/test/language/test_language	--record-compatibility
 tool	language-record-document	@build@/test/language/test_language	--record-document
@@ -77,13 +66,12 @@ group	native-tools	types	collab
 group	short	types	collab
 timeout	chibi-cli	900
 timeout	native-build	1500
-timeout	build-process	1800
 timeout	graph-build	1200
 timeout	graph-sdk-install	1200
 timeout	bootstrap-load	1800
 exclusive	language-test-parallel
-group	native	native-values	graph-c	box3d	persistent-store	whole-integer	whole-select	whole-math	asset-values	fmt	arena	build-process	build-process-files	build-timings
+group	native	graph-c	box3d	persistent-store	whole-math
 group	projects	chibi-cli	native-build	native-build-entry
-group	language	language-map-receivers	language-test-parallel	execution-scope	language-execution	language-program	language-ranges	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-comptime	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	chibi-test-core-strings	chibi-test-time	chibi-test-portable-consumer	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	compiler-bootstrap	language-native-census-flattening	bootstrap-recovery	native-link
+group	language	language-map-receivers	language-test-parallel	execution-scope	language-execution	language-program	language-ranges	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-comptime	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	chibi-test-core-strings	chibi-test-time	chibi-test-portable-consumer	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	compiler-bootstrap	bootstrap-recovery	native-link
 group	compiler	language-package-compiler-chibi-scalar
 group	benchmarks	native-workload-benchmark

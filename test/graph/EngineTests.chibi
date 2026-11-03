@@ -140,9 +140,10 @@ ReflectionArgumentsAreValidated :: () {
 // add_dependencies does, and no other program.
 NamedProgramsBuildWhatTheyRun :: () {
     named := ["--commands-only", "on", "--target", "test_tools", "--target", "chibi"];
-    for (program in ["test_tools", "policy_worker", "chibi-compile", "chibi-build-host", "chibi-compiler-host", "chibi"]) {
+    for (program in ["test_tools", "chibi-compile", "chibi-compiler-host", "chibi"]) {
         assert(engine.Selected(named, program), "a program a named program runs");
     }
+    assert(!engine.Selected(named, "chibi-build-host"), "tooling tests no longer run the private build host");
     assert(!engine.Selected(named, "reflect"), "an unrelated program");
     assert(engine.Selected(["--commands-only", "on"], "reflect"), "no target names every target");
 }

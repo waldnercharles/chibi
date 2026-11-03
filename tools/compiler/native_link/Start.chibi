@@ -25,9 +25,9 @@ pub ManagedFamilyContext :: (module: string, context: bool) -> string {
         prefix := strings.Concatenate(["@chibi_context = hidden global ", abi.ContextType(), " "]);
         allocation := ", ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release }";
         assert(strings.Contains(result, prefix) && strings.Contains(result, allocation));
-        result = strings.ReplaceAll(result, prefix, strings.Concatenate(["@chibi_context = hidden global ", abi.ManagedContextType(), " "]));
+        result = strings.ReplaceAll(result, prefix, strings.Concatenate(["@chibi_context = hidden global ", abi.ClockContextType(), " "]));
         result = strings.ReplaceAll(result, allocation,
-            ", ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release, ptr null }");
+            ", ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release, ptr null, ptr null }");
     }
     return strings.Concatenate([result, "\n@", abi.ManagedImageCounter(), " = hidden global i64 0, align 8\n"]);
 }

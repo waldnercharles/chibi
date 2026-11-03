@@ -1,0 +1,3 @@
+package rejected_backed_record
+Box :: struct { values: int[]; }
+Main :: () -> int { value: Box = {values: [1]}; pointer := &value; return pointer.values[0]; }

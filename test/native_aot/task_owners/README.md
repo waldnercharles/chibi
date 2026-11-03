@@ -15,6 +15,15 @@ and an immediately failed spawn. Markers after unwrap, await and spawn must
 remain absent on failure. The same image-close poison and allocation-balance
 audit covers these paths at O0 and O2.
 
+`RunWindows.ps1` runs these seven typed-generation modes at O0/O2 with the
+production Host body and DLL link plan. Its temporary Host overlay checks each
+image's poison allocator immediately before the real `FreeLibrary`, then
+requires successful close and deletion of every generation file. The explicit
+check replaces the POSIX unload destructor because Windows DLLs keep `/noentry`.
+A phantom allocation must produce the illegal-instruction trap at this boundary;
+the normal typed failure status134 cannot satisfy that control. Actual Windows
+execution is required in addition to cross-linking these fixtures.
+
 Program and family coroutine frames can own strings, arrays, maps and records/unions
 whose lifecycle has no collector-bearing leaves. Each distinct owning local or
 fresh slot has one frame-resident active address, eight bytes on desktop. Calls
@@ -38,6 +47,8 @@ and read it again through its original image.
 `NamedPromises.chibi` preserves direct async named outputs with a dynamic string.
 `MapPromises.chibi` covers direct and observed map results, repeated independent
 joins, returned parameters, empty/nested maps, arrays of maps and cancellation.
+`map_programs/TaskMaps.chibi` preserves the original direct/observed array-of-map
+promise fixture under the same poisoned allocation audit.
 `MapPromiseFailure.chibi` checks a failing child with an owned map parameter while
 the caller still holds a completed map result. Generation tests mutate one joined
 map and require the original completed promise to remain unchanged after reload.

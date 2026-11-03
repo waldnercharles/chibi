@@ -121,8 +121,20 @@ preserves identities under unrelated insertion and local record reindexing.
 The two-image proof checks compatible access, changed-schema rejection and old
 callback-image leases at O0/O2. Source ownership proofs include the original
 nested-array/union lending cases, view-only roots and callback collection.
-Ordinary source already rejects view fields in records. GC-bearing elements,
-view containers and retained views remain outside this admission.
+Views over nonnullable pointers to numeric/bool values use the existing pointer
+array backing and collector tracer. Each view traces its array cell, whose
+current payload traces the pointed cells. The full array tag includes the exact
+pointee identity; a same-sized int/f32 change is rejected across images. Reads
+publish descriptors in existing roots before a poll; writes replace descriptors
+without element reference counts. Clone and strict slice acquire independent
+array backing. The source proof covers returned windows, pointer replacement,
+growth, bounds evaluation order, suspended parameters/results and cancellation.
+Its 4096 appends allocate 4110 blocks, including the pointed cells and geometric
+backing growth. Failure and allocator/release callback modes check zero live
+allocations. Cross-image and reload cases retain the old trace/drop callbacks.
+Ordinary source already rejects view fields in records. Collector-bearing
+record elements, nullable-pointer element wrappers, other view containers and
+retained views remain outside this admission.
 
 Waiting functions keep direct windows and their exact optional/authored-union
 wrappers in persistent frame roots. Each slot/local uses the same 32-byte root
@@ -145,9 +157,9 @@ a handle for an optional-view result retains the ordinary union-result rejection
 The retained ordinary test runner forbids scheduling, so the async acceptance
 probes compile calls under a false branch, with an invalid-after-yield body as
 a control. They establish source acceptance, not resumed-runtime behavior.
-Synchronous ordinary probes execute views over pointer elements and records
-containing pointer or pointer-array fields. Those GC-bearing element forms are
-remaining native parity work, separate from frame and promise roots for admitted views.
+Synchronous ordinary probes execute the pointer-element kernels and views over
+records containing pointer or pointer-array fields. The latter collector-bearing
+record element forms remain separate native parity work.
 
 Optional numeric/bool values and flat numeric/bool record payloads can share
 managed cells. The optional tag and payload move together; nil replacement
@@ -158,6 +170,17 @@ keeps the existing flat-record rule. Backing owners and pointer/view edges
 inside optional cells remain outside this slice. The original four fallible
 pointer cases run at O0/O2, and the poisoned source proof checks escaped cells,
 early returns and forced collection with bounded peak allocation.
+
+Optional string cells retain the whole optional identity and own only a present
+text payload. Nil clears the payload without inspecting its bytes. Constructors
+and explicit, boxed-variable or scoped writes import borrowed text before
+releasing the previous owner. The raw proof clobbers borrowed present bytes and
+checks that Nil clears a valid nonzero inactive field. The source proof covers
+Nil, present empty strings, snapshots before callbacks, returned/parameter cells
+and assertion cleanup. Its emitted-control check rejects a missing Nil skip
+before compiling or executing the program. The two-image proof writes an actual
+returned optional literal into an older cell, clobbers and unloads the writer,
+then reads and releases the old cell. Removing the import fails at O0/O2.
 
 Scalar string cells own an immutable text descriptor. Copies retain counted
 owners and import borrowed bytes; replacing through a pointer, boxed variable

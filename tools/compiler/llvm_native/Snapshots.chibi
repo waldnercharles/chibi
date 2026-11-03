@@ -25,6 +25,37 @@ pub SnapshotArray: int : 1;
 pub SnapshotRecord: int : 2;
 pub SnapshotUnion: int : 3;
 pub SnapshotVariant: int : 4;
+// Comparison-only associative storage. Retained snapshot roots cannot reach it.
+pub SnapshotMap: int : 5;
+
+// Both equality and snapshot helpers follow the same already validated graph.
+SnapshotReachable :: (shapes: SnapshotShapes, roots: int[]) -> bool[] {
+    wanted := resize([false], length(shapes.nodes));
+    pending: int[] = [];
+    for (root in roots) {
+        if (root >= 0 && !wanted[root]) { wanted[root] = true; pending.append(root); }
+    }
+    at := 0;
+    while (at < length(pending)) {
+        node := shapes.nodes[pending[at]];
+        for (edge in node.first..<node.first + node.count) {
+            child := shapes.edges[edge].target;
+            if (!wanted[child]) { wanted[child] = true; pending.append(child); }
+        }
+        at += 1;
+    }
+    return wanted;
+}
+SnapshotRootsSupported :: (shapes: SnapshotShapes) -> bool {
+    mapped := false;
+    for (node in shapes.nodes) { mapped = mapped || node.kind == SnapshotMap; }
+    if (!mapped) { return true; }
+    wanted := SnapshotReachable(shapes, shapes.roots);
+    for (node, index in shapes.nodes) {
+        if (wanted[index] && node.kind == SnapshotMap) { return false; }
+    }
+    return true;
+}
 
 SnapshotSpan :: (first: int, count: int, size: int) -> bool {
     return first >= 0 && count >= 0 && first <= size && count <= size - first;
@@ -51,6 +82,7 @@ pub SnapshotShapesValid :: (records: Record[], fields: int[], labels: string[], 
     }
     if (first_edge != length(shapes.edges)) { return "snapshot edges differ from node spans"; }
     aggregate_types := resize([false], MapType);
+    maps: u32[] = [];
     for (node in shapes.nodes) {
         if (node.kind == SnapshotScalar) {
             if (node.first != 0 || node.count != 0 ||
@@ -70,6 +102,24 @@ pub SnapshotShapesValid :: (records: Record[], fields: int[], labels: string[], 
                     return "snapshot variant fields need names and value types";
                 }
             }
+            continue;
+        }
+        if (node.kind == SnapshotMap) {
+            if (!MapPayloadValid(records, layout, node.type) || node.count != 2 ||
+                shapes.edges[node.first].name != "" || shapes.edges[node.first + 1].name != "" ||
+                shapes.nodes[shapes.edges[node.first].target].kind != SnapshotScalar ||
+                shapes.nodes[shapes.edges[node.first].target].type != MapKey(node.type) ||
+                shapes.nodes[shapes.edges[node.first + 1].target].type != MapValue(node.type)) {
+                return "snapshot map differs from its key and value types";
+            }
+            // Immediate map payloads index the same fixed 4KiB domain as the
+            // value helper closure. No recursively packed map IDs enter it.
+            if (length(maps) == 0) { maps = resize([u32(0)], MapType / 2); }
+            map := node.type - MapType;
+            word := map / 32;
+            bit := u32(1) << u32(map % 32);
+            if ((maps[word] & bit) != 0) { return "snapshot aggregate type has more than one shape"; }
+            maps[word] |= bit;
             continue;
         }
         if (node.kind == SnapshotArray) {
@@ -191,6 +241,7 @@ pub EmitSnapshotRuntime :: (records: Record[], fields: int[], labels: string[], 
                             shapes: SnapshotShapes, guarded: bool = false) -> Result {
     error := SnapshotShapesValid(records, fields, labels, states, shapes);
     if (error != "") { return Result.Rejected(-1, error); }
+    if (!SnapshotRootsSupported(shapes)) { return Result.Rejected(-1, "retained snapshot roots cannot contain maps"); }
     return Result.Emitted(strings.Concatenate([SnapshotMemoRuntime(guarded), SnapshotQueueRuntime(guarded), SnapshotSchemaRuntime(),
         SnapshotValuesModule(records, fields, shapes, states, guarded), SnapshotTransactionRuntime(guarded), SnapshotTables(shapes)]));
 }

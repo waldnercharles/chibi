@@ -1,0 +1,56 @@
+package native_optional_text_cells
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import os "core:os"
+import strings "core:strings"
+
+Op :: (op: int, type: int, output: int, left: int, right: int, literal: i64) -> native.Instruction {
+    return {op: op, type: type, output: output, left: left, right: right, target: 0, literal: literal};
+}
+Main :: () -> int {
+    args := os.Arguments();
+    if (length(args) < 1 || length(args) > 2) { return 2; }
+    absent := length(args) == 2;
+    if (absent && args[1] != "none") { return 2; }
+    text := abi.TextStorage; number := abi.IntStorage; record := native.RecordType;
+    tag: i64 = 1;
+    if (absent) { tag = 0; }
+    slots := [text, record, number, record, record, native.PointerType, number,
+        native.RefType + record, record, text, number, number, number, number];
+    tagged := Op(native.Insert, record, 3, 1, 2, 0);
+    present := Op(native.Insert, record, 4, 3, 0, 1);
+    payload := Op(native.Extract, text, 9, 8, record, 1);
+    code := [Op(native.Constant, text, 0, 0, 0, 0), Op(native.Constant, record, 1, 0, 0, 0),
+        Op(native.Constant, number, 2, 0, 0, tag), tagged, present,
+        Op(native.ManagedNew, native.PointerType, 5, 4, record, -890),
+        Op(native.ForeignCall, number, 6, abi.ForeignDirect, 0, 1), Op(native.ManagedPoll, 0, 0, 0, 0, 0),
+        Op(native.ManagedAddress, native.RefType + record, 7, 5, 0, -890),
+        Op(native.Deref, record, 8, 7, 0, 0), payload];
+    if (absent) {
+        // Even a nonzero inactive field is cleared without importing it.
+        code.extend([Op(native.TextLength, number, 13, 9, 0, 0)]);
+    } else {
+        code.extend([Op(native.Constant, number, 10, 0, 0, 0), Op(native.TextByte, number, 11, 9, 10, 0),
+            Op(native.Constant, number, 12, 0, 0, 65), Op(native.Sub, number, 13, 11, 12, 0)]);
+    }
+    code.extend([Op(native.Publish, number, 0, 13, 0, 0), Op(native.Return, 0, 0, 0, 0, 0)]);
+    shape: native.Function = {result: number, first_parameter: 0, parameters: 0, first_slot: 0, slots: length(slots),
+        first_local: 0, locals: 0, first_code: 0, code: length(code), first_argument: 0, arguments: 0};
+    target := abi.LinuxX64();
+    if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
+    switch native.EmitProgramTyped(target, [shape], [], slots, [], code, [],
+        [{first: 0, count: 2, identity: -890}], [number, text], [i64(0), 0],
+        [text_from_bytes([u8(65), u8(0), u8(90)]), "optional_text_cell_clobber"],
+        {file: "", directory: ""}, [], [], []) {
+        case .Rejected(instruction, message): os.Print(message); return 1;
+        case .Emitted(text):
+            current := strings.ReplaceAll(text, "@chibi_scalar.text.0 = private unnamed_addr constant",
+                "@chibi_scalar.text.0 = internal global");
+            current = strings.ReplaceAll(current, "declare i32 @optional_text_cell_clobber()\n", "");
+            current = strings.Concatenate([current,
+                "\ndefine i32 @optional_text_cell_clobber() {\nentry:\n  store i8 90, ptr @chibi_scalar.text.0\n  ret i32 0\n}\n"]);
+            if (os.WriteText(args[0], current)) { return 2; }
+    }
+    return 0;
+}

@@ -1,21 +1,29 @@
 package owned_generation
 
+import target "core:target"
+
 foreign import libc "system:c"
 foreign libc {
     fopen :: (path: cstring, mode: cstring) -> rawptr
     fclose :: (stream: rawptr) -> i32
     access :: (path: cstring, mode: i32) -> i32
+    _access :: (path: cstring, mode: i32) -> i32
+}
+when target.Os == target.Windows {
+    Exists :: (path: string) -> bool { return _access(path, 0) == 0; }
+} else {
+    Exists :: (path: string) -> bool { return access(path, 0) == 0; }
 }
 // Main is deliberately not rerun; this generation has no old Worker or Payload.
 Main :: () -> int { return 99; }
 Frame :: () -> int {
-    if access("cancel-case", 0) == 0 { return 7; }
-    if access("allow-old", 0) != 0 {
+    if Exists("cancel-case") { return 7; }
+    if !Exists("allow-old") {
         stream := fopen("allow-old", "wb");
         assert(stream != 0);
         closed := fclose(stream);
         assert(closed == 0);
     }
-    if access("old-done", 0) == 0 { return 7; }
+    if Exists("old-done") { return 7; }
     return 0;
 }

@@ -5,13 +5,15 @@ import binding "project:lexical_binding"
 import snapshot "project:source_snapshot"
 import syntax "project:syntax_diagnostics"
 
-// Optional cells initially contain plain values only. Their tag and payload
-// move together; owned backing and managed graph edges need a separate layout.
+// Optional cells move their tag and payload together. Text uses a whole-cell
+// import/drop layout; other backing owners and collector edges stay separate.
 ScalarPointerOptional :: (types: TypeDecl[], record: int) -> bool {
     if (!ScalarOptional(types, record)) { return false; }
     declared := types[record];
     if (declared.value_container != 0) { return false; }
-    if (declared.value_record < 0) { return Numeric(declared.value_storage) || declared.value_storage == BoolStorage; }
+    if (declared.value_record < 0) {
+        return Numeric(declared.value_storage) || declared.value_storage == BoolStorage || declared.value_storage == TextStorage;
+    }
     return declared.value_storage == StructStorage && types[declared.value_record].kind == RecordDecl;
 }
 // Managed cells keep their pointee's complete identity; storage alone is not
@@ -50,6 +52,10 @@ ScalarPointerType :: (types: TypeDecl[], record: int) -> int {
 // a nominal-only tag can permit a changed generation's layout.
 ScalarPointerTag :: (types: TypeDecl[], value: ValueType) -> i64 {
     nominal := SemanticTag(types, value);
+    if (value.container == ArrayContainer && value.storage == PointerStorage && ScalarPointerViewElement(types, value.record)) {
+        target := ScalarPointerTag(types, ScalarPointerElement(types, value.record));
+        return i64(wrap: binding.ID("native-managed-pointer-array-v1", format_text("{}:{}", nominal, target)));
+    }
     if (value.container == ArrayContainer && value.record >= 0) {
         schema := types[value.record].native_schema;
         if (schema == 0) { return 0; }
@@ -207,6 +213,8 @@ ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables
         return -1;
     }
     if (Is(forest, node, syntax.IndexExpression)) {
+        view := ScalarViewOperation(forest, text, callables, params, names, types, members, package, node);
+        if (view.operation == facts.ViewGet && view.shape.storage == PointerStorage) { return view.shape.record; }
         array := ScalarArrayShape(forest, text, callables, params, names, types, members, package,
                                   Field(forest, node, syntax.FieldObject));
         if (array.container == ArrayContainer && array.storage == PointerStorage) { return array.record; }

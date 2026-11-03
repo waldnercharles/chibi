@@ -1,0 +1,41 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+
+// Validation only. Unsupported reference origins never become executed IR.
+CollectorFrameReference :: (mode: int) -> native.Result {
+    array := native.ArrayType + native.RecordType;
+    reference := native.RefType + array;
+    parent := native.RecordType + 1;
+    worker := [Code(native.Constant,array,0,0,0,0,0), Code(native.Save,array,0,0,0,0,0),
+        Code(native.Constant,parent,4,0,0,0,0), Code(native.Save,parent,0,4,0,1,0),
+        Code(native.LocalAddress,reference,1,0,0,0,0), Code(native.Suspend,0,0,0,0,0,0),
+        Code(native.Deref,array,2,1,0,0,0), Code(native.ArrayLength,abi.IntStorage,3,2,0,0,0),
+        Code(native.Publish,abi.IntStorage,0,3,0,0,0), Code(native.Return,0,0,0,0,0,0)];
+    if (mode == 1) { worker[4] = Code(native.FieldAddress,reference,1,1,parent,0,0); }
+    code := [Code(native.Constant,abi.IntStorage,0,0,0,0,0),
+        Code(native.Publish,abi.IntStorage,0,0,0,0,0), Code(native.Return,0,0,0,0,0,0)];
+    code.extend(worker);
+    functions := [Function(abi.IntStorage,0,0,1,0,3,0,0),
+        Function(abi.IntStorage,0,1,5,3,length(worker),0,0)];
+    slots := [abi.IntStorage,array,reference,array,abi.IntStorage,parent];
+    locals := [array,parent];
+    parameters: int[] = [];
+    second := functions[1];
+    if (mode == 2) { locals.append(reference); }
+    if (mode == 3) { parameters.append(reference); second.parameters = 1; }
+    if (mode == 4) { slots.append(native.RefType + parent); second.slots += 1; }
+    second.locals = length(locals); functions[1] = second;
+    return native.EmitProgram(abi.LinuxX64(),functions,parameters,slots,locals,code,[],
+        [{first:0,count:1,identity:0},{first:1,count:1,identity:0}],
+        [native.PointerType,array],[],{file:"",directory:""},[],[],[]);
+}
+@test
+WaitingCollectorArrayReferencesRequireCanonicalLocalOrigins :: () {
+    Emitted(CollectorFrameReference(0));
+    Rejects(CollectorFrameReference(1), "native waiting collector array references require canonical frame locals");
+    Rejects(CollectorFrameReference(2), "native waiting frames cannot own managed values or pointers yet");
+    Rejects(CollectorFrameReference(3), "native waiting parameters need scalar values; managed values and dependencies are not supported yet");
+    Rejects(CollectorFrameReference(4), "native waiting frames cannot own managed values or pointers yet");
+}

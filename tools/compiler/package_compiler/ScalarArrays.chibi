@@ -812,7 +812,8 @@ ScalarElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, callabl
     // dedicated place tag does not admit arbitrary union fields or methods.
     if (array_field == -1 && binding.container == 0 && binding.storage == UnionStorage &&
         ScalarOptional(types, binding.record) && types[binding.record].value_container == ArrayContainer &&
-        shape.record == -1 && (Numeric(shape.storage) || shape.storage == BoolStorage || shape.storage == TextStorage)) {
+        ((shape.record == -1 && (Numeric(shape.storage) || shape.storage == BoolStorage || shape.storage == TextStorage)) ||
+         (shape.storage == PointerStorage && ScalarPointerViewElement(types, shape.record)))) {
         array_field = facts.OptionalArrayPlace;
     }
     root := ScalarValueType(types, binding.storage, binding.container, binding.record);

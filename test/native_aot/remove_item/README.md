@@ -32,8 +32,19 @@ ordinary invocation therefore checks the unchanged argument-order case;
 the union post-removal result is a native semantic regression.
 
 Composite equality accepts only the existing validated snapshot value kinds.
-Pointers, tasks, maps and views remain outside that structural comparison
-domain. Generic native entries reject erased composite search metadata;
+Pointers, tasks and views remain outside that structural comparison domain.
+Map shapes have one key and one payload edge and are currently available only
+through the explicit raw equality API. Source search admission is a separate
+follow-on. Retained snapshot roots still reject map-bearing values; comparison
+nodes outside those roots do not emit snapshot copy helpers. Generic native entries reject erased composite search metadata;
 explicit value entries validate the shared shape graph before emitting code.
 The new collector pins cover live pointer-array owners around composite
 equality allocation. Other allocating operations retain their own contracts.
+
+The raw map controls compare associations independently of insertion order,
+including a 64-entry indexed table, tombstones, empty backed maps, binary string
+keys, nested maps and array/record payloads. NaN values remain unequal even
+when both operands share their backing; signed zeros compare equal. Comparison
+borrows canonical runtime map descriptors, whose cached key hashes and index
+follow the existing map lookup contract. Scratch allocation stays at the two
+reused session buffers across these controls.

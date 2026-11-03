@@ -33,9 +33,9 @@ TextCopiedBytes :: (pc: int, guarded: bool = false) -> string {
     out = format_text("{}  %sized{} = insertvalue {} %at{}, i32 %n{}, 1\n", out, pc, text, pc, pc);
     return format_text("{}  %v{} = insertvalue {} %sized{}, ptr %held{}, 2\n", out, pc, text, pc, pc);
 }
-TextSequenceModule :: (code: Instruction[], guarded: bool = false) -> string {
+TextSequenceModule :: (code: Instruction[], guarded: bool = false, cell_text: bool = false) -> string {
     needed := false;
-    shared := false;
+    shared := cell_text;
     for (item in code) {
         needed = needed || TextSequenceOperation(item.op);
         shared = shared || (item.op == ValueCopy && item.type == abi.TextStorage) ||

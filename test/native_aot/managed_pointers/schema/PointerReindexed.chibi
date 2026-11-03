@@ -1,0 +1,10 @@
+package pointer_view_schema
+Unrelated :: struct { value: f64; }
+Other :: () -> ^f32 { number: f32 = 9; return &number; }
+Main :: () -> int {
+    unrelated := Other();
+    number := 7; values: ^int[] = [&number]; owner := &values;
+    selected := owner.view(0..<1);
+    if selected { return selected.length() - 1; }
+    return 1;
+}

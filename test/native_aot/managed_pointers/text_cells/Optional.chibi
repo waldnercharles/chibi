@@ -1,0 +1,11 @@
+package optional_text_cell_writer
+Literal :: () -> string? { return "new image literal"; }
+Write :: (pointer: ^(string?)) -> ^(string?) { alias := pointer; alias^ = Literal(); return alias; }
+Main :: () -> int {
+    value: string? = "old";
+    pointer := &value;
+    changed := Write(pointer);
+    observed := changed^;
+    if observed { return text_byte_length(observed); }
+    return 0;
+}

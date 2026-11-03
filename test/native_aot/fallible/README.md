@@ -20,3 +20,9 @@ original typed-local descriptor-growth case. Value contexts read a guarded
 payload; optional arguments/assignments and nil tests keep the descriptor.
 The fixture includes f64 arithmetic, i16 optional forwarding, inferred false
 bool locals and present numeric zero. Each category keeps its own import root.
+
+Lazy coalescing and plain optional record fields run the six original imports
+samples and a source fixture with calls that count evaluations, false/zero
+payloads, nested fallbacks and absent records. Eighteen malformed facts cases
+reject before LLVM publication. The managed-values runner checks the same
+source with poisoned frees and balanced allocations at O0/O2.

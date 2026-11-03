@@ -247,6 +247,15 @@ RecordMemberType :: (rows: facts.Row[], records: int[], type: int, index: i64) -
     }
     return rows[head + 1 + int(index)].type;
 }
+// The payload type of exactly Nil | Some(value), or 0 for another union.
+OptionalPayloadType :: (rows: facts.Row[], records: int[], type: int) -> int {
+    head := UnionHead(rows, records, type);
+    if (head < 0 || rows[head].count != 2) { return 0; }
+    none := VariantOf(rows, head, 0);
+    some := VariantOf(rows, head, 1);
+    if (rows[none].name != "Nil" || rows[none].count != 0 || rows[some].name != "Some" || rows[some].count != 1) { return 0; }
+    return rows[some + 1].type;
+}
 // Whether `row` is a loop over an array, and whether it also names the index.
 Arrayed :: (row: facts.Row) -> bool {
     return row.kind == facts.ForRow && (row.literal == i64(facts.RangeArray) ||
@@ -1220,14 +1229,17 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
     // height it leaves its value at.
     ends: int[] = [];
     depths: int[] = [];
+    results: int[] = [];
     for (row in first..<last + 1) {
         while (length(ends) > 0 && ends[length(ends) - 1] == row) {
             depth := depths[length(depths) - 1];
-            if (length(stack) != depth + 1 || stack[depth] != facts.BoolType) {
-                return "scalar logic differs from its bool operands";
+            if (length(stack) != depth + 1 || stack[depth] != results[length(results) - 1]) {
+                if (results[length(results) - 1] == facts.BoolType) { return "scalar logic differs from its bool operands"; }
+                return "scalar coalescing RHS differs from its result";
             }
             ends = slice(ends, 0, length(ends) - 1);
             depths = slice(depths, 0, length(depths) - 1);
+            results = slice(results, 0, length(results) - 1);
         }
         if (row == last) {
             break;
@@ -1298,14 +1310,22 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 return "scalar logic differs from its bool operands";
             }
             end := row + operand.count + 1;
-            if (operand.name != "" || operand.type != facts.BoolType ||
-                (operand.value != facts.LogicalAnd && operand.value != facts.LogicalOr) ||
-                (length(ends) > 0 && end > ends[length(ends) - 1]) || base < floor || stack[base] != facts.BoolType) {
+            if (operand.name != "" || (length(ends) > 0 && end > ends[length(ends) - 1]) || base < floor) {
+                return "scalar logic differs from its bool operands";
+            }
+            if (operand.value == facts.LogicalCoalesce) {
+                if ((!Number(operand.type) && operand.type != facts.BoolType) ||
+                    OptionalPayloadType(rows, records, stack[base]) != operand.type) {
+                    return "scalar coalescing differs from its optional payload";
+                }
+            } else if (operand.type != facts.BoolType || stack[base] != facts.BoolType ||
+                       (operand.value != facts.LogicalAnd && operand.value != facts.LogicalOr)) {
                 return "scalar logic differs from its bool operands";
             }
             stack = slice(stack, 0, base);
             ends.append(end);
             depths.append(base);
+            results.append(operand.type);
             continue;
         } else if (operand.kind == facts.CompareRow) {
             base := length(stack) - 2;
@@ -1516,15 +1536,18 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             if (operand.name != "" || operand.count != 1 || operand.value != 0 || base < floor) {
                 return "scalar force unwrap differs from its optional";
             }
-            head := UnionHead(rows, records, stack[base]);
-            if (head < 0 || rows[head].count != 2) {
+            if (OptionalPayloadType(rows, records, stack[base]) != operand.type) {
                 return "scalar force unwrap differs from its optional";
             }
-            none := VariantOf(rows, head, 0);
-            some := VariantOf(rows, head, 1);
-            if (rows[none].name != "Nil" || rows[none].count != 0 || rows[some].name != "Some" ||
-                rows[some].count != 1 || rows[some + 1].type != operand.type) {
-                return "scalar force unwrap differs from its optional";
+            stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.OptionalFieldRow) {
+            base := length(stack) - 1;
+            if (operand.name != "" || operand.count != 1 || base < floor) {
+                return "scalar optional field differs from its record";
+            }
+            field := RecordMemberType(rows, records, OptionalPayloadType(rows, records, stack[base]), i64(operand.value));
+            if ((!Number(field) && field != facts.BoolType) || OptionalPayloadType(rows, records, operand.type) != field) {
+                return "scalar optional field differs from its record";
             }
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.MapRow) {
@@ -2509,7 +2532,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             for (operand in walk + 1..<walk + 1 + rows[walk].count) {
                 if (rows[operand].kind == facts.ReadRow && UnionHead(rows, declared, rows[operand].type) >= 0 &&
                     (operand + 1 >= walk + 1 + rows[walk].count ||
-                     (rows[operand + 1].kind != facts.TagRow && rows[operand + 1].kind != facts.PayloadRow))) {
+                     (rows[operand + 1].kind != facts.TagRow && rows[operand + 1].kind != facts.PayloadRow &&
+                      rows[operand + 1].kind != facts.OptionalFieldRow))) {
                     stale_unions.append(rows[operand].value);
                 }
             }
@@ -2752,14 +2776,15 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     open := length(closes) - 1;
                     right := stack[length(stack) - 1];
                     stack = slice(stack, 0, length(stack) - 1);
-                    body.append(Op(native.Save, abi.BoolStorage, 0, right, 0, answers[open]));
+                    answer_type := slots[shape.first_slot + outputs[open]];
+                    body.append(Op(native.Save, answer_type, 0, right, 0, answers[open]));
                     for (temporary in logical_first[open]..<length(logical_strings)) {
                         body.append(Op(native.TextRelease, abi.TextStorage, 0, logical_strings[temporary], 0, 0));
                     }
                     logical_strings = slice(logical_strings, 0, logical_first[open]);
                     logical_first = slice(logical_first, 0, open);
                     body = Patched(body, escapes[open]);
-                    body.append(Op(native.Local, abi.BoolStorage, outputs[open], answers[open], 0, 0));
+                    body.append(Op(native.Local, answer_type, outputs[open], answers[open], 0, 0));
                     stack.append(outputs[open]);
                     closes = slice(closes, 0, open);
                     answers = slice(answers, 0, open);
@@ -2775,20 +2800,36 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 if (operand.kind == facts.LogicalRow) {
                     left := stack[length(stack) - 1];
                     stack = slice(stack, 0, length(stack) - 1);
-                    locals.append(abi.BoolStorage);
-                    body.append(Op(native.Save, abi.BoolStorage, 0, left, 0, local));
-                    if (operand.value == facts.LogicalAnd) {
+                    locals.append(type);
+                    if (operand.value == facts.LogicalCoalesce) {
+                        // Nil alone visits the fallback. Reading the by-value
+                        // payload on Nil is safe and is overwritten on that path.
+                        slots.extend([abi.IntStorage, abi.IntStorage, abi.BoolStorage, type]);
+                        tag := Op(native.Extract, abi.IntStorage, slot + 1, left, slots[shape.first_slot + left], 0);
+                        zero := Op(native.Constant, abi.IntStorage, slot + 2, 0, 0, 0);
+                        payload := Op(native.Extract, type, slot + 4, left, slots[shape.first_slot + left], 0);
+                        payload.literal = 1;
+                        body.extend([tag, zero, Op(native.Ne, abi.IntStorage, slot + 3, slot + 1, slot + 2, 0), payload,
+                                     Op(native.Save, type, 0, slot + 4, 0, local)]);
+                        escapes.append(length(body));
+                        body.append(Op(native.Branch, 0, 0, slot + 3, 0, 0));
+                        slot += 4;
+                    } else if (operand.value == facts.LogicalAnd) {
+                        body.append(Op(native.Save, type, 0, left, 0, local));
                         body.append(Op(native.Branch, 0, 0, left, 0, length(body) + 2));
                         escapes.append(length(body));
                         body.append(Op(native.Jump, 0, 0, 0, 0, 0));
                     } else {
+                        body.append(Op(native.Save, type, 0, left, 0, local));
                         escapes.append(length(body));
                         body.append(Op(native.Branch, 0, 0, left, 0, 0));
                     }
                     closes.append(index + operand.count + 1);
                     logical_first.append(length(logical_strings));
                     answers.append(local);
-                    outputs.append(slot);
+                    output := slot;
+                    if (operand.value == facts.LogicalCoalesce) { output -= 4; }
+                    outputs.append(output);
                     local += 1;
                     slot += 1;
                     continue;
@@ -3036,6 +3077,33 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         }
                     }
                     shape.arguments += operand.count;
+                    stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.OptionalFieldRow) {
+                    base := length(stack) - 1;
+                    held := stack[base];
+                    source_type := slots[shape.first_slot + held];
+                    source_fact := facts.RecordType + source_type - native.RecordType;
+                    record := NativeType(OptionalPayloadType(rows, declared, source_fact));
+                    field := NativeType(OptionalPayloadType(rows, declared, operand.type));
+                    slots[length(slots) - 1] = abi.IntStorage;
+                    slots.extend([record, field, type, type, type]);
+                    payload := Op(native.Extract, record, slot + 1, held, source_type, 0);
+                    payload.literal = 1;
+                    selected := Op(native.Extract, field, slot + 2, slot + 1, record, 0);
+                    selected.literal = i64(operand.value);
+                    body.extend([Op(native.Extract, abi.IntStorage, slot, held, source_type, 0), payload, selected,
+                                 Op(native.Constant, type, slot + 3, 0, 0, 0),
+                                 Op(native.Insert, type, slot + 4, slot + 3, slot, 0)]);
+                    item = Op(native.Insert, type, slot + 5, slot + 4, slot + 2, 0);
+                    item.literal = 1;
+                    slot += 5;
+                    if (TrackedRecord(managed, source_type) && Holds(fresh, held)) {
+                        dropped := DropValue(managed, source_type, held);
+                        slots.extend(dropped.slot_types);
+                        body.extend(dropped.code);
+                        extra += length(dropped.slot_types);
+                        fresh = Without(fresh, held);
+                    }
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.FieldRow || operand.kind == facts.TagRow ||
                            operand.kind == facts.PayloadRow || operand.kind == facts.UnwrapRow) {
@@ -3601,7 +3669,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     // direct returns use the existing owned-variable move.
                     projected := index + 1 < first + row.count &&
                                  (rows[index + 1].kind == facts.FieldRow || rows[index + 1].kind == facts.PayloadRow ||
-                                  rows[index + 1].kind == facts.TagRow || rows[index + 1].kind == facts.UnwrapRow);
+                                  rows[index + 1].kind == facts.TagRow || rows[index + 1].kind == facts.UnwrapRow ||
+                                  rows[index + 1].kind == facts.OptionalFieldRow);
                     if (!projected && !(row.kind == facts.ReturnRow && row.count == 1)) {
                         kept := KeepValue(managed, operand.type, slot, slot + 1 + extra);
                         slots.extend(kept.slot_types);

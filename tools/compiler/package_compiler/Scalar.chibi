@@ -896,6 +896,14 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (record >= 0) { return ScalarPointerElement(types, record).storage; }
     }
     node := ScalarTarget(forest, operand);
+    if (Is(forest, node, syntax.OptionalMemberExpression)) {
+        if (ScalarOptionalFieldRecord(forest, text, callables, params, names, types, members, callable.package, node) >= 0) { return UnionStorage; }
+        return 0;
+    }
+    if (Is(forest, node, syntax.BinaryExpression) && Operator(forest, node) == tk.Coalesce) {
+        return ScalarOptionalPrimitive(types, ScalarHeldUnion(forest, text, callables, params, names, types, members,
+            callable.package, Field(forest, node, syntax.FieldLeft))).storage;
+    }
     if (Is(forest, node, syntax.ForceUnwrapExpression)) {
         payload := ScalarUnwrappedType(forest, text, callables, params, names, types, members, callable.package, node);
         if (payload.container == 0) { return payload.storage; }
@@ -1093,6 +1101,12 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         }
     }
     node := ScalarTarget(forest, operand);
+    if (Is(forest, node, syntax.OptionalMemberExpression)) {
+        return ScalarOptionalFieldRows(forest, text, callables, params, callable, names, types, members, constants, node, rows);
+    }
+    if (Is(forest, node, syntax.BinaryExpression) && Operator(forest, node) == tk.Coalesce) {
+        return ScalarCoalesce(forest, text, callables, params, callable, names, types, members, constants, node, rows);
+    }
     if (Is(forest, node, syntax.ForceUnwrapExpression)) {
         return ScalarUnwrapRows(forest, text, callables, params, callable, names, types, members, constants, node, rows);
     }
@@ -1811,6 +1825,9 @@ ScalarIs :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[
 ScalarHeldUnion :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                     names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> int {
     value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.OptionalMemberExpression)) {
+        return ScalarOptionalFieldRecord(forest, text, callables, params, names, types, members, package, value);
+    }
     if (Is(forest, value, syntax.ForceUnwrapExpression)) {
         payload := ScalarUnwrappedType(forest, text, callables, params, names, types, members, package, value);
         if (payload.storage == UnionStorage && payload.container == 0) { return payload.record; }
@@ -3489,7 +3506,7 @@ ScalarClaimCells :: (claimed: ^(bool[]), first: int, end: int) {
 }
 
 // Each cell belongs to an admitted value, invocation or host, or was copied
-// into a result bank by the ordinary typed copier. Index ownership once;
+// into a result bank or conditional by the ordinary checker. Index ownership once;
 // scanning every call/host for every cell would multiply their table sizes.
 ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], semantic: SemanticFact[], lent: bool) -> bool {
     claimed := resize([false], length(cells));
@@ -3509,8 +3526,8 @@ ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], semantic: Sem
         ScalarClaimCells(&claimed, host.first, host.result_first + host.result_count);
     }
     for (fact in semantic) {
-        if (fact.kind == ResultCopyCellFact) {
-            if (fact.target < 0 || fact.target >= length(cells) || !ScalarResultCell(cells[fact.target])) { return false; }
+        if (fact.kind == ScalarValueCellFact) {
+            if (fact.target < 0 || fact.target >= length(cells) || !ScalarValueCell(cells[fact.target])) { return false; }
             claimed[fact.target] = true;
         }
     }

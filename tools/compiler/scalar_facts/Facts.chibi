@@ -337,6 +337,9 @@ pub ManagedBorrow: int : 4;
 // Eager scalar selection: bool condition, then same-typed yes and no values.
 // Values are numeric or bool, never managed values or references.
 pub SelectRow: int : 54;
+// Maps Nil | Some(record) to Nil | Some(field), selecting plain numeric/bool
+// field `value`. Both optional shapes are canonical; count is one.
+pub OptionalFieldRow: int : 56;
 // A source void waiting function has no success payload despite its internal int.
 pub FunctionVoid: int : 1;
 pub CallPlain: int : 0;
@@ -449,6 +452,9 @@ pub SquareRoot: int : 4;
 // Logical operators: the source's && and ||.
 pub LogicalAnd: int : 1;
 pub LogicalOr: int : 2;
+// Consumes Nil | Some(number/bool); its RHS span runs only for Nil and must
+// leave the same payload type as this row. The present path reads that payload.
+pub LogicalCoalesce: int : 3;
 
 // Fixed text operands stay in source evaluation order. This selects the
 // source ordinal of a parameter from a validated permutation: the identity

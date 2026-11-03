@@ -75,5 +75,21 @@ awaits move and zero the child promise, and frame destruction clears the promise
 before dropping it once. Borrowed waiting reference parameters remain closed;
 backing-derived array/map references cannot cross suspension or escape their
 immediate access region. Collector-bearing result roots have separate coverage
-in `managed_pointers/run.sh`. Task-observer arrays and explicit task-valued
-parameters remain separate functionality gates.
+in `managed_pointers/run.sh`.
+
+`TaskObservers.chibi` preserves inferred arrays of eight-byte task observers,
+including nested arrays, indexed and loop reads, source replacement while
+awaiting, cancellation and discarded arrays whose children still finish.
+Physical backing copies acquire observers; last backing release drops them.
+Sharing a descriptor counts its backing and does not visit task elements.
+`TaskObserverAllocations.chibi` requires 128 copies of 256 completed observers
+to allocate nothing, then one backing detach for the first mutation and none
+for the next. Invalid forgiving replacements must release all completed
+payloads at shutdown. Original-generation completed observers survive reload
+and close with a balanced allocator. `TaskObserverFailure.chibi` covers failure
+after transferring an indexed observer out of its array.
+
+Direct task-valued record fields and explicit task-array parameters/results
+retain the ordinary compiler's rejection. Native typed task-array promises
+reuse the existing array copy/drop contract; source syntax does not gain a new
+parameter or result type.

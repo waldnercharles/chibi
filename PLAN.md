@@ -7,7 +7,62 @@ following CI merge `a76ea8005`. Further work is composed on
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
-## Current composition: ad3e3f5b0
+## Current composition: 683ab5e69
+
+The combined source includes inferred arrays of task observers, pointer-element
+views, boxed argument roots, and canonical collector-array references in waiting
+frames. Structural search and removal within arrays now compare map associations
+through the shared value graph. The Windows runtime matrix contains 36
+source/entry cases.
+
+The `7b05b3eca` candidate builds in 32.70 seconds and passes all 551 compiler
+tests in 26.24, the complete task-owner suite in 24.54, and source map search,
+removal, ownership and callback checks in 20.60. All 3,563 archived source blobs
+and modes remain unchanged. This focused composition does not repeat the fixed
+point. Evidence is in `/private/tmp/chibi-7b05-composed-check/receipt.json`.
+
+The preceding `a73081162` reproduces byte for byte between stages two and three
+in 35.64 and 35.30 seconds, SHA-256
+`15f480276b0b0a20304a87b05f03035ca114ed0e6ed1863d429c3b6807459130`.
+All 546 compiler tests pass in 28.87 seconds and task ownership in 21.27. The
+managed-pointer run passed its source, callback and controlled-failure checks,
+then stopped at an obsolete metadata expectation after 246.91 seconds. Pointer
+array cells are now supported, so `f255bcaf7` changes that check to require
+acceptance and retains a malformed map-slot rejection. The explicit fixture-only
+continuation passes the corrected native boundary tests in 15.91 seconds and the
+remaining managed checks in 57.07 before encountering another stale negative.
+That unchanged pointer-array source compiles and returns its expected length of
+one; the remaining nine negative cases and growth controls pass in 0.75. Root
+`683ab5e69` removes the obsolete rejection, whose supported cell behavior is
+already covered by the stronger pointer-view tests. Maps pass in 131.76 seconds,
+and generations at O0/O2 in 62.30 and 64.83. All 3,552 original source blobs and
+modes, the compiler, and original logs remain unchanged. This is a resumed
+proof, not a complete second managed-suite run. Evidence is in
+`/private/tmp/chibi-a730-composed-proof` and
+`/private/tmp/chibi-a730-validation-continuation/receipt.json`.
+
+Remaining confirmed source work covers owned flat record cells, views over
+collector-bearing record arrays, and the method form of task-observer removal.
+Their owners are checking actual source lifetime,
+aliasing and reload behavior. Final product and platform checks, the held
+host/VM/recovery deletion, and verified platform seed acceptance remain required.
+Archived engine and Studio services remain outside the live replacement scope.
+
+The approved c5 Linux/macOS bootstrap package is published and both pins are
+advanced. The separately audited 14f7 package still awaits approval. The original
+local c5 admission of Linux producer `36506138d` reached its unchanged 90-minute
+bound: the controller built in 8.394 seconds, but the compiler build produced no
+module or executable. This is incomplete admission, not a source rejection.
+The seed and all 3,485 archived source files remain unchanged. The independent
+hosted producer is running as GitHub Actions run `41627603178`; its entire job
+must pass before its Windows artifact can be consumed. No fresh Windows runtime
+acceptance is claimed.
+
+All elapsed times are validation under shared load, not performance comparisons.
+The sections below retain evidence at their named historical checkpoints; their
+former pending items are superseded by the current status above.
+
+### Earlier composition: ad3e3f5b0
 
 The combined source now includes counted map task results, collector-backed
 arrays of pointer-bearing records, deeper mapped-array methods, nested map

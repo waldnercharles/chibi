@@ -1,0 +1,16 @@
+package task_observer_failure
+Text :: (count: int) -> string { return text_from_bytes(resize([u8(120)], count)); }
+Child :: () -> string { yield; return Text(13); }
+Broken :: () -> int {
+    values := [Child(), Child()];
+    yield; yield;
+    first := values[0];
+    values = [];
+    yield;
+    joined := await first;
+    if joined is Cancelled { return 1; }
+    else { assert(text_byte_length(joined) == 13); }
+    assert(false, "failure after an observer array releases its backing");
+    return 0;
+}
+Main :: () -> int { result := await Broken(); return result; }

@@ -173,3 +173,13 @@ TaskScheduler :: (timed: bool, guarded: bool = false) -> string {
     text = strings.ReplaceAll(text, "$updated_wait", updated_wait);
     return text;
 }
+
+// Physical array copies acquire observers; the backing's last release drops
+// them. Descriptor sharing only counts the array owner and never scans here.
+TaskArrayRuntime :: () -> string {
+    out: string[] = [];
+    for (operation in ["retain", "release"]) {
+        out.append(format_text("define internal void @chibi_tasks.{}_range(ptr %data, i32 %count) {{\nentry:\n  br label %scan\nscan:\n  %index = phi i32 [ 0, %entry ], [ %next, %body ]\n  %more = icmp ult i32 %index, %count\n  br i1 %more, label %body, label %done\nbody:\n  %wide = zext i32 %index to i64\n  %at = getelementptr inbounds i64, ptr %data, i64 %wide\n  %value = load i64, ptr %at\n  call void @chibi_tasks.{}(i64 %value)\n  %next = add i32 %index, 1\n  br label %scan\ndone:\n  ret void\n}}\n", operation, operation));
+    }
+    return strings.Join(out, "");
+}

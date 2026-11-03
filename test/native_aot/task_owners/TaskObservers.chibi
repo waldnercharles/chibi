@@ -1,0 +1,148 @@
+package task_observer_arrays
+
+Count :: (add: int) -> int { total: retain int = 0; total += add; return total; }
+Hold :: () -> int { values := [Child(53), Child(59)]; yield; yield; return length(values); }
+Text :: (count: int) -> string { return text_from_bytes(resize([u8(120)], count)); }
+Main :: () -> int {
+    first := Child(7);
+    values := [first, Child(11), first];
+    copied := values;
+    values = [];
+    total := 0;
+    for child, index in copied {
+        joined := await child;
+        if joined is Cancelled { return 1; }
+        else { total += text_byte_length(joined); }
+        assert(index >= 0 && index < 3);
+    }
+    assert(total == 25);
+    indexed := await copied[1];
+    if indexed is Cancelled { return 2; }
+    else { assert(text_byte_length(indexed) == 11); }
+    copied[0] = Child(13);
+    copied.append(Child(17));
+    copied.insert(1, Child(19));
+    copied.extend([Child(23)]);
+    copied.remove_index(2);
+    grown := resize(copied, length(copied) + 1);
+    absent := await grown[length(grown) - 1];
+    assert(absent is Cancelled);
+    appended := append(copied, Child(61));
+    assert(length(appended) == length(copied) + 1);
+    removed := slice(copied, 1, 2);
+    reversed := reverse(removed);
+    assert(copied.contains(reversed[0]));
+    for child in reversed { cancel child; }
+    for child in copied { cancel child; }
+    nested := [[Child(29), Child(31)], [Child(37)]];
+    nested[0] = nested[1];
+    for children in nested {
+        for child in children {
+            joined := await child;
+            if joined is Cancelled { return 3; }
+            else { assert(text_byte_length(joined) >= 29); }
+        }
+    }
+    single := [Child(41)];
+    for child in single {
+        single = [];
+        yield;
+        joined := await child;
+        if joined is Cancelled { return 4; }
+        else { assert(text_byte_length(joined) == 41); }
+    }
+    detached := [Child(43)];
+    held := detached[0];
+    detached = [];
+    yield;
+    joined := await held;
+    if joined is Cancelled { return 5; }
+    else { assert(text_byte_length(joined) == 43); }
+    // Functional removal compares opaque handles; direct task equality stays
+    // outside the ordinary language's scalar operator domain.
+    dropped := [held, Child(47), held];
+    trimmed := remove_item(dropped, held);
+    assert(length(trimmed) == 2 && trimmed.contains(held));
+    dropped = [];
+    trimmed = [];
+    cancelled := Hold();
+    yield;
+    cancel cancelled;
+    gone := await cancelled;
+    assert(gone is Cancelled);
+    before := Count(0);
+    for index in 0..<64 {
+        orphan := [Detached(3), Detached(5)];
+    }
+    yield; yield;
+    assert(Count(0) == before + 128, "dropping observer arrays does not cancel program-owned children");
+    return 0;
+}
+
+// Force the task's callable ordinal beyond the ordinary built-in type table.
+Padding0 :: () -> int { return 0; }
+Padding1 :: () -> int { return 1; }
+Padding2 :: () -> int { return 2; }
+Padding3 :: () -> int { return 3; }
+Padding4 :: () -> int { return 4; }
+Padding5 :: () -> int { return 5; }
+Padding6 :: () -> int { return 6; }
+Padding7 :: () -> int { return 7; }
+Padding8 :: () -> int { return 8; }
+Padding9 :: () -> int { return 9; }
+Padding10 :: () -> int { return 10; }
+Padding11 :: () -> int { return 11; }
+Padding12 :: () -> int { return 12; }
+Padding13 :: () -> int { return 13; }
+Padding14 :: () -> int { return 14; }
+Padding15 :: () -> int { return 15; }
+Padding16 :: () -> int { return 16; }
+Padding17 :: () -> int { return 17; }
+Padding18 :: () -> int { return 18; }
+Padding19 :: () -> int { return 19; }
+Padding20 :: () -> int { return 20; }
+Padding21 :: () -> int { return 21; }
+Padding22 :: () -> int { return 22; }
+Padding23 :: () -> int { return 23; }
+Padding24 :: () -> int { return 24; }
+Padding25 :: () -> int { return 25; }
+Padding26 :: () -> int { return 26; }
+Padding27 :: () -> int { return 27; }
+Padding28 :: () -> int { return 28; }
+Padding29 :: () -> int { return 29; }
+Padding30 :: () -> int { return 30; }
+Padding31 :: () -> int { return 31; }
+Padding32 :: () -> int { return 32; }
+Padding33 :: () -> int { return 33; }
+Padding34 :: () -> int { return 34; }
+Padding35 :: () -> int { return 35; }
+Padding36 :: () -> int { return 36; }
+Padding37 :: () -> int { return 37; }
+Padding38 :: () -> int { return 38; }
+Padding39 :: () -> int { return 39; }
+Padding40 :: () -> int { return 40; }
+Padding41 :: () -> int { return 41; }
+Padding42 :: () -> int { return 42; }
+Padding43 :: () -> int { return 43; }
+Padding44 :: () -> int { return 44; }
+Padding45 :: () -> int { return 45; }
+Padding46 :: () -> int { return 46; }
+Padding47 :: () -> int { return 47; }
+Padding48 :: () -> int { return 48; }
+Padding49 :: () -> int { return 49; }
+Padding50 :: () -> int { return 50; }
+Padding51 :: () -> int { return 51; }
+Padding52 :: () -> int { return 52; }
+Padding53 :: () -> int { return 53; }
+Padding54 :: () -> int { return 54; }
+Padding55 :: () -> int { return 55; }
+Padding56 :: () -> int { return 56; }
+Padding57 :: () -> int { return 57; }
+Padding58 :: () -> int { return 58; }
+Padding59 :: () -> int { return 59; }
+Padding60 :: () -> int { return 60; }
+Padding61 :: () -> int { return 61; }
+Padding62 :: () -> int { return 62; }
+Padding63 :: () -> int { return 63; }
+Child :: (count: int) -> string { yield; return Text(count); }
+Detached :: (count: int) -> string { yield; Count(1); return Text(count); }

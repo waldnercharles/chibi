@@ -265,6 +265,7 @@ ArrayInserted :: (item: Instruction, pc: int) -> string {
     element := TypeName(item.type - ArrayType);
     out := [Load(format_text("b{}", pc), abi.IntStorage, "s", item.right),
             Load(format_text("c{}", pc), item.type - ArrayType, "s", item.target)];
+    if (item.type == ArrayType + TaskType) { out.append(format_text("  call void @chibi_tasks.retain(i64 %c{})\n", pc)); }
     out.append(format_text("  %negative{} = icmp slt i32 %b{}, 0\n  %low{} = select i1 %negative{}, i32 0, i32 %b{}\n", pc, pc, pc, pc, pc));
     out.append(format_text("  %over{} = icmp ugt i32 %low{}, %length{}\n  %index{} = select i1 %over{}, i32 %length{}, i32 %low{}\n", pc, pc, pc, pc, pc, pc, pc));
     out.append(format_text("  %next{} = add i32 %length{}, 1\n  %unique{} = call {} @chibi_array.{}.unique(ptr %ctx, {} %a{}, i32 %next{}, i1 true)\n", pc, pc, pc, array, item.type, array, pc, pc));

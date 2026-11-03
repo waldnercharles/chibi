@@ -568,7 +568,7 @@ ScalarResults :: (callables: Callable[], params: Param[], types: TypeDecl[], mem
         declared := records[index];
         if (declared.kind == CollectionDecl &&
             (!ScalarNestedCollection(declared) || declared.value_storage == PointerStorage ||
-             declared.value_record >= index ||
+             (declared.value_storage != TaskStorage && declared.value_record >= index) ||
              ScalarValueType(records, declared.value_storage, declared.value_container, declared.value_record) == 0)) {
             records[index].kind = ScalarExcludedDecl;
         }
@@ -765,6 +765,14 @@ ScalarUnionOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
                 return TaskResultRecord(types, names[found].record);
             }
         }
+        if (Is(forest, awaited, syntax.IndexExpression)) {
+            shape := ScalarArrayShape(forest, text, callables, [], names, types, [], package,
+                                       Field(forest, awaited, syntax.FieldObject));
+            if (shape.container == ArrayContainer && shape.storage == TaskStorage && shape.record >= 0 &&
+                shape.record < length(callables) && callables[shape.record].waits) {
+                return TaskResultRecord(types, shape.record);
+            }
+        }
         return -1;
     }
     if (Is(forest, value, syntax.Identifier)) {
@@ -934,8 +942,8 @@ ScalarSpelled :: (left: int, right: int) -> int {
 // `context`, 0 when there is none.
 // The function whose task the expression `node` holds: a call of a waiting function,
 // or a variable that holds a task; -1 for any other.
-ScalarTaskCallee :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
-                     callable: Callable, node: int) -> int {
+ScalarTaskCallee :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[], names: Name[],
+                     types: TypeDecl[], members: TypeMember[], callable: Callable, node: int) -> int {
     value := Unparenthesized(forest, node);
     if (Is(forest, value, syntax.CallExpression)) {
         return CalledFunction(forest, text, callables, [], names, callable.package, value);
@@ -946,6 +954,12 @@ ScalarTaskCallee :: (forest: snapshot.SnapshotNode[], text: string, callables: C
             held.record < length(callables) && callables[held.record].waits) {
             return held.record;
         }
+    }
+    if (Is(forest, value, syntax.IndexExpression)) {
+        held := ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package,
+                                  Field(forest, value, syntax.FieldObject));
+        if (held.container == ArrayContainer && held.storage == TaskStorage && held.record >= 0 &&
+            held.record < length(callables) && callables[held.record].waits) { return held.record; }
     }
     return -1;
 }
@@ -1005,16 +1019,18 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         // The result of the waiting function it awaits; a task's is a union.
         awaited := Unparenthesized(forest, Field(forest, node, syntax.FieldValue));
         if (!Is(forest, awaited, syntax.CallExpression)) {
-            function := ScalarTaskCallee(forest, text, callables, names, callable, awaited);
+            function := ScalarTaskCallee(forest, text, callables, params, names, types, members, callable, awaited);
             if (function >= 0 && TaskResultRecord(types, function) >= 0) { return UnionStorage; }
             return 0;
         }
-        function := ScalarTaskCallee(forest, text, callables, names, callable, awaited);
+        function := ScalarTaskCallee(forest, text, callables, params, names, types, members, callable, awaited);
         if (function < 0 || !callables[function].waits) {
             return 0;
         }
         return callables[function].result;
     }
+    view := ScalarViewOperation(forest, text, callables, params, names, types, members, callable.package, node);
+    if (view.operation == facts.ViewGet) { return view.shape.storage; }
     mapped := ScalarMapRead(forest, text, callables, names, types, members, callable.package, node);
     if (mapped.operator == facts.MapHas) { return BoolStorage; }
     if (mapped.operator == facts.MapGet) {
@@ -1220,7 +1236,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     }
     if (Is(forest, node, syntax.AwaitExpression)) {
         awaited := Unparenthesized(forest, Field(forest, node, syntax.FieldValue));
-        function := ScalarTaskCallee(forest, text, callables, names, callable, awaited);
+        function := ScalarTaskCallee(forest, text, callables, params, names, types, members, callable, awaited);
         if (function < 0 || !callables[function].waits) {
             return ScalarOperands.Failed(Diagnose(forest, node, 0, "native task result needs a known success type"));
         }
@@ -1357,7 +1373,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         mapped = ScalarMapShape(forest, text, callables, names, types, members, callable.package, node);
     }
     if (mapped >= 0) { type = ScalarMapType(types, mapped); }
-    if (storage == PointerStorage && !arrayed) {
+    if (storage == PointerStorage && !arrayed && !viewed) {
         type = ScalarPointerType(types, ScalarPointerRecord(forest, text, callables, params, names, types, members, callable.package, node));
     }
     if (storage == StructStorage && !arrayed && !viewed &&
@@ -3433,7 +3449,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             callee := Field(forest, awaited, syntax.FieldFunction);
             if (Is(forest, awaited, syntax.CallExpression) && Is(forest, callee, syntax.Identifier) &&
                 NameMatches(Text(forest, text, callee), "Delay") &&
-                ScalarTaskCallee(forest, text, callables, names, callable, awaited) < 0) {
+                ScalarTaskCallee(forest, text, callables, params, names, types, members, callable, awaited) < 0) {
                 arguments := Members(forest, Field(forest, awaited, syntax.FieldArguments));
                 if (length(arguments) != 1) {
                     return ScalarOperands.Failed(Diagnose(forest, awaited, 0, "Delay requires one duration"));
@@ -3457,7 +3473,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 syntax.CallExpression)) {
             // `await handle` as a statement waits for the task and discards its result.
             handle := Field(forest, FirstMember(forest, statement), syntax.FieldValue);
-            if (ScalarTaskCallee(forest, text, callables, names, callable, handle) < 0 ||
+            if (ScalarTaskCallee(forest, text, callables, params, names, types, members, callable, handle) < 0 ||
                 ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants,
                                      handle, 0) != TaskStorage) {
                 return ScalarOperands.Failed(Diagnose(forest, handle, 0, "scalar proof awaits only a task"));
@@ -3477,7 +3493,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
         if (Is(forest, statement, syntax.CancelStatement)) {
             duration := Field(forest, statement, syntax.FieldDuration);
             handle := Field(forest, statement, syntax.FieldValue);
-            held := ScalarTaskCallee(forest, text, callables, names, callable, handle);
+            held := ScalarTaskCallee(forest, text, callables, params, names, types, members, callable, handle);
             if (held < 0 || ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants,
                                                  handle, 0) != TaskStorage) {
                 return ScalarOperands.Failed(Diagnose(forest, handle, 0, "scalar proof cancels only a task"));
@@ -3825,7 +3841,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                                                   Field(forest, statement, syntax.FieldValue));
                     element = visited.storage;
                     element_record = visited.record;
-                    if (visited.record >= 0 && ScalarNestedCollection(types[visited.record])) {
+                    if (visited.storage != TaskStorage && visited.record >= 0 && ScalarNestedCollection(types[visited.record])) {
                         nested = SequenceElement(types, visited);
                     }
                     row.type = ScalarElementType(types, visited);
@@ -3993,7 +4009,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 record = ScalarDeclaredRecord(forest, text, callables, params, names, types, members, callable, statement);
             } else if (storage == TaskStorage) {
                 // The function whose task the variable holds.
-                record = ScalarTaskCallee(forest, text, callables, names, callable, Field(forest, statement, syntax.FieldValue));
+                record = ScalarTaskCallee(forest, text, callables, params, names, types, members, callable, Field(forest, statement, syntax.FieldValue));
             }
             name := Text(forest, text, declared);
             type := ScalarValueType(types, storage, container, record);
@@ -4866,7 +4882,8 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
     aggregate_cells := false;
     for (declared in records) {
         if (((declared.kind == PointerDecl && declared.value_container == ArrayContainer) ||
-             (declared.kind == OptionalDecl && declared.value_container == ViewContainer)) && declared.value_record >= 0) {
+             (declared.kind == OptionalDecl && declared.value_container == ViewContainer)) &&
+            ScalarViewSchemaElement(records, declared.value_storage, declared.value_record)) {
             aggregate_cells = true;
             break;
         }
@@ -4875,17 +4892,17 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         // Authored view unions are emitted even when only their empty tag is
         // used. Their payload admission reads the element's cached schema.
         for (field in fields) {
-            if (field.container == ViewContainer && field.record >= 0) { aggregate_cells = true; break; }
+            if (field.container == ViewContainer && ScalarViewSchemaElement(records, field.storage, field.record)) { aggregate_cells = true; break; }
         }
     }
     if (!aggregate_cells) {
         for (param in params) {
-            if (param.container == ViewContainer && param.record >= 0) { aggregate_cells = true; break; }
+            if (param.container == ViewContainer && ScalarViewSchemaElement(records, param.storage, param.record)) { aggregate_cells = true; break; }
         }
     }
     if (!aggregate_cells) {
         for (callable in seen) {
-            if (callable.result_container == ViewContainer && callable.result_record >= 0) { aggregate_cells = true; break; }
+            if (callable.result_container == ViewContainer && ScalarViewSchemaElement(records, callable.result, callable.result_record)) { aggregate_cells = true; break; }
         }
     }
     if (aggregate_cells) {

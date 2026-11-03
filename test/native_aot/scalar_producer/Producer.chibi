@@ -177,6 +177,7 @@ Main :: () -> int {
     MapForeignPlacesProjection();
     NestedMapsProjection();
     NestedMapIterationProjection();
+    MapValueSearchProjection();
     NestedMapPlacesProjection();
     DeepMapPlacesProjection();
     DeepMappedArraysProjection();

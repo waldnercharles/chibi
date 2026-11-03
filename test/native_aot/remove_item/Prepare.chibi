@@ -10,9 +10,9 @@ Main :: () -> int {
     if length(args) != 2 { return 2; }
     template := os.ReadText(args[1]);
     if template.error != nil { os.Print(strings.Concatenate(["cannot read equality template ", args[1]])); return 2; }
-    records: native.Record[] = [{first: 0, count: 2, identity: 0}, {first: 2, count: 3, identity: 0}, {first: 5, count: 3, identity: 0}];
-    fields := [native.ArrayType + abi.FloatStorage, abi.TextStorage, abi.IntStorage, abi.FloatStorage, native.ArrayType + native.RecordType, abi.IntStorage, abi.IntStorage, native.ArrayType + native.RecordType + 2];
-    labels := ["values", "label", "", "value", "values", "", "value", "children"];
+    records: native.Record[] = [{first: 0, count: 2, identity: 0}, {first: 2, count: 3, identity: 0}, {first: 5, count: 3, identity: 0}, {first: 8, count: 1, identity: 0}];
+    fields := [native.ArrayType + abi.FloatStorage, abi.TextStorage, abi.IntStorage, abi.FloatStorage, native.ArrayType + native.RecordType, abi.IntStorage, abi.IntStorage, native.ArrayType + native.RecordType + 2, native.MapOf(abi.IntStorage,abi.FloatStorage)];
+    labels := ["values", "label", "", "value", "values", "", "value", "children", "value"];
     nodes: native.SnapshotShapeNode[] = [
         {kind: native.SnapshotScalar, type: abi.FloatStorage, extra: abi.ValueTag(abi.FloatStorage), first: 0, count: 0},
         {kind: native.SnapshotScalar, type: abi.TextStorage, extra: abi.ValueTag(abi.TextStorage), first: 0, count: 0},
@@ -27,13 +27,22 @@ Main :: () -> int {
         {kind: native.SnapshotVariant, type: 0, extra: 0, first: 11, count: 1},
         {kind: native.SnapshotVariant, type: 0, extra: 0, first: 12, count: 1},
         {kind: native.SnapshotArray, type: native.ArrayType + native.RecordType + 2, extra: 0, first: 13, count: 1},
-        {kind: native.SnapshotScalar, type: abi.IntStorage, extra: abi.ValueTag(abi.IntStorage), first: 0, count: 0}];
+        {kind: native.SnapshotScalar, type: abi.IntStorage, extra: abi.ValueTag(abi.IntStorage), first: 0, count: 0},
+        {kind: native.SnapshotMap,type:native.MapOf(abi.IntStorage,abi.FloatStorage),extra:0,first:14,count:2},
+        {kind: native.SnapshotMap,type:native.MapOf(abi.TextStorage,abi.FloatStorage),extra:0,first:16,count:2},
+        {kind: native.SnapshotMap,type:native.MapOf(abi.IntStorage,native.RecordType),extra:0,first:18,count:2},
+        {kind: native.SnapshotMap,type:native.MapOf(abi.IntStorage,native.ArrayType+abi.FloatStorage),extra:0,first:20,count:2},
+        {kind: native.SnapshotMap,type:native.MapOf(abi.IntStorage,native.RecordType+3),extra:0,first:22,count:2},
+        {kind: native.SnapshotRecord,type:native.RecordType+3,extra:0,first:24,count:1}];
     edges: native.SnapshotShapeEdge[] = [
         {name: "", target: 0}, {name: "values", target: 2}, {name: "label", target: 1}, {name: "", target: 3},
         {name: "Empty", target: 6}, {name: "Value", target: 7}, {name: "Boxes", target: 8},
         {name: "value", target: 0}, {name: "values", target: 4},
         {name: "Leaf", target: 10}, {name: "Next", target: 11}, {name: "value", target: 13},
-        {name: "children", target: 12}, {name: "", target: 9}];
+        {name: "children", target: 12}, {name: "", target: 9},
+        {name:"",target:13},{name:"",target:0},{name:"",target:1},{name:"",target:0},
+        {name:"",target:13},{name:"",target:3},{name:"",target:13},{name:"",target:2},
+        {name:"",target:13},{name:"",target:19},{name:"value",target:14}];
     // The explicit metadata boundary admits aggregate find, while the
     // established generic entry cannot authenticate an erased union layout.
     code: native.Instruction[] = [
@@ -72,10 +81,10 @@ Main :: () -> int {
     bad_edges := edges; bad := bad_edges[0]; bad.target = length(nodes); bad_edges[0] = bad;
     Rejected(native.EmitValueEqualityRuntime(records, fields, labels, nodes, bad_edges, [3]), "snapshot edge has no target node");
     Rejected(native.EmitValueEqualityRuntime(records, fields, labels, nodes, edges, [6]), "value equality root has no value shape");
-    switch native.EmitValueEqualityRuntime(records, fields, labels, nodes, edges, [3, 4, 5, 9]) {
+    switch native.EmitValueEqualityRuntime(records, fields, labels, nodes, edges, [3, 4, 5, 9, 14, 15, 16, 17, 18]) {
         case .Rejected(instruction, message): os.Print(message); return 1;
         case .Emitted(text):
-            prefix := "%record0 = type { { i32, i32, ptr, ptr }, { ptr, i32, ptr } }\n%record1 = type { i32, float, { i32, i32, ptr, ptr } }\n%record2 = type { i32, i32, { i32, i32, ptr, ptr } }\n";
+            prefix := "%record0 = type { { i32, i32, ptr, ptr }, { ptr, i32, ptr } }\n%record1 = type { i32, float, { i32, i32, ptr, ptr } }\n%record2 = type { i32, i32, { i32, i32, ptr, ptr } }\n%record3 = type { { i32, i32, i32, i32, ptr, ptr } }\n";
             written := os.WriteText(args[0], strings.Concatenate([prefix, text, template.text]));
             if written != nil { os.Print(strings.Concatenate(["cannot write equality module ", args[0]])); return 2; }
     }

@@ -53,7 +53,7 @@ ScalarArrayElementValue :: (forest: snapshot.SnapshotNode[], text: string, calla
                             callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
                             constants: ConstDecl[], node: int, array: ValueType, rows: facts.Row[]) -> ScalarOperands {
     output := rows;
-    wrapped := array.record >= 0 && ScalarNestedCollection(types[array.record]);
+    wrapped := array.storage != TaskStorage && array.record >= 0 && ScalarNestedCollection(types[array.record]);
     if (wrapped) { output.append(ScalarAt(forest, node, facts.ZeroRow, ScalarRecordType(types, array.record), 0, 0, "")); }
     switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants,
                                node, SequenceElement(types, array), output) {

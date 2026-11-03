@@ -94,7 +94,7 @@ Valued :: (records: int[], type: int) -> bool {
 Element :: (records: int[], type: int) -> int {
     element := type - facts.ArrayType;
     if (type >= facts.MapType || element < facts.IntType || element >= facts.ArrayType ||
-        element == facts.TaskType || element == facts.ViewType || !Valued(records, element)) {
+        element == facts.ViewType || !Valued(records, element)) {
         return 0;
     }
     return element;
@@ -1350,14 +1350,14 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         assigned := rows[at].kind == facts.AssignRow && rows[at].type == operand.type &&
             rows[at + 1].kind == facts.RefRow && rows[at + 1].type == operand.type &&
             rows[at + 1].literal == 0 && rows[at + 1].value == rows[at].value;
-        borrowed := operand.literal == 0 && operator == facts.ArrayPush && (Scalar(element) || element == facts.StringType) &&
+        borrowed := operand.literal == 0 && operator == facts.ArrayPush && (Scalar(element) || element == facts.StringType || element == facts.PointerType) &&
             rows[at].kind == facts.LocalRow && rows[at].literal == i64(facts.Captured) &&
             rows[at].type == operand.type && rows[at].count == 4 &&
             rows[at + 1].kind == facts.ReadRow && rows[at + 1].type == facts.PointerType &&
             rows[at + 2].kind == facts.ManagedRow && rows[at + 2].value == facts.ManagedBorrow &&
             rows[at + 2].type == facts.ReferenceType + operand.type &&
             rows[at + 3].kind == facts.ReadRow && rows[at + 3].type == element;
-        if (optional && (operator != facts.ArraySet || (!Scalar(element) && element != facts.StringType))) { return mismatch; }
+        if (optional && (operator != facts.ArraySet || (!Scalar(element) && element != facts.StringType && element != facts.PointerType))) { return mismatch; }
         receiver := operand.type;
         if (referenced) { receiver = field; }
         if ((!ArrayChanges(operator) && operator != facts.ArrayResize) || element == 0 ||
@@ -1400,7 +1400,8 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
     }
     if (operator == facts.ArrayContains) {
         searched := Element(records, stack[base]);
-        if (operand.type != facts.BoolType || searched == 0 || searched >= facts.RecordType ||
+        if (operand.type != facts.BoolType || searched == 0 ||
+            (searched >= facts.RecordType && !Comparable(rows, records, searched)) ||
             stack[base + 1] != searched) {
             return mismatch;
         }
@@ -1451,7 +1452,7 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         }
     } else if (operator == facts.ArrayPush || operator == facts.ArrayWith || operator == facts.ArrayWithoutItem) {
         if (stack[base + 1] != element ||
-            (operator == facts.ArrayWithoutItem && !Retainable(rows, records, element))) {
+            (operator == facts.ArrayWithoutItem && element != facts.TaskType && !Comparable(rows, records, element))) {
             return mismatch;
         }
     } else if (operator == facts.ArrayExtend || operator == facts.ArrayJoin) {
@@ -2350,9 +2351,15 @@ SortedIndex :: (items: int[], wanted: int) -> int {
     return -1;
 }
 
-// Follow value edges once, including array recursion. Pointer, view, task and
-// map storage remains outside retained snapshot ownership.
 Retainable :: (rows: facts.Row[], records: int[], type: int) -> bool {
+    return PlainValue(rows, records, type, false);
+}
+Comparable :: (rows: facts.Row[], records: int[], type: int) -> bool {
+    return PlainValue(rows, records, type, true);
+}
+// Both queries follow plain value edges once. Comparison additionally follows
+// counted maps; pointer, view and task storage never enters this shape graph.
+PlainValue :: (rows: facts.Row[], records: int[], type: int, maps: bool) -> bool {
     if (Scalar(type) || type == facts.StringType) { return true; }
     root := type;
     if (root >= facts.ArrayType && root < facts.MapType) {
@@ -2362,11 +2369,26 @@ Retainable :: (rows: facts.Row[], records: int[], type: int) -> bool {
     if (root < facts.RecordType || root >= facts.ArrayType || root - facts.RecordType >= length(records)) { return false; }
     pending := [type];
     seen := resize([false], facts.MapType);
+    mapped: u32[] = [];
     at := 0;
     while (at < length(pending)) {
         current := pending[at];
         at += 1;
-        if (current <= 0 || current >= facts.MapType) { return false; }
+        if (current <= 0) { return false; }
+        if (current >= facts.MapType) {
+            if (!maps || current >= facts.ReferenceType) { return false; }
+            key := (current - facts.MapType) % 16;
+            value := (current - facts.MapType) / 16;
+            if ((!Integer(key) && key != facts.BoolType && key != facts.StringType) || value <= 0 || value >= facts.MapType) { return false; }
+            if (length(mapped) == 0) { mapped = resize([u32(0)], facts.MapType / 2); }
+            index := current - facts.MapType;
+            bit := u32(1) << u32(index % 32);
+            if ((mapped[index / 32] & bit) == 0) {
+                mapped[index / 32] |= bit;
+                pending.append(value);
+            }
+            continue;
+        }
         if (seen[current]) { continue; }
         seen[current] = true;
         if (Scalar(current) || current == facts.StringType) { continue; }
@@ -2946,6 +2968,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             locals.append(local_type);
             body.append(Op(native.Argument, type, slot, index, 0, 0));
             if (boxed) {
+                // A moved argument has no caller root. Its original slot
+                // protects collector edges until the cell is published.
+                if (native.ValueCollectorOwner(value_layout, type)) {
+                    body.append(Op(native.ManagedTrack, type, 0, slot, 0, native.ManagedTrackSlot));
+                }
                 deferred_boxes.append(index);
                 deferred_values.append(slot);
             } else { body.append(Op(native.Save, type, 0, slot, 0, local)); }
@@ -2963,7 +2990,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 owned_types.append(type);
                 body.extend(ManagedOwnerLocal(type, places[index], true, value_layout));
             }
-            if (waiting_function && (type == native.ArrayType + native.PointerType ||
+            if (!boxed && waiting_function && (type == native.ArrayType + native.PointerType ||
                 (ArrayTyped(type) && native.TaskOwnedType(records, value_layout, type))) &&
                 rows[head + 1 + index].literal != i64(facts.ParameterOwnedArray)) {
                 // A suspended callee owns its value parameter independently of
@@ -3002,6 +3029,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             body.append(made);
             body.extend(glue.after);
             body.append(Op(native.Save, native.PointerType, 0, slot, 0, places[variable]));
+            type := NativeType(rows[head + 1 + variable].type);
+            if (native.ValueCollectorOwner(value_layout, type)) {
+                body.append(Op(native.ManagedTrack, type, 0, value, 0, native.ManagedClearSlot));
+            }
             if (rows[head + 1 + variable].literal == i64(facts.ParameterOwnedArray)) {
                 body.append(Giving(NativeType(rows[head + 1 + variable].type), value));
             }
@@ -3477,6 +3508,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 item: native.Instruction = {op: native.Constant, type: type, output: slot, left: 0, right: 0,
                                             target: 0, literal: operand.literal};
                 retained_element := false;
+                retained_task := false;
                 retained_record := false;
                 retained_array := false;
                 mutated_owned := false;
@@ -4310,7 +4342,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     argument := root;
                     if (operand.count > first_argument - base) { argument = stack[first_argument]; }
                     if (op == facts.ArraySet || op == facts.ArrayInsert || op == facts.ArrayReplace) { argument = stack[first_argument + 1]; }
-                    if (op == facts.ArrayPush || op == facts.ArraySet || op == facts.ArrayInsert || op == facts.ArrayReplace || op == facts.ArrayAssign) {
+                    if (op == facts.ArrayAssign || (element != facts.TaskType &&
+                        (op == facts.ArrayPush || op == facts.ArraySet || op == facts.ArrayInsert || op == facts.ArrayReplace))) {
                         if (Holds(fresh, argument)) { fresh = Without(fresh, argument); }
                         else {
                             incoming_type := element;
@@ -4471,6 +4504,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     // A later operand can replace even a borrowed element's
                     // array or slot, so acquire its value at the read.
                     retained_element = (op == facts.ArrayGet || op == facts.ArrayPlaceGet) && type == abi.TextStorage;
+                    retained_task = (op == facts.ArrayGet || op == facts.ArrayPlaceGet) && type == native.TaskType;
                     retained_record = (op == facts.ArrayGet || op == facts.ArrayPlaceGet) && TrackedRecord(managed, type);
                     // The record bytes are loaded before a temporary array drops.
                     // A scalar projection never owns or drops its managed siblings.
@@ -4655,6 +4689,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         if (operand.value == facts.ArrayContains) {
                             // The element type its array holds.
                             item.literal = i64(slots[shape.first_slot + stack[base]] - native.ArrayType);
+                            if (item.literal >= i64(native.RecordType)) {
+                                if (length(comparison_types) == 0) { comparison_types = resize([false], native.ArrayType); }
+                                comparison_types[int(item.literal)] = true;
+                                if (Holds(fresh, item.right)) { pending.append(item.right); }
+                            }
                         }
                     }
                     if ((op == facts.ArrayPush || op == facts.ArrayExtend || op == facts.ArraySet ||
@@ -4772,13 +4811,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 stored = [];
                 family_call := false;
                 if (family && item.op == native.Call) { family_call = family_failures[item.left]; }
-                if ((pointer_program || waiting_function || family_call) && (item.op == native.ClockSample || item.op == native.Call || item.op == native.ForeignCall || item.op == native.AwaitResult || item.op == native.Format)) {
+                composite_find := item.op == native.ArrayContains && item.literal >= i64(native.RecordType);
+                if ((pointer_program || waiting_function || family_call) && (item.op == native.ClockSample || item.op == native.Call || item.op == native.ForeignCall || item.op == native.AwaitResult || item.op == native.Format) ||
+                    (pointer_program && composite_find)) {
                     glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
                         fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root, waiting_function || family_call, records, value_layout);
                     next_root = glue.next;
                     slots.extend(glue.types);
                     extra += length(glue.types);
                     body.extend(glue.before);
+                    if (composite_find) { comparison_sites.append(shape.first_code + length(body)); }
                     body.append(item);
                     body.extend(glue.after);
                 } else if (waiting_function && item.op == native.ArrayResize && item.literal == i64(native.ArrayResizeInitialized)) {
@@ -4786,7 +4828,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     body.extend(owners.before);
                     body.append(item);
                     body.extend(owners.after);
-                } else if (!name_only) { body.append(item); }
+                } else if (!name_only) {
+                    if (composite_find) { comparison_sites.append(shape.first_code + length(body)); }
+                    body.append(item);
+                }
                 produced := slot;
                 if ((operand.kind == facts.ManagedRow && operand.value != facts.ManagedBorrow ||
                     operand.kind == facts.ReadRow && ManagedVariable(pointer_boxes.boxed, operand.value)) && type == abi.TextStorage) {
@@ -4887,6 +4932,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     extra += length(kept.slot_types);
                     produced = kept.value;
                 }
+                if (retained_task) {
+                    slots.append(native.TaskType);
+                    body.append(Op(native.TaskCopy, native.TaskType, slot + 1 + extra, produced, 0, 0));
+                    produced = slot + 1 + extra;
+                    extra += 1;
+                }
                 if (retained_element) {
                     body.append(Op(native.TextRetain, abi.TextStorage, 0, slot, 0, 0));
                 }
@@ -4897,7 +4948,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     fresh = Without(fresh, spent);
                 }
                 pending = [];
-                fresh_value := (FreshArray(operand) && !array_place) || retained_element || mutated_owned ||
+                fresh_value := (FreshArray(operand) && !array_place) || retained_element || retained_task || mutated_owned ||
                                (operand.kind == facts.AwaitResultRow && TrackedRecord(managed, operand.type));
                 if (fresh_value && length(closes) > 0 && type == abi.TextStorage) {
                     logical_strings.append(produced);
@@ -5189,8 +5240,18 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 body.append(Op(native.Jump, 0, 0, 0, 0, 0));
                 slots.extend([array, integer, element]);
                 body.extend([Op(native.Local, array, slot, local, 0, 0), Op(native.Local, integer, slot + 1, local + 1, 0, 0),
-                             Op(native.ArrayGet, element, slot + 2, slot, slot + 1, 0),
-                             Op(native.Save, element, 0, slot + 2, 0, local + 2)]);
+                             Op(native.ArrayGet, element, slot + 2, slot, slot + 1, 0)]);
+                if (element == native.TaskType) {
+                    // The loop binding owns its observer even if the source
+                    // array is replaced while this iteration is suspended.
+                    slots.append(element);
+                    body.extend([Op(native.TaskCopy, element, slot + 3, slot + 2, 0, 0),
+                                 Op(native.Save, element, 0, slot + 3, 0, local + 2)]);
+                    owned_vars.append(length(places) - 1);
+                    if (Keyed(row)) { owned_vars[length(owned_vars) - 1] -= 1; }
+                    owned_types.append(element);
+                    slot += 1;
+                } else { body.append(Op(native.Save, element, 0, slot + 2, 0, local + 2)); }
                 slot += 3;
                 local += 3;
                 frames.append(frame);

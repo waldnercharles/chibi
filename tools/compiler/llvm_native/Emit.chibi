@@ -535,7 +535,7 @@ ArgumentCount :: (item: Instruction) -> int {
 // scalar, a string or one of the module's records.
 ElementType :: (records: Record[], type: int) -> int {
     element := type - ArrayType;
-    if (element <= 0 || element >= ArrayType || element == TaskType || element == ViewType || !Valued(records, element)) {
+    if (element <= 0 || element >= ArrayType || element == ViewType || !Valued(records, element)) {
         return 0;
     }
     return element;
@@ -1019,11 +1019,18 @@ WaitingFunctions :: (functions: Function[], code: Instruction[]) -> bool[] {
 // Whether any function waits or starts a task.
 Tasks :: (code: Instruction[]) -> bool {
     for (item in code) {
+        if (item.type == ArrayType + TaskType) { return true; }
         if (item.op == TaskCopy || item.op == TaskDrop || item.op == TaskRunning || item.op == AwaitResult || item.op == Suspend || item.op == AwaitHandle || item.op == Cancel || item.op == CancelAfter || item.op == Delay ||
             (item.op == Call && item.literal != i64(CallPlain))) {
             return true;
         }
     }
+    return false;
+}
+// A synthetic collection carrier can demand observer lifecycle helpers
+// without a direct Task instruction in the function that copies the record.
+TaskArrayFields :: (fields: int[]) -> bool {
+    for (type in fields) { if (type == ArrayType + TaskType) { return true; } }
     return false;
 }
 // A call names another function of the module, with its result type and one
@@ -1306,7 +1313,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if ((item.op == ValueCopy || item.op == ValueDrop) &&
             (!Typed(slots, item.left, item.type) ||
-             (ElementType(records, item.type) != 0 && !ValueCollectorCopyable(lifecycle, item.type - ArrayType)) ||
+             (ElementType(records, item.type) != 0 && item.type != ArrayType + TaskType && !ValueCollectorCopyable(lifecycle, item.type - ArrayType)) ||
              (item.type != abi.TextStorage && ElementType(records, item.type) == 0 &&
               !MapPayloadValid(records, lifecycle, item.type) &&
               (item.type < RecordType || item.type >= ArrayType || !ValueCollectorCopyable(lifecycle, item.type) ||
@@ -2022,6 +2029,11 @@ Holding :: (type: int) -> bool {
     return type == ArrayType + abi.TextStorage;
 }
 ArrayRefs :: (record_owners: bool[], type: int, data: string, count: string, keep: bool) -> string {
+    if (type == ArrayType + TaskType) {
+        operation := "release";
+        if (keep) { operation = "retain"; }
+        return format_text("  call void @chibi_tasks.{}_range(ptr {}, i32 {})\n", operation, data, count);
+    }
     if (Holding(type)) {
         if (keep) { return format_text("  call void @chibi_scalar.retain_range(ptr {}, i32 {})\n", data, count); }
         return format_text("  call void @chibi_scalar.free_range(ptr %ctx, ptr {}, i32 {})\n", data, count);
@@ -2226,7 +2238,9 @@ ArrayRead :: (item: Instruction, pc: int, record_owners: bool[], program: bool) 
     forgiving := item.op == ArraySet && item.literal == i64(ArraySetUnchanged);
     if (forgiving) {
         // The prepared item owns its leaves even when no element is replaced.
-        out = format_text("{}{}", out, ArrayRefs(record_owners, item.type, format_text("%s{}", item.target), "1", false));
+        if (item.type != ArrayType + TaskType) {
+            out = format_text("{}{}", out, ArrayRefs(record_owners, item.type, format_text("%s{}", item.target), "1", false));
+        }
         out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "s", item.output));
         out = format_text("{}  br label %array_done{}\ninside{}:\n", out, pc, pc);
     } else if ((item.op == ArrayGet && item.literal != 0) ||
@@ -2241,6 +2255,10 @@ ArrayRead :: (item: Instruction, pc: int, record_owners: bool[], program: bool) 
     }
     if (item.op == ArrayGet && item.literal == i64(ArrayGetPlaceCheck)) {
         return format_text("{}{}", out, Store("true", abi.BoolStorage, "s", item.output));
+    }
+    if (item.op == ArraySet && item.type == ArrayType + TaskType) {
+        out = format_text("{}{}", out, Load(format_text("incoming{}", pc), TaskType, "s", item.target));
+        out = format_text("{}  call void @chibi_tasks.retain(i64 %incoming{})\n", out, pc);
     }
     writable := format_text("%a{}", pc);
     if (item.op == ArraySet) {
@@ -2269,6 +2287,7 @@ ArrayPushed :: (item: Instruction, pc: int) -> string {
     array := abi.ArrayType();
     element := item.type - ArrayType;
     out := Load(format_text("c{}", pc), element, "s", item.right);
+    if (element == TaskType) { out = format_text("{}  call void @chibi_tasks.retain(i64 %c{})\n", out, pc); }
     out = format_text("{}  %next{} = add i32 %length{}, 1\n", out, pc, pc);
     out = format_text("{}  %unique{} = call {} @chibi_array.{}.unique(ptr %ctx, {} %a{}, i32 %next{}, i1 {})\n",
                       out, pc, array, item.type, array, pc, pc, item.literal == 1);
@@ -3566,7 +3585,8 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     if (!abi.Supported(target)) {
         return Result.Rejected(-1, "unsupported native target");
     }
-    if (abi.Same(target, abi.WebAssembly32()) && Tasks(code)) {
+    tasks := Tasks(code) || TaskArrayFields(fields);
+    if (abi.Same(target, abi.WebAssembly32()) && tasks) {
         return Result.Rejected(-1, "native WebAssembly tasks have no runtime yet");
     }
     if (!Layout(functions, parameters, slots, locals, code, arguments)) {
@@ -3677,13 +3697,13 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         return Result.Rejected(-1, "native retained states differ from their loads");
     }
     // A program's main has no context to pass.
-    runtime := Runtime(code, family) || managed || snapshots || clock_owner;
+    runtime := Runtime(code, family) || tasks || managed || snapshots || clock_owner;
     guarded := managed || (family && runtime);
     if (runtime && mode == MainEntry) {
         return Result.Rejected(-1, "a native program cannot call the runtime yet");
     }
     // A waiting entry is a coroutine that chibi_scalar runs with the tasks.
-    if (Tasks(code) && (mode == ScalarEntry || mode == ProgramEntry)) {
+    if (tasks && (mode == ScalarEntry || mode == ProgramEntry)) {
         if (mode == ProgramEntry) { mode = ProgramCoroutineEntry; } else { mode = CoroutineEntry; }
     }
     debug := source.file != "";
@@ -3729,7 +3749,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     // A program splits into pieces that opt and llc compile at once; a
     // library's manifests and line tables' metadata name every function, so
     // those stay one piece.
-    bounds := Pieces(functions, mode != NoEntry && !debug && !Tasks(code));
+    bounds := Pieces(functions, mode != NoEntry && !debug && !tasks);
     pieces := length(bounds) - 1;
     home: int[] = [];
     for (piece in 0..<pieces) {
@@ -3881,7 +3901,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         if (printed) { out.append("declare void @chibi_print_string(ptr, ptr, i32)\n"); }
         out.append(format_text("{}declare void @llvm.trap()\n{}{}", Failures(functions, code, texts, first, last, ProgramMode(mode)),
                                Declarations(held), foreign_declarations));
-        if (Tasks(held)) {
+        if (tasks) {
             out.append(CoroutineDeclarations());
             if (testing) { out.append("declare void @chibi_native_test_busy(i32)\n"); }
         }
@@ -3895,7 +3915,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             }
             out.append(format_text("\n{}", text));
         }
-        if (Tasks(held)) {
+        if (tasks) {
             timed := false;
             for (item in held) {
                 timed = timed || item.op == CancelAfter || item.op == Delay;
@@ -3947,12 +3967,13 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
                 loan.instruction < functions[last - 1].first_code + functions[last - 1].code) { loan_arrays.append(loan.type); }
         }
         value_uses := ValueUses(held, records, fields, record_owners, promises, loan_arrays);
+        if (value_uses.arrays[TaskType] != 0) { out.append(TaskArrayRuntime()); }
         array_helpers := ArrayModule(value_uses.arrays, record_owners, rooted_lifecycle.backed, managed_records.traced, guarded);
         out.append(array_helpers);
         value_comparisons := piece == 0 && length(comparison_roots) > 0;
         if (value_comparisons) {
             if (!snapshots) { out.append(SnapshotQueueRuntime(guarded)); }
-            out.append(ValueEqualityModule(value_shapes, comparison_roots, guarded));
+            out.append(ValueEqualityModule(value_shapes, comparison_roots, guarded, value_uses.maps));
         }
         copies := Copies(held) || cell_text || array_helpers != "" || length(value_uses.maps) != 0 || snapshots || value_comparisons;
         if (mode == NoEntry) {
@@ -4946,6 +4967,7 @@ LibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[],
     if (snapshots) {
         error := SnapshotShapesValid(records, fields, field_names, states, shapes);
         if (error != "") { return Result.Rejected(-1, error); }
+        if (!SnapshotRootsSupported(shapes)) { return Result.Rejected(-1, "retained snapshot roots cannot contain maps"); }
     }
     if (length(state_characters) != 0 && length(state_characters) != length(states)) {
         return Result.Rejected(-1, "native character state metadata differs from retained state");
@@ -5003,7 +5025,7 @@ LibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[],
         case .Emitted(text):
             module = text;
     }
-    runtime := Runtime(code, family) || snapshots;
+    runtime := Runtime(code, family) || TaskArrayFields(fields) || snapshots;
     retained_text := false;
     for (item in RetainedStates(code)) {
         retained_text = retained_text || item.type == abi.TextStorage;
@@ -5530,75 +5552,15 @@ MapShared :: (guarded: bool = false) -> string {
     return strings.ReplaceAll(text, "$LIMIT", format_text("{}", MapLimit));
 }
 
-// The helpers of map type `type`, named `@chibi_map.<type>.<helper>`: hash,
-// same, find, get, has, set, delete, copy and drop.
-MapHelpers :: (type: int, native_program: bool, owners: bool[], backed: bool[], carrier: bool) -> string {
+// Comparison-only modules borrow map entries and need only this lookup.
+// Keep the same indexed probe and bounded tiny-map scan as ordinary reads.
+MapLookup :: (type: int, text_equal: string = "chibi_scalar.text_equal") -> string {
     key := MapKey(type);
-    value := MapValue(type);
-    keyed := key == abi.TextStorage;
-    valued := MapPayloadOwned(value, owners);
-    prehash := "  %wide = zext $K %key to i64";
     same := "  %same = icmp eq $K %a, %b";
-    missing := "  ret $V zeroinitializer";
-    fallback := "";
-    if (value >= RecordType && value < ArrayType) {
-        missing = "  call void @llvm.trap()\n  unreachable";
-        if (native_program) { missing = "  call void @chibi_native_failure(i32 2)\n  unreachable"; }
-        fallback = ", i1 %zero_default";
-        missing = format_text("  br i1 %zero_default, label %zero, label %absent\nzero:\n  ret $V zeroinitializer\nabsent:\n{}", missing);
-    }
-    if (keyed) {
-        prehash = "  %wide = call i64 @chibi_map.text_hash($K %key)";
-        same = "  %same = call i1 @chibi_scalar.text_equal($K %a, $K %b)";
-    } else if (abi.IntegerBits(key) == 64) {
-        prehash = "  %wide = add i64 %key, 0";
-    }
-    // What replacing a value, or deleting an entry, gives back.
-    replaced: string[] = [];
-    deleted: string[] = [];
-    if (valued) {
-        replaced.append(format_text("  %old = load $V, ptr %rv\n{}", MapOwner("release", "%old", "rv", value)));
-        deleted.append(format_text("  %dv = getelementptr inbounds $E, ptr %hole, i32 0, i32 1\n  %dvv = load $V, ptr %dv\n{}",
-                                   MapOwner("release", "%dvv", "dv", value)));
-    }
-    if (keyed) {
-        replaced.append(MapOwner("release", "%key", "rk", key));
-        deleted.append(format_text("  %dk = getelementptr inbounds $E, ptr %hole, i32 0, i32 0\n  %dkv = load $K, ptr %dk\n{}",
-                                   MapOwner("release", "%dkv", "dk", key)));
-    }
-    address := "";
-    if (MapArrayValue(value) || carrier) {
-        unavailable := "  call void @llvm.trap()\n  unreachable";
-        if (native_program) { unavailable = "  call void @chibi_native_failure(i32 0)\n  unreachable"; }
-        address = strings.Join([
-            "define internal ptr @chibi_map.$N.address($M %m, $K %wanted, i1 %required) {",
-            "entry:",
-            "  %used = extractvalue $M %m, 1",
-            "  %slots = extractvalue $M %m, 3",
-            "  %entries = extractvalue $M %m, 4",
-            "  %index = extractvalue $M %m, 5",
-            "  %hash = call i32 @chibi_map.$N.hash($K %wanted)",
-            "  %at = call i32 @chibi_map.$N.find(ptr %entries, ptr %index, i32 %used, i32 %slots, $K %wanted, i32 %hash)",
-            "  %present = icmp sge i32 %at, 0",
-            "  br i1 %present, label %hit, label %miss",
-            "hit:",
-            "  %off = zext i32 %at to i64",
-            "  %ve = getelementptr inbounds $E, ptr %entries, i64 %off, i32 1",
-            "  ret ptr %ve",
-            "miss:", "  br i1 %required, label %failure, label %absent",
-            "absent:", "  ret ptr null", "failure:", unavailable, "}"
-        ], "\n");
+    if (key == abi.TextStorage) {
+        same = format_text("  %same = call i1 @{}($K %a, $K %b)", text_equal);
     }
     text := strings.Join([
-        "$ADDRESS",
-        "define internal i32 @chibi_map.$N.hash($K %key) {",
-        "entry:",
-        "$PREHASH",
-        "  %raw = call i32 @chibi_map.mix(i64 %wide)",
-        "  %zero = icmp eq i32 %raw, 0",
-        "  %hash = select i1 %zero, i32 1, i32 %raw",
-        "  ret i32 %hash",
-        "}",
         "define internal i1 @chibi_map.$N.same($K %a, $K %b) {",
         "entry:",
         "$SAME",
@@ -5672,6 +5634,81 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[], backed: bool[], 
         "  %pnext = and i32 %pn, %mask",
         "  %dnext = add i32 %dist, 1",
         "  br label %walk",
+        "}"
+    ], "\n");
+    text = strings.ReplaceAll(text, "$SAME", same);
+    text = strings.ReplaceAll(text, "$E", format_text("{ {}, {}, i32 }", TypeName(key), TypeName(MapValue(type))));
+    text = strings.ReplaceAll(text, "$K", TypeName(key));
+    return strings.ReplaceAll(text, "$N", format_text("{}", type));
+}
+
+// The helpers of map type `type`, named `@chibi_map.<type>.<helper>`: hash,
+// same, find, get, has, set, delete, copy and drop.
+MapHelpers :: (type: int, native_program: bool, owners: bool[], backed: bool[], carrier: bool) -> string {
+    key := MapKey(type);
+    value := MapValue(type);
+    keyed := key == abi.TextStorage;
+    valued := MapPayloadOwned(value, owners);
+    prehash := "  %wide = zext $K %key to i64";
+    missing := "  ret $V zeroinitializer";
+    fallback := "";
+    if (value >= RecordType && value < ArrayType) {
+        missing = "  call void @llvm.trap()\n  unreachable";
+        if (native_program) { missing = "  call void @chibi_native_failure(i32 2)\n  unreachable"; }
+        fallback = ", i1 %zero_default";
+        missing = format_text("  br i1 %zero_default, label %zero, label %absent\nzero:\n  ret $V zeroinitializer\nabsent:\n{}", missing);
+    }
+    if (keyed) {
+        prehash = "  %wide = call i64 @chibi_map.text_hash($K %key)";
+    } else if (abi.IntegerBits(key) == 64) {
+        prehash = "  %wide = add i64 %key, 0";
+    }
+    // What replacing a value, or deleting an entry, gives back.
+    replaced: string[] = [];
+    deleted: string[] = [];
+    if (valued) {
+        replaced.append(format_text("  %old = load $V, ptr %rv\n{}", MapOwner("release", "%old", "rv", value)));
+        deleted.append(format_text("  %dv = getelementptr inbounds $E, ptr %hole, i32 0, i32 1\n  %dvv = load $V, ptr %dv\n{}",
+                                   MapOwner("release", "%dvv", "dv", value)));
+    }
+    if (keyed) {
+        replaced.append(MapOwner("release", "%key", "rk", key));
+        deleted.append(format_text("  %dk = getelementptr inbounds $E, ptr %hole, i32 0, i32 0\n  %dkv = load $K, ptr %dk\n{}",
+                                   MapOwner("release", "%dkv", "dk", key)));
+    }
+    address := "";
+    if (MapArrayValue(value) || carrier) {
+        unavailable := "  call void @llvm.trap()\n  unreachable";
+        if (native_program) { unavailable = "  call void @chibi_native_failure(i32 0)\n  unreachable"; }
+        address = strings.Join([
+            "define internal ptr @chibi_map.$N.address($M %m, $K %wanted, i1 %required) {",
+            "entry:",
+            "  %used = extractvalue $M %m, 1",
+            "  %slots = extractvalue $M %m, 3",
+            "  %entries = extractvalue $M %m, 4",
+            "  %index = extractvalue $M %m, 5",
+            "  %hash = call i32 @chibi_map.$N.hash($K %wanted)",
+            "  %at = call i32 @chibi_map.$N.find(ptr %entries, ptr %index, i32 %used, i32 %slots, $K %wanted, i32 %hash)",
+            "  %present = icmp sge i32 %at, 0",
+            "  br i1 %present, label %hit, label %miss",
+            "hit:",
+            "  %off = zext i32 %at to i64",
+            "  %ve = getelementptr inbounds $E, ptr %entries, i64 %off, i32 1",
+            "  ret ptr %ve",
+            "miss:", "  br i1 %required, label %failure, label %absent",
+            "absent:", "  ret ptr null", "failure:", unavailable, "}"
+        ], "\n");
+    }
+    text := strings.Join([
+        "$ADDRESS",
+        MapLookup(type),
+        "define internal i32 @chibi_map.$N.hash($K %key) {",
+        "entry:",
+        "$PREHASH",
+        "  %raw = call i32 @chibi_map.mix(i64 %wide)",
+        "  %zero = icmp eq i32 %raw, 0",
+        "  %hash = select i1 %zero, i32 1, i32 %raw",
+        "  ret i32 %hash",
         "}",
         "define internal $V @chibi_map.$N.get($M %m, $K %wanted$GET_DEFAULT) {",
         "entry:",
@@ -6018,7 +6055,6 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[], backed: bool[], 
     text = strings.ReplaceAll(text, "$SCANNED", format_text("{}", MapScanned));
     text = strings.ReplaceAll(text, "$LIMIT", format_text("{}", MapLimit));
     text = strings.ReplaceAll(text, "$PREHASH", prehash);
-    text = strings.ReplaceAll(text, "$SAME", same);
     text = strings.ReplaceAll(text, "$MISSING", missing);
     text = strings.ReplaceAll(text, "$GET_DEFAULT", fallback);
     text = strings.ReplaceAll(text, "$REPLACED", strings.TrimSuffix(strings.Join(replaced, ""), "\n"));

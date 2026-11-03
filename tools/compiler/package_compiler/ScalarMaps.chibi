@@ -5,7 +5,7 @@ import snapshot "project:source_snapshot"
 import syntax "project:syntax_diagnostics"
 import tk "project:source_tokenizer"
 
-// Native maps have scalar/string keys and scalar/string/record or array values.
+// Native maps have scalar/string keys and owned value or array payloads.
 // The ordinary compiler supplies the types; lowering checks record ownership.
 ScalarMapArrayValue :: (types: TypeDecl[], record: int) -> bool {
     return record >= 0 && record < length(types) && types[record].kind == MapDecl &&
@@ -19,12 +19,16 @@ ScalarMapType :: (types: TypeDecl[], record: int) -> int {
     declared := types[record];
     key := ScalarTypeOf(declared.key);
     value := ScalarTypeOf(declared.value_storage);
-    if (declared.value_storage == StructStorage) { value = ScalarRecordType(types, declared.value_record); }
+    // Authored unions require a present key. Optional values need a nil
+    // default on a missing key, which the aggregate MapGet does not supply.
+    authored_union := declared.value_storage == UnionStorage && declared.value_record >= 0 &&
+                      types[declared.value_record].kind == UnionDecl;
+    if (declared.value_storage == StructStorage || authored_union) { value = ScalarRecordType(types, declared.value_record); }
     array := ScalarMapArrayValue(types, record);
     if (array) { value = ScalarArrayType(types, declared.value_storage, declared.value_record); }
     if ((facts.Bits(key) == 0 && key != facts.BoolType && key != facts.StringType) ||
         value == 0 || declared.value_storage == TaskStorage || (declared.value_container != 0 && !array) ||
-        (declared.value_record >= 0 && declared.value_storage != StructStorage && !array)) {
+        (declared.value_record >= 0 && declared.value_storage != StructStorage && !authored_union && !array)) {
         return 0;
     }
     return facts.MapType + value * 16 + key;

@@ -293,6 +293,8 @@ try {
         'llvm_native/ForeignArrays.chibi' = 'tools/compiler/llvm_native/ForeignArrays.chibi'
         'llvm_native/Arrays.chibi' = 'tools/compiler/llvm_native/Arrays.chibi'
         'llvm_native/Values.chibi' = 'tools/compiler/llvm_native/Values.chibi'
+        'llvm_native/ValueEquality.chibi' = 'tools/compiler/llvm_native/ValueEquality.chibi'
+        'llvm_native/ValuePairs.chibi' = 'tools/compiler/llvm_native/ValuePairs.chibi'
         'llvm_native/Snapshots.chibi' = 'tools/compiler/llvm_native/Snapshots.chibi'
         'llvm_native/SnapshotMemo.chibi' = 'tools/compiler/llvm_native/SnapshotMemo.chibi'
         'llvm_native/SnapshotQueue.chibi' = 'tools/compiler/llvm_native/SnapshotQueue.chibi'

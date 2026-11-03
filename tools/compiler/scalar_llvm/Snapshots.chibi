@@ -4,9 +4,9 @@ import abi "project:native_abi"
 import native "project:llvm_native"
 import facts "project:scalar_facts"
 
-// The complete graph is shared by every opaque retained root in an image.
+// One graph preserves the layout of opaque retained values and comparisons.
 // Facts/native type ordinals identify nodes only while building this table.
-RetainedShapes :: struct {
+ValueShapes :: struct {
     nodes: native.SnapshotShapeNode[];
     edges: native.SnapshotShapeEdge[];
     roots: int[];
@@ -14,7 +14,7 @@ RetainedShapes :: struct {
     heads: int[];
     canonical: int[];
 }
-RetainedShapeNode :: (build: ^RetainedShapes, rows: facts.Row[], records: int[], type: int, character: bool) -> int {
+ValueShapeNode :: (build: ^ValueShapes, rows: facts.Row[], records: int[], type: int, character: bool) -> int {
     storage := type;
     key := storage;
     if (character) { key = native.MapType; }
@@ -41,13 +41,15 @@ RetainedShapeNode :: (build: ^RetainedShapes, rows: facts.Row[], records: int[],
 // Called only after facts and retained-value admission validate every reachable
 // type. One worklist visits each type/variant and appends each edge once.
 RetainedShapeGraph :: (rows: facts.Row[], records: int[], code: native.Instruction[], count: int, characters: bool[]) -> native.SnapshotShapes {
-    build: RetainedShapes = {nodes: [], edges: [], roots: [], types: [], heads: [], canonical: []};
-    states := resize([Op(native.Check, 0, 0, 0, 0, 0)], count);
+    types := resize([int(0)], count);
     for (item in code) {
-        if (item.op == native.StateLoad) { states[item.target] = item; }
+        if (item.op == native.StateLoad) { types[item.target] = item.type; }
     }
-    for (binding, index in states) {
-        type := binding.type;
+    return ValueShapeGraph(rows, records, types, characters);
+}
+ValueShapeGraph :: (rows: facts.Row[], records: int[], roots: int[], characters: bool[]) -> native.SnapshotShapes {
+    build: ValueShapes = {nodes: [], edges: [], roots: [], types: [], heads: [], canonical: []};
+    for (type, index in roots) {
         opaque := type >= native.RecordType && type < native.ArrayType;
         if (type >= native.ArrayType && type < native.MapType) {
             opaque = abi.ScalarType(type - native.ArrayType) == "";
@@ -58,7 +60,7 @@ RetainedShapeGraph :: (rows: facts.Row[], records: int[], code: native.Instructi
             for (slot in 0..<length(canonical)) { canonical[slot] = -1; }
             build.canonical = canonical;
         }
-        root := RetainedShapeNode(&build, rows, records, type, characters[index]);
+        root := ValueShapeNode(&build, rows, records, type, characters[index]);
         build.roots.append(root);
     }
     at := 0;
@@ -68,7 +70,7 @@ RetainedShapeGraph :: (rows: facts.Row[], records: int[], code: native.Instructi
         head := build.heads[at];
         node.first = length(build.edges);
         if (node.kind == native.SnapshotArray) {
-            child := RetainedShapeNode(&build, rows, records, type - native.ArrayType, false);
+            child := ValueShapeNode(&build, rows, records, type - native.ArrayType, false);
             build.edges.append({name: "", target: child});
         } else if (node.kind == native.SnapshotUnion) {
             variant := head + 1;
@@ -83,7 +85,7 @@ RetainedShapeGraph :: (rows: facts.Row[], records: int[], code: native.Instructi
         } else if (node.kind == native.SnapshotRecord || node.kind == native.SnapshotVariant) {
             for (field in head + 1..<head + 1 + rows[head].count) {
                 member := rows[field];
-                child := RetainedShapeNode(&build, rows, records, NativeType(member.type), member.literal == i64(facts.CharNominal));
+                child := ValueShapeNode(&build, rows, records, NativeType(member.type), member.literal == i64(facts.CharNominal));
                 build.edges.append({name: member.name, target: child});
             }
         }

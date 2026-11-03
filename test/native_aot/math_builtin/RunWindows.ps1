@@ -44,7 +44,11 @@ try {
                 --llvm $llvmPath --target x86_64-pc-windows-msvc --level $level --jobs 2
             if ($LASTEXITCODE) { throw "could not compile built-in math $source at O$level" }
             & $program
-            if ($LASTEXITCODE) { throw "built-in math $source failed at O$level" }
+            $status = $LASTEXITCODE
+            if ($status) {
+                $hex = '{0:X8}' -f ([long]$status -band [long]4294967295)
+                throw "built-in math $source failed at O$level with exit $status (0x$hex)"
+            }
         }
         # Scope core selection to each test child; the caller's environment is unchanged.
         $samples = Invoke-MathTests "$root/test/compiler/samples/math" "$level"

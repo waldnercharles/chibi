@@ -171,9 +171,10 @@ pub ArraySlice: int : 44;
 // output = a new array of the right slot's int length, 0 if it is negative:
 // the first elements of the left slot's array, then zeros.
 pub ArrayResize: int : 45;
-// output = whether an element of the left slot's array equals the right
-// slot's value, a bool; literal is the element type, a number, bool or
-// string. A string is equal by its bytes, and a float as IEEE compares it.
+// BoolStorage output gives membership; IntStorage gives the first equal
+// index or -1. Literal is the element type. Numbers/bool/strings require
+// target0; records/unions require target=1+their validated value-shape index.
+// Strings compare bytes, floats use IEEE equality, unions only active payloads.
 pub ArrayContains: int : 46;
 // output = the left slot's array without its element at the right slot's int
 // index, or as it is for an index outside it; type is the array type. The
@@ -979,7 +980,8 @@ CallValid :: (functions: Function[], parameters: int[], slots: int[], arguments:
 Validate :: (functions: Function[], function: int, module_parameters: int[], module_slots: int[],
              module_locals: int[], module_code: Instruction[], module_arguments: int[], records: Record[],
              fields: int[], field_tags: i64[], texts: string[], mode: int, waiting: bool[], lifecycle: ValueLayout,
-             managed_records: ManagedRecordLayout, family: bool, snapshots: bool, clock_owner: bool) -> Result {
+             managed_records: ManagedRecordLayout, family: bool, snapshots: bool, clock_owner: bool,
+             value_shapes: SnapshotShapes) -> Result {
     shape := functions[function];
     parameters := Part(module_parameters, shape.first_parameter, shape.parameters);
     slots := Part(module_slots, shape.first_slot, shape.slots);
@@ -1198,7 +1200,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if ((item.op == ArrayPush || item.op == ArrayExtend) && item.literal != 0 && item.literal != 1) {
             return Result.Rejected(base + pc, "native array growth ownership is not 0 or 1");
         }
-        if (((item.op >= ArrayLength && item.op <= ArrayBytes) || item.op == ArrayText || item.op == ArrayInsert || item.op == ArrayReverse) && !ArrayValid(records, slots, item)) {
+        if (((item.op >= ArrayLength && item.op <= ArrayBytes) || item.op == ArrayText || item.op == ArrayInsert || item.op == ArrayReverse) && !ArrayValid(records, slots, item, value_shapes.nodes)) {
             return Result.Rejected(base + pc, "native array operation differs from its operands");
         }
         if (MapOperation(item.op) && !MapValid(records, lifecycle, slots, item)) {
@@ -1353,13 +1355,15 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
 }
 // Whether an array instruction reads the slots of its operands' types. The
 // array is the left slot's: ArrayLength reads any array and gives an int,
-// ArrayGet one of type's elements, ArrayContains one of a number, bool or
-// string array and the element, literal its type, to give a bool, and the
+// ArrayGet one of type's elements. ArrayContains reads the array and one
+// element, literal its type. A BoolStorage result gives membership;
+// IntStorage gives the first matching index or -1. Composite search requires
+// target=1+its validated value-shape index. The
 // others give the array type itself, ArraySet reading an int index right and a
 // value in slot `target`, ArrayPush a value right, ArrayExtend another array,
 // ArraySlice an int start right and an int count in slot `target`, and
 // ArrayResize and ArrayRemove an int right.
-ArrayValid :: (records: Record[], slots: int[], item: Instruction) -> bool {
+ArrayValid :: (records: Record[], slots: int[], item: Instruction, nodes: SnapshotShapeNode[]) -> bool {
     if (!Index(item.left, length(slots))) {
         return false;
     }
@@ -1382,9 +1386,13 @@ ArrayValid :: (records: Record[], slots: int[], item: Instruction) -> bool {
                (item.literal == 0 || item.literal == 1);
     }
     if (item.op == ArrayContains) {
+        // Bool gives membership; int gives the first matching index or -1.
         searched := ElementType(records, held);
-        return item.type == abi.BoolStorage && searched != 0 && searched < RecordType && searched != PointerType && item.literal == i64(searched) &&
-               Typed(slots, item.right, searched);
+        if ((item.type != abi.BoolStorage && item.type != abi.IntStorage) || searched == 0 || searched == PointerType ||
+            item.literal != i64(searched) || !Typed(slots, item.right, searched)) { return false; }
+        if (searched < RecordType) { return item.target == 0; }
+        return Index(item.target - 1, length(nodes)) && nodes[item.target - 1].type == searched &&
+               (nodes[item.target - 1].kind == SnapshotRecord || nodes[item.target - 1].kind == SnapshotUnion);
     }
     element := ElementType(records, item.type);
     if (element == 0 || held != item.type) {
@@ -2209,7 +2217,11 @@ ArrayFound :: (item: Instruction, pc: int) -> string {
     array := abi.ArrayType();
     element := int(item.literal);
     type := TypeName(element);
-    out := Load(format_text("w{}", pc), element, "s", item.right);
+    out := "";
+    aggregate := item.target > 0;
+    if (aggregate) {
+        out = format_text("  store {} zeroinitializer, ptr %equal{}\n", ValueEqualityStorage(), pc);
+    } else { out = Load(format_text("w{}", pc), element, "s", item.right); }
     out = format_text("{}  %data{} = extractvalue {} %a{}, 2\n", out, pc, array, pc);
     out = format_text("{}  br label %scan{}\nscan{}:\n", out, pc, pc);
     out = format_text("{}  %at{} = phi i32 [ 0, %p{} ], [ %next{}, %step{} ]\n", out, pc, pc, pc, pc);
@@ -2217,8 +2229,11 @@ ArrayFound :: (item: Instruction, pc: int) -> string {
     out = format_text("{}  br i1 %end{}, label %missing{}, label %look{}\nlook{}:\n", out, pc, pc, pc, pc);
     out = format_text("{}  %offset{} = zext i32 %at{} to i64\n", out, pc, pc);
     out = format_text("{}  %place{} = getelementptr inbounds {}, ptr %data{}, i64 %offset{}\n", out, pc, type, pc, pc);
-    out = format_text("{}  %item{} = load {}, ptr %place{}\n", out, pc, type, pc);
-    if (element == abi.TextStorage) {
+    if (!aggregate) { out = format_text("{}  %item{} = load {}, ptr %place{}\n", out, pc, type, pc); }
+    if (aggregate) {
+        out = format_text("{}  %same{} = call i1 @chibi_value_equal.{}(ptr %ctx, ptr %equal{}, ptr %place{}, ptr %s{})\n",
+                          out, pc, item.target - 1, pc, pc, item.right);
+    } else if (element == abi.TextStorage) {
         out = format_text("{}  %same{} = call i1 @chibi_scalar.text_equal({} %item{}, {} %w{})\n", out, pc, type, pc, type,
                           pc);
     } else if (abi.Floating(element)) {
@@ -2230,8 +2245,11 @@ ArrayFound :: (item: Instruction, pc: int) -> string {
     out = format_text("{}  %next{} = add i32 %at{}, 1\n  br label %scan{}\nmissing{}:\n  br label %done{}\nfound{}:\n", out, pc,
                       pc, pc, pc, pc, pc);
     out = format_text("{}  br label %done{}\ndone{}:\n", out, pc, pc);
-    out = format_text("{}  %v{} = phi i1 [ false, %missing{} ], [ true, %found{} ]\n", out, pc, pc, pc);
-    return format_text("{}{}", out, Store(format_text("%v{}", pc), abi.BoolStorage, "s", item.output));
+    if (item.type == abi.IntStorage) {
+        out = format_text("{}  %v{} = phi i32 [ -1, %missing{} ], [ %at{}, %found{} ]\n", out, pc, pc, pc, pc);
+    } else { out = format_text("{}  %v{} = phi i1 [ false, %missing{} ], [ true, %found{} ]\n", out, pc, pc, pc); }
+    if (aggregate) { out = format_text("{}  call void @chibi_value_equal.release(ptr %ctx, ptr %equal{})\n", out, pc); }
+    return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
 }
 // The array loaded as %a<pc> without its element at the index in the right
 // slot, the elements after it moved down, if the index is inside it.
@@ -2766,6 +2784,9 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
             out.append(format_text("  %values{} = alloca [{} x {}]\n  %text{} = alloca {}\n", pc, item.target,
                                    abi.ValueType(), pc, abi.TextType()));
         }
+        if (item.op == ArrayContains && item.target > 0) {
+            out.append(format_text("  %equal{} = alloca {}\n", pc, ValueEqualityStorage()));
+        }
         if (item.op == StateStore && item.type >= RecordType && item.type < ArrayType && record_owners[item.type - RecordType]) {
             out.append(format_text("  %state.owned{} = alloca {}\n", pc, TypeName(item.type)));
         }
@@ -3247,6 +3268,17 @@ Declarations :: (code: Instruction[]) -> string {
 Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
            code: Instruction[], arguments: int[], records: Record[], fields: int[], field_tags: i64[], texts: string[], source: Source,
            names: string[], lines: int[], columns: int[], mode: int, step_budget: int, family: bool = false, snapshots: bool = false, clock_owner: bool = false) -> Result {
+    empty: SnapshotShapes = {nodes: [], edges: [], roots: []};
+    return ModuleValues(target, functions, parameters, slots, locals, code, arguments, records, fields, field_tags, texts,
+        source, names, lines, columns, mode, step_budget, family, snapshots, clock_owner, empty, []);
+}
+ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
+           code: Instruction[], arguments: int[], records: Record[], fields: int[], field_tags: i64[], texts: string[], source: Source,
+           names: string[], lines: int[], columns: int[], mode: int, step_budget: int, family: bool, snapshots: bool, clock_owner: bool, value_shapes: SnapshotShapes, field_names: string[]) -> Result {
+    if (length(value_shapes.nodes) != 0 || length(value_shapes.edges) != 0 || length(value_shapes.roots) != 0) {
+        error := SnapshotShapesValid(records, fields, field_names, RetainedStates(code), value_shapes);
+        if (error != "") { return Result.Rejected(-1, error); }
+    }
     if (step_budget <= 0) {
         return Result.Rejected(-1, "native CHECK budget must be positive");
     }
@@ -3324,7 +3356,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     lifecycle := ValueLayouts(records, fields);
     for (function in 0..<length(functions)) {
         switch Validate(functions, function, parameters, slots, locals, code, arguments, records, fields, field_tags, texts,
-                        mode, waiting, lifecycle, managed_records, family, snapshots, clock_owner || !abi.Same(target, abi.WebAssembly32())) {
+                        mode, waiting, lifecycle, managed_records, family, snapshots, clock_owner || !abi.Same(target, abi.WebAssembly32()), value_shapes) {
             case .Rejected(instruction, message):
                 return Result.Rejected(instruction, message);
             case .Emitted(text):
@@ -3363,6 +3395,17 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
                 slot := arguments[shape.first_argument + item.right + index];
                 type := slots[shape.first_slot + slot];
                 if (type != abi.TextStorage && abi.ValueTag(type) != 0) { numeric_formatting = true; }
+            }
+        }
+    }
+    comparison_roots: int[] = [];
+    comparison_marks: int[] = [];
+    if (length(value_shapes.nodes) > 0) {
+        comparison_marks = resize([int(0)], length(value_shapes.nodes));
+        for (item in code) {
+            if (item.op == ArrayContains && item.target > 0 && comparison_marks[item.target - 1] == 0) {
+                comparison_marks[item.target - 1] = -1;
+                comparison_roots.append(item.target - 1);
             }
         }
     }
@@ -3538,6 +3581,17 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             }
             out.append(callbacks);
         }
+        if (piece > 0 && length(comparison_roots) > 0) {
+            declared := false;
+            for (item in held) {
+                if (item.op != ArrayContains || item.target <= 0) { continue; }
+                root := item.target - 1;
+                if (comparison_marks[root] == piece) { continue; }
+                comparison_marks[root] = piece;
+                if (!declared) { out.append("declare hidden void @chibi_value_equal.release(ptr, ptr)\n"); declared = true; }
+                out.append(format_text("declare hidden i1 @chibi_value_equal.{}(ptr, ptr, ptr, ptr)\n", root));
+            }
+        }
         // Each piece has its own copy of the helpers its functions call.
         if (Compares(held)) {
             text := TextEqual();
@@ -3549,7 +3603,12 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         value_uses := ValueUses(held, records, fields, record_owners);
         array_helpers := ArrayModule(value_uses.arrays, record_owners, lifecycle.backed);
         out.append(array_helpers);
-        copies := Copies(held) || array_helpers != "" || snapshots;
+        value_comparisons := piece == 0 && length(comparison_roots) > 0;
+        if (value_comparisons) {
+            if (!snapshots) { out.append(SnapshotQueueRuntime()); }
+            out.append(ValueEqualityModule(value_shapes, comparison_roots));
+        }
+        copies := Copies(held) || array_helpers != "" || snapshots || value_comparisons;
         if (mode == NoEntry) {
             // The library's retained-text migration also copies bytes, using
             // the same freestanding helper as array operations.
@@ -3559,7 +3618,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         if (copies) {
             out.append(format_text("\n{}", ArrayCopyHelper()));
         }
-        if (Zeroes(held)) {
+        if (Zeroes(held) || value_comparisons) {
             out.append(format_text("\n{}", ArrayZeroHelper()));
         }
         value_helpers := ValueModule(value_uses, records, fields, lifecycle);
@@ -3817,6 +3876,25 @@ pub EmitClockProgramTyped :: (target: abi.Target, functions: Function[], paramet
              source: Source, names: string[], lines: int[], columns: int[]) -> Result {
     return Module(target, functions, parameters, slots, locals, code, arguments, records, fields, field_tags, texts, source,
                   names, lines, columns, ProgramEntry, 1, false, false, true);
+}
+
+// Structural search requires the caller's validated value graph. The
+// ordinary scalar-context entry keeps its five callbacks; a standalone
+// program owns its existing runtime scope. Clock ownership stays explicit.
+pub EmitValuesTyped :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
+                        code: Instruction[], arguments: int[], records: Record[], fields: int[], field_tags: i64[], texts: string[],
+                        source: Source, names: string[], lines: int[], columns: int[], field_names: string[],
+                        shapes: SnapshotShapes, program: bool, clock_owner: bool) -> Result {
+    if (length(field_tags) != length(fields)) {
+        return Result.Rejected(-1, "native managed field identities differ from the field table");
+    }
+    if (clock_owner && !program) {
+        return Result.Rejected(-1, "native clock sampling requires an explicit seven-slot clock owner");
+    }
+    mode := ScalarEntry;
+    if (program) { mode = ProgramEntry; }
+    return ModuleValues(target, functions, parameters, slots, locals, code, arguments, records, fields, field_tags, texts,
+                        source, names, lines, columns, mode, 1, false, false, clock_owner, shapes, field_names);
 }
 
 // Whether `name` can end a C symbol: an ASCII letter or `_`, then letters,
@@ -4494,6 +4572,17 @@ pub EmitFamilySnapshotLibrary :: (target: abi.Target, name: string, names: strin
         records, fields, field_tags, texts, step_budget, field_names, entries, state_characters, true, true, shapes);
 }
 
+// The same graph can describe retained snapshots and comparison-only values.
+// Only snapshot roots request migration helpers or the transaction interface.
+pub EmitValuesLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
+                          parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
+                          records: Record[], fields: int[], field_tags: i64[], texts: string[], step_budget: int,
+                          field_names: string[], entries: int, state_characters: bool[], shapes: SnapshotShapes,
+                          family: bool, snapshots: bool) -> Result {
+    return LibraryStates(target, name, names, ids, functions, parameters, slots, locals, code, arguments,
+        records, fields, field_tags, texts, step_budget, field_names, entries, state_characters, family, snapshots, shapes);
+}
+
 LibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
                           parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
                           records: Record[], fields: int[], field_tags: i64[], texts: string[], step_budget: int, field_names: string[], entries: int,
@@ -4559,8 +4648,8 @@ LibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[],
     // A library has no line tables yet.
     source: Source = {file: "", directory: ""};
     no_positions: int[] = [];
-    switch Module(target, functions, parameters, slots, locals, code, arguments, records, fields, field_tags, texts, source,
-                  names, no_positions, no_positions, NoEntry, step_budget, family, snapshots) {
+    switch ModuleValues(target, functions, parameters, slots, locals, code, arguments, records, fields, field_tags, texts, source,
+                  names, no_positions, no_positions, NoEntry, step_budget, family, snapshots, false, shapes, field_names) {
         case .Rejected(instruction, message):
             return Result.Rejected(instruction, message);
         case .Emitted(text):

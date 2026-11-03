@@ -585,7 +585,7 @@ FreshArray :: (operand: facts.Row) -> bool {
     value := operand.value;
     return value == facts.ArrayNew || value == facts.ArrayCopy || value == facts.ArrayWith || value == facts.ArrayJoin ||
            value == facts.ArraySlice || value == facts.ArrayResize || value == facts.ArrayBytes || value == facts.ArrayText ||
-           value == facts.ArrayWithout || value == facts.ArrayLoan || value == facts.ArrayInserted || value == facts.ArrayReversed || value == facts.ArrayReplaced;
+           value == facts.ArrayWithout || value == facts.ArrayWithoutItem || value == facts.ArrayLoan || value == facts.ArrayInserted || value == facts.ArrayReversed || value == facts.ArrayReplaced;
 }
 // Whether the native `type` is owned by whoever holds it: an array, or a string.
 Owning :: (type: int) -> bool {
@@ -1005,7 +1005,7 @@ ArrayOperands :: (operand: facts.Row) -> int {
     if (operand.value == facts.ArrayInsert || operand.value == facts.ArrayInserted ||
         operand.value == facts.ArrayReplace || operand.value == facts.ArrayReplaced) { return 3 + extra; }
     if (operand.value == facts.ArrayReverse || operand.value == facts.ArrayReversed) { return 1 + extra; }
-    if (operand.value == facts.ArrayPlaceGet || operand.value == facts.ArrayPlaceCheck) { return 2; }
+    if (operand.value == facts.ArrayPlaceGet || operand.value == facts.ArrayPlaceCheck || operand.value == facts.ArrayWithoutItem) { return 2; }
     if (operand.value == facts.ArrayNew) { return operand.count; }
     consumed: int[] = [0, 0, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2, 2, 2, 1, 1, 2, 1];
     if (operand.value < facts.ArrayNew || operand.value > facts.ArrayLoan) { return 0; }
@@ -1287,8 +1287,9 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         if (stack[base + 1] != facts.IntType || stack[base + 2] != element) {
             return mismatch;
         }
-    } else if (operator == facts.ArrayPush || operator == facts.ArrayWith) {
-        if (stack[base + 1] != element) {
+    } else if (operator == facts.ArrayPush || operator == facts.ArrayWith || operator == facts.ArrayWithoutItem) {
+        if (stack[base + 1] != element ||
+            (operator == facts.ArrayWithoutItem && !Retainable(rows, records, element))) {
             return mismatch;
         }
     } else if (operator == facts.ArrayExtend || operator == facts.ArrayJoin) {
@@ -2605,6 +2606,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
     }
     value_layout := native.ValueLayouts(records, fields);
     managed := value_layout.owned;
+    comparison_sites: int[] = [];
+    comparison_types: bool[] = [];
     heads := Heads(rows, Start(rows, declared));
     // The open statement an End, Else or Case row belongs to, plus one; 0 for
     // any other row.
@@ -3971,12 +3974,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                             extra = 0;
                         }
                     } else if (operand.value == facts.ArrayWith || operand.value == facts.ArrayJoin ||
-                               operand.value == facts.ArrayWithout || operand.value == facts.ArrayInserted ||
+                               operand.value == facts.ArrayWithout || operand.value == facts.ArrayWithoutItem || operand.value == facts.ArrayInserted ||
                                operand.value == facts.ArrayReversed || operand.value == facts.ArrayReplaced) {
                         // Functional changes acquire one owning descriptor;
                         // a fresh input can transfer that owner directly.
                         input := stack[base];
-                        if ((operand.value == facts.ArrayWithout || operand.value == facts.ArrayInserted ||
+                        if ((operand.value == facts.ArrayWithout || operand.value == facts.ArrayWithoutItem || operand.value == facts.ArrayInserted ||
                              operand.value == facts.ArrayReversed || operand.value == facts.ArrayReplaced) && Holds(fresh, input)) {
                             fresh = Without(fresh, input);
                         } else {
@@ -3992,6 +3995,37 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         if (operand.count > 1) { right = stack[base + 1]; }
                         if (operand.value == facts.ArrayJoin) { change = native.ArrayExtend; }
                         if (operand.value == facts.ArrayWithout) { change = native.ArrayRemove; }
+                        if (operand.value == facts.ArrayWithoutItem) {
+                            element := type - native.ArrayType;
+                            found_slot := slot + 1 + extra;
+                            found := Op(native.ArrayContains, abi.IntStorage, found_slot, input, right, 0);
+                            found.literal = i64(element);
+                            slots.append(abi.IntStorage);
+                            extra += 1;
+                            if (element >= native.RecordType) {
+                                if (length(comparison_types) == 0) { comparison_types = resize([false], native.ArrayType); }
+                                comparison_types[element] = true;
+                            }
+                            // Composite equality allocates only traversal scratch.
+                            // Its allocator can synchronously collect this family.
+                            if (element >= native.RecordType && pointer_program) {
+                                glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
+                                    fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root, false, records, value_layout);
+                                next_root = glue.next;
+                                slots.extend(glue.types);
+                                extra += length(glue.types);
+                                body.extend(glue.before);
+                                comparison_sites.append(shape.first_code + length(body));
+                                body.append(found);
+                                body.extend(glue.after);
+                            } else {
+                                if (element >= native.RecordType) { comparison_sites.append(shape.first_code + length(body)); }
+                                body.append(found);
+                            }
+                            if (Holds(fresh, right)) { pending.append(right); }
+                            right = found_slot;
+                            change = native.ArrayRemove;
+                        }
                         if (operand.value == facts.ArrayInserted) { change = native.ArrayInsert; target = stack[base + 2]; }
                         if (operand.value == facts.ArrayReversed) { change = native.ArrayReverse; }
                         if (operand.value == facts.ArrayReplaced) { change = native.ArraySet; target = stack[base + 2]; }
@@ -4244,7 +4278,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 }
                 for (spent in pending) {
                     held_type := slots[shape.first_slot + spent];
-                    body.append(Giving(held_type, spent));
+                    if (TrackedRecord(managed, held_type)) { body.append(Op(native.ValueDrop, held_type, 0, spent, 0, 0)); }
+                    else { body.append(Giving(held_type, spent)); }
                     fresh = Without(fresh, spent);
                 }
                 pending = [];
@@ -4914,8 +4949,32 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
     }
     // A library's Document row names it; a package generation has its own
     // manifest name, not a prepared artifact's stable library identity.
+    value_shapes: native.SnapshotShapes = {nodes: [], edges: [], roots: []};
+    if (length(comparison_sites) > 0) {
+        roots := resize([int(0)], states);
+        characters := state_characters;
+        for (item in code) { if (item.op == native.StateLoad) { roots[item.target] = item.type; } }
+        searched: int[] = [];
+        for (wanted, type in comparison_types) {
+            if (wanted) { roots.append(type); characters.append(false); searched.append(type); }
+        }
+        value_shapes = ValueShapeGraph(rows, declared, roots, characters);
+        indices := resize([int(0)], native.ArrayType);
+        for (type, index in searched) { indices[type] = value_shapes.roots[states + index] + 1; }
+        for (site in comparison_sites) {
+            item := code[site];
+            item.target = indices[int(item.literal)];
+            code[site] = item;
+        }
+        value_shapes.roots = slice(value_shapes.roots, 0, states);
+    }
     emitted: native.Result = native.Result.Rejected(-1, "");
-    if (rows[1].text == "" && !generation && program) {
+    if (rows[1].text == "" && !generation && length(comparison_sites) > 0) {
+        tags := field_tags;
+        if (length(tags) == 0) { tags = resize([i64(0)], length(fields)); }
+        emitted = native.EmitValuesTyped(target, functions, parameters, slots, locals, code, arguments, records, fields,
+            tags, texts, source, names, lines, columns, field_names, value_shapes, program, clock_owner);
+    } else if (rows[1].text == "" && !generation && program) {
         if (clock_owner) {
             emitted = native.EmitClockProgramTyped(target, functions, parameters, slots, locals, code, arguments, records, fields,
                                                   field_tags, texts, source, names, lines, columns);
@@ -4934,10 +4993,14 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         if (generation) {
             library_name = "generation";
         }
-        shapes := RetainedShapeGraph(rows, declared, code, states, state_characters);
+        shapes := value_shapes;
+        if (length(comparison_sites) == 0) { shapes = RetainedShapeGraph(rows, declared, code, states, state_characters); }
         snapshots := false;
         for (root in shapes.roots) { snapshots = snapshots || root >= 0; }
-        if (snapshots && family) {
+        if (length(comparison_sites) > 0) {
+            emitted = native.EmitValuesLibrary(target, library_name, names, ids, functions, parameters, slots, locals,
+                code, arguments, records, fields, field_tags, texts, 1, field_names, entries, state_characters, shapes, family, snapshots);
+        } else if (snapshots && family) {
             emitted = native.EmitFamilySnapshotLibrary(target, library_name, names, ids, functions, parameters, slots, locals,
                 code, arguments, records, fields, field_tags, texts, 1, field_names, entries, state_characters, shapes);
         } else if (snapshots) {

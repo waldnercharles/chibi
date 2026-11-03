@@ -1,0 +1,7 @@
+package map_union_missing
+Choice :: union { Empty | Some(value: int) }
+Main :: () -> int {
+    values: [int: Choice] = [:];
+    value := values[1];
+    return 0;
+}

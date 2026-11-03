@@ -1,0 +1,18 @@
+package remove_order
+
+Append :: (values: ^(int[]), item: int) -> int {
+    values^.append(item);
+    return item;
+}
+Value :: () -> int {
+    before: int[] = [1, 2];
+    original := remove_item(Array: before, Item: Append(&before, 1));
+    assert(length(before) == 3 && length(original) == 1 && original[0] == 2,
+        "the first array argument owns its value before a later callback");
+    later: int[] = [1, 2];
+    reversed := remove_item(Item: Append(&later, 1), Array: later);
+    assert(length(later) == 3 && length(reversed) == 2 && reversed[0] == 2 && reversed[1] == 1,
+        "reordered labels retain source evaluation order");
+    return 0;
+}
+Main :: () -> int { return Value(); }

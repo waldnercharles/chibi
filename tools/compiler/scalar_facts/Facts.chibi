@@ -583,6 +583,9 @@ pub ArrayReplaced: int : 23;
 pub ArrayReplace: int : 24;
 // Check a logical array place before RHS evaluation, producing only bool.
 pub ArrayPlaceCheck: int : 25;
+// A functional value with its first structurally equal element removed.
+// An absent element returns an independent array value. Inputs are array,item.
+pub ArrayWithoutItem: int : 27;
 // An immediate nested-array place adds its saved outer index after the
 // canonical RefRow. Existing mutating operators still end the root assignment.
 pub NestedArrayPlace: int : -1;

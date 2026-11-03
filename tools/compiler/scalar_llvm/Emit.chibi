@@ -46,8 +46,8 @@ Scalar :: (type: int) -> bool {
 // Whether a record field or union payload may have `type`: a scalar or a
 // string.
 Stored :: (records: int[], type: int) -> bool {
-    // Nested maps and task observers need recursive ownership before admission.
-    return type != facts.TaskType && type < facts.MapType && Valued(records, type);
+    // Maps use the shared counted value graph; task observers remain closed.
+    return type != facts.TaskType && type < facts.ReferenceType && Valued(records, type);
 }
 // Whether the record or union of type RecordType + `from` holds the one of
 // type RecordType + `wanted` by value, directly or through others it holds by
@@ -845,7 +845,7 @@ KeepValue :: (managed: bool[], type: int, held: int, next: int) -> HeldValue {
     found: HeldValue = {code: [], slot_types: [], value: held};
     if (type == facts.StringType) {
         found.code.append(Op(native.TextRetain, abi.TextStorage, 0, held, 0, 0));
-    } else if (TrackedRecord(managed, type) || (type >= facts.ArrayType && type < facts.MapType)) {
+    } else if (TrackedRecord(managed, type) || (type >= facts.ArrayType && type < facts.ReferenceType)) {
         found.code.append(Op(native.ValueCopy, NativeType(type), next, held, 0, 0));
         found.slot_types.append(NativeType(type));
         found.value = next;
@@ -857,7 +857,7 @@ DropValue :: (managed: bool[], type: int, held: int) -> Drops {
     found: Drops = {code: [], slot_types: []};
     if (type == facts.StringType) {
         found.code.append(Op(native.TextRelease, abi.TextStorage, 0, held, 0, 0));
-    } else if (TrackedRecord(managed, type) || (type >= facts.ArrayType && type < facts.MapType)) {
+    } else if (TrackedRecord(managed, type) || (type >= facts.ArrayType && type < facts.ReferenceType)) {
         found.code.append(Op(native.ValueDrop, NativeType(type), 0, held, 0, 0));
     }
     return found;
@@ -1033,7 +1033,7 @@ MappedArrayChange :: (value: int) -> bool {
     return value >= facts.MapArrayPush && value <= facts.MapArrayResize;
 }
 MapGets :: (value: int) -> bool {
-    return value == facts.MapGet || value == facts.MapGetOptional;
+    return value == facts.MapGet || value == facts.MapGetOptional || value == facts.MapGetWrapped;
 }
 // The postfix operands of one map operator; -1 means no such operator.
 MapOperands :: (operand: facts.Row) -> int {
@@ -1051,7 +1051,7 @@ MapOperands :: (operand: facts.Row) -> int {
         return 3;
     }
     if (operand.value == facts.MapArrayLoan) { return 3; }
-    if ((operand.value >= facts.MapGet && operand.value <= facts.MapValueAt) || operand.value == facts.MapGetOptional) {
+    if ((operand.value >= facts.MapGet && operand.value <= facts.MapValueAt) || MapGets(operand.value)) {
         return 2;
     }
     return -1;
@@ -1112,6 +1112,12 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
     if (operand.value == facts.MapGetOptional && OptionalPayloadType(rows, records, value) == 0) { return mismatch; }
     if (operand.value == facts.MapArrayLoan && (operand.type != value || stack[base + 1] != mapped ||
         !Scalar(Element(records, value)) || Element(records, value) == facts.BoolType)) { return mismatch; }
+    if (operand.value == facts.MapGetWrapped) {
+        if (value < facts.RecordType || value >= facts.ArrayType || value - facts.RecordType >= length(records)) { return mismatch; }
+        head := records[value - facts.RecordType];
+        if (rows[head].kind != facts.RecordRow || rows[head].count != 1 || rows[head + 1].type < facts.MapType ||
+            rows[head + 1].type >= facts.ReferenceType || !Valued(records, rows[head + 1].type)) { return mismatch; }
+    }
     if (operand.value == facts.MapKeyAt && operand.type != key) {
         return mismatch;
     }
@@ -2512,7 +2518,7 @@ MapLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: int
     if (operand.value == facts.MapSet) {
         target = stack[base + 2];
     }
-    if (operand.value == facts.MapGetOptional) { target = native.MapGetZero; }
+    if (operand.value == facts.MapGetOptional || operand.value == facts.MapGetWrapped) { target = native.MapGetZero; }
     item := Op(op, type, slot, stack[base], right, target);
     if (operand.literal != 0) {
         item.literal = i64(NativeType(int(operand.literal)));
@@ -4338,8 +4344,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         extra += length(kept.slot_types);
                         produced = kept.value;
                         if (type == abi.TextStorage && length(closes) > 0) { logical_strings.append(produced); }
-                        else if (type == abi.TextStorage || TrackedRecord(managed, type) ||
-                                 (type >= native.ArrayType && type < native.MapType)) { fresh.append(produced); }
+                        else if (type == abi.TextStorage || TrackedRecord(managed, type) || ArrayTyped(type)) { fresh.append(produced); }
                     }
                     if (Holds(fresh, item.left)) {
                         dropped := DropValue(managed, item.right, item.left);

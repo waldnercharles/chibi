@@ -3,9 +3,71 @@ package llvm_native
 import abi "project:native_abi"
 import strings "core:strings"
 
+// Only indexed loans need an outer array's mutation helpers. Keep this rare
+// use beside its instruction, so a split module emits helpers in its own piece.
+ArrayLoanUse :: struct { instruction: int; type: int; }
+
+// Mode 4's metadata is [field_count, index_slot, field ordinals...]. The
+// first two instruction inputs are an evaluated outer array and its stable
+// canonical RefOuter. Metadata ordinals are not SSA value reads.
+IndexedLoanType :: (slots: int[], arguments: int[], records: Record[], fields: int[], item: Instruction) -> int {
+    if (!Index(item.left, length(slots)) || !Typed(slots, item.right, RefType + slots[item.left]) ||
+        item.literal < 0 || item.literal > i64(length(arguments)) - 3) { return 0; }
+    first := int(item.literal);
+    count := arguments[first];
+    if (count < 1 || count > length(arguments) - first - 2 ||
+        !Typed(slots, arguments[first + 1], abi.IntStorage)) { return 0; }
+    parent := ElementType(records, slots[item.left]);
+    for (offset in 0..<count) {
+        if (parent < RecordType || parent >= ArrayType) { return 0; }
+        parent = FieldType(records, fields, parent, i64(arguments[first + 2 + offset]));
+        if (parent == 0) { return 0; }
+    }
+    return parent;
+}
+
+// Both capture and call-time resolution walk only these checked inline
+// fields. No value or sibling owner is loaded while computing the address.
+IndexedLoanFields :: (slots: int[], arguments: int[], records: Record[], fields: int[],
+                       item: Instruction, name: string, value: string, index: string) -> string {
+    array := abi.ArrayType();
+    parent := ElementType(records, slots[item.left]);
+    first := int(item.literal);
+    out := [format_text("  %{}.data = extractvalue {} {}, 2\n  %{}.offset = zext i32 {} to i64\n", name, array, value, name, index),
+            format_text("  %{}.element = getelementptr inbounds {}, ptr %{}.data, i64 %{}.offset\n", name, TypeName(parent), name, name)];
+    address := format_text("%{}.element", name);
+    count := arguments[first];
+    for (offset in 0..<count) {
+        field := arguments[first + 2 + offset];
+        next := format_text("%{}.field{}", name, offset);
+        out.append(format_text("  {} = getelementptr inbounds {}, ptr {}, i32 0, i32 {}\n", next, TypeName(parent), address, field));
+        parent = FieldType(records, fields, parent, i64(field));
+        address = next;
+    }
+    out.append(format_text("  %{}.address = getelementptr i8, ptr {}, i64 0\n", name, address));
+    return strings.Join(out, "");
+}
+
 // Loans capture their values during source argument evaluation. A mapped
 // loan also keeps its immutable string key until the call resolves the path.
-LoanInstruction :: (slots: int[], item: Instruction, pc: int) -> string {
+LoanInstruction :: (slots: int[], arguments: int[], records: Record[], fields: int[], item: Instruction, pc: int) -> string {
+    if (item.target == ArrayLoanIndexed) {
+        name := format_text("indexed{}", pc);
+        outer := slots[item.left];
+        array := abi.ArrayType();
+        out := format_text("p{}:\n{}", pc, Load(format_text("{}.outer", name), outer, "s", item.left));
+        out = strings.Concatenate([out, Load(format_text("{}.index", name), abi.IntStorage, "s", arguments[int(item.literal) + 1])]);
+        out = format_text("{}  %{}.length = extractvalue {} %{}.outer, 0\n  %{}.inside = icmp ult i32 %{}.index, %{}.length\n", out, name, array, name, name, name, name);
+        out = format_text("{}  br i1 %{}.inside, label %{}.present, label %{}.absent\n{}.absent:\n", out, name, name, name, name);
+        out = strings.Concatenate([out, ContextCall(format_text("{}.fail", name), 3)]);
+        out = format_text("{}  call void %{}.fail(ptr %ctx, i32 %{}.index, i32 %{}.length)\n  unreachable\n{}.present:\n", out, name, name, name, name);
+        out = strings.Concatenate([out, IndexedLoanFields(slots, arguments, records, fields, item, name,
+                                  format_text("%{}.outer", name), format_text("%{}.index", name))]);
+        out = format_text("{}  %{}.value = load {}, ptr %{}.address\n  store {} %{}.value, ptr %indexed.capture{}\n", out, name, array, name, array, name, item.output);
+        out = format_text("{}  %{}.held = call {} @chibi_array.{}.copy(ptr %ctx, {} %{}.value)\n", out, name, array, item.type, array, name);
+        out = strings.Concatenate([out, Store(format_text("%{}.held", name), item.type, "s", item.output)]);
+        return format_text("{}  br label %p{}\n", out, pc + 1);
+    }
     out := format_text("p{}:\n{}", pc, Load(format_text("a{}", pc), item.type, "s", item.left));
     if (item.target == ArrayLoanMap && MapKey(slots[item.right] - RefType) == abi.TextStorage) {
         kept: Instruction = {op: TextRetain, type: abi.TextStorage, output: 0, left: int(item.literal), right: 0, target: 0, literal: 0};
@@ -25,7 +87,7 @@ LoanInstruction :: (slots: int[], item: Instruction, pc: int) -> string {
 // retire matching loans, make the places unique, and acquire the call loans.
 // This preserves repeated arguments that point at the same place. A later
 // argument that replaced a place leaves the historical loan independent.
-ForeignArrays :: (slots: int[], arguments: int[], code: Instruction[], origins: int[], item: Instruction, pc: int) -> string {
+ForeignArrays :: (slots: int[], arguments: int[], records: Record[], fields: int[], code: Instruction[], origins: int[], item: Instruction, pc: int) -> string {
     if (length(origins) == 0) { return ""; }
     array := abi.ArrayType();
     out: string[] = [];
@@ -35,8 +97,12 @@ ForeignArrays :: (slots: int[], arguments: int[], code: Instruction[], origins: 
         loan := code[origins[slot]];
         name := format_text("loan{}_{}", pc, index);
         out.append(Load(format_text("{}.given", name), loan.type, "s", slot));
-        if (loan.target != ArrayLoanPlace && loan.target != ArrayLoanMap) { continue; }
-        out.append(Load(format_text("{}.captured", name), loan.type, "s", loan.left));
+        if (loan.target != ArrayLoanPlace && loan.target != ArrayLoanMap && loan.target != ArrayLoanIndexed) { continue; }
+        if (loan.target == ArrayLoanIndexed) {
+            // Importing a borrowed leaf may change the held descriptor. Its
+            // original bits identify the evaluated place, without owning it.
+            out.append(format_text("  %{}.captured = load {}, ptr %indexed.capture{}\n", name, array, loan.output));
+        } else { out.append(Load(format_text("{}.captured", name), loan.type, "s", loan.left)); }
         if (loan.target == ArrayLoanMap) {
             mapped := slots[loan.right] - RefType;
             key := MapKey(mapped);
@@ -45,6 +111,14 @@ ForeignArrays :: (slots: int[], arguments: int[], code: Instruction[], origins: 
             out.append(Load(format_text("{}.key", name), key, "s", int(loan.literal)));
             out.append(format_text("  %{}.address = call ptr @chibi_map.{}.address({} %{}.map, {} %{}.key, i1 false)\n", name, mapped, TypeName(mapped), name, TypeName(key), name));
             out.append(format_text("  %{}.present = icmp ne ptr %{}.address, null\n  br i1 %{}.present, label %{}.read, label %{}.absent\n{}.read:\n", name, name, name, name, name, name));
+        } else if (loan.target == ArrayLoanIndexed) {
+            outer := slots[loan.left];
+            out.append(Load(format_text("{}.root", name), RefType + outer, "s", loan.right));
+            out.append(format_text("  %{}.outer = load {}, ptr %{}.root\n  %{}.outer_extent = extractvalue {} %{}.outer, 0\n", name, array, name, name, array, name));
+            out.append(Load(format_text("{}.index", name), abi.IntStorage, "s", arguments[int(loan.literal) + 1]));
+            out.append(format_text("  %{}.present = icmp ult i32 %{}.index, %{}.outer_extent\n  br i1 %{}.present, label %{}.read, label %{}.absent\n{}.read:\n", name, name, name, name, name, name, name));
+            out.append(IndexedLoanFields(slots, arguments, records, fields, loan, name,
+                       format_text("%{}.outer", name), format_text("%{}.index", name)));
         } else { out.append(Load(format_text("{}.address", name), RefType + loan.type, "s", loan.right)); }
         out.append(format_text("  %{}.current = load {}, ptr %{}.address\n", name, array, name));
         for (field in 0..<4) {
@@ -55,7 +129,7 @@ ForeignArrays :: (slots: int[], arguments: int[], code: Instruction[], origins: 
             out.append(format_text("  %{}.same{} = icmp eq {} %{}.before{}, %{}.now{}\n", name, field, type, name, field, name, field));
         }
         out.append(format_text("  %{}.size = and i1 %{}.same0, %{}.same1\n  %{}.storage = and i1 %{}.same2, %{}.same3\n", name, name, name, name, name, name));
-        if (loan.target == ArrayLoanMap) {
+        if (loan.target == ArrayLoanMap || loan.target == ArrayLoanIndexed) {
             out.append(format_text("  %{}.equal = and i1 %{}.size, %{}.storage\n  br label %{}.checked\n{}.absent:\n  br label %{}.checked\n{}.checked:\n", name, name, name, name, name, name, name));
             out.append(format_text("  %{}.matches = phi i1 [ %{}.equal, %{}.read ], [ false, %{}.absent ]\n", name, name, name, name));
         } else { out.append(format_text("  %{}.matches = and i1 %{}.size, %{}.storage\n", name, name, name)); }
@@ -66,7 +140,7 @@ ForeignArrays :: (slots: int[], arguments: int[], code: Instruction[], origins: 
         slot := arguments[item.right + index];
         if (origins[slot] < 0) { continue; }
         loan := code[origins[slot]];
-        if (loan.target != ArrayLoanPlace && loan.target != ArrayLoanMap) { continue; }
+        if (loan.target != ArrayLoanPlace && loan.target != ArrayLoanMap && loan.target != ArrayLoanIndexed) { continue; }
         name := format_text("loan{}_{}", pc, index);
         out.append(format_text("  br i1 %{}.matches, label %{}.drop, label %{}.dropped\n{}.drop:\n", name, name, name, name));
         out.append(format_text("  call void @chibi_array.{}.drop(ptr %ctx, {} %{}.given)\n  br label %{}.dropped\n{}.dropped:\n", loan.type, array, name, name, name));
@@ -75,7 +149,7 @@ ForeignArrays :: (slots: int[], arguments: int[], code: Instruction[], origins: 
         slot := arguments[item.right + index];
         if (origins[slot] < 0) { continue; }
         loan := code[origins[slot]];
-        if (loan.target != ArrayLoanPlace && loan.target != ArrayLoanMap) { continue; }
+        if (loan.target != ArrayLoanPlace && loan.target != ArrayLoanMap && loan.target != ArrayLoanIndexed) { continue; }
         name := format_text("loan{}_{}", pc, index);
         out.append(format_text("  br i1 %{}.matches, label %{}.prepare, label %{}.skip\n{}.prepare:\n", name, name, name, name));
         address := format_text("%{}.address", name);
@@ -83,6 +157,15 @@ ForeignArrays :: (slots: int[], arguments: int[], code: Instruction[], origins: 
             mapped := slots[loan.right] - RefType;
             address = format_text("%{}.canonical", name);
             out.append(format_text("  {} = call ptr @chibi_map.{}.reference(ptr %ctx, ptr %{}.root, {} %{}.key)\n", address, mapped, name, TypeName(MapKey(mapped)), name));
+        }
+        if (loan.target == ArrayLoanIndexed) {
+            outer := slots[loan.left];
+            out.append(format_text("  %{}.latest_outer = load {}, ptr %{}.root\n  %{}.outer_length = extractvalue {} %{}.latest_outer, 0\n", name, array, name, name, array, name));
+            out.append(format_text("  %{}.unique_outer = call {} @chibi_array.{}.unique(ptr %ctx, {} %{}.latest_outer, i32 %{}.outer_length, i1 true)\n  store {} %{}.unique_outer, ptr %{}.root\n", name, array, outer, array, name, name, array, name, name));
+            prepared := format_text("{}.canonical", name);
+            out.append(IndexedLoanFields(slots, arguments, records, fields, loan, prepared,
+                       format_text("%{}.unique_outer", name), format_text("%{}.index", name)));
+            address = format_text("%{}.address", prepared);
         }
         out.append(format_text("  %{}.latest = load {}, ptr {}\n  %{}.length = extractvalue {} %{}.latest, 0\n", name, array, address, name, array, name));
         out.append(format_text("  %{}.unique = call {} @chibi_array.{}.unique(ptr %ctx, {} %{}.latest, i32 %{}.length, i1 true)\n", name, array, loan.type, array, name, name));
@@ -104,7 +187,7 @@ ForeignArrays :: (slots: int[], arguments: int[], code: Instruction[], origins: 
         if (origins[slot] < 0) { continue; }
         loan := code[origins[slot]];
         name := format_text("loan{}_{}", pc, index);
-        if (loan.target == ArrayLoanPlace || loan.target == ArrayLoanMap) {
+        if (loan.target == ArrayLoanPlace || loan.target == ArrayLoanMap || loan.target == ArrayLoanIndexed) {
             out.append(format_text("  br i1 %{}.matches, label %{}.retake, label %{}.historical\n{}.retake:\n", name, name, name, name));
             out.append(format_text("  %{}.ready = load {}, ptr %{}.ready_address\n", name, array, name));
             out.append(format_text("  %{}.retaken = call {} @chibi_array.{}.copy(ptr %ctx, {} %{}.ready)\n", name, array, loan.type, array, name));
@@ -114,7 +197,7 @@ ForeignArrays :: (slots: int[], arguments: int[], code: Instruction[], origins: 
         out.append(format_text("  %{}.held_length = extractvalue {} %{}.given, 0\n", name, array, name));
         out.append(format_text("  %{}.held_unique = call {} @chibi_array.{}.unique(ptr %ctx, {} %{}.given, i32 %{}.held_length, i1 true)\n", name, array, loan.type, array, name, name));
         out.append(Store(format_text("%{}.held_unique", name), loan.type, "s", slot));
-        if (loan.target == ArrayLoanPlace || loan.target == ArrayLoanMap) { out.append(format_text("  br label %{}.done\n{}.done:\n", name, name)); }
+        if (loan.target == ArrayLoanPlace || loan.target == ArrayLoanMap || loan.target == ArrayLoanIndexed) { out.append(format_text("  br label %{}.done\n{}.done:\n", name, name)); }
     }
     return strings.Join(out, "");
 }

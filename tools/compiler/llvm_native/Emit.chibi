@@ -325,6 +325,10 @@ pub ArrayLoanValue: int : 2;
 // default. No entry address survives later arguments. String keys own one
 // reference until the call resolves the entry.
 pub ArrayLoanMap: int : 3;
+// Left is the evaluated outer array, right its stable canonical RefOuter.
+// Literal names [field_count, index_slot, field ordinals...] in arguments.
+// Capture owns only the leaf; call-time resolution may retain it historically.
+pub ArrayLoanIndexed: int : 4;
 // Borrows an existing descriptor entry at left map/right key; literal is its
 // map type. Target 0 observes an array entry. Target 1 takes a RefMap, detaches
 // and publishes its canonical owner, then returns an array descriptor or the
@@ -1267,12 +1271,19 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (item.op == ArrayLoan) {
             if (length(loan_uses) == 0) { loan_uses = resize([false], length(slots)); }
             element := ElementType(records, item.type);
-            if (element == abi.BoolStorage || abi.ScalarType(element) == "" || !Typed(slots, item.left, item.type) ||
-                item.target < ArrayLoanPlace || item.target > ArrayLoanMap ||
-                (item.target != ArrayLoanMap && item.literal != 0) ||
+            if (element == abi.BoolStorage || abi.ScalarType(element) == "" ||
+                (item.target != ArrayLoanIndexed && !Typed(slots, item.left, item.type)) ||
+                item.target < ArrayLoanPlace || item.target > ArrayLoanIndexed ||
+                (item.target != ArrayLoanMap && item.target != ArrayLoanIndexed && item.literal != 0) ||
                 (item.target == ArrayLoanPlace && !Typed(slots, item.right, RefType + item.type)) ||
                 ((item.target == ArrayLoanMove || item.target == ArrayLoanValue) && item.right != item.left)) {
                 return Result.Rejected(base + pc, "native foreign buffer loan differs from its array or place");
+            }
+            if (item.target == ArrayLoanIndexed) {
+                if (IndexedLoanType(slots, arguments, records, fields, item) != item.type ||
+                    !ValueValid(lifecycle, ElementType(records, slots[item.left]))) {
+                    return Result.Rejected(base + pc, "native indexed buffer loan differs from its captured path");
+                }
             }
             if (item.target == ArrayLoanMap) {
                 mapped := 0;
@@ -1454,6 +1465,10 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if (item.op == ArrayLoan && item.target == ArrayLoanMap && !Dominates(dominance, definitions[int(item.literal)], pc)) {
             return Result.Rejected(base + pc, "native map buffer key is not defined on every path");
+        }
+        if (item.op == ArrayLoan && item.target == ArrayLoanIndexed &&
+            !Dominates(dominance, definitions[arguments[int(item.literal) + 1]], pc)) {
+            return Result.Rejected(base + pc, "native indexed buffer position is not defined on every path");
         }
         if (item.op == ManagedTrack && item.target == ManagedTrackSlot && !Dominates(dominance, definitions[item.left], pc)) {
             return Result.Rejected(base + pc, "native collector root is not defined on every path");
@@ -2036,10 +2051,13 @@ ValueReach :: (build: ^ValueClosure, held: int, range: bool, by_value: bool) {
         build^.pending.append(type);
     }
 }
-ValueUses :: (code: Instruction[], records: Record[], fields: int[], owners: bool[], promises: int[]) -> ValueUse {
+ValueUses :: (code: Instruction[], records: Record[], fields: int[], owners: bool[], promises: int[], loan_arrays: int[]) -> ValueUse {
     build: ValueClosure = {used: {records: resize([false], length(records)), ranges: resize([false], length(records)),
                                   by_value: resize([false], length(records)), arrays: ArrayUses(code, promises), maps: []},
                            owners: owners, pending: [], maps: []};
+    for (type in loan_arrays) {
+        build.used.arrays[type - ArrayType] |= ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation;
+    }
     for (type in promises) {
         if (type >= RecordType && type < ArrayType) { ValueReach(&build, type, false, true); }
     }
@@ -2718,8 +2736,8 @@ CstringHelper :: () -> string {
 // order, and nothing else is passed. A string is copied with its NUL to one of
 // the function's stack buffers, so the callee reads a C string; a string too
 // long for the buffer, or holding a NUL, traps.
-ForeignInstruction :: (slots: int[], arguments: int[], texts: string[], code: Instruction[], origins: int[], item: Instruction, pc: int) -> string {
-    out := format_text("p{}:\n{}", pc, ForeignArrays(slots, arguments, code, origins, item, pc));
+ForeignInstruction :: (slots: int[], arguments: int[], records: Record[], fields: int[], texts: string[], code: Instruction[], origins: int[], item: Instruction, pc: int) -> string {
+    out := format_text("p{}:\n{}", pc, ForeignArrays(slots, arguments, records, fields, code, origins, item, pc));
     listed: string[] = [];
     callee := format_text("@{}", texts[int(item.literal)]);
     buffer: int = 0;
@@ -2977,6 +2995,9 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     // reuses them.
     for (pc in 0..<shape.code) {
         item := code[shape.first_code + pc];
+        if (item.op == ArrayLoan && item.target == ArrayLoanIndexed) {
+            out.append(format_text("  %indexed.capture{} = alloca {}\n", item.output, abi.ArrayType()));
+        }
         if (item.op == Format) {
             out.append(format_text("  %values{} = alloca [{} x {}]\n  %text{} = alloca {}\n", pc, item.target,
                                    abi.ValueType(), pc, abi.TextType()));
@@ -3073,9 +3094,9 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         } else if (item.op == ClockSample) {
             out.append(ClockInstruction(item, pc));
         } else if (item.op == ArrayLoan) {
-            out.append(LoanInstruction(own_slots, item, pc));
+            out.append(LoanInstruction(own_slots, own, records, fields, item, pc));
         } else if (item.op == ForeignCall) {
-            out.append(ForeignInstruction(own_slots, own, texts, code, loan_origins, item, pc));
+            out.append(ForeignInstruction(own_slots, own, records, fields, texts, code, loan_origins, item, pc));
         } else if (item.op == FunctionAddress) {
             out.append(format_text("p{}:\n  %v{} = ptrtoint ptr @{} to i64\n", pc, pc, CallbackSymbol(item.left, int(item.literal))));
             out.append(Store(format_text("%v{}", pc), item.type, "s", item.output));
@@ -3611,10 +3632,14 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     formatting := false;
     numeric_formatting := false;
     clocked := false;
+    indexed_loans: ArrayLoanUse[] = [];
     for (shape in functions) {
         for (pc in shape.first_code..<shape.first_code + shape.code) {
             item := code[pc];
             if (item.op == ClockSample) { clocked = true; }
+            if (item.op == ArrayLoan && item.target == ArrayLoanIndexed) {
+                indexed_loans.append({instruction: pc, type: slots[shape.first_slot + item.left]});
+            }
             if (item.op != Format) { continue; }
             formatting = true;
             // A bool can use numeric modifiers too. Text and collection
@@ -3832,7 +3857,12 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             }
             out.append(format_text("\n{}", text));
         }
-        value_uses := ValueUses(held, records, fields, record_owners, promises);
+        loan_arrays: int[] = [];
+        for (loan in indexed_loans) {
+            if (loan.instruction >= functions[first].first_code &&
+                loan.instruction < functions[last - 1].first_code + functions[last - 1].code) { loan_arrays.append(loan.type); }
+        }
+        value_uses := ValueUses(held, records, fields, record_owners, promises, loan_arrays);
         array_helpers := ArrayModule(value_uses.arrays, record_owners, lifecycle.backed, guarded);
         out.append(array_helpers);
         value_comparisons := piece == 0 && length(comparison_roots) > 0;

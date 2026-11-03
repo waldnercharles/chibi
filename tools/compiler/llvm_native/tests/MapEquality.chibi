@@ -1,0 +1,63 @@
+package llvm_native_calls
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+MapEqualityShapes :: () -> native.SnapshotShapes {
+    return {nodes: [
+        {kind:native.SnapshotScalar,type:abi.IntStorage,extra:abi.ValueTag(abi.IntStorage),first:0,count:0},
+        {kind:native.SnapshotScalar,type:abi.FloatStorage,extra:abi.ValueTag(abi.FloatStorage),first:0,count:0},
+        {kind:native.SnapshotMap,type:native.MapOf(abi.IntStorage,abi.FloatStorage),extra:0,first:0,count:2}],
+        edges:[{name:"",target:0},{name:"",target:1}],roots:[]};
+}
+MapEqualityResult :: (shapes:native.SnapshotShapes) -> native.Result {
+    return native.EmitValueEqualityRuntime([],[],[],shapes.nodes,shapes.edges,[2]);
+}
+@test
+MapEqualityUsesOnlyBorrowedLookupHelpers :: () {
+    text:=Emitted(MapEqualityResult(MapEqualityShapes()));
+    assert(strings.Contains(text,".find(ptr %right.entries"));
+    for (operation in ["allocate","set","copy"]) {
+        assert(!strings.Contains(text,format_text("@chibi_map.{}.{}(",native.MapOf(abi.IntStorage,abi.FloatStorage),operation)));
+    }
+}
+@test
+MapEqualityRejectsWrongKeyValueAndOwnershipShapes :: () {
+    expected:="snapshot map differs from its key and value types";
+    for (kind in 0..<5) {
+        shapes:=MapEqualityShapes();nodes:=shapes.nodes;edges:=shapes.edges;
+        if(kind==0){nodes[2].type=native.MapOf(abi.FloatStorage,abi.FloatStorage);}
+        if(kind==1){edges[1].target=0;}
+        if(kind==2){nodes[2].count=1;edges=slice(edges,0,1);}
+        if(kind==3){nodes[2].type=native.MapOf(abi.IntStorage,native.RecordType+100);}
+        if(kind==4){nodes[2].type=native.MapOf(abi.IntStorage,native.PointerType);}
+        shapes.nodes=nodes;shapes.edges=edges;
+        Rejects(MapEqualityResult(shapes),expected);
+    }
+}
+@test
+MapEqualityRejectsDuplicateMapShapes :: () {
+    shapes:=MapEqualityShapes();nodes:=shapes.nodes;edges:=shapes.edges;
+    duplicate:=nodes[2];duplicate.first=2;nodes.append(duplicate);edges.extend(shapes.edges);
+    shapes.nodes=nodes;shapes.edges=edges;
+    Rejects(MapEqualityResult(shapes),"snapshot aggregate type has more than one shape");
+}
+@test
+MapEqualityDoesNotGrantRetainedMapOwnership :: () {
+    shapes:=MapEqualityShapes();mapped:=shapes.nodes[2].type;
+    shapes.roots=[2];
+    binding:=Code(native.StateLoad,mapped,0,0,0,0,0);
+    Rejects(native.EmitSnapshotRuntime([],[],[],[binding],shapes),"retained snapshot roots cannot contain maps");
+    nodes:=shapes.nodes;edges:=shapes.edges;
+    nodes.append({kind:native.SnapshotRecord,type:native.RecordType,extra:0,first:2,count:1});
+    edges.append({name:"value",target:2});shapes.nodes=nodes;shapes.edges=edges;shapes.roots=[3];
+    binding=Code(native.StateLoad,native.RecordType,0,0,0,0,0);
+    Rejects(native.EmitSnapshotRuntime([{first:0,count:1,identity:0}],[mapped],["value"],[binding],shapes),
+        "retained snapshot roots cannot contain maps");
+}
+@test
+MapEqualityExtraNodesDoNotEmitSnapshotMapCopies :: () {
+    shapes:=MapEqualityShapes();shapes.roots=[0];binding:=Code(native.StateLoad,abi.IntStorage,0,0,0,0,0);
+    text:=Emitted(native.EmitSnapshotRuntime([],[],[],[binding],shapes));
+    assert(!strings.Contains(text,"@chibi_snapshot.value."));
+}

@@ -88,8 +88,9 @@ SnapshotRange :: (type: int) -> string {
 SnapshotValuesModule :: (records: Record[], fields: int[], shapes: SnapshotShapes, states: Instruction[], guarded: bool = false) -> string {
     used := resize([false], MapType);
     ranged := resize([false], MapType);
-    for (node in shapes.nodes) {
-        if (node.kind == SnapshotVariant) { continue; }
+    wanted := SnapshotReachable(shapes, shapes.roots);
+    for (node, index in shapes.nodes) {
+        if (!wanted[index] || node.kind == SnapshotVariant) { continue; }
         used[node.type] = true;
         if (node.kind == SnapshotArray) { ranged[node.type - ArrayType] = true; }
     }

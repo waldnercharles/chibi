@@ -16,7 +16,6 @@ cp "$asset" "$work/SDK/libexec/chibi/chibi-asset-compiler"
 "$cc" -std=c11 -pthread -D_POSIX_C_SOURCE=200809L -D_DARWIN_C_SOURCE -Wall -Wextra -Werror \
     -I"$root/src" -o "$work/SDK/bin/asset-consumer" \
     "$root/test/native_aot/asset_compiler/Bridge.c" \
-    "$root/src/support/file_io.c" "$root/src/support/sha256.c" "$root/src/support/xalloc.c" \
     "$archive"
 mv "$work/SDK" "$work/relocated SDK"
 target=x86_64-unknown-linux-gnu
@@ -40,6 +39,6 @@ mkdir "$work/cache" "$work/relative-temp"
     cd "$work"
     env -i PATH= CC=/usr/bin/false CXX=/usr/bin/false TMPDIR=relative-temp \
         "$work/relocated SDK/bin/asset-consumer" \
-        "$program" "$work/simple.json" "$work/source-error.json" "$work/cache" "$work/crash"
+        "$program" "$work/simple.json" "$work/source-error.json" "$work/cache" "$work/crash" "$work/simple.chibip"
 )
 [ -z "$(find "$work/relative-temp" -mindepth 1 -print -quit)" ]

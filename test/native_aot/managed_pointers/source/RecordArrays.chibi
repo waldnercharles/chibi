@@ -103,8 +103,52 @@ Synchronous :: () -> int {
     return 0;
 }
 Worker :: () -> Holder[] { value := 7; yield; return [{pointer: &value}]; }
+JoinedWorker :: (completed: ^bool) -> Owned[] {
+    saved := [MakeOwned(61), MakeOwned(62)];
+    yield;
+    completed^ = true;
+    return saved;
+}
+EditJoined :: (values: Owned[]) -> int {
+    values[0] = MakeOwned(99);
+    Churn();
+    return values[0].holder.pointer^ * 100 + values[1].holder.pointer^;
+}
+PromiseJoins :: () -> int {
+    completed := false;
+    pending := JoinedWorker(&completed);
+    alias := pending;
+    yield; yield;
+    // The flag is written after the child's last suspension. Collection now
+    // sees only the completed promise as the owner of its record backing.
+    assert(completed);
+    Churn();
+    if true {
+        first := await pending;
+        if (first is Cancelled) { return 1; }
+        else {
+            values := first;
+            edited := EditJoined(values);
+            assert(edited == 9962);
+        }
+    }
+    // The first join's local owner is gone before this next collection.
+    Churn();
+    second := await alias;
+    if (second is Cancelled) { return 2; }
+    else {
+        values := second;
+        expected := text_from_bytes([u8(65), u8(61), u8(0)]);
+        Churn();
+        assert(length(values) == 2 && values[0].holder.pointer^ == 61);
+        assert(values[0].label == expected && values[0].values[1] == 62);
+    }
+    return 0;
+}
 Main :: () -> int {
     result := Synchronous();
+    joined := await PromiseJoins();
+    assert(joined == 0);
     pending := Worker(); value := await pending;
     if (value is Cancelled) { return 1; }
     else { assert(value[0].pointer^ == 7); }

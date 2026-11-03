@@ -1064,15 +1064,17 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (type == TaskType || type == RefType + TaskType) {
             return Result.Rejected(-1, "native task parameters require cancellation unwind support");
         }
-        if (waiting[function] && !TaskFrameValue(records, lifecycle, type, false, ProgramMode(mode) || family)) {
+        if (waiting[function] && !TaskFrameValue(records, lifecycle, managed_records, type, false, ProgramMode(mode) || family)) {
             return Result.Rejected(-1, "native waiting parameters need scalar values; managed values and dependencies are not supported yet");
         }
         if (!Held(records, type) || (exported && abi.ScalarType(type) == "")) {
             return Result.Rejected(-1, "unsupported native scalar parameter");
         }
     }
+    plain_references := false;
     for (type in slots) {
-        if (waiting[function] && !TaskFrameValue(records, lifecycle, type, true, ProgramMode(mode) || family)) {
+        plain_references = plain_references || (waiting[function] && TaskPlainReference(lifecycle, type));
+        if (waiting[function] && !TaskFrameValue(records, lifecycle, managed_records, type, true, ProgramMode(mode) || family)) {
             return Result.Rejected(-1, "native waiting frames cannot own managed values or pointers yet");
         }
         if (!Held(records, type)) {
@@ -1080,14 +1082,17 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
     }
     for (type in locals) {
-        if (waiting[function] && !TaskFrameValue(records, lifecycle, type, true, ProgramMode(mode) || family)) {
+        if (waiting[function] && TaskPlainReference(lifecycle, type)) {
+            return Result.Rejected(-1, "native waiting record references require immediate managed payload access");
+        }
+        if (waiting[function] && !TaskFrameValue(records, lifecycle, managed_records, type, true, ProgramMode(mode) || family)) {
             return Result.Rejected(-1, "native waiting frames cannot own managed values or pointers yet");
         }
         if (!Held(records, type)) {
             return Result.Rejected(-1, "native scalar local cannot hold a managed value or pointer");
         }
     }
-    if (waiting[function] && !TaskPromiseValue(records, lifecycle, result, ProgramMode(mode) || family)) {
+    if (waiting[function] && !TaskPromiseValue(records, lifecycle, managed_records, result, ProgramMode(mode) || family)) {
         return Result.Rejected(-1, "native waiting results require a pointer-free value and program-owned cleanup");
     }
     definitions: int[] = [];
@@ -1364,7 +1369,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if (((item.op == TaskCopy || item.op == TaskDrop) && item.type != TaskType) ||
             (item.op == TaskRunning && item.type != abi.BoolStorage) ||
-            (item.op == AwaitResult && !TaskResultValid(records, fields, slots, lifecycle, ProgramMode(mode) || family, item))) {
+            (item.op == AwaitResult && !TaskResultValid(records, fields, slots, lifecycle, managed_records, ProgramMode(mode) || family, item))) {
             return Result.Rejected(base + pc, "native task observer or result differs from its type");
         }
         if ((item.op == CancelAfter && !Typed(slots, item.right, abi.DoubleStorage)) ||
@@ -1419,6 +1424,10 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     }
     if (owner_pins) {
         error := TaskOwnersValid(code, slots, locals, records, lifecycle);
+        if (error != "") { return Result.Rejected(base, error); }
+    }
+    if (plain_references) {
+        error := TaskReferencesValid(lifecycle, slots, code, arguments, definitions);
         if (error != "") { return Result.Rejected(base, error); }
     }
     dominance := Dominators(code);
@@ -1769,7 +1778,11 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         if (item.type == TaskType) { out = format_text("{}{}", out, Store("0", TaskType, "s", item.left)); }
     } else if (item.op == Publish) {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
-        out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "result", 0));
+        if (coroutine) {
+            // coro.promise observers read the complete payload after this ramp
+            // returns. Keep every field even when local tracing reads only one.
+            out = format_text("{}  store volatile {} %a{}, ptr %result0\n", out, type, pc);
+        } else { out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "result", 0)); }
         if (item.type == TaskType) { out = format_text("{}{}", out, Store("0", TaskType, "s", item.left)); }
     } else if ((item.op == Return || item.op == End) && coroutine) {
         // The result is in the promise; the coroutine finishes at its final suspension.
@@ -2855,7 +2868,7 @@ AwaitedCallInstruction :: (functions: Function[], parameters: int[], arguments: 
     out = format_text("{}p{}.destroy:\n  call void @llvm.coro.destroy(ptr %v{})\n  br label %coro.cleanup\n", out, pc, pc);
     out = format_text("{}p{}.finished:\n  %promise{} = call ptr @llvm.coro.promise(ptr %v{}, i32 8, i1 false)\n", out, pc, pc, pc);
     out = format_text("{}  %result{} = load {}, ptr %promise{}\n", out, pc, TypeName(item.type), pc);
-    if (ValueOwned(item.type, owners)) {
+    if (ValueOwned(item.type, owners) || item.type == PointerType) {
         out = format_text("{}  store {} zeroinitializer, ptr %promise{}\n", out, TypeName(item.type), pc);
     }
     out = format_text("{}  call void @llvm.coro.destroy(ptr %v{})\n", out, pc);
@@ -2932,9 +2945,9 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         owner_locations = TaskOwnerLocations(shape, code);
         out.append(TaskOwnerPrologue(owner_locations));
     }
-    frame_roots: ManagedFrameRoots = {prologue: "", attach: "", cleanup: ""};
+    frame_roots: ManagedFrameRoots = {prologue: "", attach: "", cleanup: "", destroy: ""};
     if (managed && coroutine) {
-        frame_roots = ManagedFrame(shape, slots, locals);
+        frame_roots = ManagedFrame(shape, slots, locals, managed_records);
         out.append(frame_roots.prologue);
     }
     if (managed) {
@@ -3083,7 +3096,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     if (coroutine) {
         out.append(CoroutineEpilogue(strings.Concatenate([TaskOwnerCleanup(owner_locations, "final"), TaskFrameCleanup(shape, locals, code, "final"), ManagedFramePins(shape, code, "final"), frame_roots.cleanup]),
                                      strings.Concatenate([TaskOwnerCleanup(owner_locations, "cancel"), TaskFrameCleanup(shape, locals, code, "cancel"), ManagedFramePins(shape, code, "cancel"), frame_roots.cleanup,
-                                                          TaskPromiseCleanup(result, ValueOwned(result, record_owners))]), guarded));
+                                                          TaskPromiseCleanup(result, ValueOwned(result, record_owners)), frame_roots.destroy]), guarded));
     }
     out.append("trap:\n  call void @llvm.trap()\n  unreachable\n}\n");
     return strings.Join(out, "");
@@ -3500,7 +3513,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     for (index in 0..<length(records)) {
         record := records[index];
         if (ManagedTraced(RecordType + index, managed_records.traced) &&
-            (!managed_records.flat[index] || record.identity == 0) && !ViewOptional(records, fields, RecordType + index, ViewType)) {
+            !managed_records.flat[index] && !ViewOptional(records, fields, RecordType + index, ViewType)) {
             return Result.Rejected(-1, "native managed pointer aggregate roots require typed flat records");
         }
         if (record.identity == 0) { continue; }
@@ -3534,7 +3547,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             }
         }
     }
-    for (shape in functions) { managed = managed || ManagedStorage(shape.result); }
+    for (shape in functions) { managed = managed || ManagedStorage(shape.result) || ManagedTraced(shape.result, managed_records.traced); }
     polling := false;
     for (item in code) { polling = polling || item.op == ManagedPending || item.op == ManagedPoll || item.op == ManagedTrack; }
     managed = managed || polling;
@@ -3544,7 +3557,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     if (managed && !ProgramMode(mode) && !family) {
         return Result.Rejected(-1, "native managed pointers require a standalone collector owner");
     }
-    if (managed && !family && ManagedStorage(functions[0].result)) {
+    if (managed && !family && (ManagedStorage(functions[0].result) || ManagedTraced(functions[0].result, managed_records.traced))) {
         return Result.Rejected(-1, "a standalone entry cannot export managed pointers");
     }
     if (source.file != "" && abi.DebugFormat(target) == "") {
@@ -3689,6 +3702,9 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             record_roots := resize([false], length(records));
             for (function in first..<last) {
                 shape := functions[function];
+                if (ManagedTraced(shape.result, managed_records.traced)) {
+                    record_roots[shape.result - RecordType] = true;
+                }
                 for (part in 0..<2) {
                     types := slots;
                     begin := shape.first_slot;

@@ -150,7 +150,7 @@ RecordMapPayloadsShareTheValueLifecycleDomain :: () {
 @test
 ArrayRecordMapPayloadsUseTheSameClosedLifecycle :: () {
     Emitted(RecordPayloadMap(native.ArrayType + abi.TextStorage, true));
-    Rejects(RecordPayloadMap(native.PointerType, true), "native managed pointer aggregate roots require typed flat records");
+    Rejects(RecordPayloadMap(native.PointerType, true), MapOperands());
     Emitted(RecordPayloadMap(native.MapOf(abi.IntStorage, abi.IntStorage), true));
     Rejects(RecordPayloadMap(native.MapOf(abi.IntStorage, native.ArrayType + native.PointerType), true), MapOperands());
 }

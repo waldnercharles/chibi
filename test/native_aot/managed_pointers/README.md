@@ -156,3 +156,23 @@ import, so a freestanding Linux program can use the null-accessor path without
 libc. `weak.sh` executes that path at O0/O2; the directory provider suite checks
 that release callbacks really clobber error state before the OS error capture.
 `growth.sh` bounds LLVM growth for 100 and 1000 live pointer-array locals.
+
+Pointer and nullable-pointer promises use one 32-byte persistent root node for
+the typed result slot. Completion unlinks local roots but keeps that node until
+the last observer destroys the frame. Inline awaits transfer the pointer before
+clearing the child slot and destroying the child; collection can resume only
+after the caller's root is initialized. The source proof includes collection
+before the first join, repeated joins, successful nil versus cancellation, and
+old-generation promises read after incoming-generation allocation.
+
+A pointer parameter whose body can yield or await captures a managed cell.
+The existing forwarding graph propagates this rule through synchronous callers,
+so no borrowed stack reference survives a task's suspension. The source proof
+keeps captures alive after their spawning caller returns and cancels them under
+allocation pressure. Borrowed native reference parameters, pointer-array
+results, inline records containing pointers and view promises remain closed.
+
+Waiting functions may read or replace a plain optional cell through an immediate
+managed-address access. The temporary record reference cannot enter a local,
+call argument or later statement, and control flow cannot enter its read or
+write/readback chain. Borrowed record-reference parameters remain rejected.

@@ -105,7 +105,7 @@ for level in 0 2; do
 done
 for folder in "$root"/test/native_aot/tasks/rejected/*; do
     name=$(basename "$folder")
-    if [ "$name" = unguarded_record ]; then printf prior > "$work/rejected"; fi
+    if [ "$name" = unguarded_record ] || [ "$name" = unguarded_pointer ] || [ "$name" = pointer_array_result ]; then printf prior > "$work/rejected"; fi
     if "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
         --source "$folder/Main.chibi" --entry Main --output "$work/rejected" \
         --llvm "$llvm" --target "$target" --jobs 1 > "$work/rejection" 2>&1; then
@@ -113,7 +113,8 @@ for folder in "$root"/test/native_aot/tasks/rejected/*; do
         exit 1
     fi
     case "$name" in
-        pointer_result) grep -q 'native managed records require a stable authored layout' "$work/rejection" ;;
+        pointer_array_result) grep -q 'native managed pointer aggregate roots require typed flat records' "$work/rejection" ;;
+        unguarded_pointer) grep -Fq 'dereference requires a pointer' "$work/rejection" ;;
         unguarded_record) grep -Fq "Unknown field 'value'" "$work/rejection" ;;
         unguarded_argument) grep -Fq 'argument differs from its parameter type' "$work/rejection" ;;
         task_array) grep -q "array item differs from the array's type" "$work/rejection" ;;
@@ -121,9 +122,8 @@ for folder in "$root"/test/native_aot/tasks/rejected/*; do
         numeric_handle) grep -q 'conversion needs a number' "$work/rejection" ;;
         task_parameter) grep -Fq 'await needs a task handle or authored call' "$work/rejection" ;;
         different_result_producers|void_result) grep -q 'assigned value differs from its local' "$work/rejection" ;;
-        dependency) grep -q 'waiting parameters need scalar values; managed values and dependencies are not supported yet' "$work/rejection" ;;
     esac
-    if [ "$name" = unguarded_record ]; then
+    if [ "$name" = unguarded_record ] || [ "$name" = unguarded_pointer ] || [ "$name" = pointer_array_result ]; then
         test "$(cat "$work/rejected")" = prior
         rm "$work/rejected"
     else

@@ -125,6 +125,17 @@ ScalarScopedDereference :: (forest: snapshot.SnapshotNode[], text: string, names
 ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                         names: Name[], types: TypeDecl[], members: TypeMember[], package: int, operand: int) -> int {
     node := Unparenthesized(forest, operand);
+    if (Is(forest, node, syntax.AwaitExpression)) {
+        awaited := Unparenthesized(forest, Field(forest, node, syntax.FieldValue));
+        if (Is(forest, awaited, syntax.CallExpression)) {
+            called := CalledFunction(forest, text, callables, [], names, package, awaited);
+            if (called >= 0 && callables[called].waits) {
+                shape := TaskSuccessValue(callables[called], params);
+                if (shape.storage == PointerStorage && shape.container == 0) { return shape.record; }
+            }
+        }
+        return -1;
+    }
     if (Is(forest, node, syntax.AddressExpression)) {
         held := Unparenthesized(forest, Field(forest, node, syntax.FieldOperand));
         if (ScalarScopedDereference(forest, text, names, held)) { return -1; }
@@ -159,6 +170,12 @@ ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables
         found := Lookup(names, Text(forest, text, node));
         if (found >= 0 && names[found].storage == PointerStorage && names[found].container == 0) {
             return names[found].record;
+        }
+        if (found >= 0 && names[found].storage == UnionStorage && names[found].container == 0 &&
+            names[found].record >= 0 && types[names[found].record].kind == TaskResultDecl &&
+            TaskResultPresent(forest, text, names[found], node)) {
+            shape := TaskResultSuccess(types, names[found].record);
+            if (shape.storage == PointerStorage && shape.container == 0) { return shape.record; }
         }
         return -1;
     }
@@ -352,6 +369,9 @@ ScalarManagedRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], mem
             output[heads[index]] = header;
             continue;
         }
+        // Structural join wrappers are traced inline. A zero identity keeps
+        // them outside the managed-cell allocation/projection contract.
+        if (record >= 0 && types[record].kind == TaskResultDecl) { continue; }
         if (record < 0 || types[record].kind != RecordDecl || types[record].layout == 0) {
             return ScalarOperands.Failed(Diagnose(forest, 0, 0, "native managed records require a stable authored layout"));
         }

@@ -27,16 +27,22 @@ Mark :: (path: string, text: string) {
 }
 Allowed :: () -> bool { return access("allow-managed-record", 0) == 0; }
 Done :: () { Mark("managed-record-done", "old42"); }
+Promise :: () -> ^Link { if false { yield } return Cycle(37); }
 Worker :: () -> int {
-    pointer := Cycle(37);
+    promised := Promise();
     while !Allowed() { yield }
     Churn();
-    next := pointer.next;
-    if next != nil {
-        total := pointer.value + next.value;
-        assert(total == 42, "old generation keeps its typed cyclic record payload");
-    } else { assert(false, "old generation loses no record links"); }
-    Done();
+    joined := await promised;
+    if joined is Cancelled { return 1; }
+    else {
+        pointer := joined;
+        next := pointer.next;
+        if next != nil {
+            total := pointer.value + next.value;
+            assert(total == 42, "old generation keeps its typed cyclic record payload");
+        } else { assert(false, "old generation loses no record links"); }
+        Done();
+    }
     return 0;
 }
 Cancelled :: () -> int {

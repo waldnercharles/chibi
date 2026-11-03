@@ -47,7 +47,7 @@ ManagedPollValid :: (item: Instruction, slots: int[], locals: int[]) -> bool {
 // roots. Empty functions allocate/register nothing. Initialize before
 // registration, after coro.begin chooses persistent frame addresses.
 ManagedOwnerRoots :: (count: int, persistent: bool) -> ManagedFrameRoots {
-    found: ManagedFrameRoots = {prologue: "", attach: "", cleanup: ""};
+    found: ManagedFrameRoots = {prologue: "", attach: "", cleanup: "", destroy: ""};
     if (count == 0) { return found; }
     root := "%chibi.managed.root";
     operation := "push";

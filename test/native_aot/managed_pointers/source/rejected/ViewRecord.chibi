@@ -1,0 +1,3 @@
+package rejected_view_record
+Holder :: struct { tag: int; window: view int[]; }
+Main :: () -> int { return 0; }

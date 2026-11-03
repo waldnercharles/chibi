@@ -1,0 +1,3 @@
+package rejected_view_union
+Window :: union { None | Some(window: view int[]) }
+Main :: () -> int { return 0; }

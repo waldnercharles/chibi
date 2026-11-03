@@ -129,7 +129,13 @@ covers primitive and owned aggregate views, reads/writes after suspension,
 optional and union parameters, a returning spawning caller, nested cancellation,
 and collection requested by allocator/release callbacks. The reload proof changes
 the incoming element schema while an old worker keeps its original view/code.
-View promises remain closed independently of this frame membership.
+View promises keep a separate persistent root through final suspension until
+its last observer is released. Direct windows use the window tracer; exact
+optional/authored-union results use the existing inline tracer. Observer copies
+refer to the same cell, so writes through one window remain visible through
+another. Promise proofs cover late and repeated joins, immediate optional
+results, completed handles, cancellation, callback collection and failed tasks.
+The reload worker also holds a completed view promise from the old schema.
 
 Ordinary source also accepts direct-view results and handles for those results;
 a handle for an optional-view result retains the ordinary union-result rejection.
@@ -138,7 +144,7 @@ probes compile calls under a false branch, with an invalid-after-yield body as
 a control. They establish source acceptance, not resumed-runtime behavior.
 Synchronous ordinary probes execute views over pointer elements and records
 containing pointer or pointer-array fields. Those GC-bearing element forms are
-remaining native parity work, separate from suspended roots for admitted views.
+remaining native parity work, separate from frame and promise roots for admitted views.
 
 Optional numeric/bool values and flat numeric/bool record payloads can share
 managed cells. The optional tag and payload move together; nil replacement
@@ -241,3 +247,9 @@ caller and child failures with poisoned zero-live-allocation checks. Reload
 keeps an old completed array promise alive and preserves independent joins.
 Arrays/maps whose elements contain collector edges and view promises remain
 outside this result domain.
+
+Value-only records may combine direct pointer fields with pointer-array and
+text owners. Their structural root metadata does not make them cell layouts.
+`InlineOwners.chibi` checks synchronous copies, repeated promise joins, by-value
+waiting parameters and cancellation under collection. Taking the address of an
+owned record remains rejected until its cell layout owns and traces those fields.

@@ -5,9 +5,11 @@ import strings "core:strings"
 
 // Record owners use the same copy/drop graph after active collector roots
 // protect any pointer-array fields. Direct pointer arrays retain their
-// separate cancellation path; maps and views remain closed here.
+// separate cancellation path. Maps reuse their counted payload domain;
+// views remain outside this copy/drop owner path.
 pub TaskOwnedType :: (records: Record[], layout: ValueLayout, type: int) -> bool {
     if (type == abi.TextStorage) { return true; }
+    if (type >= MapType && type < RefType) { return MapPayloadValid(records, layout, type); }
     if (type >= ArrayType && type < MapType) {
         element := ElementType(records, type);
         return element != 0 && ValueValid(layout, element);
@@ -89,6 +91,9 @@ TaskDropValue :: (type: int, prefix: string, value: string) -> string {
     if (type == abi.TextStorage) {
         return format_text("  %{}.backing = extractvalue {} {}, 2\n  call void @chibi_scalar.free(ptr %ctx, ptr %{}.backing)\n", prefix, TypeName(type), value, prefix);
     }
+    if (type >= MapType) {
+        return format_text("  call void @chibi_map.{}.drop(ptr %ctx, {} {})\n", type, TypeName(type), value);
+    }
     if (type >= ArrayType) {
         return format_text("  call void @chibi_array.{}.drop(ptr %ctx, {} {})\n", type, TypeName(type), value);
     }
@@ -98,7 +103,7 @@ TaskDropValue :: (type: int, prefix: string, value: string) -> string {
 TaskOwnerBoundary :: (item: Instruction) -> bool {
     op := item.op;
     return (op == ArrayResize && item.literal == i64(ArrayResizeInitialized)) || op == ClockSample || op == Call || op == ForeignCall || op == ManagedNew || op == Format ||
-           op == Suspend || op == Delay || op == AwaitHandle || op == AwaitResult || op == Fail;
+           op == Suspend || op == Delay || op == AwaitHandle || op == AwaitResult || op == Fail || op == TypedFail;
 }
 TaskOwnersValid :: (code: Instruction[], slots: int[], locals: int[], records: Record[], layout: ValueLayout) -> string {
     active_kinds: int[] = [];

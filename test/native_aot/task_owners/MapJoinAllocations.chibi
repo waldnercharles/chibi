@@ -1,0 +1,40 @@
+package map_join_allocations
+
+foreign import audit "system:c"
+foreign audit { chibi_task_owner_allocations :: () -> u64 }
+
+Ready :: () -> [int: int] {
+    if false { yield }
+    values: [int: int] = [:];
+    for index in 0..<4096 { values[index] = index; }
+    return values;
+}
+Main :: () -> int {
+    pending := Ready();
+    before := chibi_task_owner_allocations();
+    for index in 0..<128 {
+        joined := await pending;
+        if joined is Cancelled { return 1; }
+        else { value := joined; assert(value[index] == index); }
+    }
+    observed := chibi_task_owner_allocations();
+    assert(observed == before, "read-only map joins must allocate no backing");
+    changed := await pending;
+    if changed is Cancelled { return 2; }
+    else {
+        value := changed;
+        snapshot := chibi_task_owner_allocations();
+        value[7] = -1;
+        detached := chibi_task_owner_allocations();
+        // A large map detaches its entries and hash index, once each.
+        assert(detached == snapshot + 2, "map mutation detaches backing once");
+        value[8] = -2;
+        repeated := chibi_task_owner_allocations();
+        assert(repeated == detached, "a unique map reuses its detached backing");
+        assert(value[7] == -1 && value[8] == -2);
+    }
+    unchanged := await pending;
+    if unchanged is Cancelled { return 3; }
+    else { value := unchanged; assert(value[7] == 7 && value[8] == 8); }
+    return 0;
+}

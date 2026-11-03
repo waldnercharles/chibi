@@ -28,14 +28,16 @@ GenericReport :: (actual: os.Result, failed: int) {
     if (failed > 0) { status = 1; }
     if (actual.status != status) { os.Print(actual.stdout); os.Print(actual.stderr); }
     assert(actual.status == status && actual.stderr == "", "concrete generic test status");
-    assert(strings.HasSuffix(actual.stdout, format_text("102 tests, {} failed\n", failed)), "every specialization is selected");
+    assert(strings.HasSuffix(actual.stdout, format_text("103 tests, {} failed\n", failed)), "every specialization is selected");
     headers := 0;
     specialized := 0;
+    helper := 0;
     for (line in strings.SplitLines(actual.stdout)) {
-        if (strings.HasPrefix(line, "PASS project.") || strings.HasPrefix(line, "FAIL project.")) { headers += 1; }
+        if (strings.HasPrefix(line, "PASS ") || strings.HasPrefix(line, "FAIL ")) { headers += 1; }
+        if (line == "PASS helper.Before") { helper += 1; }
         if (strings.HasPrefix(line, "PASS project.__generic_") || strings.HasPrefix(line, "FAIL project.__generic_")) { specialized += 1; }
     }
-    assert(headers == 102 && specialized == 101, "concrete names come from compiler facts");
+    assert(headers == 103 && specialized == 101 && helper == 1, "concrete names come from compiler facts");
 }
 
 Main :: () -> int {
@@ -48,7 +50,7 @@ Main :: () -> int {
     helper := Folder(root, "helper");
     source := strings.Concatenate([tested, "/Facts.chibi"]);
     Write(strings.Concatenate([helper, "/ValueTests.chibi"]),
-        "package helper\npub Enabled: int : 1\npub Value :: () -> int { return 42; }\n@test Before :: () { assert(false); }\n");
+        "package helper\npub Enabled: int : 1\npub Value :: () -> int { return 42; }\n@test Before :: () { assert(true); }\n");
     Write(source, strings.Concatenate([
         "package facts\nimport helper \"project:helper\"\nimport target \"core:target\"\n",
         "@test Before :: () { assert(helper.Value() == 42); }\n",
@@ -59,9 +61,9 @@ Main :: () -> int {
         "else { @test SameName :: () { assert(true); } }\n",
         "@test // the parser owns the attribute\nAfter :: () { assert(true); }\n"]));
     command := [chibi, "test", "-O0", "--llvm", llvm, "--root", root, tested];
-    Check(os.Capture(command), "PASS project.Before\nPASS project.Selected\nPASS project.SameName\nPASS project.After\n4 tests, 0 failed\n");
+    Check(os.Capture(command), "PASS helper.Before\nPASS project.Before\nPASS project.Selected\nPASS project.SameName\nPASS project.After\n5 tests, 0 failed\n");
     command[2] = "-O2";
-    Check(os.Capture(command), "PASS project.Before\nPASS project.Selected\nPASS project.SameName\nPASS project.After\n4 tests, 0 failed\n");
+    Check(os.Capture(command), "PASS helper.Before\nPASS project.Before\nPASS project.Selected\nPASS project.SameName\nPASS project.After\n5 tests, 0 failed\n");
     command[2] = "-O0";
 
     // More concrete entries than declarations, crossing both ordinal-width
@@ -74,7 +76,7 @@ Main :: () -> int {
     Write(source, generic);
     GenericReport(os.Capture(command), 0);
     Write(strings.Concatenate([helper, "/ValueTests.chibi"]),
-        "package helper\npub Enabled: int : 1\npub Value :: () -> int { assert(false, \"imported after dispatcher\"); return 42; }\n@test Before :: () { assert(false); }\n");
+        "package helper\npub Enabled: int : 1\npub Value :: () -> int { assert(false, \"imported after dispatcher\"); return 42; }\n@test Before :: () { assert(true); }\n");
     imported_failure := os.Capture(command);
     GenericReport(imported_failure, 1);
     assert(strings.Contains(imported_failure.stdout, strings.Concatenate([helper,

@@ -1,0 +1,12 @@
+package view_result_write_rejection
+Window :: () -> view int[] {
+    values: int[] = [7]; pointer := &values;
+    selected := pointer.view(0..<1);
+    yield
+    return selected!;
+}
+Main :: () -> int {
+    pending := Window(); result := await pending;
+    if result is Cancelled { return 1; }
+    else { result[0] = 19; return 0; }
+}

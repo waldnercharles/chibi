@@ -376,8 +376,8 @@ ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) ->
             member := rows[head + 1 + field];
             if (member.kind != facts.MemberRow || member.name == "" || member.text != "" || !Stored(records, member.type) ||
                 member.value != field || member.count != 0 ||
-                (record.literal == 0 && (member.type == facts.PointerType ||
-                    (member.literal != 0 && (member.literal != i64(facts.CharNominal) || member.type != facts.IntType)))) ||
+                (record.literal == 0 && member.literal != 0 &&
+                    (member.literal != i64(facts.CharNominal) || member.type != facts.IntType)) ||
                 (record.literal != 0 && (member.literal == 0 || (!Scalar(member.type) && member.type != facts.PointerType))) || !Located(member, starts, size) ||
                 !Within(member, record)) {
                 return "invalid scalar record member row";
@@ -544,6 +544,41 @@ Last :: (rows: facts.Row[], heads: int[], function: int) -> int {
         return heads[function + 1];
     }
     return length(rows);
+}
+// Context failures return through every synchronous caller. Find only the
+// calls that need active owner cleanup, visiting each row and call edge once.
+FamilyFailures :: (rows: facts.Row[], heads: int[]) -> bool[] {
+    failed := resize([false], length(heads));
+    first := resize([int(0)], length(heads));
+    callers: int[] = [];
+    next: int[] = [];
+    pending: int[] = [];
+    for (function in 0..<length(heads)) {
+        for (index in heads[function] + 1..<Last(rows, heads, function)) {
+            row := rows[index];
+            if (row.kind == facts.UnwrapRow || row.kind == facts.AssertRow ||
+                (row.kind == facts.ConvertRow && row.value == facts.CheckedChar) ||
+                (row.kind == facts.ArrayRow && row.value == facts.ArrayResize)) {
+                if (!failed[function]) { failed[function] = true; pending.append(function); }
+            }
+            if (row.kind == facts.CallRow) {
+                callers.append(function);
+                next.append(first[row.value]);
+                first[row.value] = length(callers);
+            }
+        }
+    }
+    at := 0;
+    while (at < length(pending)) {
+        edge := first[pending[at]];
+        while (edge > 0) {
+            caller := callers[edge - 1];
+            if (!failed[caller]) { failed[caller] = true; pending.append(caller); }
+            edge = next[edge - 1];
+        }
+        at += 1;
+    }
+    return failed;
 }
 // The operands a Text row's operator consumes: its string, then its index,
 // or its start and count; 0 for no operator. A TextFormat row's count says
@@ -2780,7 +2815,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         return Result.Invalid("managed pointer roots require a standalone native program");
     }
     state_characters: bool[] = [];
-    if (!program) {
+    if (!program && !family) {
         for (row in rows) {
             if (row.kind == facts.UnwrapRow) {
                 return Result.Invalid("typed failures require a standalone native program");
@@ -2829,6 +2864,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
     comparison_sites: int[] = [];
     comparison_types: bool[] = [];
     heads := Heads(rows, Start(rows, declared));
+    family_failures: bool[] = [];
+    if (family) { family_failures = FamilyFailures(rows, heads); }
     // The open statement an End, Else or Case row belongs to, plus one; 0 for
     // any other row.
     openers: int[] = resize([int(0)], length(rows));
@@ -3916,9 +3953,35 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         some.literal = 1;
                         failed := Op(native.TypedFail, 0, 0, 0, 0, 0);
                         failed.literal = 7;
-                        body.extend([tag, some, Op(native.Eq, integer, slot + 2, slot, slot + 1, 0),
-                                     Op(native.Branch, 0, 0, slot + 2, 0, length(body) + 5), failed]);
+                        body.extend([tag, some, Op(native.Eq, integer, slot + 2, slot, slot + 1, 0)]);
+                        skip_failure := length(body);
+                        body.append(Op(native.Branch, 0, 0, slot + 2, 0, 0));
                         slot += 3;
+                        if (family && waiting_function) {
+                            glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
+                                fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root, true, records, value_layout);
+                            next_root = glue.next;
+                            slots.extend(glue.types);
+                            extra += length(glue.types);
+                            body.extend(glue.before);
+                            body.append(failed);
+                            body.extend(glue.after);
+                        } else {
+                            if (family) {
+                                for (temporary in fresh) {
+                                    held_type := slots[shape.first_slot + temporary];
+                                    if (TrackedRecord(managed, held_type)) { body.append(Op(native.ValueDrop, held_type, 0, temporary, 0, 0)); }
+                                    else { body.append(Giving(held_type, temporary)); }
+                                }
+                                drops := DropAll(rows, declared, managed, value_layout, owned_vars, owned_types, places, 0, [], frames, true,
+                                    slot + 1 + extra, length(body));
+                                slots.extend(drops.slot_types);
+                                extra += length(drops.slot_types);
+                                body.extend(drops.code);
+                            }
+                            body.append(failed);
+                        }
+                        body = Patched(body, skip_failure);
                     }
                     if (operand.kind == facts.PayloadRow) {
                         for (at_read in 0..<length(any_slots)) {
@@ -4688,9 +4751,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                 }
                 stored = [];
-                if ((pointer_program || waiting_function) && (item.op == native.ClockSample || item.op == native.Call || item.op == native.ForeignCall || item.op == native.AwaitResult || item.op == native.Format)) {
+                family_call := false;
+                if (family && item.op == native.Call) { family_call = family_failures[item.left]; }
+                if ((pointer_program || waiting_function || family_call) && (item.op == native.ClockSample || item.op == native.Call || item.op == native.ForeignCall || item.op == native.AwaitResult || item.op == native.Format)) {
                     glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
-                        fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root, waiting_function, records, value_layout);
+                        fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root, waiting_function || family_call, records, value_layout);
                     next_root = glue.next;
                     slots.extend(glue.types);
                     extra += length(glue.types);

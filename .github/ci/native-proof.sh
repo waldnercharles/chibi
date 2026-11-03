@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-# The native build entry reuses its compiler; VM parity uses the explicit Release helpers.
+# Fixed-point and independent Driver/Graph command proofs use the native compiler.
 : "${CHIBI_LLVM_BIN:?Install the native LLVM tools before this proof}"
 # A failed core test may precede this phase. It must not change the proven source.
 test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
@@ -8,15 +8,13 @@ source_status=$(git status --porcelain --untracked-files=normal)
 test -z "$source_status"
 set -o pipefail
 stage_one=()
-comparison=()
 windows=()
-if [ "$CHIBI_FULL" != true ]; then comparison=(--skip-vm-comparison); fi
 if [ -z "${CHIBI_WINDOWS_BOOTSTRAP_RUN:-}" ]; then windows=(--windows "$RUNNER_TEMP/windows"); fi
 if grep -q "^linux-x64	" tools/bootstrap/native-seed.tsv; then
   sh tools/bootstrap/native-seed.sh linux-x64 "$RUNNER_TEMP/native-seed/chibi"
   stage_one=(--stage-one "$RUNNER_TEMP/native-seed/chibi")
 fi
-sh tools/build.sh build native-self-host --llvm "$CHIBI_LLVM_BIN" --libclang-root /usr/lib/llvm-18 --jobs 4 --compare-vm "${windows[@]}" --build-host "$PWD/build-release/sdk/chibi-build-host" --compiler-host "$PWD/build-release/sdk/chibi-compiler-host" "${stage_one[@]}" "${comparison[@]}" 2>&1 \
+sh tools/build.sh build native-self-host --llvm "$CHIBI_LLVM_BIN" --jobs 4 "${windows[@]}" "${stage_one[@]}" 2>&1 \
   | tee "$RUNNER_TEMP/native-self-host.log"
 
 driver="$PWD/build-native-self-host/stage3/chibi"

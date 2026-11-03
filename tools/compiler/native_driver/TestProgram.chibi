@@ -8,6 +8,7 @@ TestProgram :: struct {
     rows: facts.Row[];
     sources: string[];
     names: string[];
+    labels: string[];
     effects: int[];
 }
 
@@ -15,7 +16,7 @@ TestProgram :: struct {
 // dispatcher. Imported documents follow, so one joined-byte boundary identifies
 // private wrappers without conflating names in other packages.
 TestProgramRows :: (collected: compiler.ScalarCollection, paths: string[], sources: string[],
-                    main_name: string, dispatcher: string) -> TestProgram {
+                    main_name: string, dispatcher: string, label: string) -> TestProgram {
     root_end := 0;
     root := Directory(paths[0]);
     for (index in 0..<length(paths)) {
@@ -23,8 +24,63 @@ TestProgramRows :: (collected: compiler.ScalarCollection, paths: string[], sourc
         root_end += strings.ByteLength(sources[index]);
         if (!strings.HasSuffix(sources[index], "\n")) { root_end += 1; }
     }
-    names: string[] = [];
-    masks: int[] = [];
+    // The ordinary finder groups project exports by their owning namespace.
+    // Sort package IDs once, then group concrete ordinals with counting offsets.
+    // Core imports do not become tests; an explicit core-root invocation keeps
+    // its existing selected-package label.
+    package_names := resize([""], length(collected.test_packages));
+    for (identity, package in collected.test_packages) {
+        if (package == collected.test_root) { package_names[package] = label; }
+        else if (strings.HasPrefix(identity, "project:")) {
+            relative := strings.TrimPrefix(identity, "project:");
+            if (relative == "") { relative = "project"; }
+            package_names[package] = relative;
+        }
+    }
+    offsets := resize([int(0)], length(package_names));
+    from: int[] = [];
+    for (selected in collected.tests) {
+        if (offsets[selected.package] == 0) { from.append(selected.package); }
+        offsets[selected.package] += 1;
+    }
+    to := resize([int(0)], length(from));
+    width := 1;
+    while (width < length(from)) {
+        first := 0;
+        while (first < length(from)) {
+            middle := first + width;
+            if (middle > length(from)) { middle = length(from); }
+            end := middle + width;
+            if (end > length(from)) { end = length(from); }
+            left := first;
+            right := middle;
+            at := first;
+            while (at < end) {
+                if (right >= end || (left < middle && strings.Compare(package_names[from[left]], package_names[from[right]]) <= 0)) {
+                    to[at] = from[left]; left += 1;
+                } else { to[at] = from[right]; right += 1; }
+                at += 1;
+            }
+            first = end;
+        }
+        previous := from; from = to; to = previous;
+        width *= 2;
+    }
+    total := 0;
+    for (package in from) {
+        count := offsets[package];
+        offsets[package] = total;
+        total += count;
+    }
+    positions: int[] = [];
+    for (selected in collected.tests) {
+        positions.append(offsets[selected.package]);
+        offsets[selected.package] += 1;
+    }
+    names := resize([""], length(collected.tests));
+    labels := resize([""], length(collected.tests));
+    masks := resize([int(0)], length(collected.tests));
+    targets := resize([int(0)], length(collected.tests));
     dispatcher_head := -1;
     dispatcher_function := -1;
     entry_function := -1;
@@ -33,9 +89,12 @@ TestProgramRows :: (collected: compiler.ScalarCollection, paths: string[], sourc
     awaits := false;
     for (row, index in collected.rows) {
         if (row.kind != facts.FunctionRow) { continue; }
-        if (test < length(collected.tests) && collected.tests[test] == function) {
-            names.append(row.name);
-            masks.append(collected.effects[function]);
+        if (test < length(collected.tests) && collected.tests[test].function == function) {
+            position := positions[test];
+            names[position] = row.name;
+            labels[position] = package_names[collected.tests[test].package];
+            masks[position] = collected.effects[function];
+            targets[position] = function;
             awaits = awaits || collected.waiting[function];
             test += 1;
         }
@@ -108,7 +167,7 @@ TestProgramRows :: (collected: compiler.ScalarCollection, paths: string[], sourc
     while (at < length(collected.rows)) {
         if (at == template_at) {
             advance := 0;
-            for (target, index in collected.tests) {
+            for (target, index in targets) {
                 // Only the rendered ordinal changes width within a branch.
                 extra := strings.ByteLength(lines[index]) - line_size;
                 for (step in 0..<7) {
@@ -157,5 +216,5 @@ TestProgramRows :: (collected: compiler.ScalarCollection, paths: string[], sourc
         at += 1;
     }
     assert(count_bound, "generated entry uses the concrete test count");
-    return {rows: rows, sources: changed_sources, names: names, effects: masks};
+    return {rows: rows, sources: changed_sources, names: names, labels: labels, effects: masks};
 }

@@ -14,7 +14,7 @@ esac
     --source "$root/test/native_aot/managed_pointers/Probe.chibi" --entry Main \
     --output "$work/probe" --llvm "$llvm" --target "$triple" --jobs 1
 "$work/probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/Collector.ll"
-for name in Cells ScopedAliases Transfer Nullable Records WholeArrays WholeArrayForeign StringArrays StringCells OptionalCells Views ViewUnions ViewStrings ViewOwned TextSequences Tasks TaskPromises TaskCaptured TaskRecordPromises TaskArrayPromises TaskViews TaskFailure TaskPromiseFailure TaskViewFailure; do
+for name in Cells ScopedAliases Transfer Nullable Records WholeArrays WholeArrayForeign StringArrays StringCells OptionalCells Views ViewUnions ViewStrings ViewOwned TextSequences Tasks TaskPromises TaskCaptured TaskRecordPromises TaskArrayPromises InlineOwners TaskViews TaskViewPromises TaskFailure TaskPromiseFailure TaskViewFailure; do
     "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
         --source "$root/test/native_aot/managed_pointers/source/$name.chibi" --entry Main \
         --output "$work/$name.ll" --emit-llvm --target "$triple"
@@ -32,12 +32,16 @@ done
     --source "$root/test/native_aot/managed_pointers/SourceProbe.chibi" --entry Main \
     --output "$work/source-probe" --llvm "$llvm" --target "$triple" --jobs 1
 "$work/source-probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
-    "$work/Cells.ll" "$work/ScopedAliases.ll" "$work/Transfer.ll" "$work/Nullable.ll" "$work/Tasks.ll" "$work/TaskPromises.ll" "$work/TaskCaptured.ll" "$work/TaskRecordPromises.ll" "$work/TaskArrayPromises.ll" "$work/TaskViews.ll" "$work/Records.ll" "$work/WholeArrays.ll" "$work/WholeArrayForeign.ll" "$work/StringArrays.ll" "$work/StringCells.ll" "$work/OptionalCells.ll" "$work/Views.ll" "$work/ViewUnions.ll" "$work/ViewStrings.ll" "$work/ViewOwned.ll" "$work/TextSequences.ll" "$work/TextSpan.ll" "$work/TextBorrowed.ll" "$work/ViewAppend.ll"
+    "$work/Cells.ll" "$work/ScopedAliases.ll" "$work/Transfer.ll" "$work/Nullable.ll" "$work/Tasks.ll" "$work/TaskPromises.ll" "$work/TaskCaptured.ll" "$work/TaskRecordPromises.ll" "$work/TaskArrayPromises.ll" "$work/InlineOwners.ll" "$work/TaskViews.ll" "$work/TaskViewPromises.ll" "$work/Records.ll" "$work/WholeArrays.ll" "$work/WholeArrayForeign.ll" "$work/StringArrays.ll" "$work/StringCells.ll" "$work/OptionalCells.ll" "$work/Views.ll" "$work/ViewUnions.ll" "$work/ViewStrings.ll" "$work/ViewOwned.ll" "$work/TextSequences.ll" "$work/TextSpan.ll" "$work/TextBorrowed.ll" "$work/ViewAppend.ll"
 "$work/source-probe" --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/TaskFailure.ll" "$work/TaskPromiseFailure.ll" "$work/TaskViewFailure.ll"
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$root/test/native_aot/managed_pointers/source/TaskRecordPromises.chibi" --entry Failure \
     --output "$work/TaskRecordPromiseFailure.ll" --emit-llvm --target "$triple"
 "$work/source-probe" --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/TaskRecordPromiseFailure.ll"
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_aot/managed_pointers/source/TaskViewPromises.chibi" --entry Failure \
+    --output "$work/TaskViewPromiseFailure.ll" --emit-llvm --target "$triple"
+"$work/source-probe" --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/TaskViewPromiseFailure.ll"
 for entry in Failure ChildFailure; do
     "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
         --source "$root/test/native_aot/managed_pointers/source/TaskArrayPromises.chibi" --entry "$entry" \
@@ -66,9 +70,9 @@ for name in PatternRows InlineRecords TextCells; do
     "$work/$name-emitter" "$work/$name.ll"
 done
 "$work/source-probe" --callbacks "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
-    "$work/Callbacks.ll" "$work/StringCells.ll" "$work/TextCells.ll" "$work/ViewOwned.ll" "$work/CallbackPointerless.ll" "$work/Tasks.ll" "$work/PatternRows.ll" "$work/InlineRecords.ll" "$work/TaskPromises.ll" "$work/TaskCaptured.ll" "$work/TaskRecordPromises.ll" "$work/TaskArrayPromises.ll" "$work/TaskViews.ll"
+    "$work/Callbacks.ll" "$work/StringCells.ll" "$work/TextCells.ll" "$work/ViewOwned.ll" "$work/CallbackPointerless.ll" "$work/Tasks.ll" "$work/PatternRows.ll" "$work/InlineRecords.ll" "$work/TaskPromises.ll" "$work/TaskCaptured.ll" "$work/TaskRecordPromises.ll" "$work/TaskArrayPromises.ll" "$work/InlineOwners.ll" "$work/TaskViews.ll" "$work/TaskViewPromises.ll"
 "$work/source-probe" --callbacks --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
-    "$work/CallbackFailure.ll" "$work/TaskPromiseFailure.ll" "$work/TaskRecordPromiseFailure.ll" "$work/TaskArrayFailure.ll" "$work/TaskArrayChildFailure.ll" "$work/TaskViewFailure.ll"
+    "$work/CallbackFailure.ll" "$work/TaskPromiseFailure.ll" "$work/TaskRecordPromiseFailure.ll" "$work/TaskArrayFailure.ll" "$work/TaskArrayChildFailure.ll" "$work/TaskViewFailure.ll" "$work/TaskViewPromiseFailure.ll"
 for mismatch in tag storage; do
     "$work/TextCells-emitter" "$work/TextCells-$mismatch.ll" "$mismatch"
     "$work/source-probe" --failure 'another failure' "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \

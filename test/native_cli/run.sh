@@ -43,6 +43,11 @@ CHIBI_CORE=$root/packages/core "$scratch/identities" "$compiler" "$llvm" "$scrat
 CHIBI_CORE=$root/packages/core "$scratch/discovery" "$compiler" "$llvm" "$scratch/programs"
 
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_cli/Exports.chibi" --entry Main --output "$scratch/exports" \
+    --llvm "$llvm" --target "$target"
+CHIBI_CORE=$root/packages/core "$scratch/exports" "$compiler" "$llvm" "$scratch/programs"
+
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$root/test/native_cli/Workers.chibi" --entry Main --output "$scratch/workers" \
     --llvm "$llvm" --target "$target"
 CHIBI_CORE=$root/packages/core "$scratch/workers" "$compiler" "$llvm" "$scratch/programs"

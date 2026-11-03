@@ -942,6 +942,10 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (view.operation == facts.ViewMake || view.operation == facts.ViewSlice) { return UnionStorage; }
         if (view.operation == facts.ViewLength) { return IntStorage; }
         if (view.operation != 0) { return view.shape.storage; }
+        text_sequence := ScalarTextSequenceOf(forest, text, callables, params, names, types, members, callable.package, original);
+        if (text_sequence.operation == facts.TextView || text_sequence.operation == facts.TextRange) { return UnionStorage; }
+        if (text_sequence.operation == facts.TextClone) { return TextStorage; }
+        if (text_sequence.operation == facts.TextLength) { return IntStorage; }
     }
     if (Is(forest, original, syntax.Nil) && context == PointerStorage) { return PointerStorage; }
     if (Is(forest, original, syntax.AddressExpression)) {
@@ -1243,6 +1247,11 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     view := ScalarViewOperation(forest, text, callables, params, names, types, members, callable.package, node);
     if (view.operation != 0) {
         return ScalarViewRows(forest, text, callables, params, callable, names, types, members, constants, node, view, rows);
+    }
+    text_sequence := ScalarTextSequenceOf(forest, text, callables, params, names, types, members, callable.package, node);
+    if (text_sequence.operation != 0) {
+        return ScalarTextSequenceRows(forest, text, callables, params, callable, names, types, members, constants,
+                                       node, text_sequence, rows);
     }
     if (Is(forest, node, syntax.IndexExpression)) {
         return ScalarIndexed(forest, text, callables, params, callable, names, types, members, constants, node, rows);
@@ -2080,6 +2089,9 @@ ScalarHeldUnion :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
     view := ScalarViewOperation(forest, text, callables, params, names, types, members, package, value);
     optional_view := ScalarViewOptional(types, view);
     if (optional_view >= 0) { return optional_view; }
+    text_sequence := ScalarTextSequenceOf(forest, text, callables, params, names, types, members, package, value);
+    optional_text := ScalarTextSequenceOptional(types, text_sequence.operation);
+    if (optional_text >= 0) { return optional_text; }
     if (Is(forest, value, syntax.OptionalMemberExpression)) {
         return ScalarOptionalFieldRecord(forest, text, callables, params, names, types, members, package, value);
     }

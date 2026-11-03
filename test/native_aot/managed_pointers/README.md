@@ -94,8 +94,16 @@ Authored unions with one empty variant and one scalar/string view payload reuse
 the same traced tag/window layout.
 Their source proof covers returned union-only roots, owner replacement, switch
 and `is` bindings, and either tag order. Pattern bindings remain read-only.
+Immutable text views acquire the existing counted string owner; uncounted
+host or literal bytes are copied before the view escapes. Half-open ranges
+count bytes, including embedded NULs and partial UTF-8 sequences; invalid
+bounds give absence and valid empty ranges give a present empty string.
+Bracket slices and clones independently copy their bytes. The source proof
+checks returned temporaries, callback evaluation order, strict bounds, and
+4096 counted windows without a new backing allocation per window, and 4096
+uncounted windows with an independently owned copy for each.
 Ordinary source already rejects view fields in records. Views over records,
-nested arrays or union elements, and immutable `text.view(range)`, are
+nested arrays or union elements are
 working ordinary forms still awaiting native support. View containers, retained
 views and suspended view frames also remain outside this admission.
 

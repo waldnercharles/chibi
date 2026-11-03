@@ -556,6 +556,15 @@ pub TextPrint: int : 5;
 // ordinary qualified type name, truncated to 63 bytes. Format's literal marks
 // these text arguments in bits 1..12 so their modifiers remain ignored.
 pub TextRecordSummary: int : 6;
+// TextView and TextRange consume string/start/end in source order and give
+// Nil | Some(string), absent unless 0 <= start <= end <= byte length. View
+// acquires the existing owner or imports uncounted bytes; Range and Clone
+// copy nonempty bytes. Clone
+// consumes one string and gives its independently owned string copy. Their
+// literal is zero. TextRecordSummary owns the separate operator 6.
+pub TextView: int : 7;
+pub TextRange: int : 8;
+pub TextClone: int : 9;
 
 // Array operators.
 pub ArrayNew: int : 1;

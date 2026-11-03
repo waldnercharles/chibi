@@ -394,7 +394,17 @@ pub OwnerUnpin: int : 105;
 pub ArrayValueAddress: int : 106;
 pub ArrayAddressBracket: int : 0;
 pub ArrayAddressMethod: int : 1;
-pub InstructionCount: int : 107;
+// A strict half-open byte range of left's string. Right/target are int
+// start/end slots. The result is exactly {int tag, string payload}; invalid
+// bounds give all-zero absence. Mode 0 acquires a nonempty span's owner,
+// copying uncounted host/literal bytes before they can escape;
+// mode 1 independently copies its bytes. Valid empty results have tag 1.
+pub TextRange: int : 109;
+pub TextRangeView: int : 0;
+pub TextRangeCopy: int : 1;
+// An independently copied immutable string from left; no other operands.
+pub TextClone: int : 110;
+pub InstructionCount: int : 111;
 // A Call's `literal`: an ordinary call, an awaited call (the callee is a waiting
 // function, run inline in the waiting caller, giving its result), or a spawn (the
 // callee is a waiting function, started as a task of its own, giving an owning
@@ -413,7 +423,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
 }
 Produces :: (op: int) -> bool {
     if (ViewOperation(op)) { return op != ViewSet; }
-    return op == ArrayValueAddress || op == ClockSample || op == ManagedProject || op == ArrayInsert || op == ArrayReverse || op == Select || op == ManagedNew || op == ManagedAddress || op == Print || op == TaskCopy || op == TaskRunning || op == AwaitResult || op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
+    return TextSequenceOperation(op) || op == ArrayValueAddress || op == ClockSample || op == ManagedProject || op == ArrayInsert || op == ArrayReverse || op == Select || op == ManagedNew || op == ManagedAddress || op == Print || op == TaskCopy || op == TaskRunning || op == AwaitResult || op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
            op == ForeignCall || op == StateLoad || op == FunctionAddress || op == Sqrt || op == ValueCopy || op == ArrayLoan || (MapOperation(op) && op != MapDrop);
 }
 Comparison :: (op: int) -> bool {
@@ -424,7 +434,7 @@ Unary :: (op: int) -> bool {
 }
 ReadsLeft :: (op: int) -> bool {
     if (ViewOperation(op)) { return true; }
-    return op == ArrayValueAddress || op == ManagedProject || op == ArrayInsert || op == ArrayReverse || op == Select || op == ManagedNew || op == ManagedAddress || op == ManagedPin || op == Print || op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
+    return TextSequenceOperation(op) || op == ArrayValueAddress || op == ManagedProject || op == ArrayInsert || op == ArrayReverse || op == Select || op == ManagedNew || op == ManagedAddress || op == ManagedPin || op == Print || op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
            (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText || op == ArrayDrop || op == TextRetain ||
            op == TextRelease || op == StateStore || op == Deref || op == Poke || op == ValueCopy || op == ValueDrop || op == ArrayLoan || op == AwaitHandle || op == Cancel ||
            op == CancelAfter || op == Delay || op == Sqrt || (op >= TaskCopy && op <= AwaitResult) || MapOperation(op);
@@ -457,7 +467,7 @@ Fits :: (literal: i64, type: int) -> bool {
 }
 ReadsRight :: (op: int) -> bool {
     if (op == ViewGet) { return true; }
-    return op == ArrayValueAddress || op == Select || (op >= Add && op <= Ne && !Unary(op)) || op == Insert || op == Poke || (op >= TextByte && op <= TextTake) ||
+    return op == TextRange || op == ArrayValueAddress || op == Select || (op >= Add && op <= Ne && !Unary(op)) || op == Insert || op == Poke || (op >= TextByte && op <= TextTake) ||
            ArrayReadsRight(op) || (op >= MapGet && op <= MapDelete && op != MapCopy && op != MapDrop) || op == MapKeyAt ||
            op == MapValueAt || op == MapLiveAt || op == MapValueAddress || op == CancelAfter || op == ArrayLoan;
 }
@@ -469,12 +479,12 @@ ArrayReadsRight :: (op: int) -> bool {
 // Whether an instruction reads the slot its target names: an array store's
 // value or a slice's count.
 ReadsTarget :: (op: int) -> bool {
-    return op == ArrayInsert || op == Select || op == ArraySet || op == ArraySlice || op == MapSet;
+    return op == TextRange || op == ArrayInsert || op == Select || op == ArraySet || op == ArraySlice || op == MapSet;
 }
 // Whether an array instruction calls the runtime context: an index check, or
 // an allocation.
 ArrayCalls :: (op: int) -> bool {
-    return op == ArrayValueAddress || op == ArrayGet || op == ArraySet || op == ArrayPush || op == ArrayCopy || op == ArrayExtend ||
+    return TextSequenceOperation(op) || op == ArrayValueAddress || op == ArrayGet || op == ArraySet || op == ArrayPush || op == ArrayCopy || op == ArrayExtend ||
            op == ArraySlice || op == ArrayResize || op == ArrayBytes || op == ArrayText || op == ArrayDrop ||
            op == TextRelease || op == ArrayRemove || op == ArrayLoan || op == ArrayInsert || op == ArrayReverse;
 }
@@ -1054,7 +1064,8 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         pins = pins || item.op == ManagedPin || item.op == ManagedUnpin;
         owner_pins = owner_pins || item.op == OwnerPin || item.op == OwnerUnpin;
         if (item.op < Constant || item.op >= InstructionCount ||
-            (item.op > Cancel && item.op < CancelAfter && item.op != TypedFail)) {
+            (item.op > Cancel && item.op < CancelAfter && item.op != TypedFail) ||
+            (item.op > ArrayValueAddress && item.op < TextRange)) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if ((item.op == OwnerPin || item.op == OwnerUnpin) &&
@@ -1222,6 +1233,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if (ViewOperation(item.op) && !ViewValid(records, fields, slots, arguments, item)) {
             return Result.Rejected(base + pc, "native view operation differs from its operands");
+        }
+        if (TextSequenceOperation(item.op) && !TextSequenceValid(records, fields, slots, item)) {
+            return Result.Rejected(base + pc, "native text sequence differs from its operands");
         }
         if (item.op >= TextLength && item.op <= TextTake && !TextValid(slots, item)) {
             return Result.Rejected(base + pc, "native text read differs from its operands");
@@ -1797,6 +1811,8 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}  %bytes{} = extractvalue {} %a{}, 0\n  %length{} = extractvalue {} %a{}, 1\n", out, pc, abi.TextType(), pc, pc, abi.TextType(), pc);
         out = format_text("{}  call void @chibi_print_string(ptr %ctx, ptr %bytes{}, i32 %length{})\n", out, pc, pc);
         out = format_text("{}{}", out, Store("0", abi.IntStorage, "s", item.output));
+    } else if (TextSequenceOperation(item.op)) {
+        out = format_text("{}{}", out, TextSequenceInstruction(item, pc));
     } else if (item.op >= TextLength && item.op <= TextTake) {
         out = format_text("{}{}", out, TextRead(item, pc));
     } else if (item.type == PointerType) {
@@ -1989,7 +2005,7 @@ TextHelpers :: () -> string {
 // Whether `code` counts references, so the module has the helpers.
 Counts :: (code: Instruction[]) -> bool {
     for (item in code) {
-        if (item.op == ArrayValueAddress || item.op == OwnerPin || item.op == TextRetain || item.op == TextRelease || item.op == ValueCopy || item.op == ValueDrop || item.op == ArrayDrop || Holding(item.type) ||
+        if (TextSequenceOperation(item.op) || item.op == ArrayValueAddress || item.op == OwnerPin || item.op == TextRetain || item.op == TextRelease || item.op == ValueCopy || item.op == ValueDrop || item.op == ArrayDrop || Holding(item.type) ||
             ((item.op == StateLoad || item.op == StateStore) && (item.type == abi.TextStorage || item.type >= RecordType))) {
             return true;
         }
@@ -2232,27 +2248,12 @@ ArrayBytesRead :: (item: Instruction, pc: int) -> string {
 // A new string of the bytes of the left slot's array of bytes, empty when the
 // array is: they are copied to an allocation of the context's that the string
 // owns, with a count of 1, and none for an empty string.
-ArrayTextRead :: (item: Instruction, pc: int) -> string {
+ArrayTextRead :: (item: Instruction, pc: int, guarded: bool = false) -> string {
     array := abi.ArrayType();
-    text := abi.TextType();
     out := Load(format_text("a{}", pc), ArrayType + abi.ByteStorage, "s", item.left);
     out = format_text("{}  %n{} = extractvalue {} %a{}, 0\n  %data{} = extractvalue {} %a{}, 2\n", out, pc, array, pc, pc,
                       array, pc);
-    out = format_text("{}  %none{} = icmp eq i32 %n{}, 0\n", out, pc, pc);
-    out = format_text("{}  br i1 %none{}, label %done{}, label %make{}\nmake{}:\n", out, pc, pc, pc, pc);
-    // The owner is the runtime's pin_text_owner: a count of 1, the length, then
-    // the bytes and a NUL, which the allocation's zeros give.
-    out = format_text("{}  %bytes{} = zext i32 %n{} to i64\n  %total{} = add i64 %bytes{}, 17\n", out, pc, pc, pc, pc);
-    out = format_text("{}{}", out, Allocated(format_text("owner{}", pc), format_text("%total{}", pc)));
-    out = format_text("{}  store i64 1, ptr %owner{}\n  %size.at{} = getelementptr inbounds i8, ptr %owner{}, i64 8\n", out, pc, pc, pc);
-    out = format_text("{}  store i32 %n{}, ptr %size.at{}\n  %fresh{} = getelementptr inbounds i8, ptr %owner{}, i64 12\n", out, pc, pc, pc, pc);
-    out = format_text("{}  call void @chibi_scalar.copy(ptr %fresh{}, ptr %data{}, i64 %bytes{})\n", out, pc, pc, pc);
-    out = format_text("{}  br label %done{}\ndone{}:\n", out, pc, pc);
-    out = format_text("{}  %buffer{} = phi ptr [ null, %p{} ], [ %fresh{}, %make{} ]\n", out, pc, pc, pc, pc);
-    out = format_text("{}  %held{} = phi ptr [ null, %p{} ], [ %owner{}, %make{} ]\n", out, pc, pc, pc, pc);
-    out = format_text("{}  %at{} = insertvalue {} zeroinitializer, ptr %buffer{}, 0\n", out, pc, text, pc);
-    out = format_text("{}  %sized{} = insertvalue {} %at{}, i32 %n{}, 1\n", out, pc, text, pc, pc);
-    out = format_text("{}  %v{} = insertvalue {} %sized{}, ptr %held{}, 2\n", out, pc, text, pc, pc);
+    out = format_text("{}{}", out, TextCopiedBytes(pc, guarded));
     return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
 }
 // Whether an element of the array loaded as %a<pc> equals the value in the
@@ -3223,7 +3224,8 @@ StatesNumbered :: (code: Instruction[]) -> bool {
 // Whether `code` moves array elements, which the module's copy does.
 Copies :: (code: Instruction[]) -> bool {
     for (item in code) {
-        if (item.op == ArrayInsert || item.op == ArrayReverse || item.op == ArrayPush || item.op == ArrayCopy || (item.op >= ArrayExtend && item.op <= ArrayRemove && item.op != ArrayContains) ||
+        if (TextSequenceOperation(item.op) ||
+            item.op == ArrayInsert || item.op == ArrayReverse || item.op == ArrayPush || item.op == ArrayCopy || (item.op >= ArrayExtend && item.op <= ArrayRemove && item.op != ArrayContains) ||
             MapOperation(item.op)) {
             return true;
         }
@@ -3698,6 +3700,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             for (retained in states) { copies = copies || retained.type == abi.TextStorage; }
         }
         out.append(MapModule(held, ProgramMode(mode), record_owners));
+        out.append(TextSequenceModule(held));
         if (copies) {
             out.append(format_text("\n{}", ArrayCopyHelper()));
         }

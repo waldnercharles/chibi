@@ -549,13 +549,13 @@ Last :: (rows: facts.Row[], heads: int[], function: int) -> int {
 // or its start and count; 0 for no operator. A TextFormat row's count says
 // how many it consumes.
 TextOperands :: (operator: int) -> int {
-    if (operator == facts.TextLength || operator == facts.TextPrint) {
+    if (operator == facts.TextLength || operator == facts.TextPrint || operator == facts.TextClone) {
         return 1;
     }
     if (operator == facts.TextByte) {
         return 2;
     }
-    if (operator == facts.TextSlice) {
+    if (operator == facts.TextSlice || operator == facts.TextView || operator == facts.TextRange) {
         return 3;
     }
     return 0;
@@ -572,7 +572,7 @@ FreshArray :: (operand: facts.Row) -> bool {
         return ArrayTyped(operand.type) || operand.type == facts.StringType || operand.type == facts.TaskType;
     }
     if (operand.kind == facts.TextRow) {
-        return operand.value == facts.TextFormat;
+        return operand.value == facts.TextFormat || operand.value == facts.TextClone;
     }
     if (operand.kind == facts.MapRow) {
         return operand.value == facts.MapNew || operand.value == facts.MapCopy ||
@@ -1746,10 +1746,17 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.TextRow) {
             formats := operand.value == facts.TextFormat;
+            range := operand.value == facts.TextView || operand.value == facts.TextRange;
             consumed := TextOperands(operand.value);
             output := facts.IntType;
-            if (operand.value == facts.TextSlice || formats) {
+            if (operand.value == facts.TextSlice || operand.value == facts.TextClone || formats) {
                 output = facts.StringType;
+            }
+            if (range) {
+                if (OptionalPayloadType(rows, records, operand.type) != facts.StringType || operand.literal != 0) {
+                    return "scalar text range differs from its optional string result";
+                }
+                output = operand.type;
             }
             if (formats && operand.count >= 1) {
                 consumed = operand.count;
@@ -4172,6 +4179,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         offset := stack[base + facts.TextArgument(operand.count, int(operand.literal), 1)];
                         item = Op(native.TextByte, type, slot, value, offset, 0);
                     }
+                    if (operand.value == facts.TextClone) { item.op = native.TextClone; }
+                    if (operand.value == facts.TextView || operand.value == facts.TextRange) {
+                        item = Op(native.TextRange, type, slot, value, stack[base + 1], stack[base + 2]);
+                        item.literal = i64(native.TextRangeView);
+                        if (operand.value == facts.TextRange) { item.literal = i64(native.TextRangeCopy); }
+                    }
                     // A slice drops the bytes before its start, then takes its
                     // count of those after it.
                     if (operand.value == facts.TextSlice) {
@@ -4338,6 +4351,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 }
                 if (operand.kind == facts.MakeRow && TrackedRecord(managed, type)) { fresh.append(produced); }
                 if (operand.kind == facts.ViewRow && facts.ViewOperation(operand.value) == facts.ViewSlice &&
+                    TrackedRecord(managed, type)) { fresh.append(produced); }
+                if (operand.kind == facts.TextRow &&
+                    (operand.value == facts.TextView || operand.value == facts.TextRange) &&
                     TrackedRecord(managed, type)) { fresh.append(produced); }
                 if (retained_record && !record_summary) {
                     kept := KeepValue(managed, operand.type, produced, slot + 1 + extra);

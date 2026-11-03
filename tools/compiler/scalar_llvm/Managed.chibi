@@ -69,6 +69,36 @@ ManagedPins :: struct {
     types: int[];
     next: int;
 }
+// A canonical owner keeps its stable place registered until its lifetime
+// ends. Descriptor replacement changes that same place without a root walk.
+ManagedOwnerLocal :: (type: int, place: int, live: bool) -> native.Instruction[] {
+    if (type != native.ArrayType + native.PointerType) { return []; }
+    mode := native.ManagedTrackLocal;
+    if (!live) { mode = native.ManagedClearLocal; }
+    return [Op(native.ManagedTrack, type, 0, place, 0, mode)];
+}
+// Expression temporaries need roots only during this poll. Existing call
+// pins already protect them at collecting calls before the statement boundary.
+// The list is bounded by this statement's operands, not all live locals.
+ManagedPollCode :: (slot: int, pc: int, fresh: int[], slots: int[], first_slot: int) -> native.Instruction[] {
+    output: native.Instruction[] = [];
+    array := native.ArrayType + native.PointerType;
+    for (value in fresh) {
+        if (slots[first_slot + value] == array) {
+            output.append(Op(native.ManagedTrack, array, 0, value, 0, native.ManagedTrackSlot));
+        }
+    }
+    at := pc + length(output);
+    output.extend([Op(native.ManagedPending, 1, slot, 0, 0, 0),
+        Op(native.Branch, 0, 0, slot, 0, at + 3), Op(native.Jump, 0, 0, 0, 0, at + 4),
+        Op(native.ManagedPoll, 0, 0, 0, 0, 0)]);
+    for (value in fresh) {
+        if (slots[first_slot + value] == array) {
+            output.append(Op(native.ManagedTrack, array, 0, value, 0, native.ManagedClearSlot));
+        }
+    }
+    return output;
+}
 // Pin current owners, never borrowed array Read slots. A canonical root uses
 // the descriptor's stable address, so replacement through a scoped call is
 // observed. Fresh owners are stable slots until this collecting call returns.

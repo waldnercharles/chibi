@@ -326,7 +326,11 @@ pub TaskRunningRow: int : 51;
 // pointee value. `value` is ManagedRead/ManagedWrite; literal retains the full
 // semantic pointee identity as u64 bits, independent of module type ordinals.
 pub ManagedRow: int : 52;
-// A zero-arity address of variable `value`, giving PointerType. The variable
+// An address of variable `value`, giving PointerType and consuming no operand.
+// Count is zero for a scalar, or the exact record pointee type for a record.
+// A tagged RecordRow.literal is its full nominal+layout identity; its Member
+// literals are full value identities, distinct from ordinary char flags.
+// The variable
 // is promoted to one typed heap cell from initialization; literal is the same
 // semantic identity every address/read/write of that pointee carries.
 pub ManagedAddressRow: int : 53;
@@ -338,6 +342,10 @@ pub ManagedBorrow: int : 4;
 // Eager scalar selection: bool condition, then same-typed yes and no values.
 // Values are numeric or bool, never managed values or references.
 pub SelectRow: int : 54;
+// A field descriptor from one managed pointer operand. Type is the parent
+// record, value its field ordinal, literal the complete field value identity;
+// the produced value is PointerType, not the parent metadata type.
+pub ManagedFieldRow: int : 55;
 // Maps Nil | Some(record) to Nil | Some(field), selecting plain numeric/bool
 // field `value`. Both optional shapes are canonical; count is one.
 pub OptionalFieldRow: int : 56;

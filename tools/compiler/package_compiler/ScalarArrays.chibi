@@ -462,7 +462,7 @@ ScalarArrayHeld :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
 // The facts type of member `field` of a record or union: a number, bool,
 // string, array, or record or union the source declares; 0 for any other.
 ScalarMemberType :: (types: TypeDecl[], members: TypeMember[], field: int) -> int {
-    if (members[field].storage == TaskStorage || members[field].storage == PointerStorage) { return 0; }
+    if (members[field].storage == TaskStorage) { return 0; }
     return ScalarValueType(types, members[field].storage, members[field].container, members[field].record);
 }
 // The shape of member `field`: its storage, container and record.

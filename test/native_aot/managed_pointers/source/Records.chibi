@@ -1,0 +1,169 @@
+package managed_pointer_records
+
+Point :: struct { x: int; y: int; }
+Holder :: struct { value: int; alias: ^int; }
+Link :: struct { value: int; next: ^Link?; }
+FloatPoint :: struct { value: f32; }
+Flagged :: struct { enabled: bool; byte: u8; wide: i64; }
+
+Make :: () -> ^Point { value: Point = {x: 3, y: 4}; return &value; }
+Escaped :: () -> int { p := Make(); p.x = 9; return p^.x * 10 + p.y; }
+Field :: () -> int {
+    value: Point = {x: 2, y: 4};
+    p := &value;
+    x := &value.x;
+    x^ = 5;
+    return p.x * 10 + p^.y;
+}
+Copies :: () -> int {
+    value: int = 2;
+    original: Holder = {value: 3, alias: &value};
+    copied := original;
+    copied.value = 7;
+    copied.alias^ = 9;
+    return original.value * 100 + copied.value * 10 + value;
+}
+Cycle :: () -> int {
+    a: Link = {value: 1, next: nil};
+    b: Link = {value: 2, next: nil};
+    p := &a;
+    q := &b;
+    p.next = q;
+    q.next = p;
+    return p.value * 10 + q.value;
+}
+Bump :: (value: ^int) { value^ += 1; }
+ScopedField :: () -> int {
+    value: Point = {x: 1, y: 2};
+    held := &value;
+    Bump(&value.x);
+    return held.x;
+}
+Observe :: (value: ^Point, alias: ^int) -> int { alias^ += 3; return value.x; }
+BorrowedRoot :: () -> int {
+    value: Point = {x: 2, y: 3};
+    pointer := &value;
+    return Observe(pointer, &value.x);
+}
+Identity :: () {
+    a: Point = {x: 1, y: 2};
+    b: Point = {x: 1, y: 2};
+    p := &a;
+    x := &a.x;
+    y := &a.y;
+    other := &b.x;
+    assert(x == &p.x);
+    assert(x != y);
+    assert(x != other);
+    assert(&p^.x == x);
+}
+MakeHolder :: () -> Holder {
+    value: int = 17;
+    return {value: 2, alias: &value};
+}
+Churn :: () {
+    for (index in 0..<2000) { value := index; pointer := &value; pointer^ += 1; }
+}
+InlineRoot :: () -> int {
+    held := MakeHolder();
+    Churn();
+    return held.alias^;
+}
+Chain :: () -> int {
+    last: ^Link? = nil;
+    for (index in 0..<10000) {
+        value: Link = {value: 1, next: last};
+        last = &value;
+    }
+    total := 0;
+    while (last != nil) { total += last.value; last = last.next; }
+    return total;
+}
+FloatCompound :: () -> f32 {
+    value: FloatPoint = {value: 1.5};
+    pointer := &value;
+    pointer.value += 2;
+    return value.value;
+}
+TypedFields :: () -> int {
+    value: Flagged = {enabled: true, byte: u8(7), wide: i64(257)};
+    pointer := &value;
+    flag := &value.enabled;
+    flag^ = false;
+    pointer.byte = 9;
+    pointer.wide += 2;
+    if (pointer.enabled) { return 0; }
+    return int(pointer.byte) + int(pointer.wide);
+}
+Select :: (calls: ^int, value: ^Point) -> ^Point { calls^ += 1; return value; }
+Replace :: (value: ^^Point, replacement: ^Point) -> int { value^ = replacement; return 5; }
+CompoundOrder :: () -> int {
+    a: Point = {x: 2, y: 3};
+    b: Point = {x: 8, y: 9};
+    p := &a;
+    q := &b;
+    calls := 0;
+    Select(&calls, p).x += Replace(&p, q);
+    return calls * 1000 + a.x * 100 + p.x * 10 + a.y;
+}
+PointerArray :: () -> int {
+    first := Make();
+    second := Make();
+    original: ^Point[] = [first, second];
+    copied := original;
+    copied[0].x = 6;
+    Churn();
+    return original[0].x * 10 + original[1].x;
+}
+ConsumeRecord :: (value: Holder, pointers: ^int[]) -> int {
+    reference := &value;
+    reference.value += 1;
+    pointers[0] = reference.alias;
+    temporary := 3;
+    discarded := &temporary;
+    return reference.alias^ + pointers[0]^ + reference.value;
+}
+RecordTransfer :: () -> int {
+    total := 0;
+    for (index in 0..<2500) {
+        value := MakeHolder();
+        scalar := 7;
+        total += ConsumeRecord(value, [&scalar]);
+    }
+    return total;
+}
+Main :: () -> int {
+    escaped := Escaped();
+    field := Field();
+    copies := Copies();
+    cycle := Cycle();
+    scoped := ScopedField();
+    borrowed := BorrowedRoot();
+    assert(escaped == 94);
+    assert(field == 54);
+    // Math lowering walks every function's operands, including the record
+    // addresses and field descriptors above. Their metadata is not arity.
+    pair := vec2(number(field), number(copies));
+    assert(pair.x == 54 && pair.y == 379);
+    assert(copies == 379);
+    assert(cycle == 12);
+    assert(scoped == 2);
+    assert(borrowed == 5);
+    Identity();
+    inline := InlineRoot();
+    chain := Chain();
+    number := FloatCompound();
+    order := CompoundOrder();
+    array := PointerArray();
+    transfer := RecordTransfer();
+    fields := TypedFields();
+    assert(inline == 17);
+    assert(chain == 10000);
+    assert(number == 3.5);
+    assert(order == 1783);
+    assert(array == 63);
+    assert(transfer == 92500);
+    assert(fields == 268);
+    for (index in 0..<20000) { result := Cycle(); assert(result == 12); }
+    return 0;
+}

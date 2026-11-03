@@ -292,6 +292,7 @@ try {
         'llvm_native/Arrays.chibi' = 'tools/compiler/llvm_native/Arrays.chibi'
         'llvm_native/Values.chibi' = 'tools/compiler/llvm_native/Values.chibi'
         'llvm_native/Managed.chibi' = 'tools/compiler/llvm_native/Managed.chibi'
+        'llvm_native/ManagedRecords.chibi' = 'tools/compiler/llvm_native/ManagedRecords.chibi'
         'llvm_native/TaskResults.chibi' = 'tools/compiler/llvm_native/TaskResults.chibi'
         'native_abi/Abi.chibi' = 'tools/compiler/native_abi/Abi.chibi'
         '/sdk/core/strings/Strings.chibi' = 'packages/core/strings/Strings.chibi'

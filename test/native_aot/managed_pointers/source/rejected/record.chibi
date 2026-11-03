@@ -1,3 +1,0 @@
-package rejected_record
-Main :: () -> int { value: Point = {x: 1}; pointer := &value; return pointer^.x; }
-Point :: struct { x: int; }

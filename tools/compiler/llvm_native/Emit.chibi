@@ -387,7 +387,19 @@ pub OwnerUnpin: int : 105;
 pub ArrayValueAddress: int : 106;
 pub ArrayAddressBracket: int : 0;
 pub ArrayAddressMethod: int : 1;
-pub InstructionCount: int : 107;
+// Deferred callback requests are tested on the common path. Poll never
+// suspends; current owning descriptors already have stable registrations.
+pub ManagedPending: int : 107;
+pub ManagedPoll: int : 108;
+// target0/1 registers a fresh slot/canonical local; target2/3 clears it.
+// left is the location index, type its array or scoped RefArray type. Each
+// distinct location occupies one initialized entry in the function root table.
+pub ManagedTrack: int : 111;
+pub ManagedTrackSlot: int : 0;
+pub ManagedTrackLocal: int : 1;
+pub ManagedClearSlot: int : 2;
+pub ManagedClearLocal: int : 3;
+pub InstructionCount: int : 112;
 // A Call's `literal`: an ordinary call, an awaited call (the callee is a waiting
 // function, run inline in the waiting caller, giving its result), or a spawn (the
 // callee is a waiting function, started as a task of its own, giving an owning
@@ -406,7 +418,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
 }
 Produces :: (op: int) -> bool {
     if (ViewOperation(op)) { return op != ViewSet; }
-    return op == ArrayValueAddress || op == ClockSample || op == ManagedProject || op == ArrayInsert || op == ArrayReverse || op == Select || op == ManagedNew || op == ManagedAddress || op == Print || op == TaskCopy || op == TaskRunning || op == AwaitResult || op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
+    return op == ManagedPending || op == ArrayValueAddress || op == ClockSample || op == ManagedProject || op == ArrayInsert || op == ArrayReverse || op == Select || op == ManagedNew || op == ManagedAddress || op == Print || op == TaskCopy || op == TaskRunning || op == AwaitResult || op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
            op == ForeignCall || op == StateLoad || op == FunctionAddress || op == Sqrt || op == ValueCopy || op == ArrayLoan || (MapOperation(op) && op != MapDrop);
 }
 Comparison :: (op: int) -> bool {
@@ -1040,8 +1052,14 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         pins = pins || item.op == ManagedPin || item.op == ManagedUnpin;
         owner_pins = owner_pins || item.op == OwnerPin || item.op == OwnerUnpin;
         if (item.op < Constant || item.op >= InstructionCount ||
-            (item.op > Cancel && item.op < CancelAfter && item.op != TypedFail)) {
+            (item.op > Cancel && item.op < CancelAfter && item.op != TypedFail) ||
+            (item.op > ManagedPoll && item.op < ManagedTrack)) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
+        }
+        if (item.op == ManagedPending || item.op == ManagedPoll || item.op == ManagedTrack) {
+            if ((!ProgramMode(mode) && !family) || !ManagedPollValid(item, slots, locals)) {
+                return Result.Rejected(base + pc, "native deferred collection differs from its owning roots");
+            }
         }
         if ((item.op == OwnerPin || item.op == OwnerUnpin) &&
             (!waiting[function] || (!ProgramMode(mode) && !family))) {
@@ -1342,6 +1360,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (ReadsTarget(item.op) && !Dominates(dominance, definitions[item.target], pc)) {
             return Result.Rejected(base + pc, "native scalar operand is not defined on every path");
         }
+        if (item.op == ManagedTrack && item.target == ManagedTrackSlot && !Dominates(dominance, definitions[item.left], pc)) {
+            return Result.Rejected(base + pc, "native collector root is not defined on every path");
+        }
         if (ReadsArguments(item.op)) {
             for (index in 0..<ArgumentCount(item)) {
                 if (!Dominates(dominance, definitions[arguments[item.right + index]], pc)) {
@@ -1639,7 +1660,7 @@ Spelled :: (literal: i64, type: int) -> i64 {
     return literal - (i64(1) << u32(bits));
 }
 EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], fields: int[], texts: string[],
-                    coroutine: bool, program: bool, scoped: bool, record_owners: bool[]) -> string {
+                    coroutine: bool, program: bool, scoped: bool, record_owners: bool[], guarded: bool = false) -> string {
     out := format_text("p{}:\n", pc);
     type := TypeName(item.type);
     if (item.op == Constant && item.type == abi.TextStorage) {
@@ -1760,7 +1781,7 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
     } else if (item.op == ArrayBytes) {
         out = format_text("{}{}", out, ArrayBytesRead(item, pc));
     } else if (item.op == ArrayText) {
-        out = format_text("{}{}", out, ArrayTextRead(item, pc));
+        out = format_text("{}{}", out, ArrayTextRead(item, pc, guarded));
     } else if MapOperation(item.op) {
         out = format_text("{}{}", out, MapRead(item, pc));
     } else if ((item.op >= ArrayLength && item.op <= ArrayRemove) || item.op == ArrayInsert || item.op == ArrayReverse) {
@@ -1937,7 +1958,7 @@ ValueModule :: (used: ValueUse, records: Record[], fields: int[], layout: ValueL
 // The helpers a module that counts references calls: one reference added to or
 // given back from an owner (null has none), and the same for the owner of each
 // of `count` strings from `data` on.
-TextHelpers :: () -> string {
+TextHelpers :: (guarded: bool = false) -> string {
     out := "define internal void @chibi_scalar.retain(ptr %owner) {\nentry:\n  %counted = icmp ne ptr %owner, null\n";
     out = format_text("{}  br i1 %counted, label %count, label %done\ncount:\n", out);
     out = format_text("{}  %before = atomicrmw add ptr %owner, i64 1 monotonic\n  br label %done\ndone:\n  ret void\n}}\n", out);
@@ -1945,7 +1966,8 @@ TextHelpers :: () -> string {
     out = format_text("{}  %counted = icmp ne ptr %owner, null\n  br i1 %counted, label %count, label %done\ncount:\n", out);
     out = format_text("{}  %before = atomicrmw sub ptr %owner, i64 1 acq_rel\n  %last = icmp eq i64 %before, 1\n", out);
     out = format_text("{}  br i1 %last, label %release, label %done\nrelease:\n", out);
-    out = format_text("{}  %at = getelementptr inbounds {}, ptr %ctx, i32 0, i32 4\n  %give = load ptr, ptr %at\n", out, abi.ContextType());
+    if (guarded) { out = strings.Concatenate([out, ContextCall("give", 4, true)]); }
+    else { out = format_text("{}  %at = getelementptr inbounds {}, ptr %ctx, i32 0, i32 4\n  %give = load ptr, ptr %at\n", out, abi.ContextType()); }
     out = format_text("{}  call void %give(ptr %ctx, ptr %owner)\n  br label %done\ndone:\n  ret void\n}}\n", out);
     out = format_text("{}define internal void @chibi_scalar.retain_range(ptr %data, i32 %count) {{\nentry:\n  br label %head\n", out);
     out = format_text("{}head:\n  %index = phi i32 [ 0, %entry ], [ %next, %body ]\n  %end = icmp eq i32 %index, %count\n", out);
@@ -2193,7 +2215,7 @@ ArrayBytesRead :: (item: Instruction, pc: int) -> string {
 // A new string of the bytes of the left slot's array of bytes, empty when the
 // array is: they are copied to an allocation of the context's that the string
 // owns, with a count of 1, and none for an empty string.
-ArrayTextRead :: (item: Instruction, pc: int) -> string {
+ArrayTextRead :: (item: Instruction, pc: int, guarded: bool = false) -> string {
     array := abi.ArrayType();
     text := abi.TextType();
     out := Load(format_text("a{}", pc), ArrayType + abi.ByteStorage, "s", item.left);
@@ -2204,7 +2226,7 @@ ArrayTextRead :: (item: Instruction, pc: int) -> string {
     // The owner is the runtime's pin_text_owner: a count of 1, the length, then
     // the bytes and a NUL, which the allocation's zeros give.
     out = format_text("{}  %bytes{} = zext i32 %n{} to i64\n  %total{} = add i64 %bytes{}, 17\n", out, pc, pc, pc, pc);
-    out = format_text("{}{}", out, Allocated(format_text("owner{}", pc), format_text("%total{}", pc)));
+    out = format_text("{}{}", out, Allocated(format_text("owner{}", pc), format_text("%total{}", pc), guarded));
     out = format_text("{}  store i64 1, ptr %owner{}\n  %size.at{} = getelementptr inbounds i8, ptr %owner{}, i64 8\n", out, pc, pc, pc);
     out = format_text("{}  store i32 %n{}, ptr %size.at{}\n  %fresh{} = getelementptr inbounds i8, ptr %owner{}, i64 12\n", out, pc, pc, pc, pc);
     out = format_text("{}  call void @chibi_scalar.copy(ptr %fresh{}, ptr %data{}, i64 %bytes{})\n", out, pc, pc, pc);
@@ -2624,12 +2646,12 @@ CoroutineEntryFunction :: (result: int, waiting: bool, timed: bool) -> string {
 }
 // A coroutine's start, in the entry block: the promise is the result's slot, the
 // frame comes from the context's allocate and goes back to its release.
-CoroutinePrologue :: (roots: string) -> string {
+CoroutinePrologue :: (roots: string, guarded: bool = false) -> string {
     out := "  %coro.id = call token @llvm.coro.id(i32 8, ptr %result0, ptr null, ptr null)\n";
     out = format_text("{}  %coro.need = call i1 @llvm.coro.alloc(token %coro.id)\n", out);
     out = format_text("{}  br i1 %coro.need, label %coro.alloc, label %coro.begin\ncoro.alloc:\n", out);
     out = format_text("{}  %coro.size = call i64 @llvm.coro.size.i64()\n", out);
-    out = format_text("{}{}", out, Allocated("coro.mem", "%coro.size"));
+    out = format_text("{}{}", out, Allocated("coro.mem", "%coro.size", guarded));
     out = format_text("{}  br label %coro.begin\ncoro.begin:\n", out);
     out = format_text("{}  %coro.frame = phi ptr [ null, %entry ], [ %coro.mem, %coro.alloc ]\n", out);
     out = format_text("{}  %coro.hdl = call ptr @llvm.coro.begin(token %coro.id, ptr %coro.frame)\n", out);
@@ -2637,14 +2659,14 @@ CoroutinePrologue :: (roots: string) -> string {
 }
 // A coroutine's end: the final suspension keeps the frame, and so the promise,
 // for whoever reads the result; destroying it comes here to release the frame.
-CoroutineEpilogue :: (final_cleanup: string, cancel_cleanup: string) -> string {
+CoroutineEpilogue :: (final_cleanup: string, cancel_cleanup: string, guarded: bool = false) -> string {
     out := format_text("coro.final:\n{}", final_cleanup);
     out = format_text("{}  %coro.last = call i8 @llvm.coro.suspend(token none, i1 true)\n", out);
     out = format_text("{}  switch i8 %coro.last, label %coro.suspend [ i8 0, label %trap\n                                     i8 1, label %coro.cleanup ]\n", out);
     out = format_text("{}coro.cleanup:\n{}  %coro.free = call ptr @llvm.coro.free(token %coro.id, ptr %coro.hdl)\n", out, cancel_cleanup);
     out = format_text("{}  %coro.owned = icmp ne ptr %coro.free, null\n", out);
     out = format_text("{}  br i1 %coro.owned, label %coro.release, label %coro.suspend\ncoro.release:\n", out);
-    out = format_text("{}{}", out, ContextCall("coro.release.call", 4));
+    out = format_text("{}{}", out, ContextCall("coro.release.call", 4, guarded));
     out = format_text("{}  call void %coro.release.call(ptr %ctx, ptr %coro.free)\n", out);
     out = format_text("{}  br label %coro.suspend\ncoro.suspend:\n", out);
     return format_text("{}  call void @llvm.coro.end(ptr %coro.hdl, i1 false, token none)\n  ret ptr %coro.hdl\n", out);
@@ -2719,7 +2741,7 @@ AwaitHandleInstruction :: (item: Instruction, pc: int, testing: bool) -> string 
 }
 EmitFunction :: (functions: Function[], function: int, parameters: int[], slots: int[], locals: int[],
                  code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[],
-                 mode: int, step_budget: int, runtime: bool, fallible: bool[], shared: bool, waiting: bool[], scoped: bool, testing: bool, record_owners: bool[], managed: bool, managed_records: ManagedRecordLayout) -> string {
+                 mode: int, step_budget: int, runtime: bool, fallible: bool[], shared: bool, waiting: bool[], scoped: bool, testing: bool, record_owners: bool[], managed: bool, managed_records: ManagedRecordLayout, guarded: bool = false) -> string {
     shape := functions[function];
     coroutine := waiting[function];
     result := shape.result;
@@ -2781,6 +2803,12 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
             }
         }
     }
+    gc_owners: ManagedOwnerLayout = {slots: [], locals: [], count: 0};
+    if (managed) { gc_owners = ManagedOwnerLocations(shape, code); }
+    owner_roots := ManagedOwnerRoots(gc_owners.count, coroutine);
+    out.append(owner_roots.prologue);
+    frame_roots.attach = strings.Concatenate([frame_roots.attach, owner_roots.attach]);
+    frame_roots.cleanup = strings.Concatenate([frame_roots.cleanup, owner_roots.cleanup]);
     // A format's values and result live in the entry block, so a loop
     // reuses them.
     for (pc in 0..<shape.code) {
@@ -2822,18 +2850,20 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         out.append(format_text("  %cstr{} = alloca [{} x i8]\n", index, CstringCapacity + 1));
     }
     if (coroutine) {
-        out.append(CoroutinePrologue(frame_roots.attach));
+        out.append(CoroutinePrologue(frame_roots.attach, guarded));
     } else {
         out.append("  br label %p0\n");
     }
     for (pc in 0..<shape.code) {
         item := code[shape.first_code + pc];
-        if ((item.op >= ManagedNew && item.op <= ManagedUnpin) || item.op == ManagedProject) {
+        if (item.op == ManagedPending || item.op == ManagedPoll || item.op == ManagedTrack) {
+            out.append(ManagedPollInstruction(item, pc, gc_owners));
+        } else if ((item.op >= ManagedNew && item.op <= ManagedUnpin) || item.op == ManagedProject) {
             out.append(ManagedInstruction(item, pc, records, coroutine));
         } else if (ViewOperation(item.op)) {
             out.append(ViewInstruction(item, pc, own));
         } else if (managed && (item.op == Return || item.op == End) && !coroutine) {
-            returned := EmitInstruction(item, pc, result, records, fields, texts, coroutine, ProgramMode(mode), scoped, record_owners);
+            returned := EmitInstruction(item, pc, result, records, fields, texts, coroutine, ProgramMode(mode), scoped, record_owners, guarded);
             out.append(strings.ReplaceAll(returned, "  ret ", strings.Concatenate([ManagedUnroots(function == 0 && mode == ProgramEntry), "  ret "])));
         } else if (item.op == Call && item.literal == i64(CallAwaited)) {
             out.append(AwaitedCallInstruction(functions, parameters, own, item, pc, mode, testing));
@@ -2891,7 +2921,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         } else if (item.op == Format) {
             out.append(FormatInstruction(own_slots, own, item, pc));
         } else {
-            out.append(EmitInstruction(item, pc, result, records, fields, texts, coroutine, ProgramMode(mode), scoped, record_owners));
+            out.append(EmitInstruction(item, pc, result, records, fields, texts, coroutine, ProgramMode(mode), scoped, record_owners, guarded));
         }
     }
     // A function fails with its result's zero, which no caller reads; a coroutine
@@ -2905,7 +2935,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     }
     if (coroutine) {
         out.append(CoroutineEpilogue(strings.Concatenate([TaskOwnerCleanup(owner_locations, "final"), TaskFrameCleanup(shape, locals, code, "final"), ManagedFramePins(shape, code, "final"), frame_roots.cleanup]),
-                                     strings.Concatenate([TaskOwnerCleanup(owner_locations, "cancel"), TaskFrameCleanup(shape, locals, code, "cancel"), ManagedFramePins(shape, code, "cancel"), frame_roots.cleanup])));
+                                     strings.Concatenate([TaskOwnerCleanup(owner_locations, "cancel"), TaskFrameCleanup(shape, locals, code, "cancel"), ManagedFramePins(shape, code, "cancel"), frame_roots.cleanup]), guarded));
     }
     out.append("trap:\n  call void @llvm.trap()\n  unreachable\n}\n");
     return strings.Join(out, "");
@@ -2956,7 +2986,7 @@ pub Runtime :: (code: Instruction[]) -> bool {
         return true;
     }
     for (item in code) {
-        if (item.op == OwnerPin || item.op == ClockSample || item.op == ManagedProject || item.op == ManagedNew || item.op == ManagedAddress || item.op == ManagedPin || item.op == ManagedUnpin || item.op == Print || item.op == Format || item.op == Fail || item.op == ValueCopy || item.op == ValueDrop || ArrayCalls(item.op) || MapCalls(item.op) ||
+        if (item.op == ManagedPending || item.op == ManagedPoll || item.op == ManagedTrack || item.op == OwnerPin || item.op == ClockSample || item.op == ManagedProject || item.op == ManagedNew || item.op == ManagedAddress || item.op == ManagedPin || item.op == ManagedUnpin || item.op == Print || item.op == Format || item.op == Fail || item.op == ValueCopy || item.op == ValueDrop || ArrayCalls(item.op) || MapCalls(item.op) ||
             ((item.op == StateLoad || item.op == StateStore) && (item.type == abi.TextStorage || item.type >= RecordType))) {
             return true;
         }
@@ -3342,6 +3372,9 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         }
     }
     for (shape in functions) { managed = managed || ManagedStorage(shape.result); }
+    polling := false;
+    for (item in code) { polling = polling || item.op == ManagedPending || item.op == ManagedPoll || item.op == ManagedTrack; }
+    managed = managed || polling;
     if (managed && abi.Same(target, abi.WebAssembly32())) {
         return Result.Rejected(-1, "native WebAssembly managed pointers have no collector owner yet");
     }
@@ -3373,6 +3406,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     }
     // A program's main has no context to pass.
     runtime := Runtime(code) || managed || snapshots || clock_owner;
+    guarded := managed || (family && runtime);
     if (runtime && mode == MainEntry) {
         return Result.Rejected(-1, "a native program cannot call the runtime yet");
     }
@@ -3456,15 +3490,17 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         // No host-derived data layout: the explicit LLVM target selects it. No
         // raw pointer or foreign ABI is admitted yet, and records stay internal.
         out.append(format_text("target triple = \"{}\"\n\n", target.triple));
-        if (piece == 0 && managed) { out.append("; chibi-managed\n"); }
+        if (piece == 0 && guarded) { out.append("; chibi-managed\n"); }
         if (piece == 0 && family) { out.append("; chibi-family\n"); }
         if (piece == 0 && formatting) { out.append("; chibi-format\n"); }
         if (piece == 0 && numeric_formatting) { out.append("; chibi-format-numbers\n"); }
-        if (managed) {
+        foreign_declarations := ForeignDeclarations(functions, first, last, slots, code, arguments, texts);
+        if (guarded) {
             // LLVM requires sized named types before their first GEP use.
             out.append("declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)\n");
             out.append(ManagedRuntime());
             out.append(ManagedPointerRuntime());
+            if (polling) { out.append(ManagedPollRuntime(target, foreign_declarations)); }
             if (ViewTypes(parameters) || ViewTypes(slots) || ViewTypes(locals) || ViewTypes(fields)) {
                 out.append(ViewTraceRuntime());
             }
@@ -3534,7 +3570,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         }
         if (ProgramMode(mode)) {
             out.append("declare void @chibi_native_step()\ndeclare void @chibi_native_failure(i32) noreturn\ndeclare void @chibi_native_reference_unavailable() noreturn\ndeclare void @chibi_native_array_mutation_unavailable() noreturn\n");
-        } else if (family && managed) {
+        } else if (family && guarded) {
             out.append("declare void @chibi_native_failure(i32) noreturn\n");
         }
         if (HasClockSample(held)) { out.append("; chibi-clock\n"); out.append(ClockRuntime()); }
@@ -3542,7 +3578,6 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         printed := false;
         for (item in held) { printed = printed || item.op == Print; }
         if (printed) { out.append("declare void @chibi_print_string(ptr, ptr, i32)\n"); }
-        foreign_declarations := ForeignDeclarations(functions, first, last, slots, code, arguments, texts);
         out.append(format_text("{}declare void @llvm.trap()\n{}{}", Failures(functions, code, texts, first, last, ProgramMode(mode)),
                                Declarations(held), foreign_declarations));
         if (Tasks(held)) {
@@ -3552,7 +3587,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         out.append(Callees(functions, parameters, held, home, piece, mode, runtime));
         for (function in first..<last) {
             text := EmitFunction(functions, function, parameters, slots, locals, code, arguments, records, fields,
-                                 texts, mode, step_budget, runtime, fallible, shared[function], waiting, scoped, testing, record_owners, managed, managed_records);
+                                 texts, mode, step_budget, runtime, fallible, shared[function], waiting, scoped, testing, record_owners, managed, managed_records, guarded);
             if (debug) {
                 text = Located(text, Subprogram(function), Location(length(functions), compares,
                                                                     functions[function].first_code));
@@ -3564,7 +3599,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             for (item in held) {
                 timed = timed || item.op == CancelAfter || item.op == Delay;
             }
-            out.append(format_text("\n{}", TaskScheduler(timed)));
+            out.append(format_text("\n{}", TaskScheduler(timed, guarded)));
             if (timed) {
                 out.append(TaskTiming(target, foreign_declarations));
             }
@@ -3606,12 +3641,12 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             out.append(format_text("\n{}", text));
         }
         value_uses := ValueUses(held, records, fields, record_owners);
-        array_helpers := ArrayModule(value_uses.arrays, record_owners, lifecycle.backed);
+        array_helpers := ArrayModule(value_uses.arrays, record_owners, lifecycle.backed, guarded);
         out.append(array_helpers);
         value_comparisons := piece == 0 && length(comparison_roots) > 0;
         if (value_comparisons) {
-            if (!snapshots) { out.append(SnapshotQueueRuntime()); }
-            out.append(ValueEqualityModule(value_shapes, comparison_roots));
+            if (!snapshots) { out.append(SnapshotQueueRuntime(guarded)); }
+            out.append(ValueEqualityModule(value_shapes, comparison_roots, guarded));
         }
         copies := Copies(held) || array_helpers != "" || snapshots || value_comparisons;
         if (mode == NoEntry) {
@@ -3619,7 +3654,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             // the same freestanding helper as array operations.
             for (retained in states) { copies = copies || retained.type == abi.TextStorage; }
         }
-        out.append(MapModule(held, ProgramMode(mode), record_owners));
+        out.append(MapModule(held, ProgramMode(mode), record_owners, guarded));
         if (copies) {
             out.append(format_text("\n{}", ArrayCopyHelper()));
         }
@@ -3628,7 +3663,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         }
         value_helpers := ValueModule(value_uses, records, fields, lifecycle);
         if (Counts(held) || value_helpers != "" || array_helpers != "") {
-            out.append(format_text("\n{}{}", TextHelpers(), value_helpers));
+            out.append(format_text("\n{}{}", TextHelpers(guarded), value_helpers));
         }
         cstrings := Cstrings(functions, first, last, slots, code, arguments);
         if (cstrings) {
@@ -4241,13 +4276,13 @@ RetainedManifest :: (name: string, code: Instruction[], texts: string[], charact
 }
 // Copy a retained string into the incoming generation. Constants can point
 // into the old object's mapping, so retaining its owner alone is insufficient.
-RetainedTextCopy :: () -> string {
+RetainedTextCopy :: (guarded: bool = false) -> string {
     return strings.Join([
         "define internal void @chibi_scalar.retained.copy(ptr %ctx, ptr %to, ptr %from) {\nentry:\n",
         "  %source = load { ptr, i32, ptr }, ptr %from\n  %bytes = extractvalue { ptr, i32, ptr } %source, 0\n",
         "  %length = extractvalue { ptr, i32, ptr } %source, 1\n  %wide = zext i32 %length to i64\n",
         "  %size = add i64 %wide, 17\n",
-        Allocated("owner", "%size"),
+        Allocated("owner", "%size", guarded),
         "  store i64 1, ptr %owner\n  %size.at = getelementptr inbounds i8, ptr %owner, i64 8\n",
         "  store i32 %length, ptr %size.at\n  %data = getelementptr inbounds i8, ptr %owner, i64 12\n",
         "  call void @chibi_scalar.copy(ptr %data, ptr %bytes, i64 %wide)\n",
@@ -4725,7 +4760,7 @@ LibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[],
     out.append(state_manifest);
     if (windows && state_manifest != "") { dll_exports.append(format_text("chibi_state_{},data", name)); }
     if (retained_text) {
-        out.append(RetainedTextCopy());
+        out.append(RetainedTextCopy(family));
     }
     retained_manifest := "";
     if (!snapshots) { retained_manifest = RetainedManifest(name, code, texts, state_characters); }
@@ -4751,8 +4786,8 @@ LibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[],
     layout := ValueLayouts(records, fields);
     out.append(HostSymbols(names, functions, parameters, code, texts, runtime, waiting, state_characters, shapes.roots, layout));
     if (snapshots) {
-        out.append(strings.Concatenate([SnapshotMemoRuntime(), SnapshotQueueRuntime(), SnapshotSchemaRuntime(),
-            SnapshotValuesModule(records, fields, shapes, states), SnapshotTransactionRuntime(), SnapshotTables(shapes)]));
+        out.append(strings.Concatenate([SnapshotMemoRuntime(family), SnapshotQueueRuntime(family), SnapshotSchemaRuntime(),
+            SnapshotValuesModule(records, fields, shapes, states, family), SnapshotTransactionRuntime(family), SnapshotTables(shapes)]));
         out.append(SnapshotViews(shapes.roots));
         out.append(SnapshotHost(states, shapes, state_characters, layout));
         if (windows) {
@@ -5007,12 +5042,17 @@ MapEach :: (call: string, entries: string, prefix: string, key: int, value: int,
 
 // The helpers every map type shares: the context's allocation, a hash, the
 // index's Robin Hood placement and its rebuild.
-MapShared :: () -> string {
+MapShared :: (guarded: bool = false) -> string {
+    allocate := "  %at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 2\n  %make = load ptr, ptr %at";
+    release := "  %at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 4\n  %release = load ptr, ptr %at";
+    if (guarded) {
+        allocate = ContextCall("make", 2, true);
+        release = ContextCall("release", 4, true);
+    }
     text := strings.Join([
         "define internal ptr @chibi_map.allocate(ptr %ctx, i64 %bytes) {",
         "entry:",
-        "  %at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 2",
-        "  %make = load ptr, ptr %at",
+        allocate,
         "  %fresh = call ptr %make(ptr %ctx, i64 %bytes)",
         "  ret ptr %fresh",
         "}",
@@ -5021,8 +5061,7 @@ MapShared :: () -> string {
         "  %held = icmp ne ptr %memory, null",
         "  br i1 %held, label %give, label %done",
         "give:",
-        "  %at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 4",
-        "  %release = load ptr, ptr %at",
+        release,
         "  call void %release(ptr %ctx, ptr %memory)",
         "  br label %done",
         "done:",
@@ -5658,12 +5697,12 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[]) -> string {
     return format_text("{}\n", strings.ReplaceAll(text, "$N", format_text("{}", type)));
 }
 // The helpers of the map types `code` works on, once each.
-MapModule :: (code: Instruction[], native_program: bool, owners: bool[]) -> string {
+MapModule :: (code: Instruction[], native_program: bool, owners: bool[], guarded: bool = false) -> string {
     types := MapTypes(code);
     if (length(types) == 0) {
         return "";
     }
-    out: string[] = [MapShared()];
+    out: string[] = [MapShared(guarded)];
     for (type in types) {
         out.append(MapHelpers(type, native_program, owners));
     }

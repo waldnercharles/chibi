@@ -102,7 +102,7 @@ ValueEqualityRoot :: (index: int) -> string {
         "  %equal = call i1 @chibi_snapshot.queue.drain(ptr %ctx, ptr %session, ptr %session)\n  ret i1 %equal\n}\n"
     ]);
 }
-ValueEqualityModule :: (shapes: SnapshotShapes, roots: int[]) -> string {
+ValueEqualityModule :: (shapes: SnapshotShapes, roots: int[], guarded: bool = false) -> string {
     wanted := resize([false], length(shapes.nodes));
     exported := resize([false], length(shapes.nodes));
     pending: int[] = [];
@@ -120,7 +120,7 @@ ValueEqualityModule :: (shapes: SnapshotShapes, roots: int[]) -> string {
         at += 1;
     }
     text := strings.ReplaceAll(TextEqual(), "@chibi_scalar.text_equal", "@chibi_value_equal.text");
-    out := [ValuePairsRuntime(), ValueEqualitySession(), text];
+    out := [ValuePairsRuntime(guarded), ValueEqualitySession(), text];
     for (node, index in shapes.nodes) {
         if (!wanted[index] || node.kind == SnapshotVariant) { continue; }
         out.append(ValueEqualityStep(shapes, index));

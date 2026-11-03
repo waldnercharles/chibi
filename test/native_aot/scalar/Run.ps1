@@ -303,6 +303,7 @@ try {
         'llvm_native/SnapshotTransaction.chibi' = 'tools/compiler/llvm_native/SnapshotTransaction.chibi'
         'llvm_native/SnapshotHost.chibi' = 'tools/compiler/llvm_native/SnapshotHost.chibi'
         'llvm_native/Managed.chibi' = 'tools/compiler/llvm_native/Managed.chibi'
+        'llvm_native/ManagedPoll.chibi' = 'tools/compiler/llvm_native/ManagedPoll.chibi'
         'llvm_native/ManagedRecords.chibi' = 'tools/compiler/llvm_native/ManagedRecords.chibi'
         'llvm_native/Views.chibi' = 'tools/compiler/llvm_native/Views.chibi'
         'llvm_native/Clock.chibi' = 'tools/compiler/llvm_native/Clock.chibi'

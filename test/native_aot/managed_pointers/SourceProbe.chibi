@@ -8,6 +8,8 @@ import strings "core:strings"
 
 Main :: () -> int {
     args := os.Arguments();
+    callbacks := length(args) > 0 && args[0] == "--callbacks";
+    if (callbacks) { args = slice(args, 1, length(args)); }
     assertion := length(args) > 0 && args[0] == "--assertion";
     if (assertion) { args = slice(args, 1, length(args)); }
     failure := "";
@@ -20,6 +22,27 @@ Main :: () -> int {
     llvm := args[1];
     audit := os.ReadText(args[2]);
     if (audit.error) { return 2; }
+    if (callbacks) {
+        // Real allocator callbacks may request collection and construct cells
+        // outside sweep. Nested allocations use the same audited allocator;
+        // only the outer allocation constructs a fresh unreachable cell.
+        prefix := "@managed_source.constructing = internal global i1 false\n";
+        allocation := "  %callback.heap = call ptr @chibi_managed.owner(ptr %ctx)\n";
+        allocation = strings.Concatenate([allocation,
+            "  %nested = load i1, ptr @managed_source.constructing\n  br i1 %nested, label %allocate, label %construct\nconstruct:\n",
+            "  store i1 true, ptr @managed_source.constructing\n",
+            "  %cell = call ptr @chibi_managed.new(ptr %ctx, ptr %callback.heap, i64 8, ptr null, ptr null, i32 6)\n",
+            "  call void @chibi_managed.collect(ptr %ctx, ptr %callback.heap)\n",
+            "  store i1 false, ptr @managed_source.constructing\n  br label %allocate\nallocate:\n"]);
+        hooked := strings.ReplaceAll(audit.text,
+            "define internal ptr @managed_source.allocate(ptr %ctx, i64 %bytes) {\nentry:\n",
+            strings.Concatenate(["define internal ptr @managed_source.allocate(ptr %ctx, i64 %bytes) {\nentry:\n", allocation]));
+        hooked = strings.ReplaceAll(hooked,
+            "define internal void @managed_source.release(ptr %ctx, ptr %memory) {\nentry:\n",
+            "define internal void @managed_source.release(ptr %ctx, ptr %memory) {\nentry:\n  %callback.heap = call ptr @chibi_managed.owner(ptr %ctx)\n  call void @chibi_managed.collect(ptr %ctx, ptr %callback.heap)\n");
+        audit.text = strings.Concatenate([prefix, hooked]);
+    }
+
     target := abi.LinuxX64();
     if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
     start := format_text("{}/source-audit-start.ll", work);
@@ -67,7 +90,7 @@ Main :: () -> int {
                 if (host.Objects(llvm, [module, start], objects, level, 1)) { return 1; }
                 plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", false);
                 if (os.Platform() == "Darwin") {
-                    runtime: link.Import = {name: "System", symbols: ["malloc", "calloc", "free", "write", "dprintf", "printf", "abort", "memset"]};
+                    runtime: link.Import = {name: "System", symbols: ["malloc", "calloc", "free", "write", "dprintf", "printf", "abort", "memset", "__error"]};
                     plan.imports = [runtime];
                 }
                 if (host.Link(plan)) { return 1; }

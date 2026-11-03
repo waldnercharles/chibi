@@ -119,3 +119,28 @@ spilled-root safe point; callback return never collects transient values.
 The raw collector proof checks these requests below threshold, recursive
 release requests, depth bounds and nested construction outside collection.
 Constructing a managed cell during sweep traps before allocation or linking.
+
+Source collection requests use a pending-bit test after operand ownership is
+complete and at loop headers. `ManagedTrack` updates one initialized root table
+at local ownership changes; statement temporaries register only across their
+poll. This keeps emitted metadata linear in ownership events rather than
+statements times live owners. Suspended tables live in coroutine frames, with
+embedded addresses initialized after `coro.begin`. Empty scoped-reference
+entries are skipped. The raw native API requires owners to clear registrations
+before their descriptors cease to be live.
+
+All generated allocator and release calls in collector programs and shared
+family images use the same callback guard, including array/map/text helpers,
+the scheduler, value comparisons and retained snapshots. Pointer-free standalone
+programs retain the five-pointer context and avoid collector checks. Shared
+images poll even when they contain no pointers, since older images can still
+own cells. The callback source audit constructs dead cells inside allocations,
+requests collection from both allocate and release, and checks loop progress,
+early returns, assertion cleanup and cancellation with bounded peak allocation.
+
+A requested poll preserves the caller's POSIX errno or Windows last-error value
+around collection. POSIX accessors remain weak when the source has no strong
+import, so a freestanding Linux program can use the null-accessor path without
+libc. `weak.sh` executes that path at O0/O2; the directory provider suite checks
+that release callbacks really clobber error state before the OS error capture.
+`growth.sh` bounds LLVM growth for 100 and 1000 live pointer-array locals.

@@ -2890,6 +2890,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             locals.append(local_type);
             body.append(Op(native.Argument, type, slot, index, 0, 0));
             if (boxed) {
+                // A moved argument has no caller root. Its original slot
+                // protects collector edges until the cell is published.
+                if (native.ValueCollectorOwner(value_layout, type)) {
+                    body.append(Op(native.ManagedTrack, type, 0, slot, 0, native.ManagedTrackSlot));
+                }
                 deferred_boxes.append(index);
                 deferred_values.append(slot);
             } else { body.append(Op(native.Save, type, 0, slot, 0, local)); }
@@ -2907,7 +2912,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 owned_types.append(type);
                 body.extend(ManagedOwnerLocal(type, places[index], true, value_layout));
             }
-            if (waiting_function && (type == native.ArrayType + native.PointerType ||
+            if (!boxed && waiting_function && (type == native.ArrayType + native.PointerType ||
                 (ArrayTyped(type) && native.TaskOwnedType(records, value_layout, type))) &&
                 rows[head + 1 + index].literal != i64(facts.ParameterOwnedArray)) {
                 // A suspended callee owns its value parameter independently of
@@ -2946,6 +2951,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             body.append(made);
             body.extend(glue.after);
             body.append(Op(native.Save, native.PointerType, 0, slot, 0, places[variable]));
+            type := NativeType(rows[head + 1 + variable].type);
+            if (native.ValueCollectorOwner(value_layout, type)) {
+                body.append(Op(native.ManagedTrack, type, 0, value, 0, native.ManagedClearSlot));
+            }
             if (rows[head + 1 + variable].literal == i64(facts.ParameterOwnedArray)) {
                 body.append(Giving(NativeType(rows[head + 1 + variable].type), value));
             }

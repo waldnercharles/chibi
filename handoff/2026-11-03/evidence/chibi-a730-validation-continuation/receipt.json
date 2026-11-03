@@ -1,0 +1,229 @@
+{
+  "source": {
+    "revision": "a73081162986aea06efd625ae25963010ae9cb95",
+    "tree": "089a993a60f58c078e4014a5b5b1b2decd68b8cf",
+    "source_files": 3552,
+    "archive_sha256": "e2a47e805e1c962d6858c9193f1b48d0c4d1a9e14f191864dca43875de20ff9f",
+    "builder": "/private/tmp/chibi-ad3-composed-check/candidate/chibi",
+    "builder_sha256": "0edde612a8f452b6e6c8d9133228a61f6d7597271314402de5fc7270e5e0c748"
+  },
+  "original_receipt": "/private/tmp/chibi-a730-composed-proof/receipt.json",
+  "original_receipt_sha256": "9fb8def45095d2bae8fb5edfc50fd51a383c1f0c955856e59c4741274aa0282f",
+  "original_manifest_sha256": "4886c22025aba0e7e300a2e5814dbbb8c890f8f91a06b4749faea6774e179103",
+  "original_managed_log_sha256": "c7c08be6391bb5f0f696b85796dbe7271b6bb3b5451752ca3b26fb4ce31029f5",
+  "compiler": "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+  "compiler_sha256": "15f480276b0b0a20304a87b05f03035ca114ed0e6ed1863d429c3b6807459130",
+  "llvm": "/private/tmp/chibi-bba9-proof/llvm22",
+  "archived_source_preverified": 3552,
+  "overlay": {
+    "commit": "f255bcaf761dbaa4094de19360cdbf541974f62e",
+    "path": "test/native_aot/managed_pointers/NativeProbe.chibi",
+    "file": "/private/tmp/chibi-a730-validation-continuation/overlay/NativeProbe.chibi",
+    "blob": "9a2cb45560e98d0d60d8c3333f38d631179f79b7",
+    "sha256": "0cf604c44e43c44799ebef28996d22e1703b882cf11b4b42f26e26622e10bac6",
+    "f255_exact_copy": "/private/tmp/chibi-a730-validation-continuation/overlay/NativeProbe-f255.chibi.txt",
+    "correction": "Only Map negative expected diagnostic changed to actual a730 validation diagnostic: native scalar slot cannot hold a managed value or pointer",
+    "corrected_sha256": "5028b4195883ebce076a93a41f3cab26ee5902200b407d80c0fd917d7d099c0f",
+    "corrected_commit": "bebb7a008538d8c2fe80346247064df6599db09a",
+    "corrected_blob": "a46c8571428d254733d2a123e6a04b42c99333b5"
+  },
+  "steps": [
+    {
+      "name": "metadata-build",
+      "command": [
+        "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+        "--compiler",
+        "/private/tmp/chibi-a730-composed-proof/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-a730-composed-proof/source/packages/core",
+        "--source",
+        "/private/tmp/chibi-a730-validation-continuation/Metadata.chibi",
+        "--entry",
+        "Main",
+        "--output",
+        "/private/tmp/chibi-a730-validation-continuation/metadata",
+        "--llvm",
+        "/private/tmp/chibi-bba9-proof/llvm22",
+        "--target",
+        "aarch64-apple-darwin",
+        "--jobs",
+        "1"
+      ],
+      "exit": 0,
+      "seconds": 8.69,
+      "log": "/private/tmp/chibi-a730-validation-continuation/metadata-build.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "metadata",
+      "command": [
+        "/private/tmp/chibi-a730-validation-continuation/metadata"
+      ],
+      "exit": 1,
+      "seconds": 0.22,
+      "log": "/private/tmp/chibi-a730-validation-continuation/metadata.log",
+      "log_sha256": "a2d2be13faeaaa47f746d2fd3a179ba2106ea5ea8603d6be6c93d4489bea5950"
+    },
+    {
+      "name": "native-probe-build",
+      "command": [
+        "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+        "--compiler",
+        "/private/tmp/chibi-a730-composed-proof/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-a730-composed-proof/source/packages/core",
+        "--source",
+        "/private/tmp/chibi-a730-validation-continuation/overlay/NativeProbe.chibi",
+        "--entry",
+        "Main",
+        "--output",
+        "/private/tmp/chibi-a730-validation-continuation/managed/native-probe",
+        "--llvm",
+        "/private/tmp/chibi-bba9-proof/llvm22",
+        "--target",
+        "aarch64-apple-darwin",
+        "--jobs",
+        "1"
+      ],
+      "exit": 0,
+      "seconds": 10.38,
+      "log": "/private/tmp/chibi-a730-validation-continuation/native-probe-build.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "native-probe",
+      "command": [
+        "/private/tmp/chibi-a730-validation-continuation/managed/native-probe",
+        "/private/tmp/chibi-a730-validation-continuation/managed",
+        "/private/tmp/chibi-bba9-proof/llvm22",
+        "/private/tmp/chibi-a730-composed-proof/source/test/native_aot/managed_pointers/Runtime.ll",
+        "/private/tmp/chibi-a730-composed-proof/source/test/native_aot/managed_pointers/SourceAudit.ll"
+      ],
+      "exit": 0,
+      "seconds": 15.91,
+      "log": "/private/tmp/chibi-a730-validation-continuation/native-probe.log",
+      "log_sha256": "6f2fc5500fa82f2fd5d75ab5ea3c6c260f9dd11e3e4ae3e115f3114c9a34e6d5"
+    },
+    {
+      "name": "managed-tail",
+      "command": [
+        "sh",
+        "/private/tmp/chibi-a730-validation-continuation/managed-tail.sh",
+        "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+        "/private/tmp/chibi-bba9-proof/llvm22",
+        "/private/tmp/chibi-a730-validation-continuation/managed"
+      ],
+      "exit": 1,
+      "seconds": 57.07,
+      "log": "/private/tmp/chibi-a730-validation-continuation/managed-tail.log",
+      "log_sha256": "60b658a0774341d96cb569a09643da42dea56d4bde3e4e81a4cc93caba3304df"
+    },
+    {
+      "name": "maps",
+      "command": [
+        "sh",
+        "/private/tmp/chibi-a730-composed-proof/source/test/native_aot/maps/run.sh",
+        "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+        "/private/tmp/chibi-bba9-proof/llvm22",
+        "/private/tmp/chibi-a730-validation-continuation/maps"
+      ],
+      "exit": 0,
+      "seconds": 131.76,
+      "log": "/private/tmp/chibi-a730-validation-continuation/maps.log",
+      "log_sha256": "cf0cb452fdadcdc03a9d1aee6d1bc5c633757deab843dbbd84ac26bd8250e1b8"
+    },
+    {
+      "name": "generations-O2",
+      "command": [
+        "sh",
+        "/private/tmp/chibi-a730-composed-proof/source/test/native_aot/generations/run.sh",
+        "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+        "/private/tmp/chibi-bba9-proof/llvm22",
+        "2"
+      ],
+      "exit": 0,
+      "seconds": 64.83,
+      "log": "/private/tmp/chibi-a730-validation-continuation/generations-O2.log",
+      "log_sha256": "d4ba8ef531ea4e40bbe792d9e7b42e3b1faed585bc3c18e535b9fb5714baa2e7"
+    },
+    {
+      "name": "container-positive",
+      "command": [
+        "/private/tmp/chibi-a730-validation-continuation/managed/container-positive"
+      ],
+      "exit": 1,
+      "expected_exit": 1,
+      "seconds": 0.31,
+      "log": "/private/tmp/chibi-a730-validation-continuation/container-positive.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "generations-O0",
+      "command": [
+        "sh",
+        "/private/tmp/chibi-a730-composed-proof/source/test/native_aot/generations/run.sh",
+        "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+        "/private/tmp/chibi-bba9-proof/llvm22",
+        "0"
+      ],
+      "exit": 0,
+      "seconds": 62.3,
+      "log": "/private/tmp/chibi-a730-validation-continuation/generations-O0.log",
+      "log_sha256": "372c4ab444b2a16aed65617c61a75305ac2c6fe57fbfe775011042e62ab142df"
+    },
+    {
+      "name": "managed-rejections",
+      "command": [
+        "sh",
+        "/private/tmp/chibi-a730-validation-continuation/managed-rejections.sh",
+        "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+        "/private/tmp/chibi-bba9-proof/llvm22",
+        "/private/tmp/chibi-a730-validation-continuation/managed"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "seconds": 0.75,
+      "log": "/private/tmp/chibi-a730-validation-continuation/managed-rejections.log",
+      "log_sha256": "ae140b5cf0cc07e2b81ae9f1a79c2b94b1ee4a16b48131b0735129970e5bd48a"
+    }
+  ],
+  "tail": {
+    "source_script": "/private/tmp/chibi-a730-composed-proof/source/test/native_aot/managed_pointers/run.sh",
+    "source_script_sha256": "166d739859105b210f2783bcda03cac95a326305f1ef189143ec1d45db35591d",
+    "first_original_line": 125,
+    "last_original_line": 162,
+    "tail_sha256": "952685144ce6c65f62e8dc1f57c36579b3840323964d06e79c527cd7ebf4493a",
+    "runner_sha256": "eb5533477f4c586b06e5fe5d614eb05481e6a25608a1df21e50bacca1c300c0b"
+  },
+  "environment": {
+    "CC": "/usr/bin/false",
+    "CXX": "/usr/bin/false",
+    "CHIBI_CORE": "/private/tmp/chibi-a730-composed-proof/source/packages/core",
+    "CHIBI_TEST_WORKERS": "1",
+    "TMPDIR": "/private/tmp/chibi-a730-validation-continuation/tmp"
+  },
+  "archived_source_postverified": 3552,
+  "original_logs_and_receipts_unchanged": true,
+  "managed_validation": {
+    "status": "pass by explicit continuation with fixture migrations",
+    "original_passed_prefix": "Original managed-pointers.log: run.sh lines1-118 completed before stale NativeProbe metadata rejection; 246.91s original run retained, not repeated.",
+    "boundary_probe": "Corrected bebb7a008 NativeProbe overlay, 54 native runtime runs passed; exact a730 production imports/compiler.",
+    "continued_suffix": "Original run.sh lines125-162, split at obsolete negative container.chibi; views, two-image schemas, source string ownership/unload, eight fallible package tests and earlier negatives passed before that stop.",
+    "container_migration": {
+      "source": "/private/tmp/chibi-a730-composed-proof/source/test/native_aot/managed_pointers/source/rejected/container.chibi",
+      "source_sha256": "54512b7a4a69d92a8235f5006af512873722904ec64ea525f46fb792a963afd4",
+      "compiled_in_original_tail_log": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-container.log",
+      "binary": "/private/tmp/chibi-a730-validation-continuation/managed/container-positive",
+      "binary_sha256": "3f23a99c1123b8f1c29803dc21b8dc6f8a6f92c52c12afc909b086ebd430f82c",
+      "expected_exit": 1,
+      "reason": "Exact unchanged source returns length of boxed pointer array containing one element; a730 now admits this ordinary-positive domain."
+    },
+    "remaining_suffix": "Only the nine not-yet-run negative fixtures and growth controls, unchanged rejection predicates and sentinel checks.",
+    "preserved_failed_attempts": [
+      "metadata",
+      "managed-tail"
+    ],
+    "not_a_one_shot_green_run": true
+  },
+  "status": "pass with explicit fixture-only migrations"
+}

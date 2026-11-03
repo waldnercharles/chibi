@@ -1,0 +1,14 @@
+{
+  "name": "maps",
+  "command": [
+    "sh",
+    "/private/tmp/chibi-a730-composed-proof/source/test/native_aot/maps/run.sh",
+    "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+    "/private/tmp/chibi-bba9-proof/llvm22",
+    "/private/tmp/chibi-a730-validation-continuation/maps"
+  ],
+  "exit": 0,
+  "seconds": 131.76,
+  "log": "/private/tmp/chibi-a730-validation-continuation/maps.log",
+  "log_sha256": "cf0cb452fdadcdc03a9d1aee6d1bc5c633757deab843dbbd84ac26bd8250e1b8"
+}

@@ -1,0 +1,1 @@
+native: rejected Main: /private/tmp/chibi-a730-composed-proof/source/test/native_aot/managed_pointers/source/rejected/OwnedRecordCell.chibi:2:1: native managed record cells require flat numeric, bool or pointer fields

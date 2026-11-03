@@ -1,0 +1,4 @@
+Ubuntu LLVM version 22.1.8
+  Optimized build.
+  Default target: x86_64-pc-linux-gnu
+  Host CPU: westmere

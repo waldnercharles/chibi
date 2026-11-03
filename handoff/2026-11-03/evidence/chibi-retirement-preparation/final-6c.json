@@ -1,0 +1,15 @@
+{
+  "incoming": "6c492a88f",
+  "head": "634b183b92e53c0695adb8b5c2652bf25e6e3c58",
+  "old_deleted": 309,
+  "new_deleted": 309,
+  "added_deletions": [],
+  "lost_deletions": [],
+  "unexpected_production_diffs": [],
+  "plan_matches_root": true,
+  "windows_matches_root_except_c_sanitizer": true,
+  "windows_rows": 36,
+  "retirement_stat": "376 files changed, 899 insertions(+), 89018 deletions(-)",
+  "diff_check": "PASS",
+  "actionlint": "PASS"
+}

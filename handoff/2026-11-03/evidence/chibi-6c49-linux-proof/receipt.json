@@ -1,0 +1,595 @@
+{
+  "revision": "6c492a88f0c1458ff1d2c36fdf7f8bf17ef7befa",
+  "tree": "a9cfe172a8d7e1604634ed164eb4e74ecdeb376a",
+  "compiler_tree": "a2053bae6318ffa05e6bb3699fa4a60fbb3dc797",
+  "core_tree": "a48b8dbadc3257a18cc5a3aceb7ca6cfe97c6788",
+  "archive_sha256": "3e8ba20db51714c34c88aa1732cc96a0e4bb6a8d2a43f95d6ff53aade6ea6492",
+  "source_files": 3562,
+  "source_file_inventory_sha256": "4cc141ea6524ec66d7ad8fd122b2d69ee48726b22076a610d3677a45f9bed3cb",
+  "builder": "/private/tmp/chibi-6699-linux-proof/stage4/chibi",
+  "builder_sha256": "be0c33a8d5828da21ef06fa301d35a5a3bffa4bfaa78ffae9c94dc4a42d39926",
+  "image": "sha256:c2936c6e9f67a2bb3bc5869b07e36d7f6cbe87b0af413c1b3f33844ae5722128",
+  "platform": "linux/amd64",
+  "network": "none",
+  "llvm": "/usr/lib/llvm-22/bin",
+  "environment": {
+    "CC": "/usr/bin/false",
+    "CXX": "/usr/bin/false",
+    "CHIBI_TEST_WORKERS": "2"
+  },
+  "jobs": 2,
+  "normalization": "none; each stage output keeps the canonical basename chibi",
+  "classification": "Intermediate Linux platform composition from a modern verified local builder; not published-c5 seed admission, hosted P, or final seed acceptance",
+  "publication": "none; no CI dispatch, remote changes, package or pin changes",
+  "phases": [
+    {
+      "name": "llvm-version",
+      "command": [
+        "/usr/lib/llvm-22/bin/opt",
+        "--version"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 0.156,
+      "log": "/private/tmp/chibi-6c49-linux-proof/llvm-version.log",
+      "log_sha256": "7621c9ad264c3dc693ba362f18ed04a6a276f2c9849ebd191e528f9c09cb3749"
+    },
+    {
+      "name": "platform",
+      "command": [
+        "/bin/uname",
+        "-a"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 0.017,
+      "log": "/private/tmp/chibi-6c49-linux-proof/platform.log",
+      "log_sha256": "a63f066acefa04b062f8b93cc9f5e8c57db80b6744bd571b31acf13bb6aa27f3"
+    },
+    {
+      "name": "stage2",
+      "command": [
+        "/private/tmp/chibi-6699-linux-proof/stage4/chibi",
+        "--compiler",
+        "/private/tmp/chibi-6c49-linux-proof/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-6c49-linux-proof/source/packages/core",
+        "--output",
+        "/private/tmp/chibi-6c49-linux-proof/stage2/chibi",
+        "--llvm",
+        "/usr/lib/llvm-22/bin",
+        "--target",
+        "x86_64-unknown-linux-gnu",
+        "--jobs",
+        "2"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 93.816,
+      "log": "/private/tmp/chibi-6c49-linux-proof/stage2.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "binary": "/private/tmp/chibi-6c49-linux-proof/stage2/chibi",
+      "binary_sha256": "8f5418ecde89f8864821e791348f261c6a83af325fa2c111cf56bb1f306b6ecf",
+      "binary_bytes": 11280080
+    },
+    {
+      "name": "stage3",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/stage2/chibi",
+        "--compiler",
+        "/private/tmp/chibi-6c49-linux-proof/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-6c49-linux-proof/source/packages/core",
+        "--output",
+        "/private/tmp/chibi-6c49-linux-proof/stage3/chibi",
+        "--llvm",
+        "/usr/lib/llvm-22/bin",
+        "--target",
+        "x86_64-unknown-linux-gnu",
+        "--jobs",
+        "2"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 94.505,
+      "log": "/private/tmp/chibi-6c49-linux-proof/stage3.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "binary": "/private/tmp/chibi-6c49-linux-proof/stage3/chibi",
+      "binary_sha256": "3ac6dd4a086936b9ef4f60f18efc07dbb11f0576119e7ba11af3d2b02641490e",
+      "binary_bytes": 11280216
+    },
+    {
+      "name": "stage4",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/stage3/chibi",
+        "--compiler",
+        "/private/tmp/chibi-6c49-linux-proof/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-6c49-linux-proof/source/packages/core",
+        "--output",
+        "/private/tmp/chibi-6c49-linux-proof/stage4/chibi",
+        "--llvm",
+        "/usr/lib/llvm-22/bin",
+        "--target",
+        "x86_64-unknown-linux-gnu",
+        "--jobs",
+        "2"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 94.365,
+      "log": "/private/tmp/chibi-6c49-linux-proof/stage4.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "binary": "/private/tmp/chibi-6c49-linux-proof/stage4/chibi",
+      "binary_sha256": "3ac6dd4a086936b9ef4f60f18efc07dbb11f0576119e7ba11af3d2b02641490e",
+      "binary_bytes": 11280216
+    },
+    {
+      "name": "compiler-tests",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/stage4/chibi",
+        "test",
+        "--root",
+        "/private/tmp/chibi-6c49-linux-proof/source/tools/compiler",
+        "--llvm",
+        "/usr/lib/llvm-22/bin",
+        "/private/tmp/chibi-6c49-linux-proof/source/tools/compiler"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 81.312,
+      "log": "/private/tmp/chibi-6c49-linux-proof/compiler-tests.log",
+      "log_sha256": "052e46c1a7ce577548591095811be4097b155ec3cb4369334f8a4a09cda787bb"
+    },
+    {
+      "name": "compile-TaskObservers-Main-O0",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/stage4/chibi",
+        "--compiler",
+        "/private/tmp/chibi-6c49-linux-proof/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-6c49-linux-proof/source/packages/core",
+        "--source",
+        "/private/tmp/chibi-6c49-linux-proof/source/test/native_aot/task_owners/TaskObservers.chibi",
+        "--entry",
+        "Main",
+        "--output",
+        "/private/tmp/chibi-6c49-linux-proof/programs/TaskObservers-Main-O0",
+        "--llvm",
+        "/usr/lib/llvm-22/bin",
+        "--target",
+        "x86_64-unknown-linux-gnu",
+        "--level",
+        "0",
+        "--jobs",
+        "2"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 1.536,
+      "log": "/private/tmp/chibi-6c49-linux-proof/compile-TaskObservers-Main-O0.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "binary": "/private/tmp/chibi-6c49-linux-proof/programs/TaskObservers-Main-O0",
+      "binary_sha256": "f5d4e380ef045d10a986c9ec63b991ff19de3e0f6bcf009d14bb4ea9360b5ee2",
+      "binary_bytes": 248920
+    },
+    {
+      "name": "execute-TaskObservers-Main-O0",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/programs/TaskObservers-Main-O0"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 0.016,
+      "log": "/private/tmp/chibi-6c49-linux-proof/execute-TaskObservers-Main-O0.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-PointerViews-Main-O0",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/stage4/chibi",
+        "--compiler",
+        "/private/tmp/chibi-6c49-linux-proof/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-6c49-linux-proof/source/packages/core",
+        "--source",
+        "/private/tmp/chibi-6c49-linux-proof/source/test/native_aot/managed_pointers/source/PointerViews.chibi",
+        "--entry",
+        "Main",
+        "--output",
+        "/private/tmp/chibi-6c49-linux-proof/programs/PointerViews-Main-O0",
+        "--llvm",
+        "/usr/lib/llvm-22/bin",
+        "--target",
+        "x86_64-unknown-linux-gnu",
+        "--level",
+        "0",
+        "--jobs",
+        "2"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 1.423,
+      "log": "/private/tmp/chibi-6c49-linux-proof/compile-PointerViews-Main-O0.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "binary": "/private/tmp/chibi-6c49-linux-proof/programs/PointerViews-Main-O0",
+      "binary_sha256": "7e31b945db5791fdc8c9112b0a96de8e16ac42e6a6acd25184b8743b149071b3",
+      "binary_bytes": 89016
+    },
+    {
+      "name": "execute-PointerViews-Main-O0",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/programs/PointerViews-Main-O0"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 0.025,
+      "log": "/private/tmp/chibi-6c49-linux-proof/execute-PointerViews-Main-O0.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-PointerViews-Tasks-O0",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/stage4/chibi",
+        "--compiler",
+        "/private/tmp/chibi-6c49-linux-proof/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-6c49-linux-proof/source/packages/core",
+        "--source",
+        "/private/tmp/chibi-6c49-linux-proof/source/test/native_aot/managed_pointers/source/PointerViews.chibi",
+        "--entry",
+        "Tasks",
+        "--output",
+        "/private/tmp/chibi-6c49-linux-proof/programs/PointerViews-Tasks-O0",
+        "--llvm",
+        "/usr/lib/llvm-22/bin",
+        "--target",
+        "x86_64-unknown-linux-gnu",
+        "--level",
+        "0",
+        "--jobs",
+        "2"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 1.487,
+      "log": "/private/tmp/chibi-6c49-linux-proof/compile-PointerViews-Tasks-O0.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "binary": "/private/tmp/chibi-6c49-linux-proof/programs/PointerViews-Tasks-O0",
+      "binary_sha256": "3e946c78e9a6d8840f13dae9815ff14bb6c0f4a51970f539c149b88a90ec41b3",
+      "binary_bytes": 91496
+    },
+    {
+      "name": "execute-PointerViews-Tasks-O0",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/programs/PointerViews-Tasks-O0"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 0.022,
+      "log": "/private/tmp/chibi-6c49-linux-proof/execute-PointerViews-Tasks-O0.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-Maps-Main-O0",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/stage4/chibi",
+        "--compiler",
+        "/private/tmp/chibi-6c49-linux-proof/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-6c49-linux-proof/source/packages/core",
+        "--source",
+        "/private/tmp/chibi-6c49-linux-proof/source/test/native_aot/remove_item/Maps.chibi",
+        "--entry",
+        "Main",
+        "--output",
+        "/private/tmp/chibi-6c49-linux-proof/programs/Maps-Main-O0",
+        "--llvm",
+        "/usr/lib/llvm-22/bin",
+        "--target",
+        "x86_64-unknown-linux-gnu",
+        "--level",
+        "0",
+        "--jobs",
+        "2"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 1.478,
+      "log": "/private/tmp/chibi-6c49-linux-proof/compile-Maps-Main-O0.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "binary": "/private/tmp/chibi-6c49-linux-proof/programs/Maps-Main-O0",
+      "binary_sha256": "0989f064f91b5472a4b12a11c5f9a3911c11ba3f02b44b3991ab33499d75a2bf",
+      "binary_bytes": 206472
+    },
+    {
+      "name": "execute-Maps-Main-O0",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/programs/Maps-Main-O0"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 0.019,
+      "log": "/private/tmp/chibi-6c49-linux-proof/execute-Maps-Main-O0.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-TaskObservers-Main-O2",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/stage4/chibi",
+        "--compiler",
+        "/private/tmp/chibi-6c49-linux-proof/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-6c49-linux-proof/source/packages/core",
+        "--source",
+        "/private/tmp/chibi-6c49-linux-proof/source/test/native_aot/task_owners/TaskObservers.chibi",
+        "--entry",
+        "Main",
+        "--output",
+        "/private/tmp/chibi-6c49-linux-proof/programs/TaskObservers-Main-O2",
+        "--llvm",
+        "/usr/lib/llvm-22/bin",
+        "--target",
+        "x86_64-unknown-linux-gnu",
+        "--level",
+        "2",
+        "--jobs",
+        "2"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 2.889,
+      "log": "/private/tmp/chibi-6c49-linux-proof/compile-TaskObservers-Main-O2.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "binary": "/private/tmp/chibi-6c49-linux-proof/programs/TaskObservers-Main-O2",
+      "binary_sha256": "32d54e1c2b9cb0d5de2d3db72ceaa3e1d5a87b3206c57676898da7657d613089",
+      "binary_bytes": 71592
+    },
+    {
+      "name": "execute-TaskObservers-Main-O2",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/programs/TaskObservers-Main-O2"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 0.014,
+      "log": "/private/tmp/chibi-6c49-linux-proof/execute-TaskObservers-Main-O2.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-PointerViews-Main-O2",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/stage4/chibi",
+        "--compiler",
+        "/private/tmp/chibi-6c49-linux-proof/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-6c49-linux-proof/source/packages/core",
+        "--source",
+        "/private/tmp/chibi-6c49-linux-proof/source/test/native_aot/managed_pointers/source/PointerViews.chibi",
+        "--entry",
+        "Main",
+        "--output",
+        "/private/tmp/chibi-6c49-linux-proof/programs/PointerViews-Main-O2",
+        "--llvm",
+        "/usr/lib/llvm-22/bin",
+        "--target",
+        "x86_64-unknown-linux-gnu",
+        "--level",
+        "2",
+        "--jobs",
+        "2"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 2.617,
+      "log": "/private/tmp/chibi-6c49-linux-proof/compile-PointerViews-Main-O2.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "binary": "/private/tmp/chibi-6c49-linux-proof/programs/PointerViews-Main-O2",
+      "binary_sha256": "ffb3e9653a70a0a6b283ddcf81e72d5b0cf15b25ea29c05dc6568a9ce8beb58c",
+      "binary_bytes": 66672
+    },
+    {
+      "name": "execute-PointerViews-Main-O2",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/programs/PointerViews-Main-O2"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 0.02,
+      "log": "/private/tmp/chibi-6c49-linux-proof/execute-PointerViews-Main-O2.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-PointerViews-Tasks-O2",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/stage4/chibi",
+        "--compiler",
+        "/private/tmp/chibi-6c49-linux-proof/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-6c49-linux-proof/source/packages/core",
+        "--source",
+        "/private/tmp/chibi-6c49-linux-proof/source/test/native_aot/managed_pointers/source/PointerViews.chibi",
+        "--entry",
+        "Tasks",
+        "--output",
+        "/private/tmp/chibi-6c49-linux-proof/programs/PointerViews-Tasks-O2",
+        "--llvm",
+        "/usr/lib/llvm-22/bin",
+        "--target",
+        "x86_64-unknown-linux-gnu",
+        "--level",
+        "2",
+        "--jobs",
+        "2"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 2.986,
+      "log": "/private/tmp/chibi-6c49-linux-proof/compile-PointerViews-Tasks-O2.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "binary": "/private/tmp/chibi-6c49-linux-proof/programs/PointerViews-Tasks-O2",
+      "binary_sha256": "6d48ca380d930863a311a20c4e6b3ec7f66dec0fdd908c3bafb3804500e3ad6f",
+      "binary_bytes": 70456
+    },
+    {
+      "name": "execute-PointerViews-Tasks-O2",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/programs/PointerViews-Tasks-O2"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 0.018,
+      "log": "/private/tmp/chibi-6c49-linux-proof/execute-PointerViews-Tasks-O2.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-Maps-Main-O2",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/stage4/chibi",
+        "--compiler",
+        "/private/tmp/chibi-6c49-linux-proof/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-6c49-linux-proof/source/packages/core",
+        "--source",
+        "/private/tmp/chibi-6c49-linux-proof/source/test/native_aot/remove_item/Maps.chibi",
+        "--entry",
+        "Main",
+        "--output",
+        "/private/tmp/chibi-6c49-linux-proof/programs/Maps-Main-O2",
+        "--llvm",
+        "/usr/lib/llvm-22/bin",
+        "--target",
+        "x86_64-unknown-linux-gnu",
+        "--level",
+        "2",
+        "--jobs",
+        "2"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 2.861,
+      "log": "/private/tmp/chibi-6c49-linux-proof/compile-Maps-Main-O2.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "binary": "/private/tmp/chibi-6c49-linux-proof/programs/Maps-Main-O2",
+      "binary_sha256": "f481f827745cc59f3b4482225f226c12d4ead944864799c3673b577ebf915b1b",
+      "binary_bytes": 76768
+    },
+    {
+      "name": "execute-Maps-Main-O2",
+      "command": [
+        "/private/tmp/chibi-6c49-linux-proof/programs/Maps-Main-O2"
+      ],
+      "cwd": "/private/tmp/chibi-6c49-linux-proof/source",
+      "status": 0,
+      "elapsed_s": 0.016,
+      "log": "/private/tmp/chibi-6c49-linux-proof/execute-Maps-Main-O2.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "comparisons": [
+    {
+      "pair": [
+        2,
+        3
+      ],
+      "command": [
+        "cmp",
+        "/private/tmp/chibi-6c49-linux-proof/stage2/chibi",
+        "/private/tmp/chibi-6c49-linux-proof/stage3/chibi"
+      ],
+      "byte_identical": false,
+      "status": 1,
+      "output": "/private/tmp/chibi-6c49-linux-proof/stage2/chibi /private/tmp/chibi-6c49-linux-proof/stage3/chibi differ: char 25, line 1\n",
+      "left_sha256": "8f5418ecde89f8864821e791348f261c6a83af325fa2c111cf56bb1f306b6ecf",
+      "right_sha256": "3ac6dd4a086936b9ef4f60f18efc07dbb11f0576119e7ba11af3d2b02641490e"
+    },
+    {
+      "pair": [
+        3,
+        4
+      ],
+      "command": [
+        "cmp",
+        "/private/tmp/chibi-6c49-linux-proof/stage3/chibi",
+        "/private/tmp/chibi-6c49-linux-proof/stage4/chibi"
+      ],
+      "byte_identical": true,
+      "status": 0,
+      "output": "",
+      "left_sha256": "3ac6dd4a086936b9ef4f60f18efc07dbb11f0576119e7ba11af3d2b02641490e",
+      "right_sha256": "3ac6dd4a086936b9ef4f60f18efc07dbb11f0576119e7ba11af3d2b02641490e"
+    }
+  ],
+  "status": "pass",
+  "docker_command": [
+    "docker",
+    "run",
+    "--rm",
+    "--platform",
+    "linux/amd64",
+    "--network",
+    "none",
+    "--name",
+    "chibi-6c49-linux-proof",
+    "--mount",
+    "type=bind,src=/private/tmp/chibi-6c49-linux-proof,dst=/private/tmp/chibi-6c49-linux-proof",
+    "--mount",
+    "type=bind,src=/private/tmp/chibi-6699-linux-proof/stage4/chibi,dst=/private/tmp/chibi-6699-linux-proof/stage4/chibi,readonly",
+    "--workdir",
+    "/private/tmp/chibi-6c49-linux-proof/source",
+    "--env",
+    "CC=/usr/bin/false",
+    "--env",
+    "CXX=/usr/bin/false",
+    "--env",
+    "CHIBI_TEST_WORKERS=2",
+    "sha256:c2936c6e9f67a2bb3bc5869b07e36d7f6cbe87b0af413c1b3f33844ae5722128",
+    "python3",
+    "/private/tmp/chibi-6c49-linux-proof/run.py"
+  ],
+  "docker_image_platform": {
+    "id": "sha256:c2936c6e9f67a2bb3bc5869b07e36d7f6cbe87b0af413c1b3f33844ae5722128",
+    "architecture": "amd64",
+    "os": "linux"
+  },
+  "launch_runner_sha256": "270474d981981ab0b31048a8588c7d925616b0211eb0103be8ed72b41acd20e6",
+  "started_utc": "2026-11-03T12:29:46.538121+00:00",
+  "runner_sha256": "d552221287007979ba1c98c634e0b8026ce7ebf187df3abe1871a2c8f8b8acd1",
+  "initial_pair_differed": true,
+  "fixed_point": {
+    "pair": [
+      3,
+      4
+    ],
+    "command": [
+      "cmp",
+      "/private/tmp/chibi-6c49-linux-proof/stage3/chibi",
+      "/private/tmp/chibi-6c49-linux-proof/stage4/chibi"
+    ],
+    "byte_identical": true,
+    "status": 0,
+    "output": "",
+    "left_sha256": "3ac6dd4a086936b9ef4f60f18efc07dbb11f0576119e7ba11af3d2b02641490e",
+    "right_sha256": "3ac6dd4a086936b9ef4f60f18efc07dbb11f0576119e7ba11af3d2b02641490e"
+  },
+  "compiler_test_pass_lines": 551,
+  "compiler_unique_test_names": 551,
+  "compiler_test_inventory_sha256": "c66f21a7b033d42f82f5e3c56444bf562cf0bf42077620cd1d29298b3078be5b",
+  "compiler_test_summary": [
+    "551 tests, 0 failed"
+  ],
+  "archived_source_reverified": 3562,
+  "archive_hash_unchanged": true,
+  "builder_hash_unchanged": true,
+  "runner_hash_unchanged": true,
+  "final_verification_problems": [],
+  "finished_utc": "2026-11-03T12:36:11.088189+00:00",
+  "controller_elapsed_s": 384.55,
+  "total_recorded_phase_seconds": 381.598,
+  "focused_compile_and_execute_seconds": 17.427,
+  "host_final_source_reverified": 3562,
+  "host_final_verification_errors": [],
+  "docker_exit_status": 0,
+  "docker_elapsed_s": 385.466,
+  "console_sha256": "fa5761214b065e9b028a250bcdd6b497d67f5e839d3c85ab3420a95c9c39df94"
+}

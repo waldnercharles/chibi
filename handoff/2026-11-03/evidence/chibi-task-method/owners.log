@@ -1,0 +1,71 @@
+PASS owned task Main O0, poisoned frees and live0
+PASS owned task Patterns O0, poisoned frees and live0
+PASS owned task Failure O0, poisoned frees and live0
+PASS owned task Mixed O0, poisoned frees and live0
+PASS owned task Promises O0, poisoned frees and live0
+PASS owned task PromiseFailure O0, poisoned frees and live0
+PASS owned task NamedPromises O0, poisoned frees and live0
+PASS owned task MapPromises O0, poisoned frees and live0
+PASS owned task MapPromiseFailure O0, poisoned frees and live0
+PASS owned task MapJoinAllocations O0, poisoned frees and live0
+PASS owned task TaskMaps O0, poisoned frees and live0
+PASS owned task TaskObservers O0, poisoned frees and live0
+PASS owned task TaskObserverAllocations O0, poisoned frees and live0
+PASS owned task TaskObserverFailure O0, poisoned frees and live0
+PASS owned task Main O2, poisoned frees and live0
+PASS owned task Patterns O2, poisoned frees and live0
+PASS owned task Failure O2, poisoned frees and live0
+PASS owned task Mixed O2, poisoned frees and live0
+PASS owned task Promises O2, poisoned frees and live0
+PASS owned task PromiseFailure O2, poisoned frees and live0
+PASS owned task NamedPromises O2, poisoned frees and live0
+PASS owned task MapPromises O2, poisoned frees and live0
+PASS owned task MapPromiseFailure O2, poisoned frees and live0
+PASS owned task MapJoinAllocations O2, poisoned frees and live0
+PASS owned task TaskMaps O2, poisoned frees and live0
+PASS owned task TaskObservers O2, poisoned frees and live0
+PASS owned task TaskObserverAllocations O2, poisoned frees and live0
+PASS owned task TaskObserverFailure O2, poisoned frees and live0
+PASS ObserverParameter rejected with prior output preserved
+PASS ObserverField rejected with prior output preserved
+PASS ObserverResult rejected with prior output preserved
+PASS owned old generation complete O0, image close balanced
+PASS owned old generation cancel O0, image close balanced
+PASS owned old generation failure O0, image close balanced
+PASS owned old generation resize O0, image close balanced
+PASS owned old generation resize-functional O0, image close balanced
+native failure: UnwrappedNil
+PASS owned old generation unwrap O0, image close balanced
+native failure: UnwrappedNil
+PASS owned old generation unwrap-await O0, image close balanced
+native failure: UnwrappedNil
+PASS owned old generation unwrap-immediate O0, image close balanced
+PASS shared unwrap positive O0, image close balanced
+native failure: UnwrappedNil
+PASS shared unwrap sync O0, image close balanced
+native failure: UnwrappedNil
+PASS shared unwrap frame O0, image close balanced
+native failure: UnwrappedNil
+PASS shared unwrap spawn-immediate O0, image close balanced
+PASS owned old generation complete O2, image close balanced
+PASS owned old generation cancel O2, image close balanced
+PASS owned old generation failure O2, image close balanced
+PASS owned old generation resize O2, image close balanced
+PASS owned old generation resize-functional O2, image close balanced
+native failure: UnwrappedNil
+PASS owned old generation unwrap O2, image close balanced
+native failure: UnwrappedNil
+PASS owned old generation unwrap-await O2, image close balanced
+native failure: UnwrappedNil
+PASS owned old generation unwrap-immediate O2, image close balanced
+PASS shared unwrap positive O2, image close balanced
+native failure: UnwrappedNil
+PASS shared unwrap sync O2, image close balanced
+native failure: UnwrappedNil
+PASS shared unwrap frame O2, image close balanced
+native failure: UnwrappedNil
+PASS shared unwrap spawn-immediate O2, image close balanced
+PASS image-close audit rejects a deliberately unbalanced owner
+real 27.33
+user 8.31
+sys 2.18

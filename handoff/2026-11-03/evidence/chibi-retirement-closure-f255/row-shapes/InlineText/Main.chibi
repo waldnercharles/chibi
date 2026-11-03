@@ -1,0 +1,13 @@
+package rootless_inline_text
+Leaf :: struct { label: string; }
+Row :: struct { leaf: Leaf; }
+Literal :: () -> string { return "writer literal"; }
+Rows :: () -> Row[] { return [{leaf: {label: Literal()}}]; }
+Owner :: () -> view Row[] { rows := Rows(); pointer := &rows; return pointer.view(0..<1)!; }
+Write :: (window: view Row[]) { window[0] = {leaf: {label: Literal()}}; }
+Replace :: (pointer: ^(Row[])) -> ^(Row[]) { pointer^ = Rows(); return pointer; }
+Main :: () -> int {
+    window := Owner(); Write(window);
+    rows := Rows(); pointer := &rows; Replace(pointer);
+    return 0;
+}

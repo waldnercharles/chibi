@@ -1,0 +1,78 @@
+{
+  "revision": "a73081162986aea06efd625ae25963010ae9cb95",
+  "compiler_sha256": "15f480276b0b0a20304a87b05f03035ca114ed0e6ed1863d429c3b6807459130",
+  "cases": [
+    {
+      "name": "ArrayText",
+      "command": [
+        "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+        "--compiler",
+        "/private/tmp/chibi-a730-composed-proof/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-a730-composed-proof/source/packages/core",
+        "--source",
+        "/private/tmp/chibi-rootless-text-escape-audit/ArrayText/Main.chibi",
+        "--entry",
+        "Main",
+        "--emit-llvm",
+        "--target",
+        "aarch64-apple-darwin",
+        "--output",
+        "/private/tmp/chibi-rootless-text-escape-audit/ArrayText.ll"
+      ],
+      "exit": 0,
+      "seconds": 0.13,
+      "diagnostic": "",
+      "source_sha256": "8a29998b6f19f714fcc158f5b20e5c929d22d47cc31a52945c4dbe492cbeb651",
+      "ir_sha256": "be5ff93d2a2a6f514e7009d2d688d27717e177eb526f804c89def040fddb7b73"
+    },
+    {
+      "name": "InlineText",
+      "command": [
+        "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+        "--compiler",
+        "/private/tmp/chibi-a730-composed-proof/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-a730-composed-proof/source/packages/core",
+        "--source",
+        "/private/tmp/chibi-rootless-text-escape-audit/InlineText/Main.chibi",
+        "--entry",
+        "Main",
+        "--emit-llvm",
+        "--target",
+        "aarch64-apple-darwin",
+        "--output",
+        "/private/tmp/chibi-rootless-text-escape-audit/InlineText.ll"
+      ],
+      "exit": 0,
+      "seconds": 0.01,
+      "diagnostic": "",
+      "source_sha256": "fe9836862581890821e58fa285325c83f1bd9cd19868d92c4d0c54e46d487c27",
+      "ir_sha256": "b564958a337d59a6ae33c00a9ed550a503035523e3976bc5364c466ea7296d94"
+    },
+    {
+      "name": "InlineTextCell",
+      "command": [
+        "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+        "--compiler",
+        "/private/tmp/chibi-a730-composed-proof/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-a730-composed-proof/source/packages/core",
+        "--source",
+        "/private/tmp/chibi-rootless-text-escape-audit/InlineTextCell/Main.chibi",
+        "--entry",
+        "Main",
+        "--emit-llvm",
+        "--target",
+        "aarch64-apple-darwin",
+        "--output",
+        "/private/tmp/chibi-rootless-text-escape-audit/InlineTextCell.ll"
+      ],
+      "exit": 1,
+      "seconds": 0.01,
+      "diagnostic": "native: rejected Main: /private/tmp/chibi-rootless-text-escape-audit/InlineTextCell/Main.chibi:3:1: native managed record cells require flat numeric, bool or pointer fields\n",
+      "source_sha256": "96b898cebd74bbfbb5c6f04c6ebd4e4f29a9d1517a46b7833d54030e8e79085b",
+      "ir_sha256": null
+    }
+  ]
+}

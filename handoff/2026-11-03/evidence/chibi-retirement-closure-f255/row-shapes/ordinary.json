@@ -1,0 +1,47 @@
+[
+  {
+    "name": "PointerLabels",
+    "source": "package pointer_labels\nRow :: struct { pointer: ^int; labels: string[]; }\nMain :: () -> int {\n number := 7;\n rows: Row[] = [{pointer: &number, labels: [\"x\"]}];\n pointer := &rows;\n selected := pointer.view(0..<1);\n if selected { row := selected[0]; return row.pointer^ + text_byte_length(row.labels[0]); }\n return -1;\n}\n",
+    "source_sha256": "171965d0150742c31d0fb8b5dcaf364641bd7e874ca5358f34dfaa6a10dedc5c",
+    "command": [
+      "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+      "--project-root",
+      "/private/tmp/chibi-retirement-closure-f255/row-shapes/PointerLabels",
+      "--test"
+    ],
+    "status": 0,
+    "seconds": 0.9839247500058264,
+    "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "ArrayText",
+    "source": "package rootless_array_text\nRow :: struct { labels: string[]; }\nLiteral :: () -> string { return \"writer literal\"; }\nRows :: () -> Row[] { return [{labels: [Literal()]}]; }\nOwner :: () -> view Row[] { rows := Rows(); pointer := &rows; return pointer.view(0..<1)!; }\nWrite :: (window: view Row[]) { window[0] = {labels: [Literal()]}; }\nReplace :: (pointer: ^(Row[])) -> ^(Row[]) { pointer^ = Rows(); return pointer; }\nMain :: () -> int {\n    window := Owner(); Write(window);\n    rows := Rows(); pointer := &rows; Replace(pointer);\n    return 0;\n}\n",
+    "source_sha256": "395128bf717eb271ffc5372b052c9a7a5354ea3f32f98a6a0d7f09e90a4d38cd",
+    "command": [
+      "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+      "--project-root",
+      "/private/tmp/chibi-retirement-closure-f255/row-shapes/ArrayText",
+      "--test"
+    ],
+    "status": 0,
+    "seconds": 0.7592727089941036,
+    "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "InlineText",
+    "source": "package rootless_inline_text\nLeaf :: struct { label: string; }\nRow :: struct { leaf: Leaf; }\nLiteral :: () -> string { return \"writer literal\"; }\nRows :: () -> Row[] { return [{leaf: {label: Literal()}}]; }\nOwner :: () -> view Row[] { rows := Rows(); pointer := &rows; return pointer.view(0..<1)!; }\nWrite :: (window: view Row[]) { window[0] = {leaf: {label: Literal()}}; }\nReplace :: (pointer: ^(Row[])) -> ^(Row[]) { pointer^ = Rows(); return pointer; }\nMain :: () -> int {\n    window := Owner(); Write(window);\n    rows := Rows(); pointer := &rows; Replace(pointer);\n    return 0;\n}\n",
+    "source_sha256": "bb787512362f89db778b3bde2ddfc5e63b96f8daf57c9d0bc5aaaa765932834f",
+    "command": [
+      "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+      "--project-root",
+      "/private/tmp/chibi-retirement-closure-f255/row-shapes/InlineText",
+      "--test"
+    ],
+    "status": 0,
+    "seconds": 0.7385446249973029,
+    "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+    "stderr": ""
+  }
+]

@@ -1,0 +1,10 @@
+✔ core builds native products once and preserves selector failure (success) (81.973875ms)
+✔ core builds native products once and preserves selector failure (native) (64.481708ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 189.904334

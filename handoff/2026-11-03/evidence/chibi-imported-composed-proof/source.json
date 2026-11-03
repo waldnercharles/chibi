@@ -1,0 +1,8 @@
+{
+  "revision": "1d5386d9f895bb7bd08ac3189d60b373058f4185",
+  "tree": "b9901fd299fb4863b08cb45a572c4c781f0d96c5",
+  "source_files": 3520,
+  "archive_sha256": "4ed641322bab88efb935347b53bb74edb350b3a09c5a675d5dcc0f82052a2725",
+  "builder": "/private/tmp/chibi-5968-composed-proof/stage3/chibi",
+  "builder_sha256": "657c5a52b181642924fc1094c69957903297184c9b2235d89d660aac0a9a7fea"
+}

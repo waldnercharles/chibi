@@ -1,0 +1,34 @@
+PASS foreign_declared/facts.Calls
+PASS foreign_library/facts.Calls
+PASS foreign_posix/facts.Calls
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(ftbase.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(ftinit.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(ftsystem.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(autofit.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(bdf.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(cff.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(ftmm.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(sdf.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(ftbitmap.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(raster.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(smooth.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(ftdebug.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(svg.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(pcf.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(ftgzip.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(ftlzw.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(pfr.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(psaux.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(pshinter.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(psnames.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(sfnt.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(type1.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(type1cid.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(type42.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(truetype.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+ld64.lld: warning: /private/tmp/chibi-final-nine-preparation/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a(winfnt.c.o) has version 15.0.0, which is newer than target minimum of 11.0.0
+PASS foreign_vendor/facts.Calls
+PASS plain_package/facts.Calls
+PASS scoped_pointer_across_files/facts.Calls
+PASS when_imports/facts.Calls
+7 tests, 0 failed

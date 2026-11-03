@@ -1,0 +1,1 @@
+native: rejected Main: /private/tmp/chibi-rootless-text-escape-audit/InlineTextCell/Main.chibi:3:1: native managed record cells require flat numeric, bool or pointer fields

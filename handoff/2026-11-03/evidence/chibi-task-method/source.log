@@ -1,0 +1,7 @@
+PASS TaskObservers O0
+PASS TaskObserverAllocations O0
+PASS TaskObservers O2
+PASS TaskObserverAllocations O2
+real 2.64
+user 1.17
+sys 0.20

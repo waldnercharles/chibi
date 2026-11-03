@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "sh",
+    "/Users/cwaldner/Personal/chibi/handoffs/heavy.sh",
+    "windows: nested pointer ordinary",
+    "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+    "--project-root",
+    "/private/tmp/chibi-nested-managed-pointer-proof/ordinary",
+    "--test"
+  ],
+  "status": 0,
+  "seconds": 1.0142560829990543,
+  "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+  "stderr": ""
+}

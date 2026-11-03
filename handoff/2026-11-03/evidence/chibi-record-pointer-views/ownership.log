@@ -1,0 +1,15 @@
+PASS managed source /tmp/chibi-record-pointer-views/ViewRecordPointers.ll force=false O0 poisoned balance
+managed source live 0 peak 970 total 15027
+
+PASS managed source /tmp/chibi-record-pointer-views/ViewRecordPointers.ll force=false O2 poisoned balance
+managed source live 0 peak 970 total 15027
+
+PASS managed source /tmp/chibi-record-pointer-views/ViewRecordPointers.ll force=true O0 poisoned balance
+managed source live 0 peak 18 total 15027
+
+PASS managed source /tmp/chibi-record-pointer-views/ViewRecordPointers.ll force=true O2 poisoned balance
+managed source live 0 peak 18 total 15027
+
+real 1.91
+user 0.76
+sys 0.11

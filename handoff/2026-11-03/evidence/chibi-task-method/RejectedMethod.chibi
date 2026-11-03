@@ -1,0 +1,3 @@
+package rejected_observer_method
+Child :: () -> int { yield; return 7; }
+Main :: () -> int { values := [Child()]; values.remove_item(true); return 0; }

@@ -1,0 +1,15 @@
+{
+  "test/native_aot/managed_pointers/README.md": "d7a2be5d8218dc2e0ad48d0fde52a5b74a4318fe62f86f9ae7fa2e899cb8539c",
+  "test/native_aot/managed_pointers/run.sh": "b7a2f6d930afa5d788efb0b49e93481d312b5979fc3182c590a27c28120316a5",
+  "test/native_aot/managed_pointers/source/NestedPointers.chibi": "5b78446e896e2f73278fdf207c935ff799cc01c749198b8c0a70fc31c780a9fd",
+  "test/native_aot/managed_pointers/source/rejected/nested.chibi": null,
+  "test/native_aot/task_owners/NestedPointers.chibi": "c145e4a7780f96828500b6fad6dd4537bbf91b71e040383da4a11f4dc3b36235",
+  "test/native_aot/task_owners/README.md": "5aeabfb1342e932b046aef79757dac3037e233901e3fe46833cf4a54f9e4bea8",
+  "test/native_aot/task_owners/generations.sh": "ec2e63a0d7834b008b4dfff79c350a89e20e8af3d1fce0b8cb0c34af27eddd68",
+  "tools/compiler/llvm_native/Emit.chibi": "7e6dd609eb50f168c5e03bc42ffaa2008b3e53709bf49c3f84849bb88e6339e9",
+  "tools/compiler/llvm_native/Managed.chibi": "a0d033b13f8de85c661648c6b37454d432532a1107d82c94c55c61d61f796c91",
+  "tools/compiler/llvm_native/ManagedRecords.chibi": "6afd56ff0c025ced7044f4577e08b8601f31616b22e25c8541a0cb26756426d0",
+  "tools/compiler/llvm_native/tests/PointerCells.chibi": "acc3ac46ec17d6fe748f8d328d02145e4fdd7f541e2dfc6630d40295f7269b29",
+  "tools/compiler/package_compiler/Scalar.chibi": "4314d4c3b6ae2b0b67d1eaa809cd95541d5ab5ac4e6e2f05bb8b0aaa5708f6cf",
+  "tools/compiler/package_compiler/ScalarPointers.chibi": "c848ac92289786ad057fb54b848d9a8579860bb528b04f6ca53112f8dbac529c"
+}

@@ -1,0 +1,43 @@
+package map_compound
+
+Key :: (values: ^([int: int]), calls: ^int) -> int {
+    calls^ += 1;
+    values^ = [1: 20, 7: 70];
+    return 1;
+}
+Right :: (values: ^([int: int])) -> int { values^ = [1: 99, 9: 90]; return 3; }
+Scoped :: (read: ^([int: int]), changed: ^([int: int])) -> int {
+    read^[1] += Right(changed);
+    return read^[1];
+}
+Text :: (value: int) -> string { return text_from_bytes([u8(65), 0, u8(value)]); }
+ReplaceText :: (key: ^string) -> int { key^ = Text(2); return 4; }
+Main :: () -> int {
+    values: [int: int] = [1: 5];
+    copied := values;
+    values[1] += 2;
+    assert(values[1] == 7 && copied[1] == 5);
+    values[2] += 8;
+    values[2] *= 3;
+    values[2] -= 4;
+    values[2] /= 5;
+    values[2] %= 3;
+    assert(values[2] == 1);
+    calls := 0;
+    values[Key(&values, &calls)] += Right(&values);
+    assert(calls == 1 && values[1] == 23 && values[9] == 90 && !values.has(7));
+    values[2] += Right(&values);
+    assert(values[2] == 3 && values[1] == 99);
+    result := Scoped(&values, &values);
+    assert(result == 102 && values[1] == 102);
+    narrow: [int: u8] = [1: 9];
+    narrow[1] += u8(4);
+    assert(narrow[1] == u8(13));
+    for (index in 0..<96) {
+        key := Text(1);
+        counts: [string: int] = [:];
+        counts[key] += ReplaceText(&key);
+        assert(counts[Text(1)] == 4 && !counts.has(Text(2)) && key == Text(2));
+    }
+    return 0;
+}

@@ -1,0 +1,3 @@
+package text_view_mutation
+@test
+Check :: () { observed := Main(); }

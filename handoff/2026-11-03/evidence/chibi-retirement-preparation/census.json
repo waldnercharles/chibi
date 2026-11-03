@@ -1,0 +1,19 @@
+{
+  "name": "census",
+  "command": [
+    "sh",
+    "/Users/cwaldner/Personal/chibi/handoffs/heavy.sh",
+    "native_cli: retired public census",
+    "sh",
+    "tools/build.sh",
+    "census",
+    "--native-driver",
+    "/private/tmp/chibi-retirement-preparation/source-one/build-release/sdk/chibi",
+    "--llvm",
+    "/private/tmp/chibi-bba9-proof/llvm22"
+  ],
+  "status": 0,
+  "seconds": 2.3705072499869857,
+  "stdout": "",
+  "stderr": "census: 16 first-party C files, 1685 lines, 0 C++/Objective-C shims, 0 build tooling files\n"
+}

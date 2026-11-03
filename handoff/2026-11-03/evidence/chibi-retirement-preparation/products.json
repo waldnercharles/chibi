@@ -1,0 +1,70 @@
+[
+  {
+    "name": "release",
+    "command": [
+      "sh",
+      "/Users/cwaldner/Personal/chibi/handoffs/heavy.sh",
+      "native_cli: retired release",
+      "sh",
+      "tools/build.sh",
+      "build",
+      "--release",
+      "--native-driver",
+      "/private/tmp/chibi-imported-composed-proof/stage3/chibi",
+      "--llvm",
+      "/private/tmp/chibi-bba9-proof/llvm22"
+    ],
+    "status": 0,
+    "seconds": 56.657536250015255,
+    "stdout": "",
+    "stderr": "downloading third-party-macos-arm64-release.tar.gz from waldnercharles/chibi third-party-2026-10-22.2\nwarning: Linking two modules of different target triples: '/private/tmp/chibi-retirement-preparation/source-one/build-release/lib/libchibi_asset_compiler_host.a.prepare/work.sKnBwb/runtime.bc' is 'aarch64-apple-darwin' whereas 'llvm-link' is 'arm64-apple-macosx11.0.0'\n\n"
+  },
+  {
+    "name": "sdk-install",
+    "command": [
+      "sh",
+      "/Users/cwaldner/Personal/chibi/handoffs/heavy.sh",
+      "native_cli: retired sdk-install",
+      "/private/tmp/chibi-retirement-preparation/source-one/build-release/sdk/chibi",
+      "run",
+      "--core",
+      "/private/tmp/chibi-retirement-preparation/source-one/packages/core",
+      "--llvm",
+      "/private/tmp/chibi-bba9-proof/llvm22",
+      "--root",
+      "/private/tmp/chibi-retirement-preparation/source-one",
+      "--collection",
+      "graph=/private/tmp/chibi-retirement-preparation/source-one/tools/graph",
+      "--entry",
+      "Run",
+      "/private/tmp/chibi-retirement-preparation/source-one/test/graph/SDKInstallTests.chibi",
+      "--",
+      "/private/tmp/chibi-retirement-preparation/source-one/build-release/sdk/chibi",
+      "/private/tmp/chibi-retirement-preparation/source-one/build-release",
+      "/private/tmp/chibi-bba9-proof/llvm22"
+    ],
+    "status": 0,
+    "seconds": 91.785822750011,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "bridge",
+    "command": [
+      "sh",
+      "/Users/cwaldner/Personal/chibi/handoffs/heavy.sh",
+      "native_cli: retired bridge",
+      "sh",
+      "/private/tmp/chibi-retirement-preparation/source-one/test/native_aot/asset_compiler/bridge.sh",
+      "/private/tmp/chibi-retirement-preparation/source-one/build-release/sdk/chibi-asset-compiler",
+      "/private/tmp/chibi-retirement-preparation/source-one/build-release/sdk/chibi",
+      "/private/tmp/chibi-bba9-proof/llvm22",
+      "/usr/bin/cc",
+      "/private/tmp/chibi-retirement-preparation/source-one/build-release/lib/libchibi_asset_compiler_host.a"
+    ],
+    "status": 0,
+    "seconds": 7.752066499990178,
+    "stdout": "PASS quiet service cwd, caller isolation, normal-exit and cancellation group retirement\nnative C asset facade: closures, diagnostics, quota, cancellation, cache and relocation passed\n",
+    "stderr": "native asset compiler relocation, closures, diagnostics and request rejection passed\n"
+  }
+]

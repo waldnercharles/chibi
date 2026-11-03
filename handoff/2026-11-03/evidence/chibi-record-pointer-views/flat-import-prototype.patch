@@ -1,0 +1,384 @@
+diff --git a/tools/compiler/llvm_native/Emit.chibi b/tools/compiler/llvm_native/Emit.chibi
+index 18a8619aa..68f19fec4 100644
+--- a/tools/compiler/llvm_native/Emit.chibi
++++ b/tools/compiler/llvm_native/Emit.chibi
+@@ -308,6 +308,9 @@ pub FieldAddress: int : 71;
+ // null-owner text and arrays import caller-owned storage. Use ArrayLoan before
+ // exposing shared backing to a mutable foreign call; raw ForeignCall does not
+ // supply uniqueness or write a replaced descriptor back to its source.
++// ValueCopyImport imports immediate borrowed Text on the closed collector
++// record-array cell boundary; ordinary ValueCopy remains a counted share.
++pub ValueCopyImport: int : 1;
+ pub ValueCopy: int : 72;
+ // Releases one owned value from the left slot; it gives no value.
+ pub ValueDrop: int : 73;
+@@ -1311,7 +1314,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
+               !MapPayloadValid(records, lifecycle, item.type) &&
+               (item.type < RecordType || item.type >= ArrayType || !ValueCollectorCopyable(lifecycle, item.type) ||
+                !lifecycle.collector_owned[item.type - RecordType] || (!ValueValid(lifecycle, item.type) && !ProgramMode(mode) && !family))) ||
+-             item.right != 0 || item.target != 0 || item.literal != 0 || (item.op == ValueDrop && item.output != 0))) {
++             item.right != 0 || item.target != 0 ||
++             (item.literal != 0 && !(item.op == ValueCopy && item.literal == i64(ValueCopyImport) &&
++                ValueArrayTextImport(lifecycle, item.type) && ManagedArrayElement(managed_records, lifecycle, item.type - ArrayType))) || (item.op == ValueDrop && item.output != 0))) {
+             return Result.Rejected(base + pc, "native value lifecycle requires an array or managed aggregate operand");
+         }
+         if ((item.op == ArrayPush || item.op == ArrayExtend) && item.literal != 0 && item.literal != 1) {
+@@ -1323,8 +1328,8 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
+         if (MapOperation(item.op) && !MapValid(records, fields, lifecycle, slots, item)) {
+             return Result.Rejected(base + pc, "native map operation differs from its operands");
+         }
+-        if (ViewOperation(item.op) && !ViewValid(records, fields, lifecycle, slots, arguments, item)) {
+-            return Result.Rejected(base + pc, "native view operation differs from its operands");
++        if (ViewOperation(item.op) && !ViewValid(records, fields, lifecycle, managed_records, slots, arguments, item)) {
++            return Result.Rejected(base + pc, format_text("native view operation {} type{} target{} differs from its operands", item.op, item.type, item.target));
+         }
+         if (TextSequenceOperation(item.op) && !TextSequenceValid(records, fields, slots, item)) {
+             return Result.Rejected(base + pc, "native text sequence differs from its operands");
+@@ -1896,7 +1901,10 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[],
+             out = format_text("{}  %copied{} = call {} @chibi_map.share({} %a{})\n", out, pc, type, type, pc);
+             out = format_text("{}{}", out, Store(format_text("%copied{}", pc), item.type, "s", item.output));
+         } else if (item.type >= ArrayType && item.type < MapType) {
+-            out = format_text("{}  %copied{} = call {} @chibi_array.{}.copy(ptr %ctx, {} %a{})\n", out, pc, type, item.type, type, pc);
++            name := "chibi_array";
++            suffix := "copy";
++            if (item.literal == i64(ValueCopyImport)) { name = "chibi_view.import.array"; suffix = "escape"; }
++            out = format_text("{}  %copied{} = call {} @{}.{}.{}(ptr %ctx, {} %a{})\n", out, pc, type, name, item.type, suffix, type, pc);
+             out = format_text("{}{}", out, Store(format_text("%copied{}", pc), item.type, "s", item.output));
+         } else {
+             out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "s", item.output));
+@@ -3076,9 +3084,9 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
+         if (item.op == ManagedPending || item.op == ManagedPoll || item.op == ManagedTrack) {
+             out.append(ManagedPollInstruction(item, pc, gc_owners));
+         } else if ((item.op >= ManagedNew && item.op <= ManagedUnpin) || item.op == ManagedProject) {
+-            out.append(ManagedInstruction(item, pc, records, fields, coroutine));
++            out.append(ManagedInstruction(item, pc, records, fields, lifecycle, coroutine));
+         } else if (ViewOperation(item.op)) {
+-            out.append(ViewInstruction(item, pc, own, record_owners));
++            out.append(ViewInstruction(item, pc, own, record_owners, lifecycle.immediate_text));
+         } else if (managed && (item.op == Return || item.op == End) && !coroutine) {
+             returned := EmitInstruction(item, pc, result, records, fields, texts, coroutine, ProgramMode(mode), scoped, record_owners, guarded);
+             out.append(strings.ReplaceAll(returned, "  ret ", strings.Concatenate([ManagedUnroots(function == 0 && mode == ProgramEntry), "  ret "])));
+@@ -3839,9 +3847,12 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
+         if (managed) {
+             counter := "null";
+             if (family) { counter = strings.Concatenate(["@", abi.ManagedImageCounter()]); }
+-            out.append(ManagedArrayModule(held, counter));
++            out.append(ManagedArrayModule(held, lifecycle, counter));
+             out.append(ManagedTextModule(held, counter));
+             out.append(ViewModule(held));
++            imported := ViewImports(held, records, fields, managed_records, lifecycle);
++            cell_text = cell_text || imported != "";
++            out.append(imported);
+         }
+         // One piece holds every text; each of several, the ones it reads.
+         wanted := resize([false], length(texts));
+diff --git a/tools/compiler/llvm_native/Managed.chibi b/tools/compiler/llvm_native/Managed.chibi
+index 9c23da5c4..b54388f46 100644
+--- a/tools/compiler/llvm_native/Managed.chibi
++++ b/tools/compiler/llvm_native/Managed.chibi
+@@ -552,7 +552,7 @@ ManagedUnroots :: (is_entry: bool) -> string {
+     if (is_entry) { output = strings.Concatenate([output, "  call void @chibi_managed.collect(ptr %ctx, ptr %managed.heap)\n"]); }
+     return output;
+ }
+-ManagedInstruction :: (item: Instruction, pc: int, records: Record[], fields: int[], persistent: bool) -> string {
++ManagedInstruction :: (item: Instruction, pc: int, records: Record[], fields: int[], values: ValueLayout, persistent: bool) -> string {
+     out := format_text("p{}:\n", pc);
+     if (item.op == ManagedNew) {
+         out = format_text("{}  call void @chibi_managed.safepoint(ptr %ctx, ptr %managed.heap)\n", out);
+@@ -569,7 +569,10 @@ ManagedInstruction :: (item: Instruction, pc: int, records: Record[], fields: in
+         } else if (ManagedArray(item.right)) {
+             layout = format_text("@chibi_managed.layout.array{}.{}", item.right, item.literal);
+             drop = format_text("@chibi_managed.drop.array{}", item.right);
+-            out = format_text("{}  %owned{} = call {} @chibi_array.{}.copy(ptr %ctx, {} %a{})\n", out, pc, TypeName(item.right), item.right, TypeName(item.right), pc);
++            name := "chibi_array";
++            suffix := "copy";
++            if (ValueArrayTextImport(values, item.right)) { name = "chibi_view.import.array"; suffix = "escape"; }
++            out = format_text("{}  %owned{} = call {} @{}.{}.{}(ptr %ctx, {} %a{})\n", out, pc, TypeName(item.right), name, item.right, suffix, TypeName(item.right), pc);
+             value = format_text("%owned{}", pc);
+         } else if (item.right >= RecordType) {
+             index := item.right - RecordType;
+diff --git a/tools/compiler/llvm_native/ManagedRecords.chibi b/tools/compiler/llvm_native/ManagedRecords.chibi
+index 0e1f2db84..150e698f4 100644
+--- a/tools/compiler/llvm_native/ManagedRecords.chibi
++++ b/tools/compiler/llvm_native/ManagedRecords.chibi
+@@ -6,7 +6,7 @@ import strings "core:strings"
+ // Inline pointer records own no backing allocations. Their initialized stack
+ // slots can remain GC roots for the frame, just like scalar descriptors.
+ // Backed aggregates need canonical owner pins and are admitted separately.
+-ManagedRecordLayout :: struct { flat: bool[]; traced: bool[]; plain: bool[]; traceable: bool[]; }
++ManagedRecordLayout :: struct { flat: bool[]; traced: bool[]; plain: bool[]; traceable: bool[]; view_element: bool[]; }
+ ManagedRecordLayouts :: (records: Record[], fields: int[]) -> ManagedRecordLayout {
+     needed := false;
+     for (record in records) { if (record.identity != 0) { needed = true; break; } }
+@@ -15,8 +15,8 @@ ManagedRecordLayouts :: (records: Record[], fields: int[]) -> ManagedRecordLayou
+             if (type == PointerType || type == ViewType || type == ArrayType + PointerType) { needed = true; break; }
+         }
+     }
+-    if (!needed) { return {flat: [], traced: [], plain: [], traceable: []}; }
+-    found: ManagedRecordLayout = {flat: resize([true], length(records)), traced: resize([false], length(records)), plain: resize([true], length(records)), traceable: resize([true], length(records))};
++    if (!needed) { return {flat: [], traced: [], plain: [], traceable: [], view_element: []}; }
++    found: ManagedRecordLayout = {flat: resize([true], length(records)), traced: resize([false], length(records)), plain: resize([true], length(records)), traceable: resize([true], length(records)), view_element: resize([true], length(records))};
+     heads := resize([int(-1)], length(records));
+     for (index in 0..<length(records)) { heads[index] = -1; found.flat[index] = true; found.plain[index] = true; found.traceable[index] = true; }
+     parents: int[] = [];
+@@ -32,6 +32,11 @@ ManagedRecordLayouts :: (records: Record[], fields: int[]) -> ManagedRecordLayou
+                 if (!found.traced[parent]) { found.traced[parent] = true; pending.append(parent); }
+             }
+             if (abi.ScalarType(type) == "" && type != PointerType) { found.flat[parent] = false; }
++            // New collector-bearing array cells have only immediate leaves.
++            // Recursive backing import is a separate escape contract.
++            if (abi.ScalarType(type) == "" && type != abi.TextStorage && type != PointerType && type != ArrayType + PointerType) {
++                found.view_element[parent] = false;
++            }
+             if (abi.ScalarType(type) == "" && (type < RecordType || type >= ArrayType) && found.plain[parent]) {
+                 found.plain[parent] = false;
+                 nonplain.append(parent);
+@@ -143,9 +148,15 @@ ManagedStorageClass :: (type: int) -> int {
+ ManagedOptionalText :: (records: Record[], fields: int[], type: int) -> bool {
+     return ViewOptional(records, fields, type, abi.TextStorage);
+ }
++ManagedArrayElement :: (layout: ManagedRecordLayout, values: ValueLayout, type: int) -> bool {
++    if (type == PointerType || ValueValid(values, type)) { return true; }
++    index := type - RecordType;
++    return type >= RecordType && type < ArrayType && Index(index, length(layout.view_element)) &&
++           layout.view_element[index] && ValueCollectorCopyable(values, type);
++}
+ ManagedPayload :: (records: Record[], fields: int[], layout: ManagedRecordLayout, values: ValueLayout, type: int, tag: i64) -> bool {
+     return abi.ScalarType(type) != "" || type == abi.TextStorage || type == ArrayType + PointerType ||
+-           (ManagedArray(type) && ElementType(records, type) != 0 && ValueValid(values, type - ArrayType)) ||
++           (ManagedArray(type) && ElementType(records, type) != 0 && ManagedArrayElement(layout, values, type - ArrayType)) ||
+            ((ManagedCellRecord(records, layout, type) || ManagedOptionalText(records, fields, type)) &&
+             records[type - RecordType].identity != 0 && records[type - RecordType].identity == tag);
+ }
+@@ -153,10 +164,10 @@ ManagedArray :: (type: int) -> bool {
+     return type >= ArrayType && type < MapType &&
+            (abi.ScalarType(type - ArrayType) != "" || type - ArrayType == abi.TextStorage || type - ArrayType == PointerType || type - ArrayType >= RecordType);
+ }
+-// Array cells own one descriptor. Pointer elements use the same typed tracer
+-// as ordinary pointer arrays; other admitted elements have no GC edges.
++// Array cells own one descriptor. Collector-bearing elements use the typed
++// backing tracer; rootless elements need no collector callback.
+ // The last cell release drops typed backing and nested owners while leased.
+-ManagedArrayModule :: (code: Instruction[], counter: string) -> string {
++ManagedArrayModule :: (code: Instruction[], values: ValueLayout, counter: string) -> string {
+     out: string[] = [];
+     seen: [string: bool] = [:];
+     dropped: [int: bool] = [:];
+@@ -172,7 +183,7 @@ ManagedArrayModule :: (code: Instruction[], counter: string) -> string {
+             out.append(format_text("  %value = load {}, ptr %payload\n  call void @chibi_array.{}.drop(ptr %ctx, {} %value)\n  ret void\n}}\n", abi.ArrayType(), type, abi.ArrayType()));
+         }
+         trace := "null";
+-        if (type == ArrayType + PointerType) { trace = "@chibi_managed.trace.array"; }
++        if (ValueCollectorArray(values, type)) { trace = strings.Concatenate(["@chibi_managed.trace.", ManagedTraceName(type)]); }
+         out.append(format_text("@chibi_managed.layout.array{} = private constant %chibi.managed.layout {{ ptr {}, ptr @chibi_managed.validate.array{}, ptr {} }}\n", key, trace, key, counter));
+         out.append(format_text("define internal i1 @chibi_managed.validate.array{}(i64 %offset, i64 %tag, i64 %bytes, i32 %storage) {{\nentry:\n", key));
+         out.append(format_text("  %tag.ok = icmp eq i64 %tag, {}\n  %storage.ok = icmp eq i32 %storage, {}\n", item.literal, ManagedStorageClass(type)));
+diff --git a/tools/compiler/llvm_native/Values.chibi b/tools/compiler/llvm_native/Values.chibi
+index dbbf51706..cfa2cfe3c 100644
+--- a/tools/compiler/llvm_native/Values.chibi
++++ b/tools/compiler/llvm_native/Values.chibi
+@@ -7,11 +7,11 @@ import strings "core:strings"
+ // ownership and unsupported leaves once, including recursion through arrays.
+ pub ValueLayout :: struct {
+     valid: bool[]; owned: bool[]; backed: bool[];
+-    collector_copyable: bool[]; collector_owned: bool[]; collector_backed: bool[];
++    collector_copyable: bool[]; collector_owned: bool[]; collector_backed: bool[]; immediate_text: bool[];
+ }
+ pub ValueLayouts :: (records: Record[], fields: int[]) -> ValueLayout {
+     found: ValueLayout = {valid: resize([true], length(records)), owned: resize([false], length(records)),
+-                           backed: resize([false], length(records)), collector_copyable: [], collector_owned: [], collector_backed: []};
++                           backed: resize([false], length(records)), collector_copyable: [], collector_owned: [], collector_backed: [], immediate_text: resize([false], length(records))};
+     heads := resize([int(0)], length(records));
+     for (index in 0..<length(records)) { heads[index] = -1; found.valid[index] = true; }
+     parents: int[] = [];
+@@ -24,6 +24,7 @@ pub ValueLayouts :: (records: Record[], fields: int[]) -> ValueLayout {
+         record := records[parent];
+         for (at in record.first..<record.first + record.count) {
+             type := fields[at];
++            if (type == abi.TextStorage) { found.immediate_text[parent] = true; }
+             collector = collector || type == PointerType || type == ArrayType + PointerType;
+             child := type;
+             if (type >= ArrayType && type < MapType) {
+@@ -140,6 +141,13 @@ pub ValueCollectorCopyable :: (layout: ValueLayout, type: int) -> bool {
+     index := type - RecordType;
+     return type < ArrayType && Index(index, length(layout.collector_copyable)) && layout.collector_copyable[index];
+ }
++// Whole-array publication into a cell must import borrowed immediate text.
++// Rootless values retain their existing escape contract.
++pub ValueArrayTextImport :: (layout: ValueLayout, type: int) -> bool {
++    index := type - ArrayType - RecordType;
++    return type >= ArrayType && type < MapType && Index(index, length(layout.valid)) &&
++           !layout.valid[index] && layout.collector_copyable[index] && layout.immediate_text[index];
++}
+ // A traced array owns backing whose elements contain collector edges. Its
+ // canonical owner is registered separately from borrowed descriptor reads.
+ pub ValueCollectorArray :: (layout: ValueLayout, type: int) -> bool {
+diff --git a/tools/compiler/llvm_native/Views.chibi b/tools/compiler/llvm_native/Views.chibi
+index 5611ebb95..a3bd4554a 100644
+--- a/tools/compiler/llvm_native/Views.chibi
++++ b/tools/compiler/llvm_native/Views.chibi
+@@ -11,9 +11,9 @@ ViewElement :: (item: Instruction) -> int {
+     if (item.op == ViewClone) { return item.type - ArrayType; }
+     return item.type;
+ }
+-ViewValid :: (records: Record[], fields: int[], layout: ValueLayout, slots: int[], arguments: int[], item: Instruction) -> bool {
++ViewValid :: (records: Record[], fields: int[], layout: ValueLayout, managed: ManagedRecordLayout, slots: int[], arguments: int[], item: Instruction) -> bool {
+     element := ViewElement(item);
+-    if (element <= 0 || element >= ArrayType || ElementType(records, ArrayType + element) == 0 || (element != PointerType && !ValueValid(layout, element))) { return false; }
++    if (element <= 0 || element >= ArrayType || ElementType(records, ArrayType + element) == 0 || !ManagedArrayElement(managed, layout, element)) { return false; }
+     left := ViewType;
+     if (item.op == ViewMake) { left = PointerType; }
+     if (item.literal == 0 || !Typed(slots, item.left, left)) { return false; }
+@@ -178,7 +178,7 @@ ViewSliceRecord :: (array: int, tag: i64, result: int) -> string {
+         format_text("none:\n  ret {} zeroinitializer\n}}\n", record)
+     ]);
+ }
+-ViewInstruction :: (item: Instruction, pc: int, arguments: int[], owners: bool[]) -> string {
++ViewInstruction :: (item: Instruction, pc: int, arguments: int[], owners: bool[], imports: bool[]) -> string {
+     element := ViewElement(item);
+     array := ArrayType + element;
+     input := ViewType;
+@@ -204,6 +204,11 @@ ViewInstruction :: (item: Instruction, pc: int, arguments: int[], owners: bool[]
+             out = format_text("{}  %address{} = call ptr @chibi_view.{}.{}.{}(ptr %ctx, ptr %managed.heap, {} %view{}, i32 %index{})\n", out, pc, array, item.literal, suffix, abi.ManagedViewType(), pc, pc);
+             out = format_text("{}  %value{} = load {}, ptr %address{}\n", out, pc, TypeName(element), pc);
+         case ViewSet:
++            incoming := format_text("%second{}", pc);
++            if (element >= RecordType && imports[element - RecordType]) {
++                out = format_text("{}  %imported{} = call {} @chibi_view.import.{}(ptr %ctx, {} {})\n", out, pc, TypeName(element), element, TypeName(element), incoming);
++                incoming = format_text("%imported{}", pc);
++            }
+             out = format_text("{}  %address{} = call ptr @chibi_view.{}.{}.{}(ptr %ctx, ptr %managed.heap, {} %view{}, i32 %first{})\n", out, pc, array, item.literal, suffix, abi.ManagedViewType(), pc, pc);
+             if (element == abi.TextStorage) {
+                 out = format_text("{}  %old{} = load {}, ptr %address{}\n  %old.owner{} = extractvalue {} %old{}, 2\n", out, pc, abi.TextType(), pc, pc, abi.TextType(), pc);
+@@ -212,7 +217,7 @@ ViewInstruction :: (item: Instruction, pc: int, arguments: int[], owners: bool[]
+             if (element >= RecordType && owners[element - RecordType]) {
+                 out = format_text("{}  call void @chibi_value.{}.drop_at(ptr %ctx, ptr %address{})\n", out, element, pc);
+             }
+-            out = format_text("{}  store {} %second{}, ptr %address{}\n", out, TypeName(element), pc, pc);
++            out = format_text("{}  store {} {}, ptr %address{}\n", out, TypeName(element), incoming, pc);
+         case ViewClone:
+             out = format_text("{}  %array{} = call ptr @chibi_view.{}.{}.require(ptr %managed.heap, {} %view{})\n", out, pc, array, item.literal, abi.ManagedViewType(), pc);
+             out = format_text("{}  %first{} = extractvalue {} %view{}, 1\n  %count{} = extractvalue {} %view{}, 2\n", out, pc, abi.ManagedViewType(), pc, pc, abi.ManagedViewType(), pc);
+@@ -278,3 +283,73 @@ ViewModule :: (code: Instruction[]) -> string {
+     }
+     return strings.Join(out, "");
+ }
++
++// Consume one already-owned flat row. Only borrowed Text bytes are imported;
++// counted text and every nontext owner pass through without another keep/drop.
++ViewImportRecord :: (records: Record[], fields: int[], type: int) -> string {
++    record := records[type - RecordType];
++    name := TypeName(type);
++    out := [format_text("define internal {} @chibi_view.import.{}(ptr %ctx, {} %value) {{\nentry:\n", name, type, name)];
++    previous := "%value";
++    predecessor := "entry";
++    for (field in 0..<record.count) {
++        if (fields[record.first + field] != abi.TextStorage) { continue; }
++        out.append(format_text("  %text{} = extractvalue {} {}, {}\n  %owner{} = extractvalue {} %text{}, 2\n", field, name, previous, field, field, abi.TextType(), field));
++        out.append(format_text("  %borrowed{} = icmp eq ptr %owner{}, null\n  br i1 %borrowed{}, label %import{}, label %done{}\nimport{}:\n", field, field, field, field, field, field));
++        out.append(format_text("  %data{} = extractvalue {} %text{}, 0\n  %length{} = extractvalue {} %text{}, 1\n", field, abi.TextType(), field, field, abi.TextType(), field));
++        out.append(format_text("  %owned{} = call {} @chibi_text.copy(ptr %ctx, ptr %data{}, i32 %length{})\n", field, abi.TextType(), field, field));
++        out.append(format_text("  %changed{} = insertvalue {} {}, {} %owned{}, {}\n  br label %done{}\ndone{}:\n", field, name, previous, abi.TextType(), field, field, field, field));
++        out.append(format_text("  %value{} = phi {} [ {}, %{} ], [ %changed{}, %import{} ]\n", field, name, previous, predecessor, field, field));
++        previous = format_text("%value{}", field);
++        predecessor = format_text("done{}", field);
++    }
++    out.append(format_text("  ret {} {}\n}}\n", name, previous));
++    return strings.Join(out, "");
++}
++
++// Whole-array publication borrows its input and returns one owner. Scan once
++// for uncounted nonempty Text; share if absent, otherwise clone once and import
++// the immediate Text leaves. Other cloned element owners are acquired once.
++ViewImportArray :: (records: Record[], fields: int[], type: int) -> string {
++    element := type - ArrayType;
++    record := records[element - RecordType];
++    name := TypeName(element);
++    array := abi.ArrayType();
++    out := [format_text("define internal {} @chibi_view.import.array.{}.escape(ptr %ctx, {} %value) {{\nentry:\n", array, type, array),
++        format_text("  %length = extractvalue {} %value, 0\n  %data = extractvalue {} %value, 2\n  br label %scan\nscan:\n", array, array),
++        "  %index = phi i32 [ 0, %entry ], [ %next, %advance ]\n  %within = icmp slt i32 %index, %length\n  br i1 %within, label %row, label %share\nrow:\n",
++        format_text("  %at = getelementptr {}, ptr %data, i32 %index\n  %row = load {}, ptr %at\n", name, name)];
++    previous := "false";
++    for (field in 0..<record.count) {
++        if (fields[record.first + field] != abi.TextStorage) { continue; }
++        out.append(format_text("  %text{} = extractvalue {} %row, {}\n  %owner{} = extractvalue {} %text{}, 2\n  %size{} = extractvalue {} %text{}, 1\n", field, name, field, field, abi.TextType(), field, field, abi.TextType(), field));
++        out.append(format_text("  %null{} = icmp eq ptr %owner{}, null\n  %nonempty{} = icmp ne i32 %size{}, 0\n  %borrowed{} = and i1 %null{}, %nonempty{}\n  %any{} = or i1 {}, %borrowed{}\n", field, field, field, field, field, field, field, field, previous, field));
++        previous = format_text("%any{}", field);
++    }
++    out.append(format_text("  br i1 {}, label %clone, label %advance\nadvance:\n  %next = add i32 %index, 1\n  br label %scan\nshare:\n", previous));
++    out.append(format_text("  %shared = call {} @chibi_array.{}.copy(ptr %ctx, {} %value)\n  ret {} %shared\nclone:\n", array, type, array, array));
++    out.append(format_text("  %copied = call {} @chibi_array.{}.clone(ptr %ctx, {} %value, i32 %length)\n  %fresh = extractvalue {} %copied, 2\n  br label %import\nimport:\n", array, type, array, array));
++    out.append("  %cursor = phi i32 [ 0, %clone ], [ %following, %copy ]\n  %remaining = icmp slt i32 %cursor, %length\n  br i1 %remaining, label %copy, label %done\ncopy:\n");
++    out.append(format_text("  %destination = getelementptr {}, ptr %fresh, i32 %cursor\n  %old = load {}, ptr %destination\n  %owned = call {} @chibi_view.import.{}(ptr %ctx, {} %old)\n  store {} %owned, ptr %destination\n", name, name, name, element, name, name));
++    out.append(format_text("  %following = add i32 %cursor, 1\n  br label %import\ndone:\n  ret {} %copied\n}}\n", array));
++    return strings.Join(out, "");
++}
++ViewImports :: (code: Instruction[], records: Record[], fields: int[], managed: ManagedRecordLayout, values: ValueLayout) -> string {
++    rows := resize([false], length(records));
++    arrays := resize([false], length(records));
++    for (item in code) {
++        type := item.type;
++        if (item.op == ManagedNew) { type = item.right; }
++        if ((item.op == ManagedNew || item.op == ValueCopy && item.literal == i64(ValueCopyImport)) && ValueArrayTextImport(values, type)) {
++            index := type - ArrayType - RecordType;
++            arrays[index] = true; rows[index] = true;
++        }
++        if (item.op == ViewSet && type >= RecordType && type < ArrayType && values.immediate_text[type - RecordType]) { rows[type - RecordType] = true; }
++    }
++    out: string[] = [];
++    for (index in 0..<length(records)) {
++        if (rows[index]) { out.append(ViewImportRecord(records, fields, RecordType + index)); }
++        if (arrays[index]) { out.append(ViewImportArray(records, fields, ArrayType + RecordType + index)); }
++    }
++    return strings.Join(out, "");
++}
+diff --git a/tools/compiler/package_compiler/ScalarNativeSchemas.chibi b/tools/compiler/package_compiler/ScalarNativeSchemas.chibi
+index de8214738..e303da964 100644
+--- a/tools/compiler/package_compiler/ScalarNativeSchemas.chibi
++++ b/tools/compiler/package_compiler/ScalarNativeSchemas.chibi
+@@ -11,6 +11,22 @@ ScalarSchemaView :: union { Prepared(types: TypeDecl[]) | Failed(message: string
+ ScalarSchemaValue :: (types: TypeDecl[], mapping: int[], value: ValueType,
+                        edges: ^(int[]), hash: u64) -> ScalarSchemaPart {
+     out := HashBytes(HashBytes(hash, u64(wrap: value.storage), 4), u64(wrap: value.container), 4);
++    if (value.storage == PointerStorage) {
++        if (value.record < 0 || value.record >= length(types) || types[value.record].kind != PointerDecl) {
++            return {hash: out, supported: false};
++        }
++        pointed := ScalarPointerElement(types, value.record);
++        supported := (value.container == 0 || value.container == ArrayContainer) && pointed.storage != 0;
++        // Constructor IDs are shared by nullable/nonnullable declarations.
++        // Hash the full source value; its pointee's definition is an edge,
++        // not another pointer node or an expanded copy of that definition.
++        out = HashBytes(out, SemanticTag(types, value), 8);
++        if (pointed.record >= 0) {
++            if (pointed.record >= length(mapping) || mapping[pointed.record] < 0) { supported = false; }
++            else { edges.append(mapping[pointed.record]); }
++        }
++        return {hash: out, supported: supported};
++    }
+     supported := (value.container == 0 || value.container == ArrayContainer) &&
+         (Numeric(value.storage) || value.storage == BoolStorage || value.storage == TextStorage ||
+          value.storage == StructStorage || value.storage == UnionStorage);
+diff --git a/tools/compiler/scalar_llvm/Emit.chibi b/tools/compiler/scalar_llvm/Emit.chibi
+index 74289a281..e57961d16 100644
+--- a/tools/compiler/scalar_llvm/Emit.chibi
++++ b/tools/compiler/scalar_llvm/Emit.chibi
+@@ -3673,6 +3673,17 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                                     }
+                                     incoming = slot + 1 + extra;
+                                     extra += 1;
++                                } else if (native.ValueArrayTextImport(value_layout, target)) {
++                                    slots.append(target);
++                                    imported := Op(native.ValueCopy, target, slot + 1 + extra, incoming, 0, 0);
++                                    imported.literal = i64(native.ValueCopyImport);
++                                    body.append(imported);
++                                    if (Holds(fresh, incoming)) {
++                                        body.append(Giving(target, incoming));
++                                        fresh = Without(fresh, incoming);
++                                    }
++                                    incoming = slot + 1 + extra;
++                                    extra += 1;
+                                 } else if (Holds(fresh, incoming)) { fresh = Without(fresh, incoming); }
+                                 else {
+                                     slots.append(target);

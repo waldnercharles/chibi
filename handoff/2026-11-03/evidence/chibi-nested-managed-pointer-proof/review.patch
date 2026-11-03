@@ -1,0 +1,427 @@
+diff --git a/test/native_aot/managed_pointers/README.md b/test/native_aot/managed_pointers/README.md
+index d22d5763b..7363fe395 100644
+--- a/test/native_aot/managed_pointers/README.md
++++ b/test/native_aot/managed_pointers/README.md
+@@ -21,6 +21,15 @@ Nullable pointers use the all-zero descriptor for absence; presence tests,
+ assignment and equality preserve the original pointer type. The ordinary
+ checker still requires a presence guard before dereferencing a nullable value.
+ 
++Cells may hold another managed-pointer descriptor. Each escaped pointer local
++adds one 88-byte cell and one traced edge; reads allocate nothing. Its exact
++whole-descriptor layout checks offset zero, the 24-byte payload, pointer storage
++and the complete nested semantic tag, including the terminal record layout.
++`NestedPointers.chibi` promotes the original escaping `Make()->^^int` kernel
++and checks aliases, replacement after creator locals return, `Capture(Make())`,
++scoped relays and failure cleanup under the same forced/callback collection
++audit. Char pointers and new retained pointer/view schemas remain closed.
++
+ Source tests cover ordinary/native alias behavior, returned cells, CoW,
+ traversal snapshots, replacement during RHS evaluation and moved parameter
+ handoffs. Real programs run at O0/O2 with poisoned frees, zero final live
+diff --git a/test/native_aot/managed_pointers/run.sh b/test/native_aot/managed_pointers/run.sh
+index 403d34520..5634089b0 100644
+--- a/test/native_aot/managed_pointers/run.sh
++++ b/test/native_aot/managed_pointers/run.sh
+@@ -14,7 +14,7 @@ esac
+     --source "$root/test/native_aot/managed_pointers/Probe.chibi" --entry Main \
+     --output "$work/probe" --llvm "$llvm" --target "$triple" --jobs 1
+ "$work/probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/Collector.ll"
+-for name in Cells ScopedAliases Transfer Nullable Records RecordArrays RecordArrayMutation WholeArrays WholeArrayForeign StringArrays StringCells StringScalar OptionalStrings OptionalCells Views ViewUnions ViewStrings ViewOwned PointerViews TextSequences Tasks TaskPromises TaskCaptured TaskRecordPromises TaskArrayPromises InlineOwners TaskViews TaskViewPromises TaskFailure TaskPromiseFailure TaskViewFailure; do
++for name in Cells NestedPointers ScopedAliases Transfer Nullable Records RecordArrays RecordArrayMutation WholeArrays WholeArrayForeign StringArrays StringCells StringScalar OptionalStrings OptionalCells Views ViewUnions ViewStrings ViewOwned PointerViews TextSequences Tasks TaskPromises TaskCaptured TaskRecordPromises TaskArrayPromises InlineOwners TaskViews TaskViewPromises TaskFailure TaskPromiseFailure TaskViewFailure; do
+     "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+         --source "$root/test/native_aot/managed_pointers/source/$name.chibi" --entry Main \
+         --output "$work/$name.ll" --emit-llvm --target "$triple"
+@@ -38,8 +38,13 @@ for pair in Tasks:TaskPointerViews AppendStress:PointerAppend Failure:PointerVie
+         --output "$work/$name.ll" --emit-llvm --target "$triple"
+ done
+ "$work/source-probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
++    "$work/NestedPointers.ll" \
+     "$work/Cells.ll" "$work/ScopedAliases.ll" "$work/Transfer.ll" "$work/Nullable.ll" "$work/Tasks.ll" "$work/TaskPromises.ll" "$work/TaskCaptured.ll" "$work/TaskRecordPromises.ll" "$work/TaskArrayPromises.ll" "$work/InlineOwners.ll" "$work/TaskViews.ll" "$work/TaskViewPromises.ll" "$work/Records.ll" "$work/RecordArrays.ll" "$work/RecordArrayMutation.ll" "$work/WholeArrays.ll" "$work/WholeArrayForeign.ll" "$work/StringArrays.ll" "$work/StringCells.ll" "$work/StringScalar.ll" "$work/OptionalStrings.ll" "$work/OptionalCells.ll" "$work/Views.ll" "$work/ViewUnions.ll" "$work/ViewStrings.ll" "$work/ViewOwned.ll" "$work/PointerViews.ll" "$work/TaskPointerViews.ll" "$work/PointerAppend.ll" "$work/TextSequences.ll" "$work/TextSpan.ll" "$work/TextBorrowed.ll" "$work/ViewAppend.ll"
+ "$work/source-probe" --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/TaskFailure.ll" "$work/TaskPromiseFailure.ll" "$work/TaskViewFailure.ll" "$work/PointerViewFailure.ll"
++"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
++    --source "$root/test/native_aot/managed_pointers/source/NestedPointers.chibi" --entry Failure \
++    --output "$work/NestedPointerFailure.ll" --emit-llvm --target "$triple"
++"$work/source-probe" --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/NestedPointerFailure.ll"
+ "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+     --source "$root/test/native_aot/managed_pointers/source/TaskRecordPromises.chibi" --entry Failure \
+     --output "$work/TaskRecordPromiseFailure.ll" --emit-llvm --target "$triple"
+diff --git a/test/native_aot/managed_pointers/source/NestedPointers.chibi b/test/native_aot/managed_pointers/source/NestedPointers.chibi
+new file mode 100644
+index 000000000..66e9606c3
+--- /dev/null
++++ b/test/native_aot/managed_pointers/source/NestedPointers.chibi
+@@ -0,0 +1,51 @@
++package nested_pointer_cells
++
++// Preserve the ordinary escaping-pointer kernel, including its original locals.
++Make :: () -> ^^int { value := 1; pointer := &value; return &pointer; }
++Box :: (value: int) -> ^int { return &value; }
++Capture :: (value: ^^int) -> ^^^int { return &value; }
++Bool :: () -> ^^bool { value := true; pointer := &value; return &pointer; }
++Churn :: () { for index in 0..<3000 { discarded := Capture(Make()); } }
++Replace :: (pointer: ^^int, value: int) -> int { pointer^ = Box(value); Churn(); return value; }
++First :: (value: ^int, ignored: int) -> int { Churn(); return value^; }
++ReadScoped :: (pointer: ^^int) -> int { Churn(); return pointer^^; }
++Relay :: (pointer: ^^int) -> int { return ReadScoped(pointer); }
++Main :: () -> int {
++    pointer := Make();
++    Churn();
++    assert(pointer^^ == 1);
++    alias := pointer;
++    saved := pointer^;
++    pointer^^ = 17;
++    Churn();
++    assert(saved^ == 17 && alias^^ == 17);
++    before := First(saved, Replace(alias, 23));
++    assert(before == 17 && pointer^^ == 23 && saved^ == 17);
++    triple := Capture(Make());
++    Churn();
++    assert(triple^^^ == 1);
++    triple^^ = Box(31);
++    Churn();
++    assert(triple^^^ == 31);
++    triple^ = alias;
++    alias^^ = 37;
++    Churn();
++    assert(triple^^^ == 37 && saved^ == 17);
++    leaf := Box(43);
++    relayed := Relay(&leaf);
++    assert(relayed == 43);
++    through_cell := Relay(pointer);
++    assert(through_cell == 37);
++    flag := Bool();
++    Churn();
++    flag^^ = false;
++    assert(!flag^^);
++    return 0;
++}
++Failure :: () -> int {
++    pointer := Capture(Make());
++    Churn();
++    assert(pointer^^^ == 1);
++    assert(false, "nested pointer failure releases both cell layers");
++    return 0;
++}
+diff --git a/test/native_aot/managed_pointers/source/rejected/nested.chibi b/test/native_aot/managed_pointers/source/rejected/nested.chibi
+deleted file mode 100644
+index 8e7e5e2ac..000000000
+--- a/test/native_aot/managed_pointers/source/rejected/nested.chibi
++++ /dev/null
+@@ -1,3 +0,0 @@
+-package rejected_nested
+-Main :: () -> int { return 0; }
+-Make :: () -> ^^int { value := 1; pointer := &value; return &pointer; }
+diff --git a/test/native_aot/task_owners/NestedPointers.chibi b/test/native_aot/task_owners/NestedPointers.chibi
+new file mode 100644
+index 000000000..496775769
+--- /dev/null
++++ b/test/native_aot/task_owners/NestedPointers.chibi
+@@ -0,0 +1,35 @@
++package owned_nested_pointers
++
++foreign import libc "system:c"
++foreign libc {
++    fopen :: (path: cstring, mode: cstring) -> rawptr
++    fclose :: (stream: rawptr) -> i32
++    access :: (path: cstring, mode: i32) -> i32
++}
++Make :: () -> ^^int { value := 1; pointer := &value; return &pointer; }
++Box :: (value: int) -> ^int { return &value; }
++Capture :: (value: ^^int) -> ^^^int { return &value; }
++Churn :: () { for index in 0..<3000 { discarded := Capture(Make()); } }
++Mark :: (path: string) {
++    stream := fopen(path, "wb");
++    assert(stream != 0);
++    closed := fclose(stream);
++    assert(closed == 0);
++}
++Worker :: (pointer: ^^int) -> int {
++    saved := pointer^;
++    while access("allow-old", 0) != 0 { yield; }
++    Churn();
++    assert(pointer^^ == 1 && saved^ == 1);
++    pointer^ = Box(7);
++    Churn();
++    assert(pointer^^ == 7 && saved^ == 1);
++    Mark("old-done");
++    return 0;
++}
++Main :: () -> int {
++    worker := Worker(Make());
++    Mark("owner-ready");
++    return 0;
++}
++Frame :: () -> int { return 0; }
+diff --git a/test/native_aot/task_owners/README.md b/test/native_aot/task_owners/README.md
+index 6853ece8a..391e3ab54 100644
+--- a/test/native_aot/task_owners/README.md
++++ b/test/native_aot/task_owners/README.md
+@@ -70,6 +70,11 @@ requires balance. A deliberately outstanding allocation must trap, proving that
+ the unload check runs. Start modules pass directly through `llc`, so their audit
+ is injected there; program bodies pass through `opt`.
+ 
++`NestedPointers.chibi` passes a returned `^^int` into an old worker. After reload
++the worker collects, replaces the inner pointer and reads its original alias
++before completing. The same host shutdown and image-close balance audit covers
++its descriptor-cell roots and callbacks at O0/O2.
++
+ Maps use their existing counted payload lifecycle. Joins acquire copies, inline
+ awaits move and zero the child promise, and frame destruction clears the promise
+ before dropping it once. Borrowed waiting reference parameters remain closed;
+diff --git a/test/native_aot/task_owners/generations.sh b/test/native_aot/task_owners/generations.sh
+index c8260c0ae..3669151c0 100644
+--- a/test/native_aot/task_owners/generations.sh
++++ b/test/native_aot/task_owners/generations.sh
+@@ -20,17 +20,17 @@ cleanup() {
+ }
+ trap cleanup EXIT HUP INT TERM
+ for level in 0 2; do
+-    for source in Generation Edited ResizeGeneration TypedGeneration; do
++    for source in Generation Edited ResizeGeneration TypedGeneration NestedPointers; do
+         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+             --source "$root/test/native_aot/task_owners/$source.chibi" --shared \
+             --output "$work/$source-$level.so" --llvm "$audit_llvm" --target "$target" --level "$level" --jobs 1
+     done
+-    for mode in complete cancel failure resize resize-functional unwrap unwrap-await unwrap-immediate; do
++    for mode in complete cancel failure resize resize-functional unwrap unwrap-await unwrap-immediate nested-pointers; do
+         run="$work/$mode-O$level"
+         mkdir "$run"
+         if [ "$mode" != complete ]; then touch "$run/$mode-case"; fi
+         source=Generation
+-        case "$mode" in resize*) source=ResizeGeneration ;; unwrap*) source=TypedGeneration ;; esac
++        case "$mode" in resize*) source=ResizeGeneration ;; unwrap*) source=TypedGeneration ;; nested-pointers) source=NestedPointers ;; esac
+         cp "$work/$source-$level.so" "$run/live-0.so"
+         (cd "$run" && exec timeout 90 "$work/host") > "$run/host.log" 2>&1 &
+         child=$!
+@@ -50,6 +50,7 @@ for level in 0 2; do
+         case "$mode" in failure|resize*|unwrap*) expected=134 ;; esac
+         if [ "$result" -ne "$expected" ]; then cat "$run/host.log"; echo "owned generation $mode O$level status$result"; exit 1; fi
+         if [ "$mode" = complete ]; then [ "$(cat "$run/old-done")" = old:48 ]; fi
++        if [ "$mode" = nested-pointers ]; then test -e "$run/old-done"; fi
+         case "$mode" in unwrap*)
+             grep -Fx 'native failure: UnwrappedNil' "$run/host.log"
+             test ! -e "$run/after-unwrap"
+diff --git a/tools/compiler/llvm_native/Emit.chibi b/tools/compiler/llvm_native/Emit.chibi
+index 457a40620..9e14e44ea 100644
+--- a/tools/compiler/llvm_native/Emit.chibi
++++ b/tools/compiler/llvm_native/Emit.chibi
+@@ -3860,6 +3860,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
+             counter := "null";
+             if (family) { counter = strings.Concatenate(["@", abi.ManagedImageCounter()]); }
+             out.append(ManagedArrayModule(held, counter));
++            out.append(ManagedPointerModule(held, counter));
+             out.append(ManagedTextModule(held, counter));
+             out.append(ViewModule(held));
+         }
+diff --git a/tools/compiler/llvm_native/Managed.chibi b/tools/compiler/llvm_native/Managed.chibi
+index 9c23da5c4..8ebce2cc8 100644
+--- a/tools/compiler/llvm_native/Managed.chibi
++++ b/tools/compiler/llvm_native/Managed.chibi
+@@ -561,7 +561,9 @@ ManagedInstruction :: (item: Instruction, pc: int, records: Record[], fields: in
+         layout := "null";
+         drop := "null";
+         value := format_text("%a{}", pc);
+-        if (item.right == abi.TextStorage) {
++        if (item.right == PointerType) {
++            layout = format_text("@chibi_managed.layout.pointer{}", item.literal);
++        } else if (item.right == abi.TextStorage) {
+             layout = format_text("@chibi_managed.layout.text{}", item.literal);
+             drop = "@chibi_managed.drop.text";
+             out = format_text("{}  %owned{} = call {} @chibi_text.share(ptr %ctx, {} %a{})\n", out, pc, abi.TextType(), abi.TextType(), pc);
+diff --git a/tools/compiler/llvm_native/ManagedRecords.chibi b/tools/compiler/llvm_native/ManagedRecords.chibi
+index 0e1f2db84..7f2b3124e 100644
+--- a/tools/compiler/llvm_native/ManagedRecords.chibi
++++ b/tools/compiler/llvm_native/ManagedRecords.chibi
+@@ -144,7 +144,7 @@ ManagedOptionalText :: (records: Record[], fields: int[], type: int) -> bool {
+     return ViewOptional(records, fields, type, abi.TextStorage);
+ }
+ ManagedPayload :: (records: Record[], fields: int[], layout: ManagedRecordLayout, values: ValueLayout, type: int, tag: i64) -> bool {
+-    return abi.ScalarType(type) != "" || type == abi.TextStorage || type == ArrayType + PointerType ||
++    return abi.ScalarType(type) != "" || type == abi.TextStorage || type == PointerType || type == ArrayType + PointerType ||
+            (ManagedArray(type) && ElementType(records, type) != 0 && ValueValid(values, type - ArrayType)) ||
+            ((ManagedCellRecord(records, layout, type) || ManagedOptionalText(records, fields, type)) &&
+             records[type - RecordType].identity != 0 && records[type - RecordType].identity == tag);
+@@ -203,6 +203,22 @@ ManagedTextModule :: (code: Instruction[], counter: string) -> string {
+ ManagedTarget :: (records: Record[], fields: int[], layout: ManagedRecordLayout, values: ValueLayout, type: int, tag: i64) -> bool {
+     return type == PointerType || ManagedPayload(records, fields, layout, values, type, tag);
+ }
++// Descriptor cells add one collector edge, no counted owner. Their metadata
++// remains leased until the last cell using this image's callbacks is released.
++ManagedPointerModule :: (code: Instruction[], counter: string) -> string {
++    out: string[] = [];
++    seen: [i64: bool] = [:];
++    for item in code {
++        if (item.op != ManagedNew || item.right != PointerType || seen.has(item.literal)) { continue; }
++        seen[item.literal] = true;
++        out.append(format_text("@chibi_managed.layout.pointer{} = private constant %chibi.managed.layout {{ ptr @chibi_managed.trace.pointer, ptr @chibi_managed.validate.pointer{}, ptr {} }}\n", item.literal, item.literal, counter));
++        out.append(format_text("define internal i1 @chibi_managed.validate.pointer{}(i64 %offset, i64 %tag, i64 %bytes, i32 %storage) {{\nentry:\n", item.literal));
++        out.append(format_text("  %tag.ok = icmp eq i64 %tag, {}\n  %storage.ok = icmp eq i32 %storage, {}\n", item.literal, PointerType));
++        out.append(format_text("  %bytes.ok = icmp eq i64 %bytes, ptrtoint (ptr getelementptr ({}, ptr null, i32 1) to i64)\n", abi.ManagedPointerType()));
++        out.append("  %offset.ok = icmp eq i64 %offset, 0\n  %type.ok = and i1 %tag.ok, %storage.ok\n  %range.ok = and i1 %bytes.ok, %offset.ok\n  %valid = and i1 %type.ok, %range.ok\n  ret i1 %valid\n}\n");
++    }
++    return strings.Join(out, "");
++}
+ ManagedRootTypes :: (types: int[], traced: bool[]) -> bool {
+     if (ManagedTypes(types)) { return true; }
+     for (type in types) {
+diff --git a/tools/compiler/llvm_native/tests/PointerCells.chibi b/tools/compiler/llvm_native/tests/PointerCells.chibi
+new file mode 100644
+index 000000000..c5365e739
+--- /dev/null
++++ b/tools/compiler/llvm_native/tests/PointerCells.chibi
+@@ -0,0 +1,44 @@
++package llvm_native_calls
++
++import native "project:llvm_native"
++import abi "project:native_abi"
++import strings "core:strings"
++
++PointerCellModule :: (tag: i64, embedded: bool, family: bool) -> native.Result {
++    pointer := native.PointerType;
++    slots := [pointer, pointer, native.RefType + pointer, pointer, abi.IntStorage];
++    code := [Code(native.Constant, pointer, 0, 0, 0, 0, 0),
++        Code(native.ManagedNew, pointer, 1, 0, pointer, 0, tag),
++        Code(native.ManagedAddress, native.RefType + pointer, 2, 1, 0, 0, tag),
++        Code(native.Deref, pointer, 3, 2, 0, 0, 0),
++        Code(native.Constant, abi.IntStorage, 4, 0, 0, 0, 0),
++        Code(native.Publish, abi.IntStorage, 0, 4, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
++    shape := Function(abi.IntStorage, 0, 0, length(slots), 0, length(code), 0, 0);
++    source: native.Source = {file: "", directory: ""};
++    if (embedded) { return native.Emit(abi.LinuxX64(), [shape], [], slots, [], code, [], [], [], [], source, [], [], [], false, 1); }
++    if (family) {
++        return native.EmitFamilyLibraryStates(abi.LinuxX64(), "PointerCell", ["Value"], [i64(1)], [shape], [], slots, [],
++            code, [], [], [], [], [], 1, [], -1, []);
++    }
++    return native.EmitProgramTyped(abi.LinuxX64(), [shape], [], slots, [], code, [], [], [], [], [], source, [], [], []);
++}
++@test
++PointerCellsTraceTheirPayloadAndKeepItsCompleteIdentity :: () {
++    text := Emitted(PointerCellModule(-881, false, false));
++    assert(strings.Contains(text, "@chibi_managed.layout.pointer-881 = private constant %chibi.managed.layout { ptr @chibi_managed.trace.pointer, ptr @chibi_managed.validate.pointer-881, ptr null }"));
++    assert(strings.Contains(text, "%storage.ok = icmp eq i32 %storage, 16"));
++    assert(strings.Contains(text, "%tag.ok = icmp eq i64 %tag, -881"));
++    assert(strings.Contains(text, "%bytes.ok = icmp eq i64 %bytes, ptrtoint (ptr getelementptr ({ ptr, i64, i64 }, ptr null, i32 1) to i64)"));
++    assert(strings.Contains(text, "%offset.ok = icmp eq i64 %offset, 0"));
++    assert(!strings.Contains(text, "@chibi_managed.drop.pointer"));
++}
++@test
++PointerCellCallbacksLeaseTheirDefiningImage :: () {
++    text := Emitted(PointerCellModule(-881, false, true));
++    assert(strings.Contains(text, "ptr @chibi_managed.validate.pointer-881, ptr @chibi_generation_cells }"));
++}
++@test
++PointerCellsRetainTheCollectorOwnerAndNonzeroIdentityGates :: () {
++    Rejects(PointerCellModule(0, false, false), "native managed pointer identity is invalid");
++    Rejects(PointerCellModule(-881, true, false), "native managed pointers require a standalone collector owner");
++}
+diff --git a/tools/compiler/package_compiler/Scalar.chibi b/tools/compiler/package_compiler/Scalar.chibi
+index c9339d02b..4e2b4735b 100644
+--- a/tools/compiler/package_compiler/Scalar.chibi
++++ b/tools/compiler/package_compiler/Scalar.chibi
+@@ -1756,14 +1756,18 @@ ScalarReferenceArgument :: (forest: snapshot.SnapshotNode[], text: string, calla
+     addressed := Unparenthesized(forest, argument);
+     if (Is(forest, addressed, syntax.AddressExpression)) {
+         held := Unparenthesized(forest, Field(forest, addressed, syntax.FieldOperand));
+-        if (param.storage != PointerStorage && Is(forest, held, syntax.DereferenceExpression) &&
++        if (Is(forest, held, syntax.DereferenceExpression) &&
+             !ScalarScopedDereference(forest, text, names, held) && ScalarPointerRecord(forest, text, callables, params, names, types, members, callable.package,
+                                   Field(forest, held, syntax.FieldOperand)) >= 0) {
+             return ScalarPointerAccess(forest, text, callables, params, callable, names, types, members, constants,
+                                         Field(forest, held, syntax.FieldOperand), true, rows);
+         }
+     }
+-    if (param.storage != PointerStorage && !Is(forest, Unparenthesized(forest, argument), syntax.AddressExpression) &&
++    passed := Unparenthesized(forest, argument);
++    forwarded := Lookup(names, ScalarPassedName(forest, text, argument));
++    pointer_reference := param.storage == PointerStorage && Is(forest, passed, syntax.Identifier) &&
++                         forwarded >= 0 && names[forwarded].place == ReferencePlace;
++    if (!pointer_reference && !Is(forest, passed, syntax.AddressExpression) &&
+         ScalarPointerRecord(forest, text, callables, params, names, types, members, callable.package, argument) >= 0) {
+         return ScalarPointerAccess(forest, text, callables, params, callable, names, types, members, constants,
+                                     argument, true, rows);
+diff --git a/tools/compiler/package_compiler/ScalarPointers.chibi b/tools/compiler/package_compiler/ScalarPointers.chibi
+index 6ceaf3129..bfa0bbc9f 100644
+--- a/tools/compiler/package_compiler/ScalarPointers.chibi
++++ b/tools/compiler/package_compiler/ScalarPointers.chibi
+@@ -26,6 +26,22 @@ ScalarPointerElement :: (types: TypeDecl[], record: int) -> ValueType {
+     if (declared.kind != PointerDecl || (declared.value_container != 0 && declared.value_container != ArrayContainer)) {
+         return none;
+     }
++    if (declared.value_container == 0 && declared.value_storage == PointerStorage) {
++        target := declared.value_record;
++        // Constructors are acyclic, but bound malformed input too. Resolve a
++        // pointer chain iteratively; its terminal keeps the existing domain.
++        for depth in 0..<length(types) {
++            if (target < 0 || target >= length(types) || types[target].kind != PointerDecl) { return none; }
++            child := types[target];
++            if (child.value_container == 0 && child.value_storage == PointerStorage) {
++                target = child.value_record;
++                continue;
++            }
++            if (ScalarPointerElement(types, target).storage == 0) { return none; }
++            return {storage: PointerStorage, container: 0, record: declared.value_record};
++        }
++        return none;
++    }
+     if (declared.value_container == 0 && declared.value_storage == StructStorage && declared.value_record >= 0 &&
+         types[declared.value_record].kind == RecordDecl) {
+         return {storage: StructStorage, container: 0, record: declared.value_record};
+@@ -52,6 +68,25 @@ ScalarPointerType :: (types: TypeDecl[], record: int) -> int {
+ // a nominal-only tag can permit a changed generation's layout.
+ ScalarPointerTag :: (types: TypeDecl[], value: ValueType) -> i64 {
+     nominal := SemanticTag(types, value);
++    if (value.container == 0 && value.storage == PointerStorage) {
++        chain: ValueType[] = [];
++        target := value;
++        while (target.container == 0 && target.storage == PointerStorage) {
++            if (target.record < 0 || target.record >= length(types) || types[target.record].kind != PointerDecl ||
++                length(chain) >= length(types)) { return 0; }
++            chain.append(target);
++            declared := types[target.record];
++            target = {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
++        }
++        if (ScalarPointerElement(types, chain[length(chain) - 1].record).storage == 0) { return 0; }
++        tag := ScalarPointerTag(types, target);
++        index := length(chain) - 1;
++        while (index >= 0) {
++            tag = i64(wrap: binding.ID("native-managed-pointer-cell-v1", format_text("{}:{}", SemanticTag(types, chain[index]), tag)));
++            index -= 1;
++        }
++        return tag;
++    }
+     if (value.container == ArrayContainer && value.storage == PointerStorage && ScalarPointerViewElement(types, value.record)) {
+         target := ScalarPointerTag(types, ScalarPointerElement(types, value.record));
+         return i64(wrap: binding.ID("native-managed-pointer-array-v1", format_text("{}:{}", nominal, target)));
+@@ -174,7 +209,8 @@ ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables
+             array = ScalarViewType(types, {storage: binding.storage, container: ViewContainer, record: binding.record}) != 0;
+         }
+         optional := binding.storage == UnionStorage && ScalarPointerOptional(types, binding.record);
+-        if (binding.place == ReferencePlace || (binding.container != 0 && !array) || (!scalar && !record && !array && !optional)) { return -1; }
++        pointer := binding.storage == PointerStorage && binding.container == 0 && ScalarPointerType(types, binding.record) != 0;
++        if (binding.place == ReferencePlace || (binding.container != 0 && !array) || (!scalar && !record && !array && !optional && !pointer)) { return -1; }
+         pointed: ValueType = {storage: binding.storage, container: binding.container, record: binding.record};
+         return FindPointer(types, pointed, false);
+     }
+@@ -184,6 +220,13 @@ ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables
+         if (names[found].storage == PointerStorage && names[found].container == 0) { return names[found].record; }
+         return -1;
+     }
++    if (Is(forest, node, syntax.DereferenceExpression)) {
++        parent := ScalarPointerRecord(forest, text, callables, params, names, types, members, package,
++                                       Field(forest, node, syntax.FieldOperand));
++        shape := ScalarPointerElement(types, parent);
++        if (shape.storage == PointerStorage && shape.container == 0) { return shape.record; }
++        return -1;
++    }
+     if (Is(forest, node, syntax.Identifier)) {
+         found := Lookup(names, Text(forest, text, node));
+         if (found >= 0 && names[found].storage == PointerStorage && names[found].container == 0) {
+@@ -249,7 +292,7 @@ ScalarPointerAddress :: (forest: snapshot.SnapshotNode[], text: string, callable
+     output := rows;
+     address := ScalarAt(forest, node, facts.ManagedAddressRow, facts.PointerType, names[found].index, 0, "");
+     shape := ScalarPointerElement(types, record);
+-    if (shape.storage == StructStorage || shape.storage == UnionStorage || shape.container == ArrayContainer) {
++    if (shape.storage == StructStorage || shape.storage == UnionStorage || shape.storage == PointerStorage || shape.container == ArrayContainer) {
+         address.count = ScalarValueType(types, shape.storage, shape.container, shape.record);
+     }
+     address.literal = ScalarPointerTag(types, shape);

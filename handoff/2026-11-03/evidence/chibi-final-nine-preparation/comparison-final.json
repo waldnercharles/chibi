@@ -1,0 +1,147 @@
+{
+  "candidate": {
+    "compiler": "/private/tmp/chibi-void-callback-proof/chibi",
+    "sha256": "1db54b0c8a700240d82efc48b0e34c0ca50a1c3844be4bc15040881e4c6da1b9",
+    "source": "/private/tmp/chibi-void-callback-proof/source",
+    "source_receipt": {
+      "base": "b636d102d317753e0eeb9f9fc808183765b701d7",
+      "overlays": {
+        "test/native_aot/characters/run.sh": "b2da0789a19b232085932107fa646504ce547844c3244271a83ef8f404fb0617",
+        "tools/compiler/llvm_native/Emit.chibi": "23d533b854f8580374a3318133499f7f1d477570e56392f3d093a9d0b098d6b8",
+        "tools/compiler/llvm_native/tests/Foreign.chibi": "9c8b02517f8257c4be460c7f086fcf154cddccd6fcd25ab21da5e9a3b951975c",
+        "tools/compiler/native_abi/Abi.chibi": "7307c8e6d72904e18197d0b548b69e693a06c7ebd4a016baa85cb75735bcbb10",
+        "tools/compiler/package_compiler/Scalar.chibi": "0a08cf7106bb60cb3852f6cec48f01c1ace666dde579c2f0a232d39823971d72",
+        "tools/compiler/scalar_facts/Facts.chibi": "cc6f8c2f73a5bf671f0264ed11165026d2fa5a2cdb268a263c7ae657af07f565",
+        "tools/compiler/scalar_llvm/Emit.chibi": "c33cbf912538b581e75a4fef176f8aed1e1a6a76388d152eee74b87801df4755"
+      }
+    }
+  },
+  "source_commit": "b636d102d317753e0eeb9f9fc808183765b701d7",
+  "families": {
+    "base": {
+      "expected": 99,
+      "passed": 99,
+      "failed": [],
+      "missing": [],
+      "unexpected": [],
+      "uncompiled": [],
+      "seconds": 24.485974917013664,
+      "lost_original_passes": []
+    },
+    "collections": {
+      "expected": 49,
+      "passed": 48,
+      "failed": [],
+      "missing": [
+        "view_element_lending/facts.Calls"
+      ],
+      "unexpected": [],
+      "uncompiled": [
+        "view_element_lending/facts"
+      ],
+      "seconds": 27.26945854097721,
+      "lost_original_passes": []
+    },
+    "comptime": {
+      "expected": 9,
+      "passed": 9,
+      "failed": [],
+      "missing": [],
+      "unexpected": [],
+      "uncompiled": [],
+      "seconds": 6.516124582994962,
+      "lost_original_passes": []
+    },
+    "fallible": {
+      "expected": 84,
+      "passed": 84,
+      "failed": [],
+      "missing": [],
+      "unexpected": [],
+      "uncompiled": [],
+      "seconds": 35.16396433400223,
+      "lost_original_passes": []
+    },
+    "imports": {
+      "expected": 69,
+      "passed": 69,
+      "failed": [],
+      "missing": [],
+      "unexpected": [],
+      "uncompiled": [],
+      "seconds": 29.024216416000854,
+      "lost_original_passes": []
+    },
+    "math": {
+      "expected": 59,
+      "passed": 59,
+      "failed": [],
+      "missing": [],
+      "unexpected": [],
+      "uncompiled": [],
+      "seconds": 30.400806749996264,
+      "lost_original_passes": []
+    },
+    "native": {
+      "expected": 7,
+      "passed": 7,
+      "failed": [],
+      "missing": [],
+      "unexpected": [],
+      "uncompiled": [],
+      "seconds": 3.169073208991904,
+      "lost_original_passes": []
+    },
+    "native_arguments": {
+      "expected": 12,
+      "passed": 12,
+      "failed": [],
+      "missing": [],
+      "unexpected": [],
+      "uncompiled": [],
+      "seconds": 5.090804125007708,
+      "lost_original_passes": []
+    },
+    "types": {
+      "expected": 68,
+      "passed": 68,
+      "failed": [],
+      "missing": [],
+      "unexpected": [],
+      "uncompiled": [],
+      "seconds": 15.719959458976518,
+      "lost_original_passes": []
+    }
+  },
+  "source_mismatches": [],
+  "total_expected": 456,
+  "total_passed": 455,
+  "runtime_failures": 0,
+  "original_passes_lost": 0,
+  "missing_names": [
+    "collections/view_element_lending/facts.Calls"
+  ],
+  "native_setup": {
+    "core": "/private/tmp/chibi-original-nine-matrix/native-sdk/share/chibi/core",
+    "core_source": "/private/tmp/chibi-void-callback-proof/source/packages/core",
+    "files": {
+      "/private/tmp/chibi-original-nine-matrix/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a": "7f2ad9ea9cc099dfa331a09bb843910f91ff14783ccafc5e472d8be455703c73",
+      "/private/tmp/chibi-original-nine-matrix/native-cwd/Main.chibi": "9bac28def950cb103ef3912c9215938bf05cdd71492c2ead8de6ed8e0377a4ac",
+      "/private/tmp/chibi-original-nine-matrix/native-cwd/Inter.ttf": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031"
+    }
+  },
+  "notes": [
+    "Initial native invocation omitted historical cwd and vendor/font resources. Corrected invocation is recorded separately; initial failures preserved in native.log.",
+    "The first nine invocations ran up to three concurrent families; elapsed times include that contention. Corrected native invocation ran alone."
+  ],
+  "remaining_parity": [
+    {
+      "package": "collections/view_element_lending/facts",
+      "test": "Calls",
+      "ordinary_original_proof": "/private/tmp/chibi-sample-parity-a0a7/ordinary14.json",
+      "native_diagnostic": "scalar proof requires known effect-free scalar execution, not effects 1",
+      "source_contract": "A borrowed int[] or union Row(int[]) element remains valid after the backing array element is replaced through an aliased pointer; expected results 12 and 2.",
+      "scope": "Nominal aggregate view element layout, acquiring the selected value before callback or aliased replacement, and COW/lifetime proofs. Primitive/string view and strict array range changes do not admit this domain."
+    }
+  ]
+}

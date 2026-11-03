@@ -1,0 +1,6 @@
+package pointer_nullable_view
+Read :: (window: view (^int?)[]) -> int { pointer := window[0]; if pointer { return pointer^; } return -1; }
+Main :: () -> int {
+ number := 7; values: (^int?)[] = [&number, nil]; pointer := &values;
+ selected := pointer.view(0..<1); if selected { return Read(selected); } return -1;
+}

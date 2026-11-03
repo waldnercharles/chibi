@@ -1,0 +1,1 @@
+native: rejected Main: /private/tmp/chibi-a730-composed-proof/source/test/native_aot/managed_pointers/source/rejected/retained.chibi:2:56: address requires a writable local or record field

@@ -1,0 +1,14 @@
+from pathlib import Path
+import os,hashlib,json,subprocess,time,shutil
+p=Path('/private/tmp/chibi-retirement-preparation');source=p/'source-one';builder='/private/tmp/chibi-imported-composed-proof/stage3/chibi';llvm='/private/tmp/chibi-bba9-proof/llvm22';base_env={**os.environ,'CHIBI_CORE':str(source/'packages/core'),'CHIBI_LLVM_BIN':llvm,'CHIBI_TEST_WORKERS':'1'};results=[]
+thirdparty=source/'.chibi/third_party';shutil.copytree('/private/tmp/chibi-bba9-source/.chibi/third_party',thirdparty,dirs_exist_ok=True)
+def run(name,args,env):
+ cmd=['sh','/Users/cwaldner/Personal/chibi/handoffs/heavy.sh','native_cli: retired '+name]+[str(x) for x in args];start=time.monotonic();r=subprocess.run(cmd,cwd=source,env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True);record={'name':name,'command':cmd,'status':r.returncode,'seconds':time.monotonic()-start,'stdout':r.stdout,'stderr':r.stderr};results.append(record);(p/'products.json').write_text(json.dumps(results,indent=2)+'\n');(p/(name+'.log')).write_text(r.stdout+r.stderr);print(json.dumps({k:v for k,v in record.items() if k not in ['stdout','stderr']}),flush=True)
+ if r.returncode:print(r.stdout+r.stderr,flush=True);raise SystemExit(r.returncode)
+run('release',['sh','tools/build.sh','build','--release','--native-driver',builder,'--llvm',llvm],{**base_env,'CC':'/usr/bin/false','CXX':'/usr/bin/false'})
+for path in ['sdk/chibi','sdk/chibi-asset-compiler','lib/libchibi_asset_compiler_host.a']:assert (source/'build-release'/path).is_file(),path
+for path in ['sdk/chibi-compile','sdk/chibi-build-host','sdk/chibi-compiler-host']:assert not (source/'build-release'/path).exists(),path
+run('sdk-install',[source/'build-release/sdk/chibi','run','--core',source/'packages/core','--llvm',llvm,'--root',source,'--collection','graph='+str(source/'tools/graph'),'--entry','Run',source/'test/graph/SDKInstallTests.chibi','--',source/'build-release/sdk/chibi',source/'build-release',llvm],base_env)
+run('bridge',['sh',source/'test/native_aot/asset_compiler/bridge.sh',source/'build-release/sdk/chibi-asset-compiler',source/'build-release/sdk/chibi',llvm,'/usr/bin/cc',source/'build-release/lib/libchibi_asset_compiler_host.a'],base_env)
+identity={'commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=source,text=True).strip(),'tree':subprocess.check_output(['git','rev-parse','HEAD^{tree}'],cwd=source,text=True).strip(),'source_status':subprocess.check_output(['git','status','--porcelain'],cwd=source,text=True),'products':{str(f.relative_to(source)):hashlib.sha256(f.read_bytes()).hexdigest() for f in [source/'build-release/sdk/chibi',source/'build-release/sdk/chibi-asset-compiler',source/'build-release/lib/libchibi_asset_compiler_host.a']}}
+assert identity['source_status']=='',identity['source_status'];(p/'product-identity.json').write_text(json.dumps(identity,indent=2)+'\n')

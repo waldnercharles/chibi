@@ -1,0 +1,9 @@
+package map_array_foreign_place
+foreign import libc "system:c"
+foreign libc { memset :: (data: int[], value: i32, count: u64) -> rawptr }
+Main :: () -> int {
+    values: [int: int[]] = [1: [65]];
+    changed := memset(values[1], 9, 1);
+    assert(values[1][0] == 9);
+    return 0;
+}

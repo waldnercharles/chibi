@@ -1,0 +1,1 @@
+native: rejected Main: /Users/cwaldner/Personal/chibi/.worktrees/authored-strings-regressions/chibi/test/native_aot/managed_pointers/source/rejected/TextViewMutation.chibi:5:19: indexed mutation requires a writable array or map

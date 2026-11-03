@@ -1,0 +1,3 @@
+package rootless_inline_text
+@test
+Check :: () { observed := Main(); assert(observed == 0); }

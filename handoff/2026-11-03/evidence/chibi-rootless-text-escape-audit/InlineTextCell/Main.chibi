@@ -1,0 +1,6 @@
+package rootless_inline_text_cell
+Leaf :: struct { label: string; }
+Row :: struct { leaf: Leaf; }
+Literal :: () -> string { return "writer literal"; }
+Make :: () -> ^Row { row: Row = {leaf: {label: Literal()}}; return &row; }
+Main :: () -> int { pointer := Make(); pointer^ = {leaf: {label: Literal()}}; return 0; }

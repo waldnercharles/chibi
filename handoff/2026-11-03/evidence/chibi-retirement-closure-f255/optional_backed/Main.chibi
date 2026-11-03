@@ -1,0 +1,3 @@
+package optional_backed
+Value :: struct { message: string; }
+Main :: () -> int { value: Value? = {message: "owned"}; pointer := &value; return 0; }

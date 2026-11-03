@@ -1,0 +1,78 @@
+✖ core builds native products once and preserves selector failure (success) (116.581125ms)
+✖ core builds native products once and preserves selector failure (native) (84.125917ms)
+✔ core reuses the successful Release compiler (success) (2946.599417ms)
+✔ core reuses the successful Release compiler (release) (1548.066792ms)
+✔ core reuses the successful Release compiler (release-partial) (1752.00375ms)
+✔ core reuses the successful Release compiler (target) (2394.208667ms)
+✔ core reuses the successful Release compiler (graph) (1973.535417ms)
+✔ core reuses the successful Release compiler (selector) (2050.545333ms)
+✔ core reuses the successful Release compiler (scalar) (2143.877875ms)
+✔ core reuses the successful Release compiler (compiler) (1663.07975ms)
+✔ core reuses the successful Release compiler (selector-and-scalar) (2175.5045ms)
+✔ core reuses the successful Release compiler (evidence) (1832.295959ms)
+✔ native proof uses mandatory native contracts without VM comparison (full=false, pinned=false) (2412.441334ms)
+✔ native proof uses mandatory native contracts without VM comparison (full=false, pinned=true) (2137.804125ms)
+✔ native proof uses mandatory native contracts without VM comparison (full=true, pinned=false) (2383.514542ms)
+✔ native proof uses mandatory native contracts without VM comparison (full=true, pinned=true) (2556.11125ms)
+✔ one workflow; no privileged PR trigger or publishing permissions (1.142792ms)
+✔ ordinary PR, push and manual ci run Linux, macOS and both native targets (4.286959ms)
+✔ full proofs are explicit, and Graph stays opt-in (3.992833ms)
+✔ canonical work has no classifier, receipt or silent source-path bypass (0.978083ms)
+✔ native proof runs after an attempted core phase while preserving its failure (1.391083ms)
+✔ ordinary native targets consume the Linux bundle without enabling full-only work (17.115ms)
+✔ native proofs do not claim C sanitizer instrumentation (1.047333ms)
+✔ pinned Windows bootstrap keeps canonical modes and validates producer identities (7.735792ms)
+✔ Windows runs the complete compiler root after its fixed point and before products (1.704208ms)
+✔ Windows preserves compiler test logs after success, failure or cancellation (0.903667ms)
+✔ the transitional Windows bootstrap allowance leaves other phase bounds unchanged (0.149542ms)
+✔ external Windows bootstrap skips only the unused current producer upload (1.165917ms)
+ℹ tests 28
+ℹ suites 0
+ℹ pass 26
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20543.232334
+
+✖ failing tests:
+
+test at test/ci/core.test.js:12:3
+✖ core builds native products once and preserves selector failure (success) (116.581125ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(commands.some(line => line === `test --native-driver ${root}/build-release/sdk/chibi short native projects language language-scalar-native`))
+  
+      at TestContext.<anonymous> (/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/test/ci/core.test.js:50:14)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test/ci/core.test.js:12:3
+✖ core builds native products once and preserves selector failure (native) (84.125917ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(commands.some(line => line === `test --native-driver ${root}/build-release/sdk/chibi short native projects language language-scalar-native`))
+  
+      at TestContext.<anonymous> (/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/test/ci/core.test.js:50:14)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

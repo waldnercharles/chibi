@@ -1,0 +1,1 @@
+native: rejected Main: /Users/cwaldner/Personal/chibi/.worktrees/authored-strings-regressions/chibi/test/native_aot/managed_pointers/source/rejected/ViewRecord.chibi:2:30: record fields require a scalar, pointer, record, union or array of those types

@@ -1,0 +1,64 @@
+package view_record_pointers
+
+Direct :: struct { pointer: ^int; }
+Point :: struct { value: int; }
+Indirect :: struct { pointer: ^Point; }
+Owned :: struct { pointers: ^int[]; label: string; }
+
+Box :: (value: int) -> ^int { return &value; }
+BoxRows :: (rows: Direct[]) -> ^(Direct[]) { return &rows; }
+DirectOwner :: () -> view Direct[] {
+    rows: Direct[] = [{pointer: Box(7)}];
+    pointer := BoxRows(rows);
+    return pointer.view(0..<1)!;
+}
+IndirectOwner :: () -> view Indirect[] {
+    value: Point = {value: 31};
+    rows: Indirect[] = [{pointer: &value}];
+    pointer := &rows;
+    return pointer.view(0..<1)!;
+}
+OwnedOwner :: () -> view Owned[] {
+    rows: Owned[] = [{pointers: [Box(11), Box(13)], label: text_from_bytes([u8(65), u8(0), u8(66)])}];
+    pointer := &rows;
+    return pointer.view(0..<1)!;
+}
+EscapedRow :: () -> Owned { selected := OwnedOwner(); return selected[0]; }
+Churn :: () { for (index in 0..<3000) { discarded := Box(index); } }
+// The original ordinary-positive kernels use direct pointer and pointer-array
+// fields in record elements, rather than pointer elements in the view itself.
+DirectKernel :: () -> int {
+    number := 7; rows: Direct[] = [{pointer: &number}]; pointer := &rows;
+    selected := pointer.view(0..<1);
+    if selected { row := selected[0]; return row.pointer^; }
+    return -1;
+}
+ArrayKernel :: () -> int {
+    number := 7; rows: Owned[] = [{pointers: [&number], label: ""}]; pointer := &rows;
+    selected := pointer.view(0..<1);
+    if selected { row := selected[0]; return row.pointers[0]^; }
+    return -1;
+}
+Main :: () -> int {
+    direct_kernel := DirectKernel(); array_kernel := ArrayKernel();
+    assert(direct_kernel == 7 && array_kernel == 7);
+    selected := DirectOwner(); Churn();
+    original := selected.clone();
+    selected[0] = {pointer: Box(19)};
+    Churn();
+    assert(original[0].pointer^ == 7 && selected[0].pointer^ == 19);
+    copied := selected.slice(0..<1);
+    if copied {
+        rows := copied;
+        rows[0] = {pointer: Box(23)};
+        Churn();
+        assert(rows[0].pointer^ == 23 && selected[0].pointer^ == 19);
+    } else { return 1; }
+    indirect := IndirectOwner(); Churn();
+    row := indirect[0];
+    assert(row.pointer.value == 31);
+    owned := EscapedRow(); Churn();
+    expected := text_from_bytes([u8(65), u8(0), u8(66)]);
+    assert(owned.pointers[0]^ == 11 && owned.pointers[1]^ == 13 && owned.label == expected);
+    return 0;
+}

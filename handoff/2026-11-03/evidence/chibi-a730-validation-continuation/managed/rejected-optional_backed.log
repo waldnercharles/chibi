@@ -1,0 +1,1 @@
+native: rejected Main: /private/tmp/chibi-a730-composed-proof/source/test/native_aot/managed_pointers/source/rejected/optional_backed.chibi:2:1: native optional cells require plain numeric or bool payloads

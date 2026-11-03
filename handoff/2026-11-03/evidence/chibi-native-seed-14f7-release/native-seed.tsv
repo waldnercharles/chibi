@@ -1,0 +1,4 @@
+# CANDIDATE ONLY: prepared locally, not published or installed.
+# platform, proposed release tag, asset, SHA-256; exact accepted pairs are in PROVENANCE.json.
+linux-x64	native-seed-14f7a46a047ab92acfe58398b3cdac25ab7d0312	chibi-native-linux-x64	1dd9bf1518645f50f06d4ff1912159945b967e6ad9c7b1f3228fbb32e5d68ab9
+macos-arm64	native-seed-14f7a46a047ab92acfe58398b3cdac25ab7d0312	chibi-native-macos-arm64	7b60b3ef3f556f8621b09ed85deb202091c60e022bc3aa6bc062052588e11d38

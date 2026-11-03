@@ -1,0 +1,2 @@
+/Users/cwaldner/Personal/chibi/.worktrees/authored-strings-regressions/chibi/test/native_aot/managed_pointers/source/TaskFailure.chibi:13:5: Assertion failed: waiting task assertion preserves cleanup
+native failure: AssertionFailed

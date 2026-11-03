@@ -1,0 +1,2582 @@
+[
+  {
+    "original": "/private/tmp/chibi-7b05-composed-check/candidate.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-7b05-composed-check/candidate.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-7b05-composed-check/compiler-tests.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-7b05-composed-check/compiler-tests.log",
+    "bytes": 32229,
+    "sha256": "052e46c1a7ce577548591095811be4097b155ec3cb4369334f8a4a09cda787bb"
+  },
+  {
+    "original": "/private/tmp/chibi-7b05-composed-check/map-search.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-7b05-composed-check/map-search.log",
+    "bytes": 3926,
+    "sha256": "767a589fd85a21b82b1bf6536d18215b16431bcf1ac1474889e56779b8da7861"
+  },
+  {
+    "original": "/private/tmp/chibi-7b05-composed-check/receipt.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-7b05-composed-check/receipt.json",
+    "bytes": 2916,
+    "sha256": "2b3aac628a59bb53a2ea2a96fbc75389cc9bdd6ce924e5dc3912df895c5eafbb"
+  },
+  {
+    "original": "/private/tmp/chibi-7b05-composed-check/run.py",
+    "saved": "handoff/2026-11-03/evidence/chibi-7b05-composed-check/run.py",
+    "bytes": 2228,
+    "sha256": "327ac97244d25ea3ef833fcf1331f6f424eaa283a7d16c3e32fa5640adc62aa3"
+  },
+  {
+    "original": "/private/tmp/chibi-7b05-composed-check/source-files.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-7b05-composed-check/source-files.json",
+    "bytes": 537880,
+    "sha256": "7fb38fb59e5cf5d3f314654a87a3a2aafcc538334ffeacb0c54f8a01c2396d66"
+  },
+  {
+    "original": "/private/tmp/chibi-7b05-composed-check/source.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-7b05-composed-check/source.json",
+    "bytes": 522,
+    "sha256": "7630caffbfa9885b85b994a26fb6ba7e813b9c8b364fdc754fd0a02e5076ebc3"
+  },
+  {
+    "original": "/private/tmp/chibi-7b05-composed-check/task-owners.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-7b05-composed-check/task-owners.log",
+    "bytes": 3620,
+    "sha256": "fd0f8ae4ea69181ec52082b2503077828b2151ede228b7177889e0daf092a904"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-composed-proof/compiler-tests.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-composed-proof/compiler-tests.log",
+    "bytes": 31839,
+    "sha256": "a761b5701f708ee416aca25d57dc89487de42e8c660fb334051dd7afc1621c71"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-composed-proof/managed-pointers.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-composed-proof/managed-pointers.log",
+    "bytes": 64502,
+    "sha256": "c7c08be6391bb5f0f696b85796dbe7271b6bb3b5451752ca3b26fb4ce31029f5"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-composed-proof/receipt.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-composed-proof/receipt.json",
+    "bytes": 3498,
+    "sha256": "9fb8def45095d2bae8fb5edfc50fd51a383c1f0c955856e59c4741274aa0282f"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-composed-proof/run.py",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-composed-proof/run.py",
+    "bytes": 2806,
+    "sha256": "718373bf600a511cfc5c954dd138d89a4414b091a5cc57f47637553b03fa971b"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-composed-proof/source-files.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-composed-proof/source-files.json",
+    "bytes": 536202,
+    "sha256": "4886c22025aba0e7e300a2e5814dbbb8c890f8f91a06b4749faea6774e179103"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-composed-proof/source.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-composed-proof/source.json",
+    "bytes": 385,
+    "sha256": "a802a8f6633bea48b2dade26418623d091e25a94e26ea3e7b46fabc2a912ecab"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-composed-proof/stage2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-composed-proof/stage2.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-composed-proof/stage3.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-composed-proof/stage3.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-composed-proof/task-owners.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-composed-proof/task-owners.log",
+    "bytes": 3061,
+    "sha256": "00c953b3fcc3817aec80d8a1b22e2bc8ba742051179ba979906a53946ba957f2"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/Metadata.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/Metadata.chibi",
+    "bytes": 1854,
+    "sha256": "2375d0d0af9f317d587bb56536ef06da09113049414fe6ac8c921fd4661ed3c5"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/container-migration.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/container-migration.json",
+    "bytes": 679,
+    "sha256": "ad3a3147e4ae60112f6cebae457d5f2de5d5d0b13c217c070215390fd89c4d25"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/container-positive.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/container-positive.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/container-positive.receipt.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/container-positive.receipt.json",
+    "bytes": 357,
+    "sha256": "59d2fd27aa62cc6e2ecd28864a60426bb1900722cbdaccdaca36640744ac3e83"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/finalize.py",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/finalize.py",
+    "bytes": 4112,
+    "sha256": "5241325540aa3d35e40d8ef30fa1eca18349cff2d202ba3cca10a520f3290ea5"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/generations-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/generations-O0.log",
+    "bytes": 3437,
+    "sha256": "372c4ab444b2a16aed65617c61a75305ac2c6fe57fbfe775011042e62ab142df"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/generations-O0.receipt.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/generations-O0.receipt.json",
+    "bytes": 455,
+    "sha256": "c269107f86e8d1402794f7926622064c3de8bb4d23d0c3c4dd6d193d4e3d79fe"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/generations-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/generations-O2.log",
+    "bytes": 3437,
+    "sha256": "d4ba8ef531ea4e40bbe792d9e7b42e3b1faed585bc3c18e535b9fb5714baa2e7"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/generations-O2.receipt.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/generations-O2.receipt.json",
+    "bytes": 456,
+    "sha256": "5bb0ea931929c87359638cdb7a1fa1b6300076c416e5d528ce8ad84b804b7a2c"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/growth/Growth100.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/growth/Growth100.chibi",
+    "bytes": 2451,
+    "sha256": "26e0ccd15341fcfd45de0c726d8eb2f64518625a9e6f365950a7137eeb43649a"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/growth/Growth1000.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/growth/Growth1000.chibi",
+    "bytes": 24951,
+    "sha256": "5b323f773c781f6e84318c57b42500b0d719aa33995605fc4a8e1504c9dd59cd"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/optional-fallible_correlated_pointers_retain_valid_error_handling-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/optional-fallible_correlated_pointers_retain_valid_error_handling-O0.log",
+    "bytes": 37,
+    "sha256": "3e694353a5f845ca9a4da4cbabea97ff75311cb11472c08617044d1201d05e09"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/optional-fallible_correlated_pointers_retain_valid_error_handling-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/optional-fallible_correlated_pointers_retain_valid_error_handling-O2.log",
+    "bytes": 37,
+    "sha256": "3e694353a5f845ca9a4da4cbabea97ff75311cb11472c08617044d1201d05e09"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/optional-fallible_joined_pointers_keep_unchanged_pointees-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/optional-fallible_joined_pointers_keep_unchanged_pointees-O0.log",
+    "bytes": 37,
+    "sha256": "3e694353a5f845ca9a4da4cbabea97ff75311cb11472c08617044d1201d05e09"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/optional-fallible_joined_pointers_keep_unchanged_pointees-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/optional-fallible_joined_pointers_keep_unchanged_pointees-O2.log",
+    "bytes": 37,
+    "sha256": "3e694353a5f845ca9a4da4cbabea97ff75311cb11472c08617044d1201d05e09"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/optional-fallible_optional_pointer_aliases_are_inspected-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/optional-fallible_optional_pointer_aliases_are_inspected-O0.log",
+    "bytes": 37,
+    "sha256": "3e694353a5f845ca9a4da4cbabea97ff75311cb11472c08617044d1201d05e09"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/optional-fallible_optional_pointer_aliases_are_inspected-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/optional-fallible_optional_pointer_aliases_are_inspected-O2.log",
+    "bytes": 37,
+    "sha256": "3e694353a5f845ca9a4da4cbabea97ff75311cb11472c08617044d1201d05e09"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/optional-optional_mutation_before_a_fresh_presence_guard_is_safe-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/optional-optional_mutation_before_a_fresh_presence_guard_is_safe-O0.log",
+    "bytes": 37,
+    "sha256": "3e694353a5f845ca9a4da4cbabea97ff75311cb11472c08617044d1201d05e09"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/optional-optional_mutation_before_a_fresh_presence_guard_is_safe-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/optional-optional_mutation_before_a_fresh_presence_guard_is_safe-O2.log",
+    "bytes": 37,
+    "sha256": "3e694353a5f845ca9a4da4cbabea97ff75311cb11472c08617044d1201d05e09"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-OwnedRecordCell.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-OwnedRecordCell.log",
+    "bytes": 218,
+    "sha256": "2e5f7d51ce23564001c5ea2648fdf680f10a96f0e8173efcfe6e20b7cb0d1032"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-PointerViewNullableElement.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-PointerViewNullableElement.log",
+    "bytes": 338,
+    "sha256": "2adcc156dbce5d7b61d50c4d36d3291681eb5025e74e9b3687c5fcb1ff43ae06"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-PointerViewRecordTarget.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-PointerViewRecordTarget.log",
+    "bytes": 335,
+    "sha256": "9873c608126c5272be274bf07687e476a47011ea3e5e23870fac4230a39ffcd2"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-TextViewMutation.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-TextViewMutation.log",
+    "bytes": 197,
+    "sha256": "a86bda4e7262d2a64288e8b6d289d00c89f255f725c02b7941b3fe2cbe460a80"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-ViewOptionalField.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-ViewOptionalField.log",
+    "bytes": 227,
+    "sha256": "5e26f6a2bca5f1b97148166ca03f81382df5f1aaa818e051a0276e047ce4e377"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-ViewOwnedOptionalParameter.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-ViewOwnedOptionalParameter.log",
+    "bytes": 229,
+    "sha256": "5b29f6615010d7435a1f322118afa4e33b2010e86ed6a711a4fb70376bb5f06b"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-ViewOwnedOptionalResult.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-ViewOwnedOptionalResult.log",
+    "bytes": 281,
+    "sha256": "96bb092d1739029bbc72543955706803160256920dad6f623edbe1b034c2ea48"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-ViewReadonlyPattern.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-ViewReadonlyPattern.log",
+    "bytes": 185,
+    "sha256": "85635714a296f12600312cd529d716d9dafd84020fe8a1995b931be3e24808ed"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-ViewRecord.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-ViewRecord.log",
+    "bytes": 220,
+    "sha256": "d823b3d2b5b0c938daf4aaeb8f247073b52f1c6a04b7585f8282b11ada9c095a"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-backed_record.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-backed_record.log",
+    "bytes": 216,
+    "sha256": "718127ae831e00a385022f63ec1d9147a97f97282a832d14e91053c195138939"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-character.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-character.log",
+    "bytes": 176,
+    "sha256": "51e57fdd5690dd68cdc109984c79bf31e2d97055ae3fba4890a58b609793838b"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-container.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-container.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-foreign_array.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-foreign_array.log",
+    "bytes": 259,
+    "sha256": "6921e4fb2d5396d90f38b3348b66d2391eaa0f1480290bde16358392b156f279"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-foreign_scalar.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-foreign_scalar.log",
+    "bytes": 260,
+    "sha256": "e3df4f85a6e5d55390cf78087e9aa16e394b90fb6d01e750502323dece22fa18"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-foreign_strings.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-foreign_strings.log",
+    "bytes": 261,
+    "sha256": "32db849ad640c532c9d18fa31bf73367556516293dbd982a604c23109d3d42c7"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-nested.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-nested.log",
+    "bytes": 261,
+    "sha256": "6bfb8cbe1f8f3013de0a1a1dc3c66736283f00852924035db8111a8e29a8c015"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-optional_backed.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-optional_backed.log",
+    "bytes": 206,
+    "sha256": "48a6fc17ac4248eb880e22d571e3860fc75db55bf0f58b42f659661df394a879"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-optional_pointer.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-optional_pointer.log",
+    "bytes": 207,
+    "sha256": "58dd147dffa85af4db0334e5b2c16294cf8ff31162e806cf671df02320fdeb12"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-optional_view.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-optional_view.log",
+    "bytes": 202,
+    "sha256": "7c2deae5badfef6c44e70bf461a71f543ec3e6e32afdefd712b5a679523d372e"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-retained.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-retained.log",
+    "bytes": 189,
+    "sha256": "ea9dbd12754cf5557d52067a656c4cbb2d28ffcf86a1fde69d0646166374db94"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-unguarded_nullable.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/rejected-unguarded_nullable.log",
+    "bytes": 211,
+    "sha256": "06be3fdef6cf34bf9266178d09f263c4f354b8e71437be2fce8d4036debe547c"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/text-cell-images/broken-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/text-cell-images/broken-O0.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/text-cell-images/broken-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/text-cell-images/broken-O2.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/text-cell-images/source-build.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/text-cell-images/source-build.log",
+    "bytes": 135,
+    "sha256": "f3a3b12c2e4aef459c63b52630412a24c41b5b4be947b0a4cb4a2abf2b46abc1"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/text-cell-images-optional/broken-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/text-cell-images-optional/broken-O0.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/text-cell-images-optional/broken-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/text-cell-images-optional/broken-O2.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/text-cell-images-optional/source-build.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/text-cell-images-optional/source-build.log",
+    "bytes": 144,
+    "sha256": "fc2d80b1b3016a1105d59bab9d9134527641c33c6114ccd6fadcae393ca83cc1"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/view-schema/changed-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/view-schema/changed-O0.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/view-schema/changed-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/view-schema/changed-O2.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/view-schema/pointers/changed-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/view-schema/pointers/changed-O0.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed/view-schema/pointers/changed-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed/view-schema/pointers/changed-O2.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed-rejections.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed-rejections.log",
+    "bytes": 145,
+    "sha256": "ae140b5cf0cc07e2b81ae9f1a79c2b94b1ee4a16b48131b0735129970e5bd48a"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed-rejections.receipt.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed-rejections.receipt.json",
+    "bytes": 528,
+    "sha256": "b28ddb3d278bac29c517e48a9d922c501c511cbb1f322f704a4907db91850c1c"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed-rejections.sh",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed-rejections.sh",
+    "bytes": 1193,
+    "sha256": "d18d9029a4c5b6911bdb417d2dd0b092c3dc0ba98a87ee70b95431b9a455147d"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed-tail.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed-tail.log",
+    "bytes": 1228,
+    "sha256": "60b658a0774341d96cb569a09643da42dea56d4bde3e4e81a4cc93caba3304df"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/managed-tail.sh",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/managed-tail.sh",
+    "bytes": 2537,
+    "sha256": "eb5533477f4c586b06e5fe5d614eb05481e6a25608a1df21e50bacca1c300c0b"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/ArrayMissing-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/ArrayMissing-O0.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/ArrayMissing-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/ArrayMissing-O2.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/MissingRecord-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/MissingRecord-O0.log",
+    "bytes": 29,
+    "sha256": "a2093fb449a6c390e6edb71687e04272b75db7c4c4175d24ed787e1f595a7f01"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/MissingRecord-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/MissingRecord-O2.log",
+    "bytes": 29,
+    "sha256": "a2093fb449a6c390e6edb71687e04272b75db7c4c4175d24ed787e1f595a7f01"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/UnionMissing-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/UnionMissing-O0.log",
+    "bytes": 29,
+    "sha256": "a2093fb449a6c390e6edb71687e04272b75db7c4c4175d24ed787e1f595a7f01"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/UnionMissing-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/UnionMissing-O2.log",
+    "bytes": 29,
+    "sha256": "a2093fb449a6c390e6edb71687e04272b75db7c4c4175d24ed787e1f595a7f01"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/ArrayEndIndex-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/ArrayEndIndex-O0.log",
+    "bytes": 88,
+    "sha256": "e0154d580433c2ee2b26b0692c4457e9a7a2278499df6052137f54a9b8d6407d"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/ArrayEndIndex-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/ArrayEndIndex-O2.log",
+    "bytes": 88,
+    "sha256": "e0154d580433c2ee2b26b0692c4457e9a7a2278499df6052137f54a9b8d6407d"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/ArrayEndInitial-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/ArrayEndInitial-O0.log",
+    "bytes": 72,
+    "sha256": "97dcc9941ce7f7ca9c847c00c49065da298d4cb8a6187a2865ed726c3eb09ef5"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/ArrayEndInitial-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/ArrayEndInitial-O2.log",
+    "bytes": 72,
+    "sha256": "97dcc9941ce7f7ca9c847c00c49065da298d4cb8a6187a2865ed726c3eb09ef5"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/ArrayEndLate-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/ArrayEndLate-O0.log",
+    "bytes": 72,
+    "sha256": "97dcc9941ce7f7ca9c847c00c49065da298d4cb8a6187a2865ed726c3eb09ef5"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/ArrayEndLate-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/ArrayEndLate-O2.log",
+    "bytes": 72,
+    "sha256": "97dcc9941ce7f7ca9c847c00c49065da298d4cb8a6187a2865ed726c3eb09ef5"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/ArrayEndMixedInitial-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/ArrayEndMixedInitial-O0.log",
+    "bytes": 72,
+    "sha256": "97dcc9941ce7f7ca9c847c00c49065da298d4cb8a6187a2865ed726c3eb09ef5"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/ArrayEndMixedInitial-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/ArrayEndMixedInitial-O2.log",
+    "bytes": 72,
+    "sha256": "97dcc9941ce7f7ca9c847c00c49065da298d4cb8a6187a2865ed726c3eb09ef5"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/Compound-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/Compound-O0.log",
+    "bytes": 88,
+    "sha256": "039c0dc78b0869073ee607ebafd20a2ceb94768efa35146355639ba3705a7cf2"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/Compound-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/Compound-O2.log",
+    "bytes": 88,
+    "sha256": "039c0dc78b0869073ee607ebafd20a2ceb94768efa35146355639ba3705a7cf2"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/DeepArrayInitial-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/DeepArrayInitial-O0.log",
+    "bytes": 88,
+    "sha256": "16a74328d83d8a0aebec372364421b671e4cc046d5e9a6ae1285b3dca1439e4f"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/DeepArrayInitial-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/DeepArrayInitial-O2.log",
+    "bytes": 88,
+    "sha256": "16a74328d83d8a0aebec372364421b671e4cc046d5e9a6ae1285b3dca1439e4f"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/DeepArrayLate-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/DeepArrayLate-O0.log",
+    "bytes": 68,
+    "sha256": "4cbd9d792ec9a75e2a8a29278d5c8a05f894d0458fd01067f277423c0503315c"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/DeepArrayLate-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/DeepArrayLate-O2.log",
+    "bytes": 68,
+    "sha256": "4cbd9d792ec9a75e2a8a29278d5c8a05f894d0458fd01067f277423c0503315c"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/DeepInitial-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/DeepInitial-O0.log",
+    "bytes": 88,
+    "sha256": "16a74328d83d8a0aebec372364421b671e4cc046d5e9a6ae1285b3dca1439e4f"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/DeepInitial-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/DeepInitial-O2.log",
+    "bytes": 88,
+    "sha256": "16a74328d83d8a0aebec372364421b671e4cc046d5e9a6ae1285b3dca1439e4f"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/DeepLate-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/DeepLate-O0.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/DeepLate-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/DeepLate-O2.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/DeletedMap-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/DeletedMap-O0.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/DeletedMap-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/DeletedMap-O2.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/Initial-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/Initial-O0.log",
+    "bytes": 88,
+    "sha256": "039c0dc78b0869073ee607ebafd20a2ceb94768efa35146355639ba3705a7cf2"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/Initial-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/Initial-O2.log",
+    "bytes": 88,
+    "sha256": "039c0dc78b0869073ee607ebafd20a2ceb94768efa35146355639ba3705a7cf2"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/Late-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/Late-O0.log",
+    "bytes": 68,
+    "sha256": "4cbd9d792ec9a75e2a8a29278d5c8a05f894d0458fd01067f277423c0503315c"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/Late-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/Late-O2.log",
+    "bytes": 68,
+    "sha256": "4cbd9d792ec9a75e2a8a29278d5c8a05f894d0458fd01067f277423c0503315c"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/MethodArrayLate-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/MethodArrayLate-O0.log",
+    "bytes": 68,
+    "sha256": "9ff0883af442dae4db90734a254f7f97f9d486409bfd8c7b2b3814b3e4295ead"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/MethodArrayLate-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/MethodArrayLate-O2.log",
+    "bytes": 68,
+    "sha256": "9ff0883af442dae4db90734a254f7f97f9d486409bfd8c7b2b3814b3e4295ead"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/MethodInitial-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/MethodInitial-O0.log",
+    "bytes": 88,
+    "sha256": "7e7a7e01af985df74490e24df7c6fac1d9431e356083b6e0006c133e27906ccb"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/MethodInitial-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/MethodInitial-O2.log",
+    "bytes": 88,
+    "sha256": "7e7a7e01af985df74490e24df7c6fac1d9431e356083b6e0006c133e27906ccb"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/MethodLate-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/MethodLate-O0.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/MethodLate-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/MethodLate-O2.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/MethodRecordGrowth-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/MethodRecordGrowth-O0.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/MethodRecordGrowth-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/MethodRecordGrowth-O2.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/MissingMap-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/MissingMap-O0.log",
+    "bytes": 88,
+    "sha256": "039c0dc78b0869073ee607ebafd20a2ceb94768efa35146355639ba3705a7cf2"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/MissingMap-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/MissingMap-O2.log",
+    "bytes": 88,
+    "sha256": "039c0dc78b0869073ee607ebafd20a2ceb94768efa35146355639ba3705a7cf2"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/Negative-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/Negative-O0.log",
+    "bytes": 68,
+    "sha256": "4cbd9d792ec9a75e2a8a29278d5c8a05f894d0458fd01067f277423c0503315c"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/nested-places/Negative-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/nested-places/Negative-O2.log",
+    "bytes": 68,
+    "sha256": "4cbd9d792ec9a75e2a8a29278d5c8a05f894d0458fd01067f277423c0503315c"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/places/Deleted-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/places/Deleted-O0.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/places/Deleted-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/places/Deleted-O2.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/places/Initial-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/places/Initial-O0.log",
+    "bytes": 72,
+    "sha256": "97dcc9941ce7f7ca9c847c00c49065da298d4cb8a6187a2865ed726c3eb09ef5"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/places/Initial-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/places/Initial-O2.log",
+    "bytes": 72,
+    "sha256": "97dcc9941ce7f7ca9c847c00c49065da298d4cb8a6187a2865ed726c3eb09ef5"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/places/Late-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/places/Late-O0.log",
+    "bytes": 72,
+    "sha256": "97dcc9941ce7f7ca9c847c00c49065da298d4cb8a6187a2865ed726c3eb09ef5"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/places/Late-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/places/Late-O2.log",
+    "bytes": 72,
+    "sha256": "97dcc9941ce7f7ca9c847c00c49065da298d4cb8a6187a2865ed726c3eb09ef5"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/places/Method-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/places/Method-O0.log",
+    "bytes": 88,
+    "sha256": "fc3cff0c4a47bba8e8f44aa7dd6159eb928ffe37adccbbca3e8108e8d9e87998"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/places/Method-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/places/Method-O2.log",
+    "bytes": 88,
+    "sha256": "fc3cff0c4a47bba8e8f44aa7dd6159eb928ffe37adccbbca3e8108e8d9e87998"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/places/Negative-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/places/Negative-O0.log",
+    "bytes": 72,
+    "sha256": "97dcc9941ce7f7ca9c847c00c49065da298d4cb8a6187a2865ed726c3eb09ef5"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/places/Negative-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/places/Negative-O2.log",
+    "bytes": 72,
+    "sha256": "97dcc9941ce7f7ca9c847c00c49065da298d4cb8a6187a2865ed726c3eb09ef5"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/places/wrong-category-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/places/wrong-category-O0.log",
+    "bytes": 163,
+    "sha256": "9d0eff0e4083bdd0e1f474fd068ed8e65cda775ed514023162ca4a2f4358fc39"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/places/wrong-category-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/places/wrong-category-O2.log",
+    "bytes": 163,
+    "sha256": "9d0eff0e4083bdd0e1f474fd068ed8e65cda775ed514023162ca4a2f4358fc39"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/rejected-NestedPointer-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/rejected-NestedPointer-O0.log",
+    "bytes": 190,
+    "sha256": "7a44b8096643a18a1641695f0090d7cd90048f7f1c2fe3c773b9feadc1b02d5a"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/rejected-NestedPointer-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/rejected-NestedPointer-O2.log",
+    "bytes": 190,
+    "sha256": "7a44b8096643a18a1641695f0090d7cd90048f7f1c2fe3c773b9feadc1b02d5a"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/rejected-ReadonlyIteration-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/rejected-ReadonlyIteration-O0.log",
+    "bytes": 172,
+    "sha256": "6fff865e427cc661af772596b15ddce99207adf5cdb61ad7d904b46dd4f60d88"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/rejected-ReadonlyIteration-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/rejected-ReadonlyIteration-O2.log",
+    "bytes": 172,
+    "sha256": "6fff865e427cc661af772596b15ddce99207adf5cdb61ad7d904b46dd4f60d88"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/rejected-RecordMap-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/rejected-RecordMap-O0.log",
+    "bytes": 208,
+    "sha256": "7517ffdbf5e654401d6891761feea04965add5022489e0c4d6bc8cc7e33514f0"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/programs/rejected-RecordMap-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/programs/rejected-RecordMap-O2.log",
+    "bytes": 208,
+    "sha256": "7517ffdbf5e654401d6891761feea04965add5022489e0c4d6bc8cc7e33514f0"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/ArrayBacked/ArrayBacked.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/ArrayBacked/ArrayBacked.chibi",
+    "bytes": 2467,
+    "sha256": "acd16a2a27e22a2ca33e655ad9304c6158f3cdd2215a377c6340ea81ab5c2df2"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/ArrayCompound/ArrayCompound.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/ArrayCompound/ArrayCompound.chibi",
+    "bytes": 154,
+    "sha256": "11a02166dde4efb578f8da10a075949089941ed6f4c85146112741a6a083afd9"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/ArrayForeign/ArrayForeign.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/ArrayForeign/ArrayForeign.chibi",
+    "bytes": 566,
+    "sha256": "7fa8082b8b85d0a4a251b74315de086409f571d2d8dfb3103fee0ca0c4a0fb43"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/ArrayForeignPlace/ArrayForeignPlace.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/ArrayForeignPlace/ArrayForeignPlace.chibi",
+    "bytes": 283,
+    "sha256": "b6dab05b4b080df226954bfb227173a025a7bdd103457de28126cf088ced52ac"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/ArrayPayload/ArrayPayload.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/ArrayPayload/ArrayPayload.chibi",
+    "bytes": 4826,
+    "sha256": "88e9ab259626c3cbd15e1bdae7f2c2e752cc2289daff942da7a77e8a4d21f99d"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/ArrayPlaces/ArrayPlaces.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/ArrayPlaces/ArrayPlaces.chibi",
+    "bytes": 1803,
+    "sha256": "b2d2428690032732150304a0f13b2e57d506aaf794395c696e7436fc3acdbdfe"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/ArrayValues/ArrayValues.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/ArrayValues/ArrayValues.chibi",
+    "bytes": 2942,
+    "sha256": "b049001aa3e38d87540c9b6f85f0eaf393b9b374e9e1ad71d1d1bdfd7353d3ba"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/Compound/Compound.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/Compound/Compound.chibi",
+    "bytes": 1394,
+    "sha256": "5fc9e5097f052833984295e267fefeb28278116012bf1c18dd1b76c048c4c368"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/DeepArrays/DeepArrays.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/DeepArrays/DeepArrays.chibi",
+    "bytes": 2172,
+    "sha256": "d4def7f085d39df37edeb5d2ff55e07365e1134ec8ba328b5a6c33cbfdfa100b"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/DeepMethods/DeepMethods.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/DeepMethods/DeepMethods.chibi",
+    "bytes": 3069,
+    "sha256": "8b63502bceabba7b5d2294995c6846ad9f1f63c6920416b6a31f8a00c8ef3be2"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/DeepPlaces/DeepPlaces.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/DeepPlaces/DeepPlaces.chibi",
+    "bytes": 3790,
+    "sha256": "962461255907584d34b92865c37abab5e7628a8c7a59603db4a088d20c13ecb2"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/Effects/Effects.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/Effects/Effects.chibi",
+    "bytes": 1715,
+    "sha256": "e7cd1d4677df183e2b6272a15b4e75df0acc2b78254cb669e673dc1d8eb018b7"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/ForeignLoans/ForeignLoans.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/ForeignLoans/ForeignLoans.chibi",
+    "bytes": 3624,
+    "sha256": "ebed60362e8a038f543d50fa4d3d680e1529d6684e921555abcba34b8b73e8bc"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/ManagedRecords/ManagedRecords.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/ManagedRecords/ManagedRecords.chibi",
+    "bytes": 4046,
+    "sha256": "c740ed91719d74951213eaec28801c0aa15ed89cb511edfe55c5671769b09194"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/NestedContainers/NestedContainers.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/NestedContainers/NestedContainers.chibi",
+    "bytes": 2000,
+    "sha256": "a92245fcbb0e16258ec7a2634aff40edf10a7de8ca54660ffcc14b3b6635e0b0"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/NestedIteration/NestedIteration.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/NestedIteration/NestedIteration.chibi",
+    "bytes": 1621,
+    "sha256": "6e3362c4adf4501af206d03953249e528a60cc7a79c2435cdb252c0a5b90bbf7"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/NestedPlaces/NestedPlaces.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/NestedPlaces/NestedPlaces.chibi",
+    "bytes": 4131,
+    "sha256": "4647d1f205ac78276b0e54872259bb9f8215a21093c5c8c60cf247a1083b0ebe"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/Optionals/Optionals.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/Optionals/Optionals.chibi",
+    "bytes": 2296,
+    "sha256": "b6aa254228f9c953c8e7ae215bedde025a1f65d27520b6b716bbcb40adf696ab"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/Ownership/Ownership.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/Ownership/Ownership.chibi",
+    "bytes": 1492,
+    "sha256": "5981ca223c0390ce23891bdf00ddbf1f18e116a596420f399d03fb98971da072"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/Receivers/Receivers.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/Receivers/Receivers.chibi",
+    "bytes": 994,
+    "sha256": "23c7b4bafc39fbfb2a1975753e0086ba250ac54a45c2e9f72efc5ec5eb0a7c15"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/StringEffects/StringEffects.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/StringEffects/StringEffects.chibi",
+    "bytes": 1667,
+    "sha256": "a3566aaf58554a8876eb11cf708730e37d5b28af51aea22c1bd46261ad1a5152"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps/source-project/Unions/Unions.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps/source-project/Unions/Unions.chibi",
+    "bytes": 1937,
+    "sha256": "d8cc2f19f810b4e090c7299e7048855371ca187f4227abf1000cc0210fe0d53f"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps.log",
+    "bytes": 2730,
+    "sha256": "cf0cb452fdadcdc03a9d1aee6d1bc5c633757deab843dbbd84ac26bd8250e1b8"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/maps.receipt.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/maps.receipt.json",
+    "bytes": 481,
+    "sha256": "7b2aa989b4029412df53bc82f01855902f56cd5ea1a5925825176463fc88c83a"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/metadata-build.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/metadata-build.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/metadata.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/metadata.log",
+    "bytes": 94,
+    "sha256": "a2d2be13faeaaa47f746d2fd3a179ba2106ea5ea8603d6be6c93d4489bea5950"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/native-probe-build.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/native-probe-build.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/native-probe.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/native-probe.log",
+    "bytes": 2056,
+    "sha256": "6f2fc5500fa82f2fd5d75ab5ea3c6c260f9dd11e3e4ae3e115f3114c9a34e6d5"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/overlay/NativeProbe.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/overlay/NativeProbe.chibi",
+    "bytes": 21491,
+    "sha256": "5028b4195883ebce076a93a41f3cab26ee5902200b407d80c0fd917d7d099c0f"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/receipt.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/receipt.json",
+    "bytes": 10383,
+    "sha256": "86e75b4dfca0101825dcdd5887e085e98400ef97f9d96f0f39f22342a4c44c0d"
+  },
+  {
+    "original": "/private/tmp/chibi-a730-validation-continuation/run.py",
+    "saved": "handoff/2026-11-03/evidence/chibi-a730-validation-continuation/run.py",
+    "bytes": 3198,
+    "sha256": "f762dcde7297b8fbe958ee6986b731885bba582c288e14cde1540bca632bf9c1"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/compile-Maps-Main-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/compile-Maps-Main-O0.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/compile-Maps-Main-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/compile-Maps-Main-O2.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/compile-PointerViews-Main-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/compile-PointerViews-Main-O0.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/compile-PointerViews-Main-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/compile-PointerViews-Main-O2.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/compile-PointerViews-Tasks-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/compile-PointerViews-Tasks-O0.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/compile-PointerViews-Tasks-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/compile-PointerViews-Tasks-O2.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/compile-TaskObservers-Main-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/compile-TaskObservers-Main-O0.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/compile-TaskObservers-Main-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/compile-TaskObservers-Main-O2.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/compiler-inventory.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/compiler-inventory.json",
+    "bytes": 32212,
+    "sha256": "c66f21a7b033d42f82f5e3c56444bf562cf0bf42077620cd1d29298b3078be5b"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/compiler-tests.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/compiler-tests.log",
+    "bytes": 32229,
+    "sha256": "052e46c1a7ce577548591095811be4097b155ec3cb4369334f8a4a09cda787bb"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/console.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/console.log",
+    "bytes": 13480,
+    "sha256": "fa5761214b065e9b028a250bcdd6b497d67f5e839d3c85ab3420a95c9c39df94"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/execute-Maps-Main-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/execute-Maps-Main-O0.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/execute-Maps-Main-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/execute-Maps-Main-O2.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/execute-PointerViews-Main-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/execute-PointerViews-Main-O0.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/execute-PointerViews-Main-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/execute-PointerViews-Main-O2.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/execute-PointerViews-Tasks-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/execute-PointerViews-Tasks-O0.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/execute-PointerViews-Tasks-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/execute-PointerViews-Tasks-O2.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/execute-TaskObservers-Main-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/execute-TaskObservers-Main-O0.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/execute-TaskObservers-Main-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/execute-TaskObservers-Main-O2.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/initial-difference.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/initial-difference.json",
+    "bytes": 8065,
+    "sha256": "04c235571c296e165972657c2a445b920ec498ddad14e3935c67d5ab550d662d"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/launch.py",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/launch.py",
+    "bytes": 2569,
+    "sha256": "270474d981981ab0b31048a8588c7d925616b0211eb0103be8ed72b41acd20e6"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/llvm-version.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/llvm-version.log",
+    "bytes": 105,
+    "sha256": "7621c9ad264c3dc693ba362f18ed04a6a276f2c9849ebd191e528f9c09cb3749"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/platform.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/platform.log",
+    "bytes": 115,
+    "sha256": "a63f066acefa04b062f8b93cc9f5e8c57db80b6744bd571b31acf13bb6aa27f3"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/receipt.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/receipt.json",
+    "bytes": 22340,
+    "sha256": "c57b44c97d9b5dff97939b858905574e5ab8d96abdb23990ae0183e527e6d637"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/run.py",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/run.py",
+    "bytes": 9013,
+    "sha256": "d552221287007979ba1c98c634e0b8026ce7ebf187df3abe1871a2c8f8b8acd1"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/source-files.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/source-files.json",
+    "bytes": 910966,
+    "sha256": "4cc141ea6524ec66d7ad8fd122b2d69ee48726b22076a610d3677a45f9bed3cb"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/stage2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/stage2.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/stage3.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/stage3.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-6c49-linux-proof/stage4.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-6c49-linux-proof/stage4.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/audit-bridge.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/audit-bridge.json",
+    "bytes": 1755,
+    "sha256": "459795730eb990f633c6cc57fd0287ac1e227a6dba4ae1c3c060622fd9a6be23"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/audit.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/audit.json",
+    "bytes": 1326,
+    "sha256": "fd14266997d607822c06a40c896648508cff305049fdc03cb2c49d39d2473788"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/baseline.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/baseline.json",
+    "bytes": 1134,
+    "sha256": "b1a12e2d628ddec3e0861079c3008191ee216c158d1c899cbd9f62b10522aec5"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/callbacks-bridge.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/callbacks-bridge.log",
+    "bytes": 646,
+    "sha256": "e8831559a9d5296187930cf33c321ed69d2aed40aa198602913923e528ed2551"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/compiler-bridge.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/compiler-bridge.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/compiler-tests.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/compiler-tests.log",
+    "bytes": 32457,
+    "sha256": "d39a865b85f00342d7358e34eecb66023ccc8a4f92ddce47132a8d7a2d30191f"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/compiler.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/compiler.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/exact.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/exact.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/families/receipt.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/families/receipt.json",
+    "bytes": 441,
+    "sha256": "cfb1fcb3dcb49976e86554d3cb7ac43a6d9c8a6edb6ac0a03b73572d1c9e397c"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/families/run.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/families/run.log",
+    "bytes": 101,
+    "sha256": "fa9795b9bbd1bad388dff7c9e001322fdb6d185123c933341553629359630398"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/growth/Growth100.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/growth/Growth100.chibi",
+    "bytes": 2451,
+    "sha256": "26e0ccd15341fcfd45de0c726d8eb2f64518625a9e6f365950a7137eeb43649a"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/growth/Growth1000.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/growth/Growth1000.chibi",
+    "bytes": 24951,
+    "sha256": "5b323f773c781f6e84318c57b42500b0d719aa33995605fc4a8e1504c9dd59cd"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/optional-fallible_correlated_pointers_retain_valid_error_handling-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/optional-fallible_correlated_pointers_retain_valid_error_handling-O0.log",
+    "bytes": 37,
+    "sha256": "3e694353a5f845ca9a4da4cbabea97ff75311cb11472c08617044d1201d05e09"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/optional-fallible_correlated_pointers_retain_valid_error_handling-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/optional-fallible_correlated_pointers_retain_valid_error_handling-O2.log",
+    "bytes": 37,
+    "sha256": "3e694353a5f845ca9a4da4cbabea97ff75311cb11472c08617044d1201d05e09"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/optional-fallible_joined_pointers_keep_unchanged_pointees-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/optional-fallible_joined_pointers_keep_unchanged_pointees-O0.log",
+    "bytes": 37,
+    "sha256": "3e694353a5f845ca9a4da4cbabea97ff75311cb11472c08617044d1201d05e09"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/optional-fallible_joined_pointers_keep_unchanged_pointees-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/optional-fallible_joined_pointers_keep_unchanged_pointees-O2.log",
+    "bytes": 37,
+    "sha256": "3e694353a5f845ca9a4da4cbabea97ff75311cb11472c08617044d1201d05e09"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/optional-fallible_optional_pointer_aliases_are_inspected-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/optional-fallible_optional_pointer_aliases_are_inspected-O0.log",
+    "bytes": 37,
+    "sha256": "3e694353a5f845ca9a4da4cbabea97ff75311cb11472c08617044d1201d05e09"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/optional-fallible_optional_pointer_aliases_are_inspected-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/optional-fallible_optional_pointer_aliases_are_inspected-O2.log",
+    "bytes": 37,
+    "sha256": "3e694353a5f845ca9a4da4cbabea97ff75311cb11472c08617044d1201d05e09"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/optional-optional_mutation_before_a_fresh_presence_guard_is_safe-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/optional-optional_mutation_before_a_fresh_presence_guard_is_safe-O0.log",
+    "bytes": 37,
+    "sha256": "3e694353a5f845ca9a4da4cbabea97ff75311cb11472c08617044d1201d05e09"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/optional-optional_mutation_before_a_fresh_presence_guard_is_safe-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/optional-optional_mutation_before_a_fresh_presence_guard_is_safe-O2.log",
+    "bytes": 37,
+    "sha256": "3e694353a5f845ca9a4da4cbabea97ff75311cb11472c08617044d1201d05e09"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-OwnedRecordCell.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-OwnedRecordCell.log",
+    "bytes": 249,
+    "sha256": "9764ee1d06178165bf98ed83b89e5daf10f9b6048b9a4675fba0ea556a830751"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-PointerViewNullableElement.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-PointerViewNullableElement.log",
+    "bytes": 369,
+    "sha256": "da5146ab91d674690d753940e671ddc53ae383f49e152c6f97893cbe348a5bc1"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-PointerViewRecordTarget.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-PointerViewRecordTarget.log",
+    "bytes": 366,
+    "sha256": "8b91e31b166ea5a34ed1adb3e736bff24b9953f1b5d3cd98e38bf9a07dbb3f46"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-TextViewMutation.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-TextViewMutation.log",
+    "bytes": 228,
+    "sha256": "a53cd4e1377428d34b3f952beedcda161d521462a783535308a5af90e16d0987"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-ViewOptionalField.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-ViewOptionalField.log",
+    "bytes": 258,
+    "sha256": "34fbf2bb40e7644dfbc80f7dd56574ce7ffdac8b7a768d912ab1c7e861b0b0e6"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-ViewOwnedOptionalParameter.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-ViewOwnedOptionalParameter.log",
+    "bytes": 260,
+    "sha256": "0059ea8702a929cf08249a04a1c41c5ac1ab5a7dd5fc042ecdd6babdbb71fd59"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-ViewOwnedOptionalResult.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-ViewOwnedOptionalResult.log",
+    "bytes": 312,
+    "sha256": "e1e8c1995c2c9db949b1490fa45f7b354c3d2f868d4648149603b5c39d5debd0"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-ViewReadonlyPattern.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-ViewReadonlyPattern.log",
+    "bytes": 216,
+    "sha256": "adca15ebd982161f36d818068a7b1e14ecb6ceab9001f432fba7262e5e46b36e"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-ViewRecord.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-ViewRecord.log",
+    "bytes": 251,
+    "sha256": "02fa0a747fa15b50eb7eedb1f5fcf074f1fecdf6fe520cc961e9e3eb3b6bcb08"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-backed_record.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-backed_record.log",
+    "bytes": 247,
+    "sha256": "dc10a4a86e1c45420fa99014b2c494389023c311ecc906a2b54aed088ca87e66"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-character.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-character.log",
+    "bytes": 207,
+    "sha256": "e4e1e7ae0b962648dc70fe19c58434331138d2b1d2a56f54b5270001f180cd9a"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-foreign_array.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-foreign_array.log",
+    "bytes": 290,
+    "sha256": "a1dcf6461ba52d2332586cf34dea751cb78755548734a5e03ad11a237f13817b"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-foreign_scalar.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-foreign_scalar.log",
+    "bytes": 291,
+    "sha256": "0dcd8d8b38eaf98956b75f770dd67a1e20a768fb9b8a0a5ddd68b459b1731b52"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-foreign_strings.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-foreign_strings.log",
+    "bytes": 292,
+    "sha256": "dbd8845f1b34d3568638249ab1c6cd48c097364445be5368255fe1ab1fddb83b"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-optional_backed.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-optional_backed.log",
+    "bytes": 237,
+    "sha256": "96aa656137b23ab4ad31eb8a3fe9f80e9001b56b4125b7d1ab5d77278b0e6dce"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-optional_pointer.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-optional_pointer.log",
+    "bytes": 238,
+    "sha256": "8792d3b1874c4293c229e24c0b384b3fe1cd980cf74ed4d2cd59e39489f780d5"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-optional_view.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-optional_view.log",
+    "bytes": 233,
+    "sha256": "2f22ba13238957eccdd5cc8f997ae6078ce73d6f4c61742126601e9a4adbd9a3"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-retained.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-retained.log",
+    "bytes": 220,
+    "sha256": "183a9fb16b3a44c86508ebcba40979e77561c4c313f45feece483f54be748b0c"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/rejected-unguarded_nullable.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/rejected-unguarded_nullable.log",
+    "bytes": 242,
+    "sha256": "88502cc16b4aae000de52b9ef5b33f329409a10121dc0862eb4815461fd6b788"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/task-failure.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/task-failure.log",
+    "bytes": 232,
+    "sha256": "911254b770a5073feb8659e0b3e9649967399b6885550f933199717d439dbe49"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/text-cell-images/broken-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/text-cell-images/broken-O0.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/text-cell-images/broken-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/text-cell-images/broken-O2.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/text-cell-images/source-build.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/text-cell-images/source-build.log",
+    "bytes": 135,
+    "sha256": "2629356d9837803f7eb6ff7026eba97abbb8508a300f6cdfb348cf2886a0a2ef"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/text-cell-images-optional/broken-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/text-cell-images-optional/broken-O0.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/text-cell-images-optional/broken-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/text-cell-images-optional/broken-O2.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/text-cell-images-optional/source-build.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/text-cell-images-optional/source-build.log",
+    "bytes": 144,
+    "sha256": "886d86a2c04dbdc61e0b78ab9b5d1d3ede05bfe6b1dfa8f439aea461f59a1cf4"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/view-schema/changed-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/view-schema/changed-O0.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/view-schema/changed-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/view-schema/changed-O2.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/view-schema/pointers/changed-O0.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/view-schema/pointers/changed-O0.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed/view-schema/pointers/changed-O2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed/view-schema/pointers/changed-O2.log",
+    "bytes": 32,
+    "sha256": "d4f79489e6fb8d600e050589c1e1d4560516b3283d1188709663bde61e4571ea"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/managed.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/managed.log",
+    "bytes": 62093,
+    "sha256": "3332384a2ac248506769be66be15c1008e5d120401bf1332fa66584c48b73e00"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/native-source.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/native-source.json",
+    "bytes": 833,
+    "sha256": "e873ceffb4a585a8072a8e9198b5d5935834f47d276d9a98aa4795e70f3c234c"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/ordinary/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/ordinary/Main.chibi",
+    "bytes": 1303,
+    "sha256": "83afd56c842b7e015e3a545a486e623d36554dacbc52b5906a596226a095d2ae"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/ordinary/receipt.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/ordinary/receipt.json",
+    "bytes": 511,
+    "sha256": "58e0f3aa44a7cdb9c6cad695659b9c50502234644ef322005d62b076a7900e92"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/ordinary-source.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/ordinary-source.json",
+    "bytes": 415,
+    "sha256": "2cead2c8a4d8dbf2b93e036dda3199de78add9f18906d26ebeb5683a1c3e6d8f"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/original-nested.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/original-nested.chibi",
+    "bytes": 128,
+    "sha256": "65d30d976b3f1c0294da31b9c8480c1985b6056fa140ae70c8022932b109860c"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/poison-bridge.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/poison-bridge.log",
+    "bytes": 644,
+    "sha256": "f1b56cbda2ac9ce64ab01515ba3d0b13553bdd682e753dc204eadd0e22b2a361"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/poison.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/poison.log",
+    "bytes": 241,
+    "sha256": "16a9816015a8cd91e3da1af82ff7aa177924880e88d0e1759a30b6d46a548aa5"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/probe.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/probe.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/review-hashes.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/review-hashes.json",
+    "bytes": 1503,
+    "sha256": "01a1053bf693db7e8ad48ef3bf18c74599b8170a0bdfabc51d2394ff69836a75"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/review.patch",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/review.patch",
+    "bytes": 26972,
+    "sha256": "ae26c624986979ab10603fa2cabfd0eeea1a701e4985e203e09bda10d9cbc7b7"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/source-bridge.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/source-bridge.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-nested-managed-pointer-proof/source.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-nested-managed-pointer-proof/source.log",
+    "bytes": 219,
+    "sha256": "22fc7f09892520651e8b57d7566b49ce9e709ed4bcec67c8a5b1672e7e88a794"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/character/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/character/Main.chibi",
+    "bytes": 109,
+    "sha256": "e668aad9be8d2217ed72274129521ddec78b3075c055f7afc841eae2e812cd65"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/character/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/character/Tests.chibi",
+    "bytes": 87,
+    "sha256": "b34beb861ba83d98b4462a7883f16e202a33fc977f8e1516c55ba4721e8fd003"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/nested/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/nested/Main.chibi",
+    "bytes": 128,
+    "sha256": "65d30d976b3f1c0294da31b9c8480c1985b6056fa140ae70c8022932b109860c"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/nested/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/nested/Tests.chibi",
+    "bytes": 89,
+    "sha256": "450e8a89c60b740427ca3cf2559b330f18939dfb6291777f7bb8b5f234cc84db"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/optional_backed/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/optional_backed/Main.chibi",
+    "bytes": 148,
+    "sha256": "3d5cfa48648ac9f5d90339f24723ecbe5e6649001e1cfaf076408c6e84508d1f"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/optional_backed/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/optional_backed/Tests.chibi",
+    "bytes": 83,
+    "sha256": "64125dac01778f6ef1736dd833bf590b739dca39e43bda3a649c9310aa9f5a02"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/optional_pointer/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/optional_pointer/Main.chibi",
+    "bytes": 160,
+    "sha256": "651fdc5d1a85942004b14ce76046f54901e08f6783e44066a3b2b2fdbee45efb"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/optional_pointer/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/optional_pointer/Tests.chibi",
+    "bytes": 84,
+    "sha256": "065c3fe423294d02de75a915b8fa19ca8ed2bb4aef2d2c0c91bb6ef09300a8ec"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/optional_view/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/optional_view/Main.chibi",
+    "bytes": 147,
+    "sha256": "1b6f121d25e6a5ff2ff5a29f66ae66d8176cb2913b113dd5cd4dc58b38a96108"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/optional_view/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/optional_view/Tests.chibi",
+    "bytes": 81,
+    "sha256": "fd5aa0de74355b4d5d85bff20666e874f871d453caadb09bf86c800afb900463"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/ordinary-native-source.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/ordinary-native-source.json",
+    "bytes": 9574,
+    "sha256": "51b8a70f5a16669b654cffb9a565247019879d80909d7f51e0c1f05e5914963b"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/NestedPointer-51db3ed0/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/NestedPointer-51db3ed0/Main.chibi",
+    "bytes": 143,
+    "sha256": "8f0919fecd262aedd022a8351d86c98251079aebfc900d8eebcbe6298636282e"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/NestedPointer-51db3ed0/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/NestedPointer-51db3ed0/Tests.chibi",
+    "bytes": 74,
+    "sha256": "fb26ae98e774c1b2ef1de9db4c8811764a9cbb5400b17fa0591745932a0f4ccb"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/OwnedRecordCell-6d665539/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/OwnedRecordCell-6d665539/Main.chibi",
+    "bytes": 236,
+    "sha256": "d068351badcc6e29cf305a4606e8362977a21d6d7d7b54e20eb0274d35156015"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/OwnedRecordCell-6d665539/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/OwnedRecordCell-6d665539/Tests.chibi",
+    "bytes": 68,
+    "sha256": "626300171e92d7920b30b9ad7a13bbd5a07a3f0fe18093263acbcb89277088ac"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/Pointer-ec1da79e/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/Pointer-ec1da79e/Main.chibi",
+    "bytes": 131,
+    "sha256": "e75f3ade770f79ba10a9cd3b9fc8cb446a82957f290490d023bcd9a5cefa8bd8"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/Pointer-ec1da79e/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/Pointer-ec1da79e/Tests.chibi",
+    "bytes": 74,
+    "sha256": "fb26ae98e774c1b2ef1de9db4c8811764a9cbb5400b17fa0591745932a0f4ccb"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/PointerViewNullableElement-d29bfe16/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/PointerViewNullableElement-d29bfe16/Main.chibi",
+    "bytes": 135,
+    "sha256": "40711d16bea1cc591c57d7fb2f20e943ff4788aa4eb13db95ad57b65eb347152"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/PointerViewNullableElement-d29bfe16/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/PointerViewNullableElement-d29bfe16/Tests.chibi",
+    "bytes": 89,
+    "sha256": "7c2f1fa544eb8f25670eac4f0938c26381cc06aec374e06d56f2b21bca27a076"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/PointerViewRecordTarget-93547502/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/PointerViewRecordTarget-93547502/Main.chibi",
+    "bytes": 162,
+    "sha256": "14c91441be5fd6a7b98c3e57bf14d3dd467d1d621f63f15fcbad14daf4f84e55"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/PointerViewRecordTarget-93547502/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/PointerViewRecordTarget-93547502/Tests.chibi",
+    "bytes": 86,
+    "sha256": "99b8a69fd9afa3ab3d953c5ec036620579fa23c31e892188c7f4dc5495356da6"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/ReadonlyIteration-ec2443e4/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/ReadonlyIteration-ec2443e4/Main.chibi",
+    "bytes": 147,
+    "sha256": "70a99c52cf58eeaf0b20739f4d134a192d39ff9b1b494ac8b5cc9faa02fcac25"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/ReadonlyIteration-ec2443e4/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/ReadonlyIteration-ec2443e4/Tests.chibi",
+    "bytes": 73,
+    "sha256": "53425d573f81b26b2d8990d7c12b243ebe889ada4e5725c4f25f019713e2ea81"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/RecordMap-9947b9b3/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/RecordMap-9947b9b3/Main.chibi",
+    "bytes": 103,
+    "sha256": "02661df75041ebd2d704796729e05501fa315c84dcc2ab5facec69bbfc20f22a"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/RecordMap-9947b9b3/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/RecordMap-9947b9b3/Tests.chibi",
+    "bytes": 70,
+    "sha256": "6f6716ce41b7b3da911554f27c916bac6cfa92d228de858d6927a824523ad52c"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/TextViewMutation-2ebb5727/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/TextViewMutation-2ebb5727/Main.chibi",
+    "bytes": 156,
+    "sha256": "e7b2719ce7f0fcd975f50c33f0b6278d9e4ba97a4fa1853ad232827d098c5e7c"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/TextViewMutation-2ebb5727/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/TextViewMutation-2ebb5727/Tests.chibi",
+    "bytes": 69,
+    "sha256": "b37c79143bc55179337514d60d34b38b84811f873a0ac3ea1f22c7d1e4224b34"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/ViewOptionalField-3bdcf537/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/ViewOptionalField-3bdcf537/Main.chibi",
+    "bytes": 111,
+    "sha256": "f5122b535d4a3300b354d9df52b9757e01d8f216c646a6803fca8cc96815c947"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/ViewOptionalField-3bdcf537/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/ViewOptionalField-3bdcf537/Tests.chibi",
+    "bytes": 79,
+    "sha256": "5624a23ff44eefd306dd5e46411ada80b260aa86ddb2be811dcfdb28507856b8"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/ViewOwnedOptionalParameter-7281c1f6/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/ViewOwnedOptionalParameter-7281c1f6/Main.chibi",
+    "bytes": 175,
+    "sha256": "a9891f34e03a6cf8bf7c0ca787498933470d33534f1b64ecba99c9d3e796f28b"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/ViewOwnedOptionalParameter-7281c1f6/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/ViewOwnedOptionalParameter-7281c1f6/Tests.chibi",
+    "bytes": 89,
+    "sha256": "e4851db27b97a68811d3dd51e1487bbd7c6e36eca284e7ab3973727cc3e8eeae"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/ViewOwnedOptionalResult-3c96f559/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/ViewOwnedOptionalResult-3c96f559/Main.chibi",
+    "bytes": 175,
+    "sha256": "6982fcf2bb6aebf3e1f0b9da678b53359d46dfb99a806a372e27e3018e192406"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/ViewOwnedOptionalResult-3c96f559/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/ViewOwnedOptionalResult-3c96f559/Tests.chibi",
+    "bytes": 86,
+    "sha256": "8c0059706f450c26a81be8de866376323969f505c04e671427411ba5e7058340"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/ViewReadonlyPattern-ccb22dd0/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/ViewReadonlyPattern-ccb22dd0/Main.chibi",
+    "bytes": 386,
+    "sha256": "826769b961ae4e3570237a91b4a7694aa6a0e737a0342dd72c2e256a7863cc3b"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/ViewReadonlyPattern-ccb22dd0/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/ViewReadonlyPattern-ccb22dd0/Tests.chibi",
+    "bytes": 72,
+    "sha256": "5dc523e2dcbbd977144f0c3bc3726ec5cab40ec94b508dc762d1be93e19911eb"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/ViewRecord-bfacc51a/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/ViewRecord-bfacc51a/Main.chibi",
+    "bytes": 112,
+    "sha256": "11adba08cc475d565e341a99d04aefa7e7c2d2d4d1d71973ecf5bcf8c97d567a"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/ViewRecord-bfacc51a/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/ViewRecord-bfacc51a/Tests.chibi",
+    "bytes": 71,
+    "sha256": "12030141f60f2668cb182c1150c4ca6dbcf66274046b7743db95f88cc9d53c14"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/backed_record-69b385de/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/backed_record-69b385de/Main.chibi",
+    "bytes": 159,
+    "sha256": "30a394e2fe2a3d45fb101f576be3f445800b93245b56701a0b895caa767db33f"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/backed_record-69b385de/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/backed_record-69b385de/Tests.chibi",
+    "bytes": 73,
+    "sha256": "3d40b38c3db4c0916db3a167663a3fddaa7ea450a074322e6cb6dcafc84e4990"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/foreign_array-83af32fb/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/foreign_array-83af32fb/Main.chibi",
+    "bytes": 201,
+    "sha256": "5d2a8597e905e352dc08d60474b84330862fd62a95fd7ef93bba4ad368332088"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/foreign_array-83af32fb/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/foreign_array-83af32fb/Tests.chibi",
+    "bytes": 73,
+    "sha256": "5e23858b9b9ee91ae389c07b82e998534aefaaee687405232d3406b125315eb9"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/foreign_scalar-cb3fdd0e/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/foreign_scalar-cb3fdd0e/Main.chibi",
+    "bytes": 188,
+    "sha256": "22585878a4622886b69703b5433379031c63956bdf9d51bd606450411b920461"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/foreign_scalar-cb3fdd0e/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/foreign_scalar-cb3fdd0e/Tests.chibi",
+    "bytes": 74,
+    "sha256": "42f3dbd95eb5b7a4449d36f8580945a5f54526ee75841142ca97588698d3ebf5"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/foreign_strings-a0e79792/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/foreign_strings-a0e79792/Main.chibi",
+    "bytes": 202,
+    "sha256": "a90fafe6e7f55bdc4958555bd79c70d14eb86fac4d340a4899be474d681594bb"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/foreign_strings-a0e79792/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/foreign_strings-a0e79792/Tests.chibi",
+    "bytes": 66,
+    "sha256": "acad3824678c70061573979d408e9d7c5d0d57cdd3ef40f31d0b3f2985a3744a"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/receipt.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/receipt.json",
+    "bytes": 38962,
+    "sha256": "e1561ed65657e3b081c1e6a0410f1cae017800c85cb598f16aa05c8a34df765b"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/retained-08a0f2db/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/retained-08a0f2db/Main.chibi",
+    "bytes": 112,
+    "sha256": "4e72d72b06ab014eb09b9d0379a671cf2b3b67eb66add2f71f87baceda6b6a1f"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/retained-08a0f2db/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/retained-08a0f2db/Tests.chibi",
+    "bytes": 73,
+    "sha256": "1d94f14eb9ef739d6b81ba3d578af74460952812bc959614fbc010fc38d79993"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/unguarded_nullable-1e6438df/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/unguarded_nullable-1e6438df/Main.chibi",
+    "bytes": 97,
+    "sha256": "e3ae48f57dfe7414bba5784c6330125f8b813eb74cc5ac829555c3f2bbfbb779"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/registered/unguarded_nullable-1e6438df/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/registered/unguarded_nullable-1e6438df/Tests.chibi",
+    "bytes": 78,
+    "sha256": "5aff364697b7f482233dd0972bc7b3de1cdb1870d4f1a0e5c2c7cceb8e736e17"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/row-shapes/ArrayText/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/row-shapes/ArrayText/Main.chibi",
+    "bytes": 547,
+    "sha256": "395128bf717eb271ffc5372b052c9a7a5354ea3f32f98a6a0d7f09e90a4d38cd"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/row-shapes/ArrayText/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/row-shapes/ArrayText/Tests.chibi",
+    "bytes": 93,
+    "sha256": "f52c8ddc3b3baebbb5a16dc899072f1236bbb543603d46b066906c751603c6da"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/row-shapes/InlineText/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/row-shapes/InlineText/Main.chibi",
+    "bytes": 586,
+    "sha256": "bb787512362f89db778b3bde2ddfc5e63b96f8daf57c9d0bc5aaaa765932834f"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/row-shapes/InlineText/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/row-shapes/InlineText/Tests.chibi",
+    "bytes": 94,
+    "sha256": "fe22cfc65e71b2a7b8b3fd87a982e94e6fcbec6618d026283303f3b642f15fce"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/row-shapes/PointerLabels/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/row-shapes/PointerLabels/Main.chibi",
+    "bytes": 319,
+    "sha256": "171965d0150742c31d0fb8b5dcaf364641bd7e874ca5358f34dfaa6a10dedc5c"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/row-shapes/PointerLabels/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/row-shapes/PointerLabels/Tests.chibi",
+    "bytes": 88,
+    "sha256": "71e1255e4c02cb606c7edde58c7be1cf14bb9b7e45ae1e993205887e20e070ba"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/row-shapes/ordinary.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/row-shapes/ordinary.json",
+    "bytes": 2937,
+    "sha256": "3d3007a881824b107735c3ba0a3a4f6eb6376b1e0605ec2ddc243903f66161d1"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/used-containers/NestedPointerMap/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/used-containers/NestedPointerMap/Main.chibi",
+    "bytes": 148,
+    "sha256": "7d48c992e24bfe4791b0f770404c125b09f6ebcc9ebb5306209fa3f2c2898233"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/used-containers/NestedPointerMap/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/used-containers/NestedPointerMap/Tests.chibi",
+    "bytes": 92,
+    "sha256": "3e96dad296075e0470ac5c62c144da31d20c14460c0e14f60b84a96d22ac6778"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/used-containers/PointerNullableView/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/used-containers/PointerNullableView/Main.chibi",
+    "bytes": 315,
+    "sha256": "26b32de1cc19595c8f2f935eb46f0d503d756ac63e78f49c039a99b0e4f90d4c"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/used-containers/PointerNullableView/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/used-containers/PointerNullableView/Tests.chibi",
+    "bytes": 95,
+    "sha256": "3e656d46aa736dbd9fb2b4db43cb9e3e0c6adfaa3ee3015fb418e0b77819025a"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/used-containers/PointerRecordView/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/used-containers/PointerRecordView/Main.chibi",
+    "bytes": 305,
+    "sha256": "80a1ce4b183e2cf25a099ffccf1ae8bb60231d04203b0068df7fe581884f8b69"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/used-containers/PointerRecordView/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/used-containers/PointerRecordView/Tests.chibi",
+    "bytes": 93,
+    "sha256": "7fd7fff2d07bee8b38f5a8ec2a689a152068b545bd8ee6ca9b14d07514a878b3"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-closure-f255/used-containers/receipt.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-closure-f255/used-containers/receipt.json",
+    "bytes": 6172,
+    "sha256": "f574cd04d78728bfb64629d85a617c180d31537613457014e792a832ade85831"
+  },
+  {
+    "original": "/private/tmp/chibi-rootless-text-escape-audit/ArrayText/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-rootless-text-escape-audit/ArrayText/Main.chibi",
+    "bytes": 547,
+    "sha256": "395128bf717eb271ffc5372b052c9a7a5354ea3f32f98a6a0d7f09e90a4d38cd"
+  },
+  {
+    "original": "/private/tmp/chibi-rootless-text-escape-audit/ArrayText.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-rootless-text-escape-audit/ArrayText.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-rootless-text-escape-audit/InlineText/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-rootless-text-escape-audit/InlineText/Main.chibi",
+    "bytes": 586,
+    "sha256": "bb787512362f89db778b3bde2ddfc5e63b96f8daf57c9d0bc5aaaa765932834f"
+  },
+  {
+    "original": "/private/tmp/chibi-rootless-text-escape-audit/InlineText.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-rootless-text-escape-audit/InlineText.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-rootless-text-escape-audit/InlineTextCell/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-rootless-text-escape-audit/InlineTextCell/Main.chibi",
+    "bytes": 316,
+    "sha256": "96b898cebd74bbfbb5c6f04c6ebd4e4f29a9d1517a46b7833d54030e8e79085b"
+  },
+  {
+    "original": "/private/tmp/chibi-rootless-text-escape-audit/InlineTextCell.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-rootless-text-escape-audit/InlineTextCell.log",
+    "bytes": 173,
+    "sha256": "bc08205ea0a2e1d9f8b7f01e2022bab43b0a53257a4782621c520df43ae0d4ee"
+  },
+  {
+    "original": "/private/tmp/chibi-rootless-text-escape-audit/check.py",
+    "saved": "handoff/2026-11-03/evidence/chibi-rootless-text-escape-audit/check.py",
+    "bytes": 1529,
+    "sha256": "736e2158481466e9d9193f148225bdcd6c142e4ca029d04abd9ad9eed407c8b2"
+  },
+  {
+    "original": "/private/tmp/chibi-rootless-text-escape-audit/ordinary-confirmation.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-rootless-text-escape-audit/ordinary-confirmation.json",
+    "bytes": 509,
+    "sha256": "ff5889032734d0b7828001298c8bd148de351d3765b9fac8bd7b910e13c43c55"
+  },
+  {
+    "original": "/private/tmp/chibi-rootless-text-escape-audit/receipt-initial.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-rootless-text-escape-audit/receipt-initial.json",
+    "bytes": 2853,
+    "sha256": "546f44bb613afc82ffb328f99ddadcf32b7a7ca91babb473b06025cc174b89b4"
+  },
+  {
+    "original": "/private/tmp/chibi-rootless-text-escape-audit/receipt.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-rootless-text-escape-audit/receipt.json",
+    "bytes": 2853,
+    "sha256": "af18816153fe6b0de5d9367cf83407051a7cf0d57ded315b9160b1b9e17fed83"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-preparation/766-core-fixed.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-preparation/766-core-fixed.log",
+    "bytes": 298,
+    "sha256": "0ad234c0c91c4fe65e86c28fc26bc152d69656c1f30ff4b11bde985d5c593b79"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-preparation/766-infrastructure.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-preparation/766-infrastructure.log",
+    "bytes": 4516,
+    "sha256": "2a587241d37fe891e0b0693038f5292ab9c61fb73a315f8853c7a39084fbb681"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-preparation/bridge.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-preparation/bridge.log",
+    "bytes": 268,
+    "sha256": "3dff1788b389e4696ac8e337880cd6665dfaf703192b02f673433ef3279358df"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-preparation/census.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-preparation/census.json",
+    "bytes": 532,
+    "sha256": "15f91a8f9d59e07414b2d13d3be9f21044735d6b9691afab22c0351b5eaab044"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-preparation/checkpoint.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-preparation/checkpoint.json",
+    "bytes": 8688,
+    "sha256": "35f972f093f0280d462cc2f5409045c5e3e1019bc6df0d950e8d15686e218702"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-preparation/composition.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-preparation/composition.json",
+    "bytes": 14124,
+    "sha256": "18421bb3f77870d4d2537f371433ef9f301dba252599e2a339fd0224e0e5626d"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-preparation/deletion-inventory.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-preparation/deletion-inventory.json",
+    "bytes": 615,
+    "sha256": "a40fc4c0acd1cb275ddcf662c4b95c6017a7fb9781e460b03f243d6c83ad9d0b"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-preparation/final-6c.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-preparation/final-6c.json",
+    "bytes": 445,
+    "sha256": "1109d7259202b771362bcbf12e3ec7a51caa0f9fb20d4748f130e009a190a00b"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-preparation/narrow-initial-invocation.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-preparation/narrow-initial-invocation.json",
+    "bytes": 1170,
+    "sha256": "c2c22ced9a67a867794cbd998732e12bb2bf9c4d664facfeefee4a45d1217553"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-preparation/narrow.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-preparation/narrow.json",
+    "bytes": 7954,
+    "sha256": "41c142e5a6e191267597f095f22c2de4be04cc833218e14d3d1b67a9928bd054"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-preparation/narrow.py",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-preparation/narrow.py",
+    "bytes": 1664,
+    "sha256": "d1f17dae96cc5f535117638646515a5ed0383e7f3cfffb190c59b02a8fca910c"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-preparation/product-identity.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-preparation/product-identity.json",
+    "bytes": 493,
+    "sha256": "1ec5b7579ed730fd3a85abb2ad99013e6a06f49d6aacdf72d9255d7c10a66d1b"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-preparation/products.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-preparation/products.json",
+    "bytes": 2878,
+    "sha256": "cb63409a94c568a18f6f0a538a4fc1f22191ad5c50f064ecb5d82e8677770ce8"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-preparation/products.py",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-preparation/products.py",
+    "bytes": 2855,
+    "sha256": "b50417f9fa37fc8a347ee1c5921dd807df534350d5e103236755d40314af0e55"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-preparation/release.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-preparation/release.log",
+    "bytes": 372,
+    "sha256": "857c98eb8a172493650b9166f6c933307e5d7ea0a6b8842014bc4139085a53d4"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-preparation/sdk-install.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-preparation/sdk-install.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-retirement-preparation/shell-syntax.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-retirement-preparation/shell-syntax.json",
+    "bytes": 2754,
+    "sha256": "396d85a9e0c1a188224148f6e0e87a3ad84419a3e1e6dcf2c39e4f4e3d3fb88b"
+  },
+  {
+    "original": "/private/tmp/chibi-task-method/RejectedMethod.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-task-method/RejectedMethod.chibi",
+    "bytes": 152,
+    "sha256": "d38f468d11780b5e6731736a67b1955c15dba2eb7ad95ceb7adefe82cdce9f1b"
+  },
+  {
+    "original": "/private/tmp/chibi-task-method/before.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-task-method/before.log",
+    "bytes": 243,
+    "sha256": "b7c35eea27c2ddddef818acc1bdadddd0a20e97f141e5fa9f8f88e4536370770"
+  },
+  {
+    "original": "/private/tmp/chibi-task-method/build.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-task-method/build.log",
+    "bytes": 31,
+    "sha256": "b98be07d4f77e56a21a487ceb8426573976c758793a0488a034df2ee4da61712"
+  },
+  {
+    "original": "/private/tmp/chibi-task-method/minimal.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-task-method/minimal.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-task-method/negative.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-task-method/negative.log",
+    "bytes": 212,
+    "sha256": "3f63c7659a65e1a4f443915cfb55d6a86fd6ce7441aa56caeff0638f25db287b"
+  },
+  {
+    "original": "/private/tmp/chibi-task-method/ordinary.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-task-method/ordinary.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-task-method/owners.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-task-method/owners.log",
+    "bytes": 3650,
+    "sha256": "ee69b215695d27967f328dc442bd35ed5e971917d2f38f72a0ddd2e3c8c09554"
+  },
+  {
+    "original": "/private/tmp/chibi-task-method/rejected-method.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-task-method/rejected-method.log",
+    "bytes": 140,
+    "sha256": "4b4117b84ab73798ffd550192d87f4dfb148f8af71fb5f8f8bda97c9a6ebf9b7"
+  },
+  {
+    "original": "/private/tmp/chibi-task-method/removal.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-task-method/removal.log",
+    "bytes": 5393,
+    "sha256": "f13fcfaf8d134a87d3cebea242b0efbb80df2ca9612f3455786748b3ef1fd5a9"
+  },
+  {
+    "original": "/private/tmp/chibi-task-method/scalar.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-task-method/scalar.log",
+    "bytes": 31,
+    "sha256": "15c5b10e738c5868cc671b06693278cc8c2dd952e55f4551f702094460e84f08"
+  },
+  {
+    "original": "/private/tmp/chibi-task-method/source.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-task-method/source.log",
+    "bytes": 137,
+    "sha256": "ea37b345a55f1a8bc5d0bf532e257f6522bcf7602976de1ac9347f89cbe12bd4"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/RecordPointerArrayElement-native.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/RecordPointerArrayElement-native.log",
+    "bytes": 164,
+    "sha256": "eb461fe6181a3b2df517f95447aefbf87ff60ab8f09bcdb4ae1cbfec031fea8b"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/RecordPointerArrayElement-reference.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/RecordPointerArrayElement-reference.log",
+    "bytes": 69,
+    "sha256": "19ee0192f53094851b2484110d482143cbb4f40d53f902598e08c471b8242149"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/RecordPointerArrayElement-v1.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/RecordPointerArrayElement-v1.log",
+    "bytes": 29,
+    "sha256": "62434d41c086d3a5d03c8cad74e3168811be32c18cb594c28ae5ec448f48f5a0"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/RecordPointerElement-native.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/RecordPointerElement-native.log",
+    "bytes": 159,
+    "sha256": "08e3830a270c363a78c176eda9dbc7201499767457a03f19e1be416e5f218be6"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/RecordPointerElement-reference.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/RecordPointerElement-reference.log",
+    "bytes": 69,
+    "sha256": "ab8f1e50e93e46ae985929364a6cf35f63ff728792a40b350ec87440dc7c428e"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/RecordPointerElement-v1.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/RecordPointerElement-v1.log",
+    "bytes": 29,
+    "sha256": "abb6783b1325867b8d13c7ec77109567550fe232f2ce454d256f2faa6afd3062"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/build-v1.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/build-v1.log",
+    "bytes": 31,
+    "sha256": "984d9ff8719b9dc1bfadaddce4433dc862744ceab6156aa7e9faf073d74002ce"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/build-v2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/build-v2.log",
+    "bytes": 31,
+    "sha256": "713bbdaf80be0959c0757c707f2e567518eb8005723f647a3907bcc40e98961f"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/callbacks.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/callbacks.log",
+    "bytes": 623,
+    "sha256": "00761cdd570fb805380a9fd93b13ab43f6cb2fea203c721a333469639c6fa0e5"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/flat-import-prototype.patch",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/flat-import-prototype.patch",
+    "bytes": 29700,
+    "sha256": "9563ee6c49ce74485c1e1ef9b86a5a621b5dfe6ddfb5a9522ae72eec798c0a85"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/image-reference/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/image-reference/Main.chibi",
+    "bytes": 1130,
+    "sha256": "83e32d7a8873829cf48bcfe046c51dde89a647b86796bcbfbd51fa8f1e2b3c34"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/image-reference/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/image-reference/Tests.chibi",
+    "bytes": 100,
+    "sha256": "25a5eadc653bd7c4c7f09703c71a7b89b48a3730809cf0a55009854756e0f14e"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/image-reference.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/image-reference.log",
+    "bytes": 78,
+    "sha256": "56fbc5aeb4993e8dcb372591f321019e36fe7d79152ae7635e489f35f0dbbfaf"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/images/Builder.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/images/Builder.chibi",
+    "bytes": 18845,
+    "sha256": "c787aa670ade1abc39e0e0f602296c5831b4d364325c078f269c5a038bf1b5a9"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/images/build.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/images/build.log",
+    "bytes": 31,
+    "sha256": "6217a8d78a13ae7da4fdbaf9e3dcfca4a69dac7edb33eccb3c79aee0e6b4e00c"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/images/host-build.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/images/host-build.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/images/modules.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/images/modules.log",
+    "bytes": 29,
+    "sha256": "0d792513a48cf369bc56d743547d77ca838ff392cae8dbf67873f27dfab8140b"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/ownership.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/ownership.log",
+    "bytes": 625,
+    "sha256": "436ce1ad5ce340eed9a585737f9d9b56b257cc0779d0cbf453ed8e4f25d21701"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/reference/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/reference/Main.chibi",
+    "bytes": 2434,
+    "sha256": "4012074ed8ff6d33e82c57d41aac462fdc4a62c07ff9a52805596ccca2e4029d"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/reference/Tests.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/reference/Tests.chibi",
+    "bytes": 90,
+    "sha256": "253dadc7f2d15da440f2ad026805b7f58cc72297c93036990f564cf64c67eae0"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/reference.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/reference.log",
+    "bytes": 66,
+    "sha256": "e339571c902413a32e489e8b582e18409101c2240023e5989972d9cd7edb6e69"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/source-v1.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/source-v1.log",
+    "bytes": 29,
+    "sha256": "29efc7b69f127e0eb48d84fae5cc5c1d7025f0c15a41cb86249c862235499e94"
+  },
+  {
+    "original": "/private/tmp/chibi-record-pointer-views/source-v2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-record-pointer-views/source-v2.log",
+    "bytes": 75,
+    "sha256": "6e3671feca5896c089f1fe08e743170ea762b27a61bd0ae23dacc36db7a898db"
+  },
+  {
+    "original": "/private/tmp/chibi-native-seed-14f7-release/AUDIT.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-native-seed-14f7-release/AUDIT.json",
+    "bytes": 1504,
+    "sha256": "c38aece8e7e4e0008e36fe9be00f6fa2d824aca220b42143c19023e38f34ba5b"
+  },
+  {
+    "original": "/private/tmp/chibi-native-seed-14f7-release/BUILDING.md",
+    "saved": "handoff/2026-11-03/evidence/chibi-native-seed-14f7-release/BUILDING.md",
+    "bytes": 3419,
+    "sha256": "6d1a76c666271550c0ccd72ec04932bce3b37bb6e261b29589d3f022dd4073ed"
+  },
+  {
+    "original": "/private/tmp/chibi-native-seed-14f7-release/LICENSE.md",
+    "saved": "handoff/2026-11-03/evidence/chibi-native-seed-14f7-release/LICENSE.md",
+    "bytes": 5951,
+    "sha256": "24d845d72fa302aa63df2a844fe972434dade0c8b2eb88f37f46c0e4995d9a74"
+  },
+  {
+    "original": "/private/tmp/chibi-native-seed-14f7-release/PROVENANCE.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-native-seed-14f7-release/PROVENANCE.json",
+    "bytes": 5262,
+    "sha256": "d22ee8ac3565d0c2f64c5ead08077c2fe7b2edbd38b7ebe3a692f27e012a3aa6"
+  },
+  {
+    "original": "/private/tmp/chibi-native-seed-14f7-release/RELEASE_NOTES.md",
+    "saved": "handoff/2026-11-03/evidence/chibi-native-seed-14f7-release/RELEASE_NOTES.md",
+    "bytes": 1111,
+    "sha256": "89c1ba16ce712b2c51cec5aed97f55f0ce63e488a887f3e0245af4c4a152152a"
+  },
+  {
+    "original": "/private/tmp/chibi-native-seed-14f7-release/SOURCE_FILES.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-native-seed-14f7-release/SOURCE_FILES.json",
+    "bytes": 868830,
+    "sha256": "9e21b9d6cd7c2b22629fb84c58c5f8c2ab9395de9c3084ed9ff3197b121c2e3f"
+  },
+  {
+    "original": "/private/tmp/chibi-native-seed-14f7-release/native-seed.tsv",
+    "saved": "handoff/2026-11-03/evidence/chibi-native-seed-14f7-release/native-seed.tsv",
+    "bytes": 465,
+    "sha256": "69ca792d7810fd62870f9714c92d0ff688a6432f857087661eefd1680ffd2960"
+  },
+  {
+    "original": "/private/tmp/chibi-native-seed-14f7-release/verify-package.py",
+    "saved": "handoff/2026-11-03/evidence/chibi-native-seed-14f7-release/verify-package.py",
+    "bytes": 7723,
+    "sha256": "69eb367a7c54326acfa738309c561a0edac23592e6561159918d53e601e4ed17"
+  },
+  {
+    "original": "/private/tmp/chibi-final-nine-preparation/base.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-final-nine-preparation/base.log",
+    "bytes": 4043,
+    "sha256": "7cde93b75edfa8c61bdafffb4c42571ff76a64bb16102446781add92a2983944"
+  },
+  {
+    "original": "/private/tmp/chibi-final-nine-preparation/candidate-matrix.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-final-nine-preparation/candidate-matrix.json",
+    "bytes": 196636,
+    "sha256": "575501ab4154a26289b2bdd87d82f1ed374544f7442bd0a79f18e3607abe6a7d"
+  },
+  {
+    "original": "/private/tmp/chibi-final-nine-preparation/collections.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-final-nine-preparation/collections.log",
+    "bytes": 2116,
+    "sha256": "74bc5c6b8a5fc761122d87afcccdb0de40e83675b8838682f6b052d65971993c"
+  },
+  {
+    "original": "/private/tmp/chibi-final-nine-preparation/comparison-final.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-final-nine-preparation/comparison-final.json",
+    "bytes": 5310,
+    "sha256": "5aaa54b1025937c30c1bbdce97cda7c2343e05faa74271d6f43c1e9b202ce394"
+  },
+  {
+    "original": "/private/tmp/chibi-final-nine-preparation/comptime.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-final-nine-preparation/comptime.log",
+    "bytes": 593,
+    "sha256": "933e4af2fad1e3f32891950b442c4eb500ccd330029759fd9aa9395375463219"
+  },
+  {
+    "original": "/private/tmp/chibi-final-nine-preparation/fallible.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-final-nine-preparation/fallible.log",
+    "bytes": 5978,
+    "sha256": "f387c1b7d50dc05942812cd7af08c7f538182ea00ea6064f0ba3c28934a6b9b9"
+  },
+  {
+    "original": "/private/tmp/chibi-final-nine-preparation/final-receipt.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-final-nine-preparation/final-receipt.json",
+    "bytes": 35778,
+    "sha256": "04fb72383651aa6d3ba083555fe4e2b4047c4bc5c94d965340b9c281819be3de"
+  },
+  {
+    "original": "/private/tmp/chibi-final-nine-preparation/imports.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-final-nine-preparation/imports.log",
+    "bytes": 4106,
+    "sha256": "8e46d1913e83df7850d9ecaa907f1a6d762ddec401ae98dedbdf52340c373ccf"
+  },
+  {
+    "original": "/private/tmp/chibi-final-nine-preparation/math.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-final-nine-preparation/math.log",
+    "bytes": 4537,
+    "sha256": "656373fb1dbf7f0a8b6634395961a48d50fea16f5b09b37baa662dc92883921b"
+  },
+  {
+    "original": "/private/tmp/chibi-final-nine-preparation/matrix.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-final-nine-preparation/matrix.json",
+    "bytes": 166883,
+    "sha256": "66668ddeeb6321bd80bcf728782e65205eebd5f5a4421efb605f1be79b4855e2"
+  },
+  {
+    "original": "/private/tmp/chibi-final-nine-preparation/native-cwd/Main.chibi",
+    "saved": "handoff/2026-11-03/evidence/chibi-final-nine-preparation/native-cwd/Main.chibi",
+    "bytes": 7862,
+    "sha256": "9bac28def950cb103ef3912c9215938bf05cdd71492c2ead8de6ed8e0377a4ac"
+  },
+  {
+    "original": "/private/tmp/chibi-final-nine-preparation/native-setup.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-final-nine-preparation/native-setup.json",
+    "bytes": 624,
+    "sha256": "f12e89bf28b68235004b03ffdfa0e00c5f6ebca1a4e7894111cac1b0a57d44ed"
+  },
+  {
+    "original": "/private/tmp/chibi-final-nine-preparation/native-with-fixtures.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-final-nine-preparation/native-with-fixtures.json",
+    "bytes": 587,
+    "sha256": "87effca38ba98e86535c1611b51b3ddbd38705542e1c4f2320a73100cbf1a67c"
+  },
+  {
+    "original": "/private/tmp/chibi-final-nine-preparation/native.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-final-nine-preparation/native.log",
+    "bytes": 5260,
+    "sha256": "e45008f474cbbd9422bb4a486506dd1fa75ecaedc030dcd0dcace908312e784a"
+  },
+  {
+    "original": "/private/tmp/chibi-final-nine-preparation/native_arguments.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-final-nine-preparation/native_arguments.log",
+    "bytes": 586,
+    "sha256": "5c64583082fbfbf4f11cfdc47bd58f66db05d9895b0b5cadac6528ac32189c3c"
+  },
+  {
+    "original": "/private/tmp/chibi-final-nine-preparation/prepared.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-final-nine-preparation/prepared.json",
+    "bytes": 260886,
+    "sha256": "341c0f61b4ba5bd9ed2e957c83b711caeb5736b0ee8a2727bb23d4846ca3585c"
+  },
+  {
+    "original": "/private/tmp/chibi-final-nine-preparation/run.py",
+    "saved": "handoff/2026-11-03/evidence/chibi-final-nine-preparation/run.py",
+    "bytes": 3697,
+    "sha256": "0ef3476f5550439bcc740c3f6e737298e78e0e47e45e5c8dcaade188f0c9b86a"
+  },
+  {
+    "original": "/private/tmp/chibi-final-nine-preparation/types.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-final-nine-preparation/types.log",
+    "bytes": 3490,
+    "sha256": "8c6415840c5dd474cbd8afc4c8bd77689a91ab2fb44071624e0e918ff40b5e38"
+  },
+  {
+    "original": "/private/tmp/chibi-imported-composed-proof/compiler-tests.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-imported-composed-proof/compiler-tests.log",
+    "bytes": 30675,
+    "sha256": "bc12a5e0c187cf5722020a9c7afd14200c7e0c48dd579d0fe014f30cc61dd11c"
+  },
+  {
+    "original": "/private/tmp/chibi-imported-composed-proof/receipt.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-imported-composed-proof/receipt.json",
+    "bytes": 2754,
+    "sha256": "094fc68c7009189cbf9c2ecba804fc248f52847d774a602e70cd2e6ac330fc94"
+  },
+  {
+    "original": "/private/tmp/chibi-imported-composed-proof/run.py",
+    "saved": "handoff/2026-11-03/evidence/chibi-imported-composed-proof/run.py",
+    "bytes": 2458,
+    "sha256": "5ebc3dbba44cf9e75d24655764431fa1da0766c0f10c4bb751c83cbdb3c0efd4"
+  },
+  {
+    "original": "/private/tmp/chibi-imported-composed-proof/source-files.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-imported-composed-proof/source-files.json",
+    "bytes": 531155,
+    "sha256": "3b416ad7c3f072d651e7629b3b63b4d6042086d22d0b0310dcc5cd476eca3862"
+  },
+  {
+    "original": "/private/tmp/chibi-imported-composed-proof/source.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-imported-composed-proof/source.json",
+    "bytes": 383,
+    "sha256": "bd16ca780b2d50f259f0aed39b29b0b9ef2481628cf9d3c0c94190d5d6c0f64e"
+  },
+  {
+    "original": "/private/tmp/chibi-imported-composed-proof/stage2.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-imported-composed-proof/stage2.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-imported-composed-proof/stage3.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-imported-composed-proof/stage3.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-published-c5-linux-admission-36506138d/c5-controller.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-published-c5-linux-admission-36506138d/c5-controller.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-published-c5-linux-admission-36506138d/c5-current-compiler.log",
+    "saved": "handoff/2026-11-03/evidence/chibi-published-c5-linux-admission-36506138d/c5-current-compiler.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "original": "/private/tmp/chibi-published-c5-linux-admission-36506138d/inner-receipt-at-timeout.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-published-c5-linux-admission-36506138d/inner-receipt-at-timeout.json",
+    "bytes": 2124,
+    "sha256": "e9ff4be332beafac61d6f6c5c4d940e90431938ef7decb6bebd4c59f66a2dbf5"
+  },
+  {
+    "original": "/private/tmp/chibi-published-c5-linux-admission-36506138d/late-output-inventory.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-published-c5-linux-admission-36506138d/late-output-inventory.json",
+    "bytes": 224,
+    "sha256": "de9418e7270256bb6594b3a8713c47a8193d2654b57431fbc5832c69dfc02a39"
+  },
+  {
+    "original": "/private/tmp/chibi-published-c5-linux-admission-36506138d/late-resource-observation.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-published-c5-linux-admission-36506138d/late-resource-observation.json",
+    "bytes": 689,
+    "sha256": "9c0047b7b61917a3d15eb4951cdba595e024d843e46b85873c1162b18295c35f"
+  },
+  {
+    "original": "/private/tmp/chibi-published-c5-linux-admission-36506138d/process-observation-supported.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-published-c5-linux-admission-36506138d/process-observation-supported.json",
+    "bytes": 1273,
+    "sha256": "5c4103f3e21b2843043c3afac68c80d842be6e38b35b548867db7f8d2217e259"
+  },
+  {
+    "original": "/private/tmp/chibi-published-c5-linux-admission-36506138d/process-observation.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-published-c5-linux-admission-36506138d/process-observation.json",
+    "bytes": 1003,
+    "sha256": "fa98dca8825ae152ee3739a34f2cc5b370927b946df09122937648d24dc9f8dc"
+  },
+  {
+    "original": "/private/tmp/chibi-published-c5-linux-admission-36506138d/progress-1112.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-published-c5-linux-admission-36506138d/progress-1112.json",
+    "bytes": 1217,
+    "sha256": "30238ca808096adf808432ead74d60165f0e0a2c718174be13e9d170422874c7"
+  },
+  {
+    "original": "/private/tmp/chibi-published-c5-linux-admission-36506138d/receipt.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-published-c5-linux-admission-36506138d/receipt.json",
+    "bytes": 2269,
+    "sha256": "78af64070c191cd714855c60a620241a0ec820b33d1c984885c6f929326dd75f"
+  },
+  {
+    "original": "/private/tmp/chibi-published-c5-linux-admission-36506138d/run-host.sh",
+    "saved": "handoff/2026-11-03/evidence/chibi-published-c5-linux-admission-36506138d/run-host.sh",
+    "bytes": 1160,
+    "sha256": "0bcb8d9cac5389dde1919e334ce07cd3570c90494de9165e7d5623a89435f8c5"
+  },
+  {
+    "original": "/private/tmp/chibi-published-c5-linux-admission-36506138d/run.py",
+    "saved": "handoff/2026-11-03/evidence/chibi-published-c5-linux-admission-36506138d/run.py",
+    "bytes": 2992,
+    "sha256": "c0fa14c46db13d2f55dfd379e25c6192eeffd1fe945a359deccbec00aad434a3"
+  },
+  {
+    "original": "/private/tmp/chibi-published-c5-linux-admission-36506138d/source-manifest.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-published-c5-linux-admission-36506138d/source-manifest.json",
+    "bytes": 428025,
+    "sha256": "5e36ec97a807ffba909a3df6902ab492eb7c192c5605b88f43201404c48f6388"
+  },
+  {
+    "original": "/private/tmp/chibi-published-c5-linux-admission-36506138d/terminal-receipt.json",
+    "saved": "handoff/2026-11-03/evidence/chibi-published-c5-linux-admission-36506138d/terminal-receipt.json",
+    "bytes": 2294,
+    "sha256": "5d9c797244f3672b5a7496f2f03e0e34d3a43705736182c743fccc08d7db3360"
+  },
+  {
+    "original": "/private/tmp/chibi-native-seed-14f7-pins.patch",
+    "saved": "handoff/2026-11-03/evidence/seed-publication/chibi-native-seed-14f7-pins.patch",
+    "bytes": 1191,
+    "sha256": "113f05d645ca5054f5313eb8da8ac3d071f33752fb1b09f3b0cd47fdf6575838"
+  },
+  {
+    "original": "/private/tmp/chibi-native-seed-14f7-package.py",
+    "saved": "handoff/2026-11-03/evidence/seed-publication/chibi-native-seed-14f7-package.py",
+    "bytes": 8526,
+    "sha256": "52245f919986478e1a1359a6f73e7067e96777b00f56c18c33c914eae4ac50e8"
+  },
+  {
+    "original": "/private/tmp/chibi-native-seed-14f7-complete-pairs.py",
+    "saved": "handoff/2026-11-03/evidence/seed-publication/chibi-native-seed-14f7-complete-pairs.py",
+    "bytes": 4362,
+    "sha256": "764f31e6dcad19eb3adae62f6fb427dc73cd4c29acef928f733b9d17d69d9ecb"
+  },
+  {
+    "original": "/private/tmp/chibi-native-seed-14f7-cache-audit.py",
+    "saved": "handoff/2026-11-03/evidence/seed-publication/chibi-native-seed-14f7-cache-audit.py",
+    "bytes": 2669,
+    "sha256": "4012349b14275a501686f7e7917cf1df0fa738042b8dddc30df129deff95bb48"
+  }
+]

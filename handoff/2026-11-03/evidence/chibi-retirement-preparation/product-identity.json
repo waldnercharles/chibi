@@ -1,0 +1,10 @@
+{
+  "commit": "7aa6f842bd93340bb8c7fb4f6fb6d38fc2d0736d",
+  "tree": "33f2b9b99c26b3bdf5e79ae02a451c554f56b6a0",
+  "source_status": "",
+  "products": {
+    "build-release/sdk/chibi": "fed968642058ef770e39ccc6f9d9d4f014f1285442c8bc6aec5091cc43c0f563",
+    "build-release/sdk/chibi-asset-compiler": "729b84dc8014bef8f292ce5739e4503fbadd3122327b664f9f0c46be778d4490",
+    "build-release/lib/libchibi_asset_compiler_host.a": "35f86b025d038281605375049eefc8f907d9d626066eabee128489c670cdebdd"
+  }
+}

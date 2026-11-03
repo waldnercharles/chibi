@@ -1,0 +1,4 @@
+managed source /private/tmp/chibi-nested-managed-pointer-proof/NestedPointers.ll force=false O0 status=134 managed source live 0 peak 807 total 36003
+assertion failed in function 0 at source bytes 859 to 914
+native failure: AssertionFailed
+

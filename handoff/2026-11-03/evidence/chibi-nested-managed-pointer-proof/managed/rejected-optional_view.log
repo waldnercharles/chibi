@@ -1,0 +1,1 @@
+native: rejected Main: /Users/cwaldner/Personal/chibi/.worktrees/authored-strings-regressions/chibi/test/native_aot/managed_pointers/source/rejected/optional_view.chibi:2:95: scalar proof supports only number, bool and string values

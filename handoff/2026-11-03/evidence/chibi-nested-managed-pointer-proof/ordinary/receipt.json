@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "sh",
+    "/Users/cwaldner/Personal/chibi/handoffs/heavy.sh",
+    "windows: nested pointer ordinary fixture",
+    "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+    "--project-root",
+    "/private/tmp/chibi-nested-managed-pointer-proof/ordinary",
+    "--test"
+  ],
+  "status": 1,
+  "seconds": 1.0241758750053123,
+  "stdout": "",
+  "stderr": "/private/tmp/chibi-nested-managed-pointer-proof/ordinary/Main.chibi:20:21: pointer argument differs from the parameter's type\n"
+}

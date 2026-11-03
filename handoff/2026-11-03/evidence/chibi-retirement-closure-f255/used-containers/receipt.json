@@ -1,0 +1,138 @@
+[
+  {
+    "name": "PointerRecordView",
+    "source": "package pointer_record_view\nRow :: struct { number: int; }\nRead :: (window: view (^Row)[]) -> int { return window[0].number; }\nMain :: () -> int {\n row: Row = {number: 7}; values: (^Row)[] = [&row]; pointer := &values;\n selected := pointer.view(0..<1); if selected { return Read(selected); } return -1;\n}\n",
+    "source_sha256": "80a1ce4b183e2cf25a099ffccf1ae8bb60231d04203b0068df7fe581884f8b69",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/used-containers/PointerRecordView",
+          "--test"
+        ],
+        "status": 0,
+        "seconds": 0.9617303339764476,
+        "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+        "stderr": ""
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/used-containers/PointerRecordView/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/used-containers/PointerRecordView/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.1392479999922216,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/used-containers/PointerRecordView/Main.chibi:4:19: scalar proof requires known effect-free scalar execution, not effects 1\n"
+      }
+    ]
+  },
+  {
+    "name": "PointerNullableView",
+    "source": "package pointer_nullable_view\nRead :: (window: view (^int?)[]) -> int { pointer := window[0]; if pointer { return pointer^; } return -1; }\nMain :: () -> int {\n number := 7; values: (^int?)[] = [&number, nil]; pointer := &values;\n selected := pointer.view(0..<1); if selected { return Read(selected); } return -1;\n}\n",
+    "source_sha256": "26b32de1cc19595c8f2f935eb46f0d503d756ac63e78f49c039a99b0e4f90d4c",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/used-containers/PointerNullableView",
+          "--test"
+        ],
+        "status": 0,
+        "seconds": 0.7295699999958742,
+        "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+        "stderr": ""
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/used-containers/PointerNullableView/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/used-containers/PointerNullableView/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.009483792004175484,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/used-containers/PointerNullableView/Main.chibi:3:19: scalar proof requires known effect-free scalar execution, not effects 1\n"
+      }
+    ]
+  },
+  {
+    "name": "NestedPointerMap",
+    "source": "package nested_pointer_map\nMain :: () -> int {\n cell := 7; values: [string:[string:^int]] = [\"group\":[\"p\":&cell]];\n return values[\"group\"][\"p\"]^;\n}\n",
+    "source_sha256": "7d48c992e24bfe4791b0f770404c125b09f6ebcc9ebb5306209fa3f2c2898233",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/used-containers/NestedPointerMap",
+          "--test"
+        ],
+        "status": 0,
+        "seconds": 0.7287338329770137,
+        "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+        "stderr": ""
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/used-containers/NestedPointerMap/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/used-containers/NestedPointerMap/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.009866999986115843,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/used-containers/NestedPointerMap/Main.chibi:3:13: scalar proof supports only number, bool and string values\n"
+      }
+    ],
+    "prior_rejected_probe": "package nested_pointer_map\nMain :: () -> int {\n cell := 7; values: [string:[string:^int]] = [\"group\":[\"p\":&cell]];\n group := values[\"group\"]; if group { pointer := group[\"p\"]; if pointer { return pointer^; } } return -1;\n}\n"
+  }
+]

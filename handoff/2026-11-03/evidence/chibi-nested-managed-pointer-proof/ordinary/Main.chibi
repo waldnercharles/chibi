@@ -1,0 +1,40 @@
+package nested_pointer_cells
+
+// Preserve the ordinary escaping-pointer kernel, including its original locals.
+Make :: () -> ^^int { value := 1; pointer := &value; return &pointer; }
+Box :: (value: int) -> ^int { return &value; }
+Capture :: (value: ^^int) -> ^^^int { return &value; }
+Bool :: () -> ^^bool { value := true; pointer := &value; return &pointer; }
+Churn :: () { for index in 0..<3000 { discarded := Capture(Make()); } }
+Replace :: (pointer: ^^int, value: int) -> int { pointer^ = Box(value); Churn(); return value; }
+First :: (value: ^int, ignored: int) -> int { Churn(); return value^; }
+Main :: () -> int {
+    pointer := Make();
+    Churn();
+    assert(pointer^^ == 1);
+    alias := pointer;
+    saved := pointer^;
+    pointer^^ = 17;
+    Churn();
+    assert(saved^ == 17 && alias^^ == 17);
+    before := First(saved, Replace(alias, 23));
+    assert(before == 17 && pointer^^ == 23 && saved^ == 17);
+    triple := Capture(Make());
+    Churn();
+    assert(triple^^^ == 1);
+    triple^^ = Box(31);
+    Churn();
+    assert(triple^^^ == 31);
+    triple^ = alias;
+    alias^^ = 37;
+    Churn();
+    assert(triple^^^ == 37 && saved^ == 17);
+    flag := Bool();
+    Churn();
+    flag^^ = false;
+    assert(!flag^^);
+    return 0;
+}
+
+@test
+Check :: () { result := Main(); assert(result == 0); }

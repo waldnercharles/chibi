@@ -1,0 +1,15 @@
+{
+  "utc": "2026-11-03T10:37:08.422034+00:00",
+  "container": "687bdde2057f65f2f696c383b69ecabcc2c09d74346f07d89aaee11415ab6e49",
+  "kind": "single own-container process observation; supported etime after first measurement-only etimes rejection",
+  "command": [
+    "docker",
+    "top",
+    "687bdde2057f65f2f696c383b69ecabcc2c09d74346f07d89aaee11415ab6e49",
+    "-eo",
+    "pid,ppid,etime,comm,args"
+  ],
+  "status": 0,
+  "stdout": "PID                 PPID                ELAPSED             COMMAND             COMMAND\n22121               22096               7:05                python3             {python3} /mnt/lima-rosetta/rosetta /opt/tools/bin/python3 /private/tmp/chibi-published-c5-linux-admission-36506138d/run.py\n22392               22121               6:54                chibi-native-li     {chibi-native-li} /mnt/lima-rosetta/rosetta /private/tmp/chibi-native-seed-c5c0a1ac2-release/chibi-native-linux-x64 --compiler /private/tmp/chibi-published-c5-linux-admission-36506138d/source/tools/compiler --core /private/tmp/chibi-published-c5-linux-admission-36506138d/source/packages/core --llvm /usr/lib/llvm-22/bin --target x86_64-unknown-linux-gnu --jobs 2 --output /private/tmp/chibi-published-c5-linux-admission-36506138d/stage2/chibi\n",
+  "stderr": ""
+}

@@ -1,0 +1,102 @@
+[
+  {
+    "lane": "nested-pointers",
+    "worktree": "/Users/cwaldner/Personal/chibi/.worktrees/authored-strings-regressions/chibi",
+    "branch": "codex/native-nested-managed-pointers-20261103",
+    "base_before_checkpoint": "6c492a88f0c1458ff1d2c36fdf7f8bf17ef7befa",
+    "checkpoint": "294d6297e4695f1e6753b9a781f7963d0b0a2370",
+    "tree": "f058f80fc2bea967a5b84942aa87f8ed4ce96db5",
+    "merge_base_with_integration": "6c492a88f0c1458ff1d2c36fdf7f8bf17ef7befa",
+    "had_uncommitted_work": true,
+    "status_before": " M test/native_aot/managed_pointers/README.md\n M test/native_aot/managed_pointers/run.sh\n A test/native_aot/managed_pointers/source/NestedPointers.chibi\nD  test/native_aot/managed_pointers/source/rejected/nested.chibi\n A test/native_aot/task_owners/NestedPointers.chibi\n M test/native_aot/task_owners/README.md\n M test/native_aot/task_owners/generations.sh\n M tools/compiler/llvm_native/Emit.chibi\n M tools/compiler/llvm_native/Managed.chibi\n M tools/compiler/llvm_native/ManagedRecords.chibi\n A tools/compiler/llvm_native/tests/PointerCells.chibi\n M tools/compiler/package_compiler/Scalar.chibi\n M tools/compiler/package_compiler/ScalarPointers.chibi\n"
+  },
+  {
+    "lane": "tasks",
+    "worktree": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi",
+    "branch": "codex/native-asset-compiler-20261102",
+    "base_before_checkpoint": "37e48382420deea79c4f46e7de5b29dd8047df38",
+    "checkpoint": "37e48382420deea79c4f46e7de5b29dd8047df38",
+    "tree": "19820513166b5e4eb155fb0d933101fe8824f486",
+    "merge_base_with_integration": "7b05b3eca1c8526fe50c4e57d412b4244134909f",
+    "had_uncommitted_work": false,
+    "status_before": ""
+  },
+  {
+    "lane": "maps",
+    "worktree": "/Users/cwaldner/Personal/chibi/.worktrees/compiler-self-speed/chibi",
+    "branch": "claude/native-driver-options",
+    "base_before_checkpoint": "989cb342bab8adc2ba257ddad16d92e16899359f",
+    "checkpoint": "989cb342bab8adc2ba257ddad16d92e16899359f",
+    "tree": "3fbb4e08246fecb65fa77a1f010c5c92f8e424b4",
+    "merge_base_with_integration": "b757dcf08ad4af69954eb5be45fca07ab2ae73e8",
+    "had_uncommitted_work": false,
+    "status_before": ""
+  },
+  {
+    "lane": "reload",
+    "worktree": "/Users/cwaldner/Personal/chibi/.worktrees/edit-and-continue/chibi",
+    "branch": "codex/native-family-typed-failures-20261103",
+    "base_before_checkpoint": "996dcaacefa0ef8e06edd2e066f2af727ff81cec",
+    "checkpoint": "996dcaacefa0ef8e06edd2e066f2af727ff81cec",
+    "tree": "5acd9d91893967ec473968652469279a7bb1fc49",
+    "merge_base_with_integration": "d3a829bec70584e0833600d1c45968ea6a113c06",
+    "had_uncommitted_work": false,
+    "status_before": ""
+  },
+  {
+    "lane": "pointer-element-views",
+    "worktree": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi",
+    "branch": "codex/native-pointer-element-views-20261103",
+    "base_before_checkpoint": "6c492a88f0c1458ff1d2c36fdf7f8bf17ef7befa",
+    "checkpoint": "d5d556e8e820ceb8b96e89f9d598471caee694c2",
+    "tree": "5af6acc4c2fd7ae308ae165d0b8d70f5799abbd7",
+    "merge_base_with_integration": "6c492a88f0c1458ff1d2c36fdf7f8bf17ef7befa",
+    "had_uncommitted_work": true,
+    "status_before": " M tools/compiler/package_compiler/Scalar.chibi\n M tools/compiler/package_compiler/ScalarArrays.chibi\n M tools/compiler/package_compiler/ScalarPointers.chibi\n M tools/compiler/package_compiler/ScalarViews.chibi\n?? test/native_aot/managed_pointers/source/PointerElements.chibi\n"
+  },
+  {
+    "lane": "owned-record-cells",
+    "worktree": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi",
+    "branch": "codex/native-maps",
+    "base_before_checkpoint": "6833322b2faf163a5be5637ec22cbc1c204bfa5c",
+    "checkpoint": "24ee31397663839c143c5633a144a99a4845948e",
+    "tree": "810df4f690e0e4396c9daceabd07f446079071ea",
+    "merge_base_with_integration": "8e61adb4fd6449f42de9c2d15fefbf1a15e44989",
+    "had_uncommitted_work": true,
+    "status_before": " M test/native_aot/managed_pointers/NativeProbe.chibi\n M test/native_aot/managed_pointers/README.md\n M test/native_aot/managed_pointers/TextCellImages.chibi\n M test/native_aot/managed_pointers/run.sh\n D test/native_aot/managed_pointers/source/rejected/OwnedRecordCell.chibi\n M test/native_aot/managed_pointers/text-cell-images.sh\n M tools/compiler/llvm_native/Emit.chibi\n M tools/compiler/llvm_native/Managed.chibi\n M tools/compiler/llvm_native/ManagedRecords.chibi\n M tools/compiler/llvm_native/tests/ManagedRecords.chibi\n M tools/compiler/llvm_native/tests/OptionalTextCells.chibi\n M tools/compiler/package_compiler/ScalarPointers.chibi\n M tools/compiler/scalar_llvm/Emit.chibi\n M tools/compiler/scalar_llvm/Managed.chibi\n?? test/native_aot/managed_pointers/source/OwnedRecords.chibi\n?? test/native_aot/managed_pointers/text_cells/Record.chibi\n?? tools/compiler/llvm_native/tests/OwnedRecordCells.chibi\n"
+  },
+  {
+    "lane": "boundary-importer",
+    "worktree": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi",
+    "branch": "codex/native-facade-build-20261102",
+    "base_before_checkpoint": "de8f1fe2cadc0862b944c191a9ebb53ecf6a12bf",
+    "checkpoint": "de8f1fe2cadc0862b944c191a9ebb53ecf6a12bf",
+    "tree": "0e7890b275ac001c3ac50f5b7f1b8efc267800ef",
+    "merge_base_with_integration": "f722806388480d674ad7a678c773e673fc0a5591",
+    "had_uncommitted_work": false,
+    "status_before": ""
+  },
+  {
+    "lane": "record-array-views",
+    "worktree": "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi",
+    "branch": "claude/native-gaps",
+    "base_before_checkpoint": "75f585bb033b52464e0bf057a627eb3b3253e803",
+    "checkpoint": "2efca40ede761c51171053e1e74aac91d9ebf33c",
+    "tree": "906e6a9fe391cb1fad2f6d0ea37f1eefddca9fcf",
+    "merge_base_with_integration": "8e61adb4fd6449f42de9c2d15fefbf1a15e44989",
+    "had_uncommitted_work": true,
+    "status_before": " M tools/compiler/llvm_native/Emit.chibi\n M tools/compiler/llvm_native/ManagedRecords.chibi\n M tools/compiler/llvm_native/Views.chibi\n M tools/compiler/package_compiler/ScalarNativeSchemas.chibi\n?? test/native_aot/managed_pointers/RecordViewHost.chibi\n?? test/native_aot/managed_pointers/RecordViewImages.chibi\n?? test/native_aot/managed_pointers/record-view-schema/Changed.chibi\n?? test/native_aot/managed_pointers/record-view-schema/Original.chibi\n?? test/native_aot/managed_pointers/record-view-schema/Reindexed.chibi\n?? test/native_aot/managed_pointers/source/ViewRecordPointers.chibi\n"
+  },
+  {
+    "lane": "held-retirement",
+    "checkpoint": "d570cf7ba2c9675c55c082399fae6dd123a99ac0",
+    "base_before_checkpoint": "6c492a88f0c1458ff1d2c36fdf7f8bf17ef7befa",
+    "status": "Held; not applied to integration; do not apply before parity and platform acceptance."
+  },
+  {
+    "lane": "linux-producer",
+    "checkpoint": "36506138dab6e97ccd9ebc99cd36e8b5eb96dcb3",
+    "base_before_checkpoint": "4e5539676fb9d085b7bec26237114a45df9f9254",
+    "status": "Previously pushed temporary producer. Run41627603178 last known active; not consumed."
+  }
+]

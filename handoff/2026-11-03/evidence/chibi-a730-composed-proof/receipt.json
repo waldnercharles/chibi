@@ -1,0 +1,102 @@
+{
+  "revision": "a73081162986aea06efd625ae25963010ae9cb95",
+  "tree": "089a993a60f58c078e4014a5b5b1b2decd68b8cf",
+  "source_files": 3552,
+  "archive_sha256": "e2a47e805e1c962d6858c9193f1b48d0c4d1a9e14f191864dca43875de20ff9f",
+  "builder": "/private/tmp/chibi-ad3-composed-check/candidate/chibi",
+  "builder_sha256": "0edde612a8f452b6e6c8d9133228a61f6d7597271314402de5fc7270e5e0c748",
+  "environment": {
+    "CC": "/usr/bin/false",
+    "CXX": "/usr/bin/false",
+    "CHIBI_CORE": "/private/tmp/chibi-a730-composed-proof/source/packages/core",
+    "CHIBI_TEST_WORKERS": "1"
+  },
+  "llvm": "/private/tmp/chibi-bba9-proof/llvm22",
+  "steps": [
+    {
+      "name": "stage2",
+      "command": [
+        "/private/tmp/chibi-ad3-composed-check/candidate/chibi",
+        "--compiler",
+        "/private/tmp/chibi-a730-composed-proof/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-a730-composed-proof/source/packages/core",
+        "--output",
+        "/private/tmp/chibi-a730-composed-proof/stage2/chibi",
+        "--llvm",
+        "/private/tmp/chibi-bba9-proof/llvm22",
+        "--target",
+        "aarch64-apple-darwin",
+        "--jobs",
+        "4"
+      ],
+      "exit": 0,
+      "seconds": 35.64,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "stage3",
+      "command": [
+        "/private/tmp/chibi-a730-composed-proof/stage2/chibi",
+        "--compiler",
+        "/private/tmp/chibi-a730-composed-proof/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-a730-composed-proof/source/packages/core",
+        "--output",
+        "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+        "--llvm",
+        "/private/tmp/chibi-bba9-proof/llvm22",
+        "--target",
+        "aarch64-apple-darwin",
+        "--jobs",
+        "4"
+      ],
+      "exit": 0,
+      "seconds": 35.3,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compiler-tests",
+      "command": [
+        "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+        "test",
+        "--llvm",
+        "/private/tmp/chibi-bba9-proof/llvm22",
+        "/private/tmp/chibi-a730-composed-proof/source/tools/compiler"
+      ],
+      "exit": 0,
+      "seconds": 28.87,
+      "log_sha256": "a761b5701f708ee416aca25d57dc89487de42e8c660fb334051dd7afc1621c71"
+    },
+    {
+      "name": "task-owners",
+      "command": [
+        "sh",
+        "/private/tmp/chibi-a730-composed-proof/source/test/native_aot/task_owners/run.sh",
+        "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+        "/private/tmp/chibi-bba9-proof/llvm22"
+      ],
+      "exit": 0,
+      "seconds": 21.27,
+      "log_sha256": "00c953b3fcc3817aec80d8a1b22e2bc8ba742051179ba979906a53946ba957f2"
+    },
+    {
+      "name": "managed-pointers",
+      "command": [
+        "sh",
+        "/private/tmp/chibi-a730-composed-proof/source/test/native_aot/managed_pointers/run.sh",
+        "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+        "/private/tmp/chibi-bba9-proof/llvm22"
+      ],
+      "exit": 1,
+      "seconds": 246.91,
+      "log_sha256": "c7c08be6391bb5f0f696b85796dbe7271b6bb3b5451752ca3b26fb4ce31029f5"
+    }
+  ],
+  "stage2_sha256": "15f480276b0b0a20304a87b05f03035ca114ed0e6ed1863d429c3b6807459130",
+  "stage3_sha256": "15f480276b0b0a20304a87b05f03035ca114ed0e6ed1863d429c3b6807459130",
+  "fixed_point": true,
+  "compiler_test_summary": [
+    "546 tests, 0 failed"
+  ]
+}

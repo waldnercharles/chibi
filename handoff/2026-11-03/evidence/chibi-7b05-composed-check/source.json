@@ -1,0 +1,10 @@
+{
+  "revision": "7b05b3eca1c8526fe50c4e57d412b4244134909f",
+  "tree": "f2519caa8295063aeac88fd5584b020eff253662",
+  "source_files": 3563,
+  "archive_sha256": "6425720947ef14963f5ea6864a62bb26b7e69af22af3d1226bf3161ccec2c59f",
+  "builder": "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+  "builder_sha256": "15f480276b0b0a20304a87b05f03035ca114ed0e6ed1863d429c3b6807459130",
+  "fixed_point": null,
+  "scope": "Single candidate, compiler tests and task/map search composition; final fixed point remains required."
+}

@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "sh",
+    "/Users/cwaldner/Personal/chibi/.worktrees/authored-strings-regressions/chibi/test/native_aot/task_owners/generations.sh",
+    "/private/tmp/chibi-nested-managed-pointer-proof/chibi",
+    "/private/tmp/chibi-bba9-proof/llvm22",
+    "/private/tmp/chibi-nested-managed-pointer-proof/families/llvm",
+    "/private/tmp/chibi-nested-managed-pointer-proof/families"
+  ],
+  "status": 1,
+  "seconds": 2.0142816250154283
+}

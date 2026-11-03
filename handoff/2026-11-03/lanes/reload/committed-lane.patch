@@ -1,0 +1,557 @@
+diff --git a/test/native_aot/task_owners/README.md b/test/native_aot/task_owners/README.md
+index 26f0c1c93..642eeb5b4 100644
+--- a/test/native_aot/task_owners/README.md
++++ b/test/native_aot/task_owners/README.md
+@@ -2,6 +2,19 @@
+ 
+ The canonical `test/native_aot/tasks/run.sh` also runs this suite.
+ 
++Family generations support force unwrap through their context failure path.
++A nil unwrap reports `UnwrappedNil` and returns through synchronous callers or
++waiting parents before the host releases roots and closes every image. Calls
++that can propagate a context failure reuse the active owner entries, including
++fresh arguments and historical loop containers. Ordinary libraries without an
++execution-family owner keep their existing rejection.
++
++`TypedGeneration.chibi` checks successful unwraps and controlled failures in
++Main, Frame, retired workers, yielding and immediately completed child awaits,
++and an immediately failed spawn. Markers after unwrap, await and spawn must
++remain absent on failure. The same image-close poison and allocation-balance
++audit covers these paths at O0 and O2.
++
+ Program and family coroutine frames can own strings, arrays and records/unions
+ whose lifecycle has no collector-bearing leaves. Each distinct owning local or
+ fresh slot has one frame-resident active address, eight bytes on desktop. Calls
+diff --git a/test/native_aot/task_owners/TypedGeneration.chibi b/test/native_aot/task_owners/TypedGeneration.chibi
+new file mode 100644
+index 000000000..e9b788d01
+--- /dev/null
++++ b/test/native_aot/task_owners/TypedGeneration.chibi
+@@ -0,0 +1,72 @@
++package owned_typed_generation
++
++foreign import libc "system:c"
++foreign libc {
++    fopen :: (path: cstring, mode: cstring) -> rawptr
++    fclose :: (stream: rawptr) -> i32
++    access :: (path: cstring, mode: i32) -> i32
++}
++Payload :: struct { words: string[]; numbers: int[]; }
++Exists :: (path: string) -> bool { return access(path, 0) == 0; }
++Mark :: (path: string) {
++    stream := fopen(path, "wb");
++    assert(stream != 0);
++    closed := fclose(stream);
++    assert(closed == 0);
++}
++Text :: (count: int) -> string { return text_from_bytes(resize([u8(120)], count)); }
++Optional :: (present: bool) -> int? { if present { return 42; } return nil; }
++Use :: (text: string, value: int) -> int { assert(text_byte_length(text) == 19); return value; }
++Read :: (present: bool) -> int {
++    words := [Text(3), Text(5)];
++    assert(text_byte_length(words[0]) + text_byte_length(words[1]) == 8);
++    // The first argument is still owned when the second argument fails.
++    return Use(Text(19), Optional(present)!);
++}
++Caller :: (present: bool) -> int {
++    payload: Payload = {words: [Text(7), Text(11)], numbers: [int(11), 31]};
++    alias := payload;
++    assert(text_byte_length(alias.words[1]) == 11);
++    for row in [payload] {
++        assert(row.numbers[0] == 11);
++        value := Read(present);
++        Mark("after-unwrap");
++        return value;
++    }
++    return 1;
++}
++Worker :: () -> int {
++    owned := [Text(13), Text(17)];
++    while !Exists("allow-old") { yield; }
++    assert(text_byte_length(owned[0]) == 13);
++    if Exists("unwrap-await-case") || Exists("unwrap-immediate-case") { return await Parent(); }
++    return Caller(false);
++}
++Child :: () -> int {
++    owned := [Text(23), Text(29)];
++    if !Exists("unwrap-immediate-case") && !Exists("spawn-immediate-case") { yield; }
++    assert(text_byte_length(owned[0]) == 23);
++    return Caller(false);
++}
++Parent :: () -> int {
++    owned := [Text(31), Text(37)];
++    value := await Child();
++    Mark("after-await");
++    return value + text_byte_length(owned[0]);
++}
++Main :: () -> int {
++    if Exists("positive-case") { return Caller(true); }
++    if Exists("sync-case") { return Caller(false); }
++    if Exists("spawn-immediate-case") {
++        child := Child();
++        Mark("after-spawn");
++        return 0;
++    }
++    if !Exists("frame-case") { worker := Worker(); }
++    Mark("owner-ready");
++    return 0;
++}
++Frame :: () -> int {
++    if Exists("frame-case") { return Caller(false); }
++    return 0;
++}
+diff --git a/test/native_aot/task_owners/generations.sh b/test/native_aot/task_owners/generations.sh
+index 4d53141d9..c8260c0ae 100644
+--- a/test/native_aot/task_owners/generations.sh
++++ b/test/native_aot/task_owners/generations.sh
+@@ -20,17 +20,17 @@ cleanup() {
+ }
+ trap cleanup EXIT HUP INT TERM
+ for level in 0 2; do
+-    for source in Generation Edited ResizeGeneration; do
++    for source in Generation Edited ResizeGeneration TypedGeneration; do
+         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+             --source "$root/test/native_aot/task_owners/$source.chibi" --shared \
+             --output "$work/$source-$level.so" --llvm "$audit_llvm" --target "$target" --level "$level" --jobs 1
+     done
+-    for mode in complete cancel failure resize resize-functional; do
++    for mode in complete cancel failure resize resize-functional unwrap unwrap-await unwrap-immediate; do
+         run="$work/$mode-O$level"
+         mkdir "$run"
+         if [ "$mode" != complete ]; then touch "$run/$mode-case"; fi
+         source=Generation
+-        case "$mode" in resize*) source=ResizeGeneration ;; esac
++        case "$mode" in resize*) source=ResizeGeneration ;; unwrap*) source=TypedGeneration ;; esac
+         cp "$work/$source-$level.so" "$run/live-0.so"
+         (cd "$run" && exec timeout 90 "$work/host") > "$run/host.log" 2>&1 &
+         child=$!
+@@ -47,11 +47,34 @@ for level in 0 2; do
+         wait "$child" || result=$?
+         child=
+         expected=7
+-        case "$mode" in failure|resize*) expected=134 ;; esac
++        case "$mode" in failure|resize*|unwrap*) expected=134 ;; esac
+         if [ "$result" -ne "$expected" ]; then cat "$run/host.log"; echo "owned generation $mode O$level status$result"; exit 1; fi
+         if [ "$mode" = complete ]; then [ "$(cat "$run/old-done")" = old:48 ]; fi
++        case "$mode" in unwrap*)
++            grep -Fx 'native failure: UnwrappedNil' "$run/host.log"
++            test ! -e "$run/after-unwrap"
++            test ! -e "$run/after-await" ;;
++        esac
+         printf 'PASS owned old generation %s O%s, image close balanced\n' "$mode" "$level"
+     done
++    for mode in positive sync frame spawn-immediate; do
++        run="$work/unwrap-$mode-O$level"
++        mkdir "$run"
++        touch "$run/$mode-case"
++        cp "$work/TypedGeneration-$level.so" "$run/live-0.so"
++        result=0
++        (cd "$run" && timeout 90 "$work/host") > "$run/host.log" 2>&1 || result=$?
++        expected=134
++        if [ "$mode" = positive ]; then expected=42; fi
++        if [ "$result" -ne "$expected" ]; then cat "$run/host.log"; echo "shared unwrap $mode O$level status$result"; exit 1; fi
++        if [ "$mode" = positive ]; then test -e "$run/after-unwrap"
++        else
++            grep -Fx 'native failure: UnwrappedNil' "$run/host.log"
++            test ! -e "$run/after-unwrap"
++            test ! -e "$run/after-spawn"
++        fi
++        printf 'PASS shared unwrap %s O%s, image close balanced\n' "$mode" "$level"
++    done
+ done
+ 
+ # Prove the close-time audit actually runs. A phantom outstanding allocation
+diff --git a/tools/compiler/llvm_native/Emit.chibi b/tools/compiler/llvm_native/Emit.chibi
+index 178929918..2a0f32cdd 100644
+--- a/tools/compiler/llvm_native/Emit.chibi
++++ b/tools/compiler/llvm_native/Emit.chibi
+@@ -1128,7 +1128,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
+             }
+         }
+         if ((item.op == OwnerPin || item.op == OwnerUnpin) &&
+-            (!waiting[function] || (!ProgramMode(mode) && !family))) {
++            ((!waiting[function] && !family) || (!ProgramMode(mode) && !family))) {
+             return Result.Rejected(base + pc, "native owned frames require a program-owned waiting function");
+         }
+         if (Produces(item.op)) {
+@@ -1411,7 +1411,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
+             return Result.Rejected(base + pc, "native assertion has invalid diagnostic metadata");
+         }
+         if (item.op == TypedFail) {
+-            if (!ProgramMode(mode)) {
++            if (!ProgramMode(mode) && !family) {
+                 return Result.Rejected(base + pc, "typed failures require a standalone native program");
+             }
+             if (item.type != 0 || item.output != 0 || item.left != 0 || item.right != 0 || item.target != 0 ||
+@@ -2891,7 +2891,7 @@ RampCall :: (functions: Function[], parameters: int[], arguments: int[], item: I
+ // caller waits for it, resuming it each time it is resumed itself. Destroying
+ // the caller destroys F's frame first.
+ AwaitedCallInstruction :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int,
+-                           mode: int, testing: bool, owners: bool[]) -> string {
++                           mode: int, testing: bool, owners: bool[], checked: bool) -> string {
+     out := RampCall(functions, parameters, arguments, item, pc, mode, false, testing);
+     out = format_text("{}  br label %p{}.test\np{}.test:\n", out, pc, pc);
+     out = format_text("{}  %done{} = call i1 @llvm.coro.done(ptr %v{})\n", out, pc, pc);
+@@ -2902,7 +2902,14 @@ AwaitedCallInstruction :: (functions: Function[], parameters: int[], arguments:
+                       out, pc, pc, pc);
+     out = format_text("{}p{}.resume:\n  call void @llvm.coro.resume(ptr %v{})\n  br label %p{}.test\n", out, pc, pc, pc);
+     out = format_text("{}p{}.destroy:\n  call void @llvm.coro.destroy(ptr %v{})\n  br label %coro.cleanup\n", out, pc, pc);
+-    out = format_text("{}p{}.finished:\n  %promise{} = call ptr @llvm.coro.promise(ptr %v{}, i32 8, i1 false)\n", out, pc, pc, pc);
++    out = format_text("{}p{}.finished:\n", out, pc);
++    if (checked) {
++        out = format_text("{}  %failure{}.at = getelementptr inbounds {}, ptr %ctx, i32 0, i32 1\n", out, pc, abi.ContextType());
++        out = format_text("{}  %failure{} = load ptr, ptr %failure{}.at\n  %failed{} = icmp ne ptr %failure{}, null\n", out, pc, pc, pc, pc);
++        out = format_text("{}  br i1 %failed{}, label %p{}.failed, label %p{}.result\np{}.failed:\n", out, pc, pc, pc, pc);
++        out = format_text("{}  call void @llvm.coro.destroy(ptr %v{})\n  br label %failed\np{}.result:\n", out, pc, pc);
++    }
++    out = format_text("{}  %promise{} = call ptr @llvm.coro.promise(ptr %v{}, i32 8, i1 false)\n", out, pc, pc);
+     out = format_text("{}  %result{} = load {}, ptr %promise{}\n", out, pc, TypeName(item.type), pc);
+     if (ValueOwned(item.type, owners) || item.type == PointerType) {
+         out = format_text("{}  store {} zeroinitializer, ptr %promise{}\n", out, TypeName(item.type), pc);
+@@ -2914,9 +2921,15 @@ AwaitedCallInstruction :: (functions: Function[], parameters: int[], arguments:
+ // `F(arguments)` of a waiting F, not awaited: F runs to its first suspension and
+ // is added to the scheduler; the task's handle is the result.
+ SpawnedCallInstruction :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int,
+-                           mode: int, testing: bool) -> string {
++                           mode: int, testing: bool, checked: bool) -> string {
+     out := RampCall(functions, parameters, arguments, item, pc, mode, true, testing);
+     out = format_text("{}  call void @chibi_tasks.attach(i64 %task{}, ptr %v{})\n  store i64 %parent{}, ptr @chibi_tasks.current\n", out, pc, pc, pc);
++    if (checked) {
++        out = format_text("{}  %failure{}.at = getelementptr inbounds {}, ptr %ctx, i32 0, i32 1\n", out, pc, abi.ContextType());
++        out = format_text("{}  %failure{} = load ptr, ptr %failure{}.at\n  %failed{} = icmp ne ptr %failure{}, null\n", out, pc, pc, pc, pc);
++        out = format_text("{}  br i1 %failed{}, label %p{}.failed, label %p{}.result\np{}.failed:\n", out, pc, pc, pc, pc);
++        out = format_text("{}  call void @chibi_tasks.release(i64 %task{})\n  br label %failed\np{}.result:\n", out, pc, pc);
++    }
+     out = format_text("{}{}", out, Store(format_text("%task{}", pc), item.type, "s", item.output));
+     return format_text("{}  br label %p{}\n", out, pc + 1);
+ }
+@@ -2979,7 +2992,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
+     out.append(format_text("  %result0 = alloca {}\n", TypeName(result)));
+     out.append(Store(Zero(result), result, "result", 0));
+     owner_locations: TaskOwnerLocation[] = [];
+-    if (coroutine) {
++    if (coroutine || (mode == NoEntry && guarded)) {
+         owner_locations = TaskOwnerLocations(shape, code);
+         out.append(TaskOwnerPrologue(owner_locations));
+     }
+@@ -3063,9 +3076,11 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
+             returned := EmitInstruction(item, pc, result, records, fields, texts, coroutine, ProgramMode(mode), scoped, record_owners, guarded);
+             out.append(strings.ReplaceAll(returned, "  ret ", strings.Concatenate([ManagedUnroots(function == 0 && mode == ProgramEntry), "  ret "])));
+         } else if (item.op == Call && item.literal == i64(CallAwaited)) {
+-            out.append(AwaitedCallInstruction(functions, parameters, own, item, pc, mode, testing, record_owners));
++            out.append(AwaitedCallInstruction(functions, parameters, own, item, pc, mode, testing, record_owners,
++                mode == NoEntry && guarded && fallible[item.left]));
+         } else if (item.op == Call && (item.literal == i64(CallSpawned) || item.literal == i64(CallSpawnedVoid))) {
+-            out.append(SpawnedCallInstruction(functions, parameters, own, item, pc, mode, testing));
++            out.append(SpawnedCallInstruction(functions, parameters, own, item, pc, mode, testing,
++                mode == NoEntry && guarded && fallible[item.left]));
+         } else if (item.op == Suspend) {
+             out.append(SuspendInstruction(pc, testing));
+         } else if (item.op == AwaitResult) {
+@@ -3115,6 +3130,10 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
+             out.append(format_text("  br label %p{}\n", pc + 1));
+         } else if (item.op == OwnerPin || item.op == OwnerUnpin) {
+             out.append(TaskOwnerInstruction(item, pc, locals, shape.first_local));
++        } else if (item.op == TypedFail && !ProgramMode(mode)) {
++            out.append(format_text("p{}:\n  call void @chibi_native_failure_report(i32 {})\n", pc, item.literal));
++            out.append(format_text("  %fail{}.at = getelementptr inbounds {}, ptr %ctx, i32 0, i32 1\n", pc, abi.ContextType()));
++            out.append(format_text("  store ptr @{}, ptr %fail{}.at\n  br label %failed\n", FailureSymbol(function, pc), pc));
+         } else if (item.op == Fail) {
+             out.append(FailInstruction(function, pc));
+         } else if (item.op == Format) {
+@@ -3129,6 +3148,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
+         out.append("failed:\n  br label %coro.final\n");
+     } else if (fallible[function]) {
+         out.append("failed:\n");
++        out.append(TaskOwnerCleanup(owner_locations, "failed"));
+         if (managed) { out.append(ManagedUnroots(function == 0 && mode == ProgramEntry)); }
+         out.append(format_text("  ret {} {}\n", TypeName(result), Zero(result)));
+     }
+@@ -3182,12 +3202,12 @@ FormatInstruction :: (slots: int[], arguments: int[], item: Instruction, pc: int
+     return format_text("{}  br label %p{}\n", out, pc + 1);
+ }
+ // Whether `code` calls the runtime.
+-pub Runtime :: (code: Instruction[]) -> bool {
++pub Runtime :: (code: Instruction[], family: bool = false) -> bool {
+     if (Tasks(code)) {
+         return true;
+     }
+     for (item in code) {
+-        if (item.op == ManagedPending || item.op == ManagedPoll || item.op == ManagedTrack || item.op == OwnerPin || item.op == ClockSample || item.op == ManagedProject || item.op == ManagedNew || item.op == ManagedAddress || item.op == ManagedPin || item.op == ManagedUnpin || item.op == Print || item.op == Format || item.op == Fail || item.op == ValueCopy || item.op == ValueDrop || ArrayCalls(item.op) || MapCalls(item) ||
++        if (item.op == ManagedPending || item.op == ManagedPoll || item.op == ManagedTrack || item.op == OwnerPin || item.op == ClockSample || item.op == ManagedProject || item.op == ManagedNew || item.op == ManagedAddress || item.op == ManagedPin || item.op == ManagedUnpin || item.op == Print || item.op == Format || item.op == Fail || (family && item.op == TypedFail) || item.op == ValueCopy || item.op == ValueDrop || ArrayCalls(item.op) || MapCalls(item) ||
+             ((item.op == StateLoad || item.op == StateStore) && (item.type == abi.TextStorage || item.type >= RecordType))) {
+             return true;
+         }
+@@ -3196,7 +3216,7 @@ pub Runtime :: (code: Instruction[]) -> bool {
+ }
+ // Whether each function can fail: it has a Fail, or calls a function that
+ // can.
+-Fallible :: (functions: Function[], code: Instruction[]) -> bool[] {
++Fallible :: (functions: Function[], code: Instruction[], family: bool) -> bool[] {
+     fallible: bool[] = [];
+     for (shape in functions) {
+         fallible.append(false);
+@@ -3207,8 +3227,8 @@ Fallible :: (functions: Function[], code: Instruction[]) -> bool[] {
+         for (function in 0..<length(functions)) {
+             shape := functions[function];
+             for (item in Codes(code, shape.first_code, shape.code)) {
+-                if (!fallible[function] && (item.op == Fail || (item.op == ArrayResize && item.literal == i64(ArrayResizeInitialized)) ||
+-                    (item.op == Call && item.literal == i64(CallPlain) && fallible[item.left]))) {
++                if (!fallible[function] && (item.op == Fail || (family && item.op == TypedFail) || (item.op == ArrayResize && item.literal == i64(ArrayResizeInitialized)) ||
++                    (item.op == Call && (item.literal == i64(CallPlain) || family) && fallible[item.left]))) {
+                     fallible[function] = true;
+                     changed = true;
+                 }
+@@ -3226,6 +3246,9 @@ Failures :: (functions: Function[], code: Instruction[], texts: string[], first:
+         shape := functions[function];
+         for (pc in 0..<shape.code) {
+             item := code[shape.first_code + pc];
++            if (!program && item.op == TypedFail) {
++                out.append(format_text("@{} = private constant {} zeroinitializer\n", FailureSymbol(function, pc), abi.FailureType()));
++            }
+             if (!program && item.op == ArrayResize && item.literal == i64(ArrayResizeInitialized)) { resize_failure = true; }
+             if (item.op == Fail) {
+                 type := abi.FailureType();
+@@ -3628,7 +3651,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
+         return Result.Rejected(-1, "native retained states differ from their loads");
+     }
+     // A program's main has no context to pass.
+-    runtime := Runtime(code) || managed || snapshots || clock_owner;
++    runtime := Runtime(code, family) || managed || snapshots || clock_owner;
+     guarded := managed || (family && runtime);
+     if (runtime && mode == MainEntry) {
+         return Result.Rejected(-1, "a native program cannot call the runtime yet");
+@@ -3676,7 +3699,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
+         }
+     }
+     compares := Compares(code);
+-    fallible := Fallible(functions, code);
++    fallible := Fallible(functions, code, family);
+     // A program splits into pieces that opt and llc compile at once; a
+     // library's manifests and line tables' metadata name every function, so
+     // those stay one piece.
+@@ -3808,7 +3831,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
+         if (ProgramMode(mode)) {
+             out.append("declare void @chibi_native_step()\ndeclare void @chibi_native_failure(i32) noreturn\ndeclare void @chibi_native_reference_unavailable() noreturn\ndeclare void @chibi_native_map_owner_unavailable() noreturn\ndeclare void @chibi_native_array_mutation_unavailable() noreturn\n");
+         } else if (family && guarded) {
+-            out.append("declare void @chibi_native_failure(i32) noreturn\n");
++            out.append("declare void @chibi_native_failure(i32) noreturn\ndeclare void @chibi_native_failure_report(i32)\n");
+         }
+         if (HasClockSample(held)) { out.append("; chibi-clock\n"); out.append(ClockRuntime()); }
+         out.append(MathImports(target, held));
+@@ -4939,7 +4962,7 @@ LibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[],
+         case .Emitted(text):
+             module = text;
+     }
+-    runtime := Runtime(code) || snapshots;
++    runtime := Runtime(code, family) || snapshots;
+     retained_text := false;
+     for (item in RetainedStates(code)) {
+         retained_text = retained_text || item.type == abi.TextStorage;
+diff --git a/tools/compiler/llvm_native/Managed.chibi b/tools/compiler/llvm_native/Managed.chibi
+index f03b50ecb..2c50655d0 100644
+--- a/tools/compiler/llvm_native/Managed.chibi
++++ b/tools/compiler/llvm_native/Managed.chibi
+@@ -717,7 +717,7 @@ ManagedPinsValid :: (code: Instruction[], slots: int[]) -> string {
+             // Frame cleanup memberships can surround the same collecting call.
+         } else if (length(active) > 0) {
+             composite_find := item.op == ArrayContains && item.target > 0 && item.literal >= i64(RecordType);
+-            if (called || (!composite_find && item.op != ClockSample && item.op != Call && item.op != ForeignCall && item.op != Format && item.op != ManagedNew && item.op != Suspend && item.op != Delay && item.op != AwaitHandle && item.op != AwaitResult && item.op != Fail)) {
++            if (called || (!composite_find && item.op != ClockSample && item.op != Call && item.op != ForeignCall && item.op != Format && item.op != ManagedNew && item.op != Suspend && item.op != Delay && item.op != AwaitHandle && item.op != AwaitResult && item.op != Fail && item.op != TypedFail)) {
+                 return "native collector pins must bracket one collecting call";
+             }
+             called = true;
+diff --git a/tools/compiler/llvm_native/TaskOwners.chibi b/tools/compiler/llvm_native/TaskOwners.chibi
+index b55f81887..332ebb4f6 100644
+--- a/tools/compiler/llvm_native/TaskOwners.chibi
++++ b/tools/compiler/llvm_native/TaskOwners.chibi
+@@ -98,7 +98,7 @@ TaskDropValue :: (type: int, prefix: string, value: string) -> string {
+ TaskOwnerBoundary :: (item: Instruction) -> bool {
+     op := item.op;
+     return (op == ArrayResize && item.literal == i64(ArrayResizeInitialized)) || op == ClockSample || op == Call || op == ForeignCall || op == ManagedNew || op == Format ||
+-           op == Suspend || op == Delay || op == AwaitHandle || op == AwaitResult || op == Fail;
++           op == Suspend || op == Delay || op == AwaitHandle || op == AwaitResult || op == Fail || op == TypedFail;
+ }
+ TaskOwnersValid :: (code: Instruction[], slots: int[], locals: int[], records: Record[], layout: ValueLayout) -> string {
+     active_kinds: int[] = [];
+diff --git a/tools/compiler/llvm_native/tests/Failures.chibi b/tools/compiler/llvm_native/tests/Failures.chibi
+index 9b85f994d..5e902759a 100644
+--- a/tools/compiler/llvm_native/tests/Failures.chibi
++++ b/tools/compiler/llvm_native/tests/Failures.chibi
+@@ -85,7 +85,7 @@ TypedFailureModule :: (item: native.Instruction, program: bool) -> native.Result
+     return native.Emit(abi.LinuxX64(), functions, [], [], [], [item], [], [], [], [], source, [], [], [], false, 1);
+ }
+ @test
+-TypedFailuresUseOnlyTheStandaloneRuntime :: () {
++StandaloneTypedFailuresExitAndLegacyObjectsRejectThem :: () {
+     for (kind in 1..7) {
+         text := Emitted(TypedFailureModule(Code(native.TypedFail, 0, 0, 0, 0, 0, i64(kind)), true));
+         assert(strings.Contains(text, format_text("call void @chibi_native_failure(i32 {})\n  unreachable", kind)));
+@@ -93,6 +93,33 @@ TypedFailuresUseOnlyTheStandaloneRuntime :: () {
+     Rejects(TypedFailureModule(Code(native.TypedFail, 0, 0, 0, 0, 0, 7), false),
+             "typed failures require a standalone native program");
+ }
++TypedFamilyModule :: (item: native.Instruction) -> native.Result {
++    functions := [Function(abi.IntStorage, 0, 0, 0, 0, 1, 0, 0)];
++    return native.EmitFamilyLibraryStates(abi.LinuxX64(), "Typed", ["Failing"], [i64(1)], functions,
++        [], [], [], [item], [], [], [], [], [], 1000, [], -1, []);
++}
++@test
++FamilyTypedFailuresReturnThroughTheContext :: () {
++    for (kind in 1..7) {
++        text := Emitted(TypedFamilyModule(Code(native.TypedFail, 0, 0, 0, 0, 0, i64(kind))));
++        assert(strings.Contains(text, format_text("call void @chibi_native_failure_report(i32 {})", kind)));
++        assert(strings.Contains(text, "store ptr @chibi_scalar.failure.0.0, ptr %fail0.at\n  br label %failed"));
++    }
++}
++@test
++MalformedFamilyTypedFailuresAreRejected :: () {
++    for (kind in [int(-1), 0, 8]) {
++        Rejects(TypedFamilyModule(Code(native.TypedFail, 0, 0, 0, 0, 0, i64(kind))),
++            "native typed failure has no valid failure kind");
++    }
++    for (item in [Code(native.TypedFail, abi.IntStorage, 0, 0, 0, 0, 7),
++                 Code(native.TypedFail, 0, 1, 0, 0, 0, 7),
++                 Code(native.TypedFail, 0, 0, 1, 0, 0, 7),
++                 Code(native.TypedFail, 0, 0, 0, 1, 0, 7),
++                 Code(native.TypedFail, 0, 0, 0, 0, 1, 7)]) {
++        Rejects(TypedFamilyModule(item), "native typed failure has no valid failure kind");
++    }
++}
+ @test
+ MalformedTypedFailuresAndReservedInstructionsAreRejected :: () {
+     for (kind in [int(-1), 0, 8]) {
+diff --git a/tools/compiler/native_link/Failures.chibi b/tools/compiler/native_link/Failures.chibi
+index f4f183004..b7471da1f 100644
+--- a/tools/compiler/native_link/Failures.chibi
++++ b/tools/compiler/native_link/Failures.chibi
+@@ -65,6 +65,13 @@ FailureRuntime :: (windows: bool, context: bool, static_linux: bool, cli_errors:
+         "  call void @chibi_failure_write(ptr %name, i32 %length)\n",
+         "  ret void\n",
+         "}\n",
++        // Shared images report before returning through their context failure
++        // path. The host then releases every image's roots before unloading.
++        "define void @chibi_native_failure_report(i32 %kind) {\n",
++        "  call void @chibi_failure_write(ptr @chibi_failure_failure, i32 16)\n",
++        "  call void @chibi_failure_name(i32 %kind)\n",
++        "  call void @chibi_failure_write(ptr @chibi_failure_newline, i32 1)\n",
++        "  ret void\n}\n",
+         "define void @chibi_native_failure(i32 %kind) noreturn {\n",
+         "entry:\n",
+         "  %expected = load i32, ptr @chibi_test_expected\n",
+diff --git a/tools/compiler/scalar_llvm/Emit.chibi b/tools/compiler/scalar_llvm/Emit.chibi
+index a6de27b84..30b11000c 100644
+--- a/tools/compiler/scalar_llvm/Emit.chibi
++++ b/tools/compiler/scalar_llvm/Emit.chibi
+@@ -545,6 +545,41 @@ Last :: (rows: facts.Row[], heads: int[], function: int) -> int {
+     }
+     return length(rows);
+ }
++// Context failures return through every synchronous caller. Find only the
++// calls that need active owner cleanup, visiting each row and call edge once.
++FamilyFailures :: (rows: facts.Row[], heads: int[]) -> bool[] {
++    failed := resize([false], length(heads));
++    first := resize([int(0)], length(heads));
++    callers: int[] = [];
++    next: int[] = [];
++    pending: int[] = [];
++    for (function in 0..<length(heads)) {
++        for (index in heads[function] + 1..<Last(rows, heads, function)) {
++            row := rows[index];
++            if (row.kind == facts.UnwrapRow || row.kind == facts.AssertRow ||
++                (row.kind == facts.ConvertRow && row.value == facts.CheckedChar) ||
++                (row.kind == facts.ArrayRow && row.value == facts.ArrayResize)) {
++                if (!failed[function]) { failed[function] = true; pending.append(function); }
++            }
++            if (row.kind == facts.CallRow) {
++                callers.append(function);
++                next.append(first[row.value]);
++                first[row.value] = length(callers);
++            }
++        }
++    }
++    at := 0;
++    while (at < length(pending)) {
++        edge := first[pending[at]];
++        while (edge > 0) {
++            caller := callers[edge - 1];
++            if (!failed[caller]) { failed[caller] = true; pending.append(caller); }
++            edge = next[edge - 1];
++        }
++        at += 1;
++    }
++    return failed;
++}
+ // The operands a Text row's operator consumes: its string, then its index,
+ // or its start and count; 0 for no operator. A TextFormat row's count says
+ // how many it consumes.
+@@ -2761,7 +2796,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+         return Result.Invalid("managed pointer roots require a standalone native program");
+     }
+     state_characters: bool[] = [];
+-    if (!program) {
++    if (!program && !family) {
+         for (row in rows) {
+             if (row.kind == facts.UnwrapRow) {
+                 return Result.Invalid("typed failures require a standalone native program");
+@@ -2810,6 +2845,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+     comparison_sites: int[] = [];
+     comparison_types: bool[] = [];
+     heads := Heads(rows, Start(rows, declared));
++    family_failures: bool[] = [];
++    if (family) { family_failures = FamilyFailures(rows, heads); }
+     // The open statement an End, Else or Case row belongs to, plus one; 0 for
+     // any other row.
+     openers: int[] = resize([int(0)], length(rows));
+@@ -3897,9 +3934,35 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                         some.literal = 1;
+                         failed := Op(native.TypedFail, 0, 0, 0, 0, 0);
+                         failed.literal = 7;
+-                        body.extend([tag, some, Op(native.Eq, integer, slot + 2, slot, slot + 1, 0),
+-                                     Op(native.Branch, 0, 0, slot + 2, 0, length(body) + 5), failed]);
++                        body.extend([tag, some, Op(native.Eq, integer, slot + 2, slot, slot + 1, 0)]);
++                        skip_failure := length(body);
++                        body.append(Op(native.Branch, 0, 0, slot + 2, 0, 0));
+                         slot += 3;
++                        if (family && waiting_function) {
++                            glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
++                                fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root, true, records, value_layout);
++                            next_root = glue.next;
++                            slots.extend(glue.types);
++                            extra += length(glue.types);
++                            body.extend(glue.before);
++                            body.append(failed);
++                            body.extend(glue.after);
++                        } else {
++                            if (family) {
++                                for (temporary in fresh) {
++                                    held_type := slots[shape.first_slot + temporary];
++                                    if (TrackedRecord(managed, held_type)) { body.append(Op(native.ValueDrop, held_type, 0, temporary, 0, 0)); }
++                                    else { body.append(Giving(held_type, temporary)); }
++                                }
++                                drops := DropAll(rows, declared, managed, value_layout, owned_vars, owned_types, places, 0, [], frames, true,
++                                    slot + 1 + extra, length(body));
++                                slots.extend(drops.slot_types);
++                                extra += length(drops.slot_types);
++                                body.extend(drops.code);
++                            }
++                            body.append(failed);
++                        }
++                        body = Patched(body, skip_failure);
+                     }
+                     if (operand.kind == facts.PayloadRow) {
+                         for (at_read in 0..<length(any_slots)) {
+@@ -4647,9 +4710,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                     }
+                 }
+                 stored = [];
+-                if ((pointer_program || waiting_function) && (item.op == native.ClockSample || item.op == native.Call || item.op == native.ForeignCall || item.op == native.AwaitResult || item.op == native.Format)) {
++                family_call := false;
++                if (family && item.op == native.Call) { family_call = family_failures[item.left]; }
++                if ((pointer_program || waiting_function || family_call) && (item.op == native.ClockSample || item.op == native.Call || item.op == native.ForeignCall || item.op == native.AwaitResult || item.op == native.Format)) {
+                     glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
+-                        fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root, waiting_function, records, value_layout);
++                        fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root, waiting_function || family_call, records, value_layout);
+                     next_root = glue.next;
+                     slots.extend(glue.types);
+                     extra += length(glue.types);

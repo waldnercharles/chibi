@@ -1,0 +1,1 @@
+native: rejected Main: /private/tmp/chibi-a730-composed-proof/source/test/native_aot/managed_pointers/source/rejected/ViewOwnedOptionalParameter.chibi:4:19: scalar proof requires known effect-free scalar execution, not effects 1

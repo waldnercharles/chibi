@@ -1,0 +1,3 @@
+package nested_pointer_map
+@test
+Check :: () { observed := Main(); assert(observed == 7); }

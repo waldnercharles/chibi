@@ -1,0 +1,3 @@
+package rejected_owned_optional_view_parameter
+@test
+Check :: () { observed := Main(); }

@@ -1,0 +1,3 @@
+package rejected_retained_cell
+@test
+Check :: () { observed := Main(); }

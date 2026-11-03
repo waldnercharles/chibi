@@ -1,0 +1,16 @@
+{
+  "exact_source_copies": [
+    {
+      "name": "ArrayText",
+      "source_equal": true,
+      "sha256": "395128bf717eb271ffc5372b052c9a7a5354ea3f32f98a6a0d7f09e90a4d38cd"
+    },
+    {
+      "name": "InlineText",
+      "source_equal": true,
+      "sha256": "bb787512362f89db778b3bde2ddfc5e63b96f8daf57c9d0bc5aaaa765932834f"
+    }
+  ],
+  "receipt": "/private/tmp/chibi-retirement-closure-f255/row-shapes/ordinary.json",
+  "receipt_sha256": "3d3007a881824b107735c3ba0a3a4f6eb6376b1e0605ec2ddc243903f66161d1"
+}

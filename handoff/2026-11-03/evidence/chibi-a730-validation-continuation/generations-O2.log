@@ -1,0 +1,27 @@
+native: rejected (module): No runnable Main: native package generations require Main and Frame with a zero-argument int ABI
+native: rejected (module): No runnable Main: native package generations require Main and Frame with a zero-argument int ABI
+native: rejected (module): No runnable Frame: native package generations require Main and Frame with a zero-argument int ABI
+native: rejected (module): No runnable Frame: native package generations require Main and Frame with a zero-argument int ABI
+native: rejected (module): native package generation Main and Frame cannot wait
+native: rejected (module): native package generation Main and Frame cannot wait
+native generations: retired task failure propagated
+native: rejected Loop :: library { Main: /private/tmp/chibi-a730-validation-continuation/tmp/chibi-generations.ldwlpF/library first/Main.chibi:1:46: Unknown function 'Missing'
+native: rejected (module): native library retained states require scalar literal initializers; use a package generation for other retained values
+native: rejected Value: /private/tmp/chibi-a730-validation-continuation/tmp/chibi-generations.ldwlpF/collection/core/used/Value.chibi:2:33: Unknown name 'needed_error'
+native: rejected Value: /private/tmp/chibi-a730-validation-continuation/tmp/chibi-generations.ldwlpF/collection/core/used/Value.chibi:2:33: Unknown name 'needed_error'
+native generations: reachable collections, physical diagnostics and rejected-image preservation passed
+native generations: numeric/bool arrays, strict schemas and fresh initializers passed
+native: rejected (module): native retained initializers require constant values and empty arrays
+native: rejected Frame: /private/tmp/chibi-a730-validation-continuation/tmp/chibi-generations.ldwlpF/array edited/Main.chibi:2:22: native retained values require owned scalars, strings, records, unions and non-nominal arrays with an initializer
+native: rejected Frame: /private/tmp/chibi-a730-validation-continuation/tmp/chibi-generations.ldwlpF/array edited/Main.chibi:2:22: scalar proof supports only number, bool and string values
+native: rejected (entry): /private/tmp/chibi-a730-validation-continuation/tmp/chibi-generations.ldwlpF/array edited/Main.chibi:2:19: record fields require a scalar, pointer, record, union or array of those types
+native: rejected (entry): /private/tmp/chibi-a730-validation-continuation/tmp/chibi-generations.ldwlpF/array edited/Main.chibi:2:20: record fields require a scalar, pointer, record, union or array of those types
+native: rejected Frame: /private/tmp/chibi-a730-validation-continuation/tmp/chibi-generations.ldwlpF/array edited/Main.chibi:4:67: native array mutation requires a writable inline record array field
+native retained arrays: independent snapshot, nominal chars, amortized growth and balanced release at O0/O2
+native generations: suspended pointer/array roots, cancellation and old task failure O2 passed
+native generations: typed cyclic record roots, changed layouts and image cell leases O2 passed
+native generations: suspended view roots, changed schemas and cancellation O2 passed
+native generations: ABI rejection and old cell callback lease O2 passed
+native retained snapshots: callbacks O0/O2, rejected schema, native type reindex, actual unload and Main once passed O2
+native retained source: O0/O2 poison/balance, bounded growth, rejected schema, type reindex and Main once passed O2
+native package generations: passed

@@ -1,0 +1,32 @@
+{
+  "utc": "2026-11-03T10:35:08.208543+00:00",
+  "container": "687bdde2057f65f2f696c383b69ecabcc2c09d74346f07d89aaee11415ab6e49",
+  "kind": "single own-container observation; not whole-phase attribution or peak memory",
+  "observations": [
+    {
+      "command": [
+        "docker",
+        "top",
+        "687bdde2057f65f2f696c383b69ecabcc2c09d74346f07d89aaee11415ab6e49",
+        "-eo",
+        "pid,ppid,etimes,comm,args"
+      ],
+      "status": 1,
+      "stdout": "",
+      "stderr": "Error response from daemon: ps: ps: bad -o argument 'etimes', supported arguments: user,group,comm,args,pid,ppid,pgid,etime,nice,rgroup,ruser,time,tty,vsz,sid,stat,rss\n"
+    },
+    {
+      "command": [
+        "docker",
+        "stats",
+        "--no-stream",
+        "--format",
+        "{{.CPUPerc}} {{.MemUsage}} {{.PIDs}}",
+        "687bdde2057f65f2f696c383b69ecabcc2c09d74346f07d89aaee11415ab6e49"
+      ],
+      "status": 0,
+      "stdout": "99.60% 444.4MiB / 5.783GiB 2\n",
+      "stderr": ""
+    }
+  ]
+}

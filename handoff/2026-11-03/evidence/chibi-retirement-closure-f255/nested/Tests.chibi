@@ -1,0 +1,3 @@
+package rejected_nested
+@test
+Check :: () { pointer := Make(); assert(pointer^^ == 1); }

@@ -1,0 +1,35 @@
+package managed_metadata_continuation
+import native "project:llvm_native"
+import abi "project:native_abi"
+import os "core:os"
+import strings "core:strings"
+
+Op :: (op: int, type: int, output: int, left: int, right: int, literal: i64) -> native.Instruction {
+    return {op: op, type: type, output: output, left: left, right: right, target: 0, literal: literal};
+}
+Main :: () -> int {
+    number := abi.IntStorage;
+    pointer := native.PointerType;
+    target := abi.MacOSArm64();
+    source: native.Source = {file: "", directory: ""};
+    for (payload in [native.ArrayType + pointer, native.MapType + number]) {
+        slots := [payload, pointer, number];
+        code := [Op(native.Constant, payload, 0, 0, 0, 0),
+                 Op(native.ManagedNew, pointer, 1, 0, payload, -880),
+                 Op(native.Constant, number, 2, 0, 0, 0),
+                 Op(native.Publish, number, 0, 2, 0, 0), Op(native.Return, 0, 0, 0, 0, 0)];
+        shape: native.Function = {result: number, first_parameter: 0, parameters: 0,
+            first_slot: 0, slots: length(slots), first_local: 0, locals: 0,
+            first_code: 0, code: length(code), first_argument: 0, arguments: 0};
+        switch native.EmitProgram(target, [shape], [], slots, [], code, [], [], [], [], source, [], [], []) {
+            case .Emitted(text):
+                if (payload != native.ArrayType + pointer) { os.Print("FAIL: Map cell metadata accepted"); return 1; }
+                os.Print("PASS: PArray cell metadata accepted");
+            case .Rejected(instruction, message):
+                os.Print(message);
+                if (payload != native.MapType + number || !strings.Contains(message, "initializer differs from its scalar type")) { return 1; }
+                os.Print("PASS: Map cell metadata rejected with expected diagnostic");
+        }
+    }
+    return 0;
+}

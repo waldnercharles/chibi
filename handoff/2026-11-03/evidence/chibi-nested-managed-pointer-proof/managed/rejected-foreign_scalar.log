@@ -1,0 +1,1 @@
+native: rejected foreign libc { Touch: /Users/cwaldner/Personal/chibi/.worktrees/authored-strings-regressions/chibi/test/native_aot/managed_pointers/source/rejected/foreign_scalar.chibi:4:26: A foreign parameter is an integer, float, bool, rawptr, cstring, function type or array of numbers

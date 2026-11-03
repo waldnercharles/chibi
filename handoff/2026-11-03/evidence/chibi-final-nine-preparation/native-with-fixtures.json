@@ -1,0 +1,18 @@
+{
+  "exit": 0,
+  "seconds": 3.169073208991904,
+  "command": [
+    "sh",
+    "/Users/cwaldner/Personal/chibi/handoffs/heavy.sh",
+    "native_cli: final native family with original fixtures",
+    "env",
+    "CHIBI_CORE=/private/tmp/chibi-original-nine-matrix/native-sdk/share/chibi/core",
+    "CHIBI_TEST_WORKERS=1",
+    "/private/tmp/chibi-void-callback-proof/chibi",
+    "test",
+    "--llvm",
+    "/private/tmp/chibi-bba9-proof/llvm22",
+    "/private/tmp/chibi-void-callback-proof/source/test/compiler/samples/native"
+  ],
+  "cwd": "/private/tmp/chibi-original-nine-matrix/native-cwd"
+}

@@ -1,0 +1,655 @@
+diff --git a/test/native_aot/managed_pointers/NativeProbe.chibi b/test/native_aot/managed_pointers/NativeProbe.chibi
+index 888429fc9..dc1c4f07f 100644
+--- a/test/native_aot/managed_pointers/NativeProbe.chibi
++++ b/test/native_aot/managed_pointers/NativeProbe.chibi
+@@ -193,7 +193,7 @@ Main :: () -> int {
+             case .Emitted(text): os.Print("accepted an unsafe optional cell layout or projection"); return 1;
+             case .Rejected(instruction, message):
+                 expected := "projection differs";
+-                if (mode == 4) { expected = "metadata requires scalar or pointer fields"; }
++                if (mode == 4) { expected = "metadata requires scalar, text or pointer fields"; }
+                 if (!strings.Contains(message, expected)) { os.Print(message); return 1; }
+         }
+     }
+diff --git a/test/native_aot/managed_pointers/README.md b/test/native_aot/managed_pointers/README.md
+index d22d5763b..2d8e3e352 100644
+--- a/test/native_aot/managed_pointers/README.md
++++ b/test/native_aot/managed_pointers/README.md
+@@ -278,5 +278,17 @@ view promises remain separate.
+ Value-only records may combine direct pointer fields with pointer-array and
+ text owners. Their structural root metadata does not make them cell layouts.
+ `InlineOwners.chibi` checks synchronous copies, repeated promise joins, by-value
+-waiting parameters and cancellation under collection. Taking the address of an
+-owned record remains rejected until its cell layout owns and traces those fields.
++waiting parameters and cancellation under collection.
++
++Flat authored record cells can also own Text fields beside scalar/bool and
++pointer fields. Their typed copy imports borrowed Text leaves before publishing
++the cell; its tracer follows pointer fields and its last drop releases Text.
++Whole-value, boxed-variable and scoped replacements acquire incoming text before
++releasing previous owners. Pointer fields retain their location identity.
++Owned constructor inputs remain rooted until the new cell reaches its canonical
++Pointer local. The source proof covers field aliases, snapshots, returned and
++parameter cells, cycles and failure cleanup. A two-image proof writes an actual
++returned record literal into an old cell, unloads the writer, and reads the text
++afterward; bypassing the import fails. Nonzero authored field identities keep
++`{int, string}` distinct from a whole optional string's zero field identities.
++Inline-nested, array, map and view fields in a cell remain separate admission work.
+diff --git a/test/native_aot/managed_pointers/TextCellImages.chibi b/test/native_aot/managed_pointers/TextCellImages.chibi
+index 0602da551..88ca97039 100644
+--- a/test/native_aot/managed_pointers/TextCellImages.chibi
++++ b/test/native_aot/managed_pointers/TextCellImages.chibi
+@@ -8,14 +8,15 @@ import strings "core:strings"
+ foreign import libc "system:c"
+ foreign libc { strtoll :: (text: cstring, end: rawptr, base: i32) -> i64 }
+ 
+-Old :: (target: abi.Target, tag: i64, optional: bool) -> string {
++Old :: (target: abi.Target, tag: i64, optional: bool, authored: bool, member_tags: i64[]) -> string {
+     text := abi.TextStorage; pointer := native.PointerType;
+     records: native.Record[] = []; fields: int[] = []; tags: i64[] = [];
+-    if (optional) {
++    if (optional || authored) {
+         text = native.RecordType;
+         records = [{first: 0, count: 2, identity: tag}];
+         fields = [abi.IntStorage, abi.TextStorage];
+         tags = [i64(0), 0];
++        if (authored) { fields[0] = native.PointerType; tags = member_tags; }
+     }
+     code: native.Instruction[] = [
+         {op: native.Constant, type: text, output: 0, left: 0, right: 0, target: 0, literal: 0},
+@@ -32,9 +33,9 @@ Old :: (target: abi.Target, tag: i64, optional: bool) -> string {
+     }
+     owner := format_text("  %heap.at = getelementptr {}, ptr @chibi_context, i32 0, i32 {}\n  %heap = load ptr, ptr %heap.at\n", abi.ManagedContextType(), abi.ManagedOwnerField);
+     payload := abi.TextType();
+-    if (optional) { payload = "%record0"; }
++    if (optional || authored) { payload = "%record0"; }
+     load := format_text("  %text = load {}, ptr %address\n", abi.TextType());
+-    if (optional) { load = "  %optional = load %record0, ptr %address\n  %text = extractvalue %record0 %optional, 1\n"; }
++    if (optional || authored) { load = "  %optional = load %record0, ptr %address\n  %text = extractvalue %record0 %optional, 1\n"; }
+     return strings.Concatenate([module,
+         "@text_cell.root = internal global %chibi.managed.root zeroinitializer\n",
+         format_text("@text_cell.value = internal global {} zeroinitializer\n", abi.ManagedPointerType()),
+@@ -51,9 +52,19 @@ Old :: (target: abi.Target, tag: i64, optional: bool) -> string {
+         format_text("  store {} zeroinitializer, ptr @text_cell.value\n  ret i32 0\n}}\n", abi.ManagedPointerType())]);
+ }
+ Main :: () -> int {
+-    args := os.Arguments(); if (length(args) < 4 || length(args) > 5) { return 2; }
++    args := os.Arguments();
++    if (length(args) != 4 && length(args) != 5 && length(args) != 7) { return 2; }
+     optional := length(args) == 5;
+-    if (optional && args[4] != "optional") { return 2; }
++    authored := length(args) == 7;
++    if ((optional && args[4] != "optional") || (authored && args[4] != "record")) { return 2; }
++    member_tags: i64[] = [];
++    if (authored) {
++        for (index in 5..<7) {
++            member := strtoll(args[index], 0, 10);
++            if (member == 0 || format_text("{}", member) != args[index]) { return 2; }
++            member_tags.append(member);
++        }
++    }
+     work := args[0]; llvm := args[1];
+     read := os.ReadText(args[2]); if (read.error) { return 2; }
+     tag := strtoll(args[3], 0, 10); if (tag == 0 || format_text("{}", tag) != args[3]) { return 2; }
+@@ -94,7 +105,7 @@ Main :: () -> int {
+     if (skipped != 1) { return 2; }
+     negative := strings.ReplaceAll(source, body, strings.Join(broken, "\n"));
+     target := abi.LinuxX64(); if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
+-    old := Old(target, tag, optional); if (old == "") { return 1; }
++    old := Old(target, tag, optional, authored, member_tags); if (old == "") { return 1; }
+     start := strings.Concatenate([work, "/text-cell-start.ll"]);
+     if (os.WriteText(start, link.ManagedFamilyContext(link.SharedContext(target.triple, true), true))) { return 2; }
+     for (name in ["old", "writer", "broken"]) {
+diff --git a/test/native_aot/managed_pointers/run.sh b/test/native_aot/managed_pointers/run.sh
+index 403d34520..e6a739ac4 100644
+--- a/test/native_aot/managed_pointers/run.sh
++++ b/test/native_aot/managed_pointers/run.sh
+@@ -14,7 +14,7 @@ esac
+     --source "$root/test/native_aot/managed_pointers/Probe.chibi" --entry Main \
+     --output "$work/probe" --llvm "$llvm" --target "$triple" --jobs 1
+ "$work/probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/Collector.ll"
+-for name in Cells ScopedAliases Transfer Nullable Records RecordArrays RecordArrayMutation WholeArrays WholeArrayForeign StringArrays StringCells StringScalar OptionalStrings OptionalCells Views ViewUnions ViewStrings ViewOwned PointerViews TextSequences Tasks TaskPromises TaskCaptured TaskRecordPromises TaskArrayPromises InlineOwners TaskViews TaskViewPromises TaskFailure TaskPromiseFailure TaskViewFailure; do
++for name in Cells ScopedAliases Transfer Nullable Records OwnedRecords RecordArrays RecordArrayMutation WholeArrays WholeArrayForeign StringArrays StringCells StringScalar OptionalStrings OptionalCells Views ViewUnions ViewStrings ViewOwned PointerViews TextSequences Tasks TaskPromises TaskCaptured TaskRecordPromises TaskArrayPromises InlineOwners TaskViews TaskViewPromises TaskFailure TaskPromiseFailure TaskViewFailure; do
+     "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+         --source "$root/test/native_aot/managed_pointers/source/$name.chibi" --entry Main \
+         --output "$work/$name.ll" --emit-llvm --target "$triple"
+@@ -38,7 +38,7 @@ for pair in Tasks:TaskPointerViews AppendStress:PointerAppend Failure:PointerVie
+         --output "$work/$name.ll" --emit-llvm --target "$triple"
+ done
+ "$work/source-probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
+-    "$work/Cells.ll" "$work/ScopedAliases.ll" "$work/Transfer.ll" "$work/Nullable.ll" "$work/Tasks.ll" "$work/TaskPromises.ll" "$work/TaskCaptured.ll" "$work/TaskRecordPromises.ll" "$work/TaskArrayPromises.ll" "$work/InlineOwners.ll" "$work/TaskViews.ll" "$work/TaskViewPromises.ll" "$work/Records.ll" "$work/RecordArrays.ll" "$work/RecordArrayMutation.ll" "$work/WholeArrays.ll" "$work/WholeArrayForeign.ll" "$work/StringArrays.ll" "$work/StringCells.ll" "$work/StringScalar.ll" "$work/OptionalStrings.ll" "$work/OptionalCells.ll" "$work/Views.ll" "$work/ViewUnions.ll" "$work/ViewStrings.ll" "$work/ViewOwned.ll" "$work/PointerViews.ll" "$work/TaskPointerViews.ll" "$work/PointerAppend.ll" "$work/TextSequences.ll" "$work/TextSpan.ll" "$work/TextBorrowed.ll" "$work/ViewAppend.ll"
++    "$work/Cells.ll" "$work/ScopedAliases.ll" "$work/Transfer.ll" "$work/Nullable.ll" "$work/Tasks.ll" "$work/TaskPromises.ll" "$work/TaskCaptured.ll" "$work/TaskRecordPromises.ll" "$work/TaskArrayPromises.ll" "$work/InlineOwners.ll" "$work/TaskViews.ll" "$work/TaskViewPromises.ll" "$work/Records.ll" "$work/OwnedRecords.ll" "$work/RecordArrays.ll" "$work/RecordArrayMutation.ll" "$work/WholeArrays.ll" "$work/WholeArrayForeign.ll" "$work/StringArrays.ll" "$work/StringCells.ll" "$work/StringScalar.ll" "$work/OptionalStrings.ll" "$work/OptionalCells.ll" "$work/Views.ll" "$work/ViewUnions.ll" "$work/ViewStrings.ll" "$work/ViewOwned.ll" "$work/PointerViews.ll" "$work/TaskPointerViews.ll" "$work/PointerAppend.ll" "$work/TextSequences.ll" "$work/TextSpan.ll" "$work/TextBorrowed.ll" "$work/ViewAppend.ll"
+ "$work/source-probe" --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/TaskFailure.ll" "$work/TaskPromiseFailure.ll" "$work/TaskViewFailure.ll" "$work/PointerViewFailure.ll"
+ "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+     --source "$root/test/native_aot/managed_pointers/source/TaskRecordPromises.chibi" --entry Failure \
+@@ -79,11 +79,14 @@ done
+ "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+     --source "$root/test/native_aot/managed_pointers/source/OptionalStrings.chibi" --entry Failure \
+     --output "$work/OptionalStringFailure.ll" --emit-llvm --target "$triple"
+-"$work/source-probe" --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/OptionalStringFailure.ll"
++"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
++    --source "$root/test/native_aot/managed_pointers/source/OwnedRecords.chibi" --entry Failure \
++    --output "$work/OwnedRecordFailure.ll" --emit-llvm --target "$triple"
++"$work/source-probe" --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/OptionalStringFailure.ll" "$work/OwnedRecordFailure.ll"
+ "$work/source-probe" --callbacks "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
+-    "$work/Callbacks.ll" "$work/StringCells.ll" "$work/OptionalStrings.ll" "$work/TextCells.ll" "$work/OptionalTextCells.ll" "$work/OptionalTextNone.ll" "$work/ViewOwned.ll" "$work/PointerViews.ll" "$work/TaskPointerViews.ll" "$work/CallbackPointerless.ll" "$work/Tasks.ll" "$work/PatternRows.ll" "$work/InlineRecords.ll" "$work/RecordArrays.ll" "$work/RecordArrayMutation.ll" "$work/TaskPromises.ll" "$work/TaskCaptured.ll" "$work/TaskRecordPromises.ll" "$work/TaskArrayPromises.ll" "$work/InlineOwners.ll" "$work/TaskViews.ll" "$work/TaskViewPromises.ll"
++    "$work/Callbacks.ll" "$work/StringCells.ll" "$work/OptionalStrings.ll" "$work/OwnedRecords.ll" "$work/TextCells.ll" "$work/OptionalTextCells.ll" "$work/OptionalTextNone.ll" "$work/ViewOwned.ll" "$work/PointerViews.ll" "$work/TaskPointerViews.ll" "$work/CallbackPointerless.ll" "$work/Tasks.ll" "$work/PatternRows.ll" "$work/InlineRecords.ll" "$work/RecordArrays.ll" "$work/RecordArrayMutation.ll" "$work/TaskPromises.ll" "$work/TaskCaptured.ll" "$work/TaskRecordPromises.ll" "$work/TaskArrayPromises.ll" "$work/InlineOwners.ll" "$work/TaskViews.ll" "$work/TaskViewPromises.ll"
+ "$work/source-probe" --callbacks --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
+-    "$work/OptionalStringFailure.ll" "$work/CallbackFailure.ll" "$work/TaskPromiseFailure.ll" "$work/TaskRecordPromiseFailure.ll" "$work/TaskArrayFailure.ll" "$work/TaskArrayChildFailure.ll" "$work/TaskViewFailure.ll" "$work/TaskViewPromiseFailure.ll" "$work/PointerViewFailure.ll"
++    "$work/OptionalStringFailure.ll" "$work/OwnedRecordFailure.ll" "$work/CallbackFailure.ll" "$work/TaskPromiseFailure.ll" "$work/TaskRecordPromiseFailure.ll" "$work/TaskArrayFailure.ll" "$work/TaskArrayChildFailure.ll" "$work/TaskViewFailure.ll" "$work/TaskViewPromiseFailure.ll" "$work/PointerViewFailure.ll"
+ "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+     --source "$root/test/native_aot/managed_pointers/source/RecordArrayMutation.chibi" --entry Failure \
+     --output "$work/RecordArrayMutationFailure.ll" --emit-llvm --target "$triple"
+@@ -134,6 +137,7 @@ fi
+ sh "$root/test/native_aot/managed_pointers/view-schema.sh" "$compiler" "$llvm" "$work"
+ sh "$root/test/native_aot/managed_pointers/text-cell-images.sh" "$compiler" "$llvm" "$work"
+ sh "$root/test/native_aot/managed_pointers/text-cell-images.sh" "$compiler" "$llvm" "$work" optional
++sh "$root/test/native_aot/managed_pointers/text-cell-images.sh" "$compiler" "$llvm" "$work" record
+ for level in 0 2; do
+     for name in fallible_correlated_pointers_retain_valid_error_handling \
+                 fallible_joined_pointers_keep_unchanged_pointees \
+diff --git a/test/native_aot/managed_pointers/source/OwnedRecords.chibi b/test/native_aot/managed_pointers/source/OwnedRecords.chibi
+new file mode 100644
+index 000000000..9e0e85f43
+--- /dev/null
++++ b/test/native_aot/managed_pointers/source/OwnedRecords.chibi
+@@ -0,0 +1,72 @@
++package owned_record_cells
++
++Entry :: struct { pointer: ^int; label: string; }
++Tagged :: struct { code: int; label: string; }
++Link :: struct { next: ^Link?; label: string; }
++Text :: (value: int) -> string { return text_from_bytes([u8(65), u8(0), u8(wrap: value)]); }
++Number :: (value: int) -> ^int { return &value; }
++Build :: (value: int) -> Entry { return {pointer: Number(value), label: Text(value)}; }
++Owner :: (value: int) -> ^Entry { saved := Build(value); return &saved; }
++Parameter :: (value: Entry) -> ^Entry { return &value; }
++Literal :: () -> Entry { return {pointer: Number(31), label: "returned record literal"}; }
++Scoped :: (value: ^Entry) { value.label = "scoped record literal"; }
++Replace :: (value: ^Entry, next: int) -> int { value^ = Build(next); return next; }
++First :: (value: Entry, ignored: int) -> int { return value.pointer^ + int(text_byte_at(value.label, 2)); }
++WordLength :: () -> int {
++    number := 7;
++    value: Entry = {pointer: &number, label: "word"};
++    pointer := &value;
++    return text_byte_length(pointer.label);
++}
++Cycle :: () -> ^Link {
++    left: Link = {next: nil, label: Text(41)};
++    first := &left;
++    right: Link = {next: first, label: Text(43)};
++    second := &right;
++    first.next = second;
++    return first;
++}
++Main :: () -> int {
++    word := WordLength();
++    assert(word == 4);
++    value := Build(7);
++    pointer := &value;
++    alias := pointer;
++    snapshot := pointer^;
++    alias.label = Text(9);
++    assert(snapshot.pointer^ == 7 && text_byte_at(snapshot.label, 2) == 7);
++    assert(text_byte_at(value.label, 2) == 9);
++    field := &pointer.label;
++    field^ = Text(11);
++    assert(text_byte_at(value.label, 2) == 11);
++    before := First(pointer^, Replace(alias, 13));
++    assert(before == 18 && value.pointer^ == 13);
++    value = Literal();
++    assert(pointer.pointer^ == 31 && pointer.label == "returned record literal");
++    pointer^ = pointer^;
++    Scoped(alias);
++    assert(value.label == "scoped record literal");
++    returned := Owner(17);
++    parameter := Parameter(Build(19));
++    tagged: Tagged = {code: 37, label: "an authored record is not an optional"};
++    tagged_pointer := &tagged;
++    tagged_pointer.code += 5;
++    assert(tagged.code == 42 && tagged_pointer.label == "an authored record is not an optional");
++    for index in 0..<2000 { discarded := Owner(index % 127); }
++    assert(returned.pointer^ == 17 && text_byte_at(returned.label, 2) == 17);
++    assert(parameter.pointer^ == 19 && text_byte_at(parameter.label, 2) == 19);
++    assert(snapshot.pointer^ == 7 && text_byte_at(snapshot.label, 2) == 7);
++    cycle := Cycle();
++    for index in 0..<1000 { discarded := Cycle(); }
++    assert(text_byte_at(cycle.label, 2) == 41);
++    selected := cycle.next;
++    if selected { assert(text_byte_at(selected.label, 2) == 43); } else { assert(false); }
++    return 0;
++}
++Failure :: () -> int {
++    value := Build(7);
++    pointer := &value;
++    pointer^ = Literal();
++    assert(false, "owned record cell failure releases text and graph roots");
++    return 0;
++}
+diff --git a/test/native_aot/managed_pointers/source/rejected/OwnedRecordCell.chibi b/test/native_aot/managed_pointers/source/rejected/OwnedRecordCell.chibi
+deleted file mode 100644
+index 240d7893c..000000000
+--- a/test/native_aot/managed_pointers/source/rejected/OwnedRecordCell.chibi
++++ /dev/null
+@@ -1,8 +0,0 @@
+-package owned_record_cell
+-Owned :: struct { pointer: ^int; label: string; }
+-Main :: () -> int {
+-    number := 7;
+-    value: Owned = {pointer: &number, label: "word"};
+-    pointer := &value;
+-    return text_byte_length(pointer.label);
+-}
+diff --git a/test/native_aot/managed_pointers/text-cell-images.sh b/test/native_aot/managed_pointers/text-cell-images.sh
+index 44649f7b5..f51fdcfe3 100644
+--- a/test/native_aot/managed_pointers/text-cell-images.sh
++++ b/test/native_aot/managed_pointers/text-cell-images.sh
+@@ -7,6 +7,7 @@ mode=${4:-text}
+ case "$mode" in
+     text) writer=Writer ;;
+     optional) writer=Optional; work=$work-optional ;;
++    record) writer=Record; work=$work-record ;;
+     *) echo 'native string cells: unsupported mode' >&2; exit 2 ;;
+ esac
+ root=$(CDPATH='' cd -- "$(dirname "$0")/../../.." && pwd -P)
+@@ -24,7 +25,7 @@ library=$(sed -nE 's/^native: (.*\/generation\.so)( is up to date)?$/\1/p' "$wor
+ [ -n "$library" ] || { cat "$work/source-build.log" >&2; exit 1; }
+ module=${library%/*}/source.ll
+ tag=$(sed -nE 's/^@chibi_managed\.layout\.text(-?[0-9]+) =.*/\1/p' "$module")
+-if [ "$mode" = optional ]; then
++if [ "$mode" != text ]; then
+     tag=$(sed -nE 's/^  %whole.tag = icmp eq i64 %tag, (-?[0-9]+)$/\1/p' "$module")
+ fi
+ [ -n "$tag" ] || { echo 'native string cells: source has no typed text layout' >&2; exit 1; }
+@@ -33,7 +34,11 @@ for name in TextCellImages TextCellImagesHost; do
+         --source "$root/test/native_aot/managed_pointers/$name.chibi" --entry Main \
+         --output "$work/$name" --llvm "$llvm" --target "$triple" --jobs 1
+ done
+-if [ "$mode" = optional ]; then
++if [ "$mode" = record ]; then
++    pointer_tag=$(sed -nE 's/^  %tag0 = icmp eq i64 %tag, (-?[0-9]+)$/\1/p' "$module")
++    text_tag=$(sed -nE 's/^  %tag1 = icmp eq i64 %tag, (-?[0-9]+)$/\1/p' "$module")
++    "$work/TextCellImages" "$work" "$llvm" "$module" "$tag" record "$pointer_tag" "$text_tag"
++elif [ "$mode" = optional ]; then
+     "$work/TextCellImages" "$work" "$llvm" "$module" "$tag" optional
+ else
+     "$work/TextCellImages" "$work" "$llvm" "$module" "$tag"
+diff --git a/test/native_aot/managed_pointers/text_cells/Record.chibi b/test/native_aot/managed_pointers/text_cells/Record.chibi
+new file mode 100644
+index 000000000..cd02cd914
+--- /dev/null
++++ b/test/native_aot/managed_pointers/text_cells/Record.chibi
+@@ -0,0 +1,11 @@
++package record_text_cell_writer
++Value :: struct { pointer: ^int; label: string; }
++Number :: (value: int) -> ^int { return &value; }
++Literal :: () -> Value { return {pointer: Number(31), label: "new image literal"}; }
++Write :: (pointer: ^Value) -> ^Value { alias := pointer; alias^ = Literal(); return alias; }
++Main :: () -> int {
++    value: Value = {pointer: Number(7), label: "old"};
++    pointer := &value;
++    changed := Write(pointer);
++    return text_byte_length(changed.label);
++}
+diff --git a/tools/compiler/llvm_native/Emit.chibi b/tools/compiler/llvm_native/Emit.chibi
+index 18a8619aa..c3a29bce6 100644
+--- a/tools/compiler/llvm_native/Emit.chibi
++++ b/tools/compiler/llvm_native/Emit.chibi
+@@ -1163,12 +1163,12 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
+                 return Result.Rejected(base + pc, "native managed pointer identity is invalid");
+             }
+             if (item.op == ManagedNew &&
+-                (item.type != PointerType || !ManagedPayload(records, fields, managed_records, lifecycle, item.right, item.literal) ||
++                (item.type != PointerType || !ManagedPayload(records, managed_records, lifecycle, item.right, item.literal) ||
+                  !Typed(slots, item.left, item.right))) {
+                 return Result.Rejected(base + pc, "native managed cell initializer differs from its scalar type");
+             }
+             if (item.op == ManagedAddress &&
+-                (item.type < RefType || !ManagedTarget(records, fields, managed_records, lifecycle, item.type - RefType, item.literal) ||
++                (item.type < RefType || !ManagedTarget(records, managed_records, lifecycle, item.type - RefType, item.literal) ||
+                  !Typed(slots, item.left, PointerType) || item.right != 0)) {
+                 return Result.Rejected(base + pc, "native managed pointer resolution differs from its scalar target");
+             }
+@@ -2085,7 +2085,7 @@ ValueUses :: (code: Instruction[], records: Record[], fields: int[], owners: boo
+         if (mapped != 0) { ValueReach(&build, mapped, false, false); continue; }
+         type := 0;
+         if (item.op == OwnerPin || item.op == ValueCopy || item.op == ValueDrop || item.op == StateLoad || item.op == StateStore) { type = item.type; }
+-        if (item.op == AwaitResult || (item.op == ManagedNew && ManagedOptionalText(records, fields, item.right))) { type = item.right; }
++        if (item.op == AwaitResult || (item.op == ManagedNew && item.right >= RecordType && item.right < ArrayType && owners[item.right - RecordType])) { type = item.right; }
+         if (type >= RecordType && type < ArrayType) {
+             ValueReach(&build, type, false, item.op == OwnerPin || item.op == AwaitResult);
+         }
+@@ -3076,7 +3076,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
+         if (item.op == ManagedPending || item.op == ManagedPoll || item.op == ManagedTrack) {
+             out.append(ManagedPollInstruction(item, pc, gc_owners));
+         } else if ((item.op >= ManagedNew && item.op <= ManagedUnpin) || item.op == ManagedProject) {
+-            out.append(ManagedInstruction(item, pc, records, fields, coroutine));
++            out.append(ManagedInstruction(item, pc, records, record_owners, coroutine));
+         } else if (ViewOperation(item.op)) {
+             out.append(ViewInstruction(item, pc, own, record_owners));
+         } else if (managed && (item.op == Return || item.op == End) && !coroutine) {
+@@ -3596,14 +3596,14 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
+         if (!ProgramMode(mode) && !family) {
+             return Result.Rejected(-1, "native managed record layouts require a standalone or execution-family owner");
+         }
+-        optional_text := ManagedOptionalText(records, fields, RecordType + index);
++        optional_text := ManagedOptionalText(records, fields, field_tags, RecordType + index);
+         if ((!managed_records.flat[index] && !managed_records.plain[index] && !optional_text) || length(field_tags) == 0) {
+-            return Result.Rejected(-1, "native managed record metadata requires scalar or pointer fields");
++            return Result.Rejected(-1, "native managed record metadata requires scalar, text or pointer fields");
+         }
+         if (optional_text && (field_tags[record.first] != 0 || field_tags[record.first + 1] != 0)) {
+             return Result.Rejected(-1, "native managed field identity is invalid");
+         }
+-        whole := managed_records.plain[index] && field_tags[record.first] == 0;
++        whole := (managed_records.plain[index] || optional_text) && field_tags[record.first] == 0;
+         if (managed_records.flat[index]) {
+             for (field in record.first..<record.first + record.count) {
+                 if ((field_tags[field] == 0) != whole) { return Result.Rejected(-1, "native managed field identity is invalid"); }
+@@ -3824,7 +3824,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
+             for (item in held) {
+                 if (item.op == ManagedNew && item.right >= RecordType && item.right < ArrayType) {
+                     record_roots[item.right - RecordType] = true;
+-                    cell_text = cell_text || ManagedOptionalText(records, fields, item.right);
++                    cell_text = cell_text || ValueOwned(item.right, record_owners);
+                 }
+                 if (item.op == ManagedTrack) {
+                     type := item.type;
+diff --git a/tools/compiler/llvm_native/Managed.chibi b/tools/compiler/llvm_native/Managed.chibi
+index 9c23da5c4..731b33c65 100644
+--- a/tools/compiler/llvm_native/Managed.chibi
++++ b/tools/compiler/llvm_native/Managed.chibi
+@@ -552,7 +552,7 @@ ManagedUnroots :: (is_entry: bool) -> string {
+     if (is_entry) { output = strings.Concatenate([output, "  call void @chibi_managed.collect(ptr %ctx, ptr %managed.heap)\n"]); }
+     return output;
+ }
+-ManagedInstruction :: (item: Instruction, pc: int, records: Record[], fields: int[], persistent: bool) -> string {
++ManagedInstruction :: (item: Instruction, pc: int, records: Record[], owners: bool[], persistent: bool) -> string {
+     out := format_text("p{}:\n", pc);
+     if (item.op == ManagedNew) {
+         out = format_text("{}  call void @chibi_managed.safepoint(ptr %ctx, ptr %managed.heap)\n", out);
+@@ -574,7 +574,7 @@ ManagedInstruction :: (item: Instruction, pc: int, records: Record[], fields: in
+         } else if (item.right >= RecordType) {
+             index := item.right - RecordType;
+             layout = format_text("@chibi_managed.layout{}", index);
+-            if (ManagedOptionalText(records, fields, item.right)) {
++            if (ValueOwned(item.right, owners)) {
+                 drop = format_text("@chibi_value.{}.drop_at", item.right);
+                 out = format_text("{}  %owned{} = call {} @chibi_managed.copy.record{}(ptr %ctx, {} %a{})\n", out, pc, TypeName(item.right), index, TypeName(item.right), pc);
+                 value = format_text("%owned{}", pc);
+diff --git a/tools/compiler/llvm_native/ManagedRecords.chibi b/tools/compiler/llvm_native/ManagedRecords.chibi
+index 0e1f2db84..70a90e21d 100644
+--- a/tools/compiler/llvm_native/ManagedRecords.chibi
++++ b/tools/compiler/llvm_native/ManagedRecords.chibi
+@@ -31,7 +31,7 @@ ManagedRecordLayouts :: (records: Record[], fields: int[]) -> ManagedRecordLayou
+             if (type == PointerType || type == ViewType || type == ArrayType + PointerType) {
+                 if (!found.traced[parent]) { found.traced[parent] = true; pending.append(parent); }
+             }
+-            if (abi.ScalarType(type) == "" && type != PointerType) { found.flat[parent] = false; }
++            if (abi.ScalarType(type) == "" && type != PointerType && type != abi.TextStorage) { found.flat[parent] = false; }
+             if (abi.ScalarType(type) == "" && (type < RecordType || type >= ArrayType) && found.plain[parent]) {
+                 found.plain[parent] = false;
+                 nonplain.append(parent);
+@@ -140,13 +140,15 @@ ManagedStorageClass :: (type: int) -> int {
+ }
+ // The optional Text layout exposes only the whole value. Its tag and payload
+ // retain the existing physical optional representation; no field projections.
+-ManagedOptionalText :: (records: Record[], fields: int[], type: int) -> bool {
+-    return ViewOptional(records, fields, type, abi.TextStorage);
++ManagedOptionalText :: (records: Record[], fields: int[], tags: i64[], type: int) -> bool {
++    if (!ViewOptional(records, fields, type, abi.TextStorage) || length(tags) != length(fields)) { return false; }
++    first := records[type - RecordType].first;
++    return tags[first] == 0 && tags[first + 1] == 0;
+ }
+-ManagedPayload :: (records: Record[], fields: int[], layout: ManagedRecordLayout, values: ValueLayout, type: int, tag: i64) -> bool {
++ManagedPayload :: (records: Record[], layout: ManagedRecordLayout, values: ValueLayout, type: int, tag: i64) -> bool {
+     return abi.ScalarType(type) != "" || type == abi.TextStorage || type == ArrayType + PointerType ||
+            (ManagedArray(type) && ElementType(records, type) != 0 && ValueValid(values, type - ArrayType)) ||
+-           ((ManagedCellRecord(records, layout, type) || ManagedOptionalText(records, fields, type)) &&
++           (ManagedCellRecord(records, layout, type) &&
+             records[type - RecordType].identity != 0 && records[type - RecordType].identity == tag);
+ }
+ ManagedArray :: (type: int) -> bool {
+@@ -200,8 +202,8 @@ ManagedTextModule :: (code: Instruction[], counter: string) -> string {
+     }
+     return strings.Join(out, "");
+ }
+-ManagedTarget :: (records: Record[], fields: int[], layout: ManagedRecordLayout, values: ValueLayout, type: int, tag: i64) -> bool {
+-    return type == PointerType || ManagedPayload(records, fields, layout, values, type, tag);
++ManagedTarget :: (records: Record[], layout: ManagedRecordLayout, values: ValueLayout, type: int, tag: i64) -> bool {
++    return type == PointerType || ManagedPayload(records, layout, values, type, tag);
+ }
+ ManagedRootTypes :: (types: int[], traced: bool[]) -> bool {
+     if (ManagedTypes(types)) { return true; }
+@@ -267,13 +269,24 @@ ManagedRecordModule :: (records: Record[], fields: int[], tags: i64[], layout: M
+             out.append("  ret void\n}\n");
+         }
+         if (array_traces[index]) { out.append(ManagedArrayTraceRuntime(ArrayType + type)); }
+-        optional_text := ManagedOptionalText(records, fields, type);
++        optional_text := ManagedOptionalText(records, fields, tags, type);
+         if (!wanted[index] || record.identity == 0 || (!layout.flat[index] && !layout.plain[index] && !optional_text)) { continue; }
+-        if (optional_text) {
++        if (values.collector_owned[index]) {
+             out.append(format_text("define internal {} @chibi_managed.copy.record{}(ptr %ctx, {} %value) {{\nentry:\n", name, index, name));
+-            out.append(format_text("  %tag = extractvalue {} %value, 0\n  switch i32 %tag, label %bad [ i32 0, label %none i32 1, label %some ]\nnone:\n  ret {} zeroinitializer\nsome:\n", name, name));
+-            out.append(format_text("  %text = extractvalue {} %value, 1\n  %owned = call {} @chibi_text.share(ptr %ctx, {} %text)\n", name, abi.TextType(), abi.TextType()));
+-            out.append(format_text("  %copied = insertvalue {} %value, {} %owned, 1\n  ret {} %copied\nbad:\n  call void @llvm.trap()\n  unreachable\n}}\n", name, abi.TextType(), name));
++            if (optional_text) {
++                out.append(format_text("  %tag = extractvalue {} %value, 0\n  switch i32 %tag, label %bad [ i32 0, label %none i32 1, label %some ]\nnone:\n  ret {} zeroinitializer\nsome:\n", name, name));
++                out.append(format_text("  %text = extractvalue {} %value, 1\n  %owned = call {} @chibi_text.share(ptr %ctx, {} %text)\n", name, abi.TextType(), abi.TextType()));
++                out.append(format_text("  %copied = insertvalue {} %value, {} %owned, 1\n  ret {} %copied\nbad:\n  call void @llvm.trap()\n  unreachable\n}}\n", name, abi.TextType(), name));
++            } else {
++                value := "%value";
++                for (field in 0..<record.count) {
++                    if (fields[record.first + field] != abi.TextStorage) { continue; }
++                    out.append(format_text("  %text{} = extractvalue {} {}, {}\n  %owned{} = call {} @chibi_text.share(ptr %ctx, {} %text{})\n", field, name, value, field, field, abi.TextType(), abi.TextType(), field));
++                    out.append(format_text("  %copy{} = insertvalue {} {}, {} %owned{}, {}\n", field, name, value, abi.TextType(), field, field));
++                    value = format_text("%copy{}", field);
++                }
++                out.append(format_text("  ret {} {}\n}}\n", name, value));
++            }
+         }
+         out.append(format_text("@chibi_managed.layout{} = private constant %chibi.managed.layout {{ ptr {}, ptr @chibi_managed.validate.record{}, ptr {} }}\n", index, trace, index, counter));
+         out.append(format_text("define internal i1 @chibi_managed.validate.record{}(i64 %offset, i64 %tag, i64 %bytes, i32 %storage) {{\nentry:\n", index));
+diff --git a/tools/compiler/llvm_native/tests/ManagedRecords.chibi b/tools/compiler/llvm_native/tests/ManagedRecords.chibi
+index 515e5fcec..16f11e8ed 100644
+--- a/tools/compiler/llvm_native/tests/ManagedRecords.chibi
++++ b/tools/compiler/llvm_native/tests/ManagedRecords.chibi
+@@ -91,7 +91,7 @@ InlineRootTracingDoesNotGrantCellOrProjectionIdentity :: () {
+     // The nested wrapper is a stack root, not a newly projectable cell layout.
+     records = [{first: 0, count: 1, identity: -900}, {first: 1, count: 1, identity: -700}];
+     Rejects(InlineRootModule(records, [native.RecordType + 1, native.PointerType]),
+-        "native managed record metadata requires scalar or pointer fields");
++        "native managed record metadata requires scalar, text or pointer fields");
+ }
+ 
+ @test
+diff --git a/tools/compiler/llvm_native/tests/OptionalTextCells.chibi b/tools/compiler/llvm_native/tests/OptionalTextCells.chibi
+index 0078930e0..02786fb38 100644
+--- a/tools/compiler/llvm_native/tests/OptionalTextCells.chibi
++++ b/tools/compiler/llvm_native/tests/OptionalTextCells.chibi
+@@ -41,10 +41,10 @@ OptionalTextCellMetadataKeepsItsClosedShapeAndWholeIdentity :: () {
+     Rejects(OptionalTextCellModule(fields, [i64(0), 1], -890, -890), "native managed field identity is invalid");
+     Rejects(OptionalTextCellModule(fields, [i64(0), 0], 0, -890), "native managed cell initializer differs from its scalar type");
+     Rejects(OptionalTextCellModule(fields, [i64(0), 0], -890, -891), "native managed cell initializer differs from its scalar type");
+-    Rejects(OptionalTextCellModule([abi.BoolStorage, abi.TextStorage], [i64(0), 0], -890, -890),
+-        "native managed record metadata requires scalar or pointer fields");
+-    Rejects(OptionalTextCellModule([abi.IntStorage, abi.TextStorage, abi.IntStorage], [i64(0), 0, 0], -890, -890),
+-        "native managed record metadata requires scalar or pointer fields");
++    Rejects(OptionalTextCellModule([abi.IntStorage, native.ArrayType + abi.IntStorage], [i64(0), 0], -890, -890),
++        "native managed record metadata requires scalar, text or pointer fields");
++    Rejects(OptionalTextCellModule([abi.IntStorage, abi.TextStorage, native.ArrayType + abi.IntStorage], [i64(0), 0, 0], -890, -890),
++        "native managed record metadata requires scalar, text or pointer fields");
+     Rejects(OptionalTextCellModule(fields, [i64(0), 0], -890, -890, true),
+         "native managed projection differs from its typed record field");
+ }
+diff --git a/tools/compiler/llvm_native/tests/OwnedRecordCells.chibi b/tools/compiler/llvm_native/tests/OwnedRecordCells.chibi
+new file mode 100644
+index 000000000..8fd1b4277
+--- /dev/null
++++ b/tools/compiler/llvm_native/tests/OwnedRecordCells.chibi
+@@ -0,0 +1,28 @@
++package llvm_native_calls
++
++import native "project:llvm_native"
++import abi "project:native_abi"
++import strings "core:strings"
++
++@test
++OwnedFlatCellsCopyTextAndTracePointersWithOneLayout :: () {
++    text := Emitted(OptionalTextCellModule([native.PointerType, abi.TextStorage], [i64(-901), -902], -900, -900));
++    assert(strings.Contains(text, "define internal %record0 @chibi_managed.copy.record0("));
++    assert(strings.Contains(text, "%owned1 = call { ptr, i32, ptr } @chibi_text.share("));
++    assert(strings.Contains(text, "ptr @chibi_managed.trace.record0, ptr @chibi_managed.validate.record0"));
++    assert(strings.Contains(text, "ptr @chibi_value.32.drop_at, i32 32"));
++    assert(strings.Contains(text, "call void @chibi_managed.trace.pointer(ptr %heap, ptr %field0)"));
++    assert(!strings.Contains(text, "switch i32 %tag"), "authored record fields remain active independently of their values");
++    assert(strings.Contains(text, "%tag1 = icmp eq i64 %tag, -902"));
++    assert(strings.Contains(text, "%storage1 = icmp eq i32 %storage, 13"));
++}
++@test
++AuthoredIntTextCellsRemainDistinctFromOptionalText :: () {
++    text := Emitted(OptionalTextCellModule([abi.IntStorage, abi.TextStorage], [i64(-901), -902], -900, -900));
++    assert(!strings.Contains(text, "switch i32 %tag"));
++    assert(strings.Contains(text, "find0.2:"), "authored fields keep their independently checked addresses");
++    Rejects(OptionalTextCellModule([native.PointerType, abi.TextStorage], [i64(0), 0], -900, -900),
++        "native managed field identity is invalid");
++    Rejects(OptionalTextCellModule([native.PointerType, abi.TextStorage], [i64(-901), 0], -900, -900),
++        "native managed field identity is invalid");
++}
+diff --git a/tools/compiler/package_compiler/ScalarPointers.chibi b/tools/compiler/package_compiler/ScalarPointers.chibi
+index 6ceaf3129..ffbea9654 100644
+--- a/tools/compiler/package_compiler/ScalarPointers.chibi
++++ b/tools/compiler/package_compiler/ScalarPointers.chibi
+@@ -400,11 +400,11 @@ ScalarManagedRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], mem
+         output[heads[index]] = header;
+         for (ordinal in 0..<declared.count) {
+             field := members[declared.first + ordinal];
+-            scalar := field.record == -1 && (Numeric(field.storage) || field.storage == BoolStorage);
++            scalar := field.record == -1 && (Numeric(field.storage) || field.storage == BoolStorage || field.storage == TextStorage);
+             pointer := field.storage == PointerStorage && ScalarPointerType(types, field.record) != 0;
+             if (field.container != 0 || (!scalar && !pointer) || CharType(types, field.storage, field.container, field.record)) {
+                 return ScalarOperands.Failed(Diagnose(forest, declared.node, 0,
+-                    "native managed record cells require flat numeric, bool or pointer fields"));
++                    "native managed record cells require flat numeric, bool, string or pointer fields"));
+             }
+             member := output[heads[index] + 1 + ordinal];
+             member.literal = ScalarPointerTag(types, {storage: field.storage, container: 0, record: field.record});
+diff --git a/tools/compiler/scalar_llvm/Emit.chibi b/tools/compiler/scalar_llvm/Emit.chibi
+index 74289a281..81824bf08 100644
+--- a/tools/compiler/scalar_llvm/Emit.chibi
++++ b/tools/compiler/scalar_llvm/Emit.chibi
+@@ -378,7 +378,7 @@ ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) ->
+                 member.value != field || member.count != 0 ||
+                 (record.literal == 0 && member.literal != 0 &&
+                     (member.literal != i64(facts.CharNominal) || member.type != facts.IntType)) ||
+-                (record.literal != 0 && (member.literal == 0 || (!Scalar(member.type) && member.type != facts.PointerType))) || !Located(member, starts, size) ||
++                (record.literal != 0 && (member.literal == 0 || (!Scalar(member.type) && member.type != facts.StringType && member.type != facts.PointerType))) || !Located(member, starts, size) ||
+                 !Within(member, record)) {
+                 return "invalid scalar record member row";
+             }
+@@ -3641,12 +3641,14 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                         slots[length(slots) - 1] = native.RefType + target;
+                         body.append(address);
+                         if (operand.value == facts.ManagedWrite) {
+-                            if (target >= native.RecordType && target < native.ArrayType &&
+-                                OptionalPayloadType(rows, declared, operand.type) == facts.StringType) {
++                            if (TrackedRecord(managed, operand.type)) {
+                                 incoming := stack[base + 1];
+-                                locals.append(target);
+-                                kept := ManagedOptionalTextCopy(target, incoming, slot + 1 + extra, local, length(body));
+-                                local += 1;
++                                kept: HeldValue = {code: [], slot_types: [], value: incoming};
++                                if (OptionalPayloadType(rows, declared, operand.type) == facts.StringType) {
++                                    locals.append(target);
++                                    kept = ManagedOptionalTextCopy(target, incoming, slot + 1 + extra, local, length(body));
++                                    local += 1;
++                                } else { kept = ManagedFlatTextCopy(records, fields, target, incoming, slot + 1 + extra); }
+                                 slots.extend(kept.slot_types);
+                                 body.extend(kept.code);
+                                 extra += length(kept.slot_types);
+@@ -5362,6 +5364,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                 locals.append(local_type);
+                 places.append(local);
+                 if (boxed) {
++                    pin_input := native.ValueCollectorOwner(value_layout, type) && !Holds(fresh, value);
++                    if (pin_input) { body.append(Op(native.ManagedTrack, type, 0, value, 0, native.ManagedTrackSlot)); }
+                     slots.append(native.PointerType);
+                     glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
+                         fresh, slots, shape.first_slot, frames, slot + 1, next_root, waiting_function, records, value_layout);
+@@ -5373,6 +5377,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                     body.append(made);
+                     body.extend(glue.after);
+                     body.append(Op(native.Save, native.PointerType, 0, slot, 0, local));
++                    if (pin_input) { body.append(Op(native.ManagedTrack, type, 0, value, 0, native.ManagedClearSlot)); }
+                     slot += 1 + length(glue.types);
+                 } else if (type == native.TaskType && row.name == "_") {
+                     slots.append(type);
+@@ -5465,10 +5470,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                 address := Op(native.ManagedAddress, native.RefType + type, slot + 1, slot, 0, 0);
+                 address.literal = pointer_boxes.tags[row.value];
+                 body.append(address);
+-                if (OptionalPayloadType(rows, declared, row.type) == facts.StringType) {
+-                    locals.append(type);
+-                    kept := ManagedOptionalTextCopy(type, value, slot + 2, local, length(body));
+-                    local += 1;
++                if (TrackedRecord(managed, row.type)) {
++                    kept: HeldValue = {code: [], slot_types: [], value: value};
++                    if (OptionalPayloadType(rows, declared, row.type) == facts.StringType) {
++                        locals.append(type);
++                        kept = ManagedOptionalTextCopy(type, value, slot + 2, local, length(body));
++                        local += 1;
++                    } else { kept = ManagedFlatTextCopy(records, fields, type, value, slot + 2); }
+                     slots.extend(kept.slot_types);
+                     body.extend(kept.code);
+                     body.extend(DropValue(managed, row.type, value).code);
+@@ -5509,10 +5517,14 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                 body.append(Op(native.Local, native.RefType + type, slot, places[row.value], 0, 0));
+                 if (TrackedRecord(managed, type)) {
+                     pointer := slot;
+-                    if (OptionalPayloadType(rows, declared, row.type) == facts.StringType) {
+-                        locals.append(type);
+-                        kept := ManagedOptionalTextCopy(type, value, slot + 1, local, length(body));
+-                        local += 1;
++                    if (OptionalPayloadType(rows, declared, row.type) == facts.StringType ||
++                        rows[declared[row.type - facts.RecordType]].literal != 0) {
++                        kept: HeldValue = {code: [], slot_types: [], value: value};
++                        if (OptionalPayloadType(rows, declared, row.type) == facts.StringType) {
++                            locals.append(type);
++                            kept = ManagedOptionalTextCopy(type, value, slot + 1, local, length(body));
++                            local += 1;
++                        } else { kept = ManagedFlatTextCopy(records, fields, type, value, slot + 1); }
+                         slots.extend(kept.slot_types);
+                         body.extend(kept.code);
+                         body.extend(DropValue(managed, row.type, value).code);
+diff --git a/tools/compiler/scalar_llvm/Managed.chibi b/tools/compiler/scalar_llvm/Managed.chibi
+index 3dc3a3530..166d576b0 100644
+--- a/tools/compiler/scalar_llvm/Managed.chibi
++++ b/tools/compiler/scalar_llvm/Managed.chibi
+@@ -70,6 +70,26 @@ ManagedOptionalTextCopy :: (type: int, value: int, next: int, place: int, pc: in
+         Op(native.Save, type, 0, next + 6, 0, place), Op(native.Local, type, next + 7, place, 0, 0)],
+         slot_types: [type, number, number, NativeType(facts.BoolType), text, text, type, type], value: next + 7};
+ }
++// Flat authored cells keep their pointer identities and import each text leaf.
++// The validated native field table gives the exact active fields; no tag test
++// applies to an authored {int, string} record.
++ManagedFlatTextCopy :: (records: native.Record[], fields: int[], type: int, value: int, next: int) -> HeldValue {
++    found: HeldValue = {code: [], slot_types: [], value: value};
++    text := NativeType(facts.StringType);
++    record := records[type - native.RecordType];
++    for (field in 0..<record.count) {
++        if (fields[record.first + field] != text) { continue; }
++        slot := next + length(found.slot_types);
++        payload := Op(native.Extract, text, slot, found.value, type, 0);
++        payload.literal = i64(field);
++        replaced := Op(native.Insert, type, slot + 2, found.value, slot + 1, 0);
++        replaced.literal = i64(field);
++        found.code.extend([payload, Op(native.ValueCopy, text, slot + 1, slot, 0, 0), replaced]);
++        found.slot_types.extend([text, text, type]);
++        found.value = slot + 2;
++    }
++    return found;
++}
+ ManagedValue :: (rows: facts.Row[], records: int[], type: int, tag: i64) -> bool {
+     if (Scalar(type) || type == facts.StringType || type == facts.PointerType) { return tag != 0; }
+     if (type >= facts.ArrayType && type < facts.MapType &&

@@ -1,0 +1,3 @@
+package pointer_record_view
+@test
+Check :: () { observed := Main(); assert(observed == 7); }

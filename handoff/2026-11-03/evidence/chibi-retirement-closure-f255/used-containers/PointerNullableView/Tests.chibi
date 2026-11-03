@@ -1,0 +1,3 @@
+package pointer_nullable_view
+@test
+Check :: () { observed := Main(); assert(observed == 7); }

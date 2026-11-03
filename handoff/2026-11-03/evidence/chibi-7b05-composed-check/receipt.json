@@ -1,0 +1,83 @@
+{
+  "revision": "7b05b3eca1c8526fe50c4e57d412b4244134909f",
+  "tree": "f2519caa8295063aeac88fd5584b020eff253662",
+  "source_files": 3563,
+  "archive_sha256": "6425720947ef14963f5ea6864a62bb26b7e69af22af3d1226bf3161ccec2c59f",
+  "builder": "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+  "builder_sha256": "15f480276b0b0a20304a87b05f03035ca114ed0e6ed1863d429c3b6807459130",
+  "fixed_point": null,
+  "scope": "Single candidate, compiler tests and task/map search composition; final fixed point remains required.",
+  "steps": [
+    {
+      "name": "candidate",
+      "command": [
+        "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+        "--compiler",
+        "/private/tmp/chibi-7b05-composed-check/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-7b05-composed-check/source/packages/core",
+        "--output",
+        "/private/tmp/chibi-7b05-composed-check/candidate/chibi",
+        "--llvm",
+        "/private/tmp/chibi-bba9-proof/llvm22",
+        "--target",
+        "aarch64-apple-darwin",
+        "--jobs",
+        "4"
+      ],
+      "exit": 0,
+      "seconds": 32.7,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compiler-tests",
+      "command": [
+        "/private/tmp/chibi-7b05-composed-check/candidate/chibi",
+        "test",
+        "--llvm",
+        "/private/tmp/chibi-bba9-proof/llvm22",
+        "/private/tmp/chibi-7b05-composed-check/source/tools/compiler"
+      ],
+      "exit": 0,
+      "seconds": 26.24,
+      "log_sha256": "052e46c1a7ce577548591095811be4097b155ec3cb4369334f8a4a09cda787bb"
+    },
+    {
+      "name": "task-owners",
+      "command": [
+        "sh",
+        "/private/tmp/chibi-7b05-composed-check/source/test/native_aot/task_owners/run.sh",
+        "/private/tmp/chibi-7b05-composed-check/candidate/chibi",
+        "/private/tmp/chibi-bba9-proof/llvm22"
+      ],
+      "exit": 0,
+      "seconds": 24.54,
+      "log_sha256": "fd0f8ae4ea69181ec52082b2503077828b2151ede228b7177889e0daf092a904"
+    },
+    {
+      "name": "map-search",
+      "command": [
+        "sh",
+        "/private/tmp/chibi-7b05-composed-check/source/test/native_aot/remove_item/run.sh",
+        "/private/tmp/chibi-7b05-composed-check/candidate/chibi",
+        "/private/tmp/chibi-bba9-proof/llvm22"
+      ],
+      "exit": 0,
+      "seconds": 20.6,
+      "log_sha256": "767a589fd85a21b82b1bf6536d18215b16431bcf1ac1474889e56779b8da7861"
+    }
+  ],
+  "environment": {
+    "CC": "/usr/bin/false",
+    "CXX": "/usr/bin/false",
+    "CHIBI_CORE": "/private/tmp/chibi-7b05-composed-check/source/packages/core",
+    "CHIBI_TEST_WORKERS": "1"
+  },
+  "llvm": "/private/tmp/chibi-bba9-proof/llvm22",
+  "status": "pass",
+  "candidate_sha256": "50a78622e3012ac3d8b06ac058bf48301536e6d4cc3326490ca16edc394efcb8",
+  "compiler_test_summary": [
+    "551 tests, 0 failed"
+  ],
+  "archived_source_reverified": 3563
+}

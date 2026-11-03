@@ -1,0 +1,1 @@
+native: rejected foreign libc { Touch: /private/tmp/chibi-a730-composed-proof/source/test/native_aot/managed_pointers/source/rejected/foreign_array.chibi:4:26: A foreign parameter is an integer, float, bool, rawptr, cstring, function type or array of numbers

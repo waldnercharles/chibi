@@ -1,0 +1,13 @@
+PASS native_arguments_evaluate_in_source_order/facts.Calls
+PASS native_duplicate_name/facts.compile_error
+PASS native_extra_argument/facts.compile_error
+PASS native_loose_label_match/facts.Calls
+PASS native_mixed_arguments/facts.Calls
+PASS native_named_positional_duplicate/facts.compile_error
+PASS native_names_in_declaration_order/facts.Calls
+PASS native_positional_control/facts.Calls
+PASS native_positional_named_duplicate/facts.compile_error
+PASS native_reordered_names/facts.Calls
+PASS native_unary_name/facts.Calls
+PASS native_unknown_name/facts.compile_error
+12 tests, 0 failed

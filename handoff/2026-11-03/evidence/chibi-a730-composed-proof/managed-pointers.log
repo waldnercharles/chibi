@@ -1,0 +1,1003 @@
+PASS native managed collector positive O0
+PASS native managed collector positive O2
+PASS native managed collector cross_owner O0
+PASS native managed collector cross_owner O2
+PASS native managed collector wrong_pop O0
+PASS native managed collector wrong_pop O2
+PASS native managed collector callback_defers O0
+PASS native managed collector callback_defers O2
+PASS native managed collector callback_underflow O0
+PASS native managed collector callback_underflow O2
+PASS native managed collector callback_overflow O0
+PASS native managed collector callback_overflow O2
+PASS native managed collector callback_construct_sweep O0
+PASS native managed collector callback_construct_sweep O2
+PASS native managed collector callback_nested_constructor O0
+PASS native managed collector callback_nested_constructor O2
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Cells.ll force=false O0 poisoned balance
+managed source live 0 peak 967 total 16036
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Cells.ll force=false O2 poisoned balance
+managed source live 0 peak 967 total 16036
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Cells.ll force=true O0 poisoned balance
+managed source live 0 peak 12 total 16036
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Cells.ll force=true O2 poisoned balance
+managed source live 0 peak 12 total 16036
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ScopedAliases.ll force=false O0 poisoned balance
+managed source live 0 peak 0 total 0
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ScopedAliases.ll force=false O2 poisoned balance
+managed source live 0 peak 0 total 0
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ScopedAliases.ll force=true O0 poisoned balance
+managed source live 0 peak 0 total 0
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ScopedAliases.ll force=true O2 poisoned balance
+managed source live 0 peak 0 total 0
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Transfer.ll force=false O0 poisoned balance
+managed source live 0 peak 965 total 10000
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Transfer.ll force=false O2 poisoned balance
+managed source live 0 peak 965 total 10000
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Transfer.ll force=true O0 poisoned balance
+managed source live 0 peak 4 total 10000
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Transfer.ll force=true O2 poisoned balance
+managed source live 0 peak 4 total 10000
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Nullable.ll force=false O0 poisoned balance
+managed source live 0 peak 964 total 2004
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Nullable.ll force=false O2 poisoned balance
+managed source live 0 peak 964 total 2004
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Nullable.ll force=true O0 poisoned balance
+managed source live 0 peak 4 total 2004
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Nullable.ll force=true O2 poisoned balance
+managed source live 0 peak 4 total 2004
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Tasks.ll force=false O0 poisoned balance
+managed source live 0 peak 972 total 27484
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Tasks.ll force=false O2 poisoned balance
+managed source live 0 peak 972 total 27484
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Tasks.ll force=true O0 poisoned balance
+managed source live 0 peak 15 total 27484
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Tasks.ll force=true O2 poisoned balance
+managed source live 0 peak 15 total 27484
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPromises.ll force=false O0 poisoned balance
+managed source live 0 peak 974 total 234165
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPromises.ll force=false O2 poisoned balance
+managed source live 0 peak 974 total 234165
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPromises.ll force=true O0 poisoned balance
+managed source live 0 peak 26 total 234165
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPromises.ll force=true O2 poisoned balance
+managed source live 0 peak 26 total 234165
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskCaptured.ll force=false O0 poisoned balance
+managed source live 0 peak 971 total 222213
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskCaptured.ll force=false O2 poisoned balance
+managed source live 0 peak 971 total 222213
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskCaptured.ll force=true O0 poisoned balance
+managed source live 0 peak 16 total 222213
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskCaptured.ll force=true O2 poisoned balance
+managed source live 0 peak 16 total 222213
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskRecordPromises.ll force=false O0 poisoned balance
+managed source live 0 peak 970 total 111079
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskRecordPromises.ll force=false O2 poisoned balance
+managed source live 0 peak 970 total 111079
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskRecordPromises.ll force=true O0 poisoned balance
+managed source live 0 peak 15 total 111079
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskRecordPromises.ll force=true O2 poisoned balance
+managed source live 0 peak 15 total 111079
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayPromises.ll force=false O0 poisoned balance
+managed source live 0 peak 984 total 30240
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayPromises.ll force=false O2 poisoned balance
+managed source live 0 peak 984 total 30240
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayPromises.ll force=true O0 poisoned balance
+managed source live 0 peak 39 total 30240
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayPromises.ll force=true O2 poisoned balance
+managed source live 0 peak 39 total 30240
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/InlineOwners.ll force=false O0 poisoned balance
+managed source live 0 peak 977 total 8022
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/InlineOwners.ll force=false O2 poisoned balance
+managed source live 0 peak 977 total 8022
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/InlineOwners.ll force=true O0 poisoned balance
+managed source live 0 peak 24 total 8022
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/InlineOwners.ll force=true O2 poisoned balance
+managed source live 0 peak 24 total 8022
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViews.ll force=false O0 poisoned balance
+managed source live 0 peak 2241 total 126102
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViews.ll force=false O2 poisoned balance
+managed source live 0 peak 2241 total 126102
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViews.ll force=true O0 poisoned balance
+managed source live 0 peak 23 total 126102
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViews.ll force=true O2 poisoned balance
+managed source live 0 peak 23 total 126102
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewPromises.ll force=false O0 poisoned balance
+managed source live 0 peak 2241 total 387168
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewPromises.ll force=false O2 poisoned balance
+managed source live 0 peak 2241 total 387168
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewPromises.ll force=true O0 poisoned balance
+managed source live 0 peak 42 total 387168
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewPromises.ll force=true O2 poisoned balance
+managed source live 0 peak 42 total 387168
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Records.ll force=false O0 poisoned balance
+managed source live 0 peak 22677 total 66517
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Records.ll force=false O2 poisoned balance
+managed source live 0 peak 22677 total 66517
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Records.ll force=true O0 poisoned balance
+managed source live 0 peak 10000 total 66517
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Records.ll force=true O2 poisoned balance
+managed source live 0 peak 10000 total 66517
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrays.ll force=false O0 poisoned balance
+managed source live 0 peak 13323 total 77579
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrays.ll force=false O2 poisoned balance
+managed source live 0 peak 13323 total 77579
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrays.ll force=true O0 poisoned balance
+managed source live 0 peak 10008 total 77579
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrays.ll force=true O2 poisoned balance
+managed source live 0 peak 10008 total 77579
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrayMutation.ll force=false O0 poisoned balance
+managed source live 0 peak 981 total 15049
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrayMutation.ll force=false O2 poisoned balance
+managed source live 0 peak 981 total 15049
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrayMutation.ll force=true O0 poisoned balance
+managed source live 0 peak 24 total 15049
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrayMutation.ll force=true O2 poisoned balance
+managed source live 0 peak 24 total 15049
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/WholeArrays.ll force=false O0 poisoned balance
+managed source live 0 peak 1494 total 12530
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/WholeArrays.ll force=false O2 poisoned balance
+managed source live 0 peak 1494 total 12530
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/WholeArrays.ll force=true O0 poisoned balance
+managed source live 0 peak 26 total 12530
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/WholeArrays.ll force=true O2 poisoned balance
+managed source live 0 peak 26 total 12530
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/WholeArrayForeign.ll force=false O0 poisoned balance
+managed source live 0 peak 4 total 4
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/WholeArrayForeign.ll force=false O2 poisoned balance
+managed source live 0 peak 4 total 4
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/WholeArrayForeign.ll force=true O0 poisoned balance
+managed source live 0 peak 4 total 4
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/WholeArrayForeign.ll force=true O2 poisoned balance
+managed source live 0 peak 4 total 4
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/StringArrays.ll force=false O0 poisoned balance
+managed source live 0 peak 2987 total 36033
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/StringArrays.ll force=false O2 poisoned balance
+managed source live 0 peak 2987 total 36033
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/StringArrays.ll force=true O0 poisoned balance
+managed source live 0 peak 28 total 36033
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/StringArrays.ll force=true O2 poisoned balance
+managed source live 0 peak 28 total 36033
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/StringCells.ll force=false O0 poisoned balance
+managed source live 0 peak 1494 total 15023
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/StringCells.ll force=false O2 poisoned balance
+managed source live 0 peak 1494 total 15023
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/StringCells.ll force=true O0 poisoned balance
+managed source live 0 peak 16 total 15023
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/StringCells.ll force=true O2 poisoned balance
+managed source live 0 peak 16 total 15023
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/StringScalar.ll force=false O0 poisoned balance
+managed source live 0 peak 2 total 2
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/StringScalar.ll force=false O2 poisoned balance
+managed source live 0 peak 2 total 2
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/StringScalar.ll force=true O0 poisoned balance
+managed source live 0 peak 2 total 2
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/StringScalar.ll force=true O2 poisoned balance
+managed source live 0 peak 2 total 2
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalStrings.ll force=false O0 poisoned balance
+managed source live 0 peak 1369 total 6020
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalStrings.ll force=false O2 poisoned balance
+managed source live 0 peak 1369 total 6020
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalStrings.ll force=true O0 poisoned balance
+managed source live 0 peak 15 total 6020
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalStrings.ll force=true O2 poisoned balance
+managed source live 0 peak 15 total 6020
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalCells.ll force=false O0 poisoned balance
+managed source live 0 peak 863 total 5006
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalCells.ll force=false O2 poisoned balance
+managed source live 0 peak 863 total 5006
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalCells.ll force=true O0 poisoned balance
+managed source live 0 peak 6 total 5006
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalCells.ll force=true O2 poisoned balance
+managed source live 0 peak 6 total 5006
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Views.ll force=false O0 poisoned balance
+managed source live 0 peak 1491 total 8247
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Views.ll force=false O2 poisoned balance
+managed source live 0 peak 1491 total 8247
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Views.ll force=true O0 poisoned balance
+managed source live 0 peak 7 total 8247
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Views.ll force=true O2 poisoned balance
+managed source live 0 peak 7 total 8247
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewUnions.ll force=false O0 poisoned balance
+managed source live 0 peak 1491 total 16394
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewUnions.ll force=false O2 poisoned balance
+managed source live 0 peak 1491 total 16394
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewUnions.ll force=true O0 poisoned balance
+managed source live 0 peak 7 total 16394
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewUnions.ll force=true O2 poisoned balance
+managed source live 0 peak 7 total 16394
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewStrings.ll force=false O0 poisoned balance
+managed source live 0 peak 2983 total 24633
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewStrings.ll force=false O2 poisoned balance
+managed source live 0 peak 2983 total 24633
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewStrings.ll force=true O0 poisoned balance
+managed source live 0 peak 15 total 24633
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewStrings.ll force=true O2 poisoned balance
+managed source live 0 peak 15 total 24633
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewOwned.ll force=false O0 poisoned balance
+managed source live 0 peak 2237 total 12322
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewOwned.ll force=false O2 poisoned balance
+managed source live 0 peak 2237 total 12322
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewOwned.ll force=true O0 poisoned balance
+managed source live 0 peak 11 total 12322
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewOwned.ll force=true O2 poisoned balance
+managed source live 0 peak 11 total 12322
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerViews.ll force=false O0 poisoned balance
+managed source live 0 peak 1173 total 120166
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerViews.ll force=false O2 poisoned balance
+managed source live 0 peak 1173 total 120166
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerViews.ll force=true O0 poisoned balance
+managed source live 0 peak 160 total 120166
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerViews.ll force=true O2 poisoned balance
+managed source live 0 peak 160 total 120166
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPointerViews.ll force=false O0 poisoned balance
+managed source live 0 peak 1175 total 84020
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPointerViews.ll force=false O2 poisoned balance
+managed source live 0 peak 1175 total 84020
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPointerViews.ll force=true O0 poisoned balance
+managed source live 0 peak 26 total 84020
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPointerViews.ll force=true O2 poisoned balance
+managed source live 0 peak 26 total 84020
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerAppend.ll force=false O0 poisoned balance
+managed source live 0 peak 4100 total 4110
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerAppend.ll force=false O2 poisoned balance
+managed source live 0 peak 4100 total 4110
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerAppend.ll force=true O0 poisoned balance
+managed source live 0 peak 4100 total 4110
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerAppend.ll force=true O2 poisoned balance
+managed source live 0 peak 4100 total 4110
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextSequences.ll force=false O0 poisoned balance
+managed source live 0 peak 7 total 12390
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextSequences.ll force=false O2 poisoned balance
+managed source live 0 peak 7 total 12390
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextSequences.ll force=true O0 poisoned balance
+managed source live 0 peak 7 total 12390
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextSequences.ll force=true O2 poisoned balance
+managed source live 0 peak 7 total 12390
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextSpan.ll force=false O0 poisoned balance
+managed source live 0 peak 2 total 3
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextSpan.ll force=false O2 poisoned balance
+managed source live 0 peak 2 total 3
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextSpan.ll force=true O0 poisoned balance
+managed source live 0 peak 2 total 3
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextSpan.ll force=true O2 poisoned balance
+managed source live 0 peak 2 total 3
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextBorrowed.ll force=false O0 poisoned balance
+managed source live 0 peak 1 total 4096
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextBorrowed.ll force=false O2 poisoned balance
+managed source live 0 peak 1 total 4096
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextBorrowed.ll force=true O0 poisoned balance
+managed source live 0 peak 1 total 4096
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextBorrowed.ll force=true O2 poisoned balance
+managed source live 0 peak 1 total 4096
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewAppend.ll force=false O0 poisoned balance
+managed source live 0 peak 3 total 13
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewAppend.ll force=false O2 poisoned balance
+managed source live 0 peak 3 total 13
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewAppend.ll force=true O0 poisoned balance
+managed source live 0 peak 3 total 13
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewAppend.ll force=true O2 poisoned balance
+managed source live 0 peak 3 total 13
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 7 total 7
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 7 total 7
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 7 total 7
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 7 total 7
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPromiseFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 6 total 6
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPromiseFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 5 total 5
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPromiseFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 6 total 6
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPromiseFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 5 total 5
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 6 total 6
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 6 total 6
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 6 total 6
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 6 total 6
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerViewFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 4 total 4
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerViewFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 4 total 4
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerViewFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 4 total 4
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerViewFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 4 total 4
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskRecordPromiseFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 6 total 6
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskRecordPromiseFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 6 total 6
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskRecordPromiseFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 6 total 6
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskRecordPromiseFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 6 total 6
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewPromiseFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 7 total 7
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewPromiseFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 7 total 7
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewPromiseFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 7 total 7
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewPromiseFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 7 total 7
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 972 total 3011
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 972 total 3011
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 13 total 3011
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 13 total 3011
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayChildFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 9 total 9
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayChildFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 9 total 9
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayChildFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 9 total 9
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayChildFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 9 total 9
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/AssertionCleanup.ll force=false O0 poisoned balance
+managed source live 0 peak 1 total 1
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/AssertionCleanup.ll force=false O2 poisoned balance
+managed source live 0 peak 1 total 1
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/AssertionCleanup.ll force=true O0 poisoned balance
+managed source live 0 peak 1 total 1
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/AssertionCleanup.ll force=true O2 poisoned balance
+managed source live 0 peak 1 total 1
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalStringFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 3 total 4
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalStringFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 3 total 4
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalStringFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 3 total 4
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalStringFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 3 total 4
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Callbacks.ll force=false O0 poisoned balance
+managed source live 0 peak 16 total 8228
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Callbacks.ll force=false O2 poisoned balance
+managed source live 0 peak 16 total 8228
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Callbacks.ll force=true O0 poisoned balance
+managed source live 0 peak 16 total 8228
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Callbacks.ll force=true O2 poisoned balance
+managed source live 0 peak 16 total 8228
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/StringCells.ll force=false O0 poisoned balance
+managed source live 0 peak 18 total 30046
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/StringCells.ll force=false O2 poisoned balance
+managed source live 0 peak 18 total 30046
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/StringCells.ll force=true O0 poisoned balance
+managed source live 0 peak 18 total 30046
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/StringCells.ll force=true O2 poisoned balance
+managed source live 0 peak 18 total 30046
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalStrings.ll force=false O0 poisoned balance
+managed source live 0 peak 17 total 12040
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalStrings.ll force=false O2 poisoned balance
+managed source live 0 peak 17 total 12040
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalStrings.ll force=true O0 poisoned balance
+managed source live 0 peak 17 total 12040
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalStrings.ll force=true O2 poisoned balance
+managed source live 0 peak 17 total 12040
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextCells.ll force=false O0 poisoned balance
+managed source live 0 peak 5 total 6
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextCells.ll force=false O2 poisoned balance
+managed source live 0 peak 5 total 6
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextCells.ll force=true O0 poisoned balance
+managed source live 0 peak 5 total 6
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextCells.ll force=true O2 poisoned balance
+managed source live 0 peak 5 total 6
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalTextCells.ll force=false O0 poisoned balance
+managed source live 0 peak 4 total 4
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalTextCells.ll force=false O2 poisoned balance
+managed source live 0 peak 4 total 4
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalTextCells.ll force=true O0 poisoned balance
+managed source live 0 peak 4 total 4
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalTextCells.ll force=true O2 poisoned balance
+managed source live 0 peak 4 total 4
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalTextNone.ll force=false O0 poisoned balance
+managed source live 0 peak 2 total 2
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalTextNone.ll force=false O2 poisoned balance
+managed source live 0 peak 2 total 2
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalTextNone.ll force=true O0 poisoned balance
+managed source live 0 peak 2 total 2
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalTextNone.ll force=true O2 poisoned balance
+managed source live 0 peak 2 total 2
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewOwned.ll force=false O0 poisoned balance
+managed source live 0 peak 13 total 24644
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewOwned.ll force=false O2 poisoned balance
+managed source live 0 peak 13 total 24644
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewOwned.ll force=true O0 poisoned balance
+managed source live 0 peak 13 total 24644
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewOwned.ll force=true O2 poisoned balance
+managed source live 0 peak 13 total 24644
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerViews.ll force=false O0 poisoned balance
+managed source live 0 peak 162 total 240332
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerViews.ll force=false O2 poisoned balance
+managed source live 0 peak 162 total 240332
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerViews.ll force=true O0 poisoned balance
+managed source live 0 peak 161 total 240332
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerViews.ll force=true O2 poisoned balance
+managed source live 0 peak 161 total 240332
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPointerViews.ll force=false O0 poisoned balance
+managed source live 0 peak 28 total 168040
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPointerViews.ll force=false O2 poisoned balance
+managed source live 0 peak 28 total 168040
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPointerViews.ll force=true O0 poisoned balance
+managed source live 0 peak 27 total 168040
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPointerViews.ll force=true O2 poisoned balance
+managed source live 0 peak 27 total 168040
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/CallbackPointerless.ll force=false O0 poisoned balance
+managed source live 0 peak 2 total 8192
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/CallbackPointerless.ll force=false O2 poisoned balance
+managed source live 0 peak 2 total 8192
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/CallbackPointerless.ll force=true O0 poisoned balance
+managed source live 0 peak 2 total 8192
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/CallbackPointerless.ll force=true O2 poisoned balance
+managed source live 0 peak 2 total 8192
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Tasks.ll force=false O0 poisoned balance
+managed source live 0 peak 17 total 54968
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Tasks.ll force=false O2 poisoned balance
+managed source live 0 peak 17 total 54968
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Tasks.ll force=true O0 poisoned balance
+managed source live 0 peak 16 total 54968
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/Tasks.ll force=true O2 poisoned balance
+managed source live 0 peak 16 total 54968
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PatternRows.ll force=false O0 poisoned balance
+managed source live 0 peak 5 total 16
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PatternRows.ll force=false O2 poisoned balance
+managed source live 0 peak 5 total 16
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PatternRows.ll force=true O0 poisoned balance
+managed source live 0 peak 5 total 16
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PatternRows.ll force=true O2 poisoned balance
+managed source live 0 peak 5 total 16
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/InlineRecords.ll force=false O0 poisoned balance
+managed source live 0 peak 2 total 2
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/InlineRecords.ll force=false O2 poisoned balance
+managed source live 0 peak 2 total 2
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/InlineRecords.ll force=true O0 poisoned balance
+managed source live 0 peak 2 total 2
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/InlineRecords.ll force=true O2 poisoned balance
+managed source live 0 peak 2 total 2
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrays.ll force=false O0 poisoned balance
+managed source live 0 peak 10010 total 155158
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrays.ll force=false O2 poisoned balance
+managed source live 0 peak 10010 total 155158
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrays.ll force=true O0 poisoned balance
+managed source live 0 peak 10009 total 155158
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrays.ll force=true O2 poisoned balance
+managed source live 0 peak 10009 total 155158
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrayMutation.ll force=false O0 poisoned balance
+managed source live 0 peak 26 total 30098
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrayMutation.ll force=false O2 poisoned balance
+managed source live 0 peak 26 total 30098
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrayMutation.ll force=true O0 poisoned balance
+managed source live 0 peak 25 total 30098
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrayMutation.ll force=true O2 poisoned balance
+managed source live 0 peak 25 total 30098
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPromises.ll force=false O0 poisoned balance
+managed source live 0 peak 28 total 468330
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPromises.ll force=false O2 poisoned balance
+managed source live 0 peak 28 total 468330
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPromises.ll force=true O0 poisoned balance
+managed source live 0 peak 27 total 468330
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPromises.ll force=true O2 poisoned balance
+managed source live 0 peak 27 total 468330
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskCaptured.ll force=false O0 poisoned balance
+managed source live 0 peak 18 total 444426
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskCaptured.ll force=false O2 poisoned balance
+managed source live 0 peak 18 total 444426
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskCaptured.ll force=true O0 poisoned balance
+managed source live 0 peak 18 total 444426
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskCaptured.ll force=true O2 poisoned balance
+managed source live 0 peak 18 total 444426
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskRecordPromises.ll force=false O0 poisoned balance
+managed source live 0 peak 16 total 222158
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskRecordPromises.ll force=false O2 poisoned balance
+managed source live 0 peak 16 total 222158
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskRecordPromises.ll force=true O0 poisoned balance
+managed source live 0 peak 16 total 222158
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskRecordPromises.ll force=true O2 poisoned balance
+managed source live 0 peak 16 total 222158
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayPromises.ll force=false O0 poisoned balance
+managed source live 0 peak 40 total 60480
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayPromises.ll force=false O2 poisoned balance
+managed source live 0 peak 40 total 60480
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayPromises.ll force=true O0 poisoned balance
+managed source live 0 peak 40 total 60480
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayPromises.ll force=true O2 poisoned balance
+managed source live 0 peak 40 total 60480
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/InlineOwners.ll force=false O0 poisoned balance
+managed source live 0 peak 25 total 16044
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/InlineOwners.ll force=false O2 poisoned balance
+managed source live 0 peak 25 total 16044
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/InlineOwners.ll force=true O0 poisoned balance
+managed source live 0 peak 25 total 16044
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/InlineOwners.ll force=true O2 poisoned balance
+managed source live 0 peak 25 total 16044
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViews.ll force=false O0 poisoned balance
+managed source live 0 peak 25 total 252204
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViews.ll force=false O2 poisoned balance
+managed source live 0 peak 25 total 252204
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViews.ll force=true O0 poisoned balance
+managed source live 0 peak 25 total 252204
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViews.ll force=true O2 poisoned balance
+managed source live 0 peak 25 total 252204
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewPromises.ll force=false O0 poisoned balance
+managed source live 0 peak 45 total 774336
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewPromises.ll force=false O2 poisoned balance
+managed source live 0 peak 45 total 774336
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewPromises.ll force=true O0 poisoned balance
+managed source live 0 peak 45 total 774336
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewPromises.ll force=true O2 poisoned balance
+managed source live 0 peak 45 total 774336
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalStringFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 4 total 8
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalStringFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 4 total 8
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalStringFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 4 total 8
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/OptionalStringFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 4 total 8
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/CallbackFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 4 total 6
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/CallbackFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 4 total 6
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/CallbackFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 4 total 6
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/CallbackFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 4 total 6
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPromiseFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 10 total 12
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPromiseFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 8 total 10
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPromiseFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 10 total 12
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskPromiseFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 8 total 10
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskRecordPromiseFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 8 total 12
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskRecordPromiseFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 8 total 12
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskRecordPromiseFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 8 total 12
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskRecordPromiseFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 8 total 12
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 15 total 6022
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 15 total 6022
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 14 total 6022
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 14 total 6022
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayChildFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 10 total 18
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayChildFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 10 total 18
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayChildFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 10 total 18
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskArrayChildFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 10 total 18
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 8 total 12
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 8 total 12
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 8 total 12
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 8 total 12
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewPromiseFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 10 total 14
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewPromiseFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 10 total 14
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewPromiseFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 10 total 14
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TaskViewPromiseFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 10 total 14
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerViewFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 5 total 8
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerViewFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 5 total 8
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerViewFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 5 total 8
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/PointerViewFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 5 total 8
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrayMutationFailure.ll force=false O0 poisoned balance
+managed source live 0 peak 14 total 26
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrayMutationFailure.ll force=false O2 poisoned balance
+managed source live 0 peak 14 total 26
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrayMutationFailure.ll force=true O0 poisoned balance
+managed source live 0 peak 14 total 26
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/RecordArrayMutationFailure.ll force=true O2 poisoned balance
+managed source live 0 peak 14 total 26
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextCells-tag.ll force=false O0 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextCells-tag.ll force=false O2 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextCells-tag.ll force=true O0 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextCells-tag.ll force=true O2 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextCells-storage.ll force=false O0 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextCells-storage.ll force=false O2 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextCells-storage.ll force=true O0 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/TextCells-storage.ll force=true O2 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-LengthShrunk.ll force=false O0 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-LengthShrunk.ll force=false O2 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-LengthShrunk.ll force=true O0 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-LengthShrunk.ll force=true O2 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-ReadShrunk.ll force=false O0 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-ReadShrunk.ll force=false O2 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-ReadShrunk.ll force=true O0 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-ReadShrunk.ll force=true O2 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-CloneShrunk.ll force=false O0 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-CloneShrunk.ll force=false O2 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-CloneShrunk.ll force=true O0 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-CloneShrunk.ll force=true O2 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-IndexOutside.ll force=false O0 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-IndexOutside.ll force=false O2 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-IndexOutside.ll force=true O0 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-IndexOutside.ll force=true O2 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-SetIndexBeforeRight.ll force=false O0 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-SetIndexBeforeRight.ll force=false O2 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-SetIndexBeforeRight.ll force=true O0 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-SetIndexBeforeRight.ll force=true O2 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-SetShrunkBeforeRight.ll force=false O0 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-SetShrunkBeforeRight.ll force=false O2 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-SetShrunkBeforeRight.ll force=true O0 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-SetShrunkBeforeRight.ll force=true O2 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-SetShrunkDuringRight.ll force=false O0 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-SetShrunkDuringRight.ll force=false O2 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-SetShrunkDuringRight.ll force=true O0 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-SetShrunkDuringRight.ll force=true O2 poisoned failure category
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-SetValidBeforeRight.ll force=false O0 poisoned failure category
+managed source live 0 peak 2 total 2
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-SetValidBeforeRight.ll force=false O2 poisoned failure category
+managed source live 0 peak 2 total 2
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-SetValidBeforeRight.ll force=true O0 poisoned failure category
+managed source live 0 peak 2 total 2
+
+PASS managed source /private/tmp/chibi-a730-composed-proof/source/.chibi/native-managed-pointers/ViewFailure-SetValidBeforeRight.ll force=true O2 poisoned failure category
+managed source live 0 peak 2 total 2
+
+/private/tmp/chibi-a730-composed-proof/source/test/native_aot/managed_pointers/source/TaskFailure.chibi:13:5: Assertion failed: waiting task assertion preserves cleanup
+/private/tmp/chibi-a730-composed-proof/source/test/native_aot/managed_pointers/source/TaskFailure.chibi:13:5: Assertion failed: waiting task assertion preserves cleanup
+accepted invalid managed IR: initializer differs from its scalar type

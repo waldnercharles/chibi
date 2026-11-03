@@ -1,0 +1,5 @@
+package nested_pointer_map
+Main :: () -> int {
+ cell := 7; values: [string:[string:^int]] = ["group":["p":&cell]];
+ return values["group"]["p"]^;
+}

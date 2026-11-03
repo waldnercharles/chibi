@@ -1,0 +1,7 @@
+{
+  "utc": "2026-11-03T11:54:06.381284+00:00",
+  "container": "687bdde2057f65f2f696c383b69ecabcc2c09d74346f07d89aaee11415ab6e49",
+  "status": 0,
+  "stdout": "{\"compiler_processes\": [{\"pid\": 29, \"memory\": [\"VmSize:\\t 1621312 kB\", \"VmHWM:\\t 1231080 kB\", \"VmRSS:\\t 1036252 kB\"]}], \"cgroup_scope\": \"own Docker container; includes processes and page cache\", \"memory.peak\": \"1292836864\\n\", \"memory.current\": \"1108033536\\n\", \"cpu.stat\": \"usage_usec 5045784470\\nuser_usec 5044393355\\nsystem_usec 1391115\\nnice_usec 0\\ncore_sched.force_idle_usec 0\\nnr_periods 50419\\nnr_throttled 9\\nthrottled_usec 9112\\nnr_bursts 0\\nburst_usec 0\\n\"}\n",
+  "stderr": ""
+}

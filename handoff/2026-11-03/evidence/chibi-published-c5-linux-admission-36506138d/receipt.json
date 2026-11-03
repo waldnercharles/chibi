@@ -1,0 +1,55 @@
+{
+  "source": "36506138dab6e97ccd9ebc99cd36e8b5eb96dcb3",
+  "tree": "e389beee99626474142328773f28364ca5859ca8",
+  "compiler_tree": "f840f27b0bc95ded6c92e699bbf9145b10810cd9",
+  "core_tree": "a48b8dbadc3257a18cc5a3aceb7ca6cfe97c6788",
+  "source_files": 3485,
+  "archive_sha256": "bcf41ea8ef56c46fce92afa250d246684719a27d75fe645b1a07cf074e6f6690",
+  "seed": "/private/tmp/chibi-native-seed-c5c0a1ac2-release/chibi-native-linux-x64",
+  "seed_sha256": "1d1d289a2429fe2ee2a75a71a959bf21590a02ff3ebf7cd8af1037a11bf1268e",
+  "image": "sha256:c2936c6e9f67a2bb3bc5869b07e36d7f6cbe87b0af413c1b3f33844ae5722128",
+  "llvm": "/usr/lib/llvm-22/bin",
+  "purpose": "Actual published Linux c5 source/bootstrap admission, not a controlled performance sample or complete CI",
+  "network": "none",
+  "cpus": 2,
+  "status": "incomplete: original outer budget expired",
+  "phases": [
+    {
+      "name": "c5-controller",
+      "command": [
+        "/private/tmp/chibi-native-seed-c5c0a1ac2-release/chibi-native-linux-x64",
+        "--compiler",
+        "/private/tmp/chibi-published-c5-linux-admission-36506138d/source/tools/compiler",
+        "--core",
+        "/private/tmp/chibi-published-c5-linux-admission-36506138d/source/packages/core",
+        "--llvm",
+        "/usr/lib/llvm-22/bin",
+        "--target",
+        "x86_64-unknown-linux-gnu",
+        "--jobs",
+        "2",
+        "--source",
+        "/private/tmp/chibi-published-c5-linux-admission-36506138d/source/tools/toolchain/Driver.chibi",
+        "--entry",
+        "Main",
+        "--collection",
+        "graph=/private/tmp/chibi-published-c5-linux-admission-36506138d/source/tools/graph",
+        "--output",
+        "/private/tmp/chibi-published-c5-linux-admission-36506138d/driver-from-c5"
+      ],
+      "status": 0,
+      "wall_seconds": 8.394,
+      "log": "/private/tmp/chibi-published-c5-linux-admission-36506138d/c5-controller.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "started_utc": "2026-11-03T10:30:05.637605+00:00",
+  "environment": {
+    "CC": "/usr/bin/false",
+    "CXX": "/usr/bin/false"
+  },
+  "source_and_seed_unchanged": true,
+  "host_exit_status": 124,
+  "accepted_compiler_output": false,
+  "terminal_receipt": "terminal-receipt.json"
+}

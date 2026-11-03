@@ -1,0 +1,3 @@
+package foreign_strings
+@test
+Check :: () { observed := Main(); }

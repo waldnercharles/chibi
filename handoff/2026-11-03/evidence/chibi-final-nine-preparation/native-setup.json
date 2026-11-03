@@ -1,0 +1,9 @@
+{
+  "core": "/private/tmp/chibi-original-nine-matrix/native-sdk/share/chibi/core",
+  "core_source": "/private/tmp/chibi-void-callback-proof/source/packages/core",
+  "files": {
+    "/private/tmp/chibi-original-nine-matrix/native-sdk/lib/chibi-vendor/libchibi_vendor_freetype.a": "7f2ad9ea9cc099dfa331a09bb843910f91ff14783ccafc5e472d8be455703c73",
+    "/private/tmp/chibi-original-nine-matrix/native-cwd/Main.chibi": "9bac28def950cb103ef3912c9215938bf05cdd71492c2ead8de6ed8e0377a4ac",
+    "/private/tmp/chibi-original-nine-matrix/native-cwd/Inter.ttf": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031"
+  }
+}

@@ -1,0 +1,1 @@
+native: rejected Main: /private/tmp/chibi-a730-composed-proof/source/test/native_aot/managed_pointers/source/rejected/ViewReadonlyPattern.chibi:8:36: mutation requires a writable place

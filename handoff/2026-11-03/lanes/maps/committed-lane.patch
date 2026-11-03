@@ -1,0 +1,554 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 754be700a..3e3e66c73 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -623,6 +623,7 @@ jobs:
+             @{ name = 'deep-mapped-methods'; source = 'test/native_aot/map_programs/DeepMethods.chibi' },
+             @{ name = 'nested-map-iteration'; source = 'test/native_aot/map_programs/NestedIteration.chibi' },
+             @{ name = 'map-array-promises'; source = 'test/native_aot/map_programs/TaskMaps.chibi' },
++            @{ name = 'map-value-search'; source = 'test/native_aot/remove_item/Maps.chibi' },
+             @{ name = 'sdk-paths'; source = 'test/bootstrap/fixtures/InstallPaths.chibi' },
+             @{ name = 'library-loader'; source = 'test/native_aot/loader/Windows.chibi' }
+           )
+diff --git a/test/native_aot/remove_item/ContainsReentry.chibi b/test/native_aot/remove_item/ContainsReentry.chibi
+new file mode 100644
+index 000000000..4b67e9478
+--- /dev/null
++++ b/test/native_aot/remove_item/ContainsReentry.chibi
+@@ -0,0 +1,20 @@
++package contains_map_reentry
++
++foreign {
++    chibi_value_equal_test_arm :: () -> int
++}
++Make :: (value: int) -> ^int { return &value; }
++Pointers :: () -> ^int[] { return [Make(11), Make(37)]; }
++Main :: () -> int {
++    // The callee's individual pointer slots have left scope. Only this
++    // owning array can keep both cells reachable during the callback.
++    held := Pointers();
++    values: [int:int][] = [[1:2],[3:4]];
++    wanted: [int:int] = [1:2];
++    armed := chibi_value_equal_test_arm();
++    assert(armed == 0);
++    assert(contains(values, wanted));
++    assert(held[0]^ + held[1]^ == 48,
++        "equality scratch allocation keeps unrelated pointer-array owners live during collection");
++    return 0;
++}
+diff --git a/test/native_aot/remove_item/Family.chibi b/test/native_aot/remove_item/Family.chibi
+index ea06903f7..193ab0e2f 100644
+--- a/test/native_aot/remove_item/Family.chibi
++++ b/test/native_aot/remove_item/Family.chibi
+@@ -4,6 +4,14 @@ Box :: struct { values: int[]; label: string; }
+ Next :: () -> int {
+     saved: retain Box = {values: [], label: "kept"};
+     saved.values.append(5);
++    snapshots: retain Box[] = [];
++    snapshots.append(saved);
++    assert(length(snapshots)==length(saved.values));
++    inner: [int:int] = [1:2];
++    maps: [int:int][] = [inner];
++    assert(contains(maps,inner));
++    removed_maps:=remove_item(maps,inner);
++    assert(length(removed_maps)==0 && maps[0][1]==2);
+     candidates: Box[] = [saved];
+     removed := remove_item(candidates, saved);
+     assert(length(removed) == 0 && length(candidates) == 1,
+diff --git a/test/native_aot/remove_item/Maps.chibi b/test/native_aot/remove_item/Maps.chibi
+new file mode 100644
+index 000000000..38b6f5a30
+--- /dev/null
++++ b/test/native_aot/remove_item/Maps.chibi
+@@ -0,0 +1,85 @@
++package map_value_search
++Choice :: union { Number(value: f64) | Words(text: string, values: int[]) }
++Main :: () -> int {
++    Equality();
++    Removal();
++    Ordering();
++    return 0;
++}
++Equality :: () {
++    left:[int:int]=[1:2,3:4];
++    right:[int:int]=[3:4,1:2];
++    assert(contains([left],right));
++    duplicate:[int:int]=[1:2,1:3];
++    duplicate_equal:[int:int]=[1:3];
++    assert(duplicate[1]==3 && contains([duplicate],duplicate_equal));
++    replaced:=left;replaced[1]=3;
++    replaced_equal:[int:int]=[3:4,1:3];
++    assert(!contains([left],replaced) && contains([replaced],replaced_equal));
++    tombstones:=left;delete tombstones[1];tombstones[1]=2;
++    assert(contains([tombstones],right));
++    empty:[int:int]=[:];
++    empty_equal:[int:int]=[:];zero_entry:[int:int]=[1:0];
++    assert(contains([empty],empty_equal) && !contains([empty],zero_entry));
++    nested:[string:[int:int][]]=["rows":[left,right]];
++    nested_equal:[string:[int:int][]]=["rows":[right,left]];
++    assert(contains([nested],nested_equal));
++    choices:[int:Choice]=[1:Choice.Number(1)];
++    choices_equal:[int:Choice]=[1:Choice.Number(1)];choices_other:[int:Choice]=[1:Choice.Words("",[])];
++    assert(contains([choices],choices_equal));
++    assert(!contains([choices],choices_other));
++    zero:f64=0;invalid:=zero/zero;
++    nan_map:[int:f64]=[1:invalid];
++    assert(!contains([nan_map],nan_map));
++    distinct_nan:[int:f64]=[1:invalid];
++    assert(!contains([nan_map],distinct_nan));
++    nan_array:[int:f64[]]=[1:[invalid]];
++    assert(!contains([nan_array],nan_array));
++    distinct_array:[int:f64[]]=[1:[invalid]];
++    assert(!contains([nan_array],distinct_array));
++    negative:[int:f64]=[1:-0.0];
++    positive:[int:f64]=[1:0.0];
++    assert(contains([negative],positive));
++}
++Removal :: () {
++    left: [int:int] = [1:2,3:4];
++    right: [int:int] = [3:4,1:2];
++    tail: [int:int] = [9:10];
++    values: [int:int][] = [left,right,tail];
++    copy := remove_item(values,right);
++    // The recovered ordinary runtime zeroes surviving map payloads here.
++    // Its equality tests and an explicit entry-copy loop establish this result.
++    assert(length(copy)==2 && copy[0][1]==2 && copy[0][3]==4 && copy[1][9]==10);
++    second := remove_item(copy,right);
++    assert(length(second)==1 && second[0][9]==10);
++    second[0][9]=11;
++    assert(copy[1][9]==10 && values[2][9]==10 && second[0][9]==11);
++    absent: [int:int] = [99:100];
++    unchanged := remove_item(values,absent);
++    unchanged[0][1]=9;
++    assert(length(unchanged)==3 && unchanged[0][1]==9 && values[0][1]==2);
++    assert(length(values)==3 && values[0][1]==2 && values[1][3]==4 && values[2][9]==10);
++}
++Replace :: (values: ^([int:int][]), trace: ^int) -> [int:int] {
++    trace^ = trace^*10+1;
++    values^ = [[9:10]];
++    return [1:2];
++}
++Make :: () -> [int:int] { return [1:2]; }
++Ordering :: () {
++    item: [int:int] = [1:2];
++    values: [int:int][] = [item];
++    trace: int = 0;
++    assert(contains(Array:values,Item:Replace(&values,&trace)));
++    assert(trace==1 && values[0][9]==10);
++    values=[item]; trace=0;
++    assert(!contains(Item:Replace(&values,&trace),Array:values));
++    assert(trace==1 && values[0][9]==10);
++    values=[item]; trace=0;
++    removed:=remove_item(Array:values,Item:Replace(&values,&trace));
++    assert(length(removed)==0 && trace==1 && values[0][9]==10);
++    values=[item]; trace=0;
++    kept:=remove_item(Item:Replace(&values,&trace),Array:values);
++    assert(length(kept)==1 && kept[0][9]==10 && trace==1);
++    assert(contains([Make()],item));
++}
+diff --git a/test/native_aot/remove_item/MapsOracle.chibi b/test/native_aot/remove_item/MapsOracle.chibi
+new file mode 100644
+index 000000000..c95ef4233
+--- /dev/null
++++ b/test/native_aot/remove_item/MapsOracle.chibi
+@@ -0,0 +1,19 @@
++package map_value_search
++RemovalOracle :: () -> int {
++    left:[int:int]=[1:2,3:4];right:[int:int]=[3:4,1:2];tail:[int:int]=[9:10];
++    values:[int:int][]=[left,right,tail];
++    first:[int:int]=[:];second:[int:int]=[:];
++    skipped:=false;kept:int=0;
++    for(value in values){
++        if(!skipped && contains([value],right)){skipped=true;continue;}
++        for(key,number in value){if(kept==0){first[key]=number;}else{second[key]=number;}}
++        kept+=1;
++    }
++    copy:[int:int][]=[first,second];
++    assert(skipped && kept==2 && length(copy)==2 && copy[0][1]==2 && copy[0][3]==4 && copy[1][9]==10);
++    assert(length(values)==3 && values[0][1]==2 && values[1][3]==4 && values[2][9]==10);
++    return 0;
++}
++
++@test
++EqualityAndIndependentRemoval :: () { Equality(); assert(RemovalOracle()==0); }
+diff --git a/test/native_aot/remove_item/MapsRejected.chibi b/test/native_aot/remove_item/MapsRejected.chibi
+new file mode 100644
+index 000000000..9d0927826
+--- /dev/null
++++ b/test/native_aot/remove_item/MapsRejected.chibi
+@@ -0,0 +1,7 @@
++package rejected_map_search
++Main :: () -> int {
++    values: [int:int][] = [[1:2]];
++    wrong: [string:int] = ["one":2];
++    copy := remove_item(values,wrong);
++    return length(copy);
++}
+diff --git a/test/native_aot/remove_item/README.md b/test/native_aot/remove_item/README.md
+index 40e175e75..7536fd63d 100644
+--- a/test/native_aot/remove_item/README.md
++++ b/test/native_aot/remove_item/README.md
+@@ -7,7 +7,7 @@ pointer array during composite comparison. Scalar and string search do not
+ allocate equality scratch. Composite searches reuse a queue and pair table
+ across candidate elements, then release both.
+ 
+-The Windows workflow executes `Values`, `Ordering` and `Shadow` at O0/O2
++The Windows workflow executes `Values`, `Ordering`, `Shadow` and `Maps` at O0/O2
+ with the fresh stage4 compiler. Its type-rejection control preserves an
+ existing output. The raw borrowed-descriptor and poisoned allocator probes
+ currently run on POSIX; Windows execution is established by the hosted run,
+@@ -33,9 +33,9 @@ the union post-removal result is a native semantic regression.
+ 
+ Composite equality accepts only the existing validated snapshot value kinds.
+ Pointers, tasks and views remain outside that structural comparison domain.
+-Map shapes have one key and one payload edge and are currently available only
+-through the explicit raw equality API. Source search admission is a separate
+-follow-on. Retained snapshot roots still reject map-bearing values; comparison
++Map shapes have one key and one payload edge. Source `contains` and functional
++`remove_item` use the same graph for map-valued elements through their existing
++collection carriers. Retained snapshot roots still reject map-bearing values; comparison
+ nodes outside those roots do not emit snapshot copy helpers. Generic native entries reject erased composite search metadata;
+ explicit value entries validate the shared shape graph before emitting code.
+ The new collector pins cover live pointer-array owners around composite
+@@ -48,3 +48,19 @@ when both operands share their backing; signed zeros compare equal. Comparison
+ borrows canonical runtime map descriptors, whose cached key hashes and index
+ follow the existing map lookup contract. Scratch allocation stays at the two
+ reused session buffers across these controls.
++
++`Maps.chibi` checks association order, replacement/duplicate keys, nested values,
++IEEE values, first-match removal, surviving ownership and named-argument effects.
++`MapsOracle.chibi` executes ordinary equality and an explicit entry-copy removal
++loop. The recovered ordinary runtime has a separate map-array copy defect:
++`remove_item` selects the correct row but zeroes surviving map payloads. Native
++post-removal assertions preserve the documented values instead of that defect.
++The shared-family fixture mixes retained `Box[]` roots and comparison-only map
++nodes, keeping snapshot ownership closed. `ContainsReentry` covers unrelated
++live collector roots during the new composite-membership callback path.
++
++The source graph interns immediate map types once through a zero-sentinel
++128KiB index, allocated only for graphs that reach maps. Retained admission
++keeps its existing map-free query; structural comparison uses the same bounded
++value traversal with counted map edges enabled. Task identity operations keep
++their separate exact storage case and never enter this structural graph.
+diff --git a/test/native_aot/remove_item/run.sh b/test/native_aot/remove_item/run.sh
+index e40491f00..aa50e0728 100644
+--- a/test/native_aot/remove_item/run.sh
++++ b/test/native_aot/remove_item/run.sh
+@@ -19,7 +19,7 @@ for level in 0 2; do
+     CHIBI_CORE="$root/packages/core" "$compiler" test --llvm "$llvm" -O"$level" \
+         --root "$root/test/compiler/samples/types" \
+         "$root/test/compiler/samples/types/record_array_fields_survive_set_and_remove/facts"
+-    for source in Values Ordering Shadow; do
++    for source in Values Ordering Shadow Maps; do
+         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+             --source "$root/test/native_aot/remove_item/$source.chibi" --entry Main \
+             --output "$work/$source" --llvm "$llvm" --target "$target" --level "$level" --jobs 2
+@@ -34,35 +34,43 @@ for level in 0 2; do
+     test "$result" -eq 42
+     printf 'PASS remove_item source values, argument order and authored shadow O%s\n' "$level"
+ done
+-printf 'preserved' > "$work/rejected"
+-result=0
+-"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+-    --source "$root/test/native_aot/remove_item/Rejected.chibi" --entry Main \
+-    --output "$work/rejected" --llvm "$llvm" --target "$target" --level 0 > "$work/rejected.log" 2>&1 || result=$?
+-test "$result" -eq 1
+-test "$(cat "$work/rejected")" = preserved
+-grep -F 'argument differs from its parameter type' "$work/rejected.log" >/dev/null
+-for source in Values Ordering Reentry; do
++for source in Rejected MapsRejected; do
++    printf 'preserved' > "$work/rejected"
++    result=0
++    "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
++        --source "$root/test/native_aot/remove_item/$source.chibi" --entry Main \
++        --output "$work/rejected" --llvm "$llvm" --target "$target" --level 0 > "$work/rejected.log" 2>&1 || result=$?
++    test "$result" -eq 1
++    test "$(cat "$work/rejected")" = preserved
++    grep -F 'argument differs from its parameter type' "$work/rejected.log" >/dev/null
++done
++for source in Values Ordering Maps Reentry ContainsReentry; do
+     "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+         --source "$root/test/native_aot/remove_item/$source.chibi" --entry Main \
+         --output "$work/$source.ll" --emit-llvm --target "$target"
+ done
+-sed '/^declare i32 @chibi_value_equal_test_arm()$/d' "$work/Reentry.ll" > "$work/reentry-defined.ll"
+-mv "$work/reentry-defined.ll" "$work/Reentry.ll"
++for source in Reentry ContainsReentry; do
++    sed '/^declare i32 @chibi_value_equal_test_arm()$/d' "$work/$source.ll" > "$work/reentry-defined.ll"
++    mv "$work/reentry-defined.ll" "$work/$source.ll"
++done
+ "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+     --source "$root/test/native_aot/managed_pointers/SourceProbe.chibi" --entry Main \
+     --output "$work/source-probe" --llvm "$llvm" --target "$target" --level 2 --jobs 2
+-"$work/source-probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/Values.ll" "$work/Ordering.ll"
++"$work/source-probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/Values.ll" "$work/Ordering.ll" "$work/Maps.ll"
+ # Keep the real execution-family owner. Only the next equality scratch
+ # allocation reenters collect, and the final check proves that it happened.
+ sed -e 's/define internal ptr @managed_source.allocate(/define internal ptr @managed_source.allocate_base(/' \
+     -e 's/%valid = and i1 %balanced, %bounded/%collected = load i32, ptr @value_equal_test.collected\n  %once = icmp eq i32 %collected, 1\n  %balanced.bound = and i1 %balanced, %bounded\n  %valid = and i1 %balanced.bound, %once/' \
+     "$root/test/native_aot/managed_pointers/SourceAudit.ll" > "$work/reentry-audit.ll"
+ cat "$root/test/native_aot/remove_item/Reentry.ll" >> "$work/reentry-audit.ll"
+-"$work/source-probe" "$work" "$llvm" "$work/reentry-audit.ll" "$work/Reentry.ll"
++"$work/source-probe" "$work" "$llvm" "$work/reentry-audit.ll" "$work/Reentry.ll" "$work/ContainsReentry.ll"
+ if [ -n "$reference" ]; then
+     mkdir "$work/reference"
+     cp "$root/test/native_aot/remove_item/Ordering.chibi" "$work/reference/Main.chibi"
+     printf '%s\n' 'package remove_order' '@test' 'Check :: () { result := Value(); assert(result == 0); }' > "$work/reference/Tests.chibi"
+     "$reference" --project-root "$work/reference" --test
++    mkdir "$work/map-reference"
++    cp "$root/test/native_aot/remove_item/Maps.chibi" "$work/map-reference/Main.chibi"
++    cp "$root/test/native_aot/remove_item/MapsOracle.chibi" "$work/map-reference/Tests.chibi"
++    "$reference" --project-root "$work/map-reference" --test
+ fi
+diff --git a/test/native_aot/scalar_producer/NestedMaps.chibi b/test/native_aot/scalar_producer/NestedMaps.chibi
+index 65ad153a9..929e1373f 100644
+--- a/test/native_aot/scalar_producer/NestedMaps.chibi
++++ b/test/native_aot/scalar_producer/NestedMaps.chibi
+@@ -171,3 +171,16 @@ NestedMapIterationProjection :: () {
+         ValidateRows(rows, "");
+     }
+ }
++
++MapValueSearchProjection :: () {
++    rows := Produced("package map_search\nMain::()->int{left:[int:int]=[1:2];right:[int:int]=[1:2];values:[int:int][]=[left];assert(contains(values,right));assert(contains([left],right));copy:=remove_item(values,right);return length(copy); }\n");
++    assert(rows[1].kind == facts.DocumentRow);
++    ValidateRows(rows, "");
++    found:=0;
++    for(row,index in rows){
++        if(row.kind != facts.ArrayRow || (row.value != facts.ArrayContains && row.value != facts.ArrayWithoutItem)){continue;}
++        found+=1;
++        RejectChanged(rows,[Changed(index,CountField,i64(row.count+1))],"scalar array operation differs from its operands");
++    }
++    assert(found==3);
++}
+diff --git a/test/native_aot/scalar_producer/Producer.chibi b/test/native_aot/scalar_producer/Producer.chibi
+index d4e04e4b0..15d0c6557 100644
+--- a/test/native_aot/scalar_producer/Producer.chibi
++++ b/test/native_aot/scalar_producer/Producer.chibi
+@@ -177,6 +177,7 @@ Main :: () -> int {
+     MapForeignPlacesProjection();
+     NestedMapsProjection();
+     NestedMapIterationProjection();
++    MapValueSearchProjection();
+     NestedMapPlacesProjection();
+     DeepMapPlacesProjection();
+     DeepMappedArraysProjection();
+diff --git a/tools/compiler/package_compiler/ScalarArrays.chibi b/tools/compiler/package_compiler/ScalarArrays.chibi
+index 7b9f79b3b..d305d0767 100644
+--- a/tools/compiler/package_compiler/ScalarArrays.chibi
++++ b/tools/compiler/package_compiler/ScalarArrays.chibi
+@@ -70,6 +70,9 @@ ScalarLiteralShape :: (forest: snapshot.SnapshotNode[], text: string, callables:
+         if (callee >= 0 && callables[callee].waits && !ImmediatelyAwaited(forest, first)) {
+             storage = TaskStorage;
+             record = callee;
++        } else if (callee >= 0 && callables[callee].result_container == MapContainer &&
++                   ScalarMapType(types, callables[callee].result_record) != 0) {
++            return SequenceArrayType(types, {storage: UnionStorage, container: MapContainer, record: callables[callee].result_record});
+         } else if (callee >= 0 && callables[callee].result_container == 0) {
+             storage = callables[callee].result;
+             record = callables[callee].result_record;
+@@ -78,6 +81,9 @@ ScalarLiteralShape :: (forest: snapshot.SnapshotNode[], text: string, callables:
+         }
+     } else if (Is(forest, first, syntax.Identifier)) {
+         found := Lookup(names, Text(forest, text, first));
++        if (found >= 0 && names[found].container == MapContainer && ScalarMapType(types, names[found].record) != 0) {
++            return SequenceArrayType(types, {storage: UnionStorage, container: MapContainer, record: names[found].record});
++        }
+         if (found >= 0 && names[found].container == 0) {
+             storage = names[found].storage;
+             record = names[found].record;
+@@ -96,6 +102,10 @@ ScalarLiteralShape :: (forest: snapshot.SnapshotNode[], text: string, callables:
+             record = held.record;
+         }
+     }
++    if (storage == 0 && (Is(forest, first, syntax.IndexExpression) || Is(forest, first, syntax.AwaitExpression))) {
++        mapped := ScalarMapShape(forest, text, callables, names, types, members, package, first);
++        if (mapped >= 0) { return SequenceArrayType(types, {storage: UnionStorage, container: MapContainer, record: mapped}); }
++    }
+     if (!ScalarArrayElement(storage)) {
+         return {storage: 0, container: 0, record: -1};
+     }
+@@ -992,7 +1002,8 @@ ScalarNativeRows :: (forest: snapshot.SnapshotNode[], text: string, callables: C
+     }
+     shape := ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, native.array);
+     array := ScalarArrayType(types, shape.storage, shape.record);
+-    if (array == 0 || (native.operator == facts.ArrayContains && ScalarTypeOf(shape.storage) == 0)) {
++    if (array == 0 || (native.operator == facts.ArrayContains && ScalarTypeOf(shape.storage) == 0 &&
++                      shape.storage != StructStorage && shape.storage != UnionStorage)) {
+         return ScalarOperands.Failed(Diagnose(forest, node, 0, "scalar proof supports only arrays of numbers, bool, strings, records and unions"));
+     }
+     // Only arguments after the receiver can invalidate its evaluated value.
+diff --git a/tools/compiler/scalar_llvm/Emit.chibi b/tools/compiler/scalar_llvm/Emit.chibi
+index 73826fa1c..45e42a407 100644
+--- a/tools/compiler/scalar_llvm/Emit.chibi
++++ b/tools/compiler/scalar_llvm/Emit.chibi
+@@ -1400,7 +1400,8 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int,
+     }
+     if (operator == facts.ArrayContains) {
+         searched := Element(records, stack[base]);
+-        if (operand.type != facts.BoolType || searched == 0 || searched >= facts.RecordType ||
++        if (operand.type != facts.BoolType || searched == 0 ||
++            (searched >= facts.RecordType && !Comparable(rows, records, searched)) ||
+             stack[base + 1] != searched) {
+             return mismatch;
+         }
+@@ -1451,7 +1452,7 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int,
+         }
+     } else if (operator == facts.ArrayPush || operator == facts.ArrayWith || operator == facts.ArrayWithoutItem) {
+         if (stack[base + 1] != element ||
+-            (operator == facts.ArrayWithoutItem && element != facts.TaskType && !Retainable(rows, records, element))) {
++            (operator == facts.ArrayWithoutItem && element != facts.TaskType && !Comparable(rows, records, element))) {
+             return mismatch;
+         }
+     } else if (operator == facts.ArrayExtend || operator == facts.ArrayJoin) {
+@@ -2350,9 +2351,15 @@ SortedIndex :: (items: int[], wanted: int) -> int {
+     return -1;
+ }
+ 
+-// Follow value edges once, including array recursion. Pointer, view, task and
+-// map storage remains outside retained snapshot ownership.
+ Retainable :: (rows: facts.Row[], records: int[], type: int) -> bool {
++    return PlainValue(rows, records, type, false);
++}
++Comparable :: (rows: facts.Row[], records: int[], type: int) -> bool {
++    return PlainValue(rows, records, type, true);
++}
++// Both queries follow plain value edges once. Comparison additionally follows
++// counted maps; pointer, view and task storage never enters this shape graph.
++PlainValue :: (rows: facts.Row[], records: int[], type: int, maps: bool) -> bool {
+     if (Scalar(type) || type == facts.StringType) { return true; }
+     root := type;
+     if (root >= facts.ArrayType && root < facts.MapType) {
+@@ -2362,11 +2369,26 @@ Retainable :: (rows: facts.Row[], records: int[], type: int) -> bool {
+     if (root < facts.RecordType || root >= facts.ArrayType || root - facts.RecordType >= length(records)) { return false; }
+     pending := [type];
+     seen := resize([false], facts.MapType);
++    mapped: u32[] = [];
+     at := 0;
+     while (at < length(pending)) {
+         current := pending[at];
+         at += 1;
+-        if (current <= 0 || current >= facts.MapType) { return false; }
++        if (current <= 0) { return false; }
++        if (current >= facts.MapType) {
++            if (!maps || current >= facts.ReferenceType) { return false; }
++            key := (current - facts.MapType) % 16;
++            value := (current - facts.MapType) / 16;
++            if ((!Integer(key) && key != facts.BoolType && key != facts.StringType) || value <= 0 || value >= facts.MapType) { return false; }
++            if (length(mapped) == 0) { mapped = resize([u32(0)], facts.MapType / 2); }
++            index := current - facts.MapType;
++            bit := u32(1) << u32(index % 32);
++            if ((mapped[index / 32] & bit) == 0) {
++                mapped[index / 32] |= bit;
++                pending.append(value);
++            }
++            continue;
++        }
+         if (seen[current]) { continue; }
+         seen[current] = true;
+         if (Scalar(current) || current == facts.StringType) { continue; }
+@@ -4667,6 +4689,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                         if (operand.value == facts.ArrayContains) {
+                             // The element type its array holds.
+                             item.literal = i64(slots[shape.first_slot + stack[base]] - native.ArrayType);
++                            if (item.literal >= i64(native.RecordType)) {
++                                if (length(comparison_types) == 0) { comparison_types = resize([false], native.ArrayType); }
++                                comparison_types[int(item.literal)] = true;
++                                if (Holds(fresh, item.right)) { pending.append(item.right); }
++                            }
+                         }
+                     }
+                     if ((op == facts.ArrayPush || op == facts.ArrayExtend || op == facts.ArraySet ||
+@@ -4784,13 +4811,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                 stored = [];
+                 family_call := false;
+                 if (family && item.op == native.Call) { family_call = family_failures[item.left]; }
+-                if ((pointer_program || waiting_function || family_call) && (item.op == native.ClockSample || item.op == native.Call || item.op == native.ForeignCall || item.op == native.AwaitResult || item.op == native.Format)) {
++                composite_find := item.op == native.ArrayContains && item.literal >= i64(native.RecordType);
++                if ((pointer_program || waiting_function || family_call) && (item.op == native.ClockSample || item.op == native.Call || item.op == native.ForeignCall || item.op == native.AwaitResult || item.op == native.Format) ||
++                    (pointer_program && composite_find)) {
+                     glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
+                         fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root, waiting_function || family_call, records, value_layout);
+                     next_root = glue.next;
+                     slots.extend(glue.types);
+                     extra += length(glue.types);
+                     body.extend(glue.before);
++                    if (composite_find) { comparison_sites.append(shape.first_code + length(body)); }
+                     body.append(item);
+                     body.extend(glue.after);
+                 } else if (waiting_function && item.op == native.ArrayResize && item.literal == i64(native.ArrayResizeInitialized)) {
+@@ -4798,7 +4828,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                     body.extend(owners.before);
+                     body.append(item);
+                     body.extend(owners.after);
+-                } else if (!name_only) { body.append(item); }
++                } else if (!name_only) {
++                    if (composite_find) { comparison_sites.append(shape.first_code + length(body)); }
++                    body.append(item);
++                }
+                 produced := slot;
+                 if ((operand.kind == facts.ManagedRow && operand.value != facts.ManagedBorrow ||
+                     operand.kind == facts.ReadRow && ManagedVariable(pointer_boxes.boxed, operand.value)) && type == abi.TextStorage) {
+diff --git a/tools/compiler/scalar_llvm/Snapshots.chibi b/tools/compiler/scalar_llvm/Snapshots.chibi
+index f287ffece..b7158116c 100644
+--- a/tools/compiler/scalar_llvm/Snapshots.chibi
++++ b/tools/compiler/scalar_llvm/Snapshots.chibi
+@@ -13,17 +13,25 @@ ValueShapes :: struct {
+     types: int[];
+     heads: int[];
+     canonical: int[];
++    // Immediate map payload/key pairs have 32768 possible IDs. Zero is absent;
++    // the lazy 128KiB index is allocated only when a graph actually reaches maps.
++    maps: int[];
+ }
+ ValueShapeNode :: (build: ^ValueShapes, rows: facts.Row[], records: int[], type: int, character: bool) -> int {
+     storage := type;
+     key := storage;
+     if (character) { key = native.MapType; }
+-    known := build^.canonical[key];
++    mapped := type >= native.MapType;
++    if (mapped && length(build^.maps) == 0) { build^.maps = resize([int(0)], native.MapType * 16); }
++    known := -1;
++    if (mapped) { known = build^.maps[type - native.MapType] - 1; }
++    else { known = build^.canonical[key]; }
+     if (known >= 0) { return known; }
+     kind := native.SnapshotScalar;
+     extra := abi.ValueTag(storage);
+     head := -1;
+     if (character) { extra = 14; }
++    else if (mapped) { kind = native.SnapshotMap; extra = 0; }
+     else if (type >= native.ArrayType) { kind = native.SnapshotArray; extra = 0; }
+     else if (type >= native.RecordType) {
+         head = records[type - native.RecordType];
+@@ -32,7 +40,8 @@ ValueShapeNode :: (build: ^ValueShapes, rows: facts.Row[], records: int[], type:
+         extra = 0;
+     }
+     index := length(build^.nodes);
+-    build^.canonical[key] = index;
++    if (mapped) { build^.maps[type - native.MapType] = index + 1; }
++    else { build^.canonical[key] = index; }
+     build^.nodes.append({kind: kind, type: storage, extra: extra, first: 0, count: 0});
+     build^.types.append(type);
+     build^.heads.append(head);
+@@ -48,7 +57,7 @@ RetainedShapeGraph :: (rows: facts.Row[], records: int[], code: native.Instructi
+     return ValueShapeGraph(rows, records, types, characters);
+ }
+ ValueShapeGraph :: (rows: facts.Row[], records: int[], roots: int[], characters: bool[]) -> native.SnapshotShapes {
+-    build: ValueShapes = {nodes: [], edges: [], roots: [], types: [], heads: [], canonical: []};
++    build: ValueShapes = {nodes: [], edges: [], roots: [], types: [], heads: [], canonical: [], maps: []};
+     for (type, index in roots) {
+         opaque := type >= native.RecordType && type < native.ArrayType;
+         if (type >= native.ArrayType && type < native.MapType) {
+@@ -69,7 +78,11 @@ ValueShapeGraph :: (rows: facts.Row[], records: int[], roots: int[], characters:
+         type := build.types[at];
+         head := build.heads[at];
+         node.first = length(build.edges);
+-        if (node.kind == native.SnapshotArray) {
++        if (node.kind == native.SnapshotMap) {
++            key := ValueShapeNode(&build, rows, records, (type - native.MapType) % 16, false);
++            value := ValueShapeNode(&build, rows, records, (type - native.MapType) / 16, false);
++            build.edges.extend([{name: "", target: key}, {name: "", target: value}]);
++        } else if (node.kind == native.SnapshotArray) {
+             child := ValueShapeNode(&build, rows, records, type - native.ArrayType, false);
+             build.edges.append({name: "", target: child});
+         } else if (node.kind == native.SnapshotUnion) {

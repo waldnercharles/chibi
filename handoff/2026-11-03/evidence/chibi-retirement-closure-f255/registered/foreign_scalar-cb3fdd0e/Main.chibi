@@ -1,0 +1,4 @@
+package rejected_foreign_scalar
+Main :: () -> int { value := 1; pointer := &value; return Touch(pointer); }
+foreign import libc "system:c"
+foreign libc { Touch :: (pointer: ^int) -> int }

@@ -1,0 +1,3 @@
+package view_record_pointers
+@test
+Calls :: () { result := Main(); assert(result == 0); }

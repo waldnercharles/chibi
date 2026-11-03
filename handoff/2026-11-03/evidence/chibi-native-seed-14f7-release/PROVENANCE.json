@@ -1,0 +1,145 @@
+{
+  "status": "prepared local candidate; unpublished; no installed pin changes; no Windows asset",
+  "scope": "Intermediate native bootstrap compilers only. This is not final Chibi product or runtime-retirement acceptance.",
+  "source_commit": "14f7a46a047ab92acfe58398b3cdac25ab7d0312",
+  "source_tree": "342ada78280eaecde5a5a8ffa0845a74a729926d",
+  "compiler_tree": "cfd07642df7236e2ea11bcbee01f5d1372051042",
+  "core_tree": "196221cf052ec880878e25f49b9cf95c3c8fb3d9",
+  "source_archive": {
+    "path": "chibi-source.tar.gz",
+    "sha256": "a1e4a035b3bf19534a4c7a81607b7a6647f6f46c91a00619a4758e71241f3b0c",
+    "archive_and_proof_snapshot_verified_against_git_blobs": 3400,
+    "inventory": "SOURCE_FILES.json",
+    "method": "git archive --format=tar --prefix=chibi/ COMMIT, gzip mtime0"
+  },
+  "proof_archive": {
+    "path": "chibi-proof.tar.gz",
+    "sha256": "bbe71fabe3c6618d4e4b57a1c3ce9c7b519271f0ba236763251b8213aad10114",
+    "inventory": "proof/FILES.json",
+    "includes": "Original scripts, source.json, logs, both members of each accepted consecutive pair with cmp receipt, initial unequal Linux stage3/stage4 binaries, ELF audit and Linux builder artifact receipt.",
+    "accepted_pair_receipt": "proof/ACCEPTED_PAIRS.json"
+  },
+  "llvm": {
+    "version": "22.1.8",
+    "macos_directory": "/private/tmp/chibi-bba9-proof/llvm22",
+    "linux_directory": "/usr/lib/llvm-22/bin"
+  },
+  "builders": {
+    "linux": {
+      "path": "/private/tmp/chibi-command-fixture-linux/stage3",
+      "sha256": "6e867c8e5588509286a5709ecdca902e8aaeb6d3db51f1ea4efb1bb09b677d03",
+      "prior_artifact_receipt": "proof/linux-builder-receipt.json"
+    },
+    "macos": {
+      "path": "/private/tmp/chibi-240d-proof/stage4",
+      "sha256": "7b60b3ef3f556f8621b09ed85deb202091c60e022bc3aa6bc062052588e11d38"
+    }
+  },
+  "build_environment": {
+    "CC": "/usr/bin/false",
+    "CXX": "/usr/bin/false",
+    "macos": "local macOS arm64; proof/macos.sh",
+    "linux": "Ubuntu24.04 linux/amd64 Docker",
+    "linux_image": "sha256:c2936c6e9f67a2bb3bc5869b07e36d7f6cbe87b0af413c1b3f33844ae5722128"
+  },
+  "platforms": {
+    "macos-arm64": {
+      "asset": "chibi-native-macos-arm64",
+      "sha256": "7b60b3ef3f556f8621b09ed85deb202091c60e022bc3aa6bc062052588e11d38",
+      "bytes": 7737968,
+      "accepted_pair": [
+        "macos/stage2",
+        "macos/stage3"
+      ],
+      "pair_equal": true,
+      "build_seconds": [
+        19.09,
+        21.93
+      ],
+      "tests": {
+        "binary": "macos/stage3",
+        "count": 485,
+        "failed": 0,
+        "seconds": 24.64,
+        "exit_status": 0,
+        "environment": {
+          "CHIBI_CORE": "/private/tmp/chibi-native-seed-14f7-proof/source/packages/core"
+        },
+        "CC_CXX": "No explicit override on the separate test invocation. Build overrides do not establish test environment.",
+        "command": [
+          "/usr/bin/time",
+          "-p",
+          "env",
+          "CHIBI_CORE=/private/tmp/chibi-native-seed-14f7-proof/source/packages/core",
+          "/private/tmp/chibi-native-seed-14f7-proof/macos/stage3",
+          "test",
+          "--root",
+          "/private/tmp/chibi-native-seed-14f7-proof/source/tools/compiler",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "/private/tmp/chibi-native-seed-14f7-proof/source/tools/compiler"
+        ]
+      },
+      "imports": [
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "builder_bytes_equal_selected_asset": true,
+      "archived_accepted_pair": [
+        "proof/macos/stage2",
+        "proof/macos/stage3"
+      ]
+    },
+    "linux-x64": {
+      "asset": "chibi-native-linux-x64",
+      "sha256": "1dd9bf1518645f50f06d4ff1912159945b967e6ad9c7b1f3228fbb32e5d68ab9",
+      "bytes": 10700816,
+      "accepted_pair": [
+        "linux/fixed5/chibi",
+        "linux/fixed6/chibi"
+      ],
+      "pair_equal": true,
+      "build_seconds": [
+        53.67,
+        53.8
+      ],
+      "tests": {
+        "binary": "linux/fixed6/chibi",
+        "count": 485,
+        "failed": 0,
+        "seconds": 71.73,
+        "exit_status": 0,
+        "environment": {
+          "CHIBI_CORE": "/private/tmp/chibi-native-seed-14f7-proof/source/packages/core",
+          "CC": "/usr/bin/false",
+          "CXX": "/usr/bin/false"
+        },
+        "script": "proof/linux-fixed.sh"
+      },
+      "imports": [
+        "libc.so.6"
+      ],
+      "initial_stage3_stage4": {
+        "accepted_as_fixed_point": false,
+        "differing_bytes": 58,
+        "reason": "ELF STT_FILE names stage3.N.ll versus stage4.N.ll only; independently parsed symbol/string tables. All other bytes equal.",
+        "audit": "proof/linux/basename-mismatch-audit.json",
+        "preserved_binaries": [
+          "proof/linux/initial-stage3",
+          "proof/linux/initial-stage4"
+        ]
+      },
+      "archived_accepted_pair": [
+        "proof/linux/fixed5-chibi",
+        "proof/linux/fixed6-chibi"
+      ]
+    }
+  },
+  "publication": {
+    "proposed_tag": "native-seed-14f7a46a047ab92acfe58398b3cdac25ab7d0312",
+    "candidate_manifest": "native-seed.tsv",
+    "approved": false,
+    "published": false,
+    "windows": "Excluded. No approved Windows package or pin is proposed."
+  },
+  "original_source_receipt": "proof/source.json"
+}

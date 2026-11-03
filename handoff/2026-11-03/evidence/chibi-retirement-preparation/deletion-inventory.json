@@ -1,0 +1,18 @@
+{
+  "original_deleted": 311,
+  "checkpoint_deleted": 309,
+  "already_retired_at_base": [
+    "test/language/host_packages_compiler.c",
+    "test/language/host_packages_source.h.in"
+  ],
+  "unplanned_deletions": [],
+  "original_modified_already_current": [
+    "test/graph/CommandTests.chibi",
+    "test/graph/fixtures/commands/README.md",
+    "test/graph/fixtures/commands/compile.json",
+    "test/graph/fixtures/commands/driver-invalid.stderr",
+    "test/graph/fixtures/commands/driver.stderr",
+    "test/graph/fixtures/commands/link-linux-x64.json",
+    "test/graph/fixtures/commands/link-macos-arm64.json"
+  ]
+}

@@ -1,0 +1,48 @@
+[
+  {
+    "name": "source",
+    "argv": [
+      "/private/tmp/chibi-nested-managed-pointer-proof/chibi",
+      "--compiler",
+      "/Users/cwaldner/Personal/chibi/.worktrees/authored-strings-regressions/chibi/tools/compiler",
+      "--core",
+      "/Users/cwaldner/Personal/chibi/.worktrees/authored-strings-regressions/chibi/packages/core",
+      "--source",
+      "/Users/cwaldner/Personal/chibi/.worktrees/authored-strings-regressions/chibi/test/native_aot/managed_pointers/source/NestedPointers.chibi",
+      "--entry",
+      "Main",
+      "--output",
+      "/private/tmp/chibi-nested-managed-pointer-proof/NestedPointers.ll",
+      "--emit-llvm",
+      "--target",
+      "aarch64-apple-darwin"
+    ],
+    "status": 0,
+    "seconds": 0.39361708401702344
+  },
+  {
+    "name": "poison",
+    "argv": [
+      "/private/tmp/chibi-nested-managed-pointer-proof/source-probe",
+      "/private/tmp/chibi-nested-managed-pointer-proof",
+      "/private/tmp/chibi-bba9-proof/llvm22",
+      "/Users/cwaldner/Personal/chibi/.worktrees/authored-strings-regressions/chibi/test/native_aot/managed_pointers/SourceAudit.ll",
+      "/private/tmp/chibi-nested-managed-pointer-proof/NestedPointers.ll"
+    ],
+    "status": 0,
+    "seconds": 1.4981860829866491
+  },
+  {
+    "name": "callbacks",
+    "argv": [
+      "/private/tmp/chibi-nested-managed-pointer-proof/source-probe",
+      "--callbacks",
+      "/private/tmp/chibi-nested-managed-pointer-proof",
+      "/private/tmp/chibi-bba9-proof/llvm22",
+      "/Users/cwaldner/Personal/chibi/.worktrees/authored-strings-regressions/chibi/test/native_aot/managed_pointers/SourceAudit.ll",
+      "/private/tmp/chibi-nested-managed-pointer-proof/NestedPointers.ll"
+    ],
+    "status": 0,
+    "seconds": 1.4966984170023352
+  }
+]

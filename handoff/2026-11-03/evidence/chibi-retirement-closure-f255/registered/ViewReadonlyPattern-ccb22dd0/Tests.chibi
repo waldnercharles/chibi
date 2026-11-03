@@ -1,0 +1,3 @@
+package readonly_view_pattern
+@test
+Check :: () { observed := Main(); }

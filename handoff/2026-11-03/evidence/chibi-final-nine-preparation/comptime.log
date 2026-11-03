@@ -1,0 +1,10 @@
+PASS comptime_array_index_is_checked_against_the_length/facts.compile_error
+PASS comptime_arrays_are_built_summed_and_indexed/facts.Calls
+PASS comptime_floats_follow_ieee_rounding/facts.Calls
+PASS comptime_for_loops_cover_ranges_arrays_and_exits/facts.Calls
+PASS comptime_records_are_built_read_and_updated/facts.Calls
+PASS comptime_records_hold_supported_values_only/facts.compile_error
+PASS comptime_records_nest_and_hold_arrays/facts.Calls
+PASS comptime_text_formats_only_plain_placeholders/facts.compile_error
+PASS comptime_text_is_built_compared_and_scanned/facts.Calls
+9 tests, 0 failed

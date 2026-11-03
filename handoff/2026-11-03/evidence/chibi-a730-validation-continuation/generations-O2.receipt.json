@@ -1,0 +1,14 @@
+{
+  "name": "generations-O2",
+  "command": [
+    "sh",
+    "/private/tmp/chibi-a730-composed-proof/source/test/native_aot/generations/run.sh",
+    "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+    "/private/tmp/chibi-bba9-proof/llvm22",
+    "2"
+  ],
+  "exit": 0,
+  "seconds": 64.83,
+  "log": "/private/tmp/chibi-a730-validation-continuation/generations-O2.log",
+  "log_sha256": "d4ba8ef531ea4e40bbe792d9e7b42e3b1faed585bc3c18e535b9fb5714baa2e7"
+}

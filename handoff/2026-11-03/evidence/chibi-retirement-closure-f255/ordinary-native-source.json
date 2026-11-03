@@ -1,0 +1,232 @@
+[
+  {
+    "case": "character",
+    "original": "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/test/native_aot/managed_pointers/source/rejected/character.chibi",
+    "sha256": "e668aad9be8d2217ed72274129521ddec78b3075c055f7afc841eae2e812cd65",
+    "source": "package rejected_character\nMain :: () -> int { value := char(65); pointer := &value; return int(pointer^); }\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/character",
+          "--test"
+        ],
+        "status": 1,
+        "seconds": 0.9390864579763729,
+        "stdout": "",
+        "stderr": "char pointers are not supported yet\n"
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/character/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/character/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.12009654199937358,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/character/Main.chibi:2:21: char pointers are not supported yet\n"
+      }
+    ]
+  },
+  {
+    "case": "nested",
+    "original": "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/test/native_aot/managed_pointers/source/rejected/nested.chibi",
+    "sha256": "65d30d976b3f1c0294da31b9c8480c1985b6056fa140ae70c8022932b109860c",
+    "source": "package rejected_nested\nMain :: () -> int { return 0; }\nMake :: () -> ^^int { value := 1; pointer := &value; return &pointer; }\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/nested",
+          "--test"
+        ],
+        "status": 0,
+        "seconds": 0.7044863339979202,
+        "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+        "stderr": ""
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/nested/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/nested/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.0070581670152023435,
+        "stdout": "",
+        "stderr": "native: rejected Make: /private/tmp/chibi-retirement-closure-f255/nested/Main.chibi:3:15: scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result\n"
+      }
+    ]
+  },
+  {
+    "case": "optional_backed",
+    "original": "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/test/native_aot/managed_pointers/source/rejected/optional_backed.chibi",
+    "sha256": "3d5cfa48648ac9f5d90339f24723ecbe5e6649001e1cfaf076408c6e84508d1f",
+    "source": "package optional_backed\nValue :: struct { message: string; }\nMain :: () -> int { value: Value? = {message: \"owned\"}; pointer := &value; return 0; }\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/optional_backed",
+          "--test"
+        ],
+        "status": 0,
+        "seconds": 0.6925723750027828,
+        "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+        "stderr": ""
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/optional_backed/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/optional_backed/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.01302812501671724,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/optional_backed/Main.chibi:2:1: native optional cells require plain numeric or bool payloads\n"
+      }
+    ]
+  },
+  {
+    "case": "optional_pointer",
+    "original": "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/test/native_aot/managed_pointers/source/rejected/optional_pointer.chibi",
+    "sha256": "651fdc5d1a85942004b14ce76046f54901e08f6783e44066a3b2b2fdbee45efb",
+    "source": "package optional_pointer\nValue :: struct { pointer: ^int; }\nMain :: () -> int { number := 7; value: Value? = {pointer: &number}; pointer := &value; return 0; }\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/optional_pointer",
+          "--test"
+        ],
+        "status": 0,
+        "seconds": 0.7098443750001024,
+        "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+        "stderr": ""
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/optional_pointer/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/optional_pointer/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.007333457993809134,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/optional_pointer/Main.chibi:2:1: native optional cells require plain numeric or bool payloads\n"
+      }
+    ]
+  },
+  {
+    "case": "optional_view",
+    "original": "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/test/native_aot/managed_pointers/source/rejected/optional_view.chibi",
+    "sha256": "1b6f121d25e6a5ff2ff5a29f66ae66d8176cb2913b113dd5cd4dc58b38a96108",
+    "source": "package optional_view\nMain :: () -> int { values: int[] = [1]; pointer := &values; selected := pointer.view(0..<1); cell := &selected; return 0; }\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/optional_view",
+          "--test"
+        ],
+        "status": 0,
+        "seconds": 0.7013860000006389,
+        "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+        "stderr": ""
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/optional_view/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/optional_view/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.006949957984033972,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/optional_view/Main.chibi:2:95: scalar proof supports only number, bool and string values\n"
+      }
+    ]
+  }
+]

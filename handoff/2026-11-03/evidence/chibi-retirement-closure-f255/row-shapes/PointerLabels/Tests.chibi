@@ -1,0 +1,3 @@
+package pointer_labels
+@test
+Check :: () { observed := Main(); assert(observed == 8); }

@@ -1,0 +1,1 @@
+native: rejected Main: /Users/cwaldner/Personal/chibi/.worktrees/authored-strings-regressions/chibi/test/native_aot/managed_pointers/source/rejected/retained.chibi:2:56: address requires a writable local or record field

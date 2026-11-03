@@ -1,0 +1,1 @@
+native: rejected Main: /private/tmp/chibi-a730-composed-proof/source/test/native_aot/map_programs/rejected/NestedPointer.chibi:4:5: scalar proof supports only number, bool and string values

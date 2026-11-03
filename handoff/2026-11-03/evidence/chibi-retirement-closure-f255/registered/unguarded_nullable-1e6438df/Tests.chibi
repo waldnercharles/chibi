@@ -1,0 +1,3 @@
+package rejected_unguarded_nullable
+@test
+Check :: () { observed := Main(); }

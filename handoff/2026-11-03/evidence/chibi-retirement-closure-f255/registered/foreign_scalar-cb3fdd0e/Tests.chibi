@@ -1,0 +1,3 @@
+package rejected_foreign_scalar
+@test
+Check :: () { observed := Main(); }

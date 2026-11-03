@@ -1,0 +1,95 @@
+PASS borrowed value equality, IEEE/union rules, scratch reuse and depth 10000 O0
+PASS borrowed value equality, IEEE/union rules, scratch reuse and depth 10000 O2
+PASS project.Calls
+1 tests, 0 failed
+PASS remove_item source values, argument order and authored shadow O0
+PASS project.Calls
+1 tests, 0 failed
+PASS remove_item source values, argument order and authored shadow O2
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Values.ll force=false O0 poisoned balance
+managed source live 0 peak 16 total 33
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Values.ll force=false O2 poisoned balance
+managed source live 0 peak 16 total 33
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Values.ll force=true O0 poisoned balance
+managed source live 0 peak 16 total 33
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Values.ll force=true O2 poisoned balance
+managed source live 0 peak 16 total 33
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Ordering.ll force=false O0 poisoned balance
+managed source live 0 peak 4 total 4
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Ordering.ll force=false O2 poisoned balance
+managed source live 0 peak 4 total 4
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Ordering.ll force=true O0 poisoned balance
+managed source live 0 peak 4 total 4
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Ordering.ll force=true O2 poisoned balance
+managed source live 0 peak 4 total 4
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Maps.ll force=false O0 poisoned balance
+managed source live 0 peak 26 total 111
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Maps.ll force=false O2 poisoned balance
+managed source live 0 peak 26 total 111
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Maps.ll force=true O0 poisoned balance
+managed source live 0 peak 26 total 111
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Maps.ll force=true O2 poisoned balance
+managed source live 0 peak 26 total 111
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Methods.ll force=false O0 poisoned balance
+managed source live 0 peak 27 total 81
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Methods.ll force=false O2 poisoned balance
+managed source live 0 peak 27 total 81
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Methods.ll force=true O0 poisoned balance
+managed source live 0 peak 27 total 81
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Methods.ll force=true O2 poisoned balance
+managed source live 0 peak 27 total 81
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Reentry.ll force=false O0 poisoned balance
+managed source live 0 peak 9 total 9
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Reentry.ll force=false O2 poisoned balance
+managed source live 0 peak 9 total 9
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Reentry.ll force=true O0 poisoned balance
+managed source live 0 peak 9 total 9
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/Reentry.ll force=true O2 poisoned balance
+managed source live 0 peak 9 total 9
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/ContainsReentry.ll force=false O0 poisoned balance
+managed source live 0 peak 9 total 9
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/ContainsReentry.ll force=false O2 poisoned balance
+managed source live 0 peak 9 total 9
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/ContainsReentry.ll force=true O0 poisoned balance
+managed source live 0 peak 9 total 9
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/ContainsReentry.ll force=true O2 poisoned balance
+managed source live 0 peak 9 total 9
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/MethodReentry.ll force=false O0 poisoned balance
+managed source live 0 peak 9 total 9
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/MethodReentry.ll force=false O2 poisoned balance
+managed source live 0 peak 9 total 9
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/MethodReentry.ll force=true O0 poisoned balance
+managed source live 0 peak 9 total 9
+
+PASS managed source /var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T//chibi-remove-item.L4G7NH/MethodReentry.ll force=true O2 poisoned balance
+managed source live 0 peak 9 total 9
+
+real 26.71
+user 17.83
+sys 1.59

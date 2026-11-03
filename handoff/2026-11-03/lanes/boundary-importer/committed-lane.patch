@@ -1,0 +1,743 @@
+diff --git a/test/native_aot/generations/ManagedViews.chibi b/test/native_aot/generations/ManagedViews.chibi
+index 5afb6476f..4b98a8328 100644
+--- a/test/native_aot/generations/ManagedViews.chibi
++++ b/test/native_aot/generations/ManagedViews.chibi
+@@ -11,6 +11,17 @@ Owner :: (number: int) -> view Pair[]? {
+     values: Pair[] = [Pair.Row([number, 5])]; pointer := &values;
+     return pointer.view(0..<1);
+ }
++PointerOwner :: (number: int) -> view (^int)[]? {
++    other := 5; values: ^int[] = [&number, &other]; pointer := &values;
++    return pointer.view(0..<2);
++}
++PointerPromise :: () -> view (^int)[] {
++    if false { yield }
++    selected := PointerOwner(61);
++    if selected { return selected; }
++    assert(false, "the fixed pointer view range is valid");
++    return await PointerPromise();
++}
+ Churn :: () { for index in 0..<3000 { discarded := Owner(index); } }
+ Mark :: (path: string, text: string) {
+     stream := fopen(path, "wb"); assert(stream != 0);
+@@ -28,6 +39,8 @@ Promise :: () -> view Pair[] {
+ Worker :: () -> int {
+     selected := Owner(37);
+     promised := Promise();
++    pointer_window := PointerOwner(37);
++    pointer_promise := PointerPromise();
+     while !Allowed() { yield }
+     Churn();
+     if selected {
+@@ -40,6 +53,13 @@ Worker :: () -> int {
+         window := joined; Churn(); pair := window[0];
+         switch pair { case .Row(xs): assert(xs[0] + xs[1] == 66, "old view promise keeps its schema through reload"); case: assert(false); }
+     }
++    if pointer_window {
++        window := pointer_window; Churn();
++        assert(window[0]^ + window[1]^ == 42, "old pointer-array cells retain their traced children");
++    } else { assert(false); }
++    pointer_joined := await pointer_promise;
++    if pointer_joined is Cancelled { return 2; }
++    else { window := pointer_joined; Churn(); assert(window[0]^ + window[1]^ == 66); }
+     Mark("managed-view-done", "old42");
+     return 0;
+ }
+diff --git a/test/native_aot/generations/ManagedViewsEdited.chibi b/test/native_aot/generations/ManagedViewsEdited.chibi
+index 5e145e5d1..9a40826bc 100644
+--- a/test/native_aot/generations/ManagedViewsEdited.chibi
++++ b/test/native_aot/generations/ManagedViewsEdited.chibi
+@@ -13,7 +13,11 @@ Owner :: (number: int) -> view Pair[]? {
+     values: Pair[] = [Pair.Row("new", [number, 9], 11)]; pointer := &values;
+     return pointer.view(0..<1);
+ }
+-Churn :: () { for index in 0..<6000 { discarded := Owner(index); } }
++PointerOwner :: (number: f32) -> view (^f32)[]? {
++    other: f32 = 9; values: ^f32[] = [&number, &other]; pointer := &values;
++    return pointer.view(0..<2);
++}
++Churn :: () { for index in 0..<6000 { discarded := Owner(index); pointer_window := PointerOwner(f32(index)); } }
+ Main :: () -> int { return 99; }
+ Frame :: () -> int {
+     Churn();
+diff --git a/test/native_aot/managed_pointers/README.md b/test/native_aot/managed_pointers/README.md
+index 11ca75c86..ab90c08ff 100644
+--- a/test/native_aot/managed_pointers/README.md
++++ b/test/native_aot/managed_pointers/README.md
+@@ -118,8 +118,20 @@ preserves identities under unrelated insertion and local record reindexing.
+ The two-image proof checks compatible access, changed-schema rejection and old
+ callback-image leases at O0/O2. Source ownership proofs include the original
+ nested-array/union lending cases, view-only roots and callback collection.
+-Ordinary source already rejects view fields in records. GC-bearing elements,
+-view containers and retained views remain outside this admission.
++Views over nonnullable pointers to numeric/bool values use the existing pointer
++array backing and collector tracer. Each view traces its array cell, whose
++current payload traces the pointed cells. The full array tag includes the exact
++pointee identity; a same-sized int/f32 change is rejected across images. Reads
++publish descriptors in existing roots before a poll; writes replace descriptors
++without element reference counts. Clone and strict slice acquire independent
++array backing. The source proof covers returned windows, pointer replacement,
++growth, bounds evaluation order, suspended parameters/results and cancellation.
++Its 4096 appends allocate 4110 blocks, including the pointed cells and geometric
++backing growth. Failure and allocator/release callback modes check zero live
++allocations. Cross-image and reload cases retain the old trace/drop callbacks.
++Ordinary source already rejects view fields in records. Collector-bearing
++record elements, nullable-pointer element wrappers, other view containers and
++retained views remain outside this admission.
+ 
+ Waiting functions keep direct windows and their exact optional/authored-union
+ wrappers in persistent frame roots. Each slot/local uses the same 32-byte root
+@@ -142,9 +154,9 @@ a handle for an optional-view result retains the ordinary union-result rejection
+ The retained ordinary test runner forbids scheduling, so the async acceptance
+ probes compile calls under a false branch, with an invalid-after-yield body as
+ a control. They establish source acceptance, not resumed-runtime behavior.
+-Synchronous ordinary probes execute views over pointer elements and records
+-containing pointer or pointer-array fields. Those GC-bearing element forms are
+-remaining native parity work, separate from frame and promise roots for admitted views.
++Synchronous ordinary probes execute the pointer-element kernels and views over
++records containing pointer or pointer-array fields. The latter collector-bearing
++record element forms remain separate native parity work.
+ 
+ Optional numeric/bool values and flat numeric/bool record payloads can share
+ managed cells. The optional tag and payload move together; nil replacement
+diff --git a/test/native_aot/managed_pointers/SourceProbe.chibi b/test/native_aot/managed_pointers/SourceProbe.chibi
+index 484295975..842a312cb 100644
+--- a/test/native_aot/managed_pointers/SourceProbe.chibi
++++ b/test/native_aot/managed_pointers/SourceProbe.chibi
+@@ -88,6 +88,11 @@ Main :: () -> int {
+                 // a snapshot copy on each append exceeds this by two orders.
+                 checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %total, 32");
+             }
++            if (strings.HasSuffix(args[index], "/PointerAppend.ll")) {
++                // 4097 pointed cells plus one array cell and geometric backing
++                // growth. Copying backing at every append exceeds this bound.
++                checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %total, 5200");
++            }
+             if (strings.HasSuffix(args[index], "/TextSpan.ll")) {
+                 // 4096 immutable windows acquire existing text owners. Only
+                 // the source and fixed runtime setup need allocation.
+diff --git a/test/native_aot/managed_pointers/ViewSchemaProbe.chibi b/test/native_aot/managed_pointers/ViewSchemaProbe.chibi
+index 088e4da15..9bb5869fb 100644
+--- a/test/native_aot/managed_pointers/ViewSchemaProbe.chibi
++++ b/test/native_aot/managed_pointers/ViewSchemaProbe.chibi
+@@ -13,13 +13,14 @@ foreign libc { strtoll :: (text: cstring, end: rawptr, base: i32) -> i64 }
+ Op :: (op: int, type: int, output: int, left: int, right: int, target: int, literal: i64) -> native.Instruction {
+     return {op: op, type: type, output: output, left: left, right: right, target: target, literal: literal};
+ }
+-Module :: (target: abi.Target, ordinal: int, tag: i64, create: bool) -> string {
++Module :: (target: abi.Target, ordinal: int, tag: i64, create: bool, pointers: bool = false) -> string {
+     record := native.RecordType + ordinal;
+     inner := native.ArrayType + abi.IntStorage;
+     array := native.ArrayType + record;
+     records: native.Record[] = [{first: 0, count: 2, identity: 0}];
+     fields := [abi.IntStorage, inner];
+     if (ordinal == 1) { records = [{first: 0, count: 1, identity: 0}, {first: 1, count: 2, identity: 0}]; fields = [abi.DoubleStorage, abi.IntStorage, inner]; }
++    if (pointers) { array = native.ArrayType + native.PointerType; records = []; fields = []; }
+     parameters: int[] = [];
+     slots: int[] = [];
+     code: native.Instruction[] = [];
+@@ -35,6 +36,15 @@ Module :: (target: abi.Target, ordinal: int, tag: i64, create: bool) -> string {
+             Op(native.ManagedNew, native.PointerType, 7, 6, array, 0, tag),
+             Op(native.ArrayDrop, array, 0, 6, 0, 0, 0),
+             Op(native.Publish, native.PointerType, 0, 7, 0, 0, 0), Op(native.Return, 0, 0, 0, 0, 0, 0)];
++        if (pointers) {
++            slots = [abi.IntStorage, native.PointerType, array, array, native.PointerType];
++            code = [Op(native.Constant, abi.IntStorage, 0, 0, 0, 0, 7),
++                Op(native.ManagedNew, native.PointerType, 1, 0, abi.IntStorage, 0, 12345),
++                Op(native.Constant, array, 2, 0, 0, 0, 0), Op(native.ArrayPush, array, 3, 2, 1, 0, 1),
++                Op(native.ManagedNew, native.PointerType, 4, 3, array, 0, tag),
++                Op(native.ArrayDrop, array, 0, 3, 0, 0, 0),
++                Op(native.Publish, native.PointerType, 0, 4, 0, 0, 0), Op(native.Return, 0, 0, 0, 0, 0, 0)];
++        }
+         adapter = strings.Concatenate([
+             "@view_schema.root = internal global %chibi.managed.root zeroinitializer\n",
+             "@view_schema.owner = internal global { ptr, i64, i64 } zeroinitializer\n",
+@@ -58,6 +68,15 @@ Module :: (target: abi.Target, ordinal: int, tag: i64, create: bool) -> string {
+             Op(native.ViewGet, record, 2, 0, 1, 0, tag), Op(native.Extract, inner, 3, 2, record, 0, 1),
+             Op(native.ArrayGet, abi.IntStorage, 4, 3, 1, 0, 0),
+             Op(native.Publish, abi.IntStorage, 0, 4, 0, 0, 0), Op(native.Return, 0, 0, 0, 0, 0, 0)];
++        if (pointers) {
++            slots = [native.ViewType, abi.IntStorage, native.PointerType, native.RefType + abi.IntStorage, abi.IntStorage];
++            code = [Op(native.Argument, native.ViewType, 0, 0, 0, 0, 0),
++                Op(native.Constant, abi.IntStorage, 1, 0, 0, 0, 0),
++                Op(native.ViewGet, native.PointerType, 2, 0, 1, 0, tag),
++                Op(native.ManagedAddress, native.RefType + abi.IntStorage, 3, 2, 0, 0, 12345),
++                Op(native.Deref, abi.IntStorage, 4, 3, 0, 0, 0),
++                Op(native.Publish, abi.IntStorage, 0, 4, 0, 0, 0), Op(native.Return, 0, 0, 0, 0, 0, 0)];
++        }
+         adapter = strings.Concatenate([
+             "define i32 @view_schema_read(ptr %window) {\nentry:\n",
+             "  %value = load { { ptr, i64, i64 }, i32, i32 }, ptr %window\n",
+@@ -73,7 +92,9 @@ Module :: (target: abi.Target, ordinal: int, tag: i64, create: bool) -> string {
+ }
+ Main :: () -> int {
+     args := os.Arguments();
+-    if (length(args) != 5) { return 2; }
++    if (length(args) != 5 && length(args) != 6) { return 2; }
++    pointers := length(args) == 6;
++    if (pointers && args[5] != "--pointers") { return 2; }
+     work := args[0]; llvm := args[1];
+     tags: i64[] = [];
+     for (identity in slice(args, 2, 3)) {
+@@ -97,7 +118,7 @@ Main :: () -> int {
+             ordinal := 1; tag := tags[0];
+             if (name == "old") { ordinal = 0; }
+             if (name == "changed") { tag = tags[2]; }
+-            text := Module(target, ordinal, tag, name == "old");
++            text := Module(target, ordinal, tag, name == "old", pointers);
+             if (text == "") { return 1; }
+             path := format_text("{}/schema-{}.ll", work, name);
+             output := format_text("{}/schema-{}-O{}.so", work, name, level);
+diff --git a/test/native_aot/managed_pointers/run.sh b/test/native_aot/managed_pointers/run.sh
+index 24e0be3bc..0d0232fb4 100644
+--- a/test/native_aot/managed_pointers/run.sh
++++ b/test/native_aot/managed_pointers/run.sh
+@@ -14,7 +14,7 @@ esac
+     --source "$root/test/native_aot/managed_pointers/Probe.chibi" --entry Main \
+     --output "$work/probe" --llvm "$llvm" --target "$triple" --jobs 1
+ "$work/probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/Collector.ll"
+-for name in Cells ScopedAliases Transfer Nullable Records WholeArrays WholeArrayForeign StringArrays StringCells OptionalCells Views ViewUnions ViewStrings ViewOwned TextSequences Tasks TaskPromises TaskCaptured TaskRecordPromises TaskArrayPromises InlineOwners TaskViews TaskViewPromises TaskFailure TaskPromiseFailure TaskViewFailure; do
++for name in Cells ScopedAliases Transfer Nullable Records WholeArrays WholeArrayForeign StringArrays StringCells OptionalCells Views ViewUnions ViewStrings ViewOwned PointerViews TextSequences Tasks TaskPromises TaskCaptured TaskRecordPromises TaskArrayPromises InlineOwners TaskViews TaskViewPromises TaskFailure TaskPromiseFailure TaskViewFailure; do
+     "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+         --source "$root/test/native_aot/managed_pointers/source/$name.chibi" --entry Main \
+         --output "$work/$name.ll" --emit-llvm --target "$triple"
+@@ -31,9 +31,15 @@ done
+ "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+     --source "$root/test/native_aot/managed_pointers/SourceProbe.chibi" --entry Main \
+     --output "$work/source-probe" --llvm "$llvm" --target "$triple" --jobs 1
++for pair in Tasks:TaskPointerViews AppendStress:PointerAppend Failure:PointerViewFailure; do
++    entry=${pair%%:*}; name=${pair#*:}
++    "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
++        --source "$root/test/native_aot/managed_pointers/source/PointerViews.chibi" --entry "$entry" \
++        --output "$work/$name.ll" --emit-llvm --target "$triple"
++done
+ "$work/source-probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
+-    "$work/Cells.ll" "$work/ScopedAliases.ll" "$work/Transfer.ll" "$work/Nullable.ll" "$work/Tasks.ll" "$work/TaskPromises.ll" "$work/TaskCaptured.ll" "$work/TaskRecordPromises.ll" "$work/TaskArrayPromises.ll" "$work/InlineOwners.ll" "$work/TaskViews.ll" "$work/TaskViewPromises.ll" "$work/Records.ll" "$work/WholeArrays.ll" "$work/WholeArrayForeign.ll" "$work/StringArrays.ll" "$work/StringCells.ll" "$work/OptionalCells.ll" "$work/Views.ll" "$work/ViewUnions.ll" "$work/ViewStrings.ll" "$work/ViewOwned.ll" "$work/TextSequences.ll" "$work/TextSpan.ll" "$work/TextBorrowed.ll" "$work/ViewAppend.ll"
+-"$work/source-probe" --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/TaskFailure.ll" "$work/TaskPromiseFailure.ll" "$work/TaskViewFailure.ll"
++    "$work/Cells.ll" "$work/ScopedAliases.ll" "$work/Transfer.ll" "$work/Nullable.ll" "$work/Tasks.ll" "$work/TaskPromises.ll" "$work/TaskCaptured.ll" "$work/TaskRecordPromises.ll" "$work/TaskArrayPromises.ll" "$work/InlineOwners.ll" "$work/TaskViews.ll" "$work/TaskViewPromises.ll" "$work/Records.ll" "$work/WholeArrays.ll" "$work/WholeArrayForeign.ll" "$work/StringArrays.ll" "$work/StringCells.ll" "$work/OptionalCells.ll" "$work/Views.ll" "$work/ViewUnions.ll" "$work/ViewStrings.ll" "$work/ViewOwned.ll" "$work/PointerViews.ll" "$work/TaskPointerViews.ll" "$work/PointerAppend.ll" "$work/TextSequences.ll" "$work/TextSpan.ll" "$work/TextBorrowed.ll" "$work/ViewAppend.ll"
++"$work/source-probe" --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/TaskFailure.ll" "$work/TaskPromiseFailure.ll" "$work/TaskViewFailure.ll" "$work/PointerViewFailure.ll"
+ "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+     --source "$root/test/native_aot/managed_pointers/source/TaskRecordPromises.chibi" --entry Failure \
+     --output "$work/TaskRecordPromiseFailure.ll" --emit-llvm --target "$triple"
+@@ -70,9 +76,9 @@ for name in PatternRows InlineRecords TextCells; do
+     "$work/$name-emitter" "$work/$name.ll"
+ done
+ "$work/source-probe" --callbacks "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
+-    "$work/Callbacks.ll" "$work/StringCells.ll" "$work/TextCells.ll" "$work/ViewOwned.ll" "$work/CallbackPointerless.ll" "$work/Tasks.ll" "$work/PatternRows.ll" "$work/InlineRecords.ll" "$work/TaskPromises.ll" "$work/TaskCaptured.ll" "$work/TaskRecordPromises.ll" "$work/TaskArrayPromises.ll" "$work/InlineOwners.ll" "$work/TaskViews.ll" "$work/TaskViewPromises.ll"
++    "$work/Callbacks.ll" "$work/StringCells.ll" "$work/TextCells.ll" "$work/ViewOwned.ll" "$work/PointerViews.ll" "$work/TaskPointerViews.ll" "$work/CallbackPointerless.ll" "$work/Tasks.ll" "$work/PatternRows.ll" "$work/InlineRecords.ll" "$work/TaskPromises.ll" "$work/TaskCaptured.ll" "$work/TaskRecordPromises.ll" "$work/TaskArrayPromises.ll" "$work/InlineOwners.ll" "$work/TaskViews.ll" "$work/TaskViewPromises.ll"
+ "$work/source-probe" --callbacks --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
+-    "$work/CallbackFailure.ll" "$work/TaskPromiseFailure.ll" "$work/TaskRecordPromiseFailure.ll" "$work/TaskArrayFailure.ll" "$work/TaskArrayChildFailure.ll" "$work/TaskViewFailure.ll" "$work/TaskViewPromiseFailure.ll"
++    "$work/CallbackFailure.ll" "$work/TaskPromiseFailure.ll" "$work/TaskRecordPromiseFailure.ll" "$work/TaskArrayFailure.ll" "$work/TaskArrayChildFailure.ll" "$work/TaskViewFailure.ll" "$work/TaskViewPromiseFailure.ll" "$work/PointerViewFailure.ll"
+ for mismatch in tag storage; do
+     "$work/TextCells-emitter" "$work/TextCells-$mismatch.ll" "$mismatch"
+     "$work/source-probe" --failure 'another failure' "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
+diff --git a/test/native_aot/managed_pointers/schema/PointerChanged.chibi b/test/native_aot/managed_pointers/schema/PointerChanged.chibi
+new file mode 100644
+index 000000000..fa634636a
+--- /dev/null
++++ b/test/native_aot/managed_pointers/schema/PointerChanged.chibi
+@@ -0,0 +1,7 @@
++package pointer_view_schema
++Main :: () -> int {
++    number: f32 = 7; values: ^f32[] = [&number]; owner := &values;
++    selected := owner.view(0..<1);
++    if selected { return selected.length() - 1; }
++    return 1;
++}
+diff --git a/test/native_aot/managed_pointers/schema/PointerOriginal.chibi b/test/native_aot/managed_pointers/schema/PointerOriginal.chibi
+new file mode 100644
+index 000000000..b0298aa91
+--- /dev/null
++++ b/test/native_aot/managed_pointers/schema/PointerOriginal.chibi
+@@ -0,0 +1,7 @@
++package pointer_view_schema
++Main :: () -> int {
++    number := 7; values: ^int[] = [&number]; owner := &values;
++    selected := owner.view(0..<1);
++    if selected { return selected.length() - 1; }
++    return 1;
++}
+diff --git a/test/native_aot/managed_pointers/schema/PointerReindexed.chibi b/test/native_aot/managed_pointers/schema/PointerReindexed.chibi
+new file mode 100644
+index 000000000..c08c17488
+--- /dev/null
++++ b/test/native_aot/managed_pointers/schema/PointerReindexed.chibi
+@@ -0,0 +1,10 @@
++package pointer_view_schema
++Unrelated :: struct { value: f64; }
++Other :: () -> ^f32 { number: f32 = 9; return &number; }
++Main :: () -> int {
++    unrelated := Other();
++    number := 7; values: ^int[] = [&number]; owner := &values;
++    selected := owner.view(0..<1);
++    if selected { return selected.length() - 1; }
++    return 1;
++}
+diff --git a/test/native_aot/managed_pointers/source/PointerViews.chibi b/test/native_aot/managed_pointers/source/PointerViews.chibi
+new file mode 100644
+index 000000000..f0b870331
+--- /dev/null
++++ b/test/native_aot/managed_pointers/source/PointerViews.chibi
+@@ -0,0 +1,93 @@
++package pointer_element_windows
++
++Box :: (value: int) -> ^int { return &value; }
++Owner :: (value: int) -> view (^int)[]? {
++    values: ^int[] = [Box(value), Box(value + 1)]; pointer := &values;
++    return pointer.view(0..<2);
++}
++Churn :: () { for index in 0..<3000 { discarded := Owner(index); } }
++Escaped :: () -> view (^int)[] { return Owner(7)!; }
++BoolWindow :: () -> view (^bool)[] {
++    yes := true; no := false; values: ^bool[] = [&yes, &no]; pointer := &values;
++    return pointer.view(0..<2)!;
++}
++// The original ordinary pointer-element view kernel executes synchronously.
++Kernel :: () -> int {
++    number := 7; values: ^int[] = [&number]; pointer := &values;
++    selected := pointer.view(0..<1);
++    if selected { return selected[0]^; }
++    return -1;
++}
++Growth :: () {
++    values: ^int[] = [Box(3)]; pointer := &values;
++    selected := pointer.view(0..<1);
++    if selected {
++        for index in 0..<128 { pointer.append(Box(index)); }
++        Churn();
++        assert(selected.length() == 1 && selected[0]^ == 3);
++        pointer^ = [Box(41), Box(42)]; Churn();
++        assert(selected[0]^ == 41, "a window resolves the current pointer-array cell");
++    } else { assert(false); }
++}
++Inputs :: () -> ^int[] { return [Box(7), Box(8)]; }
++Capture :: (values: ^int[]) -> ^(^int[]) { values[0] = Box(9); return &values; }
++CaptureAfterScalar :: (first: int, values: ^int[]) -> ^(^int[]) { values[0] = &first; return &values; }
++BorrowedWaiting :: (values: ^int[]) -> ^(^int[]) { yield; return &values; }
++Bound :: (order: ^int, digit: int, value: int) -> int { order^ = order^ * 10 + digit; return value; }
++Main :: () -> int {
++    original := Kernel(); assert(original == 7);
++    captured := Capture(Inputs()); Churn(); values := captured^;
++    assert(values[0]^ == 9 && values[1]^ == 8);
++    after_scalar := CaptureAfterScalar(19, Inputs()); Churn(); mixed := after_scalar^;
++    assert(mixed[0]^ == 19 && mixed[1]^ == 8);
++    flags := BoolWindow(); Churn(); assert(flags[0]^ && !flags[1]^);
++    flags[1]^ = true; assert(flags[1]^);
++    selected := Escaped(); Churn();
++    saved := selected[0]; selected[0] = Box(19); Churn();
++    assert(saved^ == 7 && selected[0]^ == 19);
++    selected[1]^ = 23; Churn(); assert(selected[1]^ == 23);
++    cloned := selected.clone(); cloned[0] = Box(31); Churn();
++    assert(cloned[0]^ == 31 && selected[0]^ == 19);
++    order := 0;
++    sliced := selected.slice(Bound(&order, 1, 0)..<Bound(&order, 2, 2));
++    assert(order == 12);
++    if sliced {
++        sliced[0] = Box(37); Churn();
++        assert(sliced[0]^ == 37 && sliced[1]^ == 23 && selected[0]^ == 19);
++    } else { return 1; }
++    bad := selected.slice(-1..<2); assert(!bad);
++    valid_empty := selected.slice(1..<1);
++    if valid_empty { assert(length(valid_empty) == 0); } else { return 2; }
++    Growth();
++    return 0;
++}
++AppendStress :: () -> int {
++    values: ^int[] = [Box(7)]; pointer := &values;
++    selected := pointer.view(0..<1);
++    for index in 0..<4096 { pointer.append(Box(index)); }
++    if selected { assert(selected[0]^ == 7 && selected.length() == 1); } else { return 1; }
++    return 0;
++}
++Waiter :: () -> view (^int)[] { selected := Escaped(); yield; Churn(); return selected; }
++Hold :: (window: view (^int)[]) -> int { while true { yield } }
++Tasks :: () -> int {
++    captured := await BorrowedWaiting(Inputs()); Churn(); values := captured^;
++    assert(values[0]^ == 7 && values[1]^ == 8);
++    pending := Waiter(); alias := pending; yield; yield; Churn();
++    joined := await pending;
++    if joined is Cancelled { return 1; }
++    else { window := joined; Churn(); assert(window[0]^ == 7); window[0] = Box(53); }
++    again := await alias;
++    if again is Cancelled { return 2; }
++    else { window := again; assert(window[0]^ == 53); }
++    selected := await Waiter(); Churn(); assert(selected[1]^ == 8);
++    gone := Hold(selected); yield; Churn(); cancel gone
++    cancelled := await gone; assert(cancelled is Cancelled);
++    return 0;
++}
++Failure :: () -> int {
++    selected := Escaped();
++    assert(selected[0]^ == 7);
++    assert(false, "pointer-array cell cleanup after a failed view read");
++    return 0;
++}
+diff --git a/test/native_aot/managed_pointers/source/rejected/PointerViewNullableElement.chibi b/test/native_aot/managed_pointers/source/rejected/PointerViewNullableElement.chibi
+new file mode 100644
+index 000000000..7e44c041f
+--- /dev/null
++++ b/test/native_aot/managed_pointers/source/rejected/PointerViewNullableElement.chibi
+@@ -0,0 +1,3 @@
++package rejected_pointer_view_nullable_element
++Ignore :: (window: view (^int?)[]) -> int { return 0; }
++Main :: () -> int { return 0; }
+diff --git a/test/native_aot/managed_pointers/source/rejected/PointerViewRecordTarget.chibi b/test/native_aot/managed_pointers/source/rejected/PointerViewRecordTarget.chibi
+new file mode 100644
+index 000000000..c71953a58
+--- /dev/null
++++ b/test/native_aot/managed_pointers/source/rejected/PointerViewRecordTarget.chibi
+@@ -0,0 +1,4 @@
++package rejected_pointer_view_record_target
++Row :: struct { number: int; }
++Ignore :: (window: view (^Row)[]) -> int { return 0; }
++Main :: () -> int { return 0; }
+diff --git a/test/native_aot/managed_pointers/view-schema.sh b/test/native_aot/managed_pointers/view-schema.sh
+index 726920576..2e97c82d1 100644
+--- a/test/native_aot/managed_pointers/view-schema.sh
++++ b/test/native_aot/managed_pointers/view-schema.sh
+@@ -15,6 +15,7 @@ for name in Original Reindexed Changed; do
+         --source "$root/test/native_aot/managed_pointers/schema/$name.chibi" --entry Main \
+         --output "$work/$name.ll" --emit-llvm --target "$triple"
+ done
++
+ # The source graph includes an owned array and a nested union. Changing its
+ # int leaf to f32 keeps its byte size while changing the semantic schema.
+ tag() {
+@@ -41,3 +42,29 @@ for level in 0 2; do
+     }
+     echo "PASS native view schema O$level compatible reindex, changed schema, image leases"
+ done
++
++# Pointer descriptors have the same physical size for int and f32 pointees.
++# Their complete semantic tags must still reject the other element type.
++pointer_work=$work/pointers
++mkdir -p "$pointer_work"
++for name in Original Reindexed Changed; do
++    "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
++        --source "$root/test/native_aot/managed_pointers/schema/Pointer$name.chibi" --entry Main \
++        --output "$pointer_work/$name.ll" --emit-llvm --target "$triple"
++done
++original=$(tag "$pointer_work/Original.ll")
++reindexed=$(tag "$pointer_work/Reindexed.ll")
++changed=$(tag "$pointer_work/Changed.ll")
++[ -n "$original" ] && [ "$original" = "$reindexed" ] && [ "$original" != "$changed" ] || {
++    echo 'native pointer view schema: incompatible source fingerprints' >&2; exit 1;
++}
++"$work/Probe" "$pointer_work" "$llvm" "$original" "$reindexed" "$changed" --pointers
++for level in 0 2; do
++    "$work/Host" "$pointer_work/schema-old-O$level.so" "$pointer_work/schema-compatible-O$level.so"
++    status=0
++    "$work/Host" "$pointer_work/schema-old-O$level.so" "$pointer_work/schema-changed-O$level.so" > "$pointer_work/changed-O$level.log" 2>&1 || status=$?
++    [ "$status" -eq 134 ] && grep -Fq 'native failure: another failure' "$pointer_work/changed-O$level.log" || {
++        cat "$pointer_work/changed-O$level.log" >&2; echo "native changed pointer view schema O$level: status$status" >&2; exit 1;
++    }
++    echo "PASS native pointer view schema O$level compatible reindex, changed pointee, image leases"
++done
+diff --git a/tools/compiler/llvm_native/ManagedRecords.chibi b/tools/compiler/llvm_native/ManagedRecords.chibi
+index c2044d56b..0d090044c 100644
+--- a/tools/compiler/llvm_native/ManagedRecords.chibi
++++ b/tools/compiler/llvm_native/ManagedRecords.chibi
+@@ -101,15 +101,16 @@ ManagedStorageClass :: (type: int) -> int {
+     return type;
+ }
+ ManagedPayload :: (records: Record[], layout: ManagedRecordLayout, values: ValueLayout, type: int, tag: i64) -> bool {
+-    return abi.ScalarType(type) != "" || type == abi.TextStorage ||
++    return abi.ScalarType(type) != "" || type == abi.TextStorage || type == ArrayType + PointerType ||
+            (ManagedArray(type) && ElementType(records, type) != 0 && ValueValid(values, type - ArrayType)) ||
+            (ManagedCellRecord(records, layout, type) && records[type - RecordType].identity == tag);
+ }
+ ManagedArray :: (type: int) -> bool {
+     return type >= ArrayType && type < MapType &&
+-           (abi.ScalarType(type - ArrayType) != "" || type - ArrayType == abi.TextStorage || type - ArrayType >= RecordType);
++           (abi.ScalarType(type - ArrayType) != "" || type - ArrayType == abi.TextStorage || type - ArrayType == PointerType || type - ArrayType >= RecordType);
+ }
+-// Array cells own one descriptor. Admitted elements have no GC edges.
++// Array cells own one descriptor. Pointer elements use the same typed tracer
++// as ordinary pointer arrays; other admitted elements have no GC edges.
+ // The last cell release drops typed backing and nested owners while leased.
+ ManagedArrayModule :: (code: Instruction[], counter: string) -> string {
+     out: string[] = [];
+@@ -126,7 +127,9 @@ ManagedArrayModule :: (code: Instruction[], counter: string) -> string {
+             out.append(format_text("define internal void @chibi_managed.drop.array{}(ptr %ctx, ptr %payload) {{\nentry:\n", type));
+             out.append(format_text("  %value = load {}, ptr %payload\n  call void @chibi_array.{}.drop(ptr %ctx, {} %value)\n  ret void\n}}\n", abi.ArrayType(), type, abi.ArrayType()));
+         }
+-        out.append(format_text("@chibi_managed.layout.array{} = private constant %chibi.managed.layout {{ ptr null, ptr @chibi_managed.validate.array{}, ptr {} }}\n", key, key, counter));
++        trace := "null";
++        if (type == ArrayType + PointerType) { trace = "@chibi_managed.trace.array"; }
++        out.append(format_text("@chibi_managed.layout.array{} = private constant %chibi.managed.layout {{ ptr {}, ptr @chibi_managed.validate.array{}, ptr {} }}\n", key, trace, key, counter));
+         out.append(format_text("define internal i1 @chibi_managed.validate.array{}(i64 %offset, i64 %tag, i64 %bytes, i32 %storage) {{\nentry:\n", key));
+         out.append(format_text("  %tag.ok = icmp eq i64 %tag, {}\n  %storage.ok = icmp eq i32 %storage, {}\n", item.literal, ManagedStorageClass(type)));
+         out.append(format_text("  %bytes.ok = icmp eq i64 %bytes, ptrtoint (ptr getelementptr ({}, ptr null, i32 1) to i64)\n", abi.ArrayType()));
+diff --git a/tools/compiler/llvm_native/Views.chibi b/tools/compiler/llvm_native/Views.chibi
+index b2b83fdda..5611ebb95 100644
+--- a/tools/compiler/llvm_native/Views.chibi
++++ b/tools/compiler/llvm_native/Views.chibi
+@@ -13,7 +13,7 @@ ViewElement :: (item: Instruction) -> int {
+ }
+ ViewValid :: (records: Record[], fields: int[], layout: ValueLayout, slots: int[], arguments: int[], item: Instruction) -> bool {
+     element := ViewElement(item);
+-    if (element <= 0 || element >= ArrayType || ElementType(records, ArrayType + element) == 0 || !ValueValid(layout, element)) { return false; }
++    if (element <= 0 || element >= ArrayType || ElementType(records, ArrayType + element) == 0 || (element != PointerType && !ValueValid(layout, element))) { return false; }
+     left := ViewType;
+     if (item.op == ViewMake) { left = PointerType; }
+     if (item.literal == 0 || !Typed(slots, item.left, left)) { return false; }
+diff --git a/tools/compiler/package_compiler/Scalar.chibi b/tools/compiler/package_compiler/Scalar.chibi
+index 522dc0e10..125a4452f 100644
+--- a/tools/compiler/package_compiler/Scalar.chibi
++++ b/tools/compiler/package_compiler/Scalar.chibi
+@@ -1015,6 +1015,8 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
+         }
+         return callables[function].result;
+     }
++    view := ScalarViewOperation(forest, text, callables, params, names, types, members, callable.package, node);
++    if (view.operation == facts.ViewGet) { return view.shape.storage; }
+     mapped := ScalarMapRead(forest, text, callables, names, types, members, callable.package, node);
+     if (mapped.operator == facts.MapHas) { return BoolStorage; }
+     if (mapped.operator == facts.MapGet) {
+@@ -1357,7 +1359,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
+         mapped = ScalarMapShape(forest, text, callables, names, types, members, callable.package, node);
+     }
+     if (mapped >= 0) { type = ScalarMapType(types, mapped); }
+-    if (storage == PointerStorage && !arrayed) {
++    if (storage == PointerStorage && !arrayed && !viewed) {
+         type = ScalarPointerType(types, ScalarPointerRecord(forest, text, callables, params, names, types, members, callable.package, node));
+     }
+     if (storage == StructStorage && !arrayed && !viewed &&
+@@ -4853,7 +4855,8 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
+     aggregate_cells := false;
+     for (declared in records) {
+         if (((declared.kind == PointerDecl && declared.value_container == ArrayContainer) ||
+-             (declared.kind == OptionalDecl && declared.value_container == ViewContainer)) && declared.value_record >= 0) {
++             (declared.kind == OptionalDecl && declared.value_container == ViewContainer)) &&
++            ScalarViewSchemaElement(records, declared.value_storage, declared.value_record)) {
+             aggregate_cells = true;
+             break;
+         }
+@@ -4862,17 +4865,17 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
+         // Authored view unions are emitted even when only their empty tag is
+         // used. Their payload admission reads the element's cached schema.
+         for (field in fields) {
+-            if (field.container == ViewContainer && field.record >= 0) { aggregate_cells = true; break; }
++            if (field.container == ViewContainer && ScalarViewSchemaElement(records, field.storage, field.record)) { aggregate_cells = true; break; }
+         }
+     }
+     if (!aggregate_cells) {
+         for (param in params) {
+-            if (param.container == ViewContainer && param.record >= 0) { aggregate_cells = true; break; }
++            if (param.container == ViewContainer && ScalarViewSchemaElement(records, param.storage, param.record)) { aggregate_cells = true; break; }
+         }
+     }
+     if (!aggregate_cells) {
+         for (callable in seen) {
+-            if (callable.result_container == ViewContainer && callable.result_record >= 0) { aggregate_cells = true; break; }
++            if (callable.result_container == ViewContainer && ScalarViewSchemaElement(records, callable.result, callable.result_record)) { aggregate_cells = true; break; }
+         }
+     }
+     if (aggregate_cells) {
+diff --git a/tools/compiler/package_compiler/ScalarArrays.chibi b/tools/compiler/package_compiler/ScalarArrays.chibi
+index 8c0e43772..9a0bf4107 100644
+--- a/tools/compiler/package_compiler/ScalarArrays.chibi
++++ b/tools/compiler/package_compiler/ScalarArrays.chibi
+@@ -808,7 +808,8 @@ ScalarElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, callabl
+     // dedicated place tag does not admit arbitrary union fields or methods.
+     if (array_field == -1 && binding.container == 0 && binding.storage == UnionStorage &&
+         ScalarOptional(types, binding.record) && types[binding.record].value_container == ArrayContainer &&
+-        shape.record == -1 && (Numeric(shape.storage) || shape.storage == BoolStorage || shape.storage == TextStorage)) {
++        ((shape.record == -1 && (Numeric(shape.storage) || shape.storage == BoolStorage || shape.storage == TextStorage)) ||
++         (shape.storage == PointerStorage && ScalarPointerViewElement(types, shape.record)))) {
+         array_field = facts.OptionalArrayPlace;
+     }
+     root := ScalarValueType(types, binding.storage, binding.container, binding.record);
+diff --git a/tools/compiler/package_compiler/ScalarPointers.chibi b/tools/compiler/package_compiler/ScalarPointers.chibi
+index 1f22c411e..8ecddec8e 100644
+--- a/tools/compiler/package_compiler/ScalarPointers.chibi
++++ b/tools/compiler/package_compiler/ScalarPointers.chibi
+@@ -50,6 +50,10 @@ ScalarPointerType :: (types: TypeDecl[], record: int) -> int {
+ // a nominal-only tag can permit a changed generation's layout.
+ ScalarPointerTag :: (types: TypeDecl[], value: ValueType) -> i64 {
+     nominal := SemanticTag(types, value);
++    if (value.container == ArrayContainer && value.storage == PointerStorage && ScalarPointerViewElement(types, value.record)) {
++        target := ScalarPointerTag(types, ScalarPointerElement(types, value.record));
++        return i64(wrap: binding.ID("native-managed-pointer-array-v1", format_text("{}:{}", nominal, target)));
++    }
+     if (value.container == ArrayContainer && value.record >= 0) {
+         schema := types[value.record].native_schema;
+         if (schema == 0) { return 0; }
+@@ -207,6 +211,8 @@ ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables
+         return -1;
+     }
+     if (Is(forest, node, syntax.IndexExpression)) {
++        view := ScalarViewOperation(forest, text, callables, params, names, types, members, package, node);
++        if (view.operation == facts.ViewGet && view.shape.storage == PointerStorage) { return view.shape.record; }
+         array := ScalarArrayShape(forest, text, callables, params, names, types, members, package,
+                                   Field(forest, node, syntax.FieldObject));
+         if (array.container == ArrayContainer && array.storage == PointerStorage) { return array.record; }
+diff --git a/tools/compiler/package_compiler/ScalarViews.chibi b/tools/compiler/package_compiler/ScalarViews.chibi
+index 01d68b787..0a497b849 100644
+--- a/tools/compiler/package_compiler/ScalarViews.chibi
++++ b/tools/compiler/package_compiler/ScalarViews.chibi
+@@ -4,10 +4,23 @@ import facts "project:scalar_facts"
+ import snapshot "project:source_snapshot"
+ import syntax "project:syntax_diagnostics"
+ 
++// Pointer elements reuse the existing pointer-array collector protocol. This
++// first domain keeps exact numeric/bool pointees; aggregate targets need their
++// own reachable schema and stay outside this admission.
++ScalarPointerViewElement :: (types: TypeDecl[], record: int) -> bool {
++    if (record < 0 || record >= length(types) || types[record].kind != PointerDecl || types[record].key != 0) { return false; }
++    shape := ScalarPointerElement(types, record);
++    return shape.container == 0 && shape.record == -1 && (Numeric(shape.storage) || shape.storage == BoolStorage);
++}
++ScalarViewSchemaElement :: (types: TypeDecl[], storage: int, record: int) -> bool {
++    return record >= 0 && !(storage == PointerStorage && ScalarPointerViewElement(types, record));
++}
++
+ ScalarViewType :: (types: TypeDecl[], shape: ValueType) -> int {
+     if (shape.container != ViewContainer) { return 0; }
+     if (shape.record >= 0) {
+         if (shape.record >= length(types)) { return 0; }
++        if (shape.storage == PointerStorage && ScalarPointerViewElement(types, shape.record)) { return facts.ViewType; }
+         kind := types[shape.record].kind;
+         if (kind == RecordDecl || kind == UnionDecl || kind == OptionalDecl || ScalarNestedCollection(types[shape.record])) {
+             return facts.ViewType;
+@@ -28,7 +41,7 @@ ScalarViewSignature :: (types: TypeDecl[], storage: int, container: int, record:
+         shape = {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
+     }
+     if (storage == PointerStorage && container == 0) { shape = ScalarPointerElement(types, record); }
+-    if ((shape.container == ViewContainer || (storage == PointerStorage && container == 0 && shape.container == ArrayContainer)) && shape.record >= 0) {
++    if ((shape.container == ViewContainer || (storage == PointerStorage && container == 0 && shape.container == ArrayContainer)) && ScalarViewSchemaElement(types, shape.storage, shape.record)) {
+         return types[shape.record].native_schema != 0;
+     }
+     return true;
+@@ -57,7 +70,7 @@ ScalarViewUnionMemberType :: (types: TypeDecl[], members: TypeMember[], held: in
+     if (view == 0) { return ScalarMemberType(types, members, field); }
+     if (ScalarViewUnionPayload(types, members, held) != field) { return 0; }
+     shape := ScalarMemberShape(members, field);
+-    if (shape.record >= 0 && types[shape.record].native_schema == 0) { return 0; }
++    if (ScalarViewSchemaElement(types, shape.storage, shape.record) && types[shape.record].native_schema == 0) { return 0; }
+     return view;
+ }
+ 
+@@ -156,6 +169,8 @@ ScalarViewOperation :: (forest: snapshot.SnapshotNode[], text: string, callables
+     if (!Is(forest, function, syntax.MemberExpression)) { return none; }
+     object := Unparenthesized(forest, Field(forest, function, syntax.FieldObject));
+     if (QualifierOf(forest, text, names, package, object) >= 0) { return none; }
++    selected := SequenceOperation(forest, text, names, package, node);
++    if (selected < 0 || CalledFunction(forest, text, callables, [], names, package, node) >= 0) { return none; }
+     method := Text(forest, text, Field(forest, function, syntax.FieldMember));
+     first := FirstMember(forest, Field(forest, node, syntax.FieldArguments));
+     if (method == "view") {
+@@ -173,6 +188,11 @@ ScalarViewOperation :: (forest: snapshot.SnapshotNode[], text: string, callables
+         if (ScalarViewType(types, shape) == 0) { return none; }
+         return {operation: facts.ViewMake, object: object, range: first, shape: shape};
+     }
++    if (selected == 0) {
++        shape := ScalarViewShape(forest, text, callables, params, names, types, members, package, object);
++        if (shape.storage == 0) { return none; }
++        return {operation: facts.ViewSlice, object: object, range: first, shape: shape};
++    }
+     if ((method != "length" && method != "clone") || first >= 0) { return none; }
+     shape := ScalarViewShape(forest, text, callables, params, names, types, members, package, object);
+     if (shape.storage == 0) { return none; }
+@@ -368,8 +388,9 @@ ScalarPointerAppend :: (forest: snapshot.SnapshotNode[], text: string, callables
+     pointer := ScalarPointerRecord(forest, text, callables, params, names, types, members, callable.package, object);
+     if (pointer < 0 || types[pointer].key != 0) { return ScalarOperands.Built([]); }
+     shape := ScalarPointerElement(types, pointer);
+-    element := ScalarTypeOf(shape.storage);
+-    if (shape.container != ArrayContainer || shape.record != -1 || element < facts.IntType || element > facts.StringType) {
++    element := ScalarElementType(types, shape);
++    pointer_element := shape.storage == PointerStorage && ScalarPointerViewElement(types, shape.record);
++    if (shape.container != ArrayContainer || (!pointer_element && (shape.record != -1 || element < facts.IntType || element > facts.StringType))) {
+         return ScalarOperands.Built([]);
+     }
+     arguments := Members(forest, Field(forest, node, syntax.FieldArguments));
+@@ -386,8 +407,8 @@ ScalarPointerAppend :: (forest: snapshot.SnapshotNode[], text: string, callables
+     }
+     variables^ += 1;
+     incoming := variables^;
+-    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+-                         value, value, shape.storage, shape.storage, facts.Clamp, []) {
++    switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants,
++                              value, {storage: shape.storage, container: 0, record: shape.record}, []) {
+         case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+         case .Built(built):
+             output.extend(ScalarCapture(forest, statement, element, incoming, built));
+diff --git a/tools/compiler/scalar_llvm/Emit.chibi b/tools/compiler/scalar_llvm/Emit.chibi
+index 0f539efab..95a72448f 100644
+--- a/tools/compiler/scalar_llvm/Emit.chibi
++++ b/tools/compiler/scalar_llvm/Emit.chibi
+@@ -1296,14 +1296,14 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int,
+         assigned := rows[at].kind == facts.AssignRow && rows[at].type == operand.type &&
+             rows[at + 1].kind == facts.RefRow && rows[at + 1].type == operand.type &&
+             rows[at + 1].literal == 0 && rows[at + 1].value == rows[at].value;
+-        borrowed := operand.literal == 0 && operator == facts.ArrayPush && (Scalar(element) || element == facts.StringType) &&
++        borrowed := operand.literal == 0 && operator == facts.ArrayPush && (Scalar(element) || element == facts.StringType || element == facts.PointerType) &&
+             rows[at].kind == facts.LocalRow && rows[at].literal == i64(facts.Captured) &&
+             rows[at].type == operand.type && rows[at].count == 4 &&
+             rows[at + 1].kind == facts.ReadRow && rows[at + 1].type == facts.PointerType &&
+             rows[at + 2].kind == facts.ManagedRow && rows[at + 2].value == facts.ManagedBorrow &&
+             rows[at + 2].type == facts.ReferenceType + operand.type &&
+             rows[at + 3].kind == facts.ReadRow && rows[at + 3].type == element;
+-        if (optional && (operator != facts.ArraySet || (!Scalar(element) && element != facts.StringType))) { return mismatch; }
++        if (optional && (operator != facts.ArraySet || (!Scalar(element) && element != facts.StringType && element != facts.PointerType))) { return mismatch; }
+         receiver := operand.type;
+         if (referenced) { receiver = field; }
+         if ((!ArrayChanges(operator) && operator != facts.ArrayResize) || element == 0 ||
+@@ -2890,6 +2890,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+             locals.append(local_type);
+             body.append(Op(native.Argument, type, slot, index, 0, 0));
+             if (boxed) {
++                // A moved argument has no caller root. Its original slot
++                // protects collector edges until the cell is published.
++                if (native.ValueCollectorOwner(value_layout, type)) {
++                    body.append(Op(native.ManagedTrack, type, 0, slot, 0, native.ManagedTrackSlot));
++                }
+                 deferred_boxes.append(index);
+                 deferred_values.append(slot);
+             } else { body.append(Op(native.Save, type, 0, slot, 0, local)); }
+@@ -2907,7 +2912,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                 owned_types.append(type);
+                 body.extend(ManagedOwnerLocal(type, places[index], true, value_layout));
+             }
+-            if (waiting_function && (type == native.ArrayType + native.PointerType ||
++            if (!boxed && waiting_function && (type == native.ArrayType + native.PointerType ||
+                 (ArrayTyped(type) && native.TaskOwnedType(records, value_layout, type))) &&
+                 rows[head + 1 + index].literal != i64(facts.ParameterOwnedArray)) {
+                 // A suspended callee owns its value parameter independently of
+@@ -2946,6 +2951,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+             body.append(made);
+             body.extend(glue.after);
+             body.append(Op(native.Save, native.PointerType, 0, slot, 0, places[variable]));
++            type := NativeType(rows[head + 1 + variable].type);
++            if (native.ValueCollectorOwner(value_layout, type)) {
++                body.append(Op(native.ManagedTrack, type, 0, value, 0, native.ManagedClearSlot));
++            }
+             if (rows[head + 1 + variable].literal == i64(facts.ParameterOwnedArray)) {
+                 body.append(Giving(NativeType(rows[head + 1 + variable].type), value));
+             }
+diff --git a/tools/compiler/scalar_llvm/Managed.chibi b/tools/compiler/scalar_llvm/Managed.chibi
+index 120886360..6369980f7 100644
+--- a/tools/compiler/scalar_llvm/Managed.chibi
++++ b/tools/compiler/scalar_llvm/Managed.chibi
+@@ -56,7 +56,7 @@ ManagedOptional :: (rows: facts.Row[], records: int[], type: int) -> bool {
+ ManagedValue :: (rows: facts.Row[], records: int[], type: int, tag: i64) -> bool {
+     if (Scalar(type) || type == facts.StringType || type == facts.PointerType) { return tag != 0; }
+     if (type >= facts.ArrayType && type < facts.MapType &&
+-        (Scalar(type - facts.ArrayType) || type - facts.ArrayType == facts.StringType ||
++        (Scalar(type - facts.ArrayType) || type - facts.ArrayType == facts.StringType || type - facts.ArrayType == facts.PointerType ||
+          (type - facts.ArrayType >= facts.RecordType && type - facts.ArrayType - facts.RecordType < length(records)))) { return tag != 0; }
+     if (type < facts.RecordType || type >= facts.ArrayType || type - facts.RecordType >= length(records)) { return false; }
+     head := records[type - facts.RecordType];
+diff --git a/tools/compiler/scalar_llvm/Views.chibi b/tools/compiler/scalar_llvm/Views.chibi
+index 442a06c07..c776e64c7 100644
+--- a/tools/compiler/scalar_llvm/Views.chibi
++++ b/tools/compiler/scalar_llvm/Views.chibi
+@@ -19,7 +19,7 @@ ValidView :: (rows: facts.Row[], records: int[], row: facts.Row, stack: int[], b
+     op := facts.ViewOperation(row.value);
+     element := facts.ViewElement(row.value);
+     count := ViewOperands(row);
+-    if ((!Scalar(element) && element != facts.StringType &&
++    if ((!Scalar(element) && element != facts.StringType && element != facts.PointerType &&
+          (element < facts.RecordType || element >= facts.ArrayType || element - facts.RecordType >= length(records))) || count < 0 || row.count != count || row.name != "" || row.literal == 0 ||
+         base < 0 || base > length(stack) - count) { return false; }
+     first := facts.ViewType;

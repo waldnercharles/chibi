@@ -1,0 +1,10 @@
+package pointer_labels
+Row :: struct { pointer: ^int; labels: string[]; }
+Main :: () -> int {
+ number := 7;
+ rows: Row[] = [{pointer: &number, labels: ["x"]}];
+ pointer := &rows;
+ selected := pointer.view(0..<1);
+ if selected { row := selected[0]; return row.pointer^ + text_byte_length(row.labels[0]); }
+ return -1;
+}

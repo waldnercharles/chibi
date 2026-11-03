@@ -1,0 +1,3 @@
+package rejected_foreign_array
+@test
+Check :: () { observed := Main(); }

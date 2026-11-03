@@ -1,0 +1,435 @@
+diff --git a/test/native_aot/remove_item/MethodReentry.chibi b/test/native_aot/remove_item/MethodReentry.chibi
+new file mode 100644
+index 000000000..3d6641e02
+--- /dev/null
++++ b/test/native_aot/remove_item/MethodReentry.chibi
+@@ -0,0 +1,21 @@
++package method_map_reentry
++
++foreign {
++    chibi_value_equal_test_arm :: () -> int
++}
++Make :: (value: int) -> ^int { return &value; }
++Pointers :: () -> ^int[] { return [Make(11), Make(37)]; }
++Main :: () -> int {
++    // The callee's individual pointer slots have left scope. Only this
++    // owning array can keep both cells reachable during the callback.
++    held := Pointers();
++    values: [int:int][] = [[1:2],[3:4]];
++    wanted: [int:int] = [1:2];
++    armed := chibi_value_equal_test_arm();
++    assert(armed == 0);
++    values.remove_item(wanted);
++    assert(length(values) == 1 && values[0][3] == 4);
++    assert(held[0]^ + held[1]^ == 48,
++        "equality scratch allocation keeps unrelated pointer-array owners live during collection");
++    return 0;
++}
+diff --git a/test/native_aot/remove_item/Methods.chibi b/test/native_aot/remove_item/Methods.chibi
+new file mode 100644
+index 000000000..77c598afe
+--- /dev/null
++++ b/test/native_aot/remove_item/Methods.chibi
+@@ -0,0 +1,56 @@
++package remove_methods
++Box :: struct { label: string; values: int[]; }
++Inner :: struct { words: string[]; }
++Outer :: struct { inner: Inner; }
++Text :: (count: int) -> string { return text_from_bytes(resize([u8(120)], count)); }
++Replace :: (words: ^(string[]), trace: ^int) -> string {
++    trace^ += 1;
++    words^ = [Text(3), Text(7)];
++    return Text(3);
++}
++Plain :: () {
++    numbers := [int(1), 2, 1];
++    original := numbers;
++    numbers.remove_item(1);
++    assert(length(numbers) == 2 && numbers[0] == 2 && numbers[1] == 1);
++    numbers.remove_item(9);
++    numbers.remove_item(1);
++    assert(length(numbers) == 1 && length(original) == 3);
++    flags := [false, true, false];
++    flags.remove_item(false);
++    assert(length(flags) == 2 && flags[0] && !flags[1]);
++    words := [Text(3), Text(5), Text(3)];
++    saved := words;
++    words.remove_item(Text(3));
++    assert(length(words) == 2 && text_byte_length(words[0]) == 5 && length(saved) == 3);
++    words.remove_item(words[1]);
++    assert(length(words) == 1);
++    trace := 0;
++    words.remove_item(Replace(&words, &trace));
++    assert(trace == 1 && length(words) == 1 && text_byte_length(words[0]) == 7);
++    nested := [[Text(3), Text(5)], [Text(7)]];
++    nested[0].remove_item(Text(3));
++    assert(length(nested[0]) == 1 && text_byte_length(nested[0][0]) == 5);
++    inline: Outer = {inner: {words: [Text(3), Text(5)]}};
++    inline.inner.words.remove_item(Text(3));
++    assert(length(inline.inner.words) == 1 && text_byte_length(inline.inner.words[0]) == 5);
++    boxes: Box[] = [{label: Text(3), values: [1,2]}, {label: Text(5), values: [7]}, {label: Text(3), values: [1,2]}];
++    box_alias := boxes;
++    wanted: Box = {label: Text(3), values: [1,2]};
++    boxes.remove_item(wanted);
++    assert(length(boxes) == 2 && text_byte_length(boxes[0].label) == 5 && boxes[0].values[0] == 7);
++    assert(length(box_alias) == 3 && box_alias[0].values[1] == 2);
++}
++Maps :: () {
++    first: [int:int] = [1:2,3:4];
++    same: [int:int] = [3:4,1:2];
++    last: [int:int] = [9:10];
++    values: [int:int][] = [first, same, last];
++    alias := values;
++    values.remove_item(same);
++    assert(length(values) == 2 && values[0][1] == 2 && values[1][9] == 10);
++    assert(length(alias) == 3 && alias[0][3] == 4);
++    values.remove_item(values[0]);
++    assert(length(values) == 1 && values[0][9] == 10);
++}
++Main :: () -> int { Plain(); Maps(); return 0; }
+diff --git a/test/native_aot/remove_item/README.md b/test/native_aot/remove_item/README.md
+index 7536fd63d..01185b10a 100644
+--- a/test/native_aot/remove_item/README.md
++++ b/test/native_aot/remove_item/README.md
+@@ -7,6 +7,16 @@ pointer array during composite comparison. Scalar and string search do not
+ allocate equality scratch. Composite searches reuse a queue and pair table
+ across candidate elements, then release both.
+ 
++Array `.remove_item(needle)` uses that same search and consuming removal.
++It evaluates the receiver place and needle once, then resolves the current
++receiver after argument effects. Only the first match is removed; misses keep
++the backing unchanged. `Methods.chibi` checks late receiver replacement, aliases,
++fresh and self-aliased needles, nested/inline string fields and structural map
++values. `MethodReentry.chibi` collects unrelated pointer-array owners during the
++comparison's scratch allocation. Task-observer methods compare handle identity
++and use the same copy-on-write backing as indexed mutation; their completed
++promise, allocation and reload controls live in `task_owners/run.sh`.
++
+ The Windows workflow executes `Values`, `Ordering`, `Shadow` and `Maps` at O0/O2
+ with the fresh stage4 compiler. Its type-rejection control preserves an
+ existing output. The raw borrowed-descriptor and poisoned allocator probes
+diff --git a/test/native_aot/remove_item/run.sh b/test/native_aot/remove_item/run.sh
+index aa50e0728..12834739d 100644
+--- a/test/native_aot/remove_item/run.sh
++++ b/test/native_aot/remove_item/run.sh
+@@ -19,7 +19,7 @@ for level in 0 2; do
+     CHIBI_CORE="$root/packages/core" "$compiler" test --llvm "$llvm" -O"$level" \
+         --root "$root/test/compiler/samples/types" \
+         "$root/test/compiler/samples/types/record_array_fields_survive_set_and_remove/facts"
+-    for source in Values Ordering Shadow Maps; do
++    for source in Values Ordering Shadow Maps Methods; do
+         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+             --source "$root/test/native_aot/remove_item/$source.chibi" --entry Main \
+             --output "$work/$source" --llvm "$llvm" --target "$target" --level "$level" --jobs 2
+@@ -44,26 +44,26 @@ for source in Rejected MapsRejected; do
+     test "$(cat "$work/rejected")" = preserved
+     grep -F 'argument differs from its parameter type' "$work/rejected.log" >/dev/null
+ done
+-for source in Values Ordering Maps Reentry ContainsReentry; do
++for source in Values Ordering Maps Methods Reentry ContainsReentry MethodReentry; do
+     "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+         --source "$root/test/native_aot/remove_item/$source.chibi" --entry Main \
+         --output "$work/$source.ll" --emit-llvm --target "$target"
+ done
+-for source in Reentry ContainsReentry; do
++for source in Reentry ContainsReentry MethodReentry; do
+     sed '/^declare i32 @chibi_value_equal_test_arm()$/d' "$work/$source.ll" > "$work/reentry-defined.ll"
+     mv "$work/reentry-defined.ll" "$work/$source.ll"
+ done
+ "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+     --source "$root/test/native_aot/managed_pointers/SourceProbe.chibi" --entry Main \
+     --output "$work/source-probe" --llvm "$llvm" --target "$target" --level 2 --jobs 2
+-"$work/source-probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/Values.ll" "$work/Ordering.ll" "$work/Maps.ll"
++"$work/source-probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/Values.ll" "$work/Ordering.ll" "$work/Maps.ll" "$work/Methods.ll"
+ # Keep the real execution-family owner. Only the next equality scratch
+ # allocation reenters collect, and the final check proves that it happened.
+ sed -e 's/define internal ptr @managed_source.allocate(/define internal ptr @managed_source.allocate_base(/' \
+     -e 's/%valid = and i1 %balanced, %bounded/%collected = load i32, ptr @value_equal_test.collected\n  %once = icmp eq i32 %collected, 1\n  %balanced.bound = and i1 %balanced, %bounded\n  %valid = and i1 %balanced.bound, %once/' \
+     "$root/test/native_aot/managed_pointers/SourceAudit.ll" > "$work/reentry-audit.ll"
+ cat "$root/test/native_aot/remove_item/Reentry.ll" >> "$work/reentry-audit.ll"
+-"$work/source-probe" "$work" "$llvm" "$work/reentry-audit.ll" "$work/Reentry.ll" "$work/ContainsReentry.ll"
++"$work/source-probe" "$work" "$llvm" "$work/reentry-audit.ll" "$work/Reentry.ll" "$work/ContainsReentry.ll" "$work/MethodReentry.ll"
+ if [ -n "$reference" ]; then
+     mkdir "$work/reference"
+     cp "$root/test/native_aot/remove_item/Ordering.chibi" "$work/reference/Main.chibi"
+diff --git a/test/native_aot/scalar/Tests.chibi b/test/native_aot/scalar/Tests.chibi
+index e8e4939d3..3cd72c9a0 100644
+--- a/test/native_aot/scalar/Tests.chibi
++++ b/test/native_aot/scalar/Tests.chibi
+@@ -281,10 +281,10 @@ ScalarRetainedCharacterMetadataIsChecked :: () {
+         assert(scalar.Validate(Changed(rows, 6, LiteralValue, invalid)) == "native character state initial value is not a Unicode scalar");
+     }
+ }
+-ScalarArrayWithoutOperandsAreValidated :: () {
++ScalarArrayWithoutRows :: () -> facts.Row[] {
+     source := Accepted();
+     array := facts.ArrayType + facts.IntType;
+-    rows := [source[0], source[1], source[2],
++    return [source[0], source[1], source[2],
+              Row(facts.LocalRow, array, 0, 5, "values", 35, 56, 2, 21),
+              Literal(facts.IntType, 1, 35, 36, 2, 21),
+              Literal(facts.IntType, 2, 35, 36, 2, 21),
+@@ -294,6 +294,9 @@ ScalarArrayWithoutOperandsAreValidated :: () {
+              Row(facts.ReturnRow, 0, 0, 2, "", 56, 57, 2, 42),
+              Row(facts.ReadRow, array, 0, 0, "", 56, 57, 2, 42),
+              Row(facts.ArrayRow, facts.IntType, facts.ArrayLength, 1, "", 56, 57, 2, 42)];
++}
++ScalarArrayWithoutOperandsAreValidated :: () {
++    rows := ScalarArrayWithoutRows();
+     assert(scalar.Validate(rows) == "");
+     expected := "scalar array operation differs from its operands";
+     assert(scalar.Validate(Changed(rows, 7, Type, facts.BoolType)) == expected);
+@@ -393,6 +396,11 @@ ScalarArrayFieldPlacesAreValidated :: () {
+              TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 22, 23)];
+     assert(scalar.Validate(rows) == "");
+     assert(scalar.Validate(Changed(rows, 10, Value, facts.ArrayResize)) == "");
++    removal := Changed(rows, 10, Value, facts.ArrayWithoutItem);
++    assert(scalar.Validate(removal) == "");
++    assert(Invalid(Changed(removal, 9, Type, facts.BoolType)));
++    assert(Invalid(Changed(removal, 8, Kind, facts.ReadRow)));
++    assert(scalar.Validate(Changed(ScalarArrayWithoutRows(), 8, Value, facts.ArrayWithoutItem)) == "");
+     for (ordinal in [int(-1), 2]) { assert(Invalid(Changed(rows, 10, LiteralValue, ordinal))); }
+     assert(Invalid(Changed(rows, 10, Type, array)));
+     assert(Invalid(Changed(rows, 10, Count, 1)));
+diff --git a/test/native_aot/task_owners/Generation.chibi b/test/native_aot/task_owners/Generation.chibi
+index a26e79b44..3b26b69a7 100644
+--- a/test/native_aot/task_owners/Generation.chibi
++++ b/test/native_aot/task_owners/Generation.chibi
+@@ -76,6 +76,11 @@ Worker :: () -> int {
+     repeated_observer := await shared_observers[0];
+     if repeated_observer is Cancelled { return 1; }
+     else { assert(text_byte_length(repeated_observer) == 23); }
++    shared_observers.remove_item(shared_observers[0]);
++    assert(length(shared_observers) == 1);
++    after_removal := await shared_observers[0];
++    if after_removal is Cancelled { return 1; }
++    else { assert(text_byte_length(after_removal) == 29); }
+     if Exists("failure-case") { Broken(&payload); }
+     Finish(payload);
+     return 0;
+diff --git a/test/native_aot/task_owners/README.md b/test/native_aot/task_owners/README.md
+index 6853ece8a..92950269a 100644
+--- a/test/native_aot/task_owners/README.md
++++ b/test/native_aot/task_owners/README.md
+@@ -84,7 +84,10 @@ Physical backing copies acquire observers; last backing release drops them.
+ Sharing a descriptor counts its backing and does not visit task elements.
+ `TaskObserverAllocations.chibi` requires 128 copies of 256 completed observers
+ to allocate nothing, then one backing detach for the first mutation and none
+-for the next. Invalid forgiving replacements must release all completed
++for the next. The method removal control requires 128 misses to allocate
++nothing, one detach on its first shared match, and none for the next unique
++match. First-match, fresh/self-aliased and cancelled needles preserve completed
++payloads in the remaining aliases. Invalid forgiving replacements must release all completed
+ payloads at shutdown. Original-generation completed observers survive reload
+ and close with a balanced allocator. `TaskObserverFailure.chibi` covers failure
+ after transferring an indexed observer out of its array.
+diff --git a/test/native_aot/task_owners/TaskObserverAllocations.chibi b/test/native_aot/task_owners/TaskObserverAllocations.chibi
+index 75a1e7759..bc358043a 100644
+--- a/test/native_aot/task_owners/TaskObserverAllocations.chibi
++++ b/test/native_aot/task_owners/TaskObserverAllocations.chibi
+@@ -31,6 +31,23 @@ Main :: () -> int {
+         // no array element owns. Completed payloads make a leak observable.
+         changed.set_array_elem(-1, values[0]);
+     }
++    missing := Child(11);
++    yield;
++    before_method := chibi_task_owner_allocations();
++    for index in 0..<128 { changed.remove_item(missing); }
++    after_misses := chibi_task_owner_allocations();
++    assert(after_misses == before_method, "missing observer removal does not detach or allocate");
++    snapshot := changed;
++    changed.remove_item(changed[0]);
++    after_remove := chibi_task_owner_allocations();
++    assert(after_remove == after_misses + 1, "first shared observer removal detaches one backing");
++    changed.remove_item(changed[0]);
++    after_unique := chibi_task_owner_allocations();
++    assert(after_unique == after_remove, "unique observer removal does not allocate");
++    assert(length(snapshot) == 256 && length(changed) == 254);
++    preserved := await snapshot[0];
++    if preserved is Cancelled { return 3; }
++    else { assert(text_byte_length(preserved) == 9); }
+     values = [];
+     changed = [];
+     return 0;
+diff --git a/test/native_aot/task_owners/TaskObservers.chibi b/test/native_aot/task_owners/TaskObservers.chibi
+index 91c54fe1a..d1d1ca279 100644
+--- a/test/native_aot/task_owners/TaskObservers.chibi
++++ b/test/native_aot/task_owners/TaskObservers.chibi
+@@ -65,6 +65,32 @@ Main :: () -> int {
+     assert(length(trimmed) == 2 && trimmed.contains(held));
+     dropped = [];
+     trimmed = [];
++    methods := [first, Child(67), first];
++    old_methods := methods;
++    yield; yield;
++    methods.remove_item(first);
++    assert(length(methods) == 2 && length(old_methods) == 3);
++    method_head := await methods[0];
++    if method_head is Cancelled { return 6; }
++    else { assert(text_byte_length(method_head) == 67); }
++    methods.remove_item(methods[1]);
++    methods.remove_item(first);
++    assert(length(methods) == 1);
++    // A fresh missing observer is dropped normally; its child stays
++    // program-owned and is allowed to complete.
++    methods.remove_item(Child(71));
++    assert(length(methods) == 1 && length(old_methods) == 3);
++    methods.remove_item(methods[0]);
++    methods.remove_item(first);
++    assert(length(methods) == 0);
++    old_result := await old_methods[1];
++    if old_result is Cancelled { return 7; }
++    else { assert(text_byte_length(old_result) == 67); }
++    cancelled_item := Child(73);
++    cancelled_items := [cancelled_item];
++    cancel cancelled_item;
++    cancelled_items.remove_item(cancelled_item);
++    assert(length(cancelled_items) == 0);
+     cancelled := Hold();
+     yield;
+     cancel cancelled;
+diff --git a/test/native_aot/task_owners/rejected/ObserverMethod.chibi b/test/native_aot/task_owners/rejected/ObserverMethod.chibi
+new file mode 100644
+index 000000000..909b96411
+--- /dev/null
++++ b/test/native_aot/task_owners/rejected/ObserverMethod.chibi
+@@ -0,0 +1,3 @@
++package rejected_observer_method
++Child :: () -> int { yield; return 7; }
++Main :: () -> int { values := [Child()]; values.remove_item(true); return 0; }
+diff --git a/test/native_aot/task_owners/run.sh b/test/native_aot/task_owners/run.sh
+index 9acb2f46b..a405e2800 100644
+--- a/test/native_aot/task_owners/run.sh
++++ b/test/native_aot/task_owners/run.sh
+@@ -37,7 +37,7 @@ for level in 0 2; do
+ done
+ # Inferred observer arrays do not add source parameter, record-field or result
+ # syntax. Rejection must leave an existing program untouched.
+-for source in ObserverParameter ObserverField ObserverResult; do
++for source in ObserverParameter ObserverField ObserverResult ObserverMethod; do
+     printf 'prior observer-array output\n' > "$work/program"
+     cp "$work/program" "$work/prior"
+     if "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+@@ -49,6 +49,7 @@ for source in ObserverParameter ObserverField ObserverResult; do
+         ObserverParameter) message='parameter type is not supported yet' ;;
+         ObserverField) message='record fields require a scalar, pointer, record, union or array of those types' ;;
+         ObserverResult) message='result type is not supported yet' ;;
++        ObserverMethod) message="argument differs from the mutating method's parameter type" ;;
+     esac
+     grep -F "$message" "$work/rejected.log" > /dev/null
+     cmp "$work/program" "$work/prior"
+diff --git a/tools/compiler/package_compiler/ScalarArrays.chibi b/tools/compiler/package_compiler/ScalarArrays.chibi
+index d305d0767..199cd6404 100644
+--- a/tools/compiler/package_compiler/ScalarArrays.chibi
++++ b/tools/compiler/package_compiler/ScalarArrays.chibi
+@@ -509,6 +509,7 @@ ScalarChangeKind :: (forest: snapshot.SnapshotNode[], text: string, statement: i
+     if (NameMatches(method, "remove_index")) {
+         return facts.ArrayRemove;
+     }
++    if (NameMatches(method, "remove_item")) { return facts.ArrayWithoutItem; }
+     if (NameMatches(method, "resize")) { return facts.ArrayResize; }
+     if (NameMatches(method, "insert")) { return facts.ArrayInsert; }
+     if (NameMatches(method, "set_array_elem")) { return facts.ArrayReplace; }
+@@ -1200,7 +1201,8 @@ ScalarInlineArrayAssigned :: (forest: snapshot.SnapshotNode[], text: string, cal
+             type := facts.IntType;
+             prepared := ScalarOperands.Built([]);
+             if (operator == facts.ArrayExtend) { type = array; }
+-            if (operator == facts.ArrayPush || ((operator == facts.ArrayInsert || operator == facts.ArrayReplace) && ordinal == 1)) {
++            if (operator == facts.ArrayPush || operator == facts.ArrayWithoutItem ||
++                ((operator == facts.ArrayInsert || operator == facts.ArrayReplace) && ordinal == 1)) {
+                 type = element;
+                 prepared = ScalarArrayElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                                                    value, shape, []);
+diff --git a/tools/compiler/package_compiler/ScalarNestedPlaces.chibi b/tools/compiler/package_compiler/ScalarNestedPlaces.chibi
+index 554159a45..d6d622872 100644
+--- a/tools/compiler/package_compiler/ScalarNestedPlaces.chibi
++++ b/tools/compiler/package_compiler/ScalarNestedPlaces.chibi
+@@ -66,7 +66,8 @@ ScalarNestedAssigned :: (forest: snapshot.SnapshotNode[], text: string, callable
+             type := facts.IntType;
+             prepared := ScalarOperands.Built([]);
+             if (changed == facts.ArrayExtend) { type = inner_type; }
+-            if (changed == facts.ArrayPush || ((changed == facts.ArrayInsert || changed == facts.ArrayReplace) && ordinal == 1)) {
++            if (changed == facts.ArrayPush || changed == facts.ArrayWithoutItem ||
++                ((changed == facts.ArrayInsert || changed == facts.ArrayReplace) && ordinal == 1)) {
+                 type = value_type;
+                 prepared = ScalarArrayElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                                                    value, inner, []);
+diff --git a/tools/compiler/scalar_llvm/Emit.chibi b/tools/compiler/scalar_llvm/Emit.chibi
+index 45e42a407..7417933db 100644
+--- a/tools/compiler/scalar_llvm/Emit.chibi
++++ b/tools/compiler/scalar_llvm/Emit.chibi
+@@ -1044,7 +1044,7 @@ ArrayOperands :: (operand: facts.Row) -> int {
+     if (operand.value == facts.ArrayInsert || operand.value == facts.ArrayInserted ||
+         operand.value == facts.ArrayReplace || operand.value == facts.ArrayReplaced) { return 3 + extra; }
+     if (operand.value == facts.ArrayReverse || operand.value == facts.ArrayReversed) { return 1 + extra; }
+-    if (operand.value == facts.ArrayPlaceGet || operand.value == facts.ArrayPlaceCheck || operand.value == facts.ArrayWithoutItem) { return 2; }
++    if (operand.value == facts.ArrayPlaceGet || operand.value == facts.ArrayPlaceCheck || operand.value == facts.ArrayWithoutItem) { return 2 + extra; }
+     if (operand.value == facts.ArrayNew) { return operand.count; }
+     consumed: int[] = [0, 0, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2, 2, 2, 1, 1, 2, 1];
+     if (operand.value < facts.ArrayNew || operand.value > facts.ArrayLoan) { return 0; }
+@@ -1066,7 +1066,7 @@ NestedArrayMember :: (rows: facts.Row[], records: int[], type: int) -> int {
+ ArrayChanges :: (operator: int) -> bool {
+     return operator == facts.ArraySet || operator == facts.ArrayPush || operator == facts.ArrayExtend ||
+            operator == facts.ArrayRemove || operator == facts.ArrayInsert || operator == facts.ArrayReverse ||
+-           operator == facts.ArrayReplace || operator == facts.ArrayAssign;
++           operator == facts.ArrayReplace || operator == facts.ArrayAssign || operator == facts.ArrayWithoutItem;
+ }
+ MappedArrayChange :: (value: int) -> bool {
+     return value >= facts.MapArrayPush && value <= facts.MapArrayResize;
+@@ -1369,8 +1369,9 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int,
+             argument += 1;
+         }
+         if (operator == facts.ArrayReverse) { return ""; }
++        if (operator == facts.ArrayWithoutItem && element != facts.TaskType && !Comparable(rows, records, element)) { return mismatch; }
+         wanted := facts.IntType;
+-        if (operator == facts.ArrayPush) { wanted = element; }
++        if (operator == facts.ArrayPush || operator == facts.ArrayWithoutItem) { wanted = element; }
+         if (operator == facts.ArrayExtend || operator == facts.ArrayAssign) { wanted = field; }
+         if (stack[argument] != wanted ||
+             ((operator == facts.ArraySet || operator == facts.ArrayInsert || operator == facts.ArrayReplace) && stack[argument + 1] != element)) { return mismatch; }
+@@ -1464,7 +1465,7 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int,
+             return mismatch;
+         }
+     }
+-    if (!ArrayChanges(operator)) {
++    if (!ArrayChanges(operator) || operator == facts.ArrayWithoutItem) {
+         return "";
+     }
+     first := rows[at + 1];
+@@ -4402,6 +4403,36 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                     mutation.literal = 1;
+                     if (op == facts.ArrayExtend) { mutation.op = native.ArrayExtend; }
+                     if (op == facts.ArrayRemove) { mutation.op = native.ArrayRemove; mutation.literal = 0; }
++                    if (op == facts.ArrayWithoutItem) {
++                        // Arguments have finished. Search the current canonical
++                        // descriptor once, then remove its first match.
++                        matched := current + reserved;
++                        slots.append(integer);
++                        reserved += 1;
++                        searched := NativeType(element);
++                        found := Op(native.ArrayContains, integer, matched, current, argument, 0);
++                        found.literal = i64(searched);
++                        if (searched >= native.RecordType) {
++                            if (length(comparison_types) == 0) { comparison_types = resize([false], native.ArrayType); }
++                            comparison_types[searched] = true;
++                        }
++                        if (searched >= native.RecordType && pointer_program) {
++                            glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
++                                fresh, slots, shape.first_slot, frames, current + reserved, next_root, false, records, value_layout);
++                            next_root = glue.next;
++                            slots.extend(glue.types);
++                            reserved += length(glue.types);
++                            body.extend(glue.before);
++                            comparison_sites.append(shape.first_code + length(body));
++                            body.append(found);
++                            body.extend(glue.after);
++                        } else {
++                            if (searched >= native.RecordType) { comparison_sites.append(shape.first_code + length(body)); }
++                            body.append(found);
++                        }
++                        if (Holds(fresh, argument)) { pending.append(argument); }
++                        mutation = Op(native.ArrayRemove, array, changed, current, matched, 0);
++                    }
+                     if (op == facts.ArrayResize) { mutation.op = native.ArrayResize; mutation.literal = ArrayResizePolicy(rows, declared, member); }
+                     if (op == facts.ArraySet) {
+                         mutation = Op(native.ArraySet, array, changed, current, stack[first_argument], argument);

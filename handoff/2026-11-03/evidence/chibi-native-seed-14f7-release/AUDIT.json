@@ -1,0 +1,57 @@
+{
+  "candidate_commit": "14f7a46a047ab92acfe58398b3cdac25ab7d0312",
+  "scope": "Offline candidate manifest warm-cache parser audit only; does not execute either seed or prove Windows bootstrap runtime. No release download or publication.",
+  "checks": [
+    {
+      "parser": "sh",
+      "platform": "linux-x64",
+      "status": 0,
+      "cached_bytes_unchanged": true
+    },
+    {
+      "parser": "pwsh",
+      "platform": "linux-x64",
+      "status": 0,
+      "cached_bytes_unchanged": true
+    },
+    {
+      "parser": "sh",
+      "platform": "macos-arm64",
+      "status": 0,
+      "cached_bytes_unchanged": true
+    },
+    {
+      "parser": "pwsh",
+      "platform": "macos-arm64",
+      "status": 0,
+      "cached_bytes_unchanged": true
+    },
+    {
+      "parser": "sh",
+      "platform": "windows-x64",
+      "status": 3,
+      "missing_pin_rejected": true
+    },
+    {
+      "parser": "pwsh",
+      "platform": "windows-x64",
+      "status": 3,
+      "missing_pin_rejected": true
+    }
+  ],
+  "proof_pairs_independently_compared": true,
+  "source_snapshot_and_git_archive_blobs_verified": 3400,
+  "macos_codesign_verify_strict_status": 0,
+  "license_files": "Exact Git blobs from the selected commit.",
+  "archived_consecutive_pair_receipt": "proof/ACCEPTED_PAIRS.json",
+  "archived_consecutive_pairs_verified": {
+    "macos-arm64": [
+      "proof/macos/stage2",
+      "proof/macos/stage3"
+    ],
+    "linux-x64": [
+      "proof/linux/fixed5-chibi",
+      "proof/linux/fixed6-chibi"
+    ]
+  }
+}

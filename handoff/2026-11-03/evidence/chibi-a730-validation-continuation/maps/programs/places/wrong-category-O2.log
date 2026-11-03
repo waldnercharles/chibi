@@ -1,0 +1,4 @@
+FAIL project.PlaceIsNotAReadBoundsFailure
+  Referenced array element is unavailable
+expected IndexOutOfRange, but it failed with another failure
+1 tests, 1 failed

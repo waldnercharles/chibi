@@ -1,0 +1,3 @@
+package optional_backed
+@test
+Check :: () { value := Main(); assert(value == 0); }

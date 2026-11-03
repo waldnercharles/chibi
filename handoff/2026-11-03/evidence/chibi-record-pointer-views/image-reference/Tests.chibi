@@ -1,0 +1,3 @@
+package record_view_schema
+@test
+SourcePublication :: () { result := Main(); assert(result == 7); }

@@ -1,0 +1,1 @@
+native: rejected Main: /Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/test/native_aot/task_owners/TaskObservers.chibi:71:5: scalar proof supports only locals, assignments, asserts, if statements, switches, loops and returns

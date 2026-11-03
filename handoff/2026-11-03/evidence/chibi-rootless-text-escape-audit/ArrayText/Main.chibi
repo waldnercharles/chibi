@@ -1,0 +1,12 @@
+package rootless_array_text
+Row :: struct { labels: string[]; }
+Literal :: () -> string { return "writer literal"; }
+Rows :: () -> Row[] { return [{labels: [Literal()]}]; }
+Owner :: () -> view Row[] { rows := Rows(); pointer := &rows; return pointer.view(0..<1)!; }
+Write :: (window: view Row[]) { window[0] = {labels: [Literal()]}; }
+Replace :: (pointer: ^(Row[])) -> ^(Row[]) { pointer^ = Rows(); return pointer; }
+Main :: () -> int {
+    window := Owner(); Write(window);
+    rows := Rows(); pointer := &rows; Replace(pointer);
+    return 0;
+}

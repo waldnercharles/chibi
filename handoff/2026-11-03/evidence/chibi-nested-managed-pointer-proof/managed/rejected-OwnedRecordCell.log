@@ -1,0 +1,1 @@
+native: rejected Main: /Users/cwaldner/Personal/chibi/.worktrees/authored-strings-regressions/chibi/test/native_aot/managed_pointers/source/rejected/OwnedRecordCell.chibi:2:1: native managed record cells require flat numeric, bool or pointer fields

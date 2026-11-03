@@ -1,0 +1,5 @@
+PASS project.SourcePublication
+1 tests, 0 failed
+real 1.08
+user 0.74
+sys 0.07

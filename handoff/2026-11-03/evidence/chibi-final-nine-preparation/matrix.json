@@ -1,0 +1,3367 @@
+{
+  "source_commit": "b636d102d317753e0eeb9f9fc808183765b701d7",
+  "families": {
+    "base": {
+      "original_log": "/private/tmp/chibi-native-survey-450/base.log",
+      "original_log_sha256": "bb616969bb8982a26b04407f7bbc5b40f3d098466d4e00e9a4c3ff9ba33dccfc",
+      "original_passed_names": [
+        "alias_conflict/facts.compile_error",
+        "alias_value/facts.compile_error",
+        "alternative_binding/facts.compile_error",
+        "arity/facts.compile_error",
+        "array_updates_keep_aliases/facts.Calls",
+        "assigned_binding/facts.compile_error",
+        "binding_field_assignment/facts.compile_error",
+        "binding_in_else/facts.compile_error",
+        "binding_outside_condition/facts.compile_error",
+        "bounds/facts.Calls",
+        "bounds/facts.PickBeforeTheStartFails",
+        "bounds/facts.PickFromEmptyFails",
+        "byte_preserving_strings/facts.Calls",
+        "constant/facts.Calls",
+        "constant_assignment/facts.compile_error",
+        "constant_clash/facts.compile_error",
+        "constant_cycle/facts.compile_error",
+        "constant_overflow/facts.compile_error",
+        "constant_type/facts.compile_error",
+        "control/facts.Calls",
+        "conversion_arity/facts.compile_error",
+        "conversion_name/facts.compile_error",
+        "decimal_past_the_largest_integer/facts.compile_error",
+        "decimal_past_the_least_integer/facts.compile_error",
+        "defaults/facts.Calls",
+        "descending_range/facts.compile_error",
+        "descending_reverse_range/facts.compile_error",
+        "duplicate_arm/facts.compile_error",
+        "duplicate_binding/facts.compile_error",
+        "duplicate_condition_binding/facts.compile_error",
+        "duplicate_default/facts.compile_error",
+        "duplicate_field/facts.compile_error",
+        "duplicate_keyed_binding/facts.compile_error",
+        "duplicate_local/facts.compile_error",
+        "duplicate_member/facts.compile_error",
+        "element_field_assignment/facts.Calls",
+        "extension/facts.Calls",
+        "field_assignment/facts.Calls",
+        "floating_constant/facts.compile_error",
+        "floating_fields/facts.Calls",
+        "folded_complement_retains_its_watch/facts.Calls",
+        "for_assignment/facts.compile_error",
+        "for_field_assignment/facts.compile_error",
+        "for_scalar/facts.compile_error",
+        "formatting/facts.Calls",
+        "grouped_signed_floating_literals/facts.Calls",
+        "index_type/facts.compile_error",
+        "inferred_integer_refuses_number_assignment/facts.compile_error",
+        "inferred_mismatch/facts.compile_error",
+        "inferred_numeric_locals/facts.Calls",
+        "integer_switch/facts.Calls",
+        "is_scalar/facts.compile_error",
+        "is_unknown_variant/facts.compile_error",
+        "logic/facts.Calls",
+        "loops/facts.Calls",
+        "missing_default/facts.compile_error",
+        "missing_field/facts.compile_error",
+        "missing_payload/facts.compile_error",
+        "mixed_compound_assignment/facts.compile_error",
+        "mixed_compound_bitwise_assignment/facts.compile_error",
+        "mixed_compound_field_assignment/facts.compile_error",
+        "mixed_integer_types/facts.compile_error",
+        "multiplication_overflow/facts.compile_error",
+        "named_results/facts.Calls",
+        "narrow_integers/facts.Calls",
+        "negated_binding/facts.compile_error",
+        "negative_u64/facts.compile_error",
+        "negative_zero_u8/facts.compile_error",
+        "no_value/facts.compile_error",
+        "non_exhaustive_switch/facts.compile_error",
+        "parameters/facts.Calls",
+        "partial_bindings/facts.compile_error",
+        "range_assignment/facts.compile_error",
+        "record_push/facts.Calls",
+        "recursion/facts.Calls",
+        "reference_for/facts.compile_error",
+        "shared_scope/facts.compile_error",
+        "signed_with_u64/facts.compile_error",
+        "single_named_result/facts.Calls",
+        "single_named_result/facts.Records",
+        "small_fraction_integer/facts.compile_error",
+        "strings/facts.Calls",
+        "switch_scalar_pattern/facts.compile_error",
+        "switch_string/facts.compile_error",
+        "types/facts.compile_error",
+        "u8_literal_range/facts.compile_error",
+        "unknown_field/facts.compile_error",
+        "unknown_function/facts.compile_error",
+        "unknown_imported_function/facts.compile_error",
+        "unknown_name/facts.compile_error",
+        "unknown_parameter_type/facts.compile_error",
+        "unknown_variant/facts.compile_error",
+        "unsigned_arithmetic/facts.Calls",
+        "untyped_array/facts.compile_error",
+        "untyped_empty_array/facts.compile_error",
+        "untyped_literal/facts.compile_error",
+        "untyped_wildcard_argument/facts.compile_error",
+        "wrapped_literal_in_parentheses/facts.Calls",
+        "written_parameters/facts.Calls"
+      ],
+      "original_uncompiled_packages": [],
+      "source_files": [
+        {
+          "path": "test/compiler/samples/base/alias_conflict/facts/Facts.chibi",
+          "git_blob": "0c87430d7ed77a1723787ee776aa220a4e4620c4"
+        },
+        {
+          "path": "test/compiler/samples/base/alias_conflict/lib/Lib.chibi",
+          "git_blob": "21d172d2727224b9216214ad784d3d24f77a17f0"
+        },
+        {
+          "path": "test/compiler/samples/base/alias_value/facts/Facts.chibi",
+          "git_blob": "bd146db50e5f6670bb8d6946021142e475ed5162"
+        },
+        {
+          "path": "test/compiler/samples/base/alias_value/lib/Lib.chibi",
+          "git_blob": "21d172d2727224b9216214ad784d3d24f77a17f0"
+        },
+        {
+          "path": "test/compiler/samples/base/alternative_binding/facts/Facts.chibi",
+          "git_blob": "7f7bd3fd387ba27ad9057e030e3e96d26f2faea8"
+        },
+        {
+          "path": "test/compiler/samples/base/arity/facts/Facts.chibi",
+          "git_blob": "5a7708df24d140cadba632c0340bf2a8896bd89e"
+        },
+        {
+          "path": "test/compiler/samples/base/array_updates_keep_aliases/facts/Facts.chibi",
+          "git_blob": "5df3c42b1e73d00d2ed177e6ebad223bb539b593"
+        },
+        {
+          "path": "test/compiler/samples/base/array_updates_keep_aliases/facts/SampleTests.chibi",
+          "git_blob": "ea3c7fba7b8bfd9695b4e34c431d537b270b1d19"
+        },
+        {
+          "path": "test/compiler/samples/base/assigned_binding/facts/Facts.chibi",
+          "git_blob": "6bc641d77acf87d448c423c41be053df0f509e4c"
+        },
+        {
+          "path": "test/compiler/samples/base/binding_field_assignment/facts/Facts.chibi",
+          "git_blob": "dc5f87c059b9f65b601d0c813d3e61db39980aa9"
+        },
+        {
+          "path": "test/compiler/samples/base/binding_in_else/facts/Facts.chibi",
+          "git_blob": "ed7a73065ef5f9226160924877d939e33b118f57"
+        },
+        {
+          "path": "test/compiler/samples/base/binding_outside_condition/facts/Facts.chibi",
+          "git_blob": "44425db8b57d7609d62089ce5dd04b3d13574aa5"
+        },
+        {
+          "path": "test/compiler/samples/base/bounds/facts/Facts.chibi",
+          "git_blob": "d4fd3bdffbc139ffcfadccb40b00976c12cb9e6a"
+        },
+        {
+          "path": "test/compiler/samples/base/bounds/facts/SampleTests.chibi",
+          "git_blob": "8bc7a47e03250a896a99855bf64911bf16b83e05"
+        },
+        {
+          "path": "test/compiler/samples/base/byte_preserving_strings/facts/Facts.chibi",
+          "git_blob": "15dd6e895f8e73270f58d73a320871ca0e4805b1"
+        },
+        {
+          "path": "test/compiler/samples/base/byte_preserving_strings/facts/SampleTests.chibi",
+          "git_blob": "11ae28b72789ea99786ffaba19219e7f3f7dc9b4"
+        },
+        {
+          "path": "test/compiler/samples/base/constant/facts/Facts.chibi",
+          "git_blob": "c2c831197aa3fec02d9d85f970193a8abae6d609"
+        },
+        {
+          "path": "test/compiler/samples/base/constant/facts/SampleTests.chibi",
+          "git_blob": "59a73855deab63f25beea8cb90c00dbe3fc7e43f"
+        },
+        {
+          "path": "test/compiler/samples/base/constant_assignment/facts/Facts.chibi",
+          "git_blob": "76f64de0b1c682a431b0c83f0e690d1df7e3898c"
+        },
+        {
+          "path": "test/compiler/samples/base/constant_clash/facts/Facts.chibi",
+          "git_blob": "0779cfd6ede2fc397f595b9163e425e07ea0b5e2"
+        },
+        {
+          "path": "test/compiler/samples/base/constant_cycle/facts/Facts.chibi",
+          "git_blob": "711e5058bf9879e5f3df9d4c6b24d472ffa8a0b6"
+        },
+        {
+          "path": "test/compiler/samples/base/constant_overflow/facts/Facts.chibi",
+          "git_blob": "0f5acda9cd5768a4a0afdbba6a8340ee108e0a36"
+        },
+        {
+          "path": "test/compiler/samples/base/constant_type/facts/Facts.chibi",
+          "git_blob": "aefd0817ee689db39edafd2d61f42355cd9fca6f"
+        },
+        {
+          "path": "test/compiler/samples/base/control/facts/Facts.chibi",
+          "git_blob": "9442bd018e0120019c3f881287d438ca6b2b9688"
+        },
+        {
+          "path": "test/compiler/samples/base/control/facts/SampleTests.chibi",
+          "git_blob": "f741eeccf7c35c4e86fffc43a6a227ead8f34262"
+        },
+        {
+          "path": "test/compiler/samples/base/conversion_arity/facts/Facts.chibi",
+          "git_blob": "bf83cc1677b42e0d0d8a8f4cfcea2e5db1db4d02"
+        },
+        {
+          "path": "test/compiler/samples/base/conversion_name/facts/Facts.chibi",
+          "git_blob": "9b020e9aaa55150dd50221a40fba3fe39e3cceda"
+        },
+        {
+          "path": "test/compiler/samples/base/decimal_past_the_largest_integer/facts/Facts.chibi",
+          "git_blob": "b1dedb26106fde6539f2e0d91b6d66fb40546382"
+        },
+        {
+          "path": "test/compiler/samples/base/decimal_past_the_least_integer/facts/Facts.chibi",
+          "git_blob": "8b8144d1344fe0f97e9c0d1bcb4193f6a5a0453f"
+        },
+        {
+          "path": "test/compiler/samples/base/defaults/facts/Facts.chibi",
+          "git_blob": "ca56de2abbbecf5e06850f00b48d842b626bd7cf"
+        },
+        {
+          "path": "test/compiler/samples/base/defaults/facts/SampleTests.chibi",
+          "git_blob": "fe8a0f1883a4aea97479031402c96ef3ec2f1e4e"
+        },
+        {
+          "path": "test/compiler/samples/base/descending_range/facts/Facts.chibi",
+          "git_blob": "82a54fa2a417f510e4233b97c8685e69ff6c8525"
+        },
+        {
+          "path": "test/compiler/samples/base/descending_reverse_range/facts/Facts.chibi",
+          "git_blob": "38342f6064db7f0e452ff9ce08f5381fed705662"
+        },
+        {
+          "path": "test/compiler/samples/base/duplicate_arm/facts/Facts.chibi",
+          "git_blob": "e49448368a9512ed08cecaf24f7b61ff524a7b59"
+        },
+        {
+          "path": "test/compiler/samples/base/duplicate_binding/facts/Facts.chibi",
+          "git_blob": "df748c911bc14e4f18c4235e9f1ae536e37de809"
+        },
+        {
+          "path": "test/compiler/samples/base/duplicate_condition_binding/facts/Facts.chibi",
+          "git_blob": "4612c78e345fdb22a5f2d3376ee4cc73659fd83e"
+        },
+        {
+          "path": "test/compiler/samples/base/duplicate_default/facts/Facts.chibi",
+          "git_blob": "2fa1f07baf8192be60ca40251af127349c6a9ac0"
+        },
+        {
+          "path": "test/compiler/samples/base/duplicate_field/facts/Facts.chibi",
+          "git_blob": "d49a87f0e9f8691eb06de58d6cc33670652c03b6"
+        },
+        {
+          "path": "test/compiler/samples/base/duplicate_keyed_binding/facts/Facts.chibi",
+          "git_blob": "39ed870d59f61510c990bbef5172676527035618"
+        },
+        {
+          "path": "test/compiler/samples/base/duplicate_local/facts/Facts.chibi",
+          "git_blob": "02ba5f470b9e0f805f0d53d0b4f0d61d8bc24a01"
+        },
+        {
+          "path": "test/compiler/samples/base/duplicate_member/facts/Facts.chibi",
+          "git_blob": "a8063a54058572a74d25cd3907ef3993c18ef6a4"
+        },
+        {
+          "path": "test/compiler/samples/base/element_field_assignment/facts/Facts.chibi",
+          "git_blob": "858c573bdbd70c000e7381e03781d072efe5e4e9"
+        },
+        {
+          "path": "test/compiler/samples/base/element_field_assignment/facts/SampleTests.chibi",
+          "git_blob": "51d98def9c5705cae610de22d9b0ea6670b965bd"
+        },
+        {
+          "path": "test/compiler/samples/base/extension/facts/Facts.chibi",
+          "git_blob": "0d51f34f3616e4897d10631a579a79dbb7f8b89a"
+        },
+        {
+          "path": "test/compiler/samples/base/extension/facts/SampleTests.chibi",
+          "git_blob": "28234eddc6a20926616da4ae08695018198ba3a3"
+        },
+        {
+          "path": "test/compiler/samples/base/field_assignment/facts/Facts.chibi",
+          "git_blob": "86dbce80b22b34fbddf29206d6e5cc8e5884d451"
+        },
+        {
+          "path": "test/compiler/samples/base/field_assignment/facts/SampleTests.chibi",
+          "git_blob": "ae85b2fe39451c65ceea01399cbc93c80496c5aa"
+        },
+        {
+          "path": "test/compiler/samples/base/floating_constant/facts/Facts.chibi",
+          "git_blob": "fc4f5b4a71fb8ff9d3925144ba894888848749a2"
+        },
+        {
+          "path": "test/compiler/samples/base/floating_fields/facts/Facts.chibi",
+          "git_blob": "dc162ddbc057745ad6768c1349c9ba3f17461f7e"
+        },
+        {
+          "path": "test/compiler/samples/base/floating_fields/facts/SampleTests.chibi",
+          "git_blob": "3c5a0c2ee0eabf64870673123ff8471db8a21ea1"
+        },
+        {
+          "path": "test/compiler/samples/base/folded_complement_retains_its_watch/facts/Facts.chibi",
+          "git_blob": "3d4817eda06edc2852bddff09e9be0b04a9b0d8d"
+        },
+        {
+          "path": "test/compiler/samples/base/folded_complement_retains_its_watch/facts/SampleTests.chibi",
+          "git_blob": "d0dced3d82a8b735df87d74a7d343a6507635f52"
+        },
+        {
+          "path": "test/compiler/samples/base/for_assignment/facts/Facts.chibi",
+          "git_blob": "f938bcc6fd637c7f96ea030c9a096a84b3a90b9b"
+        },
+        {
+          "path": "test/compiler/samples/base/for_field_assignment/facts/Facts.chibi",
+          "git_blob": "de946f224b0e1bab7d23e940695c0892ccfab51b"
+        },
+        {
+          "path": "test/compiler/samples/base/for_scalar/facts/Facts.chibi",
+          "git_blob": "775c74aa1d24fc32f4bcd6de81ce9718cd091e4a"
+        },
+        {
+          "path": "test/compiler/samples/base/formatting/facts/Facts.chibi",
+          "git_blob": "4b0634f17f08cd7db158ddba1e126bfaadc98337"
+        },
+        {
+          "path": "test/compiler/samples/base/formatting/facts/SampleTests.chibi",
+          "git_blob": "118e4876766c870a79a5c2479c331bdd82a16384"
+        },
+        {
+          "path": "test/compiler/samples/base/grouped_signed_floating_literals/facts/Facts.chibi",
+          "git_blob": "0e9ceee52546bbcc513ec51a7014da44a7365600"
+        },
+        {
+          "path": "test/compiler/samples/base/grouped_signed_floating_literals/facts/SampleTests.chibi",
+          "git_blob": "289fa383359a620ed1267302e8c7433f29fbb616"
+        },
+        {
+          "path": "test/compiler/samples/base/index_type/facts/Facts.chibi",
+          "git_blob": "defec65a1bf3ec5bc705e3fdb6c82b26283ceaa7"
+        },
+        {
+          "path": "test/compiler/samples/base/inferred_integer_refuses_number_assignment/facts/Facts.chibi",
+          "git_blob": "5129e0ad7c0ecb05877076512caf724fa0c00de5"
+        },
+        {
+          "path": "test/compiler/samples/base/inferred_mismatch/facts/Facts.chibi",
+          "git_blob": "35630633e17ec0633b82bc39345c9769b5668874"
+        },
+        {
+          "path": "test/compiler/samples/base/inferred_numeric_locals/facts/Facts.chibi",
+          "git_blob": "52366f3f1d401fd255e8022bf37173561bf51b74"
+        },
+        {
+          "path": "test/compiler/samples/base/inferred_numeric_locals/facts/SampleTests.chibi",
+          "git_blob": "0fbf0b313f310005a4b94d9c7fdb44c78795dae0"
+        },
+        {
+          "path": "test/compiler/samples/base/integer_switch/facts/Facts.chibi",
+          "git_blob": "4b359c8dcb76bda73599353aa7ed7bbf62b972d4"
+        },
+        {
+          "path": "test/compiler/samples/base/integer_switch/facts/SampleTests.chibi",
+          "git_blob": "f88225203123f16d502a1711ac6800522da18c82"
+        },
+        {
+          "path": "test/compiler/samples/base/is_scalar/facts/Facts.chibi",
+          "git_blob": "1ed4c21d06d920135466c8e7d99d7944ec3d27bf"
+        },
+        {
+          "path": "test/compiler/samples/base/is_unknown_variant/facts/Facts.chibi",
+          "git_blob": "733107fc57f70d4e077ab82ddc6e5cfaef1c47d1"
+        },
+        {
+          "path": "test/compiler/samples/base/logic/facts/Facts.chibi",
+          "git_blob": "8fe32255f0eaafaba14f19c308748a3752a39621"
+        },
+        {
+          "path": "test/compiler/samples/base/logic/facts/SampleTests.chibi",
+          "git_blob": "ccae0b890f5734a66339c84f589da3b3356740b3"
+        },
+        {
+          "path": "test/compiler/samples/base/loops/facts/Facts.chibi",
+          "git_blob": "3ecc6801ac05d238209dfd5e1999020406a408b8"
+        },
+        {
+          "path": "test/compiler/samples/base/loops/facts/SampleTests.chibi",
+          "git_blob": "d00baed48243f2dd7c6cc60a73e01b8e68c2a91d"
+        },
+        {
+          "path": "test/compiler/samples/base/missing_default/facts/Facts.chibi",
+          "git_blob": "acab35c13a603924a2de9674f103ea22b5a3de53"
+        },
+        {
+          "path": "test/compiler/samples/base/missing_field/facts/Facts.chibi",
+          "git_blob": "3e30fd7b855e57e12d2bd162abf5e6d993d08fe2"
+        },
+        {
+          "path": "test/compiler/samples/base/missing_payload/facts/Facts.chibi",
+          "git_blob": "bebbe839af599edfc6888ad1c69d1d221433a566"
+        },
+        {
+          "path": "test/compiler/samples/base/mixed_compound_assignment/facts/Facts.chibi",
+          "git_blob": "34c59c8a21da5532cb31accae0859d51f7d670cd"
+        },
+        {
+          "path": "test/compiler/samples/base/mixed_compound_bitwise_assignment/facts/Facts.chibi",
+          "git_blob": "ea5599214196d8d246a588a36cad7f6fd6eec24c"
+        },
+        {
+          "path": "test/compiler/samples/base/mixed_compound_field_assignment/facts/Facts.chibi",
+          "git_blob": "d1640e8dfd7b25623e26318b821591fbdb627c72"
+        },
+        {
+          "path": "test/compiler/samples/base/mixed_integer_types/facts/Facts.chibi",
+          "git_blob": "c8a41841fa60fd5dad6d4b3238bf4e7f02fcb686"
+        },
+        {
+          "path": "test/compiler/samples/base/multiplication_overflow/facts/Facts.chibi",
+          "git_blob": "b2842a0f1769258f78aa96dcc111c1b1fa54af2b"
+        },
+        {
+          "path": "test/compiler/samples/base/named_results/facts/Facts.chibi",
+          "git_blob": "d9a72acfe33363488ce616b510cb69a377a809d1"
+        },
+        {
+          "path": "test/compiler/samples/base/named_results/facts/SampleTests.chibi",
+          "git_blob": "bdb3c85bf8c45c027d05595907b83d18fbffa60c"
+        },
+        {
+          "path": "test/compiler/samples/base/narrow_integers/facts/Facts.chibi",
+          "git_blob": "e24155652c191f30771e130f9471d0dd46fa9533"
+        },
+        {
+          "path": "test/compiler/samples/base/narrow_integers/facts/SampleTests.chibi",
+          "git_blob": "6e709a7c5890e942f986490edb5ee28fb12b9d8d"
+        },
+        {
+          "path": "test/compiler/samples/base/negated_binding/facts/Facts.chibi",
+          "git_blob": "55dcd40136912cd068da892c412fd49a5dd6b439"
+        },
+        {
+          "path": "test/compiler/samples/base/negative_u64/facts/Facts.chibi",
+          "git_blob": "9c7794bf67b46d9bf63fb4e481b822b548740fbf"
+        },
+        {
+          "path": "test/compiler/samples/base/negative_zero_u8/facts/Facts.chibi",
+          "git_blob": "822701d0bd352cbb5f414a1af12332d50d4bcf1e"
+        },
+        {
+          "path": "test/compiler/samples/base/no_value/facts/Facts.chibi",
+          "git_blob": "32dd683c8bb8a64c11e886e78a29fa57206b158f"
+        },
+        {
+          "path": "test/compiler/samples/base/non_exhaustive_switch/facts/Facts.chibi",
+          "git_blob": "8549e07d5cbfe1833092fbbe1cde4d0b3b5eb98b"
+        },
+        {
+          "path": "test/compiler/samples/base/parameters/facts/Facts.chibi",
+          "git_blob": "d0171e8b2de872c3007aff72eda6f21aa26bdd53"
+        },
+        {
+          "path": "test/compiler/samples/base/parameters/facts/SampleTests.chibi",
+          "git_blob": "2386d875bda6b294951852093f77c1d9b6589a85"
+        },
+        {
+          "path": "test/compiler/samples/base/partial_bindings/facts/Facts.chibi",
+          "git_blob": "b3e6413cd6f40ae369da8c24141b7ce2db67871f"
+        },
+        {
+          "path": "test/compiler/samples/base/range_assignment/facts/Facts.chibi",
+          "git_blob": "df53d84144bf5c4265a2a7caacb4568e22882226"
+        },
+        {
+          "path": "test/compiler/samples/base/record_push/facts/Facts.chibi",
+          "git_blob": "eb9230a8727bdfd5f5c18ab548b69913dbf2cd40"
+        },
+        {
+          "path": "test/compiler/samples/base/record_push/facts/SampleTests.chibi",
+          "git_blob": "003753004c9169ef3dca13b89fede77d7a14b6ff"
+        },
+        {
+          "path": "test/compiler/samples/base/recursion/facts/Facts.chibi",
+          "git_blob": "684a928cc86b1cd61ee17ca73dd0590b02859aac"
+        },
+        {
+          "path": "test/compiler/samples/base/recursion/facts/SampleTests.chibi",
+          "git_blob": "3c7425e3261b93a4a6e68087c540a61efb5648f7"
+        },
+        {
+          "path": "test/compiler/samples/base/reference_for/facts/Facts.chibi",
+          "git_blob": "de652928751bd12df7b7f85eed938962cf8d21a2"
+        },
+        {
+          "path": "test/compiler/samples/base/shared_scope/facts/Facts.chibi",
+          "git_blob": "123e12b4cd429fb6c104fedc27619447a710bd3f"
+        },
+        {
+          "path": "test/compiler/samples/base/signed_with_u64/facts/Facts.chibi",
+          "git_blob": "aca69ffdab878d039de3c4bb127ee40bd036d28c"
+        },
+        {
+          "path": "test/compiler/samples/base/single_named_result/facts/Facts.chibi",
+          "git_blob": "12aa47cfa0c61fc3449260d5f6924b8af4216771"
+        },
+        {
+          "path": "test/compiler/samples/base/single_named_result/facts/SampleTests.chibi",
+          "git_blob": "bce3b382365ab979661116fa37e2013397ece36d"
+        },
+        {
+          "path": "test/compiler/samples/base/small_fraction_integer/facts/Facts.chibi",
+          "git_blob": "91544f3356bbea18d35084002653291fcdb4a026"
+        },
+        {
+          "path": "test/compiler/samples/base/strings/facts/Facts.chibi",
+          "git_blob": "9f1c3fe69a4755e3027934c737ef8ee9f9dacab6"
+        },
+        {
+          "path": "test/compiler/samples/base/strings/facts/SampleTests.chibi",
+          "git_blob": "32f27895d367dcbbb7ad0f236e50ad7471aaee40"
+        },
+        {
+          "path": "test/compiler/samples/base/switch_scalar_pattern/facts/Facts.chibi",
+          "git_blob": "ae7cfb9ea4a8433973a733490d6d289d01e290df"
+        },
+        {
+          "path": "test/compiler/samples/base/switch_string/facts/Facts.chibi",
+          "git_blob": "d9e0f85f443a1a639017df01c20c952bf474106f"
+        },
+        {
+          "path": "test/compiler/samples/base/types/facts/Facts.chibi",
+          "git_blob": "031916b9e1f21d586398747e2aa5451a81917656"
+        },
+        {
+          "path": "test/compiler/samples/base/u8_literal_range/facts/Facts.chibi",
+          "git_blob": "be8cc82096c66f9834f1e376b0585414d755193b"
+        },
+        {
+          "path": "test/compiler/samples/base/unknown_field/facts/Facts.chibi",
+          "git_blob": "2581eab6dddee5282291813c228ac60303938036"
+        },
+        {
+          "path": "test/compiler/samples/base/unknown_function/facts/Facts.chibi",
+          "git_blob": "aeb4ade286c715f4e15f8ab7bc337e213aa9bf82"
+        },
+        {
+          "path": "test/compiler/samples/base/unknown_imported_function/facts/Facts.chibi",
+          "git_blob": "f85bcd2770c302250ed4046fbcd506c206f5b5b6"
+        },
+        {
+          "path": "test/compiler/samples/base/unknown_imported_function/lib/Lib.chibi",
+          "git_blob": "21d172d2727224b9216214ad784d3d24f77a17f0"
+        },
+        {
+          "path": "test/compiler/samples/base/unknown_name/facts/Facts.chibi",
+          "git_blob": "dc5592a289acb3446a904f5fb93e85cc0809eafb"
+        },
+        {
+          "path": "test/compiler/samples/base/unknown_parameter_type/facts/Facts.chibi",
+          "git_blob": "6da228c6bf205eaebb6f1d2b1aaf4c90f0b28736"
+        },
+        {
+          "path": "test/compiler/samples/base/unknown_variant/facts/Facts.chibi",
+          "git_blob": "d4be0c6e9e21e5cc72b1b632b5b7c4144490b995"
+        },
+        {
+          "path": "test/compiler/samples/base/unsigned_arithmetic/facts/Facts.chibi",
+          "git_blob": "bfe3d7aa14a11574ea1dac48f437d477440ea7e6"
+        },
+        {
+          "path": "test/compiler/samples/base/unsigned_arithmetic/facts/SampleTests.chibi",
+          "git_blob": "bfd45349b3be9ba5bdfcb36241a3639f5179ad66"
+        },
+        {
+          "path": "test/compiler/samples/base/untyped_array/facts/Facts.chibi",
+          "git_blob": "077e3f54c6088b2308a48c9a82e30a9999eadad3"
+        },
+        {
+          "path": "test/compiler/samples/base/untyped_empty_array/facts/Facts.chibi",
+          "git_blob": "a68a433f5dab1e704f2ed5cb619c59fbe02fa7af"
+        },
+        {
+          "path": "test/compiler/samples/base/untyped_literal/facts/Facts.chibi",
+          "git_blob": "f9778a94338662452aaaa3308749aa618a611929"
+        },
+        {
+          "path": "test/compiler/samples/base/untyped_wildcard_argument/facts/Facts.chibi",
+          "git_blob": "71a7c991073eb6825665479623f16320dc2235b9"
+        },
+        {
+          "path": "test/compiler/samples/base/wrapped_literal_in_parentheses/facts/Facts.chibi",
+          "git_blob": "29c7f73524218c624f48ca76eab27d3fbbb13bcb"
+        },
+        {
+          "path": "test/compiler/samples/base/wrapped_literal_in_parentheses/facts/SampleTests.chibi",
+          "git_blob": "ce9f1faa5c0ed7388bd37ebb8a4a65f29dc104b9"
+        },
+        {
+          "path": "test/compiler/samples/base/written_parameters/facts/Facts.chibi",
+          "git_blob": "a8a1af30daf70abbdb372461aa60c9a74c7a7af4"
+        },
+        {
+          "path": "test/compiler/samples/base/written_parameters/facts/SampleTests.chibi",
+          "git_blob": "88e46e5362a07a9d819ee51e9053ba84bf9df736"
+        }
+      ]
+    },
+    "collections": {
+      "original_log": "/private/tmp/chibi-native-survey-450/collections.log",
+      "original_log_sha256": "fbfa1fdb86356a9ad80592cf9482fb14c68ee75490912e0d446862953e4e8fb6",
+      "original_passed_names": [
+        "array_update_debug_order/facts.Calls",
+        "arrays/facts.Calls",
+        "arrays/facts.Records",
+        "arrays/facts.PickPastTheEndFails",
+        "duplicate_map_loop_names/facts.compile_error",
+        "imported_references/facts.Calls",
+        "inferred_map_literal/facts.compile_error",
+        "lent_arguments/facts.Calls",
+        "managed_pointer_arrays/facts.Calls",
+        "managed_pointer_compound_float_widening/facts.Calls",
+        "managed_pointer_compound_mixed_integers/facts.compile_error",
+        "managed_pointer_compound_narrowing/facts.compile_error",
+        "managed_pointer_compound_order/facts.Calls",
+        "managed_pointer_named_result/facts.compile_error",
+        "managed_pointer_widening/facts.Calls",
+        "managed_pointers/facts.Calls",
+        "map_keys_differ_after_a_nul_byte/facts.Calls",
+        "map_loop_names/facts.Calls",
+        "map_parameter_removal/facts.Calls",
+        "map_updates/facts.Calls",
+        "maps/facts.Calls",
+        "maps/facts.MissingKeyFails",
+        "mixed_compound_boxed_local_assignment/facts.compile_error",
+        "mixed_compound_boxed_parameter_assignment/facts.compile_error",
+        "mixed_compound_reference_assignment/facts.compile_error",
+        "mixed_compound_reference_field_assignment/facts.compile_error",
+        "nullable_pointer_condition_observes_its_original_type/facts.Calls",
+        "packed_record_appends/facts.Calls",
+        "packed_scalar_appends/facts.Calls",
+        "pointer_argument_missing/facts.compile_error",
+        "pointer_default/facts.compile_error",
+        "pointer_equality_is_identity_of_location/facts.Calls",
+        "pointer_imported_argument_missing/facts.compile_error",
+        "pointer_literal/facts.compile_error",
+        "pointer_type/facts.compile_error",
+        "ranges/facts.Calls",
+        "records/facts.Calls",
+        "records/facts.Records",
+        "references/facts.Calls",
+        "removed_union_elements/facts.Calls",
+        "scoped_lent_locals/facts.Calls",
+        "scoped_pointer_appends/facts.Calls",
+        "scoped_pointer_relays/facts.Calls",
+        "scoped_pointer_spans/facts.Calls"
+      ],
+      "original_uncompiled_packages": [
+        "pointer_sequence_views/facts",
+        "strict_sequence_ranges/facts",
+        "value_sequence_copies/facts",
+        "view_element_lending/facts"
+      ],
+      "source_files": [
+        {
+          "path": "test/compiler/samples/collections/array_update_debug_order/facts/Facts.chibi",
+          "git_blob": "345bb88c253807be59f913bd0c1ebc69bbeaae61"
+        },
+        {
+          "path": "test/compiler/samples/collections/array_update_debug_order/facts/SampleTests.chibi",
+          "git_blob": "74848cbd21d9156b0ab3652cc824c0950544f618"
+        },
+        {
+          "path": "test/compiler/samples/collections/arrays/facts/Facts.chibi",
+          "git_blob": "8ac92ed1915eff0ee004994710ded33d33d70f0a"
+        },
+        {
+          "path": "test/compiler/samples/collections/arrays/facts/SampleTests.chibi",
+          "git_blob": "ee81c6b269d400e70c8b22f5179fc1076b5cc43e"
+        },
+        {
+          "path": "test/compiler/samples/collections/duplicate_map_loop_names/facts/Facts.chibi",
+          "git_blob": "79bbbc7aab443535007068347b9528021bf02193"
+        },
+        {
+          "path": "test/compiler/samples/collections/imported_references/facts/Facts.chibi",
+          "git_blob": "a57905f707f14f069e53ad01f6bffc3231f70979"
+        },
+        {
+          "path": "test/compiler/samples/collections/imported_references/facts/SampleTests.chibi",
+          "git_blob": "19830aea6e19a28c6c5d184a7c2b8b9ef83aa1f4"
+        },
+        {
+          "path": "test/compiler/samples/collections/imported_references/lib/Lib.chibi",
+          "git_blob": "033602369e03f300fe2513a99e5b801c9e28a448"
+        },
+        {
+          "path": "test/compiler/samples/collections/inferred_map_literal/facts/Facts.chibi",
+          "git_blob": "1a083bad8d032058637ecdbfa5bc911881f50f22"
+        },
+        {
+          "path": "test/compiler/samples/collections/lent_arguments/facts/Facts.chibi",
+          "git_blob": "5d495cdc2225ea220ae74498db5f657aa5cc6647"
+        },
+        {
+          "path": "test/compiler/samples/collections/lent_arguments/facts/SampleTests.chibi",
+          "git_blob": "29290882493b8745a2d55096e1dce1b409b5e3f8"
+        },
+        {
+          "path": "test/compiler/samples/collections/managed_pointer_arrays/facts/Facts.chibi",
+          "git_blob": "f1249c57a32bb1b5ed6a4d8107d97b70ba94f0e0"
+        },
+        {
+          "path": "test/compiler/samples/collections/managed_pointer_arrays/facts/SampleTests.chibi",
+          "git_blob": "2003acd1fbe99af4cc6c0a20d6fe5d085f9060a9"
+        },
+        {
+          "path": "test/compiler/samples/collections/managed_pointer_compound_float_widening/facts/Facts.chibi",
+          "git_blob": "93660f502a962fe09df45ba3452cb1a284c44a8c"
+        },
+        {
+          "path": "test/compiler/samples/collections/managed_pointer_compound_float_widening/facts/SampleTests.chibi",
+          "git_blob": "85b257b01ff345bd56d671b655425624b5670769"
+        },
+        {
+          "path": "test/compiler/samples/collections/managed_pointer_compound_mixed_integers/facts/Facts.chibi",
+          "git_blob": "7e90fa2b0cec7ea7c1cc7f55e9436f526a219830"
+        },
+        {
+          "path": "test/compiler/samples/collections/managed_pointer_compound_narrowing/facts/Facts.chibi",
+          "git_blob": "c55c72467116bd5503aab0ce1a3e491fb55b9956"
+        },
+        {
+          "path": "test/compiler/samples/collections/managed_pointer_compound_order/facts/Facts.chibi",
+          "git_blob": "c84bc89095f0fcefa8a472da2eb80d41f796a695"
+        },
+        {
+          "path": "test/compiler/samples/collections/managed_pointer_compound_order/facts/SampleTests.chibi",
+          "git_blob": "ab94d87efca93702e7a16857f83a27c886d3abd6"
+        },
+        {
+          "path": "test/compiler/samples/collections/managed_pointer_named_result/facts/Facts.chibi",
+          "git_blob": "92fa2a2034cfec41e263dc11031c311636bb97e5"
+        },
+        {
+          "path": "test/compiler/samples/collections/managed_pointer_widening/facts/Facts.chibi",
+          "git_blob": "3c655c79ecf5a695c7b6a1a37b2b15c451a0bfd3"
+        },
+        {
+          "path": "test/compiler/samples/collections/managed_pointer_widening/facts/SampleTests.chibi",
+          "git_blob": "8c7634bc68668f2b4b8f6f2ec3a031935f318ebd"
+        },
+        {
+          "path": "test/compiler/samples/collections/managed_pointers/facts/Facts.chibi",
+          "git_blob": "8d3e3e0b97573fe98334d235c424dfdb1c5f0c07"
+        },
+        {
+          "path": "test/compiler/samples/collections/managed_pointers/facts/SampleTests.chibi",
+          "git_blob": "18cbf630c517691dcfe9d4c0df04deabfae56601"
+        },
+        {
+          "path": "test/compiler/samples/collections/map_keys_differ_after_a_nul_byte/facts/Facts.chibi",
+          "git_blob": "6b96deb0b99db15773991f7093f85b072a89cbd4"
+        },
+        {
+          "path": "test/compiler/samples/collections/map_keys_differ_after_a_nul_byte/facts/SampleTests.chibi",
+          "git_blob": "4fbcb811531ec01b368c8f38554655fe1ea48183"
+        },
+        {
+          "path": "test/compiler/samples/collections/map_loop_names/facts/Facts.chibi",
+          "git_blob": "1172278d90cb897644af7a3764c121adaeb67584"
+        },
+        {
+          "path": "test/compiler/samples/collections/map_loop_names/facts/SampleTests.chibi",
+          "git_blob": "63f5fdb4d1f05603988480e0e49132691c17f8cf"
+        },
+        {
+          "path": "test/compiler/samples/collections/map_parameter_removal/facts/Facts.chibi",
+          "git_blob": "3974560ea1cd10d3e5b071b5050f7365eb43ba8c"
+        },
+        {
+          "path": "test/compiler/samples/collections/map_parameter_removal/facts/SampleTests.chibi",
+          "git_blob": "4fc5252f9abb6a5ea1f868e4505e53d402030a3a"
+        },
+        {
+          "path": "test/compiler/samples/collections/map_updates/facts/Facts.chibi",
+          "git_blob": "aa695e46cf4ccd34640e079a7054a79795247193"
+        },
+        {
+          "path": "test/compiler/samples/collections/map_updates/facts/SampleTests.chibi",
+          "git_blob": "31291d91ac240cb3d2a21a070fb63f158e9ef209"
+        },
+        {
+          "path": "test/compiler/samples/collections/maps/facts/Facts.chibi",
+          "git_blob": "31bd961c9ceaf8fc609c35143606e48a20bf9dd4"
+        },
+        {
+          "path": "test/compiler/samples/collections/maps/facts/SampleTests.chibi",
+          "git_blob": "3ba27284b3d9314ab85c394d2c81b060bf62a48c"
+        },
+        {
+          "path": "test/compiler/samples/collections/mixed_compound_boxed_local_assignment/facts/Facts.chibi",
+          "git_blob": "948c943a79f773b69289b2d664bb97ac64c18e56"
+        },
+        {
+          "path": "test/compiler/samples/collections/mixed_compound_boxed_parameter_assignment/facts/Facts.chibi",
+          "git_blob": "a09638de4a18f4068be5efe6aeb36cbc5b8d8d4d"
+        },
+        {
+          "path": "test/compiler/samples/collections/mixed_compound_reference_assignment/facts/Facts.chibi",
+          "git_blob": "720b1efa9e663c48d4a49ea831467c3520d4ffb9"
+        },
+        {
+          "path": "test/compiler/samples/collections/mixed_compound_reference_field_assignment/facts/Facts.chibi",
+          "git_blob": "e3d926c99077dc42ed60d140cab0c8d036168314"
+        },
+        {
+          "path": "test/compiler/samples/collections/nullable_pointer_condition_observes_its_original_type/facts/Facts.chibi",
+          "git_blob": "1716655ee418182867bf596fb4fcaef34b7336ff"
+        },
+        {
+          "path": "test/compiler/samples/collections/nullable_pointer_condition_observes_its_original_type/facts/SampleTests.chibi",
+          "git_blob": "b4f4b247550d73327db94f40f50795ed38cd4acf"
+        },
+        {
+          "path": "test/compiler/samples/collections/packed_record_appends/facts/Facts.chibi",
+          "git_blob": "c9834b98f8336e4882d330ae6ba43ce68f4783a8"
+        },
+        {
+          "path": "test/compiler/samples/collections/packed_record_appends/facts/SampleTests.chibi",
+          "git_blob": "c945182bcbb70a78242d3700c4433c34eaae56fb"
+        },
+        {
+          "path": "test/compiler/samples/collections/packed_scalar_appends/facts/Facts.chibi",
+          "git_blob": "f75eda63fe2c167aa7240a584cd1df373dea0bc4"
+        },
+        {
+          "path": "test/compiler/samples/collections/packed_scalar_appends/facts/SampleTests.chibi",
+          "git_blob": "02cbac890d44169df89abf439413a6b79a3c4108"
+        },
+        {
+          "path": "test/compiler/samples/collections/pointer_argument_missing/facts/Facts.chibi",
+          "git_blob": "2f15bac4028749ce11f607d5816f8690657e6838"
+        },
+        {
+          "path": "test/compiler/samples/collections/pointer_default/facts/Facts.chibi",
+          "git_blob": "c21939e77feb08550be28618171b1cb60883adb2"
+        },
+        {
+          "path": "test/compiler/samples/collections/pointer_equality_is_identity_of_location/facts/Facts.chibi",
+          "git_blob": "9b546c41205d5d1e6ae6569fbe95b1f8abd223eb"
+        },
+        {
+          "path": "test/compiler/samples/collections/pointer_equality_is_identity_of_location/facts/SampleTests.chibi",
+          "git_blob": "ec75a61d49d57fffe2a1377f94f7678ac01c347d"
+        },
+        {
+          "path": "test/compiler/samples/collections/pointer_imported_argument_missing/facts/Facts.chibi",
+          "git_blob": "a531270372cd5d031d8d00a559df47855d003717"
+        },
+        {
+          "path": "test/compiler/samples/collections/pointer_imported_argument_missing/lib/Lib.chibi",
+          "git_blob": "291b38f3b376a008fd798777f2defffbf75e5d99"
+        },
+        {
+          "path": "test/compiler/samples/collections/pointer_literal/facts/Facts.chibi",
+          "git_blob": "5c0df1dc90db1ac88c175b263d4b08df1e8a8d75"
+        },
+        {
+          "path": "test/compiler/samples/collections/pointer_sequence_views/facts/Facts.chibi",
+          "git_blob": "4a1fc57ba45b908dcc7289013c31354972bd4fdf"
+        },
+        {
+          "path": "test/compiler/samples/collections/pointer_sequence_views/facts/SampleTests.chibi",
+          "git_blob": "c5144a9ec6cb9d95f7ae711130f75c40de41caf6"
+        },
+        {
+          "path": "test/compiler/samples/collections/pointer_type/facts/Facts.chibi",
+          "git_blob": "e6452827ebd04ca40ec8ac47579258ce442ad68b"
+        },
+        {
+          "path": "test/compiler/samples/collections/ranges/facts/Facts.chibi",
+          "git_blob": "613045c57d28ef15f99c3b62c731d88c9289163b"
+        },
+        {
+          "path": "test/compiler/samples/collections/ranges/facts/SampleTests.chibi",
+          "git_blob": "2b59263011f97eec13f3d77ad1827f71fa8a1133"
+        },
+        {
+          "path": "test/compiler/samples/collections/records/facts/Facts.chibi",
+          "git_blob": "d2b1a557ec3238d24f14e74392a8b11685b61149"
+        },
+        {
+          "path": "test/compiler/samples/collections/records/facts/SampleTests.chibi",
+          "git_blob": "a9bb492f077bb74b91da15cf6d1c712ec7796509"
+        },
+        {
+          "path": "test/compiler/samples/collections/references/facts/Facts.chibi",
+          "git_blob": "1598d67aa52e4a56ec9fd918eaa4280be456cee5"
+        },
+        {
+          "path": "test/compiler/samples/collections/references/facts/SampleTests.chibi",
+          "git_blob": "ed781478d91cda62daf0d4cbdb3a11ce870f4381"
+        },
+        {
+          "path": "test/compiler/samples/collections/removed_union_elements/facts/Facts.chibi",
+          "git_blob": "eb7619842cff4cbd517d58fca4568d792a5a7a1a"
+        },
+        {
+          "path": "test/compiler/samples/collections/removed_union_elements/facts/SampleTests.chibi",
+          "git_blob": "9c2579939fac87b9f7e27d25fed49ffa6716b103"
+        },
+        {
+          "path": "test/compiler/samples/collections/scoped_lent_locals/facts/Facts.chibi",
+          "git_blob": "ff6c47bbe1a63d47c14582e458d128c7540f6bd4"
+        },
+        {
+          "path": "test/compiler/samples/collections/scoped_lent_locals/facts/SampleTests.chibi",
+          "git_blob": "4efdf5483ba0dcea5c72108d853e9e1d9b72641c"
+        },
+        {
+          "path": "test/compiler/samples/collections/scoped_pointer_appends/facts/Facts.chibi",
+          "git_blob": "af19e090a4d6f65b63862a8443363f37bbf0ffc5"
+        },
+        {
+          "path": "test/compiler/samples/collections/scoped_pointer_appends/facts/SampleTests.chibi",
+          "git_blob": "75ae635d027a0f0825cc6d87691775666126f1f1"
+        },
+        {
+          "path": "test/compiler/samples/collections/scoped_pointer_relays/facts/Facts.chibi",
+          "git_blob": "8fcb6cc80b0b61ed6464610ebffc321fb2c583ad"
+        },
+        {
+          "path": "test/compiler/samples/collections/scoped_pointer_relays/facts/SampleTests.chibi",
+          "git_blob": "10d3f788c1a07547f1f10bdfef3aa94a1d0f2ad4"
+        },
+        {
+          "path": "test/compiler/samples/collections/scoped_pointer_spans/facts/Facts.chibi",
+          "git_blob": "502882fe5c3f22c8a11a445f7f3c022afd8b772f"
+        },
+        {
+          "path": "test/compiler/samples/collections/scoped_pointer_spans/facts/SampleTests.chibi",
+          "git_blob": "484768c00fec48a2679fb79742b5d2bc25cebd5a"
+        },
+        {
+          "path": "test/compiler/samples/collections/strict_sequence_ranges/facts/Facts.chibi",
+          "git_blob": "2129b2d2ec4c360b1b55e6b8603c228f2ba638f2"
+        },
+        {
+          "path": "test/compiler/samples/collections/strict_sequence_ranges/facts/SampleTests.chibi",
+          "git_blob": "cc71c9edd535f439ed60db89b46399bcbbeec6a5"
+        },
+        {
+          "path": "test/compiler/samples/collections/value_sequence_copies/facts/Facts.chibi",
+          "git_blob": "f388e3fd661adf85908ffc8c4317dfafdec7f085"
+        },
+        {
+          "path": "test/compiler/samples/collections/value_sequence_copies/facts/SampleTests.chibi",
+          "git_blob": "9679b5fc63a83ade27683231a31ffb5fc1e6a39c"
+        },
+        {
+          "path": "test/compiler/samples/collections/view_element_lending/facts/Facts.chibi",
+          "git_blob": "d0f6e4304762dbba094fc7f696c5f5e930bc7d5e"
+        },
+        {
+          "path": "test/compiler/samples/collections/view_element_lending/facts/SampleTests.chibi",
+          "git_blob": "7109e8b451b88a1c59463f91ab521401de4d2fd4"
+        }
+      ]
+    },
+    "comptime": {
+      "original_log": "/private/tmp/chibi-native-survey-450/comptime.log",
+      "original_log_sha256": "e21855d0855a76f565bc5c49b4412f05199baae77590fe447182583e3e3f0f02",
+      "original_passed_names": [
+        "comptime_array_index_is_checked_against_the_length/facts.compile_error",
+        "comptime_arrays_are_built_summed_and_indexed/facts.Calls",
+        "comptime_floats_follow_ieee_rounding/facts.Calls",
+        "comptime_for_loops_cover_ranges_arrays_and_exits/facts.Calls",
+        "comptime_records_are_built_read_and_updated/facts.Calls",
+        "comptime_records_hold_supported_values_only/facts.compile_error",
+        "comptime_records_nest_and_hold_arrays/facts.Calls",
+        "comptime_text_formats_only_plain_placeholders/facts.compile_error",
+        "comptime_text_is_built_compared_and_scanned/facts.Calls"
+      ],
+      "original_uncompiled_packages": [],
+      "source_files": [
+        {
+          "path": "test/compiler/samples/comptime/comptime_array_index_is_checked_against_the_length/facts/Facts.chibi",
+          "git_blob": "4f50e72b3fb7300f9dc4a58b119edf6f1cca90c8"
+        },
+        {
+          "path": "test/compiler/samples/comptime/comptime_arrays_are_built_summed_and_indexed/facts/Facts.chibi",
+          "git_blob": "a09fd8888b3835276d63eee878bdf3407516a589"
+        },
+        {
+          "path": "test/compiler/samples/comptime/comptime_arrays_are_built_summed_and_indexed/facts/SampleTests.chibi",
+          "git_blob": "1ceec8e381a693b88144597c228c5c9fd8b54701"
+        },
+        {
+          "path": "test/compiler/samples/comptime/comptime_floats_follow_ieee_rounding/facts/Facts.chibi",
+          "git_blob": "bd6e4f7b6f1d5837079942b6a3229d70c5ae6db2"
+        },
+        {
+          "path": "test/compiler/samples/comptime/comptime_floats_follow_ieee_rounding/facts/SampleTests.chibi",
+          "git_blob": "2514ed287dae669117435eac8ed997e606f91739"
+        },
+        {
+          "path": "test/compiler/samples/comptime/comptime_for_loops_cover_ranges_arrays_and_exits/facts/Facts.chibi",
+          "git_blob": "c1b55a53297491592ca9a62e94d1ae868cbf5568"
+        },
+        {
+          "path": "test/compiler/samples/comptime/comptime_for_loops_cover_ranges_arrays_and_exits/facts/SampleTests.chibi",
+          "git_blob": "8cbca6d36d65f0bc13db96ab2d3b274d64a78613"
+        },
+        {
+          "path": "test/compiler/samples/comptime/comptime_records_are_built_read_and_updated/facts/Facts.chibi",
+          "git_blob": "6cf2b0027e46bf685e1d5c5f604b33c10ed51717"
+        },
+        {
+          "path": "test/compiler/samples/comptime/comptime_records_are_built_read_and_updated/facts/SampleTests.chibi",
+          "git_blob": "cdeb3fca2846a20190fb90d941f5a896350c69f0"
+        },
+        {
+          "path": "test/compiler/samples/comptime/comptime_records_hold_supported_values_only/facts/Facts.chibi",
+          "git_blob": "455c8041e2cf6bfeaaffbc787648e51173f9978f"
+        },
+        {
+          "path": "test/compiler/samples/comptime/comptime_records_nest_and_hold_arrays/facts/Facts.chibi",
+          "git_blob": "795529323fc2a6eb8c969fbdcadd5bf2e8d87fa1"
+        },
+        {
+          "path": "test/compiler/samples/comptime/comptime_records_nest_and_hold_arrays/facts/SampleTests.chibi",
+          "git_blob": "c42cbd569df306a88a772955be5c1797f75f7005"
+        },
+        {
+          "path": "test/compiler/samples/comptime/comptime_text_formats_only_plain_placeholders/facts/Facts.chibi",
+          "git_blob": "a8d154d3669f5e293a6800367c053e04b230f61d"
+        },
+        {
+          "path": "test/compiler/samples/comptime/comptime_text_is_built_compared_and_scanned/facts/Facts.chibi",
+          "git_blob": "e22c77c7579e7a6c1593ebb632c3b2e4e433b5c6"
+        },
+        {
+          "path": "test/compiler/samples/comptime/comptime_text_is_built_compared_and_scanned/facts/SampleTests.chibi",
+          "git_blob": "2dfd470861ec2c62e20bf6823929112320aba3ff"
+        }
+      ]
+    },
+    "fallible": {
+      "original_log": "/private/tmp/chibi-native-survey-450/fallible.log",
+      "original_log_sha256": "b7e2a6c03625c6eb9a8781250191d400c755b4c5ce8709421272b1db50797691",
+      "original_passed_names": [
+        "duplicate_error_type_marker_is_rejected/facts.compile_error",
+        "earlier_error_bearing_result_slots_are_rejected/facts.compile_error",
+        "error_arrays_remain_ordinary_report_data/facts.Calls",
+        "error_marker_on_a_callable_is_rejected/facts.compile_error",
+        "error_result_async_source_is_explicitly_unsupported/facts.compile_error",
+        "error_type_aliases_retain_an_explicit_source_boundary/facts.compile_error",
+        "fallible_bare_result_is_ignored/facts.compile_error",
+        "fallible_bracket_slice_end_cannot_drop_error/facts.compile_error",
+        "fallible_bracket_slice_start_cannot_drop_error/facts.compile_error",
+        "fallible_complete_outcomes_can_be_returned/facts.Calls",
+        "fallible_conditional_alias_cannot_hide_loss/facts.compile_error",
+        "fallible_conditional_check_can_be_skipped/facts.compile_error",
+        "fallible_constant_short_circuit_does_not_produce_outcome/facts.Calls",
+        "fallible_correlated_pointer_cannot_hide_final_erasure_on_fal/facts.compile_error",
+        "fallible_correlated_pointer_cannot_hide_final_erasure_on_tru/facts.compile_error",
+        "fallible_destination_index_can_acknowledge_error/facts.Calls",
+        "fallible_destination_index_cannot_drop_error/facts.compile_error",
+        "fallible_errors_can_be_forwarded_to_helpers/facts.Calls",
+        "fallible_every_branch_checks/facts.Calls",
+        "fallible_explicit_blank_binding_still_drops_error/facts.compile_error",
+        "fallible_guarded_tagged_union_can_change_alternatives/facts.Calls",
+        "fallible_imported_source_error_is_checked/facts.Calls",
+        "fallible_imported_source_keeps_marker/facts.compile_error",
+        "fallible_joined_pointer_cannot_hide_later_erasure_on_true_ed/facts.compile_error",
+        "fallible_joined_pointer_cannot_hide_later_pointee_erasure/facts.compile_error",
+        "fallible_later_switch_candidate_can_be_skipped/facts.compile_error",
+        "fallible_loop_cannot_overwrite_prior_error/facts.compile_error",
+        "fallible_loop_check_might_never_execute/facts.compile_error",
+        "fallible_loop_checks_each_produced_error/facts.Calls",
+        "fallible_member_presence_proof_does_not_survive_shadowing/facts.compile_error",
+        "fallible_member_presence_proof_keeps_the_same_binding/facts.Calls",
+        "fallible_method_slice_end_cannot_drop_error/facts.compile_error",
+        "fallible_method_slice_start_cannot_drop_error/facts.compile_error",
+        "fallible_named_error_can_be_returned_implicitly/facts.Calls",
+        "fallible_only_one_branch_checks/facts.compile_error",
+        "fallible_ordinary_optional_remains_ordinary/facts.Calls",
+        "fallible_overwrite_cannot_erase_obligation/facts.compile_error",
+        "fallible_pointer_comparison_does_not_inspect_error/facts.compile_error",
+        "fallible_pointer_join_cannot_revive_erased_alias_on_true_edg/facts.compile_error",
+        "fallible_pointer_join_cannot_revive_erased_pointee_alias/facts.compile_error",
+        "fallible_pointer_overwrite_cannot_erase_error/facts.compile_error",
+        "fallible_progress_remains_valid_with_error_present/facts.Calls",
+        "fallible_shadowed_member_accepts_its_own_presence_guard/facts.Calls",
+        "fallible_shadowed_optional_is_a_different_binding/facts.compile_error",
+        "fallible_sibling_assignment_does_not_acknowledge_error/facts.compile_error",
+        "fallible_sibling_assignments_permit_actual_error_handling/facts.Calls",
+        "fallible_success_projection_does_not_handle_error/facts.compile_error",
+        "fallible_switch_candidate_can_acknowledge_error/facts.Calls",
+        "fallible_switch_candidate_cannot_drop_error/facts.compile_error",
+        "fallible_synchronous_argument_under_await_can_forward_error/facts.Compiles",
+        "fallible_synchronous_argument_under_await_cannot_drop_error/facts.compile_error",
+        "fallible_tuple_alias_sibling_assignment_does_not_acknowledge/facts.compile_error",
+        "fallible_tuple_aliases_preserve_checking/facts.Calls",
+        "fallible_unknown_marker_rejected/facts.compile_error",
+        "fallible_unnamed_error_only_result_can_be_checked/facts.Calls",
+        "fallible_unnamed_error_only_result_cannot_be_dropped/facts.compile_error",
+        "fallible_unused_error_local_is_ignored/facts.compile_error",
+        "fallible_unused_tuple_is_ignored/facts.compile_error",
+        "mixed_error_unions_retain_an_explicit_source_boundary/facts.compile_error",
+        "old_function_error_marker_is_rejected/facts.compile_error",
+        "optional_condition_cannot_reuse_presence_before_a_direct_mut/facts.compile_error",
+        "optional_condition_cannot_reuse_presence_before_an_alias_mut/facts.compile_error",
+        "ordinary_optional_async_result_retains_emitter_boundary/facts.compile_error",
+        "ordinary_optional_boolean_member_and_operand_reads_the_prese/facts.Calls",
+        "ordinary_optional_boolean_member_nil_comparison_still_tests_/facts.Calls",
+        "ordinary_optional_boolean_member_or_operand_reads_the_presen/facts.Calls",
+        "ordinary_optional_negated_boolean_member_reads_the_present_p/facts.Calls",
+        "ordinary_optional_nested_boolean_guard_reads_the_valid_paylo/facts.Calls",
+        "ordinary_optional_nested_boolean_member_keeps_its_payload_on/facts.Calls",
+        "ordinary_optional_unnamed_boolean_keeps_its_payload_on_false/facts.Calls",
+        "pointers_to_marked_errors_remain_ordinary_data/facts.Calls",
+        "required_marked_record_errors_cannot_be_dropped/facts.compile_error",
+        "required_marked_record_errors_retain_their_payload/facts.Calls",
+        "required_marked_union_errors_can_be_inspected/facts.Calls",
+        "required_marked_union_errors_cannot_be_dropped/facts.compile_error",
+        "structured_read_error_example_preserves_values_and_context/facts.Calls"
+      ],
+      "original_uncompiled_packages": [
+        "fallible_bracket_slice_end_can_forward_error/facts",
+        "fallible_bracket_slice_start_can_forward_error/facts",
+        "fallible_correlated_pointers_retain_valid_error_handling/facts",
+        "fallible_joined_pointers_keep_unchanged_pointees/facts",
+        "fallible_method_slice_end_can_forward_error/facts",
+        "fallible_method_slice_start_can_forward_error/facts",
+        "fallible_optional_pointer_aliases_are_inspected/facts",
+        "optional_mutation_before_a_fresh_presence_guard_is_safe/facts"
+      ],
+      "source_files": [
+        {
+          "path": "test/compiler/samples/fallible/duplicate_error_type_marker_is_rejected/facts/Facts.chibi",
+          "git_blob": "544c65798afd8217f92719feb7ecb11517364e5b"
+        },
+        {
+          "path": "test/compiler/samples/fallible/earlier_error_bearing_result_slots_are_rejected/facts/Facts.chibi",
+          "git_blob": "636fa600e4c15f0b6e0046d7b0e5e9143b294142"
+        },
+        {
+          "path": "test/compiler/samples/fallible/error_arrays_remain_ordinary_report_data/facts/Facts.chibi",
+          "git_blob": "87aa898229bfebbd17cd768439311fe7dfb028d3"
+        },
+        {
+          "path": "test/compiler/samples/fallible/error_arrays_remain_ordinary_report_data/facts/SampleTests.chibi",
+          "git_blob": "518d3c50345d35bbb1a2b50f7a94f8bd0d8cfbaf"
+        },
+        {
+          "path": "test/compiler/samples/fallible/error_marker_on_a_callable_is_rejected/facts/Facts.chibi",
+          "git_blob": "9f3ec33080d3e61e7f22817da60e1afb1b609460"
+        },
+        {
+          "path": "test/compiler/samples/fallible/error_result_async_source_is_explicitly_unsupported/facts/Facts.chibi",
+          "git_blob": "b1ee7775c4508b6b0167f31766804333d58aebbc"
+        },
+        {
+          "path": "test/compiler/samples/fallible/error_type_aliases_retain_an_explicit_source_boundary/facts/Facts.chibi",
+          "git_blob": "ef7e3ec36d251f99b128b9c9087374988bfe935a"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_bare_result_is_ignored/facts/Facts.chibi",
+          "git_blob": "ed9535577ad999240f05d8c271b5cee7b9660ff1"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_bracket_slice_end_can_forward_error/facts/Facts.chibi",
+          "git_blob": "e90bcb00eb21bf32ea14abb7b4d7bd04f22163f2"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_bracket_slice_end_can_forward_error/facts/SampleTests.chibi",
+          "git_blob": "e1dfb256637d1d6bd9248b47deabdd8c203a58e2"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_bracket_slice_end_cannot_drop_error/facts/Facts.chibi",
+          "git_blob": "5f6ff6137c38df9da6428a09b674f6eec49da5a2"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_bracket_slice_start_can_forward_error/facts/Facts.chibi",
+          "git_blob": "2744b4d5ed955e0a2d7ae4e0bb5b3f084094960f"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_bracket_slice_start_can_forward_error/facts/SampleTests.chibi",
+          "git_blob": "6279cbd25f39ee8e868f8b49a99cad3dad8ea41e"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_bracket_slice_start_cannot_drop_error/facts/Facts.chibi",
+          "git_blob": "a4a65c2691bd7355054c628d6519a28989bc0257"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_complete_outcomes_can_be_returned/facts/Facts.chibi",
+          "git_blob": "88db45fd133b5a8352d3d361d7d27a482d60785b"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_complete_outcomes_can_be_returned/facts/SampleTests.chibi",
+          "git_blob": "01438ec08e7126384c4b2cc2b88f0a789ec3516b"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_conditional_alias_cannot_hide_loss/facts/Facts.chibi",
+          "git_blob": "6ec033def5f00f9559ad0a2de99ea9793dc5ab23"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_conditional_check_can_be_skipped/facts/Facts.chibi",
+          "git_blob": "a8137fdcee253f658839ee471f16ad762ae1ccf1"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_constant_short_circuit_does_not_produce_outcome/facts/Facts.chibi",
+          "git_blob": "225ef54944997b276fd460b167a9994d7981961e"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_constant_short_circuit_does_not_produce_outcome/facts/SampleTests.chibi",
+          "git_blob": "0230e301bb6fc2110227930fcd084429c2ec7fb4"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_correlated_pointer_cannot_hide_final_erasure_on_fal/facts/Facts.chibi",
+          "git_blob": "c0587fd4b5e550acddeaa3b9fd6b5e9559d49daf"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_correlated_pointer_cannot_hide_final_erasure_on_tru/facts/Facts.chibi",
+          "git_blob": "5bc8567425abc7f7c4ec2f88ab87549fa4b6eb1e"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_correlated_pointers_retain_valid_error_handling/facts/Facts.chibi",
+          "git_blob": "bdc01886eaf43a7f734264ac5641fc4ef4e6dec1"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_correlated_pointers_retain_valid_error_handling/facts/SampleTests.chibi",
+          "git_blob": "9e33532d8f21cf4ef76a3ac0eabaaa37e211f479"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_destination_index_can_acknowledge_error/facts/Facts.chibi",
+          "git_blob": "10764e00ccbc54379ec5340df979161ec56cc58d"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_destination_index_can_acknowledge_error/facts/SampleTests.chibi",
+          "git_blob": "e1cd1f19cd054e39a420160474380a09d4b6c380"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_destination_index_cannot_drop_error/facts/Facts.chibi",
+          "git_blob": "701b78e05ccb10a9745671332530fb8472f330b7"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_errors_can_be_forwarded_to_helpers/facts/Facts.chibi",
+          "git_blob": "2dc2f8026f927c25398a49714f25a28efc64509d"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_errors_can_be_forwarded_to_helpers/facts/SampleTests.chibi",
+          "git_blob": "2695341dd2743ec60bbbc48d78b0134f79a8b904"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_every_branch_checks/facts/Facts.chibi",
+          "git_blob": "92fc75db2aafa973fa12355c90f9159be8d02672"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_every_branch_checks/facts/SampleTests.chibi",
+          "git_blob": "717e55c693450aa41f675eaad4af30606f546fda"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_explicit_blank_binding_still_drops_error/facts/Facts.chibi",
+          "git_blob": "a2d835fcc7a0521fdbab006e1b6a5296793791d1"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_guarded_tagged_union_can_change_alternatives/facts/Facts.chibi",
+          "git_blob": "cc912d95ff467a2358b06c11406d039f85e44bc1"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_guarded_tagged_union_can_change_alternatives/facts/SampleTests.chibi",
+          "git_blob": "014f3331548f23bc18060189b531854d4cce6ae3"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_imported_source_error_is_checked/facts/Facts.chibi",
+          "git_blob": "1e255966c7384b96c6dfce2cdfb838779268fd81"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_imported_source_error_is_checked/facts/SampleTests.chibi",
+          "git_blob": "9b372b63b4cceda100be50009659daa9db8e814a"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_imported_source_error_is_checked/lib/Lib.chibi",
+          "git_blob": "b6a4d638448e5ba19f093a9ff7b30d7b1ce4e7a4"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_imported_source_keeps_marker/facts/Facts.chibi",
+          "git_blob": "7eed50a9c3771f47b04155164a628285cc4e7389"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_imported_source_keeps_marker/lib/Lib.chibi",
+          "git_blob": "b6a4d638448e5ba19f093a9ff7b30d7b1ce4e7a4"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_joined_pointer_cannot_hide_later_erasure_on_true_ed/facts/Facts.chibi",
+          "git_blob": "a2deb56ca3cf33474f7384e1d931d24ed92ff19f"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_joined_pointer_cannot_hide_later_pointee_erasure/facts/Facts.chibi",
+          "git_blob": "93506ee59fdd0e550c4fd39204c82172358d8260"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_joined_pointers_keep_unchanged_pointees/facts/Facts.chibi",
+          "git_blob": "4cbaabd0ea56f0d95e5f2dad8b504107567ae650"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_joined_pointers_keep_unchanged_pointees/facts/SampleTests.chibi",
+          "git_blob": "690e7d08c8c71cd264e8c930fcd7b1c626ade6d5"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_later_switch_candidate_can_be_skipped/facts/Facts.chibi",
+          "git_blob": "64f03e5a7c27b8557994490847ef35d532dfa09c"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_loop_cannot_overwrite_prior_error/facts/Facts.chibi",
+          "git_blob": "180445581060b3eb7ac10504c4802dfd0eef3386"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_loop_check_might_never_execute/facts/Facts.chibi",
+          "git_blob": "3fcfbe506a43159cf116fc52948de5db8b48eddb"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_loop_checks_each_produced_error/facts/Facts.chibi",
+          "git_blob": "22030de57f22b38f74ffcba8e914d5c1d84f27ab"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_loop_checks_each_produced_error/facts/SampleTests.chibi",
+          "git_blob": "8105a4559f4ffee44763ea861e1c031b472a20bf"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_member_presence_proof_does_not_survive_shadowing/facts/Facts.chibi",
+          "git_blob": "221f8eff0a6cb73cadff54dbac2f346fc4382bda"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_member_presence_proof_keeps_the_same_binding/facts/Facts.chibi",
+          "git_blob": "5effda71cb0be503ae700c1882d8d56eb992b978"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_member_presence_proof_keeps_the_same_binding/facts/SampleTests.chibi",
+          "git_blob": "55778143efe5388f0f88ca12c0da90437272f1c9"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_method_slice_end_can_forward_error/facts/Facts.chibi",
+          "git_blob": "df394781a7b1163b8534fb08e4698f2103351a39"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_method_slice_end_can_forward_error/facts/SampleTests.chibi",
+          "git_blob": "04fbb01a5d9c365b7ba6c2b1309b7637415aa52f"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_method_slice_end_cannot_drop_error/facts/Facts.chibi",
+          "git_blob": "c3980d1f98c1bab7b6f38e5aec5d702e83bdb264"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_method_slice_start_can_forward_error/facts/Facts.chibi",
+          "git_blob": "b013ca1f0cedc9cdb21b10533ac8cecd780f6ad3"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_method_slice_start_can_forward_error/facts/SampleTests.chibi",
+          "git_blob": "cbb17fb1006f8da87a6e6ae4916d724f2866435d"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_method_slice_start_cannot_drop_error/facts/Facts.chibi",
+          "git_blob": "915b4f337865047d66c167513c19b3b7b7c0f330"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_named_error_can_be_returned_implicitly/facts/Facts.chibi",
+          "git_blob": "8ce3837d2fbfe73b55813de44d349952ab1f3c71"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_named_error_can_be_returned_implicitly/facts/SampleTests.chibi",
+          "git_blob": "40d7209c59535041d6a3329cb6f449b6ff129680"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_only_one_branch_checks/facts/Facts.chibi",
+          "git_blob": "9e84dbd4f611e49553141530bf336292ca000ec9"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_optional_pointer_aliases_are_inspected/facts/Facts.chibi",
+          "git_blob": "f37d3a53a37750b41a8c5224fa73fa00b4a7d102"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_optional_pointer_aliases_are_inspected/facts/SampleTests.chibi",
+          "git_blob": "931b3d3578bb2a9a390d60fd704207c06723f293"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_ordinary_optional_remains_ordinary/facts/Facts.chibi",
+          "git_blob": "8bf516988cdddf1cfec9e89897c6a8d9857fd089"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_ordinary_optional_remains_ordinary/facts/SampleTests.chibi",
+          "git_blob": "28e163bd4fa901b8c6da04f80e98ff491fe93e3d"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_overwrite_cannot_erase_obligation/facts/Facts.chibi",
+          "git_blob": "fc91088fc025c2aadd1cce65765110f31b0ad786"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_pointer_comparison_does_not_inspect_error/facts/Facts.chibi",
+          "git_blob": "d119b72a424a943a1e1b9e5e986f277243fd155f"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_pointer_join_cannot_revive_erased_alias_on_true_edg/facts/Facts.chibi",
+          "git_blob": "9eac063c7967c257d28bf6408e4503401287d1df"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_pointer_join_cannot_revive_erased_pointee_alias/facts/Facts.chibi",
+          "git_blob": "6eba7d5368401dcd5c471f155975d69a97ef8499"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_pointer_overwrite_cannot_erase_error/facts/Facts.chibi",
+          "git_blob": "28a28d6d09b79f402f3b2c93dc14de2dbf79ae4e"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_progress_remains_valid_with_error_present/facts/Facts.chibi",
+          "git_blob": "233bc625f8d878a8d636ca6bef2e0fef420b182d"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_progress_remains_valid_with_error_present/facts/SampleTests.chibi",
+          "git_blob": "065605522a64e2d4e8325ed80b4b27e88dc0fa8e"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_shadowed_member_accepts_its_own_presence_guard/facts/Facts.chibi",
+          "git_blob": "b450798659ed02590ace9546d0ed490009923211"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_shadowed_member_accepts_its_own_presence_guard/facts/SampleTests.chibi",
+          "git_blob": "cb0f692373d17dc10e2c357d07ca4f6ef7e6c1f3"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_shadowed_optional_is_a_different_binding/facts/Facts.chibi",
+          "git_blob": "d131133536866acd837e26c7faf7d6364f8d5a7e"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_sibling_assignment_does_not_acknowledge_error/facts/Facts.chibi",
+          "git_blob": "e778ec4d3d03d6073b7b61023077c70ec0c764aa"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_sibling_assignments_permit_actual_error_handling/facts/Facts.chibi",
+          "git_blob": "48a6169035c6645cc0ae1a41f2460e36ab5b6976"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_sibling_assignments_permit_actual_error_handling/facts/SampleTests.chibi",
+          "git_blob": "1aaae0a05115ded9b8f6d88ad38b1d0dcf8cde0a"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_success_projection_does_not_handle_error/facts/Facts.chibi",
+          "git_blob": "da8304e5c6eb22c76d9ad9a0ca29f530475bb00d"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_switch_candidate_can_acknowledge_error/facts/Facts.chibi",
+          "git_blob": "2dc132ba0257fee93b109d67f269306c9fccf555"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_switch_candidate_can_acknowledge_error/facts/SampleTests.chibi",
+          "git_blob": "2dfabbd68baf95faf190be1889c506430351f6dc"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_switch_candidate_cannot_drop_error/facts/Facts.chibi",
+          "git_blob": "051c39964066aec282f5eec59877644df72413d6"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_synchronous_argument_under_await_can_forward_error/facts/Facts.chibi",
+          "git_blob": "871830fc5660e3ec653f5983b549900a0074a75a"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_synchronous_argument_under_await_can_forward_error/facts/SampleTests.chibi",
+          "git_blob": "9ffb101015aa1b53ab639ae9f2a869f6fdde28a6"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_synchronous_argument_under_await_cannot_drop_error/facts/Facts.chibi",
+          "git_blob": "461f73b974d0b9230526e08bba6164c3ca220bcb"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_tuple_alias_sibling_assignment_does_not_acknowledge/facts/Facts.chibi",
+          "git_blob": "cf7363391dc78ab9e8edd7f9d895ee20b806599a"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_tuple_aliases_preserve_checking/facts/Facts.chibi",
+          "git_blob": "86e622fa1881076b729bedeeab2128881de10b22"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_tuple_aliases_preserve_checking/facts/SampleTests.chibi",
+          "git_blob": "35709b7caf2ad391a1c02d99202ad2f3f3285f17"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_unknown_marker_rejected/facts/Facts.chibi",
+          "git_blob": "1c8d405b49342942c0f893a6ca6dcc34d7c7c94b"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_unnamed_error_only_result_can_be_checked/facts/Facts.chibi",
+          "git_blob": "1615b016a7426ac822a7867c1a30b19f9b64373a"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_unnamed_error_only_result_can_be_checked/facts/SampleTests.chibi",
+          "git_blob": "3efad17c9ffb7d3eb28f5a5391dd53f924e6a3d0"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_unnamed_error_only_result_cannot_be_dropped/facts/Facts.chibi",
+          "git_blob": "7c6ff8b097ba9c8e89a53be119b22bd081efcab1"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_unused_error_local_is_ignored/facts/Facts.chibi",
+          "git_blob": "7a71148fc85e07747b607ea1deb9f6bd37801d90"
+        },
+        {
+          "path": "test/compiler/samples/fallible/fallible_unused_tuple_is_ignored/facts/Facts.chibi",
+          "git_blob": "230e03a0021f65b4533010d8832334a1ea5807a7"
+        },
+        {
+          "path": "test/compiler/samples/fallible/mixed_error_unions_retain_an_explicit_source_boundary/facts/Facts.chibi",
+          "git_blob": "f8b1b19b983f7ce67860a1211e8f1d8ca09f129a"
+        },
+        {
+          "path": "test/compiler/samples/fallible/old_function_error_marker_is_rejected/facts/Facts.chibi",
+          "git_blob": "592f35a1ea1b7aa4cac5374aefdeacfc550c20df"
+        },
+        {
+          "path": "test/compiler/samples/fallible/optional_condition_cannot_reuse_presence_before_a_direct_mut/facts/Facts.chibi",
+          "git_blob": "a752fc39fe0c0db45111debd664fcb48a066aa48"
+        },
+        {
+          "path": "test/compiler/samples/fallible/optional_condition_cannot_reuse_presence_before_an_alias_mut/facts/Facts.chibi",
+          "git_blob": "f83cce532463839fd19b2cbdbe03fbac9b2c55e0"
+        },
+        {
+          "path": "test/compiler/samples/fallible/optional_mutation_before_a_fresh_presence_guard_is_safe/facts/Facts.chibi",
+          "git_blob": "a5900bde9bbe243f5c3294efa134a6a5c571e894"
+        },
+        {
+          "path": "test/compiler/samples/fallible/optional_mutation_before_a_fresh_presence_guard_is_safe/facts/SampleTests.chibi",
+          "git_blob": "62b34c8ff8e901d505f246ea17e50d94ec52289e"
+        },
+        {
+          "path": "test/compiler/samples/fallible/ordinary_optional_async_result_retains_emitter_boundary/facts/Facts.chibi",
+          "git_blob": "50a932393732cb0526168d2bf97634286ccb4f6e"
+        },
+        {
+          "path": "test/compiler/samples/fallible/ordinary_optional_boolean_member_and_operand_reads_the_prese/facts/Facts.chibi",
+          "git_blob": "65a19c1c2ac7ec723294480b9e6a9a5e179a6d6b"
+        },
+        {
+          "path": "test/compiler/samples/fallible/ordinary_optional_boolean_member_and_operand_reads_the_prese/facts/SampleTests.chibi",
+          "git_blob": "2a038d369686d08364f10849df29fd08ef6c4506"
+        },
+        {
+          "path": "test/compiler/samples/fallible/ordinary_optional_boolean_member_nil_comparison_still_tests_/facts/Facts.chibi",
+          "git_blob": "c93577f1ae14580b5f9bad9d2fbd1467fbbbda62"
+        },
+        {
+          "path": "test/compiler/samples/fallible/ordinary_optional_boolean_member_nil_comparison_still_tests_/facts/SampleTests.chibi",
+          "git_blob": "1fa09ed0883c9cb8f570ffb930a813915efa17db"
+        },
+        {
+          "path": "test/compiler/samples/fallible/ordinary_optional_boolean_member_or_operand_reads_the_presen/facts/Facts.chibi",
+          "git_blob": "85af075fbea56cf044da0abbaccfffc7342bfbec"
+        },
+        {
+          "path": "test/compiler/samples/fallible/ordinary_optional_boolean_member_or_operand_reads_the_presen/facts/SampleTests.chibi",
+          "git_blob": "3d4ac89d875061664e1eeffc18639a1e36a388f2"
+        },
+        {
+          "path": "test/compiler/samples/fallible/ordinary_optional_negated_boolean_member_reads_the_present_p/facts/Facts.chibi",
+          "git_blob": "a038221d8f4bdd5f4012b2566bf430809de821b4"
+        },
+        {
+          "path": "test/compiler/samples/fallible/ordinary_optional_negated_boolean_member_reads_the_present_p/facts/SampleTests.chibi",
+          "git_blob": "28eab158f40534f9e33a1cbe12d0e6ff956783b3"
+        },
+        {
+          "path": "test/compiler/samples/fallible/ordinary_optional_nested_boolean_guard_reads_the_valid_paylo/facts/Facts.chibi",
+          "git_blob": "ee528f21b94447fb71ebb9c266aef25009e14f20"
+        },
+        {
+          "path": "test/compiler/samples/fallible/ordinary_optional_nested_boolean_guard_reads_the_valid_paylo/facts/SampleTests.chibi",
+          "git_blob": "006d5bea17cf3c44e2e137586995e5cf3643dab7"
+        },
+        {
+          "path": "test/compiler/samples/fallible/ordinary_optional_nested_boolean_member_keeps_its_payload_on/facts/Facts.chibi",
+          "git_blob": "0f7e5a097fae9e8caba3cb153ac38a0782673d95"
+        },
+        {
+          "path": "test/compiler/samples/fallible/ordinary_optional_nested_boolean_member_keeps_its_payload_on/facts/SampleTests.chibi",
+          "git_blob": "7315f26d6842c9ebb4fc460be71760b33f1ad5ad"
+        },
+        {
+          "path": "test/compiler/samples/fallible/ordinary_optional_unnamed_boolean_keeps_its_payload_on_false/facts/Facts.chibi",
+          "git_blob": "678c63303ed46a9b873c92116eb2301a541a9d4f"
+        },
+        {
+          "path": "test/compiler/samples/fallible/ordinary_optional_unnamed_boolean_keeps_its_payload_on_false/facts/SampleTests.chibi",
+          "git_blob": "74d817a1d83537a0888c2a6c858d482905d6741a"
+        },
+        {
+          "path": "test/compiler/samples/fallible/pointers_to_marked_errors_remain_ordinary_data/facts/Facts.chibi",
+          "git_blob": "0115e67e59900a9b8ceee876288a4d9ee03398a9"
+        },
+        {
+          "path": "test/compiler/samples/fallible/pointers_to_marked_errors_remain_ordinary_data/facts/SampleTests.chibi",
+          "git_blob": "10e8451fb648d4d5c4b6a69c616bc97c2b88d36f"
+        },
+        {
+          "path": "test/compiler/samples/fallible/required_marked_record_errors_cannot_be_dropped/facts/Facts.chibi",
+          "git_blob": "661ad7f7ef2143d7ab4c79e7d57ca7def8941913"
+        },
+        {
+          "path": "test/compiler/samples/fallible/required_marked_record_errors_retain_their_payload/facts/Facts.chibi",
+          "git_blob": "718a05dbe4e2ba64c71d3f5e8536e273418f426b"
+        },
+        {
+          "path": "test/compiler/samples/fallible/required_marked_record_errors_retain_their_payload/facts/SampleTests.chibi",
+          "git_blob": "77acc908d4ec38d46683bcd56786e6939c49ee35"
+        },
+        {
+          "path": "test/compiler/samples/fallible/required_marked_union_errors_can_be_inspected/facts/Facts.chibi",
+          "git_blob": "5a4bba4a59a54d487ff76f99de352b1cbf67ab49"
+        },
+        {
+          "path": "test/compiler/samples/fallible/required_marked_union_errors_can_be_inspected/facts/SampleTests.chibi",
+          "git_blob": "a2ea47c6bf2212434ab68737636b18ba35716722"
+        },
+        {
+          "path": "test/compiler/samples/fallible/required_marked_union_errors_cannot_be_dropped/facts/Facts.chibi",
+          "git_blob": "ed6d5c1715f729cdc4696fb0c1093476baae5cc1"
+        },
+        {
+          "path": "test/compiler/samples/fallible/structured_read_error_example_preserves_values_and_context/facts/Facts.chibi",
+          "git_blob": "1e17445d7dfa53652c1b9e237f53590bdd5d495b"
+        },
+        {
+          "path": "test/compiler/samples/fallible/structured_read_error_example_preserves_values_and_context/facts/SampleTests.chibi",
+          "git_blob": "e8b1413577ff1e2543dd3a234b17a8314fcfc25c"
+        }
+      ]
+    },
+    "imports": {
+      "original_log": "/private/tmp/chibi-native-survey-450/imports.log",
+      "original_log_sha256": "196d4e76eacbdced96a14e412fb4d344bff8427378bc7fd978d1d40fdcc7e13b",
+      "original_passed_names": [
+        "array_method_in_an_expression/facts.compile_error",
+        "array_methods/facts.Calls",
+        "boolean_compile_time_argument_cannot_use_shadowing_local/facts.compile_error",
+        "boolean_compile_time_argument_cannot_use_shadowing_parameter/facts.compile_error",
+        "built_results/facts.Calls",
+        "callable_capture_rejection/facts.compile_error",
+        "callable_capture_respects_lexical_scopes/facts.compile_error",
+        "callable_consumer_cannot_suspend/facts.compile_error",
+        "callable_inferred_result_rejects_contextual_widening/facts.compile_error",
+        "callable_invocation_cannot_inherit_target_defaults/facts.compile_error",
+        "callable_pattern_binding_cannot_escape_consequence/facts.compile_error",
+        "callable_pattern_bindings_shadow_enclosing_locals/facts.Calls",
+        "callable_signature_rejection/facts.compile_error",
+        "callable_single_result_names_do_not_change_signature/facts.Calls",
+        "compile_time_argument_cannot_use_shadowed_import_alias/facts.compile_error",
+        "compile_time_argument_cannot_use_shadowing_local/facts.compile_error",
+        "compile_time_argument_cannot_use_shadowing_parameter/facts.compile_error",
+        "compile_time_arguments_retain_lexical_constant_scope/facts.Calls",
+        "constants_run_authored_functions_at_compile_time/facts.Calls",
+        "exported_generic_functions/facts.Calls",
+        "floating_binary_constant_initializer_folds_to_f64/facts.Calls",
+        "floating_constant_cannot_become_integer_bits/facts.compile_error",
+        "floating_constant_cannot_wrap_into_integer_bits/facts.compile_error",
+        "floating_conversion_cannot_become_integer_bits/facts.compile_error",
+        "floating_shift_count_cannot_become_integer_bits/facts.compile_error",
+        "force_unwrap_of_nil_fails/facts.Calls",
+        "force_unwrap_reads_a_record_payload/facts.Calls",
+        "force_unwrap_reads_a_record_payload/facts.MissingFails",
+        "force_unwrap_takes_the_payload/facts.Calls",
+        "forwarded_callback_labels_survive_erased_and_reordered_argum/facts.ArgumentOrder",
+        "forwarded_callback_labels_survive_erased_and_reordered_argum/facts.Calls",
+        "forwarded_callbacks_preserve_sequence_values/facts.Calls",
+        "generic_records_specialize_per_application/facts.Calls",
+        "generic_specialization_identities_are_reused_across_document/facts.Calls",
+        "imports/facts.Calls",
+        "imports/facts.Records",
+        "inline_function_cannot_satisfy_scalar_parameter_without_temp/facts.compile_error",
+        "inline_pointer_parameter_shadows_enclosing_pointer_parameter/facts.Calls",
+        "kept_branches_cannot_share_an_alias/facts.compile_error",
+        "moved_values/facts.Calls",
+        "moved_values/facts.Records",
+        "named_result_ownership/facts.Calls",
+        "named_result_ownership/facts.Records",
+        "native_values/facts.Calls",
+        "non_escaping_callable_algorithms/facts.Calls",
+        "optional_coalescing_and_nil_comparisons/facts.Calls",
+        "optional_locals_become_absent_and_present_again/facts.Calls",
+        "optional_locals_start_absent_and_become_present/facts.Calls",
+        "optional_member_reads_a_field_or_nil/facts.Calls",
+        "optional_parameters_take_optionals_and_nil/facts.Calls",
+        "optional_results_wrap_values_and_return_nil/facts.Calls",
+        "plain_drops/facts.Calls",
+        "private_imported_constant/facts.compile_error",
+        "private_imported_constant_expression/facts.compile_error",
+        "private_imported_function/facts.compile_error",
+        "private_imported_map_value_type/facts.compile_error",
+        "private_imported_record_local/facts.compile_error",
+        "private_imported_record_parameter/facts.compile_error",
+        "private_imported_record_result/facts.compile_error",
+        "private_imported_union_constructor/facts.compile_error",
+        "private_imported_union_payload_type/facts.compile_error",
+        "private_imported_union_value/facts.compile_error",
+        "private_package_implementation/facts.Calls",
+        "private_package_implementation/facts.Records",
+        "returned_structs_with_array_fields_survive_collections/facts.Calls",
+        "returned_variants/facts.Calls",
+        "when_branch_import_is_invisible/facts.compile_error",
+        "when_keeps_the_declarations_a_constant_condition_selects/facts.Calls"
+      ],
+      "original_uncompiled_packages": [
+        "generic_collection_and_optional_values_preserve_ownership/facts"
+      ],
+      "source_files": [
+        {
+          "path": "test/compiler/samples/imports/array_method_in_an_expression/facts/Facts.chibi",
+          "git_blob": "fe2515d467ee313850243ff3f49efd344feeca05"
+        },
+        {
+          "path": "test/compiler/samples/imports/array_methods/facts/Facts.chibi",
+          "git_blob": "c74ffbc4dce3e7d61f97ec642f32a9fd8137d0d7"
+        },
+        {
+          "path": "test/compiler/samples/imports/array_methods/facts/SampleTests.chibi",
+          "git_blob": "97d3558f3f3743f7c95a9516dfa4c5db24314d6c"
+        },
+        {
+          "path": "test/compiler/samples/imports/boolean_compile_time_argument_cannot_use_shadowing_local/facts/Facts.chibi",
+          "git_blob": "4f78c5e9edf878d3ba181a13ca2ce844df8e6533"
+        },
+        {
+          "path": "test/compiler/samples/imports/boolean_compile_time_argument_cannot_use_shadowing_parameter/facts/Facts.chibi",
+          "git_blob": "e992b87587c28d4c28cb282e11293f76b892eccd"
+        },
+        {
+          "path": "test/compiler/samples/imports/built_results/facts/Facts.chibi",
+          "git_blob": "1db3aa3b7c527cb81793be6d17d3453704f5ba01"
+        },
+        {
+          "path": "test/compiler/samples/imports/built_results/facts/SampleTests.chibi",
+          "git_blob": "c8b0ef42dc4a5d6b3b107c67de17dad731ddf467"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_capture_rejection/facts/Facts.chibi",
+          "git_blob": "255121ba4504cd01644078da6fe198cb94968e0b"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_capture_rejection/lib/Lib.chibi",
+          "git_blob": "f09f39c7b1cf3369b5db4c19570a4af82c9b7ea7"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_capture_respects_lexical_scopes/facts/Facts.chibi",
+          "git_blob": "eff1fd5a1d2365fce70a29b2c66ae193968e8ecf"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_capture_respects_lexical_scopes/lib/Lib.chibi",
+          "git_blob": "a174476b7c153f8e36bb00526441794b5f851664"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_consumer_cannot_suspend/facts/Facts.chibi",
+          "git_blob": "2ceaf045a206ee6b61c0c973a8912970f26ae8b0"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_consumer_cannot_suspend/lib/Lib.chibi",
+          "git_blob": "caae063099d20a83de4ad23e6dd7687460757962"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_inferred_result_rejects_contextual_widening/facts/Facts.chibi",
+          "git_blob": "6cf679488c6151cc5d08116119ba1d218833930c"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_inferred_result_rejects_contextual_widening/lib/Lib.chibi",
+          "git_blob": "8ea4499bb3c41f8f9d96e3ba49df10d94682f41b"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_invocation_cannot_inherit_target_defaults/facts/Facts.chibi",
+          "git_blob": "be0e1385e518c917a849f7ef2e6546b28f411d0c"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_invocation_cannot_inherit_target_defaults/lib/Lib.chibi",
+          "git_blob": "7971e2f3dcb39fe8c3a84501d54fe8ac1c47bcbe"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_pattern_binding_cannot_escape_consequence/facts/Facts.chibi",
+          "git_blob": "cb4fe4c0bb83b3b205b0dfa17567a6458844c186"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_pattern_binding_cannot_escape_consequence/lib/Lib.chibi",
+          "git_blob": "a174476b7c153f8e36bb00526441794b5f851664"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_pattern_bindings_shadow_enclosing_locals/facts/Facts.chibi",
+          "git_blob": "4597b3f635eb205c85ef4cca7eb47baf73f62b30"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_pattern_bindings_shadow_enclosing_locals/facts/SampleTests.chibi",
+          "git_blob": "b203dcdec36513885e5ec349683aec6c3673ed63"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_pattern_bindings_shadow_enclosing_locals/lib/Lib.chibi",
+          "git_blob": "a174476b7c153f8e36bb00526441794b5f851664"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_signature_rejection/facts/Facts.chibi",
+          "git_blob": "24cea5213376bad239c36e3af4ed7c71a9e5cadc"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_signature_rejection/lib/Lib.chibi",
+          "git_blob": "f09f39c7b1cf3369b5db4c19570a4af82c9b7ea7"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_single_result_names_do_not_change_signature/facts/Facts.chibi",
+          "git_blob": "acbe2c962891e0ef63da7c0f069c7e211f462e18"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_single_result_names_do_not_change_signature/facts/SampleTests.chibi",
+          "git_blob": "781ce7a9bcf7733a92f34d4efe8df01b69c7de58"
+        },
+        {
+          "path": "test/compiler/samples/imports/callable_single_result_names_do_not_change_signature/lib/Lib.chibi",
+          "git_blob": "4f5441d3258d78f663a8bebfc7d0bdcc5bbce61f"
+        },
+        {
+          "path": "test/compiler/samples/imports/compile_time_argument_cannot_use_shadowed_import_alias/facts/Facts.chibi",
+          "git_blob": "bf0543b1d2424598ff348f4c736d3fb92dd8169c"
+        },
+        {
+          "path": "test/compiler/samples/imports/compile_time_argument_cannot_use_shadowed_import_alias/lib/Lib.chibi",
+          "git_blob": "24151bbda26d87c510abb2127986a007265c329b"
+        },
+        {
+          "path": "test/compiler/samples/imports/compile_time_argument_cannot_use_shadowing_local/facts/Facts.chibi",
+          "git_blob": "eee75dc86e5f361f5d73ecf39d80b70d4c129715"
+        },
+        {
+          "path": "test/compiler/samples/imports/compile_time_argument_cannot_use_shadowing_parameter/facts/Facts.chibi",
+          "git_blob": "59ec6a633fde9dd36e429e5e83c5504fb7ea93f4"
+        },
+        {
+          "path": "test/compiler/samples/imports/compile_time_arguments_retain_lexical_constant_scope/facts/Facts.chibi",
+          "git_blob": "5fa2169aead8a40874cfa6af64d63147a8e3acdd"
+        },
+        {
+          "path": "test/compiler/samples/imports/compile_time_arguments_retain_lexical_constant_scope/facts/SampleTests.chibi",
+          "git_blob": "0de61ea17f591b75b2484776364ff96d80e8ef32"
+        },
+        {
+          "path": "test/compiler/samples/imports/compile_time_arguments_retain_lexical_constant_scope/lib/Lib.chibi",
+          "git_blob": "bd12981d8eb75195da735d689e3ab8dd80f2df7b"
+        },
+        {
+          "path": "test/compiler/samples/imports/constants_run_authored_functions_at_compile_time/facts/Facts.chibi",
+          "git_blob": "721c6e64f0287dcfb753d62e9d8b9210542e43c2"
+        },
+        {
+          "path": "test/compiler/samples/imports/constants_run_authored_functions_at_compile_time/facts/SampleTests.chibi",
+          "git_blob": "e8d2d085b84d401157913c6d4300cf113bcf9412"
+        },
+        {
+          "path": "test/compiler/samples/imports/exported_generic_functions/facts/Facts.chibi",
+          "git_blob": "fbec7343718c44ade119e1e0ba66d2379d79258c"
+        },
+        {
+          "path": "test/compiler/samples/imports/exported_generic_functions/facts/SampleTests.chibi",
+          "git_blob": "76793070695c062ec668c71a2e58e90b0abdb958"
+        },
+        {
+          "path": "test/compiler/samples/imports/exported_generic_functions/lib/Lib.chibi",
+          "git_blob": "22e882c562b992b928906940e41ab16c57846dcc"
+        },
+        {
+          "path": "test/compiler/samples/imports/floating_binary_constant_initializer_folds_to_f64/facts/Facts.chibi",
+          "git_blob": "49b5727cddecb55c770d04a4fef7a60330b37270"
+        },
+        {
+          "path": "test/compiler/samples/imports/floating_binary_constant_initializer_folds_to_f64/facts/SampleTests.chibi",
+          "git_blob": "76d34597fa6c64ac487a7596d7186bf021a42e8c"
+        },
+        {
+          "path": "test/compiler/samples/imports/floating_constant_cannot_become_integer_bits/facts/Facts.chibi",
+          "git_blob": "2e14a9eb5d16c7843973d42e0f8d6dd22b727870"
+        },
+        {
+          "path": "test/compiler/samples/imports/floating_constant_cannot_wrap_into_integer_bits/facts/Facts.chibi",
+          "git_blob": "6c23b20370fb8d9d01f80bab125f53d979bee473"
+        },
+        {
+          "path": "test/compiler/samples/imports/floating_conversion_cannot_become_integer_bits/facts/Facts.chibi",
+          "git_blob": "66730c741bff2de1c1288e23c4f414bf2ffaae3e"
+        },
+        {
+          "path": "test/compiler/samples/imports/floating_shift_count_cannot_become_integer_bits/facts/Facts.chibi",
+          "git_blob": "7353b8412e3118cf890ca43a93be7070295841e1"
+        },
+        {
+          "path": "test/compiler/samples/imports/force_unwrap_of_nil_fails/facts/Facts.chibi",
+          "git_blob": "49f0bba9b6202598eb222f0e740db71f189a3baa"
+        },
+        {
+          "path": "test/compiler/samples/imports/force_unwrap_of_nil_fails/facts/SampleTests.chibi",
+          "git_blob": "12ae73f579e6bb2bee77aa588d2543dfeca7f560"
+        },
+        {
+          "path": "test/compiler/samples/imports/force_unwrap_reads_a_record_payload/facts/Facts.chibi",
+          "git_blob": "1aedb5611bea5c8b19d667ae7c4f4fc216ceddf5"
+        },
+        {
+          "path": "test/compiler/samples/imports/force_unwrap_reads_a_record_payload/facts/SampleTests.chibi",
+          "git_blob": "2bd6d1677e9212512b3d6eb1c67d861fc6f3f4e9"
+        },
+        {
+          "path": "test/compiler/samples/imports/force_unwrap_takes_the_payload/facts/Facts.chibi",
+          "git_blob": "53eb0f895c328d5ced6455ba987b33c2af67ae7d"
+        },
+        {
+          "path": "test/compiler/samples/imports/force_unwrap_takes_the_payload/facts/SampleTests.chibi",
+          "git_blob": "b39d79dc0b988d2c904d788489aecb42bd6d7229"
+        },
+        {
+          "path": "test/compiler/samples/imports/forwarded_callback_labels_survive_erased_and_reordered_argum/facts/Facts.chibi",
+          "git_blob": "128005ff842ed4ba3b7134177b9c0a6b5f375f88"
+        },
+        {
+          "path": "test/compiler/samples/imports/forwarded_callback_labels_survive_erased_and_reordered_argum/facts/Ordering.chibi",
+          "git_blob": "f088c4a0fb73266d70bbdafd8d409bebfedeb1cd"
+        },
+        {
+          "path": "test/compiler/samples/imports/forwarded_callback_labels_survive_erased_and_reordered_argum/facts/SampleTests.chibi",
+          "git_blob": "75cafa89b5829faf01734c0d28c3cab4b953d2a1"
+        },
+        {
+          "path": "test/compiler/samples/imports/forwarded_callback_labels_survive_erased_and_reordered_argum/lib/Lib.chibi",
+          "git_blob": "457596f303d85184277e68b8e42bc38eafc7d174"
+        },
+        {
+          "path": "test/compiler/samples/imports/forwarded_callbacks_preserve_sequence_values/facts/Facts.chibi",
+          "git_blob": "6113f58bb4c5b650f5d6c8140e93162f5a0e7d47"
+        },
+        {
+          "path": "test/compiler/samples/imports/forwarded_callbacks_preserve_sequence_values/facts/SampleTests.chibi",
+          "git_blob": "d49ddec639bdfa2de3b3491c05ac7c28378c13e0"
+        },
+        {
+          "path": "test/compiler/samples/imports/forwarded_callbacks_preserve_sequence_values/lib/Lib.chibi",
+          "git_blob": "3303db7ecb276befc678102c06264324189aa259"
+        },
+        {
+          "path": "test/compiler/samples/imports/generic_collection_and_optional_values_preserve_ownership/facts/Facts.chibi",
+          "git_blob": "b3b5da5d5aa95eab74c5fbc5f8f1a0a2c756a5b8"
+        },
+        {
+          "path": "test/compiler/samples/imports/generic_collection_and_optional_values_preserve_ownership/facts/SampleTests.chibi",
+          "git_blob": "c6b0849b2fbec10da217847933784b14a8a08a9e"
+        },
+        {
+          "path": "test/compiler/samples/imports/generic_collection_and_optional_values_preserve_ownership/lib/Lib.chibi",
+          "git_blob": "d2d8d97887e3444adfe5ce9f3bff8fc1dc92598c"
+        },
+        {
+          "path": "test/compiler/samples/imports/generic_records_specialize_per_application/facts/Facts.chibi",
+          "git_blob": "8cc45a517751886c6d9138d06d0caa290e44f82f"
+        },
+        {
+          "path": "test/compiler/samples/imports/generic_records_specialize_per_application/facts/SampleTests.chibi",
+          "git_blob": "1f854aaafbf61bcc6a6d23b389da84274fa4254a"
+        },
+        {
+          "path": "test/compiler/samples/imports/generic_specialization_identities_are_reused_across_document/facts/Facts.chibi",
+          "git_blob": "a57d85149432b95862fa442c23c9cdb2e17e8bc0"
+        },
+        {
+          "path": "test/compiler/samples/imports/generic_specialization_identities_are_reused_across_document/facts/More.chibi",
+          "git_blob": "1a6094de4943ab6f5616ba8b2869198381454d46"
+        },
+        {
+          "path": "test/compiler/samples/imports/generic_specialization_identities_are_reused_across_document/facts/SampleTests.chibi",
+          "git_blob": "3ca50bfd8f48e99ac928b699f33b65a682ec5ad7"
+        },
+        {
+          "path": "test/compiler/samples/imports/generic_specialization_identities_are_reused_across_document/lib/Lib.chibi",
+          "git_blob": "8563d0967aff426f76473e9d025bca4ccf0df42b"
+        },
+        {
+          "path": "test/compiler/samples/imports/imports/facts/Facts.chibi",
+          "git_blob": "d303f766acbff1c1e99b344d61fb59f12774b889"
+        },
+        {
+          "path": "test/compiler/samples/imports/imports/facts/SampleTests.chibi",
+          "git_blob": "1725f195240c863eaa33c29c5e3d12521253a88f"
+        },
+        {
+          "path": "test/compiler/samples/imports/imports/lib/Lib.chibi",
+          "git_blob": "010cce58fe7afc376eca0a01e1a494682812ee50"
+        },
+        {
+          "path": "test/compiler/samples/imports/inline_function_cannot_satisfy_scalar_parameter_without_temp/facts/Facts.chibi",
+          "git_blob": "8a9bbb5d303165eec862aa2472d8a1f466c6c600"
+        },
+        {
+          "path": "test/compiler/samples/imports/inline_pointer_parameter_shadows_enclosing_pointer_parameter/facts/Facts.chibi",
+          "git_blob": "167d6f9540dc13b824f0a068dfba067b8f460533"
+        },
+        {
+          "path": "test/compiler/samples/imports/inline_pointer_parameter_shadows_enclosing_pointer_parameter/facts/SampleTests.chibi",
+          "git_blob": "30b32d345c8660cb16fa714377a7791fa352fcaa"
+        },
+        {
+          "path": "test/compiler/samples/imports/inline_pointer_parameter_shadows_enclosing_pointer_parameter/lib/Lib.chibi",
+          "git_blob": "f75fb1e35d5082cb3a53004b6b1568da1b5f6f1c"
+        },
+        {
+          "path": "test/compiler/samples/imports/kept_branches_cannot_share_an_alias/facts/Facts.chibi",
+          "git_blob": "c8e64ce2ac5f650371455acac5e8963f23d8a56e"
+        },
+        {
+          "path": "test/compiler/samples/imports/moved_values/facts/Facts.chibi",
+          "git_blob": "eb63029b514e995db336578d7b39f13a9c3dc79d"
+        },
+        {
+          "path": "test/compiler/samples/imports/moved_values/facts/SampleTests.chibi",
+          "git_blob": "d7f567dad537f7e8ad174a82c813870341ba3239"
+        },
+        {
+          "path": "test/compiler/samples/imports/named_result_ownership/facts/Facts.chibi",
+          "git_blob": "485c99311d95f34a785076ab4037b55c14e111c2"
+        },
+        {
+          "path": "test/compiler/samples/imports/named_result_ownership/facts/SampleTests.chibi",
+          "git_blob": "285e0ed92ee16e7d2ad5749bfcf95fd6e19e9226"
+        },
+        {
+          "path": "test/compiler/samples/imports/native_values/facts/Facts.chibi",
+          "git_blob": "dfefd44235be73facbe6a1c54dc624849b3b6ae4"
+        },
+        {
+          "path": "test/compiler/samples/imports/native_values/facts/SampleTests.chibi",
+          "git_blob": "b9f22c79ef721159a6a16e117030abfd987f2c6f"
+        },
+        {
+          "path": "test/compiler/samples/imports/non_escaping_callable_algorithms/facts/Facts.chibi",
+          "git_blob": "700dc7d575f86f98a5458dd1053343fa7bb7c3b0"
+        },
+        {
+          "path": "test/compiler/samples/imports/non_escaping_callable_algorithms/facts/SampleTests.chibi",
+          "git_blob": "3b0f2efdf03ba5abd9528010e364d0d7dd215942"
+        },
+        {
+          "path": "test/compiler/samples/imports/non_escaping_callable_algorithms/lib/Lib.chibi",
+          "git_blob": "3837410b9b93d0eefc7d7773d829aa3a44bbbe77"
+        },
+        {
+          "path": "test/compiler/samples/imports/optional_coalescing_and_nil_comparisons/facts/Facts.chibi",
+          "git_blob": "1f9a93b3c3c735bb32af67b9d9592419033ffd60"
+        },
+        {
+          "path": "test/compiler/samples/imports/optional_coalescing_and_nil_comparisons/facts/SampleTests.chibi",
+          "git_blob": "dd3fb0e97662820f8ea96154f6ed149c5db4367c"
+        },
+        {
+          "path": "test/compiler/samples/imports/optional_locals_become_absent_and_present_again/facts/Facts.chibi",
+          "git_blob": "a33e5de4fa8681764faa972fa70c57035e37af75"
+        },
+        {
+          "path": "test/compiler/samples/imports/optional_locals_become_absent_and_present_again/facts/SampleTests.chibi",
+          "git_blob": "bb3d7ce2959d4d1e41fed440aa5eb8a79b408754"
+        },
+        {
+          "path": "test/compiler/samples/imports/optional_locals_start_absent_and_become_present/facts/Facts.chibi",
+          "git_blob": "e40733d03fe667e7a98a6fe32d2dc211561af9a8"
+        },
+        {
+          "path": "test/compiler/samples/imports/optional_locals_start_absent_and_become_present/facts/SampleTests.chibi",
+          "git_blob": "60711ca11838ad9d7242e6b85fd4993aa7c417ea"
+        },
+        {
+          "path": "test/compiler/samples/imports/optional_member_reads_a_field_or_nil/facts/Facts.chibi",
+          "git_blob": "765a7e3ae81cd2536e46c1b0e267e93ae8520a5e"
+        },
+        {
+          "path": "test/compiler/samples/imports/optional_member_reads_a_field_or_nil/facts/SampleTests.chibi",
+          "git_blob": "f6469ffc2392ecfc06cd85a7efa64d9204686fa4"
+        },
+        {
+          "path": "test/compiler/samples/imports/optional_parameters_take_optionals_and_nil/facts/Facts.chibi",
+          "git_blob": "f270576041355ad7ee5db34e7f5d4b6fb154f32e"
+        },
+        {
+          "path": "test/compiler/samples/imports/optional_parameters_take_optionals_and_nil/facts/SampleTests.chibi",
+          "git_blob": "86e130ce26f652c00a39bed8d59f81658fd63e69"
+        },
+        {
+          "path": "test/compiler/samples/imports/optional_results_wrap_values_and_return_nil/facts/Facts.chibi",
+          "git_blob": "b2ebe966af53a0629ced80c5a3eb00e3cdce45d1"
+        },
+        {
+          "path": "test/compiler/samples/imports/optional_results_wrap_values_and_return_nil/facts/SampleTests.chibi",
+          "git_blob": "1295210a83484dea65924380e23e9027d1a5c511"
+        },
+        {
+          "path": "test/compiler/samples/imports/plain_drops/facts/Facts.chibi",
+          "git_blob": "a2ccd489a436e143c9e549de3637a490149f5615"
+        },
+        {
+          "path": "test/compiler/samples/imports/plain_drops/facts/SampleTests.chibi",
+          "git_blob": "f4ae03e4392cf509883810807afbf31d627113fe"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_constant/facts/Facts.chibi",
+          "git_blob": "b6f337eda90b740b6e8cff0756c01c45a4a85f20"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_constant/lib/Lib.chibi",
+          "git_blob": "078bdd3082520469ca142733a70cf51ca6a81887"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_constant_expression/facts/Facts.chibi",
+          "git_blob": "cc908fec0474cdde6f4800fcb2bb8693e0e68ac2"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_constant_expression/lib/Lib.chibi",
+          "git_blob": "078bdd3082520469ca142733a70cf51ca6a81887"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_function/facts/Facts.chibi",
+          "git_blob": "cbcf66254dda2eaa4f557f94bf765a367b9b68d2"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_function/lib/Lib.chibi",
+          "git_blob": "8d61e4b5ab9d2e9d5b64a27e4bc406ac66b61d33"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_map_value_type/facts/Facts.chibi",
+          "git_blob": "d88a415f3a0123604206101a4b817a0bb9004b4d"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_map_value_type/lib/Lib.chibi",
+          "git_blob": "7ed53bf8a4701b7da931b42e3fe6c8f5179238a1"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_record_local/facts/Facts.chibi",
+          "git_blob": "e732d5c4ff93e318c4bffc44727bb38024532c01"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_record_local/lib/Lib.chibi",
+          "git_blob": "de8787fff761320055f5cb747c1d93bcfcf9aa49"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_record_parameter/facts/Facts.chibi",
+          "git_blob": "8784eee20543a623ea90c8ed43a547f2b0445ceb"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_record_parameter/lib/Lib.chibi",
+          "git_blob": "7ed53bf8a4701b7da931b42e3fe6c8f5179238a1"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_record_result/facts/Facts.chibi",
+          "git_blob": "8c7de2c402e8eb3a60f145b5f2c807edf37c042c"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_record_result/lib/Lib.chibi",
+          "git_blob": "de8787fff761320055f5cb747c1d93bcfcf9aa49"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_union_constructor/facts/Facts.chibi",
+          "git_blob": "e146db4cf24a9383a781d7dd532c4a9ca3010c8f"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_union_constructor/lib/Lib.chibi",
+          "git_blob": "309a43faf0996306f83a1084830d00395269152c"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_union_payload_type/facts/Facts.chibi",
+          "git_blob": "8031652546f36e0ed8cdc8226246b9b21c8c7720"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_union_payload_type/lib/Lib.chibi",
+          "git_blob": "7ed53bf8a4701b7da931b42e3fe6c8f5179238a1"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_union_value/facts/Facts.chibi",
+          "git_blob": "560d6b8c75d9a113dd8adcc129fe04fe615c5a98"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_imported_union_value/lib/Lib.chibi",
+          "git_blob": "309a43faf0996306f83a1084830d00395269152c"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_package_implementation/facts/Facts.chibi",
+          "git_blob": "49d169433ef0f36a2b36ae57bf4414a07d570ccc"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_package_implementation/facts/More.chibi",
+          "git_blob": "1fd2d925e083e00dc4dacf8db4c5edd7e7d005a1"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_package_implementation/facts/SampleTests.chibi",
+          "git_blob": "a85aeb6077dff5382619a02b9e8303dcdb628d03"
+        },
+        {
+          "path": "test/compiler/samples/imports/private_package_implementation/lib/Lib.chibi",
+          "git_blob": "ed1475c65d7232816163b51db2cd21eca0220385"
+        },
+        {
+          "path": "test/compiler/samples/imports/returned_structs_with_array_fields_survive_collections/facts/Facts.chibi",
+          "git_blob": "2afa21a8716def1894c5393f5474262b0f84302c"
+        },
+        {
+          "path": "test/compiler/samples/imports/returned_structs_with_array_fields_survive_collections/facts/SampleTests.chibi",
+          "git_blob": "259f621566628fc82729226787165d71a8df4e8a"
+        },
+        {
+          "path": "test/compiler/samples/imports/returned_variants/facts/Facts.chibi",
+          "git_blob": "203a47a64736144895975bc73b084f5219986c6a"
+        },
+        {
+          "path": "test/compiler/samples/imports/returned_variants/facts/SampleTests.chibi",
+          "git_blob": "cc3277d4efd88882e0054633ce3dcdfdb3e0bf47"
+        },
+        {
+          "path": "test/compiler/samples/imports/when_branch_import_is_invisible/facts/Facts.chibi",
+          "git_blob": "6b7a9fc5ce6cad0c5bede08df77f67d15b56dacb"
+        },
+        {
+          "path": "test/compiler/samples/imports/when_keeps_the_declarations_a_constant_condition_selects/facts/Facts.chibi",
+          "git_blob": "b4a7806356441809be0a3466023b4a188829cb09"
+        },
+        {
+          "path": "test/compiler/samples/imports/when_keeps_the_declarations_a_constant_condition_selects/facts/SampleTests.chibi",
+          "git_blob": "c739777aa1351f05233c2508121f54f040864213"
+        }
+      ]
+    },
+    "math": {
+      "original_log": "/private/tmp/chibi-native-survey-450/math.log",
+      "original_log_sha256": "47883f26376884b0aab56bdc889852bd05f688047c2d8b582b8aace375be1ec7",
+      "original_passed_names": [
+        "constant_number_conversion_of_f64_overflows_to_infinity/facts.Calls",
+        "constant_number_conversion_of_f64_rounds_halfway_values_to_even/facts.Calls",
+        "explicit_number_conversion_narrows_f64_in_every_position/facts.Calls",
+        "float_literals_take_the_number_type_from_their_context/facts.Calls",
+        "math_absolute_bounds_and_clamp_broadcast_scalar_arguments/facts.Calls",
+        "math_binary_left_operand_is_captured_before_a_mutating_rhs/facts.Calls",
+        "math_broadcasts_preserve_subtraction_and_division_order/facts.Calls",
+        "math_column_matrix_products_do_not_commute/facts.Calls",
+        "math_compound_swizzles_preserve_untouched_components/facts.Calls",
+        "math_compound_swizzles_snapshot_selected_fields_and_retain_r/facts.Calls",
+        "math_constructor_arguments_are_captured_before_later_mutatio/facts.Calls",
+        "math_constructor_refuses_excess_components/facts.compile_error",
+        "math_constructor_refuses_implicit_f64_narrowing/facts.compile_error",
+        "math_constructor_splats_concatenation_and_function_returns/facts.Calls",
+        "math_dot_and_cross_have_independent_scalar_and_handedness_an/facts.Calls",
+        "math_explicit_f64_narrowing_rounds_at_f32_width/facts.Calls",
+        "math_exponential_and_logarithm_functions_keep_f32_results/facts.Calls",
+        "math_floor_ceil_and_fract_agree_on_negative_fractions/facts.Calls",
+        "math_function_arguments_are_captured_before_later_mutation/facts.Calls",
+        "math_homogeneous_matrix_columns_carry_translations/facts.Calls",
+        "math_length_and_distance_use_three_four_five_triangles/facts.Calls",
+        "math_matrix_component_multiplication_is_distinct_from_compos/facts.Calls",
+        "math_matrix_representation_stays_private/facts.compile_error",
+        "math_mix_accepts_scalar_and_component_weights/facts.Calls",
+        "math_modulo_follows_divisor_sign_and_powers_preserve_order/facts.Calls",
+        "math_nested_swizzles_compose_their_destination_components/facts.Calls",
+        "math_normalization_handles_zero_and_large_finite_directions/facts.Calls",
+        "math_quaternion_conjugation_negates_the_imaginary_components/facts.Calls",
+        "math_quaternion_hamilton_products_retain_their_order/facts.Calls",
+        "math_quaternion_rotation_waits_for_recoverable_results/facts.compile_error",
+        "math_read_swizzles_refuse_mixed_component_alphabets/facts.compile_error",
+        "math_reflect_and_refract_distinguish_total_internal_reflecti/facts.Calls",
+        "math_sign_saturate_and_round_use_scalar_component_rules/facts.Calls",
+        "math_smoothstep_clamps_values_outside_its_edges/facts.Calls",
+        "math_step_takes_edge_before_value_and_includes_the_edge/facts.Calls",
+        "math_swizzle_receiver_and_rhs_execute_once_in_source_order/facts.Calls",
+        "math_swizzle_writes_snapshot_aliased_values/facts.Calls",
+        "math_swizzles_write_through_pointers_and_array_elements/facts.Calls",
+        "math_transpose_and_determinant_use_column_order/facts.Calls",
+        "math_trigonometric_functions_use_radians_and_atan2_y_x_order/facts.Calls",
+        "math_unary_and_matrix_arithmetic_retain_their_shapes/facts.Calls",
+        "math_vector_matrix_multiplication_states_its_convention/facts.compile_error",
+        "math_vector_operands_require_the_same_width/facts.compile_error",
+        "math_writable_swizzles_refuse_duplicate_destinations/facts.compile_error",
+        "narrowing_an_f64_constant_to_a_number_constant_needs_a_conversion/facts.compile_error",
+        "narrowing_f64_to_number_needs_an_explicit_conversion_in_a_declaration/facts.compile_error",
+        "narrowing_f64_to_number_needs_an_explicit_conversion_in_a_return/facts.compile_error",
+        "narrowing_f64_to_number_needs_an_explicit_conversion_in_an_argument/facts.compile_error",
+        "narrowing_f64_to_number_needs_an_explicit_conversion_in_an_assignment/facts.compile_error",
+        "number_constants_fold_through_signs_parentheses_and_arithmetic/facts.Calls",
+        "number_constants_widen_to_f64_exactly/facts.Calls",
+        "number_conversion_of_an_out_of_range_literal_is_rejected_in_a_body/facts.compile_error",
+        "number_conversion_of_an_out_of_range_literal_is_rejected_in_a_constant/facts.compile_error",
+        "number_conversion_of_an_out_of_range_parenthesized_literal_is_rejected/facts.compile_error",
+        "number_conversion_of_an_out_of_range_signed_literal_is_rejected/facts.compile_error",
+        "number_conversion_of_f64_overflows_to_infinity_and_keeps_nan_and_negative_zero/facts.Calls",
+        "number_conversion_of_f64_rounds_an_odd_halfway_value_up_to_even/facts.Calls",
+        "number_widens_to_f64_implicitly_in_every_position/facts.Calls",
+        "returning_an_f64_constant_as_number_needs_an_explicit_conversion/facts.compile_error"
+      ],
+      "original_uncompiled_packages": [],
+      "source_files": [
+        {
+          "path": "test/compiler/samples/math/constant_number_conversion_of_f64_overflows_to_infinity/facts/Facts.chibi",
+          "git_blob": "e7c49a8d47b1a317f6578c90c3b7a93848bfb465"
+        },
+        {
+          "path": "test/compiler/samples/math/constant_number_conversion_of_f64_overflows_to_infinity/facts/SampleTests.chibi",
+          "git_blob": "c2e9db0d3f9bd2f973a3b3bd237ebf44e5cf8e73"
+        },
+        {
+          "path": "test/compiler/samples/math/constant_number_conversion_of_f64_rounds_halfway_values_to_even/facts/Facts.chibi",
+          "git_blob": "e4f1439956fc22ea79b1e45c85379a9afc219f01"
+        },
+        {
+          "path": "test/compiler/samples/math/constant_number_conversion_of_f64_rounds_halfway_values_to_even/facts/SampleTests.chibi",
+          "git_blob": "bd0093a9f792ed62b11dfdf1f738e0bee6b7c016"
+        },
+        {
+          "path": "test/compiler/samples/math/explicit_number_conversion_narrows_f64_in_every_position/facts/Facts.chibi",
+          "git_blob": "b49baf2a6977c97b6e71f6a198e14e8f08bf9679"
+        },
+        {
+          "path": "test/compiler/samples/math/explicit_number_conversion_narrows_f64_in_every_position/facts/SampleTests.chibi",
+          "git_blob": "ddaf251b88828dfdb2723ddaf31ea1e78c3b88f6"
+        },
+        {
+          "path": "test/compiler/samples/math/float_literals_take_the_number_type_from_their_context/facts/Facts.chibi",
+          "git_blob": "b7c8dd7b5be12a84a316f901a042bdb4df4c994f"
+        },
+        {
+          "path": "test/compiler/samples/math/float_literals_take_the_number_type_from_their_context/facts/SampleTests.chibi",
+          "git_blob": "aea85249f7e03926d71a20440d02d6b2b5d3a751"
+        },
+        {
+          "path": "test/compiler/samples/math/math_absolute_bounds_and_clamp_broadcast_scalar_arguments/facts/Facts.chibi",
+          "git_blob": "cb2581aa88767212c37320ab948a3312b11a8553"
+        },
+        {
+          "path": "test/compiler/samples/math/math_absolute_bounds_and_clamp_broadcast_scalar_arguments/facts/SampleTests.chibi",
+          "git_blob": "8ddc19260b23bd836ac79b3f1b58be2cda41db90"
+        },
+        {
+          "path": "test/compiler/samples/math/math_binary_left_operand_is_captured_before_a_mutating_rhs/facts/Facts.chibi",
+          "git_blob": "309e40c17e7da7a780497df81c8e12a2aafe0e54"
+        },
+        {
+          "path": "test/compiler/samples/math/math_binary_left_operand_is_captured_before_a_mutating_rhs/facts/SampleTests.chibi",
+          "git_blob": "ff913817bbef4dddcd16ab8796d4cc5c71da82be"
+        },
+        {
+          "path": "test/compiler/samples/math/math_broadcasts_preserve_subtraction_and_division_order/facts/Facts.chibi",
+          "git_blob": "c77eea576ad04d66ddda0aa062e5e0c605a73941"
+        },
+        {
+          "path": "test/compiler/samples/math/math_broadcasts_preserve_subtraction_and_division_order/facts/SampleTests.chibi",
+          "git_blob": "7d42fbf9982ff174290b083c9cc1d08e4a696003"
+        },
+        {
+          "path": "test/compiler/samples/math/math_column_matrix_products_do_not_commute/facts/Facts.chibi",
+          "git_blob": "66e69b5decd1a7d4b5573e679d743fb5611ab9c3"
+        },
+        {
+          "path": "test/compiler/samples/math/math_column_matrix_products_do_not_commute/facts/SampleTests.chibi",
+          "git_blob": "129d6ccd9518fcc81ed810fd0d5ed58b9e1108c3"
+        },
+        {
+          "path": "test/compiler/samples/math/math_compound_swizzles_preserve_untouched_components/facts/Facts.chibi",
+          "git_blob": "111405aaa34d0cd4618165d4a3ffb9be0032ebe4"
+        },
+        {
+          "path": "test/compiler/samples/math/math_compound_swizzles_preserve_untouched_components/facts/SampleTests.chibi",
+          "git_blob": "18580b3b1d23fc16f7a389ff4b98470026bf51a0"
+        },
+        {
+          "path": "test/compiler/samples/math/math_compound_swizzles_snapshot_selected_fields_and_retain_r/facts/Facts.chibi",
+          "git_blob": "e7458d67ea63a28ab42110245a7dccbc087d2923"
+        },
+        {
+          "path": "test/compiler/samples/math/math_compound_swizzles_snapshot_selected_fields_and_retain_r/facts/SampleTests.chibi",
+          "git_blob": "d40e9a5049dde98a5f554747a117f2a961b37d15"
+        },
+        {
+          "path": "test/compiler/samples/math/math_constructor_arguments_are_captured_before_later_mutatio/facts/Facts.chibi",
+          "git_blob": "c6b9f36c18c6152408abb5117f5dd7d30abe2e7c"
+        },
+        {
+          "path": "test/compiler/samples/math/math_constructor_arguments_are_captured_before_later_mutatio/facts/SampleTests.chibi",
+          "git_blob": "a305dc80d732bc76d5776a4d5ad7195a97c1a1b7"
+        },
+        {
+          "path": "test/compiler/samples/math/math_constructor_refuses_excess_components/facts/Facts.chibi",
+          "git_blob": "bfd0884a6720264d221c9c6ac80b766aadbcda20"
+        },
+        {
+          "path": "test/compiler/samples/math/math_constructor_refuses_implicit_f64_narrowing/facts/Facts.chibi",
+          "git_blob": "7501ee6ffcfa590dd354726719a7934e0fc19b1d"
+        },
+        {
+          "path": "test/compiler/samples/math/math_constructor_splats_concatenation_and_function_returns/facts/Facts.chibi",
+          "git_blob": "1dfa7343d3689a1028987778e211bb97d48042e2"
+        },
+        {
+          "path": "test/compiler/samples/math/math_constructor_splats_concatenation_and_function_returns/facts/SampleTests.chibi",
+          "git_blob": "62eb09413ed4da604d791682f95430a1c2f9cda4"
+        },
+        {
+          "path": "test/compiler/samples/math/math_dot_and_cross_have_independent_scalar_and_handedness_an/facts/Facts.chibi",
+          "git_blob": "0afc15adc0bc2bacaf2c42f5988389c381ef5c49"
+        },
+        {
+          "path": "test/compiler/samples/math/math_dot_and_cross_have_independent_scalar_and_handedness_an/facts/SampleTests.chibi",
+          "git_blob": "b058bb2bc451fa71626c696fb40f100e7b00a1b1"
+        },
+        {
+          "path": "test/compiler/samples/math/math_explicit_f64_narrowing_rounds_at_f32_width/facts/Facts.chibi",
+          "git_blob": "7d7dea9fa86fb267ddf8ddea17db1c79ede83570"
+        },
+        {
+          "path": "test/compiler/samples/math/math_explicit_f64_narrowing_rounds_at_f32_width/facts/SampleTests.chibi",
+          "git_blob": "fe7a4c85fe734268cb7c144d05c193639cab60bf"
+        },
+        {
+          "path": "test/compiler/samples/math/math_exponential_and_logarithm_functions_keep_f32_results/facts/Facts.chibi",
+          "git_blob": "d2cf8b10cc228b584c9c4cc2d0069da67bc4db59"
+        },
+        {
+          "path": "test/compiler/samples/math/math_exponential_and_logarithm_functions_keep_f32_results/facts/SampleTests.chibi",
+          "git_blob": "60f4b6ff80facd61c2af76250e8b277a4c7e9c39"
+        },
+        {
+          "path": "test/compiler/samples/math/math_floor_ceil_and_fract_agree_on_negative_fractions/facts/Facts.chibi",
+          "git_blob": "dd80910a2fb8a01038493e64568902db0f585c53"
+        },
+        {
+          "path": "test/compiler/samples/math/math_floor_ceil_and_fract_agree_on_negative_fractions/facts/SampleTests.chibi",
+          "git_blob": "1b8d317a6a17e816d9939b1fc87d1c3fb2d812f6"
+        },
+        {
+          "path": "test/compiler/samples/math/math_function_arguments_are_captured_before_later_mutation/facts/Facts.chibi",
+          "git_blob": "84f7b138f0bcf8eb5fe3c352ce213f1b7be9a38f"
+        },
+        {
+          "path": "test/compiler/samples/math/math_function_arguments_are_captured_before_later_mutation/facts/SampleTests.chibi",
+          "git_blob": "82a8977b2527bf78b4a55a67c68b913f2d3cbdf4"
+        },
+        {
+          "path": "test/compiler/samples/math/math_homogeneous_matrix_columns_carry_translations/facts/Facts.chibi",
+          "git_blob": "29d55a58694a36fffa002a8598a3053adc153bef"
+        },
+        {
+          "path": "test/compiler/samples/math/math_homogeneous_matrix_columns_carry_translations/facts/SampleTests.chibi",
+          "git_blob": "767b4f304dab2b59a7db69ef3db0541ad68a5a18"
+        },
+        {
+          "path": "test/compiler/samples/math/math_length_and_distance_use_three_four_five_triangles/facts/Facts.chibi",
+          "git_blob": "4dfdefe8c072c507bd28590f5e2c428ada21e5c6"
+        },
+        {
+          "path": "test/compiler/samples/math/math_length_and_distance_use_three_four_five_triangles/facts/SampleTests.chibi",
+          "git_blob": "3379e25c5e44145e20d33c1ccc9ed90df8981a70"
+        },
+        {
+          "path": "test/compiler/samples/math/math_matrix_component_multiplication_is_distinct_from_compos/facts/Facts.chibi",
+          "git_blob": "2b6fab22f0c6350d0c8e5f3fc14a54f2b34b59a8"
+        },
+        {
+          "path": "test/compiler/samples/math/math_matrix_component_multiplication_is_distinct_from_compos/facts/SampleTests.chibi",
+          "git_blob": "c86a3ac3e2cffd4390729c2cd9d43adcfcbc5995"
+        },
+        {
+          "path": "test/compiler/samples/math/math_matrix_representation_stays_private/facts/Facts.chibi",
+          "git_blob": "5fc3bbc2b589cac3482430b53d32164c11db9465"
+        },
+        {
+          "path": "test/compiler/samples/math/math_mix_accepts_scalar_and_component_weights/facts/Facts.chibi",
+          "git_blob": "0e18a766fc3b201b6c0b7f5703b6f11a6340f469"
+        },
+        {
+          "path": "test/compiler/samples/math/math_mix_accepts_scalar_and_component_weights/facts/SampleTests.chibi",
+          "git_blob": "7a31832c947b9f7ff767062d6a59ced4c6a6b334"
+        },
+        {
+          "path": "test/compiler/samples/math/math_modulo_follows_divisor_sign_and_powers_preserve_order/facts/Facts.chibi",
+          "git_blob": "03d97244b5c8d00553ae75b4ea08392c6bbe7f19"
+        },
+        {
+          "path": "test/compiler/samples/math/math_modulo_follows_divisor_sign_and_powers_preserve_order/facts/SampleTests.chibi",
+          "git_blob": "6bfed418cfc16d49bd8bf080849ae56e4520ed0b"
+        },
+        {
+          "path": "test/compiler/samples/math/math_nested_swizzles_compose_their_destination_components/facts/Facts.chibi",
+          "git_blob": "c64a35393d0d2feaa479d539efbb1c48abd78258"
+        },
+        {
+          "path": "test/compiler/samples/math/math_nested_swizzles_compose_their_destination_components/facts/SampleTests.chibi",
+          "git_blob": "4e480a80c8c701e332f6f2ef2cd3052c854f993d"
+        },
+        {
+          "path": "test/compiler/samples/math/math_normalization_handles_zero_and_large_finite_directions/facts/Facts.chibi",
+          "git_blob": "d04859f8d0bf21038c8c2a56ed9de27939c769ac"
+        },
+        {
+          "path": "test/compiler/samples/math/math_normalization_handles_zero_and_large_finite_directions/facts/SampleTests.chibi",
+          "git_blob": "2e0543ea57c8f7fdedacd8394e5c3afb5e371ffc"
+        },
+        {
+          "path": "test/compiler/samples/math/math_quaternion_conjugation_negates_the_imaginary_components/facts/Facts.chibi",
+          "git_blob": "41c54471143cdc5b0bddc0fa6af0994875914e60"
+        },
+        {
+          "path": "test/compiler/samples/math/math_quaternion_conjugation_negates_the_imaginary_components/facts/SampleTests.chibi",
+          "git_blob": "be086d0f5ac571dc368af4f8b711a038b9fca71d"
+        },
+        {
+          "path": "test/compiler/samples/math/math_quaternion_hamilton_products_retain_their_order/facts/Facts.chibi",
+          "git_blob": "ad153d5e6b6dc0de4d2508aebe2f3f47ec29ac64"
+        },
+        {
+          "path": "test/compiler/samples/math/math_quaternion_hamilton_products_retain_their_order/facts/SampleTests.chibi",
+          "git_blob": "2dc91092d58de398dd809b76734fd78951e13244"
+        },
+        {
+          "path": "test/compiler/samples/math/math_quaternion_rotation_waits_for_recoverable_results/facts/Facts.chibi",
+          "git_blob": "4af89ee973c9af223fdb46bcb31f59077be2b1cc"
+        },
+        {
+          "path": "test/compiler/samples/math/math_read_swizzles_refuse_mixed_component_alphabets/facts/Facts.chibi",
+          "git_blob": "5c9ec07a7854ca63b7f0efd029bf0f622637352b"
+        },
+        {
+          "path": "test/compiler/samples/math/math_reflect_and_refract_distinguish_total_internal_reflecti/facts/Facts.chibi",
+          "git_blob": "4c032550cea10b7e9a8db8996adaaf4eeb54f345"
+        },
+        {
+          "path": "test/compiler/samples/math/math_reflect_and_refract_distinguish_total_internal_reflecti/facts/SampleTests.chibi",
+          "git_blob": "4b107e8aef456bf30af351721cb53f19f9fc2d68"
+        },
+        {
+          "path": "test/compiler/samples/math/math_sign_saturate_and_round_use_scalar_component_rules/facts/Facts.chibi",
+          "git_blob": "e517a6d76cca5216cf8cbc561ef03e20b8a4b556"
+        },
+        {
+          "path": "test/compiler/samples/math/math_sign_saturate_and_round_use_scalar_component_rules/facts/SampleTests.chibi",
+          "git_blob": "5aa467a7dc37008b73ce37c5338190b79eee974a"
+        },
+        {
+          "path": "test/compiler/samples/math/math_smoothstep_clamps_values_outside_its_edges/facts/Facts.chibi",
+          "git_blob": "5286b7dfd00beb49ae1e667ed532fbe8cbc71b87"
+        },
+        {
+          "path": "test/compiler/samples/math/math_smoothstep_clamps_values_outside_its_edges/facts/SampleTests.chibi",
+          "git_blob": "9f232aab993d3adec43b03de16fb27e5692a6e5a"
+        },
+        {
+          "path": "test/compiler/samples/math/math_step_takes_edge_before_value_and_includes_the_edge/facts/Facts.chibi",
+          "git_blob": "8bdc4a7aca7e54c45d3dc78388fcbc0527ab7210"
+        },
+        {
+          "path": "test/compiler/samples/math/math_step_takes_edge_before_value_and_includes_the_edge/facts/SampleTests.chibi",
+          "git_blob": "55217a7b5b78c60c09413b0ee0d7c2720badab48"
+        },
+        {
+          "path": "test/compiler/samples/math/math_swizzle_receiver_and_rhs_execute_once_in_source_order/facts/Facts.chibi",
+          "git_blob": "1c6a3cf35df77029042fb7dbbc010c6164b2ccec"
+        },
+        {
+          "path": "test/compiler/samples/math/math_swizzle_receiver_and_rhs_execute_once_in_source_order/facts/SampleTests.chibi",
+          "git_blob": "e5ff35dfab3ffea4855bfcf3eb7b5f795baa5c3c"
+        },
+        {
+          "path": "test/compiler/samples/math/math_swizzle_writes_snapshot_aliased_values/facts/Facts.chibi",
+          "git_blob": "1e481f76f18888f7f2d58c262779c742e1ead586"
+        },
+        {
+          "path": "test/compiler/samples/math/math_swizzle_writes_snapshot_aliased_values/facts/SampleTests.chibi",
+          "git_blob": "5b6db7edd925a5eed11a62f5a72b764281ea24d8"
+        },
+        {
+          "path": "test/compiler/samples/math/math_swizzles_write_through_pointers_and_array_elements/facts/Facts.chibi",
+          "git_blob": "ce7cda4a9b28b4fcf954af0418d8ffaf27537678"
+        },
+        {
+          "path": "test/compiler/samples/math/math_swizzles_write_through_pointers_and_array_elements/facts/SampleTests.chibi",
+          "git_blob": "e258dc09c0007f030c06963ad60f75b08799975b"
+        },
+        {
+          "path": "test/compiler/samples/math/math_transpose_and_determinant_use_column_order/facts/Facts.chibi",
+          "git_blob": "75892d5040d712c2a6f3e9589f9a5ae6df239775"
+        },
+        {
+          "path": "test/compiler/samples/math/math_transpose_and_determinant_use_column_order/facts/SampleTests.chibi",
+          "git_blob": "ae9ed179b19ebaf787f9f99c552e059e3ae83883"
+        },
+        {
+          "path": "test/compiler/samples/math/math_trigonometric_functions_use_radians_and_atan2_y_x_order/facts/Facts.chibi",
+          "git_blob": "d2bed41be3fb7528055c71912375233bfd209480"
+        },
+        {
+          "path": "test/compiler/samples/math/math_trigonometric_functions_use_radians_and_atan2_y_x_order/facts/SampleTests.chibi",
+          "git_blob": "5c1fe072d3dc5ce27101e6bc27a38e5bae6b0554"
+        },
+        {
+          "path": "test/compiler/samples/math/math_unary_and_matrix_arithmetic_retain_their_shapes/facts/Facts.chibi",
+          "git_blob": "b61034f7e9b93d7c6bd1c979e947fbb61718e8ac"
+        },
+        {
+          "path": "test/compiler/samples/math/math_unary_and_matrix_arithmetic_retain_their_shapes/facts/SampleTests.chibi",
+          "git_blob": "e5529da29cba62f91a3e3fd1edda74ee59e0bd25"
+        },
+        {
+          "path": "test/compiler/samples/math/math_vector_matrix_multiplication_states_its_convention/facts/Facts.chibi",
+          "git_blob": "a11f1c12e608271754f2a6072e3278e43f7408a2"
+        },
+        {
+          "path": "test/compiler/samples/math/math_vector_operands_require_the_same_width/facts/Facts.chibi",
+          "git_blob": "ec49143448914aa17e2483ca2266a0e65a987b32"
+        },
+        {
+          "path": "test/compiler/samples/math/math_writable_swizzles_refuse_duplicate_destinations/facts/Facts.chibi",
+          "git_blob": "67e006688957193735574f9ea594fead0082de63"
+        },
+        {
+          "path": "test/compiler/samples/math/narrowing_an_f64_constant_to_a_number_constant_needs_a_conversion/facts/Facts.chibi",
+          "git_blob": "b8c86a4541c27ed2fcbb12dd093e103102dcb758"
+        },
+        {
+          "path": "test/compiler/samples/math/narrowing_f64_to_number_needs_an_explicit_conversion_in_a_declaration/facts/Facts.chibi",
+          "git_blob": "ebc0f440894d031c10af396a4adf63a6511c7031"
+        },
+        {
+          "path": "test/compiler/samples/math/narrowing_f64_to_number_needs_an_explicit_conversion_in_a_return/facts/Facts.chibi",
+          "git_blob": "2dc83e27562a512d39ccb14e14b7a0c72a690390"
+        },
+        {
+          "path": "test/compiler/samples/math/narrowing_f64_to_number_needs_an_explicit_conversion_in_an_argument/facts/Facts.chibi",
+          "git_blob": "5d2afb978f92baa7254c5874b622cc009db77a3d"
+        },
+        {
+          "path": "test/compiler/samples/math/narrowing_f64_to_number_needs_an_explicit_conversion_in_an_assignment/facts/Facts.chibi",
+          "git_blob": "3e6f94e11c4b87d0197c83d74fa2cae5c356e360"
+        },
+        {
+          "path": "test/compiler/samples/math/number_constants_fold_through_signs_parentheses_and_arithmetic/facts/Facts.chibi",
+          "git_blob": "ff5ef2eb355c9c0a444ff82a0ca16205476f7808"
+        },
+        {
+          "path": "test/compiler/samples/math/number_constants_fold_through_signs_parentheses_and_arithmetic/facts/SampleTests.chibi",
+          "git_blob": "fb4095870c33355f173299029aeb97ce316adb95"
+        },
+        {
+          "path": "test/compiler/samples/math/number_constants_widen_to_f64_exactly/facts/Facts.chibi",
+          "git_blob": "02456850ce58df83dc89cc19431a21deae41d711"
+        },
+        {
+          "path": "test/compiler/samples/math/number_constants_widen_to_f64_exactly/facts/SampleTests.chibi",
+          "git_blob": "921b8231d5f1dbf84726fad3604787e205c4dd2f"
+        },
+        {
+          "path": "test/compiler/samples/math/number_conversion_of_an_out_of_range_literal_is_rejected_in_a_body/facts/Facts.chibi",
+          "git_blob": "f616b71a0bfe4929ddabd624f132ae365030b178"
+        },
+        {
+          "path": "test/compiler/samples/math/number_conversion_of_an_out_of_range_literal_is_rejected_in_a_constant/facts/Facts.chibi",
+          "git_blob": "2aa0595770e54c804c1abe67973fde841f8d54f4"
+        },
+        {
+          "path": "test/compiler/samples/math/number_conversion_of_an_out_of_range_parenthesized_literal_is_rejected/facts/Facts.chibi",
+          "git_blob": "ced3bf41e4e158a2f5a941d29b08ddef2bec6109"
+        },
+        {
+          "path": "test/compiler/samples/math/number_conversion_of_an_out_of_range_signed_literal_is_rejected/facts/Facts.chibi",
+          "git_blob": "52bfd898e45824b74d377394426df713df57ed44"
+        },
+        {
+          "path": "test/compiler/samples/math/number_conversion_of_f64_overflows_to_infinity_and_keeps_nan_and_negative_zero/facts/Facts.chibi",
+          "git_blob": "bccdfef54a58a5b1cafe873cca52206297be3935"
+        },
+        {
+          "path": "test/compiler/samples/math/number_conversion_of_f64_overflows_to_infinity_and_keeps_nan_and_negative_zero/facts/SampleTests.chibi",
+          "git_blob": "c576ddcf05036391e4b977326549c7b379d3e397"
+        },
+        {
+          "path": "test/compiler/samples/math/number_conversion_of_f64_rounds_an_odd_halfway_value_up_to_even/facts/Facts.chibi",
+          "git_blob": "3967f603661ec09a15e4c0709a35dd20fef0d513"
+        },
+        {
+          "path": "test/compiler/samples/math/number_conversion_of_f64_rounds_an_odd_halfway_value_up_to_even/facts/SampleTests.chibi",
+          "git_blob": "04d44ac7d8ffa9a44b55c682460096a886e65cfc"
+        },
+        {
+          "path": "test/compiler/samples/math/number_widens_to_f64_implicitly_in_every_position/facts/Facts.chibi",
+          "git_blob": "8347eb310a5ff7468a6895793f57e5dc11a23a42"
+        },
+        {
+          "path": "test/compiler/samples/math/number_widens_to_f64_implicitly_in_every_position/facts/SampleTests.chibi",
+          "git_blob": "a79d45a5f850c33013c63e07cdc215f1a420ad55"
+        },
+        {
+          "path": "test/compiler/samples/math/returning_an_f64_constant_as_number_needs_an_explicit_conversion/facts/Facts.chibi",
+          "git_blob": "316ca499ae4405a40a960aceb182064c20e20b72"
+        }
+      ]
+    },
+    "native": {
+      "original_log": "/private/tmp/chibi-native-survey-450/native.log",
+      "original_log_sha256": "c2d2e8676f9fa2ff8ac79e0ffc7ce75be93283c17f2a423028a6baf77e892f8f",
+      "original_passed_names": [
+        "foreign_declared/facts.Calls",
+        "foreign_library/facts.Calls",
+        "foreign_posix/facts.Calls",
+        "foreign_vendor/facts.Calls",
+        "plain_package/facts.Calls",
+        "scoped_pointer_across_files/facts.Calls",
+        "when_imports/facts.Calls"
+      ],
+      "original_uncompiled_packages": [],
+      "source_files": [
+        {
+          "path": "test/compiler/samples/native/foreign_declared/facts/SampleTests.chibi",
+          "git_blob": "bbc3081f5c8f567174e60d9a6be3d10f74258591"
+        },
+        {
+          "path": "test/compiler/samples/native/foreign_library/facts/SampleTests.chibi",
+          "git_blob": "6549dc3725d960179c31e41d05fc02620d70cf28"
+        },
+        {
+          "path": "test/compiler/samples/native/foreign_library/lib/Lib.chibi",
+          "git_blob": "4409ebe0184477116ee263f77d238e577fbf7917"
+        },
+        {
+          "path": "test/compiler/samples/native/foreign_posix/facts/SampleTests.chibi",
+          "git_blob": "07a55dd1c5ef6cceb4924292a30607a5cbcc68aa"
+        },
+        {
+          "path": "test/compiler/samples/native/foreign_vendor/facts/SampleTests.chibi",
+          "git_blob": "ba717ef731bd60e47cc8b98408d1e92a203af073"
+        },
+        {
+          "path": "test/compiler/samples/native/plain_package/facts/SampleTests.chibi",
+          "git_blob": "1d51519dd3180f78bc25fdc8bff5167f11c66d07"
+        },
+        {
+          "path": "test/compiler/samples/native/scoped_pointer_across_files/facts/Cursor.chibi",
+          "git_blob": "fc39ddaabd56e9929b9a168d834f441620c1ff21"
+        },
+        {
+          "path": "test/compiler/samples/native/scoped_pointer_across_files/facts/SampleTests.chibi",
+          "git_blob": "28a20735ebdfcb5d49af1185ebdcafa43f5adf9b"
+        },
+        {
+          "path": "test/compiler/samples/native/when_imports/facts/SampleTests.chibi",
+          "git_blob": "566ac29f1ddb870c05b80fff649e0067e2e78108"
+        },
+        {
+          "path": "test/compiler/samples/native/when_imports/lib/Lib.chibi",
+          "git_blob": "379ead370c0125306ffe08e6e48302b547adc52a"
+        },
+        {
+          "path": "test/compiler/samples/native/when_imports/native/Native.chibi",
+          "git_blob": "f91c2286123897dcb7a189d75ac24d3702c6faa2"
+        },
+        {
+          "path": "test/compiler/samples/native/when_imports/vm/Vm.chibi",
+          "git_blob": "9806d7386afe234f0e0ce9fad04374fc7d954388"
+        }
+      ]
+    },
+    "native_arguments": {
+      "original_log": "/private/tmp/chibi-native-survey-450/native_arguments.log",
+      "original_log_sha256": "9c374f197f8ba31a83a49a9df067bf355c53efc823480daf2aacbc2d09c4ed20",
+      "original_passed_names": [
+        "native_arguments_evaluate_in_source_order/facts.Calls",
+        "native_duplicate_name/facts.compile_error",
+        "native_extra_argument/facts.compile_error",
+        "native_loose_label_match/facts.Calls",
+        "native_mixed_arguments/facts.Calls",
+        "native_named_positional_duplicate/facts.compile_error",
+        "native_names_in_declaration_order/facts.Calls",
+        "native_positional_control/facts.Calls",
+        "native_positional_named_duplicate/facts.compile_error",
+        "native_reordered_names/facts.Calls",
+        "native_unary_name/facts.Calls",
+        "native_unknown_name/facts.compile_error"
+      ],
+      "original_uncompiled_packages": [],
+      "source_files": [
+        {
+          "path": "test/compiler/samples/native_arguments/native_arguments_evaluate_in_source_order/facts/Facts.chibi",
+          "git_blob": "71bf8a9c3092aeec51f04fcff640538c402081ac"
+        },
+        {
+          "path": "test/compiler/samples/native_arguments/native_arguments_evaluate_in_source_order/facts/SampleTests.chibi",
+          "git_blob": "6f494c27400f4dcb992ae3451d346c9674d28daa"
+        },
+        {
+          "path": "test/compiler/samples/native_arguments/native_duplicate_name/facts/Facts.chibi",
+          "git_blob": "9d84b4a4904f74453330fa66e422242203a7e3c4"
+        },
+        {
+          "path": "test/compiler/samples/native_arguments/native_extra_argument/facts/Facts.chibi",
+          "git_blob": "76626740fb2ec5473f12feca1ed2e8c1c8b3b2b9"
+        },
+        {
+          "path": "test/compiler/samples/native_arguments/native_loose_label_match/facts/Facts.chibi",
+          "git_blob": "6cfbecd07304a13afb9d122d208b07e762f13b17"
+        },
+        {
+          "path": "test/compiler/samples/native_arguments/native_loose_label_match/facts/SampleTests.chibi",
+          "git_blob": "ffc8be491aaf3fec342f7a8cdbd64d29f4319aec"
+        },
+        {
+          "path": "test/compiler/samples/native_arguments/native_mixed_arguments/facts/Facts.chibi",
+          "git_blob": "f7aec02ea08ae81aa1b22e399d8efb3a6e634af8"
+        },
+        {
+          "path": "test/compiler/samples/native_arguments/native_mixed_arguments/facts/SampleTests.chibi",
+          "git_blob": "10f2d99c248b36fcd1b0522b58d2ffeb843bcdbf"
+        },
+        {
+          "path": "test/compiler/samples/native_arguments/native_named_positional_duplicate/facts/Facts.chibi",
+          "git_blob": "679b1b98c81ae80b94e747de60cdd24ccfd41e54"
+        },
+        {
+          "path": "test/compiler/samples/native_arguments/native_names_in_declaration_order/facts/Facts.chibi",
+          "git_blob": "6da7483f4e2bb424c04d26dfe48635700de95d64"
+        },
+        {
+          "path": "test/compiler/samples/native_arguments/native_names_in_declaration_order/facts/SampleTests.chibi",
+          "git_blob": "45df17b37cfd6322cd3c54e3eee23c8b132adc05"
+        },
+        {
+          "path": "test/compiler/samples/native_arguments/native_positional_control/facts/Facts.chibi",
+          "git_blob": "aae6e0f52ec6ff1ff6a1f7272cb627219ec311ee"
+        },
+        {
+          "path": "test/compiler/samples/native_arguments/native_positional_control/facts/SampleTests.chibi",
+          "git_blob": "d565c2d71e03442f8f88433de36a396ef57526b6"
+        },
+        {
+          "path": "test/compiler/samples/native_arguments/native_positional_named_duplicate/facts/Facts.chibi",
+          "git_blob": "762de93d03b67e28fd11a086bc906c6a0d0c89bb"
+        },
+        {
+          "path": "test/compiler/samples/native_arguments/native_reordered_names/facts/Facts.chibi",
+          "git_blob": "c33396b316ef2c1988b937b6c333b7fb4497b94c"
+        },
+        {
+          "path": "test/compiler/samples/native_arguments/native_reordered_names/facts/SampleTests.chibi",
+          "git_blob": "fcf3a3456fd97c35d98793e9c3cfcae43abe5aa9"
+        },
+        {
+          "path": "test/compiler/samples/native_arguments/native_unary_name/facts/Facts.chibi",
+          "git_blob": "d945c25c7567bf33c3fe6e3f991f0bf7b3dd6602"
+        },
+        {
+          "path": "test/compiler/samples/native_arguments/native_unary_name/facts/SampleTests.chibi",
+          "git_blob": "6ce41b1f058bbc7ee3c5130630ecebb04a037148"
+        },
+        {
+          "path": "test/compiler/samples/native_arguments/native_unknown_name/facts/Facts.chibi",
+          "git_blob": "1ee3d19dda6e6d16969d72f464fe37d0a65c0b99"
+        }
+      ]
+    },
+    "types": {
+      "original_log": "/private/tmp/chibi-native-survey-450/types.log",
+      "original_log_sha256": "e9e61361ef1dc6740836357239e680b88fb68b9ab18da8802d5f27824f6d3724",
+      "original_passed_names": [
+        "array_conversion_names_preserve_authored_calls/facts.Calls",
+        "array_field_assignment/facts.Calls",
+        "bitwise_operators_keep_each_width/facts.Calls",
+        "boxed_elements/facts.Calls",
+        "boxed_elements/facts.Records",
+        "boxed_elements/facts.BoxedWordPastTheEndFails",
+        "boxed_elements/facts.BoxedWordBeforeTheStartFails",
+        "boxed_elements/facts.BoxedNotesPastTheEndFails",
+        "boxed_elements/facts.BoxedShapesPastTheEndFails",
+        "char_parameters_locals_and_named_results_keep_their_type/facts.Calls",
+        "clamp_label/facts.compile_error",
+        "comparisons_of_untyped_literals/facts.Calls",
+        "compound_division_by_zero/facts.compile_error",
+        "constant_and_dynamic_byte_array_debugger_origins/facts.Calls",
+        "constant_division_by_zero/facts.compile_error",
+        "constant_expressions/facts.Calls",
+        "constant_negative_shift_count/facts.compile_error",
+        "constant_outside_its_type/facts.compile_error",
+        "constant_shift_count_too_large/facts.compile_error",
+        "constant_signed_shift_count/facts.compile_error",
+        "constants/facts.Calls",
+        "conversion_outside_its_type/facts.compile_error",
+        "empty_switch_arms/facts.Calls",
+        "exact_shift_counts/facts.Calls",
+        "float_to_integer_conversions_truncate_clamp_and_map_nan_to_zero/facts.Calls",
+        "folded_constant_outside_its_type/facts.compile_error",
+        "generic_array_calls_after_descriptor_growth/facts.Calls",
+        "inferred_arrays/facts.Calls",
+        "integer_to_float_conversions_keep_magnitude_and_sign/facts.Calls",
+        "integers/facts.Calls",
+        "left_shift_count_too_large/facts.compile_error",
+        "named_struct_results/facts.Calls",
+        "named_struct_results/facts.Records",
+        "named_syntax_fact_arrays_survive_forwarding_and_copies/facts.Calls",
+        "named_syntax_fact_arrays_survive_forwarding_and_copies/facts.Records",
+        "negated_unsigned_constant/facts.compile_error",
+        "optional_error_payload_requires_a_presence_guard/facts.compile_error",
+        "optional_errors_beside_named_struct_results/facts.Calls",
+        "optional_presence_preserves_false_zero_and_empty_text/facts.Calls",
+        "parenthesized_negative_shift_count/facts.compile_error",
+        "partial_text_and_bytes_beside_optional_record_errors/facts.Calls",
+        "patterns/facts.Calls",
+        "public_char_calls_and_utf8_encode/facts.Calls",
+        "record_array_fields_survive_collections/facts.Calls",
+        "runtime_shift_count_past_the_constant_limit/facts.Calls",
+        "shadowing/facts.Calls",
+        "shift_count_below_int64_is_negative/facts.compile_error",
+        "shift_count_below_int64_with_a_variable_operand/facts.compile_error",
+        "shift_count_expression_crosses_int64/facts.Calls",
+        "shift_count_limit_is_inclusive/facts.Calls",
+        "shift_counts_clamp/facts.Calls",
+        "signed_negation_and_comparisons_at_the_edges/facts.Calls",
+        "signed_shift_count/facts.compile_error",
+        "total_integer_operations/facts.Calls",
+        "typed_constants_fold_exactly/facts.Calls",
+        "typed_nullable_pointer_local_rejects_incompatible_initializer/facts.compile_error",
+        "typed_nullable_pointer_locals/facts.Calls",
+        "typed_optional_local_rejects_incompatible_initializer/facts.compile_error",
+        "typed_optional_locals_after_descriptor_growth/facts.Calls",
+        "typed_optional_locals_with_called_signatures/facts.Calls",
+        "unions/facts.Calls",
+        "unions/facts.Records",
+        "untyped_constant_expressions/facts.Calls",
+        "wide_records/facts.Calls",
+        "wide_records/facts.Records",
+        "wide_values/facts.Calls",
+        "widened_named_projection/facts.Calls"
+      ],
+      "original_uncompiled_packages": [
+        "record_array_fields_survive_set_and_remove/facts"
+      ],
+      "source_files": [
+        {
+          "path": "test/compiler/samples/types/array_conversion_names_preserve_authored_calls/facts/Facts.chibi",
+          "git_blob": "0b018b40ec01b0613cf7a5ec6f1cf9cb48080606"
+        },
+        {
+          "path": "test/compiler/samples/types/array_conversion_names_preserve_authored_calls/facts/SampleTests.chibi",
+          "git_blob": "aae0c92292fa0f3f8bc6edec2a412ff0ce1dd080"
+        },
+        {
+          "path": "test/compiler/samples/types/array_field_assignment/facts/Facts.chibi",
+          "git_blob": "e5752327c196bddea319e84b4c39e030f4bf4b73"
+        },
+        {
+          "path": "test/compiler/samples/types/array_field_assignment/facts/SampleTests.chibi",
+          "git_blob": "e48c635b63992eacea54641c800acfee9116aacb"
+        },
+        {
+          "path": "test/compiler/samples/types/bitwise_operators_keep_each_width/facts/Facts.chibi",
+          "git_blob": "49bb4f974ef04afc9d1cbdcdf00dd4c75be83c38"
+        },
+        {
+          "path": "test/compiler/samples/types/bitwise_operators_keep_each_width/facts/SampleTests.chibi",
+          "git_blob": "0a182a264c468805e3e0964045af57572898686d"
+        },
+        {
+          "path": "test/compiler/samples/types/boxed_elements/facts/Facts.chibi",
+          "git_blob": "fdb1ea1d1affe3c7e86c6afdadf837bd3ac15540"
+        },
+        {
+          "path": "test/compiler/samples/types/boxed_elements/facts/SampleTests.chibi",
+          "git_blob": "a1fe2e6bb9ce7072d197f707b54d5d938b859a7c"
+        },
+        {
+          "path": "test/compiler/samples/types/char_parameters_locals_and_named_results_keep_their_type/facts/Facts.chibi",
+          "git_blob": "bfd7a6614e7261987d4c641da66376d3076c1946"
+        },
+        {
+          "path": "test/compiler/samples/types/char_parameters_locals_and_named_results_keep_their_type/facts/SampleTests.chibi",
+          "git_blob": "843334d3865aa6ae96ca6d5aa3b6d5a04ef329f5"
+        },
+        {
+          "path": "test/compiler/samples/types/clamp_label/facts/Facts.chibi",
+          "git_blob": "8b104a18ed0f1b08a34fac6fedeb295fec984d1a"
+        },
+        {
+          "path": "test/compiler/samples/types/comparisons_of_untyped_literals/facts/Facts.chibi",
+          "git_blob": "50926ba4e3f7ef1c87225c363542c9c5201c6ecb"
+        },
+        {
+          "path": "test/compiler/samples/types/comparisons_of_untyped_literals/facts/SampleTests.chibi",
+          "git_blob": "200dd49bea6aa04e66f0a2bdcfb950beb2eaf155"
+        },
+        {
+          "path": "test/compiler/samples/types/compound_division_by_zero/facts/Facts.chibi",
+          "git_blob": "0d915672576f88c5fb9eb2c8e37ff207c9a19eef"
+        },
+        {
+          "path": "test/compiler/samples/types/constant_and_dynamic_byte_array_debugger_origins/facts/Facts.chibi",
+          "git_blob": "f842f98634aa46bb8f26f0cc2195c25ef3e3a0fc"
+        },
+        {
+          "path": "test/compiler/samples/types/constant_and_dynamic_byte_array_debugger_origins/facts/SampleTests.chibi",
+          "git_blob": "b79f8becc6bac6afbd57d5d6c3f892ffd8476328"
+        },
+        {
+          "path": "test/compiler/samples/types/constant_division_by_zero/facts/Facts.chibi",
+          "git_blob": "808ed4ce12cc827a7e4ec31ec464b053164e19b0"
+        },
+        {
+          "path": "test/compiler/samples/types/constant_expressions/facts/Facts.chibi",
+          "git_blob": "6a60fd4aa32fd5bf6d4e0ea2606b524762dfb0a5"
+        },
+        {
+          "path": "test/compiler/samples/types/constant_expressions/facts/SampleTests.chibi",
+          "git_blob": "b9dd69188c146da22551c7f0135b6538e9a592f4"
+        },
+        {
+          "path": "test/compiler/samples/types/constant_expressions/lib/Lib.chibi",
+          "git_blob": "5e9e57783eef860fe5200f649d58202be48d3d79"
+        },
+        {
+          "path": "test/compiler/samples/types/constant_negative_shift_count/facts/Facts.chibi",
+          "git_blob": "441633787e058b23abd2f0372744a12651847b9e"
+        },
+        {
+          "path": "test/compiler/samples/types/constant_outside_its_type/facts/Facts.chibi",
+          "git_blob": "c89291e3aa343ca6612929f6a068e89e676852f7"
+        },
+        {
+          "path": "test/compiler/samples/types/constant_shift_count_too_large/facts/Facts.chibi",
+          "git_blob": "f7ad3bffa3dbfd6ab3ba3e19289b35bab5b7a587"
+        },
+        {
+          "path": "test/compiler/samples/types/constant_signed_shift_count/facts/Facts.chibi",
+          "git_blob": "23e20288827aebb42ee6a68d6f1350523faa29dc"
+        },
+        {
+          "path": "test/compiler/samples/types/constants/facts/Facts.chibi",
+          "git_blob": "e0d83edb7ed5965ef964ca9e74249b8696189ccf"
+        },
+        {
+          "path": "test/compiler/samples/types/constants/facts/More.chibi",
+          "git_blob": "736d1e4007a9212d4311c91e00f4665ed2b9d1d9"
+        },
+        {
+          "path": "test/compiler/samples/types/constants/facts/SampleTests.chibi",
+          "git_blob": "eeaf0357a0ca24ccbe1c98aa12fd3e08fa323dbe"
+        },
+        {
+          "path": "test/compiler/samples/types/constants/lib/Lib.chibi",
+          "git_blob": "cef07806950eebd813fe5b178106be8aefe3e287"
+        },
+        {
+          "path": "test/compiler/samples/types/conversion_outside_its_type/facts/Facts.chibi",
+          "git_blob": "b7070079b6051cf5f6fb3857b416a4290a2284eb"
+        },
+        {
+          "path": "test/compiler/samples/types/empty_switch_arms/facts/Facts.chibi",
+          "git_blob": "9607731612c563ad5ac97883ce70ec6109696f81"
+        },
+        {
+          "path": "test/compiler/samples/types/empty_switch_arms/facts/SampleTests.chibi",
+          "git_blob": "b9fc7a5ef617bf4f96afec66ca1672f8289b382a"
+        },
+        {
+          "path": "test/compiler/samples/types/exact_shift_counts/facts/Facts.chibi",
+          "git_blob": "781f3717f849fcfe1dfbe790c9f22184aadced81"
+        },
+        {
+          "path": "test/compiler/samples/types/exact_shift_counts/facts/SampleTests.chibi",
+          "git_blob": "37a9f3d30470aed733a560cd9a1c18ff93ef1f6d"
+        },
+        {
+          "path": "test/compiler/samples/types/float_to_integer_conversions_truncate_clamp_and_map_nan_to_zero/facts/Facts.chibi",
+          "git_blob": "017b433ceed35f924efb28d0966777fd6fded63c"
+        },
+        {
+          "path": "test/compiler/samples/types/float_to_integer_conversions_truncate_clamp_and_map_nan_to_zero/facts/SampleTests.chibi",
+          "git_blob": "12dca188d7bd180314de6c1abde5116ff7605f7c"
+        },
+        {
+          "path": "test/compiler/samples/types/folded_constant_outside_its_type/facts/Facts.chibi",
+          "git_blob": "fb8c748042305213baf6db220bf37093de06513f"
+        },
+        {
+          "path": "test/compiler/samples/types/generic_array_calls_after_descriptor_growth/facts/Facts.chibi",
+          "git_blob": "d825073444600605a3f631df1c1f3384a023e152"
+        },
+        {
+          "path": "test/compiler/samples/types/generic_array_calls_after_descriptor_growth/facts/SampleTests.chibi",
+          "git_blob": "744428c45d76f5ba52ee4abd2644743b6cc1c163"
+        },
+        {
+          "path": "test/compiler/samples/types/inferred_arrays/facts/Facts.chibi",
+          "git_blob": "09d54f62135b0e47a5e3b3f9d5ad89359079baab"
+        },
+        {
+          "path": "test/compiler/samples/types/inferred_arrays/facts/SampleTests.chibi",
+          "git_blob": "be1eb3363727bd6eeae0fa9f854691c1a0471cd1"
+        },
+        {
+          "path": "test/compiler/samples/types/integer_to_float_conversions_keep_magnitude_and_sign/facts/Facts.chibi",
+          "git_blob": "76494c99094715c49edcc74c6de3f72797dd8cb8"
+        },
+        {
+          "path": "test/compiler/samples/types/integer_to_float_conversions_keep_magnitude_and_sign/facts/SampleTests.chibi",
+          "git_blob": "14831b0adcd152af284f607e292a90457eb49e7b"
+        },
+        {
+          "path": "test/compiler/samples/types/integers/facts/Facts.chibi",
+          "git_blob": "f8eb0ea5588f59dbfdf3ecad6cfcbf135ce484e4"
+        },
+        {
+          "path": "test/compiler/samples/types/integers/facts/SampleTests.chibi",
+          "git_blob": "3967464b9cbf03734210127eceee0c9eedc53885"
+        },
+        {
+          "path": "test/compiler/samples/types/left_shift_count_too_large/facts/Facts.chibi",
+          "git_blob": "5f20d7c3e935e141e28fcec67e40ddc179bd5577"
+        },
+        {
+          "path": "test/compiler/samples/types/named_struct_results/facts/Facts.chibi",
+          "git_blob": "6266558e22dbadd70773dc9a485b5e52d4b7d616"
+        },
+        {
+          "path": "test/compiler/samples/types/named_struct_results/facts/SampleTests.chibi",
+          "git_blob": "172fc129232eb7aaca2672097db5fddb29d4fc03"
+        },
+        {
+          "path": "test/compiler/samples/types/named_syntax_fact_arrays_survive_forwarding_and_copies/facts/Facts.chibi",
+          "git_blob": "07b14ba19fd0c62ea9670b88119e5ede70263feb"
+        },
+        {
+          "path": "test/compiler/samples/types/named_syntax_fact_arrays_survive_forwarding_and_copies/facts/SampleTests.chibi",
+          "git_blob": "6ba54f1659265568b08b117178f6123f0733ca77"
+        },
+        {
+          "path": "test/compiler/samples/types/negated_unsigned_constant/facts/Facts.chibi",
+          "git_blob": "3853d5bb7bf5c32b03667395db1554168a4a5bb4"
+        },
+        {
+          "path": "test/compiler/samples/types/optional_error_payload_requires_a_presence_guard/facts/Facts.chibi",
+          "git_blob": "c8187585259cb43be75df777a1c7f651d5b1d78c"
+        },
+        {
+          "path": "test/compiler/samples/types/optional_errors_beside_named_struct_results/facts/Facts.chibi",
+          "git_blob": "b3ea5a9737641fc53cc201b477601011158b88d6"
+        },
+        {
+          "path": "test/compiler/samples/types/optional_errors_beside_named_struct_results/facts/SampleTests.chibi",
+          "git_blob": "f622ece79e5431760155645f0b10e3ca5d1fad59"
+        },
+        {
+          "path": "test/compiler/samples/types/optional_presence_preserves_false_zero_and_empty_text/facts/Facts.chibi",
+          "git_blob": "b5983cf4387b559c4097a18e9fd22095cb0a87f0"
+        },
+        {
+          "path": "test/compiler/samples/types/optional_presence_preserves_false_zero_and_empty_text/facts/SampleTests.chibi",
+          "git_blob": "f691abf23f751f133867a9c1ff80bc29841ddc6a"
+        },
+        {
+          "path": "test/compiler/samples/types/parenthesized_negative_shift_count/facts/Facts.chibi",
+          "git_blob": "4899786b73a4217663ee8fbb49f62f0a926db75c"
+        },
+        {
+          "path": "test/compiler/samples/types/partial_text_and_bytes_beside_optional_record_errors/facts/Facts.chibi",
+          "git_blob": "ed2a50cddd023e7ee09d3135aa36d3ffbc808a62"
+        },
+        {
+          "path": "test/compiler/samples/types/partial_text_and_bytes_beside_optional_record_errors/facts/SampleTests.chibi",
+          "git_blob": "0eb981d9ff92896b5e5af23abda9e1f2d542ad71"
+        },
+        {
+          "path": "test/compiler/samples/types/patterns/facts/Facts.chibi",
+          "git_blob": "2d10c899c86ee01d501daa04ad8a0241d9813cce"
+        },
+        {
+          "path": "test/compiler/samples/types/patterns/facts/SampleTests.chibi",
+          "git_blob": "3d448609dc40d7576c709af5cc3d5e9519b68b85"
+        },
+        {
+          "path": "test/compiler/samples/types/public_char_calls_and_utf8_encode/facts/Facts.chibi",
+          "git_blob": "ef2651acfae93e5fbb191d75b3fc5be083466e86"
+        },
+        {
+          "path": "test/compiler/samples/types/public_char_calls_and_utf8_encode/facts/SampleTests.chibi",
+          "git_blob": "05b832b26c0feea3639994e917f2f6a5d377249a"
+        },
+        {
+          "path": "test/compiler/samples/types/public_char_calls_and_utf8_encode/lib/Lib.chibi",
+          "git_blob": "b509276c1d742dd2bf29f402051fee4475944b8c"
+        },
+        {
+          "path": "test/compiler/samples/types/record_array_fields_survive_collections/facts/Facts.chibi",
+          "git_blob": "1fa0550a6d2d73b1f64222ffd4d2cdf51dae6e72"
+        },
+        {
+          "path": "test/compiler/samples/types/record_array_fields_survive_collections/facts/SampleTests.chibi",
+          "git_blob": "52873628c233307ac6d84e689ca927fe58e29b09"
+        },
+        {
+          "path": "test/compiler/samples/types/record_array_fields_survive_set_and_remove/facts/Facts.chibi",
+          "git_blob": "d5bcd921447dd8868f644d0f08fb37ba24ad1b53"
+        },
+        {
+          "path": "test/compiler/samples/types/record_array_fields_survive_set_and_remove/facts/SampleTests.chibi",
+          "git_blob": "b89cbe3f6bf14f47f649987ae2d3dd3928db8a4f"
+        },
+        {
+          "path": "test/compiler/samples/types/runtime_shift_count_past_the_constant_limit/facts/Facts.chibi",
+          "git_blob": "420b542240508007bc1b17f5c9640fd4db3eba2c"
+        },
+        {
+          "path": "test/compiler/samples/types/runtime_shift_count_past_the_constant_limit/facts/SampleTests.chibi",
+          "git_blob": "5ea8c245b8b72cffaa59250ffcf077299c215e17"
+        },
+        {
+          "path": "test/compiler/samples/types/shadowing/facts/Facts.chibi",
+          "git_blob": "98dfe0890a449c806b44f7c767bfd89649b09b8d"
+        },
+        {
+          "path": "test/compiler/samples/types/shadowing/facts/SampleTests.chibi",
+          "git_blob": "013b9a12777015b9641eb0a7751601e00aaa95b8"
+        },
+        {
+          "path": "test/compiler/samples/types/shift_count_below_int64_is_negative/facts/Facts.chibi",
+          "git_blob": "793b512648319f9b0229f303b58eba09639dc87f"
+        },
+        {
+          "path": "test/compiler/samples/types/shift_count_below_int64_with_a_variable_operand/facts/Facts.chibi",
+          "git_blob": "46d3d2d5fcdeeaf4f707fd03b3a5ee81d4c23eb3"
+        },
+        {
+          "path": "test/compiler/samples/types/shift_count_expression_crosses_int64/facts/Facts.chibi",
+          "git_blob": "a49ec67c71143bb1ce64f87201ea7f641fab71b3"
+        },
+        {
+          "path": "test/compiler/samples/types/shift_count_expression_crosses_int64/facts/SampleTests.chibi",
+          "git_blob": "31f7f8a63000b37918ac2d2a86de009f4801deee"
+        },
+        {
+          "path": "test/compiler/samples/types/shift_count_limit_is_inclusive/facts/Facts.chibi",
+          "git_blob": "6587811309fa67b23f5263daae1c4a69f27d8d7b"
+        },
+        {
+          "path": "test/compiler/samples/types/shift_count_limit_is_inclusive/facts/SampleTests.chibi",
+          "git_blob": "b170fc910b3206949420346ddc329e99dd8b3477"
+        },
+        {
+          "path": "test/compiler/samples/types/shift_counts_clamp/facts/Facts.chibi",
+          "git_blob": "b69effec71bb6b0ec7c220d1372c4fc3a0fa6d2a"
+        },
+        {
+          "path": "test/compiler/samples/types/shift_counts_clamp/facts/SampleTests.chibi",
+          "git_blob": "e573a3469d67dc4c9aabccdafc16f22263c10852"
+        },
+        {
+          "path": "test/compiler/samples/types/signed_negation_and_comparisons_at_the_edges/facts/Facts.chibi",
+          "git_blob": "a792cf4e78289f2f690b320337511535413e9bdd"
+        },
+        {
+          "path": "test/compiler/samples/types/signed_negation_and_comparisons_at_the_edges/facts/SampleTests.chibi",
+          "git_blob": "d2f6607026ee5089266f95ee1b14adad9f249b1d"
+        },
+        {
+          "path": "test/compiler/samples/types/signed_shift_count/facts/Facts.chibi",
+          "git_blob": "9798ec626d43a624258ff9f168773b7626f838b8"
+        },
+        {
+          "path": "test/compiler/samples/types/total_integer_operations/facts/Facts.chibi",
+          "git_blob": "c6a6a7c3fa5403d72df9422a1327a222d8c7dd2b"
+        },
+        {
+          "path": "test/compiler/samples/types/total_integer_operations/facts/SampleTests.chibi",
+          "git_blob": "95376665e1cf0800da291f10c49fb5d94004619b"
+        },
+        {
+          "path": "test/compiler/samples/types/typed_constants_fold_exactly/facts/Facts.chibi",
+          "git_blob": "ed4bf730038266d69a3c93092ee6773c0ef18e61"
+        },
+        {
+          "path": "test/compiler/samples/types/typed_constants_fold_exactly/facts/SampleTests.chibi",
+          "git_blob": "ddf7ea0e3704020a1d432f8898e1f392304cb8d1"
+        },
+        {
+          "path": "test/compiler/samples/types/typed_nullable_pointer_local_rejects_incompatible_initializer/facts/Facts.chibi",
+          "git_blob": "9f1f37bd331da8505990008a64c3fd3c6278c8ab"
+        },
+        {
+          "path": "test/compiler/samples/types/typed_nullable_pointer_locals/facts/Facts.chibi",
+          "git_blob": "acc9d16348fb1ca8ddf62398385731a5f7ffbba9"
+        },
+        {
+          "path": "test/compiler/samples/types/typed_nullable_pointer_locals/facts/SampleTests.chibi",
+          "git_blob": "e97e51124d429b6c28dfa863803d37196f177f40"
+        },
+        {
+          "path": "test/compiler/samples/types/typed_optional_local_rejects_incompatible_initializer/facts/Facts.chibi",
+          "git_blob": "02cb7d9c352b74f5e17db897c19b7e6461f4bdbb"
+        },
+        {
+          "path": "test/compiler/samples/types/typed_optional_locals_after_descriptor_growth/facts/Facts.chibi",
+          "git_blob": "20fe1e8b6d7e0dfdfd4a1238b8df1269c3f1a0a3"
+        },
+        {
+          "path": "test/compiler/samples/types/typed_optional_locals_after_descriptor_growth/facts/SampleTests.chibi",
+          "git_blob": "cbeae0e017fcb1175f70dedd806eda19751a7651"
+        },
+        {
+          "path": "test/compiler/samples/types/typed_optional_locals_with_called_signatures/facts/Facts.chibi",
+          "git_blob": "54296b3f167f9b49f71d0e342af01486956753f2"
+        },
+        {
+          "path": "test/compiler/samples/types/typed_optional_locals_with_called_signatures/facts/SampleTests.chibi",
+          "git_blob": "6e5c6cff4dcf2af53844d46fdc0caa3f0f1d223a"
+        },
+        {
+          "path": "test/compiler/samples/types/unions/facts/Facts.chibi",
+          "git_blob": "6ab4c193624f78292b2b53a57346370baba474c7"
+        },
+        {
+          "path": "test/compiler/samples/types/unions/facts/SampleTests.chibi",
+          "git_blob": "ae485fe1540b2927c2b34421fa4f4fd0d18ebf18"
+        },
+        {
+          "path": "test/compiler/samples/types/untyped_constant_expressions/facts/Facts.chibi",
+          "git_blob": "2eb0b1b068e65eeafcb90ccf5b7ec1616119a430"
+        },
+        {
+          "path": "test/compiler/samples/types/untyped_constant_expressions/facts/SampleTests.chibi",
+          "git_blob": "4825d619d2b5e8d98630f91f832934d317828f7c"
+        },
+        {
+          "path": "test/compiler/samples/types/wide_records/facts/Facts.chibi",
+          "git_blob": "728759a195cdf8879a1fbb5020ab0cc1c68e7a48"
+        },
+        {
+          "path": "test/compiler/samples/types/wide_records/facts/SampleTests.chibi",
+          "git_blob": "c7f36f86e4d0899899846de7719c9f994c299e5b"
+        },
+        {
+          "path": "test/compiler/samples/types/wide_values/facts/Facts.chibi",
+          "git_blob": "f2b72efb12a017bace46fe62d3e4bfb8b5524cef"
+        },
+        {
+          "path": "test/compiler/samples/types/wide_values/facts/SampleTests.chibi",
+          "git_blob": "afe9151a01040b2bb6338f75de1272274cfa57b7"
+        },
+        {
+          "path": "test/compiler/samples/types/widened_named_projection/facts/Facts.chibi",
+          "git_blob": "2eb6ef3a5268a40d4e71ba143b545a6cab93c439"
+        },
+        {
+          "path": "test/compiler/samples/types/widened_named_projection/facts/SampleTests.chibi",
+          "git_blob": "d6e708316f53a20520b4fef4bcd89ac38dac7a2d"
+        }
+      ]
+    }
+  },
+  "original_passed_names": 441,
+  "original_uncompiled_packages": 14
+}

@@ -1,0 +1,1 @@
+native: rejected Main: /private/tmp/chibi-a730-composed-proof/source/test/native_aot/managed_pointers/source/rejected/TextViewMutation.chibi:5:19: indexed mutation requires a writable array or map

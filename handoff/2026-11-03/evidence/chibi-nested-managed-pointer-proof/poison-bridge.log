@@ -1,0 +1,12 @@
+PASS managed source /private/tmp/chibi-nested-managed-pointer-proof/NestedPointers.ll force=false O0 poisoned balance
+managed source live 0 peak 807 total 72009
+
+PASS managed source /private/tmp/chibi-nested-managed-pointer-proof/NestedPointers.ll force=false O2 poisoned balance
+managed source live 0 peak 807 total 72009
+
+PASS managed source /private/tmp/chibi-nested-managed-pointer-proof/NestedPointers.ll force=true O0 poisoned balance
+managed source live 0 peak 15 total 72009
+
+PASS managed source /private/tmp/chibi-nested-managed-pointer-proof/NestedPointers.ll force=true O2 poisoned balance
+managed source live 0 peak 15 total 72009
+

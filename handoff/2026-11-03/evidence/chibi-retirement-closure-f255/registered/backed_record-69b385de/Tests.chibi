@@ -1,0 +1,3 @@
+package rejected_backed_record
+@test
+Check :: () { observed := Main(); }

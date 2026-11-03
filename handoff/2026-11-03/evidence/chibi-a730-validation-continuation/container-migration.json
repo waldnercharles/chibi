@@ -1,0 +1,9 @@
+{
+  "source": "/private/tmp/chibi-a730-composed-proof/source/test/native_aot/managed_pointers/source/rejected/container.chibi",
+  "source_sha256": "54512b7a4a69d92a8235f5006af512873722904ec64ea525f46fb792a963afd4",
+  "compiled_in_original_tail_log": "/private/tmp/chibi-a730-validation-continuation/managed/rejected-container.log",
+  "binary": "/private/tmp/chibi-a730-validation-continuation/managed/container-positive",
+  "binary_sha256": "3f23a99c1123b8f1c29803dc21b8dc6f8a6f92c52c12afc909b086ebd430f82c",
+  "expected_exit": 1,
+  "reason": "Exact unchanged source returns length of boxed pointer array containing one element; a730 now admits this ordinary-positive domain."
+}

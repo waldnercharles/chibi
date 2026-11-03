@@ -1,0 +1,421 @@
+diff --git a/test/native_aot/managed_pointers/RecordViewHost.chibi b/test/native_aot/managed_pointers/RecordViewHost.chibi
+new file mode 100644
+index 000000000..99a209834
+--- /dev/null
++++ b/test/native_aot/managed_pointers/RecordViewHost.chibi
+@@ -0,0 +1,56 @@
++package record_view_host
++import os "core:os"
++import strings "core:strings"
++import target "core:target"
++foreign import libc "system:c"
++foreign libc {
++    dlopen :: (path: cstring, flags: i32) -> rawptr
++    dlsym :: (image: rawptr, name: cstring) -> rawptr
++    dlclose :: (image: rawptr) -> i32
++    calloc :: (count: u64, width: u64) -> rawptr
++    free :: (memory: rawptr)
++}
++Required :: (image: rawptr, name: string) -> rawptr { address := dlsym(image, name); assert(address != 0); return address; }
++when target.Os == target.Darwin { Open :: (path: string) -> rawptr { return dlopen(path, 262); } }
++else { Open :: (path: string) -> rawptr { return dlopen(path, 2); } }
++Main :: () -> int {
++    args := os.Arguments(); if (length(args) != 3) { return 2; }
++    old := Open(args[0]); writer := Open(args[1]); assert(old != 0 && writer != 0);
++    size: fn() -> i64 = Required(old, "chibi_host_family_size");
++    adopt_old: fn(heap: rawptr) -> i32 = Required(old, "chibi_host_set_family");
++    adopt_writer: fn(heap: rawptr) -> i32 = Required(writer, "chibi_host_set_family");
++    create: fn(window: rawptr) -> i32 = Required(old, "record_view_create");
++    count: fn(window: rawptr) -> i32 = Required(writer, "record_view_Count");
++    read: fn(window: rawptr) -> i32 = Required(old, "record_view_Read");
++    label: fn(window: rawptr) -> i32 = Required(old, "record_view_Label");
++    owned_text: fn(window: rawptr) -> i32 = Required(old, "record_view_owned_text");
++    release: fn() -> i32 = Required(old, "record_view_release");
++    old_pending: fn() -> i64 = Required(old, "chibi_host_cells_pending");
++    writer_pending: fn() -> i64 = Required(writer, "chibi_host_cells_pending");
++    collect: fn() -> i32 = Required(old, "chibi_host_family_collect");
++    bytes := size(); assert(bytes > 0 && bytes <= 4096);
++    heap := calloc(1, u64(bytes)); window := calloc(1, 32); assert(heap != 0 && window != 0);
++    adopted_old := adopt_old(heap); adopted_writer := adopt_writer(heap); assert(adopted_old == 0 && adopted_writer == 0);
++    created := create(window); assert(created == 0);
++    before := old_pending(); assert(before == 2, "old array and pointed record lease their creating image");
++    collected := collect(); assert(collected == 0);
++    length := count(window); assert(length == 1, "compatible source fingerprint accepts the old array cell");
++    if (args[2] == "Set" || args[2] == "Replace") {
++        change: fn(window: rawptr) -> i32 = Required(writer, strings.Concatenate(["record_view_", args[2]]));
++        changed := change(window); assert(changed == 0);
++        // Check only the owner bits while both images are mapped. An old
++        // implementation fails safely here, before writer unload or byte reads.
++        owns_text := owned_text(window); assert(owns_text == 1, "published writer literal must have a counted owner");
++        writer_cells := writer_pending(); assert(writer_cells == 0, "setter reuses old pointers and creates no writer cells");
++        closed := dlclose(writer); assert(closed == 0);
++        valid := label(window); assert(valid == 1, "NUL text survives writer unload");
++    } else { closed := dlclose(writer); assert(closed == 0); }
++    number := read(window); assert(number == 7);
++    rooted := old_pending(); assert(rooted == 2);
++    released := release(); assert(released == 0);
++    collected = collect(); assert(collected == 0);
++    remaining := old_pending(); assert(remaining == 0, "array and pointer metadata leases drain after the root leaves");
++    closed_old := dlclose(old); assert(closed_old == 0);
++    free(window); free(heap);
++    return 0;
++}
+diff --git a/test/native_aot/managed_pointers/RecordViewImages.chibi b/test/native_aot/managed_pointers/RecordViewImages.chibi
+new file mode 100644
+index 000000000..cf478b80b
+--- /dev/null
++++ b/test/native_aot/managed_pointers/RecordViewImages.chibi
+@@ -0,0 +1,88 @@
++package native_driver
++
++import compiler "project:package_compiler"
++import facts "project:scalar_facts"
++import native "project:llvm_native"
++import scalar "project:scalar_llvm"
++import abi "project:native_abi"
++import link "project:native_link"
++import host "project:native_link_host"
++import os "core:os"
++import strings "core:strings"
++
++// The wrappers call actual source-generated functions. Record ordinals,
++// function ordinals and full cell tags come from the checked source facts.
++Adapter :: (rows: facts.Row[]) -> string {
++    functions: [string: int] = [:];
++    function := 0; ordinal := 0; record := -1; label := -1; row_type := 0; tag: i64 = 0;
++    for (at in 0..<length(rows)) {
++        row := rows[at];
++        if (row.kind == facts.RecordRow || row.kind == facts.UnionRow) {
++            if (row.name == "Row") {
++                record = ordinal; row_type = facts.ArrayType + facts.RecordType + ordinal;
++                for (field in 0..<row.count) { if (rows[at + 1 + field].name == "label") { label = field; } }
++            }
++            ordinal += 1;
++        }
++        if (row.kind == facts.FunctionRow) { functions[row.name] = function; function += 1; }
++    }
++    for (row in rows) { if (row.kind == facts.ManagedAddressRow && row.count == row_type) { tag = row.literal; } }
++    assert(record >= 0 && label >= 0 && tag != 0);
++    assert(functions.has("Factory") && functions.has("Count") && functions.has("Read") && functions.has("Set") && functions.has("Replace") && functions.has("Label"));
++    view := abi.ManagedViewType(); pointer := abi.ManagedPointerType(); array := abi.ArrayType();
++    // Facts and native use different record/array kind bases.
++    native_array := native.ArrayType + native.RecordType + record;
++    out := ["@record_view.root = internal global %chibi.managed.root zeroinitializer\n",
++        format_text("@record_view.owner = internal global {} zeroinitializer\n", pointer),
++        "define i32 @record_view_create(ptr %window) {\nentry:\n",
++        format_text("  %pointer = call {} @chibi_scalar.{}(ptr @chibi_context)\n  store {} %pointer, ptr @record_view.owner\n", pointer, functions["Factory"], pointer),
++        format_text("  %selected = insertvalue {} zeroinitializer, {} %pointer, 0\n  %view = insertvalue {} %selected, i32 1, 2\n  store {} %view, ptr %window\n", view, pointer, view, view),
++        format_text("  %heap.at = getelementptr {}, ptr @chibi_context, i32 0, i32 {}\n  %heap = load ptr, ptr %heap.at\n", abi.ManagedContextType(), abi.ManagedOwnerField),
++        "  call void @chibi_managed.push(ptr %heap, ptr @record_view.root, ptr @record_view.owner, ptr @chibi_managed.trace.pointer)\n  ret i32 0\n}\n"];
++    for (name in ["Count", "Read", "Set"]) {
++        out.append(format_text("define i32 @record_view_{}(ptr %window) {{\nentry:\n  %view = load {}, ptr %window\n  %result = call i32 @chibi_scalar.{}(ptr @chibi_context, {} %view)\n  ret i32 %result\n}}\n", name, view, functions[name], view));
++    }
++    out.append(format_text("define i32 @record_view_Label(ptr %window) {{\nentry:\n  %view = load {}, ptr %window\n  %result = call i1 @chibi_scalar.{}(ptr @chibi_context, {} %view)\n  %wide = zext i1 %result to i32\n  ret i32 %wide\n}}\n", view, functions["Label"], view));
++    out.append(format_text("define i32 @record_view_Replace(ptr %window) {{\nentry:\n  %view = load {}, ptr %window\n  %pointer = extractvalue {} %view, 0\n  %result = call {} @chibi_scalar.{}(ptr @chibi_context, {} %pointer)\n  ret i32 0\n}}\n", view, view, pointer, functions["Replace"], pointer));
++    out.append(format_text("define i32 @record_view_owned_text(ptr %window) {{\nentry:\n  %view = load {}, ptr %window\n", view));
++    out.append(format_text("  %heap.at = getelementptr {}, ptr @chibi_context, i32 0, i32 {}\n  %heap = load ptr, ptr %heap.at\n", abi.ManagedContextType(), abi.ManagedOwnerField));
++    out.append(format_text("  %array.at = call ptr @chibi_view.{}.{}.require(ptr %heap, {} %view)\n  %array = load {}, ptr %array.at\n  %data = extractvalue {} %array, 2\n", native_array, tag, view, array, array));
++    out.append(format_text("  %text.at = getelementptr %record{}, ptr %data, i32 0, i32 {}\n  %text = load {}, ptr %text.at\n  %owner = extractvalue {} %text, 2\n", record, label, abi.TextType(), abi.TextType()));
++    out.append("  %owned = icmp ne ptr %owner, null\n  %result = zext i1 %owned to i32\n  ret i32 %result\n}\n");
++    out.append(format_text("define i32 @record_view_release() {{\nentry:\n  %heap.at = getelementptr {}, ptr @chibi_context, i32 0, i32 {}\n  %heap = load ptr, ptr %heap.at\n", abi.ManagedContextType(), abi.ManagedOwnerField));
++    out.append(format_text("  call void @chibi_managed.pop(ptr %heap, ptr @record_view.root)\n  store {} zeroinitializer, ptr @record_view.owner\n  ret i32 0\n}}\n", pointer));
++    return strings.Join(out, "");
++}
++Main :: () -> int {
++    args := os.Arguments(); if (length(args) != 3) { return 2; }
++    work := args[0]; llvm := args[1]; sources := args[2];
++    target := abi.LinuxX64(); platform_os := 1; architecture := 1;
++    if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); platform_os = 2; architecture = 2; }
++    start := strings.Concatenate([work, "/record-view-start.ll"]);
++    runtime := link.ManagedFamilyContext(link.SharedContext(target.triple, true), true);
++    if (os.WriteText(start, runtime)) { return 2; }
++    for (name in ["Original", "Reindexed", "Changed"]) {
++        source := os.ReadText(format_text("{}/{}.chibi", sources, name));
++        if source.error { return 2; }
++        rows := compiler.CollectScalarGeneration("/project", [], [], ["Main.chibi"], [source.text], TargetFacts(), Names(), Natives(), Ports(), Identities(), platform_os, architecture);
++        if (length(rows) < 3 || rows[1].kind == facts.RejectionRow) { if (length(rows) > 1) { os.Print(rows[1].text); } return 1; }
++        module := "";
++        switch scalar.EmitFamilyShared(target, rows) {
++            case .Emitted(text): module = strings.Concatenate([text, Adapter(rows)]);
++            case .Invalid(message): os.Print(message); return 1;
++            case .Rejected(rejected): os.Print(rejected[length(rejected) - 1].text); return 1;
++        }
++        file := format_text("{}/{}.ll", work, name);
++        if (os.WriteText(file, module)) { return 2; }
++        for (level in [int(0), 2]) {
++            output := format_text("{}/{}-O{}.so", work, name, level);
++            objects := [strings.Concatenate([output, ".o"]), strings.Concatenate([output, "-start.o"])];
++            if (host.Objects(llvm, [file, start], objects, level, 1)) { return 1; }
++            plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", false);
++            plan.shared = true; plan.imports = link.SystemImports([module, runtime], target.triple);
++            if (os.Platform() != "Darwin") { plan.libraries = ["c"]; }
++            if (host.Link(plan)) { return 1; }
++        }
++    }
++    return 0;
++}
+diff --git a/test/native_aot/managed_pointers/record-view-schema/Changed.chibi b/test/native_aot/managed_pointers/record-view-schema/Changed.chibi
+new file mode 100644
+index 000000000..fcdad6365
+--- /dev/null
++++ b/test/native_aot/managed_pointers/record-view-schema/Changed.chibi
+@@ -0,0 +1,29 @@
++package record_view_schema
++Point :: struct { number: f32; }
++Row :: struct { pointer: ^Point; label: string; }
++Factory :: () -> ^(Row[]) {
++    point: Point = {number: 7};
++    rows: Row[] = [{pointer: &point, label: "old literal"}];
++    return &rows;
++}
++Count :: (selected: view Row[]) -> int { return selected.length(); }
++Read :: (selected: view Row[]) -> int { row := selected[0]; return int(row.pointer.number); }
++Label :: (selected: view Row[]) -> bool { row := selected[0]; return row.label == "writer\u0000literal"; }
++Literal :: () -> string { return "writer\u0000literal"; }
++Set :: (selected: view Row[]) -> int {
++    old := selected[0];
++    selected[0] = {pointer: old.pointer, label: Literal()};
++    return 0;
++}
++Replace :: (pointer: ^(Row[])) -> ^(Row[]) {
++    previous := pointer^[0];
++    pointer^ = [{pointer: previous.pointer, label: Literal()}];
++    return pointer;
++}
++Main :: () -> int {
++    pointer := Factory(); selected := pointer.view(0..<1)!;
++    set := Set(selected); replaced := Replace(pointer);
++    valid := Label(selected);
++    assert(set == 0 && valid && length(replaced^) == 1);
++    return Read(selected);
++}
+diff --git a/test/native_aot/managed_pointers/record-view-schema/Original.chibi b/test/native_aot/managed_pointers/record-view-schema/Original.chibi
+new file mode 100644
+index 000000000..0a3f265f8
+--- /dev/null
++++ b/test/native_aot/managed_pointers/record-view-schema/Original.chibi
+@@ -0,0 +1,29 @@
++package record_view_schema
++Point :: struct { number: int; }
++Row :: struct { pointer: ^Point; label: string; }
++Factory :: () -> ^(Row[]) {
++    point: Point = {number: 7};
++    rows: Row[] = [{pointer: &point, label: "old literal"}];
++    return &rows;
++}
++Count :: (selected: view Row[]) -> int { return selected.length(); }
++Read :: (selected: view Row[]) -> int { row := selected[0]; return int(row.pointer.number); }
++Label :: (selected: view Row[]) -> bool { row := selected[0]; return row.label == "writer\u0000literal"; }
++Literal :: () -> string { return "writer\u0000literal"; }
++Set :: (selected: view Row[]) -> int {
++    old := selected[0];
++    selected[0] = {pointer: old.pointer, label: Literal()};
++    return 0;
++}
++Replace :: (pointer: ^(Row[])) -> ^(Row[]) {
++    previous := pointer^[0];
++    pointer^ = [{pointer: previous.pointer, label: Literal()}];
++    return pointer;
++}
++Main :: () -> int {
++    pointer := Factory(); selected := pointer.view(0..<1)!;
++    set := Set(selected); replaced := Replace(pointer);
++    valid := Label(selected);
++    assert(set == 0 && valid && length(replaced^) == 1);
++    return Read(selected);
++}
+diff --git a/test/native_aot/managed_pointers/record-view-schema/Reindexed.chibi b/test/native_aot/managed_pointers/record-view-schema/Reindexed.chibi
+new file mode 100644
+index 000000000..7b452dedc
+--- /dev/null
++++ b/test/native_aot/managed_pointers/record-view-schema/Reindexed.chibi
+@@ -0,0 +1,30 @@
++package record_view_schema
++Unrelated :: struct { width: f64; }
++Point :: struct { number: int; }
++Row :: struct { pointer: ^Point; label: string; }
++Factory :: () -> ^(Row[]) {
++    point: Point = {number: 7};
++    rows: Row[] = [{pointer: &point, label: "old literal"}];
++    return &rows;
++}
++Count :: (selected: view Row[]) -> int { return selected.length(); }
++Read :: (selected: view Row[]) -> int { row := selected[0]; return int(row.pointer.number); }
++Label :: (selected: view Row[]) -> bool { row := selected[0]; return row.label == "writer\u0000literal"; }
++Literal :: () -> string { return "writer\u0000literal"; }
++Set :: (selected: view Row[]) -> int {
++    old := selected[0];
++    selected[0] = {pointer: old.pointer, label: Literal()};
++    return 0;
++}
++Replace :: (pointer: ^(Row[])) -> ^(Row[]) {
++    previous := pointer^[0];
++    pointer^ = [{pointer: previous.pointer, label: Literal()}];
++    return pointer;
++}
++Main :: () -> int {
++    pointer := Factory(); selected := pointer.view(0..<1)!;
++    set := Set(selected); replaced := Replace(pointer);
++    valid := Label(selected);
++    assert(set == 0 && valid && length(replaced^) == 1);
++    return Read(selected);
++}
+diff --git a/test/native_aot/managed_pointers/source/ViewRecordPointers.chibi b/test/native_aot/managed_pointers/source/ViewRecordPointers.chibi
+new file mode 100644
+index 000000000..a5c9016ac
+--- /dev/null
++++ b/test/native_aot/managed_pointers/source/ViewRecordPointers.chibi
+@@ -0,0 +1,64 @@
++package view_record_pointers
++
++Direct :: struct { pointer: ^int; }
++Point :: struct { value: int; }
++Indirect :: struct { pointer: ^Point; }
++Owned :: struct { pointers: ^int[]; label: string; }
++
++Box :: (value: int) -> ^int { return &value; }
++BoxRows :: (rows: Direct[]) -> ^(Direct[]) { return &rows; }
++DirectOwner :: () -> view Direct[] {
++    rows: Direct[] = [{pointer: Box(7)}];
++    pointer := BoxRows(rows);
++    return pointer.view(0..<1)!;
++}
++IndirectOwner :: () -> view Indirect[] {
++    value: Point = {value: 31};
++    rows: Indirect[] = [{pointer: &value}];
++    pointer := &rows;
++    return pointer.view(0..<1)!;
++}
++OwnedOwner :: () -> view Owned[] {
++    rows: Owned[] = [{pointers: [Box(11), Box(13)], label: text_from_bytes([u8(65), u8(0), u8(66)])}];
++    pointer := &rows;
++    return pointer.view(0..<1)!;
++}
++EscapedRow :: () -> Owned { selected := OwnedOwner(); return selected[0]; }
++Churn :: () { for (index in 0..<3000) { discarded := Box(index); } }
++// The original ordinary-positive kernels use direct pointer and pointer-array
++// fields in record elements, rather than pointer elements in the view itself.
++DirectKernel :: () -> int {
++    number := 7; rows: Direct[] = [{pointer: &number}]; pointer := &rows;
++    selected := pointer.view(0..<1);
++    if selected { row := selected[0]; return row.pointer^; }
++    return -1;
++}
++ArrayKernel :: () -> int {
++    number := 7; rows: Owned[] = [{pointers: [&number], label: ""}]; pointer := &rows;
++    selected := pointer.view(0..<1);
++    if selected { row := selected[0]; return row.pointers[0]^; }
++    return -1;
++}
++Main :: () -> int {
++    direct_kernel := DirectKernel(); array_kernel := ArrayKernel();
++    assert(direct_kernel == 7 && array_kernel == 7);
++    selected := DirectOwner(); Churn();
++    original := selected.clone();
++    selected[0] = {pointer: Box(19)};
++    Churn();
++    assert(original[0].pointer^ == 7 && selected[0].pointer^ == 19);
++    copied := selected.slice(0..<1);
++    if copied {
++        rows := copied;
++        rows[0] = {pointer: Box(23)};
++        Churn();
++        assert(rows[0].pointer^ == 23 && selected[0].pointer^ == 19);
++    } else { return 1; }
++    indirect := IndirectOwner(); Churn();
++    row := indirect[0];
++    assert(row.pointer.value == 31);
++    owned := EscapedRow(); Churn();
++    expected := text_from_bytes([u8(65), u8(0), u8(66)]);
++    assert(owned.pointers[0]^ == 11 && owned.pointers[1]^ == 13 && owned.label == expected);
++    return 0;
++}
+diff --git a/tools/compiler/llvm_native/Emit.chibi b/tools/compiler/llvm_native/Emit.chibi
+index 18a8619aa..4aa02d0f1 100644
+--- a/tools/compiler/llvm_native/Emit.chibi
++++ b/tools/compiler/llvm_native/Emit.chibi
+@@ -3839,7 +3839,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
+         if (managed) {
+             counter := "null";
+             if (family) { counter = strings.Concatenate(["@", abi.ManagedImageCounter()]); }
+-            out.append(ManagedArrayModule(held, counter));
++            out.append(ManagedArrayModule(held, lifecycle, counter));
+             out.append(ManagedTextModule(held, counter));
+             out.append(ViewModule(held));
+         }
+diff --git a/tools/compiler/llvm_native/ManagedRecords.chibi b/tools/compiler/llvm_native/ManagedRecords.chibi
+index 0e1f2db84..cc05e8a5d 100644
+--- a/tools/compiler/llvm_native/ManagedRecords.chibi
++++ b/tools/compiler/llvm_native/ManagedRecords.chibi
+@@ -145,7 +145,7 @@ ManagedOptionalText :: (records: Record[], fields: int[], type: int) -> bool {
+ }
+ ManagedPayload :: (records: Record[], fields: int[], layout: ManagedRecordLayout, values: ValueLayout, type: int, tag: i64) -> bool {
+     return abi.ScalarType(type) != "" || type == abi.TextStorage || type == ArrayType + PointerType ||
+-           (ManagedArray(type) && ElementType(records, type) != 0 && ValueValid(values, type - ArrayType)) ||
++           (ManagedArray(type) && ElementType(records, type) != 0 && ValueCollectorCopyable(values, type - ArrayType)) ||
+            ((ManagedCellRecord(records, layout, type) || ManagedOptionalText(records, fields, type)) &&
+             records[type - RecordType].identity != 0 && records[type - RecordType].identity == tag);
+ }
+@@ -153,10 +153,10 @@ ManagedArray :: (type: int) -> bool {
+     return type >= ArrayType && type < MapType &&
+            (abi.ScalarType(type - ArrayType) != "" || type - ArrayType == abi.TextStorage || type - ArrayType == PointerType || type - ArrayType >= RecordType);
+ }
+-// Array cells own one descriptor. Pointer elements use the same typed tracer
+-// as ordinary pointer arrays; other admitted elements have no GC edges.
++// Array cells own one descriptor. Collector-bearing elements use their typed
++// backing tracer; rootless elements need no collector callback.
+ // The last cell release drops typed backing and nested owners while leased.
+-ManagedArrayModule :: (code: Instruction[], counter: string) -> string {
++ManagedArrayModule :: (code: Instruction[], values: ValueLayout, counter: string) -> string {
+     out: string[] = [];
+     seen: [string: bool] = [:];
+     dropped: [int: bool] = [:];
+@@ -172,7 +172,7 @@ ManagedArrayModule :: (code: Instruction[], counter: string) -> string {
+             out.append(format_text("  %value = load {}, ptr %payload\n  call void @chibi_array.{}.drop(ptr %ctx, {} %value)\n  ret void\n}}\n", abi.ArrayType(), type, abi.ArrayType()));
+         }
+         trace := "null";
+-        if (type == ArrayType + PointerType) { trace = "@chibi_managed.trace.array"; }
++        if (ValueCollectorArray(values, type)) { trace = strings.Concatenate(["@chibi_managed.trace.", ManagedTraceName(type)]); }
+         out.append(format_text("@chibi_managed.layout.array{} = private constant %chibi.managed.layout {{ ptr {}, ptr @chibi_managed.validate.array{}, ptr {} }}\n", key, trace, key, counter));
+         out.append(format_text("define internal i1 @chibi_managed.validate.array{}(i64 %offset, i64 %tag, i64 %bytes, i32 %storage) {{\nentry:\n", key));
+         out.append(format_text("  %tag.ok = icmp eq i64 %tag, {}\n  %storage.ok = icmp eq i32 %storage, {}\n", item.literal, ManagedStorageClass(type)));
+diff --git a/tools/compiler/llvm_native/Views.chibi b/tools/compiler/llvm_native/Views.chibi
+index 5611ebb95..988702379 100644
+--- a/tools/compiler/llvm_native/Views.chibi
++++ b/tools/compiler/llvm_native/Views.chibi
+@@ -13,7 +13,7 @@ ViewElement :: (item: Instruction) -> int {
+ }
+ ViewValid :: (records: Record[], fields: int[], layout: ValueLayout, slots: int[], arguments: int[], item: Instruction) -> bool {
+     element := ViewElement(item);
+-    if (element <= 0 || element >= ArrayType || ElementType(records, ArrayType + element) == 0 || (element != PointerType && !ValueValid(layout, element))) { return false; }
++    if (element <= 0 || element >= ArrayType || ElementType(records, ArrayType + element) == 0 || !ValueCollectorCopyable(layout, element)) { return false; }
+     left := ViewType;
+     if (item.op == ViewMake) { left = PointerType; }
+     if (item.literal == 0 || !Typed(slots, item.left, left)) { return false; }
+diff --git a/tools/compiler/package_compiler/ScalarNativeSchemas.chibi b/tools/compiler/package_compiler/ScalarNativeSchemas.chibi
+index de8214738..e303da964 100644
+--- a/tools/compiler/package_compiler/ScalarNativeSchemas.chibi
++++ b/tools/compiler/package_compiler/ScalarNativeSchemas.chibi
+@@ -11,6 +11,22 @@ ScalarSchemaView :: union { Prepared(types: TypeDecl[]) | Failed(message: string
+ ScalarSchemaValue :: (types: TypeDecl[], mapping: int[], value: ValueType,
+                        edges: ^(int[]), hash: u64) -> ScalarSchemaPart {
+     out := HashBytes(HashBytes(hash, u64(wrap: value.storage), 4), u64(wrap: value.container), 4);
++    if (value.storage == PointerStorage) {
++        if (value.record < 0 || value.record >= length(types) || types[value.record].kind != PointerDecl) {
++            return {hash: out, supported: false};
++        }
++        pointed := ScalarPointerElement(types, value.record);
++        supported := (value.container == 0 || value.container == ArrayContainer) && pointed.storage != 0;
++        // Constructor IDs are shared by nullable/nonnullable declarations.
++        // Hash the full source value; its pointee's definition is an edge,
++        // not another pointer node or an expanded copy of that definition.
++        out = HashBytes(out, SemanticTag(types, value), 8);
++        if (pointed.record >= 0) {
++            if (pointed.record >= length(mapping) || mapping[pointed.record] < 0) { supported = false; }
++            else { edges.append(mapping[pointed.record]); }
++        }
++        return {hash: out, supported: supported};
++    }
+     supported := (value.container == 0 || value.container == ArrayContainer) &&
+         (Numeric(value.storage) || value.storage == BoolStorage || value.storage == TextStorage ||
+          value.storage == StructStorage || value.storage == UnionStorage);

@@ -1,0 +1,876 @@
+[
+  {
+    "path": "test/native_aot/managed_pointers/source/rejected/OwnedRecordCell.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "d068351badcc6e29cf305a4606e8362977a21d6d7d7b54e20eb0274d35156015",
+    "source": "package owned_record_cell\nOwned :: struct { pointer: ^int; label: string; }\nMain :: () -> int {\n    number := 7;\n    value: Owned = {pointer: &number, label: \"word\"};\n    pointer := &value;\n    return text_byte_length(pointer.label);\n}\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/OwnedRecordCell-6d665539",
+          "--test"
+        ],
+        "status": 0,
+        "seconds": 0.9010794589994475,
+        "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+        "stderr": ""
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/OwnedRecordCell-6d665539/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/OwnedRecordCell-6d665539/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.13465412499499507,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/registered/OwnedRecordCell-6d665539/Main.chibi:2:1: native managed record cells require flat numeric, bool or pointer fields\n"
+      }
+    ]
+  },
+  {
+    "path": "test/native_aot/managed_pointers/source/rejected/PointerViewNullableElement.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "40711d16bea1cc591c57d7fb2f20e943ff4788aa4eb13db95ad57b65eb347152",
+    "source": "package rejected_pointer_view_nullable_element\nIgnore :: (window: view (^int?)[]) -> int { return 0; }\nMain :: () -> int { return 0; }\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/PointerViewNullableElement-d29bfe16",
+          "--test"
+        ],
+        "status": 0,
+        "seconds": 0.6387466250162106,
+        "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+        "stderr": ""
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/PointerViewNullableElement-d29bfe16/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/PointerViewNullableElement-d29bfe16/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.007648375001735985,
+        "stdout": "",
+        "stderr": "native: rejected Ignore: /private/tmp/chibi-retirement-closure-f255/registered/PointerViewNullableElement-d29bfe16/Main.chibi:2:12: scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result: 'window' is a managed pointer, not a scoped reference\n"
+      }
+    ]
+  },
+  {
+    "path": "test/native_aot/managed_pointers/source/rejected/PointerViewRecordTarget.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "14c91441be5fd6a7b98c3e57bf14d3dd467d1d621f63f15fcbad14daf4f84e55",
+    "source": "package rejected_pointer_view_record_target\nRow :: struct { number: int; }\nIgnore :: (window: view (^Row)[]) -> int { return 0; }\nMain :: () -> int { return 0; }\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/PointerViewRecordTarget-93547502",
+          "--test"
+        ],
+        "status": 0,
+        "seconds": 0.6496968749852385,
+        "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+        "stderr": ""
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/PointerViewRecordTarget-93547502/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/PointerViewRecordTarget-93547502/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.008756916999118403,
+        "stdout": "",
+        "stderr": "native: rejected Ignore: /private/tmp/chibi-retirement-closure-f255/registered/PointerViewRecordTarget-93547502/Main.chibi:3:12: scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result: 'window' is a managed pointer, not a scoped reference\n"
+      }
+    ]
+  },
+  {
+    "path": "test/native_aot/managed_pointers/source/rejected/TextViewMutation.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "e7b2719ce7f0fcd975f50c33f0b6278d9e4ba97a4fa1853ad232827d098c5e7c",
+    "source": "package text_view_mutation\nMain :: () -> int {\n    value := \"abc\";\n    selected := value.view(0..<1);\n    if selected { selected[0] = 65; }\n    return 0;\n}\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/TextViewMutation-2ebb5727",
+          "--test"
+        ],
+        "status": 1,
+        "seconds": 0.6514285410230514,
+        "stdout": "",
+        "stderr": "/private/tmp/chibi-retirement-closure-f255/registered/TextViewMutation-2ebb5727/Main.chibi:5:19: indexed mutation requires a writable array or map\n"
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/TextViewMutation-2ebb5727/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/TextViewMutation-2ebb5727/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.007362040982116014,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/registered/TextViewMutation-2ebb5727/Main.chibi:5:19: indexed mutation requires a writable array or map\n"
+      }
+    ]
+  },
+  {
+    "path": "test/native_aot/managed_pointers/source/rejected/ViewOptionalField.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "f5122b535d4a3300b354d9df52b9757e01d8f216c646a6803fca8cc96815c947",
+    "source": "package rejected_optional_view_field\nHolder :: struct { window: view int[]?; }\nMain :: () -> int { return 0; }\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/ViewOptionalField-3bdcf537",
+          "--test"
+        ],
+        "status": 1,
+        "seconds": 0.5976722080085892,
+        "stdout": "",
+        "stderr": "/private/tmp/chibi-retirement-closure-f255/registered/ViewOptionalField-3bdcf537/Main.chibi:2:20: record fields require a scalar, pointer, record, union or array of those types\n"
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/ViewOptionalField-3bdcf537/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/ViewOptionalField-3bdcf537/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.008107041998300701,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/registered/ViewOptionalField-3bdcf537/Main.chibi:2:20: record fields require a scalar, pointer, record, union or array of those types\n"
+      }
+    ]
+  },
+  {
+    "path": "test/native_aot/managed_pointers/source/rejected/ViewOwnedOptionalParameter.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "a9891f34e03a6cf8bf7c0ca787498933470d33534f1b64ecba99c9d3e796f28b",
+    "source": "package rejected_owned_optional_view_parameter\nRow :: struct { pointer: ^int; }\nIgnore :: (window: view Row[]?) -> int { return 0; }\nMain :: () -> int { return Ignore(nil); }\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/ViewOwnedOptionalParameter-7281c1f6",
+          "--test"
+        ],
+        "status": 0,
+        "seconds": 0.6433640419854783,
+        "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+        "stderr": ""
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/ViewOwnedOptionalParameter-7281c1f6/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/ViewOwnedOptionalParameter-7281c1f6/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.007725499977823347,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/registered/ViewOwnedOptionalParameter-7281c1f6/Main.chibi:4:19: scalar proof requires known effect-free scalar execution, not effects 1\n"
+      }
+    ]
+  },
+  {
+    "path": "test/native_aot/managed_pointers/source/rejected/ViewOwnedOptionalResult.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "6982fcf2bb6aebf3e1f0b9da678b53359d46dfb99a806a372e27e3018e192406",
+    "source": "package rejected_owned_optional_view_result\nRow :: struct { pointer: ^int; }\nMissing :: () -> view Row[]? { return nil; }\nMain :: () -> int { window := Missing(); return 0; }\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/ViewOwnedOptionalResult-3c96f559",
+          "--test"
+        ],
+        "status": 0,
+        "seconds": 0.6447932909941301,
+        "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+        "stderr": ""
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/ViewOwnedOptionalResult-3c96f559/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/ViewOwnedOptionalResult-3c96f559/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.008269082987681031,
+        "stdout": "",
+        "stderr": "native: rejected Missing: /private/tmp/chibi-retirement-closure-f255/registered/ViewOwnedOptionalResult-3c96f559/Main.chibi:3:18: scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result\n"
+      }
+    ]
+  },
+  {
+    "path": "test/native_aot/managed_pointers/source/rejected/ViewReadonlyPattern.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "826769b961ae4e3570237a91b4a7694aa6a0e737a0342dd72c2e256a7863cc3b",
+    "source": "package readonly_view_pattern\nWindow :: union { Missing | Present(window: view int[]) }\nMain :: () -> int {\n    values: int[] = [1]; owner := &values; selected := owner.view(0..<1);\n    if selected {\n        value := Window.Present(selected);\n        switch value {\n            case .Present(window): window[0] = 7; return 0;\n            case: return 0;\n        }\n    }\n    return 0;\n}\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/ViewReadonlyPattern-ccb22dd0",
+          "--test"
+        ],
+        "status": 1,
+        "seconds": 0.6910288750077598,
+        "stdout": "",
+        "stderr": "/private/tmp/chibi-retirement-closure-f255/registered/ViewReadonlyPattern-ccb22dd0/Main.chibi:8:36: mutation requires a writable place\n"
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/ViewReadonlyPattern-ccb22dd0/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/ViewReadonlyPattern-ccb22dd0/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.007721166999544948,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/registered/ViewReadonlyPattern-ccb22dd0/Main.chibi:8:36: mutation requires a writable place\n"
+      }
+    ]
+  },
+  {
+    "path": "test/native_aot/managed_pointers/source/rejected/ViewRecord.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "11adba08cc475d565e341a99d04aefa7e7c2d2d4d1d71973ecf5bcf8c97d567a",
+    "source": "package rejected_view_record\nHolder :: struct { tag: int; window: view int[]; }\nMain :: () -> int { return 0; }\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/ViewRecord-bfacc51a",
+          "--test"
+        ],
+        "status": 1,
+        "seconds": 0.594990332989255,
+        "stdout": "",
+        "stderr": "/private/tmp/chibi-retirement-closure-f255/registered/ViewRecord-bfacc51a/Main.chibi:2:30: record fields require a scalar, pointer, record, union or array of those types\n"
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/ViewRecord-bfacc51a/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/ViewRecord-bfacc51a/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.007916917005786672,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/registered/ViewRecord-bfacc51a/Main.chibi:2:30: record fields require a scalar, pointer, record, union or array of those types\n"
+      }
+    ]
+  },
+  {
+    "path": "test/native_aot/managed_pointers/source/rejected/backed_record.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "30a394e2fe2a3d45fb101f576be3f445800b93245b56701a0b895caa767db33f",
+    "source": "package rejected_backed_record\nBox :: struct { values: int[]; }\nMain :: () -> int { value: Box = {values: [1]}; pointer := &value; return pointer.values[0]; }\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/backed_record-69b385de",
+          "--test"
+        ],
+        "status": 0,
+        "seconds": 0.6680073750030715,
+        "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+        "stderr": ""
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/backed_record-69b385de/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/backed_record-69b385de/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.007731499994406477,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/registered/backed_record-69b385de/Main.chibi:2:1: native managed record cells require flat numeric, bool or pointer fields\n"
+      }
+    ]
+  },
+  {
+    "path": "test/native_aot/managed_pointers/source/rejected/foreign_array.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "5d2a8597e905e352dc08d60474b84330862fd62a95fd7ef93bba4ad368332088",
+    "source": "package rejected_foreign_array\nMain :: () -> int { value := 1; pointers: ^int[] = [&value]; return Touch(pointers); }\nforeign import libc \"system:c\"\nforeign libc { Touch :: (pointers: ^int[]) -> int }\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/foreign_array-83af32fb",
+          "--test"
+        ],
+        "status": 1,
+        "seconds": 0.6011020000150893,
+        "stdout": "",
+        "stderr": "/private/tmp/chibi-retirement-closure-f255/registered/foreign_array-83af32fb/Main.chibi:4:26: A foreign parameter is an integer, float, bool, rawptr, cstring, function type or array of numbers\n"
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/foreign_array-83af32fb/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/foreign_array-83af32fb/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.007681499992031604,
+        "stdout": "",
+        "stderr": "native: rejected foreign libc { Touch: /private/tmp/chibi-retirement-closure-f255/registered/foreign_array-83af32fb/Main.chibi:4:26: A foreign parameter is an integer, float, bool, rawptr, cstring, function type or array of numbers\n"
+      }
+    ]
+  },
+  {
+    "path": "test/native_aot/managed_pointers/source/rejected/foreign_scalar.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "22585878a4622886b69703b5433379031c63956bdf9d51bd606450411b920461",
+    "source": "package rejected_foreign_scalar\nMain :: () -> int { value := 1; pointer := &value; return Touch(pointer); }\nforeign import libc \"system:c\"\nforeign libc { Touch :: (pointer: ^int) -> int }\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/foreign_scalar-cb3fdd0e",
+          "--test"
+        ],
+        "status": 1,
+        "seconds": 0.5895730839984026,
+        "stdout": "",
+        "stderr": "/private/tmp/chibi-retirement-closure-f255/registered/foreign_scalar-cb3fdd0e/Main.chibi:4:26: A foreign parameter is an integer, float, bool, rawptr, cstring, function type or array of numbers\n"
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/foreign_scalar-cb3fdd0e/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/foreign_scalar-cb3fdd0e/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.007309584005270153,
+        "stdout": "",
+        "stderr": "native: rejected foreign libc { Touch: /private/tmp/chibi-retirement-closure-f255/registered/foreign_scalar-cb3fdd0e/Main.chibi:4:26: A foreign parameter is an integer, float, bool, rawptr, cstring, function type or array of numbers\n"
+      }
+    ]
+  },
+  {
+    "path": "test/native_aot/managed_pointers/source/rejected/foreign_strings.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "a90fafe6e7f55bdc4958555bd79c70d14eb86fac4d340a4899be474d681594bb",
+    "source": "package foreign_strings\nforeign import libc \"system:c\"\nforeign libc { Touch :: (values: string[]) -> int }\nMain :: () -> int { values: string[] = [\"text\"]; pointer := &values; return Touch(pointer^); }\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/foreign_strings-a0e79792",
+          "--test"
+        ],
+        "status": 1,
+        "seconds": 0.5854239579930436,
+        "stdout": "",
+        "stderr": "/private/tmp/chibi-retirement-closure-f255/registered/foreign_strings-a0e79792/Main.chibi:3:26: A foreign parameter is an integer, float, bool, rawptr, cstring, function type or array of numbers\n"
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/foreign_strings-a0e79792/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/foreign_strings-a0e79792/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.007777833990985528,
+        "stdout": "",
+        "stderr": "native: rejected foreign libc { Touch: /private/tmp/chibi-retirement-closure-f255/registered/foreign_strings-a0e79792/Main.chibi:3:26: A foreign parameter is an integer, float, bool, rawptr, cstring, function type or array of numbers\n"
+      }
+    ]
+  },
+  {
+    "path": "test/native_aot/managed_pointers/source/rejected/retained.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "4e72d72b06ab014eb09b9d0379a671cf2b3b67eb66add2f71f87baceda6b6a1f",
+    "source": "package rejected_retained_cell\nMain :: () -> int { value: retain int = 1; pointer := &value; return pointer^; }\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/retained-08a0f2db",
+          "--test"
+        ],
+        "status": 1,
+        "seconds": 0.6513476670079399,
+        "stdout": "",
+        "stderr": "/private/tmp/chibi-retirement-closure-f255/registered/retained-08a0f2db/Main.chibi:2:56: address requires a writable local or record field\n"
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/retained-08a0f2db/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/retained-08a0f2db/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.008103166008368134,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/registered/retained-08a0f2db/Main.chibi:2:56: address requires a writable local or record field\n"
+      }
+    ]
+  },
+  {
+    "path": "test/native_aot/managed_pointers/source/rejected/unguarded_nullable.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "e3ae48f57dfe7414bba5784c6330125f8b813eb74cc5ac829555c3f2bbfbb779",
+    "source": "package rejected_unguarded_nullable\nMain :: () -> int { pointer: ^int? = nil; return pointer^; }\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/unguarded_nullable-1e6438df",
+          "--test"
+        ],
+        "status": 1,
+        "seconds": 0.631949959002668,
+        "stdout": "",
+        "stderr": "Nullable pointer requires a presence guard before dereference\n"
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/unguarded_nullable-1e6438df/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/unguarded_nullable-1e6438df/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.00753566698404029,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/registered/unguarded_nullable-1e6438df/Main.chibi:2:50: Nullable pointer requires a presence guard before dereference\n"
+      }
+    ]
+  },
+  {
+    "path": "test/native_aot/map_programs/rejected/NestedPointer.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "8f0919fecd262aedd022a8351d86c98251079aebfc900d8eebcbe6298636282e",
+    "source": "package rejected_nested_pointer\nMain :: () -> int {\n    cell := 7;\n    values: [string:[string:^int]] = [\"group\":[\"p\":&cell]];\n    return 0;\n}\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/NestedPointer-51db3ed0",
+          "--test"
+        ],
+        "status": 0,
+        "seconds": 0.6725239160005003,
+        "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+        "stderr": ""
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/NestedPointer-51db3ed0/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/NestedPointer-51db3ed0/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.007739083986962214,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/registered/NestedPointer-51db3ed0/Main.chibi:4:5: scalar proof supports only number, bool and string values\n"
+      }
+    ]
+  },
+  {
+    "path": "test/native_aot/map_programs/rejected/ReadonlyIteration.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "70a99c52cf58eeaf0b20739f4d134a192d39ff9b1b494ac8b5cc9faa02fcac25",
+    "source": "package readonly_map_iteration\nMain :: () -> int {\n    values:[int:[int:int]] = [1:[2:3]];\n    for (item in values) { item[2]=4; }\n    return 0;\n}\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/ReadonlyIteration-ec2443e4",
+          "--test"
+        ],
+        "status": 1,
+        "seconds": 0.6362837080087047,
+        "stdout": "",
+        "stderr": "/private/tmp/chibi-retirement-closure-f255/registered/ReadonlyIteration-ec2443e4/Main.chibi:4:28: mutation requires a writable place\n"
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/ReadonlyIteration-ec2443e4/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/ReadonlyIteration-ec2443e4/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.007738540996797383,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/registered/ReadonlyIteration-ec2443e4/Main.chibi:4:28: mutation requires a writable place\n"
+      }
+    ]
+  },
+  {
+    "path": "test/native_aot/map_programs/rejected/RecordMap.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "02661df75041ebd2d704796729e05501fa315c84dcc2ab5facec69bbfc20f22a",
+    "source": "package rejected_record_map\nHolder :: struct { values: [string:int]; }\nMain :: () -> int { return 0; }\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/RecordMap-9947b9b3",
+          "--test"
+        ],
+        "status": 1,
+        "seconds": 0.5924501249974128,
+        "stdout": "",
+        "stderr": "/private/tmp/chibi-retirement-closure-f255/registered/RecordMap-9947b9b3/Main.chibi:2:20: record fields require a scalar, pointer, record, union or array of those types\n"
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/RecordMap-9947b9b3/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/RecordMap-9947b9b3/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.009085083001991734,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/registered/RecordMap-9947b9b3/Main.chibi:2:20: record fields require a scalar, pointer, record, union or array of those types\n"
+      }
+    ]
+  },
+  {
+    "path": "test/native_aot/nested_arrays/rejected/Pointer.chibi",
+    "source_revision": "6c492a88f",
+    "sha256": "e75f3ade770f79ba10a9cd3b9fc8cb446a82957f290490d023bcd9a5cefa8bd8",
+    "source": "package rejected_nested_pointer\nMain :: () -> int {\n    value := 1;\n    nested: ^int[][] = [[&value]];\n    return nested[0][0]^;\n}\n",
+    "runs": [
+      {
+        "kind": "ordinary",
+        "command": [
+          "/private/tmp/chibi-native-test-contract/oracle/bin/chibi-compile",
+          "--project-root",
+          "/private/tmp/chibi-retirement-closure-f255/registered/Pointer-ec1da79e",
+          "--test"
+        ],
+        "status": 0,
+        "seconds": 0.7130420829926152,
+        "stdout": "PASS project.Check\n1 tests, 0 failed\n",
+        "stderr": ""
+      },
+      {
+        "kind": "native-source",
+        "command": [
+          "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+          "--compiler",
+          "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/compiler",
+          "--core",
+          "/private/tmp/chibi-native-test-contract/oracle/share/chibi/core",
+          "--source",
+          "/private/tmp/chibi-retirement-closure-f255/registered/Pointer-ec1da79e/Main.chibi",
+          "--entry",
+          "Main",
+          "--output",
+          "/private/tmp/chibi-retirement-closure-f255/registered/Pointer-ec1da79e/out.ll",
+          "--llvm",
+          "/private/tmp/chibi-bba9-proof/llvm22",
+          "--target",
+          "aarch64-apple-darwin",
+          "--emit-llvm"
+        ],
+        "status": 1,
+        "seconds": 0.008216125017497689,
+        "stdout": "",
+        "stderr": "native: rejected Main: /private/tmp/chibi-retirement-closure-f255/registered/Pointer-ec1da79e/Main.chibi:4:5: scalar proof supports only number, bool and string values\n"
+      }
+    ]
+  }
+]

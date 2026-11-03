@@ -1,0 +1,160 @@
+[
+  {
+    "name": "compile CommandTests",
+    "command": [
+      "sh",
+      "/Users/cwaldner/Personal/chibi/handoffs/heavy.sh",
+      "native_cli: retired compile CommandTests",
+      "/private/tmp/chibi-imported-composed-proof/stage3/chibi",
+      "--compiler",
+      "/private/tmp/chibi-retirement-preparation/source-one",
+      "--core",
+      "/private/tmp/chibi-retirement-preparation/source-one/packages/core",
+      "--source",
+      "/private/tmp/chibi-retirement-preparation/source-one/test/graph/CommandTests.chibi",
+      "--entry",
+      "Run",
+      "--collection",
+      "graph=/private/tmp/chibi-retirement-preparation/source-one/tools/graph",
+      "--output",
+      "/private/tmp/chibi-retirement-preparation/narrow/CommandTests-Run",
+      "--llvm",
+      "/private/tmp/chibi-bba9-proof/llvm22",
+      "--target",
+      "aarch64-apple-darwin",
+      "--level",
+      "2",
+      "--jobs",
+      "2"
+    ],
+    "status": 0,
+    "seconds": 1.4441840409999713,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "run CommandTests",
+    "command": [
+      "sh",
+      "/Users/cwaldner/Personal/chibi/handoffs/heavy.sh",
+      "native_cli: retired run CommandTests",
+      "/private/tmp/chibi-retirement-preparation/narrow/CommandTests-Run",
+      "/private/tmp/chibi-imported-composed-proof/stage3/chibi",
+      "/private/tmp/chibi-bba9-proof/llvm22"
+    ],
+    "status": 0,
+    "seconds": 5.242044374987017,
+    "stdout": "",
+    "stderr": "PASS exact Driver streams and complete Graph command inventories\n"
+  },
+  {
+    "name": "compile DriverTests",
+    "command": [
+      "sh",
+      "/Users/cwaldner/Personal/chibi/handoffs/heavy.sh",
+      "native_cli: retired compile DriverTests",
+      "/private/tmp/chibi-imported-composed-proof/stage3/chibi",
+      "--compiler",
+      "/private/tmp/chibi-retirement-preparation/source-one",
+      "--core",
+      "/private/tmp/chibi-retirement-preparation/source-one/packages/core",
+      "--source",
+      "/private/tmp/chibi-retirement-preparation/source-one/test/graph/DriverTests.chibi",
+      "--entry",
+      "Entrypoints",
+      "--collection",
+      "graph=/private/tmp/chibi-retirement-preparation/source-one/tools/graph",
+      "--output",
+      "/private/tmp/chibi-retirement-preparation/narrow/DriverTests-Entrypoints",
+      "--llvm",
+      "/private/tmp/chibi-bba9-proof/llvm22",
+      "--target",
+      "aarch64-apple-darwin",
+      "--level",
+      "2",
+      "--jobs",
+      "2"
+    ],
+    "status": 0,
+    "seconds": 2.172324125014711,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "run DriverTests",
+    "command": [
+      "sh",
+      "/Users/cwaldner/Personal/chibi/handoffs/heavy.sh",
+      "native_cli: retired run DriverTests",
+      "/private/tmp/chibi-retirement-preparation/narrow/DriverTests-Entrypoints",
+      "/private/tmp/chibi-imported-composed-proof/stage3/chibi",
+      "/private/tmp/chibi-bba9-proof/llvm22"
+    ],
+    "status": 0,
+    "seconds": 1.1365353330038488,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "compile EngineTests",
+    "command": [
+      "sh",
+      "/Users/cwaldner/Personal/chibi/handoffs/heavy.sh",
+      "native_cli: retired compile EngineTests",
+      "/private/tmp/chibi-imported-composed-proof/stage3/chibi",
+      "--compiler",
+      "/private/tmp/chibi-retirement-preparation/source-one",
+      "--core",
+      "/private/tmp/chibi-retirement-preparation/source-one/packages/core",
+      "--source",
+      "/private/tmp/chibi-retirement-preparation/source-one/test/graph/EngineTests.chibi",
+      "--entry",
+      "Run",
+      "--collection",
+      "graph=/private/tmp/chibi-retirement-preparation/source-one/tools/graph",
+      "--output",
+      "/private/tmp/chibi-retirement-preparation/narrow/EngineTests-Run",
+      "--llvm",
+      "/private/tmp/chibi-bba9-proof/llvm22",
+      "--target",
+      "aarch64-apple-darwin",
+      "--level",
+      "2",
+      "--jobs",
+      "2"
+    ],
+    "status": 0,
+    "seconds": 2.03253150000819,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "run EngineTests",
+    "command": [
+      "sh",
+      "/Users/cwaldner/Personal/chibi/handoffs/heavy.sh",
+      "native_cli: retired run EngineTests",
+      "/private/tmp/chibi-retirement-preparation/narrow/EngineTests-Run"
+    ],
+    "status": 0,
+    "seconds": 0.4938316250045318,
+    "stdout": "",
+    "stderr": "graph: invalid project compatibility version /private/tmp/chibi-retirement-preparation/source-one/.chibi/native-identity-test/sdk/PROJECT_VERSION\ngraph: invalid project compatibility version /private/tmp/chibi-retirement-preparation/source-one/.chibi/native-identity-test/sdk/PROJECT_VERSION\ngraph: invalid project compatibility version /private/tmp/chibi-retirement-preparation/source-one/.chibi/native-identity-test/sdk/PROJECT_VERSION\ngraph: invalid project compatibility version /private/tmp/chibi-retirement-preparation/source-one/.chibi/native-identity-test/sdk/PROJECT_VERSION\ngraph: invalid project compatibility version /private/tmp/chibi-retirement-preparation/source-one/.chibi/native-identity-test/sdk/PROJECT_VERSION\ngraph: invalid project compatibility version /private/tmp/chibi-retirement-preparation/source-one/.chibi/native-identity-test/sdk/PROJECT_VERSION\ngraph: invalid project compatibility version /private/tmp/chibi-retirement-preparation/source-one/.chibi/native-identity-test/sdk/PROJECT_VERSION\ngraph: invalid project compatibility version /private/tmp/chibi-retirement-preparation/source-one/.chibi/native-identity-test/sdk/PROJECT_VERSION\ngraph: invalid prepared format version /private/tmp/chibi-retirement-preparation/source-one/.chibi/native-identity-test/tools/compiler/prepared_writer/Writer.chibi\ngraph: invalid prepared format version /private/tmp/chibi-retirement-preparation/source-one/.chibi/native-identity-test/tools/compiler/prepared_writer/Writer.chibi\ngraph: invalid prepared format version /private/tmp/chibi-retirement-preparation/source-one/.chibi/native-identity-test/tools/compiler/prepared_writer/Writer.chibi\ngraph: invalid prepared format version /private/tmp/chibi-retirement-preparation/source-one/.chibi/native-identity-test/tools/compiler/prepared_writer/Writer.chibi\n"
+  },
+  {
+    "name": "native-runner",
+    "command": [
+      "sh",
+      "/Users/cwaldner/Personal/chibi/handoffs/heavy.sh",
+      "native_cli: retired native-runner",
+      "sh",
+      "/private/tmp/chibi-retirement-preparation/source-one/test/bootstrap/native-runner.sh",
+      "/private/tmp/chibi-imported-composed-proof/stage3/chibi",
+      "/private/tmp/chibi-bba9-proof/llvm22"
+    ],
+    "status": 0,
+    "seconds": 7.3240887919964734,
+    "stdout": "native runner: execution, reuse, rejection, cleanup and in-flight edits passed\n",
+    "stderr": "RUN native\nPASS native\n1 tests, 0 failed\nstage-two: 0 s, exit 0\nnative-self-host: stage two built\nstage-two: 0 s, exit 0\nstage-three: 0 s, exit 0\nstage two sha256 a81a288242aa030267774c4f556325d946d2bfb871b0bcd2b5d5689191834865\nstage three sha256 a81a288242aa030267774c4f556325d946d2bfb871b0bcd2b5d5689191834865\nnative-self-host: the fixed point is /private/var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T/chibi-native-runner.CSqtR9/stages-default/stage2/chibi\nstage-two-windows: 0 s, exit 0\nstage two windows sha256 a81a288242aa030267774c4f556325d946d2bfb871b0bcd2b5d5689191834865\nnative-self-host: stage two and stage three are byte-identical\nstage-two: 0 s, exit 0\nstage-three: 0 s, exit 0\nstage two sha256 a81a288242aa030267774c4f556325d946d2bfb871b0bcd2b5d5689191834865\nstage three sha256 a81a288242aa030267774c4f556325d946d2bfb871b0bcd2b5d5689191834865\nnative-self-host: the fixed point is /private/var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T/chibi-native-runner.CSqtR9/stages-failed/stage2/chibi\nstage-two-windows: 0 s, exit 0\nstage two windows sha256 a81a288242aa030267774c4f556325d946d2bfb871b0bcd2b5d5689191834865\nnative command contract: failed with status 7\n"
+  }
+]

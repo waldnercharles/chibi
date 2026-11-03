@@ -1,0 +1,3 @@
+package rejected_pointer_view_nullable_element
+@test
+Check :: () { observed := Main(); }

@@ -1,0 +1,27 @@
+PASS native view0 O0 managed source live 0 peak 3 total 7
+
+PASS native view0 O2 managed source live 0 peak 3 total 7
+
+PASS native view1 O0 
+PASS native view1 O2 
+PASS native view2 O0 
+PASS native view2 O2 
+PASS native view3 O0 
+PASS native view3 O2 
+PASS native view4 O0 
+PASS native view4 O2 
+PASS native view5 O0 
+PASS native view5 O2 
+PASS native view6 O0 
+PASS native view6 O2 
+PASS native view7 O0 
+PASS native view7 O2 
+PASS native view schema O0 compatible reindex, changed schema, image leases
+PASS native view schema O2 compatible reindex, changed schema, image leases
+PASS native pointer view schema O0 compatible reindex, changed pointee, image leases
+PASS native pointer view schema O2 compatible reindex, changed pointee, image leases
+PASS native text string cells O0 source call, borrowed-byte clobber, writer unload and old image lease
+PASS native text string cells O2 source call, borrowed-byte clobber, writer unload and old image lease
+PASS native optional string cells O0 source call, borrowed-byte clobber, writer unload and old image lease
+PASS native optional string cells O2 source call, borrowed-byte clobber, writer unload and old image lease
+native managed pointers: unsupported container was accepted

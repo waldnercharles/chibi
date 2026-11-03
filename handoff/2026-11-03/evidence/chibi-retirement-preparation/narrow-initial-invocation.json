@@ -1,0 +1,35 @@
+[
+  {
+    "name": "compile CommandTests",
+    "command": [
+      "sh",
+      "/Users/cwaldner/Personal/chibi/handoffs/heavy.sh",
+      "native_cli: retired compile CommandTests",
+      "/private/tmp/chibi-imported-composed-proof/stage3/chibi",
+      "--compiler",
+      "/private/tmp/chibi-retirement-preparation/source-one/tools/compiler",
+      "--core",
+      "/private/tmp/chibi-retirement-preparation/source-one/packages/core",
+      "--source",
+      "/private/tmp/chibi-retirement-preparation/source-one/test/graph/CommandTests.chibi",
+      "--entry",
+      "Run",
+      "--collection",
+      "graph=/private/tmp/chibi-retirement-preparation/source-one/tools/graph",
+      "--output",
+      "/private/tmp/chibi-retirement-preparation/narrow/CommandTests-Run",
+      "--llvm",
+      "/private/tmp/chibi-bba9-proof/llvm22",
+      "--target",
+      "aarch64-apple-darwin",
+      "--level",
+      "2",
+      "--jobs",
+      "2"
+    ],
+    "status": 2,
+    "seconds": 0.18072454200591892,
+    "stdout": "",
+    "stderr": "native: package directory has no sources: /private/tmp/chibi-retirement-preparation/source-one/tools/compiler/test/graph/native_process\n"
+  }
+]

@@ -1,0 +1,152 @@
+[
+  {
+    "path": ".github/ci/format.sh",
+    "shell": "bash",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": ".github/ci/linux-core.sh",
+    "shell": "bash",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": ".github/ci/linux-setup.sh",
+    "shell": "bash",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": ".github/ci/native-proof.sh",
+    "shell": "bash",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": ".github/maintenance/native-seed.sh",
+    "shell": "bash",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": ".github/native-llvm.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "test/bootstrap/native-runner.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "test/graph/fixtures/native-stage.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "test/native_aot/array_operations/run.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "test/native_aot/characters/run.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "test/native_aot/failures/run.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "test/native_aot/fallible/run.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "test/native_aot/managed_values/run.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "test/native_aot/maps/run.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "test/native_aot/math_builtin/run.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "test/native_aot/math_scalar/remainder.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "test/native_aot/math_scalar/run.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "test/native_aot/nested_arrays/run.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "test/native_aot/optionals/run.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "test/native_aot/patterns/run.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "test/native_aot/scalar_producer/run.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "test/native_aot/text_arguments/run.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "test/native_aot/text_format/run.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "test/native_aot/windows_decimal/run.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  },
+  {
+    "path": "tools/clang-format.sh",
+    "shell": "sh",
+    "status": 0,
+    "stderr": ""
+  }
+]

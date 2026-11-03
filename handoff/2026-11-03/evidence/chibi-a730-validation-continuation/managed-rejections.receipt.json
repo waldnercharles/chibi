@@ -1,0 +1,15 @@
+{
+  "name": "managed-rejections",
+  "command": [
+    "sh",
+    "/private/tmp/chibi-a730-validation-continuation/managed-rejections.sh",
+    "/private/tmp/chibi-a730-composed-proof/stage3/chibi",
+    "/private/tmp/chibi-bba9-proof/llvm22",
+    "/private/tmp/chibi-a730-validation-continuation/managed"
+  ],
+  "exit": 0,
+  "expected_exit": 0,
+  "seconds": 0.75,
+  "log": "/private/tmp/chibi-a730-validation-continuation/managed-rejections.log",
+  "log_sha256": "ae140b5cf0cc07e2b81ae9f1a79c2b94b1ee4a16b48131b0735129970e5bd48a"
+}

@@ -12,7 +12,7 @@ case "$(uname -s)-$(uname -m)" in
     *) echo 'native nested map places: unsupported test host' >&2; exit 2 ;;
 esac
 for level in 0 2; do
-    for name in Initial Compound MissingMap Late DeletedMap Negative DeepInitial DeepLate DeepArrayInitial DeepArrayLate; do
+    for name in Initial Compound MissingMap Late DeletedMap Negative DeepInitial DeepLate DeepArrayInitial DeepArrayLate ArrayEndInitial ArrayEndMixedInitial ArrayEndLate ArrayEndIndex; do
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$root/test/native_aot/map_programs/nested_places/$name.chibi" --entry Main \
             --output "$work/$name-O$level" --llvm "$llvm" --target "$triple" --level "$level" --jobs 1
@@ -20,7 +20,7 @@ for level in 0 2; do
         "$work/$name-O$level" > "$work/$name-O$level.log" 2>&1 || failed=$?
         test "$failed" -eq 134
         expected='native failure: another failure'
-        case "$name" in Initial|Compound|MissingMap|DeepInitial|DeepArrayInitial) expected=AssertionFailed ;; esac
+        case "$name" in Initial|Compound|MissingMap|DeepInitial|DeepArrayInitial|ArrayEndIndex) expected=AssertionFailed ;; esac
         grep -F "$expected" "$work/$name-O$level.log" >/dev/null
         if grep -F IndexOutOfRange "$work/$name-O$level.log" >/dev/null; then
             cat "$work/$name-O$level.log" >&2

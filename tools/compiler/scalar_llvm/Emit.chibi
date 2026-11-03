@@ -1085,10 +1085,11 @@ MapOperands :: (operand: facts.Row) -> int {
     if (operand.value == facts.MapSet) {
         return 3;
     }
-    if (MappedArrayChange(operand.value)) {
-        if (operand.value == facts.MapArraySet) { return 4; }
-        return 3;
+    if (operand.value == facts.MapArraySet) {
+        if (operand.count < 4) { return -1; }
+        return operand.count;
     }
+    if (MappedArrayChange(operand.value)) { return 3; }
     if (operand.value == facts.MapArrayLoan) { return 3; }
     if ((operand.value >= facts.MapGet && operand.value <= facts.MapValueAt) || MapGets(operand.value)) {
         return 2;
@@ -1103,25 +1104,33 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
     consumed := MapOperands(operand);
     base := length(stack) - consumed;
     mismatch := "scalar map operation differs from its operands";
-    if (NestedMapChange(operand.value)) {
+    if (NestedMapChange(operand.value) || (operand.value == facts.MapArraySet && operand.count > 4)) {
+        array_leaf := operand.value == facts.MapArraySet;
         arrayed := operand.value == facts.ArrayMapSet || operand.value == facts.ArrayMapDelete;
-        inserting := operand.value == facts.ArrayMapSet || operand.value == facts.NestedMapSet;
+        inserting := operand.value == facts.ArrayMapSet || operand.value == facts.NestedMapSet || array_leaf;
         if (consumed < 0 || base < floor || operand.name != "" || operand.literal != 0 ||
             operand.type < facts.ArrayType || operand.type >= facts.ReferenceType || !Valued(records, operand.type) ||
-            arrayed != (operand.type < facts.MapType) || stack[base] != facts.ReferenceType + operand.type) { return mismatch; }
+            (!array_leaf && arrayed != (operand.type < facts.MapType)) || stack[base] != facts.ReferenceType + operand.type) { return mismatch; }
         keys := consumed - 1;
         if (inserting) { keys -= 1; }
         parent := operand.type;
+        mapped := false;
         for (index in 0..<keys) {
+            mapped = mapped || parent >= facts.MapType;
             key := facts.IntType;
             if (parent >= facts.MapType) { key = (parent - facts.MapType) % 16; }
             if (stack[base + 1 + index] != key) { return mismatch; }
             if (index + 1 < keys) {
                 parent = MapPathMember(rows, records, parent);
                 if (parent == 0) { return mismatch; }
-            } else if (parent < facts.MapType ||
-                       (inserting && stack[base + keys + 1] != (parent - facts.MapType) / 16)) { return mismatch; }
+            } else {
+                payload := (parent - facts.MapType) / 16;
+                if (array_leaf) { payload = Element(records, parent); }
+                if (array_leaf != (parent < facts.MapType) || payload == 0 ||
+                    (inserting && stack[base + keys + 1] != payload)) { return mismatch; }
+            }
         }
+        if (array_leaf && !mapped) { return mismatch; }
         if (rows[at].kind != facts.AssignRow || base != 0 || row != last - 1 ||
             rows[at + 1].kind != facts.RefRow || rows[at + 1].type != rows[at].type ||
             rows[at + 1].value != rows[at].value || operand.type != rows[at].type) {
@@ -3926,13 +3935,15 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 } else if (operand.kind == facts.MapRow) {
                     base := length(stack) - MapOperands(operand);
                     op := operand.value;
-                    if (NestedMapChange(op)) {
-                        inserting := op == facts.ArrayMapSet || op == facts.NestedMapSet;
+                    if (NestedMapChange(op) || (op == facts.MapArraySet && operand.count > 4)) {
+                        array_leaf := op == facts.MapArraySet;
+                        inserting := op == facts.ArrayMapSet || op == facts.NestedMapSet || array_leaf;
                         keys := operand.count - 1; if (inserting) { keys -= 1; }
                         inner_type := operand.type;
                         for (index in 0..<keys - 1) { inner_type = MapPathMember(rows, declared, inner_type); }
                         inner := NativeType(inner_type);
                         payload := (inner_type - facts.MapType) / 16;
+                        if (array_leaf) { payload = Element(declared, inner_type); }
                         incoming := 0;
                         if (inserting) {
                             incoming = stack[base + keys + 1];
@@ -3967,6 +3978,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         mutation := Op(native.MapDelete, inner, current + 2, current + 1, stack[base + keys], 0);
                         if (inserting) { mutation.op = native.MapSet; mutation.target = incoming; }
                         mutation.literal = 1;
+                        if (array_leaf) { mutation.op = native.ArraySet; mutation.literal = i64(native.ArraySetPlace); }
                         body.extend([Op(native.Deref, inner, current + 1, address, 0, 0), mutation]);
                         item = Op(native.Poke, inner, 0, address, current + 2, 0);
                         slots[shape.first_slot + slot] = native.RefType + inner;

@@ -98,3 +98,11 @@ keeps the existing flat-record rule. Backing owners and pointer/view edges
 inside optional cells remain outside this slice. The original four fallible
 pointer cases run at O0/O2, and the poisoned source proof checks escaped cells,
 early returns and forced collection with bounded peak allocation.
+
+String-array cells use the same descriptor and backing lifecycle as numeric
+array cells. Last cell release drops the backing and its owned text values;
+evaluated reads hold independent array owners before later callbacks can
+replace the cell. The source proof uses embedded NUL strings, escaped cells,
+value copies, scoped aliases and replacement during operand evaluation. Its
+normal-threshold peak bound includes backing and text allocations per cell;
+forced-collection runs retain the same zero-live requirement.

@@ -86,10 +86,11 @@ ManagedPayload :: (records: Record[], layout: ManagedRecordLayout, type: int, ta
            (ManagedCellRecord(records, layout, type) && records[type - RecordType].identity == tag);
 }
 ManagedArray :: (type: int) -> bool {
-    return type >= ArrayType && type < MapType && abi.ScalarType(type - ArrayType) != "";
+    return type >= ArrayType && type < MapType &&
+           (abi.ScalarType(type - ArrayType) != "" || type - ArrayType == abi.TextStorage);
 }
-// Array cells own one descriptor. Scalar elements have no collector edges;
-// the last cell release drops its backing while its image lease is held.
+// Array cells own one descriptor. Numeric and string elements have no GC
+// edges; the last cell release drops backing and text owners while leased.
 ManagedArrayModule :: (code: Instruction[], counter: string) -> string {
     out: string[] = [];
     seen: [string: bool] = [:];

@@ -24,7 +24,7 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/language/execution_scope.c`, `capture.c`, `ranges.c` | 8, 6, 7 | VM scopes, budgets, intrinsics, the interval optimizer | goes |
 | `test/language/record_values.c`, `record_document.c`, `record_compatibility.c`, `record_prepared.c` | 15, 5, 1, 0 | `src/types` records, value documents, legacy array callbacks | goes (`text_keys_preserve_suffix_after_nul` is ported) |
 | `test/language/text_format.c` | 2 | `src/runtime/text_format.c`, `src/types/value_format.c` | goes, except the format specifiers (see "Owner decisions") |
-| `test/language/host_packages_compiler.c` | 3 | `src/host/clock_package`, grants, the compiler host | goes |
+| `test/language/host_packages_compiler.c` | 2 | `src/host/clock_package`, grants, the compiler host | the unused C program-service catalog case is retired; native formatting/target checks remain, and `base/unknown_parameter_type` preserves its missing-type rejection. Clock cases remain until authored `host:clock` behavior has a native replacement. |
 | `test/language/native_census.c`, `census_tree.h` | 3 | the C census flattener over CollectScalar | goes; the census is obsolete once the compiler runs natively |
 | `test/language/program_session.c` | 11 | `src/authoring/program.c` sessions | goes, except 3 Edit-and-Continue cases |
 | `test/language/package_compiler_chibi.c`, `scalar_host.c` | 6, 0 | native backend execution through the C compiler host | six backend cases retired through `test/native_aot/backend`, retained generations and process supervision; `scalar_host.c` remains only for the C census |

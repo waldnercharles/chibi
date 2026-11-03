@@ -3,35 +3,32 @@
 ## Current integration, 2 November 2026
 
 The native-default change series is in [PR #1331](https://github.com/waldnercharles/chibi/pull/1331).
-The verified native compiler drives the default build and installed tools.
-At `3c7d1d52e`, all 410 compiler tests pass directly through native execution
-in 22.05 seconds, including the original 408-test inventory. At `c32f5d6b6`,
-the pinned macOS seed builds the complete compiler in 40.93 seconds, and that
-compiler passes the native CLI suite in 6.44 seconds. Fresh combined
-cross-platform fixed-point and installed-product checks remain required.
+The SHA-256-verified native compiler drives the default build and installed
+tools. The approved Linux x64/macOS arm64 seed at `c5c0a1ac2` is published and
+pinned; both platforms reproduce its compiler byte for byte. Windows has
+self-reproduction evidence but no published native seed yet. [PLAN.md](../PLAN.md)
+records exact revisions, test results and remaining deletion gates.
 
-The continuation includes numeric task results, typed nil-unwrap failures,
-scalar/string record maps, shared array backing, synchronous `print_string`,
-and typed test-effect collection. Source array copies share owned backing and
-detach at writable boundaries, including foreign buffer loans. Records and
-unions use the same recursive value lifecycle for string and array fields.
-Retained arrays/unions and broader managed pointer ownership remain incomplete.
-Individual changes have focused O0/O2 and ownership checks; the latest combined
-source is awaiting its next execution pass. Native test-worker integration,
-macOS reload integration and the browser SDK compiler archive are in progress.
+The `85b37934c` compiler passes 442 compiler tests, including source-ordered
+named callback arguments, primitive optionals, generic bool constants and empty
+switch arms. Native maps, array copy-on-write, owned records/unions, tasks and
+standalone managed pointer roots have focused execution and lifetime proofs.
+Aggregate pointers, remaining array/pattern forms, shared collector ownership
+and deep retained snapshots are being completed.
 
-Windows source `585e40829` reproduces identical stage-four/five binaries,
-SHA-256 `d9a56bde96fdce41d9b9c335f5120dc4ec659c8aad62ddf0641d4eb9e909f96f`.
-Its subsequent native asset-compiler build traps with `0xC000001D`; Windows
-acceptance and seed publication remain blocked on that diagnosis and the
-remaining runtime probes. Program/application APIs and browser execution
-still use the VM. See [PLAN.md](../PLAN.md) for evidence and deletion gates.
+Native `run --watch` loads shared generations on Linux x64 and macOS arm64.
+Tests cover rejected edits, Main running once, retained primitive arrays and
+tasks continuing in their original generation. A composed retained-record
+readonly-reference reentry regression is being fixed; earlier passing generation
+proofs do not establish acceptance of the current composition. Windows public
+watch execution is wired into CI and still needs fresh acceptance.
 
-Native shared generations and `run --watch` now run on Linux x86-64 and macOS
-arm64. The real compiler and host tests cover retained scalar/string records,
-rejected edits, Main running once, and tasks finishing or failing in their
-original generation. The generation suite runs at O0 and O2. Windows shared
-generation loading remains a separate platform gate.
+The optional browser compiler SDK executes authored code through LLVM Wasm,
+including quota/cancellation and concurrent requests. The live desktop/browser
+compile/cache facade is being replaced with authored policy and LLVM ABI adapters.
+The VM remains for explicit recovery and reference/test consumers. Its unused
+program-service catalog and C-Wasm browser test launcher are retired; final VM
+deletion still depends on the live behavior and platform checks above.
 
 ### Native quota scopes
 

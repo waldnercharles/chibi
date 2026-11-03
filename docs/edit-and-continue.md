@@ -1,11 +1,11 @@
 # Edit and Continue
 
-Status: implemented for standalone programs, 2026-10-29. Applies to standalone programs run with `chibi --watch`
-and to the shared program session (`Chibi::program`, `src/authoring/program.c`) that
-Studio can also use. Studio Live used to publish through the source registry
-(`src/runtime/behaviors/source_publication.c`, archived 2026-10-30); it moves to the
-program session path when Studio is ported. Both end in the same
-`execution_program_prepare_replace` / `execution_program_commit_replace` pair.
+This page records the VM session implementation from 2026-10-29. The current
+native `run --watch` implementation and its remaining migration gates are in the
+[native toolchain ledger](native-llvm-ledger.md). The C `program_service` catalog
+is retired; the remaining `Chibi::program` C reference is scheduled for retirement
+with the VM. Studio's archived session integration is not a required replacement
+API.
 
 ## What the user sees
 
@@ -30,8 +30,8 @@ diagnostic once, the old code keeps running, and the next good save applies.
   It returns nothing to continue, or a nonzero `int` exit status (1..255) to stop.
 - A program with `Main` only runs and exits. Without `Frame` there is nothing to
   continue, so `--watch` keeps polling and applies edits but never re-runs `Main`.
-- The session API (`program.open/update/call_entry/has`) takes the function by name,
-  so Studio can drive the same loop. `open` takes an empty entry for such programs.
+- The former session catalog took a function by name. Its `program.open/update/call_entry/has`
+  entry points are retired; the native watch host owns generation execution.
 
 ## Why a per-frame entry, not on-stack replacement
 

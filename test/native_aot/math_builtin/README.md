@@ -19,6 +19,16 @@ The finite goldens come from `src/support/cos_sin.h` with contraction disabled.
 Range reduction uses the platform's C ABI `remainderf`; no first-party C helper
 is linked into the generated program.
 
+`Edges.chibi` checks the admitted f32 math builtins and f32/f64 exp/pow on
+NaN, infinities, signed zero and subnormals. Finite angles use a tolerance;
+these checks add no cross-platform libm bit promise. It keeps both the former
+BF expression `max(min(value, high), low)` and current source `clamp` order,
+including their different NaN, reversed-bound and signed-zero results.
+Six runtime sine results stay live across six cosine calls, with an external
+bias and independent number/bool results. Inputs cross the argument-count ABI
+so O2 cannot fold the entire program. No general f64 builtin math or log10
+overload is admitted by retiring the two C `whole_math.c` cases.
+
 `failures` distinguishes expression bounds failures from unavailable logical
 destinations before and after RHS effects. Its fifteen expected failures reject
 all seven typed categories for the ordinary unclassified reference failure.

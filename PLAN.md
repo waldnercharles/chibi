@@ -3,11 +3,60 @@
 The November 2 handoff continues in PR #1331 on `codex/native-default-20261102`.
 The earlier published checkpoint `b0f4dfa0b` has compiler/core source `776ead2f1`,
 following CI merge `a76ea8005`. Further work is composed on
-`codex/native-runtime-completion-20261102` and published to the same PR. The owner's checkout and
+`codex/native-runtime-completion-20261102` for publication to the same PR. The owner's checkout and
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
-## Current composition: 516e00318
+## Current composition: fc0948f79
+
+Owned aggregate array views, canonical nested-map mutations, recursive inline
+GC roots and pointer-only task promises are integrated. Suspended tasks retain
+their original code generation; completed managed results remain rooted until
+the promise is destroyed. The task publication store preserves the complete
+aggregate descriptor at O2, including nonzero pointer offsets.
+
+The exact composition reproduces between macOS stages two and three after
+30.78 and 30.89 seconds, SHA-256
+`1363faa99753f14800dc4f0ed1c40974d69ddae60fbd87d98c5f2b403690cdfe`.
+All 508 compiler tests pass in 25.10 seconds. The canonical task suite passes
+in 51.49 seconds and the full map suite in 111.45 seconds. CC/CXX are disabled.
+These are elapsed times under shared load, not controlled performance results.
+Evidence is in `/private/tmp/chibi-owned-composed-proof`.
+
+The managed suite passed its source, collector, callback, task and view-failure
+checks before reaching a stale rejection assertion at 137.84 seconds. The
+assertion rejected the newly supported pointer-only inline record metadata.
+The updated fixture requires that case to emit and retains rejection of an
+array-backed GC record. All remaining boundaries, schema/image leases,
+optional-source and output-preservation checks pass in 51.87 seconds with the
+same compiler. This resumed proof uses only the fixture overlay and is recorded
+in `/private/tmp/chibi-owned-boundary-remainder`; it is not a second complete
+suite run.
+
+The original `collections/view_element_lending/facts.Calls` sample now passes
+unchanged in 0.57 seconds. It was the sole uncompiled case in the earlier
+455-of-456 nine-family audit. A complete new inventory comparison will follow
+the test-dispatcher changes; this focused result alone does not claim all 456
+have been rerun. All sample Git blobs still match that audit's source.
+
+The subsequent `ee5fec300` fixes schema preparation for an authored union whose
+owned-view payload is never materialized. Its ordinary control and native
+O0/O2 normal/forced-collection checks pass; the unsupported optional-signature
+rejections retain prior outputs. Indexed foreign loans, task view frames,
+GC-array promises, deeper collection writes and the ordinary test-selection
+contract have active implementation owners.
+
+Windows-only run `41600184879` at `f5622c655` was cancelled after 60 minutes
+20 seconds. Artifact identity and LLVM checks passed, but no completed stage
+three or fixed-point artifact was reported; all subsequent product checks were
+skipped. The scheduling change admitted the Windows job in four seconds, but
+that is not completed platform acceptance. A focused job-timeout/compiler-test
+patch and an independent replay of the SDK-relative discovery failure are in
+progress. Windows still needs accepted compiler, product and bootstrap proofs.
+The audited Linux/macOS `14f7a46a0` seed package is prepared and awaits its
+separate publication approval. VM deletion remains held.
+
+### Earlier composition: 516e00318
 
 Deferred callback collection and stable live-owner roots are integrated. The
 collector preserves OS error state around a requested collection; coroutine
@@ -27,12 +76,9 @@ the directory suite, including OS error capture across actual collection
 callbacks, passes at O0/O2 in 9.84. Evidence is in
 `/private/tmp/chibi-gc-schema-proof/receipt.json`.
 
-Windows-only run `41600184879` validates `f5622c655` with the verified pinned
-bootstrap. Windows job `125796823615` started four seconds after dispatch and
-passed artifact identity and LLVM checks; its compiler and product proofs are
-still running. Other platforms are deliberately skipped in this route.
-Managed task promises, aggregate views and the remaining canonical nested
-collection writes retain active owners. VM deletion remains held.
+Windows-only run `41600184879` used the verified pinned bootstrap. Its terminal
+result is recorded above. Other platforms were deliberately skipped in this
+route.
 
 ### Earlier composition: 2ec95de3f
 

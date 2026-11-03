@@ -211,7 +211,13 @@ Main :: () -> int {
     }
     if (!Rejected(target, slots, code, true, no_records, empty, "standalone collector owner") ||
         !Rejected(abi.WebAssembly32(), slots, code, false, no_records, empty, "WebAssembly managed pointers") ||
-        !Rejected(target, slots, code, false, [{first: 0, count: 1, identity: 0}], [pointer], "aggregate roots")) { return 1; }
+        !Rejected(target, slots, code, false, [{first: 0, count: 1, identity: 0}], [array], "aggregate roots")) { return 1; }
+    // Inline pointer roots need no nominal cell identity. Backed aggregate
+    // roots still need separate ownership and remain rejected above.
+    switch Emit(target, slots, code, false, [{first: 0, count: 1, identity: 0}], [pointer]) {
+        case .Emitted(text): { }
+        case .Rejected(instruction, message): os.Print(message); return 1;
+    }
     invalid := code;
     wrong := invalid[1];
     wrong.literal = 0;

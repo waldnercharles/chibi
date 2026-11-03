@@ -14,7 +14,7 @@ esac
     --source "$root/test/native_aot/managed_pointers/Probe.chibi" --entry Main \
     --output "$work/probe" --llvm "$llvm" --target "$triple" --jobs 1
 "$work/probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/Collector.ll"
-for name in Cells ScopedAliases Transfer Nullable Records WholeArrays WholeArrayForeign Views Tasks TaskFailure; do
+for name in Cells ScopedAliases Transfer Nullable Records WholeArrays WholeArrayForeign Views ViewUnions Tasks TaskFailure; do
     "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
         --source "$root/test/native_aot/managed_pointers/source/$name.chibi" --entry Main \
         --output "$work/$name.ll" --emit-llvm --target "$triple"
@@ -26,7 +26,7 @@ done
     --source "$root/test/native_aot/managed_pointers/SourceProbe.chibi" --entry Main \
     --output "$work/source-probe" --llvm "$llvm" --target "$triple" --jobs 1
 "$work/source-probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
-    "$work/Cells.ll" "$work/ScopedAliases.ll" "$work/Transfer.ll" "$work/Nullable.ll" "$work/Tasks.ll" "$work/Records.ll" "$work/WholeArrays.ll" "$work/WholeArrayForeign.ll" "$work/Views.ll" "$work/ViewAppend.ll"
+    "$work/Cells.ll" "$work/ScopedAliases.ll" "$work/Transfer.ll" "$work/Nullable.ll" "$work/Tasks.ll" "$work/Records.ll" "$work/WholeArrays.ll" "$work/WholeArrayForeign.ll" "$work/Views.ll" "$work/ViewUnions.ll" "$work/ViewAppend.ll"
 "$work/source-probe" --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/TaskFailure.ll"
 for entry in LengthShrunk ReadShrunk CloneShrunk IndexOutside SetIndexBeforeRight SetShrunkBeforeRight SetShrunkDuringRight SetValidBeforeRight; do
     case "$entry" in

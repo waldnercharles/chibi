@@ -118,7 +118,7 @@ ScalarPatternCondition :: (forest: snapshot.SnapshotNode[], text: string, callab
         payloads := types[types[held].first].first;
         for (binding, position in bindings) {
             field := types[variant].first + position;
-            type := ScalarMemberType(types, members, field);
+            type := ScalarViewUnionMemberType(types, members, held, field);
             if (type == 0 || members[field].container == MapContainer || members[field].storage == TaskStorage ||
                 members[field].storage == PointerStorage) {
                 return ScalarCondition.Failed(Diagnose(forest, binding, 0, "native pattern bindings require value payloads"));

@@ -11,13 +11,46 @@ ScalarViewType :: (shape: ValueType) -> int {
     return facts.ViewType;
 }
 
+// One empty variant and one primitive-view payload have the existing
+// {tag, window} layout. Only union projection uses this admission; authored
+// record fields still pass through ScalarMemberType's stricter gate.
+ScalarViewUnionPayload :: (types: TypeDecl[], members: TypeMember[], held: int) -> int {
+    if (held < 0 || held >= length(types)) { return -1; }
+    declared := types[held];
+    if (declared.kind != UnionDecl || declared.count != 2) { return -1; }
+    empty := 0;
+    field := -1;
+    for (index in declared.first..<declared.first + declared.count) {
+        variant := types[index];
+        if (variant.count == 0) { empty += 1; }
+        else if (variant.count != 1 || ScalarViewType(ScalarMemberShape(members, variant.first)) == 0) { return -1; }
+        else { field = variant.first; }
+    }
+    if (empty != 1) { return -1; }
+    return field;
+}
+ScalarViewUnionMemberType :: (types: TypeDecl[], members: TypeMember[], held: int, field: int) -> int {
+    view := ScalarViewType(ScalarMemberShape(members, field));
+    if (view == 0) { return ScalarMemberType(types, members, field); }
+    if (ScalarViewUnionPayload(types, members, held) != field) { return 0; }
+    return view;
+}
+
 // Reading a window observes its managed cell. The ordinary checker records
 // that effect on length, clone and element access even for a value parameter.
-ScalarViewEffects :: (roots: Root[]) -> int {
+ScalarViewEffects :: (types: TypeDecl[], members: TypeMember[], roots: Root[], cells: Cell[]) -> int {
     for (root in roots) {
         if (ScalarViewType({storage: root.storage, container: root.container, record: root.record}) != 0) {
             return ReadEffect;
         }
+        if (root.storage == UnionStorage && root.container == 0 &&
+            ScalarViewUnionPayload(types, members, root.record) >= 0) { return ReadEffect; }
+    }
+    // Union arguments/results can live only in the ordinary cell bank, not
+    // its stack-root list. Their window still reads the same managed owner.
+    for (cell in cells) {
+        if (cell.storage == UnionStorage && cell.container == 0 &&
+            ScalarViewUnionPayload(types, members, cell.record) >= 0) { return ReadEffect; }
     }
     return 0;
 }

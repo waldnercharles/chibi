@@ -32,6 +32,10 @@ ScalarPointerElement :: (types: TypeDecl[], record: int) -> ValueType {
         ScalarPointerOptional(types, declared.value_record)) {
         return {storage: UnionStorage, container: 0, record: declared.value_record};
     }
+    if (declared.value_container == ArrayContainer && declared.value_record >= 0) {
+        shape: ValueType = {storage: declared.value_storage, container: ViewContainer, record: declared.value_record};
+        if (ScalarViewType(types, shape) != 0) { shape.container = ArrayContainer; return shape; }
+    }
     if (declared.value_record != -1) { return none; }
     type := ScalarTypeOf(declared.value_storage);
     text_array := type == facts.StringType && declared.value_container == ArrayContainer;
@@ -47,6 +51,11 @@ ScalarPointerType :: (types: TypeDecl[], record: int) -> int {
 // a nominal-only tag can permit a changed generation's layout.
 ScalarPointerTag :: (types: TypeDecl[], value: ValueType) -> i64 {
     nominal := SemanticTag(types, value);
+    if (value.container == ArrayContainer && value.record >= 0) {
+        schema := types[value.record].native_schema;
+        if (schema == 0) { return 0; }
+        return i64(wrap: binding.ID("native-managed-owned-array-v1", format_text("{}:{}", nominal, schema)));
+    }
     if (value.container == ArrayContainer) {
         return i64(wrap: binding.ID("native-managed-array-v1", format_text("{}", nominal)));
     }
@@ -155,6 +164,9 @@ ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables
         scalar := binding.record == -1 && ScalarTypeOf(binding.storage) >= facts.IntType && ScalarTypeOf(binding.storage) <= facts.DoubleType;
         record := binding.storage == StructStorage && binding.record >= 0 && types[binding.record].kind == RecordDecl;
         array := (scalar || (binding.storage == TextStorage && binding.record == -1)) && binding.container == ArrayContainer;
+        if (binding.container == ArrayContainer && binding.record >= 0) {
+            array = ScalarViewType(types, {storage: binding.storage, container: ViewContainer, record: binding.record}) != 0;
+        }
         optional := binding.storage == UnionStorage && ScalarPointerOptional(types, binding.record);
         if (binding.place == ReferencePlace || (binding.container != 0 && !array) || (!scalar && !record && !array && !optional)) { return -1; }
         pointed: ValueType = {storage: binding.storage, container: binding.container, record: binding.record};

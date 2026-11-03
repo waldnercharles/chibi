@@ -3402,36 +3402,53 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 } else if (operand.kind == facts.ViewRow) {
                     op := facts.ViewOperation(operand.value);
                     element := NativeType(facts.ViewElement(operand.value));
+                    get := op == facts.ViewGet || op == facts.ViewGetPlace;
+                    set := op == facts.ViewSet || op == facts.ViewSetPlace;
                     base := length(stack) - ViewOperands(operand);
                     operation := native.ViewMake;
                     switch op {
                         case facts.ViewMake: operation = native.ViewMake;
                         case facts.ViewLength: operation = native.ViewLength;
                         case facts.ViewGet: operation = native.ViewGet;
+                        case facts.ViewGetPlace: operation = native.ViewGet;
                         case facts.ViewSet: operation = native.ViewSet;
+                        case facts.ViewSetPlace: operation = native.ViewSet;
                         case facts.ViewClone: operation = native.ViewClone;
                         case facts.ViewSlice: operation = native.ViewSlice;
                         case: assert(false, "validated view operation");
                     }
                     item = Op(operation, type, slot, stack[base], 0, 0);
                     item.literal = operand.literal;
-                    if (op == facts.ViewGet && element == abi.TextStorage) { retained_element = true; }
-                    if (op == facts.ViewSet && element == abi.TextStorage) {
+                    retained_record = get && TrackedRecord(managed, type);
+                    if (get && element == abi.TextStorage) { retained_element = true; }
+                    if (set && TrackedRecord(managed, element)) {
+                        incoming := stack[base + 2];
+                        if (Holds(fresh, incoming)) { fresh = Without(fresh, incoming); }
+                        else {
+                            kept := KeepValue(managed, element, incoming, slot + 1 + extra);
+                            slots.extend(kept.slot_types);
+                            body.extend(kept.code);
+                            extra += length(kept.slot_types);
+                            stack[base + 2] = kept.value;
+                        }
+                    }
+                    if (set && element == abi.TextStorage) {
                         // The new text may be the old element itself. Own it
                         // before detaching the backing or dropping that slot.
                         incoming := stack[base + 2];
                         if (Holds(fresh, incoming)) { fresh = Without(fresh, incoming); }
                         else { body.append(Op(native.TextRetain, abi.TextStorage, 0, incoming, 0, 0)); }
                     }
-                    if (op == facts.ViewMake || op == facts.ViewSet || op == facts.ViewSlice) {
+                    if (op == facts.ViewMake || set || op == facts.ViewSlice) {
                         item.right = shape.arguments;
                         arguments.extend([stack[base + 1], stack[base + 2]]);
                         shape.arguments += 2;
-                        if (op == facts.ViewSet) { item.type = element; item.output = 0; }
+                        if (set) { item.type = element; item.output = 0; }
                         else { item.target = element; }
-                    } else if (op == facts.ViewGet) { item.right = stack[base + 1]; }
+                    } else if (get) { item.right = stack[base + 1]; }
                     else if (op == facts.ViewLength) { item.right = element; }
-                    if (op == facts.ViewSet) {
+                    if (op == facts.ViewGetPlace || op == facts.ViewSetPlace) { item.target = 1; }
+                    if (set) {
                         body.append(item);
                         item = Op(native.Constant, abi.IntStorage, slot, 0, 0, 0);
                     }

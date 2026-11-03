@@ -1,0 +1,4 @@
+package rejected_owned_optional_view_parameter
+Row :: struct { pointer: ^int; }
+Ignore :: (window: view Row[]?) -> int { return 0; }
+Main :: () -> int { return Ignore(nil); }

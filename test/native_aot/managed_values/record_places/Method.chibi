@@ -1,0 +1,4 @@
+package record_place_method
+Entry :: struct { values: int[]; }
+Rhs :: () -> int { assert(false,"method argument evaluated"); return 9; }
+Main :: () -> int { rows: Entry[] = []; rows[0].values.append(Rhs()); return 0; }

@@ -400,13 +400,16 @@ pub ViewSlice: int : 103;
 // canonical local. Pin type is its value type; unpin type is zero.
 pub OwnerPin: int : 104;
 pub OwnerUnpin: int : 105;
-// Uniquify/store the outer array at left (RefType + target), then borrow
-// its right-indexed wrapper's one array or map field. The RefInner output lasts
-// only until the outer backing changes, as MapValueAddress does. A producer
-// consumes it in one contiguous deref/mutate/poke sequence after all callbacks.
+// Borrow right's record element from the array at left (RefType + target),
+// or its one-field wrapper's array/map descriptor. Modes 0 and 1 publish
+// unique backing first; full-record Observe mode 2 only checks and borrows. Consume
+// the address before callbacks or changes to its parent, as MapValueAddress.
 pub ArrayValueAddress: int : 106;
 pub ArrayAddressBracket: int : 0;
 pub ArrayAddressMethod: int : 1;
+// Full-record projection only: borrow without detaching or changing backing.
+// The address lasts until the owner changes; consume it before source calls.
+pub ArrayAddressObserve: int : 2;
 // Deferred callback requests are tested on the common path. Poll never
 // suspends; current owning descriptors already have stable registrations.
 pub ManagedPending: int : 107;
@@ -1221,11 +1224,13 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             }
         }
         if (item.op == ArrayValueAddress) {
+            element := ElementType(records, item.target);
+            record := element >= RecordType && element < ArrayType && item.type == RefType + element;
             member := NestedArrayElement(records, fields, item.target);
-            if (member == 0 || !ValueValid(lifecycle, item.target - ArrayType) ||
-                item.type != RefType + member || !Typed(slots, item.left, RefType + item.target) ||
-                !Typed(slots, item.right, abi.IntStorage) ||
-                (item.literal != i64(ArrayAddressBracket) && item.literal != i64(ArrayAddressMethod))) {
+            if ((!record && (member == 0 || item.type != RefType + member)) || !ValueValid(lifecycle, element) ||
+                !Typed(slots, item.left, RefType + item.target) || !Typed(slots, item.right, abi.IntStorage) ||
+                (item.literal != i64(ArrayAddressBracket) && item.literal != i64(ArrayAddressMethod) &&
+                 (!record || item.literal != i64(ArrayAddressObserve)))) {
                 return Result.Rejected(base + pc, "native nested array reference differs from its wrapper");
             }
         }

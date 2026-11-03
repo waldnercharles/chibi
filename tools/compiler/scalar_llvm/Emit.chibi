@@ -2251,8 +2251,10 @@ ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
             waits = waits || WaitingOperand(row);
             task_calls = task_calls || (row.kind == facts.CallRow && row.literal == i64(facts.CallSpawned));
         }
-        if (waits && !Scalar(rows[head].type)) {
-            return "scalar waiting results require numeric or bool values yet";
+        // Native validation checks record leaves against its existing layout.
+        if (waits && !Scalar(rows[head].type) &&
+            (rows[head].type < facts.RecordType || rows[head].type >= facts.ArrayType)) {
+            return "scalar waiting results require numbers, bools, or records without owners";
         }
         if (rows[head].value == facts.FunctionVoid && !waits) {
             return "scalar void task metadata names a function that does not wait";

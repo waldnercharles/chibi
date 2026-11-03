@@ -8,7 +8,7 @@ The sequential reuse and result fixtures also cap the peak at 32 allocations
 and 64 KiB, so retaining completed frames or failing to reuse rows cannot pass.
 
 The programs cover first-suspension order, `yield`, direct `await Function()` results,
-statement-only `await handle`, numeric and void `T | Cancelled` results,
+statement-only `await handle`, numeric, plain record, and void `T | Cancelled` results,
 repeated joins, aliases and self-assignment, cancellation of inline awaited frames,
 cancellation of a parent and its descendants,
 children surviving a completed parent, 1,024 concurrent tasks, 8,192 sequential
@@ -56,13 +56,17 @@ NaN or infinity returns 1 and leaves time and tasks unchanged. Without explicit
 host time, the scheduler uses the platform monotonic clock. These optional
 exports preserve the existing no-argument polling ABI.
 
-This is a tested subset, not the VM deletion gate. Managed coroutine values,
-task-valued parameters, component dependencies, and full task failure propagation
-still need native implementations. Task parameters remain closed until cancelling
-an active ancestor can unwind every live call safely. The source producer
+Plain record promises contain only numeric and bool leaves. Each successful join
+copies the typed record by value; its observer keeps the completed frame alive
+until that read finishes. Strings, arrays, and records containing owners still
+need promise-copy and promise-drop support. Pointer-free owned frame values have
+separate cancellation and reload coverage in `task_owners/run.sh`.
+
+This is a tested subset, not the VM deletion gate. Task-valued parameters and
+task-observer arrays remain closed. The source producer
 uses the canonical success type to make handles from different producers
 interchangeable, with void distinct from its internal int result. The rejection
-cases keep cross-type assignments and unsupported task parameters/managed frames
+cases keep cross-type assignments and unsupported task parameters/results
 from compiling as successful programs. Running-handle conditions test the
 scheduler phase rather than whether the observer bits are nonzero. LLVM versions
 before 22 are unsupported.

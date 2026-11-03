@@ -78,7 +78,7 @@ aliases, value copies, variable element writes/append and canonical foreign
 byte-buffer writes. Inline pointer-bearing record arrays and array-backed
 record cells still need their respective tracing and place lowering.
 
-Numeric/bool pointer-backed views use a 32-byte cell/start/count descriptor.
+Scalar/string pointer-backed views use a 32-byte cell/start/count descriptor.
 They follow replacement and growth of that cell while retaining a fixed window;
 ordinary array copies, view clones and slices keep their value semantics.
 Direct views and their optional union slots are traced. The source proof runs
@@ -86,12 +86,16 @@ the original nine successful kernels, an escaped optional-only root under
 collection, and initial/late mutation failure checks. A separate 4096-append
 entry requires at most 32 allocations; the current implementation uses 13.
 Fatal failure probes check their category with poisoned frees, while successful
-probes also require zero live allocations. Authored unions with one empty
-variant and one primitive-view payload reuse the same traced tag/window layout.
+probes also require zero live allocations. String reads acquire an independent
+text owner before later callbacks can replace the backing. Writes preserve the
+incoming owner before releasing the old element; clones and slices copy through
+the ordinary typed array lifecycle, including each text owner.
+Authored unions with one empty variant and one scalar/string view payload reuse
+the same traced tag/window layout.
 Their source proof covers returned union-only roots, owner replacement, switch
 and `is` bindings, and either tag order. Pattern bindings remain read-only.
-Ordinary source already rejects view fields in records. Views over strings,
-records, nested arrays or union elements, and immutable `text.view(range)`, are
+Ordinary source already rejects view fields in records. Views over records,
+nested arrays or union elements, and immutable `text.view(range)`, are
 working ordinary forms still awaiting native support. View containers, retained
 views and suspended view frames also remain outside this admission.
 

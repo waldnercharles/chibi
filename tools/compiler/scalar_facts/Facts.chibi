@@ -276,7 +276,7 @@ pub PayloadRow: int : 34;
 pub TextRow: int : 35;
 pub AssertRow: int : 36;
 pub ArrayRow: int : 37;
-// ArraySet's canonical Nil | Some(numeric/bool array) payload place. Its type
+// ArraySet's canonical Nil | Some(scalar/text array) payload place. Its type
 // is the union, literal this marker, and the first operand a root reference.
 pub OptionalArrayPlace: int : -2;
 // A call of a C function the source declares in a foreign block, an operand
@@ -365,7 +365,7 @@ pub OperandBindRow: int : 58;
 pub ScopeRow: int : 59;
 // One private clock transport value: zero operands and metadata, exact i64/u64/int/int record.
 pub ClockSampleRow: int : 60;
-// A numeric/bool view operation. Value packs operation * 16 + scalar type;
+// A numeric/bool/text view operation. Value packs operation * 16 + element type;
 // type is the result (make/slice use the ordinary optional record). Count is
 // operand arity. Make carries the full array-cell identity in literal;
 // Get/Set use literal1 for a mutable place check, otherwise literal0.

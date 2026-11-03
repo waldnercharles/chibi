@@ -13,7 +13,7 @@ ViewElement :: (item: Instruction) -> int {
 }
 ViewValid :: (records: Record[], fields: int[], slots: int[], arguments: int[], item: Instruction) -> bool {
     element := ViewElement(item);
-    if (abi.ScalarType(element) == "") { return false; }
+    if (abi.ScalarType(element) == "" && element != abi.TextStorage) { return false; }
     left := ViewType;
     if (item.op == ViewMake) { left = PointerType; }
     if (!Typed(slots, item.left, left)) { return false; }
@@ -134,19 +134,20 @@ ViewElementAddress :: (array: int, write: bool, place: bool) -> string {
     out.append(format_text("  call void @chibi_native_failure(i32 {})\n  unreachable\n}}\n", failure));
     return strings.Join(out, "");
 }
-// The selected source range is already validated. Copy exactly its elements,
-// with one allocation for a nonempty result and no backing retained by a view.
+// The selected source range is already validated. Lend its descriptor to the
+// normal typed clone so owned text elements acquire their independent owners.
 ViewWindowCopy :: (array: int) -> string {
     descriptor := abi.ArrayType();
     element := array - ArrayType;
     return strings.Concatenate([
         format_text("define internal {} @chibi_view.{}.copy(ptr %ctx, ptr %array, i32 %first, i32 %count) {{\nentry:\n", descriptor, array),
         format_text("  %current = load {}, ptr %array\n  %source = extractvalue {} %current, 2\n", descriptor, descriptor),
-        format_text("  %result = call {} @chibi_array.{}.allocate(ptr %ctx, i32 %count, i32 %count)\n", descriptor, array),
-        format_text("  %destination = extractvalue {} %result, 2\n", descriptor),
-        Sized("width", element),
-        "  %offset = zext i32 %first to i64\n  %start.bytes = mul i64 %offset, %width\n  %start = getelementptr i8, ptr %source, i64 %start.bytes\n",
-        "  %items = zext i32 %count to i64\n  %bytes = mul i64 %items, %width\n  call void @chibi_scalar.copy(ptr %destination, ptr %start, i64 %bytes)\n",
+        "  %offset = zext i32 %first to i64\n",
+        format_text("  %start = getelementptr {}, ptr %source, i64 %offset\n", TypeName(element)),
+        format_text("  %length = insertvalue {} zeroinitializer, i32 %count, 0\n", descriptor),
+        format_text("  %capacity = insertvalue {} %length, i32 %count, 1\n", descriptor),
+        format_text("  %borrowed = insertvalue {} %capacity, ptr %start, 2\n", descriptor),
+        format_text("  %result = call {} @chibi_array.{}.clone(ptr %ctx, {} %borrowed, i32 %count)\n", descriptor, array, descriptor),
         format_text("  ret {} %result\n}}\n", descriptor)
     ]);
 }
@@ -206,6 +207,10 @@ ViewInstruction :: (item: Instruction, pc: int, arguments: int[]) -> string {
             out = format_text("{}  %value{} = load {}, ptr %address{}\n", out, pc, TypeName(element), pc);
         case ViewSet:
             out = format_text("{}  %address{} = call ptr @chibi_view.{}.{}(ptr %ctx, ptr %managed.heap, {} %view{}, i32 %first{})\n", out, pc, array, suffix, abi.ManagedViewType(), pc, pc);
+            if (element == abi.TextStorage) {
+                out = format_text("{}  %old{} = load {}, ptr %address{}\n  %old.owner{} = extractvalue {} %old{}, 2\n", out, pc, abi.TextType(), pc, pc, abi.TextType(), pc);
+                out = format_text("{}  call void @chibi_scalar.free(ptr %ctx, ptr %old.owner{})\n", out, pc);
+            }
             out = format_text("{}  store {} %second{}, ptr %address{}\n", out, TypeName(element), pc, pc);
         case ViewClone:
             out = format_text("{}  %array{} = call ptr @chibi_view.{}.require(ptr %managed.heap, {} %view{})\n", out, pc, array, abi.ManagedViewType(), pc);
@@ -230,7 +235,7 @@ ViewModule :: (code: Instruction[]) -> string {
     needed := false;
     for (item in code) { if (ViewOperation(item.op)) { needed = true; break; } }
     if (!needed) { return ""; }
-    used := resize([int(0)], abi.DoubleStorage + 1);
+    used := resize([int(0)], abi.TextStorage + 1);
     out: string[] = [];
     wrappers: [string: bool] = [:];
     for (item in code) {

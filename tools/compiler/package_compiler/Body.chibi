@@ -113,9 +113,9 @@ UpdateFact: int : 0;
 NativeFact: int : 1;
 CallFact: int : 2;
 WriteFact: int : 3;
-// The destination cell of an unmanaged scalar copied into a result bank.
-// `node` is the copy's source occurrence; `target` is the body-local cell.
-ResultCopyCellFact: int : 4;
+// A typed unmanaged scalar destination created for a copied result or a
+// conditional expression. `node` is its source; `target` is the body-local cell.
+ScalarValueCellFact: int : 4;
 UnknownWrite: int : -1;
 Body :: union {
     Failed(diagnostic: syntax.Diagnostic)
@@ -906,7 +906,7 @@ DirectiveFacts :: (forest: snapshot.SnapshotNode[], context: BodyContext, direct
         kind = NativeFact;
         target = item.a;
     }
-    if (kind == UpdateFact || kind == ResultCopyCellFact) {
+    if (kind == UpdateFact || kind == ScalarValueCellFact) {
         fact: SemanticFact = {node: item.node, kind: kind, target: target};
         recorded.append(fact);
         return SemanticState.Read(summary, recorded);
@@ -3417,6 +3417,9 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 }
                 cells.append(MovedCell(Typed(-1, element.storage, element.container, element.record)));
                 answer := length(cells) - 1;
+                if (ScalarValueCell(cells[answer])) {
+                    facts.append({node: item.node, kind: ScalarValueCellFact, target: answer});
+                }
                 present := NoValue();
                 probe: Bases = {pc: length(code), slot: length(slots), local: length(locals),
                                 cell: length(cells), host: length(hosts), call: length(calls)};

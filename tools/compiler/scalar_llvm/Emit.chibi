@@ -977,10 +977,10 @@ Holds :: (values: int[], wanted: int) -> bool {
 // array, an array and an index, an element or another array, or an array and
 // two ints or an index and an element; 0 for no operator.
 ArrayOperands :: (operand: facts.Row) -> int {
-    if (operand.value == facts.ArrayPlaceGet) { return 2; }
     if (operand.value == facts.ArrayInsert || operand.value == facts.ArrayInserted ||
         operand.value == facts.ArrayReplace || operand.value == facts.ArrayReplaced) { return 3; }
     if (operand.value == facts.ArrayReverse || operand.value == facts.ArrayReversed) { return 1; }
+    if (operand.value == facts.ArrayPlaceGet || operand.value == facts.ArrayPlaceCheck) { return 2; }
     if (operand.value == facts.ArrayNew) {
         return operand.count;
     }
@@ -1143,6 +1143,10 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         if (operand.type != facts.IntType || Element(records, stack[base]) == 0) {
             return mismatch;
         }
+        return "";
+    }
+    if (operator == facts.ArrayPlaceCheck) {
+        if (operand.type != facts.BoolType || Element(records, stack[base]) == 0 || stack[base + 1] != facts.IntType) { return mismatch; }
         return "";
     }
     if (operator == facts.ArrayGet || operator == facts.ArrayPlaceGet) {
@@ -2275,6 +2279,11 @@ ArrayLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: i
     if (operand.value == facts.ArrayLength) {
         return Op(native.ArrayLength, type, slot, stack[base], 0, 0);
     }
+    if (operand.value == facts.ArrayPlaceCheck) {
+        item := Op(native.ArrayGet, abi.BoolStorage, slot, stack[base], stack[base + 1], 0);
+        item.literal = i64(native.ArrayGetPlaceCheck);
+        return item;
+    }
     if (operand.value == facts.ArrayGet || operand.value == facts.ArrayPlaceGet) {
         item := Op(native.ArrayGet, type, slot, stack[base], stack[base + 1], 0);
         if (operand.value == facts.ArrayPlaceGet) { item.literal = 1; }
@@ -2282,6 +2291,7 @@ ArrayLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: i
     }
     if (operand.value == facts.ArraySet || operand.value == facts.ArrayReplace || operand.value == facts.ArrayReplaced) {
         item := Op(native.ArraySet, type, slot, stack[base], stack[base + 1], stack[base + 2]);
+        item.literal = i64(native.ArraySetPlace);
         if (operand.value != facts.ArraySet) { item.literal = i64(native.ArraySetUnchanged); }
         return item;
     }
@@ -3566,7 +3576,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     if (op == facts.ArrayExtend) { mutation.op = native.ArrayExtend; }
                     if (op == facts.ArrayRemove) { mutation.op = native.ArrayRemove; mutation.literal = 0; }
                     if (op == facts.ArrayResize) { mutation.op = native.ArrayResize; mutation.literal = 0; }
-                    if (op == facts.ArraySet) { mutation = Op(native.ArraySet, array, changed, current, stack[base + 1], argument); }
+                    if (op == facts.ArraySet) {
+                        mutation = Op(native.ArraySet, array, changed, current, stack[base + 1], argument);
+                        mutation.literal = i64(native.ArraySetPlace);
+                    }
                     if (op == facts.ArrayReplace) {
                         mutation = Op(native.ArraySet, array, changed, current, stack[base + 1], argument);
                         mutation.literal = i64(native.ArraySetUnchanged);
@@ -3614,7 +3627,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                             moving = -1;
                         }
                     }
-                    if (op == facts.ArrayLength || op == facts.ArrayGet || op == facts.ArrayPlaceGet || op == facts.ArrayContains ||
+                    if (op == facts.ArrayLength || op == facts.ArrayGet || op == facts.ArrayPlaceGet || op == facts.ArrayPlaceCheck || op == facts.ArrayContains ||
                         op == facts.ArraySlice || op == facts.ArrayResize || op == facts.ArrayWith ||
                         op == facts.ArrayJoin || op == facts.ArrayCopy || op == facts.ArrayText) {
                         if (Holds(fresh, stack[base])) {

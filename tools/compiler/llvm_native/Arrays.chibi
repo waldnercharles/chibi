@@ -115,10 +115,10 @@ NestedArrayElement :: (records: Record[], fields: int[], type: int) -> int {
     if (record.count != 1) { return 0; }
     inner := fields[record.first];
     if (MapShaped(records, inner)) { return inner; }
-    element := ElementType(records, inner);
-    if (element == 0 || (!Integer(element) && !abi.Floating(element) &&
-        element != abi.BoolStorage && element != abi.TextStorage)) { return 0; }
-    return inner;
+    // The caller's ValueValid guard proves the whole element graph. A
+    // descriptor projection itself does not depend on its array leaf type.
+    if (ElementType(records, inner) != 0) { return inner; }
+    return 0;
 }
 
 // The owner is canonical and already evaluated. No source code runs between

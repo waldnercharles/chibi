@@ -18,7 +18,7 @@ for (const [full, bootstrapRun] of [['false', ''], ['false', '123'], ['true', ''
         'native_aot/native_driver/minimum.sh', 'native_aot/text_format/run.sh', 'native_aot/link/memory.sh', 'native_aot/output/run.sh',
         'native_aot/diagnostics/run.sh', 'native_aot/generations/run.sh', 'native_aot/test_attributes/run.sh',
         'native_aot/failures/run.sh', 'native_aot/task_busy/run.sh', 'native_aot/optionals/run.sh',
-        'native_aot/fallible/run.sh', 'native_aot/patterns/run.sh',
+        'native_aot/fallible/run.sh', 'native_aot/patterns/run.sh', 'native_aot/host_clock/run.sh',
         'bootstrap/native-entry.sh', 'bootstrap/native-runner.sh', 'native_aot/tasks/run.sh',
         'native_aot/math_scalar/run.sh', 'native_aot/math_builtin/select.sh', 'native_aot/math_builtin/run.sh', 'native_aot/characters/run.sh', 'native_aot/array_operations/run.sh', 'native_aot/text_arguments/run.sh', 'native_aot/nested_arrays/run.sh', 'native_aot/managed_values/run.sh',
         'native_aot/managed_pointers/run.sh', 'native_aot/maps/run.sh',
@@ -46,6 +46,11 @@ test "$2" = "$PWD/build-release/sdk/chibi"
 test "$3" = "$CHIBI_LLVM_BIN"
 test "$4" = clang-18
 printf '%s\\n' native_aot/asset_compiler/bridge.sh >> "$RUNNER_TEMP/checks"
+`);
+      fs.writeFileSync(path.join(root, 'test/native_aot/asset_compiler/archive.sh'), `set -eu
+test "$1" = "$PWD/build-release/sdk/chibi"
+test "$2" = "$CHIBI_LLVM_BIN"
+printf '%s\\n' native_aot/asset_compiler/archive.sh >> "$RUNNER_TEMP/checks"
 `);
       for (const name of ['opt', 'llc', 'ld.lld', 'ld64.lld']) {
         fs.writeFileSync(path.join(root, 'llvm', name), '#!/bin/sh\necho "LLVM version 22.1.8 LLD 22.1.8"\n', {mode: 0o755});
@@ -89,7 +94,7 @@ exit 93
         assert.ok(commands[2].includes('graph-sdk-install'));
       }
       assert.deepEqual(fs.readFileSync(path.join(logs, 'checks'), 'utf8').trim().split('\n'),
-        full === 'true' ? [...checks, 'native_aot/asset_compiler/bridge.sh'] : checks);
+        full === 'true' ? [...checks, 'native_aot/asset_compiler/bridge.sh', 'native_aot/asset_compiler/archive.sh'] : checks);
     } finally { fs.rmSync(scratch, {recursive: true, force: true}); }
   });
 }

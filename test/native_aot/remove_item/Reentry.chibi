@@ -1,0 +1,22 @@
+package remove_reentry
+
+foreign {
+    chibi_value_equal_test_arm :: () -> int
+}
+Box :: struct { values: int[]; label: string; }
+Make :: (value: int) -> ^int { return &value; }
+Pointers :: () -> ^int[] { return [Make(11), Make(37)]; }
+Main :: () -> int {
+    // The callee's individual pointer slots have left scope. Only this
+    // owning array can keep both cells reachable during the callback.
+    held := Pointers();
+    values: Box[] = [{values: [1, 2], label: "first"}, {values: [3], label: "kept"}];
+    wanted: Box = {values: [1, 2], label: "first"};
+    armed := chibi_value_equal_test_arm();
+    assert(armed == 0);
+    removed := remove_item(values, wanted);
+    assert(length(removed) == 1 && removed[0].label == "kept");
+    assert(held[0]^ + held[1]^ == 48,
+        "equality scratch allocation keeps unrelated pointer-array owners live during collection");
+    return 0;
+}

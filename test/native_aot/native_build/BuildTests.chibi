@@ -848,7 +848,7 @@ DriverBuild :: (built: Case, ir: string, out: string, triple: string) {
     program := Path([out, "/program"]);
     if (windows) { program = Path([program, ".exe"]); }
     plan := link.Program(triple, built.tools, [object, start_object], [], [], [], program, "", windows);
-    plan.imports = link.SystemImports(strings.SplitLines(start));
+    plan.imports = link.SystemImports(strings.SplitLines(start), triple);
     linked := host.Link(plan);
     assert(linked == nil, "the native link path builds the frame program");
 }

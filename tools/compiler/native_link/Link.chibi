@@ -235,7 +235,7 @@ pub ValidExports :: (plan: Plan) -> bool {
     return true;
 }
 
-// The system libraries a module's IR imports from, other than libc, once each
+// The system libraries a module's IR imports from, once each
 // in order: `; chibi-library system:NAME` names one and
 // `; chibi-import system:NAME SYMBOL` a symbol of it. The symbols are gathered
 // as (library, symbol) pairs first, so no library's list is copied as it
@@ -323,7 +323,10 @@ Has :: (sorted: string[], key: string) -> bool {
     return false;
 }
 
-pub SystemImports :: (lines: string[]) -> Import[] {
+// POSIX links libc through its platform runtime. Windows explicit C calls use
+// UCRT stubs; an allocation-only program still imports no CRT symbols.
+pub SystemImports :: (lines: string[], triple: string) -> Import[] {
+    windows := TargetOf(triple) == WindowsX64;
     names: string[] = [];
     candidate_owners: int[] = [];
     candidate_symbols: string[] = [];
@@ -347,7 +350,8 @@ pub SystemImports :: (lines: string[]) -> Import[] {
             continue;
         }
         if (library_name == "c") {
-            continue;
+            if (!windows) { continue; }
+            library_name = "ucrtbase";
         }
         at := -1;
         for (index in 0..<length(names)) {

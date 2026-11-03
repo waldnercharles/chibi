@@ -134,7 +134,13 @@ done
 
 for index in 3 -1 -2147483648 2147483647; do
     operation='return items[Where()];'
-    if [ "$index" = -1 ]; then operation='items[Where()] = 4; return 0;'; fi
+    expected="native array index $index is out of range for length 3"
+    if [ "$index" = -1 ]; then
+        operation='items[Where()] = 4; return 0;'
+        # Assignments resolve a logical place. The ordinary compiler reports
+        # unavailable storage, not the expression-index failure category.
+        expected='Referenced array element is unavailable'
+    fi
     cat > "$work/Outside.chibi" <<SOURCE
 package scalar
 Main :: () -> int { items: int[] = [1, 2, 3]; $operation }
@@ -144,7 +150,7 @@ SOURCE
         compile "$work/Outside.chibi" "$work/outside" "$llvm" "$level"
         ended=0
         "$work/outside" > "$work/outside.log" 2>&1 || ended=$?
-        if [ "$ended" != 134 ] || ! grep -F "native array index $index is out of range for length 3" "$work/outside.log" >/dev/null; then
+        if [ "$ended" != 134 ] || ! grep -F "$expected" "$work/outside.log" >/dev/null; then
             cat "$work/outside.log" >&2
             echo "native backend: bounds failure exited $ended, expected 134" >&2
             exit 1

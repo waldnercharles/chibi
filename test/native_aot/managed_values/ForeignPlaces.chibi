@@ -1,0 +1,35 @@
+package foreign_places
+
+foreign import libc "system:c"
+foreign libc {
+    memset :: (data: u8[], value: i32, count: u64) -> rawptr
+    memcmp :: (left: u8[], right: u8[], count: u64) -> i32
+}
+Inner :: struct { bytes: u8[]; }
+Box :: struct { inner: Inner; sibling: int; }
+Make :: (value: u8) -> Box { return {inner: {bytes: [value, 0, 66]}, sibling: 4}; }
+Replace :: (box: ^Box) -> u64 { box^ = Make(88); return 3; }
+FillCopy :: (box: Box) -> int {
+    written := memset(box.inner.bytes, 9, 1);
+    return int(box.inner.bytes[0]);
+}
+FillScoped :: (box: ^Box) {
+    written := memset(box^.inner.bytes, 7, 1);
+}
+Main :: () -> int {
+    value := Make(65);
+    alias := value;
+    written := memset(value.inner.bytes, 9, 1);
+    assert(value.inner.bytes[0] == 9 && alias.inner.bytes[0] == 65);
+    assert(value.sibling == 4);
+    copied := FillCopy(alias);
+    assert(copied == 9 && alias.inner.bytes[0] == 65);
+    FillScoped(&alias);
+    assert(alias.inner.bytes[0] == 7);
+    same := memcmp(value.inner.bytes, value.inner.bytes, 3);
+    assert(same == 0);
+    historical := Make(65);
+    compared := memcmp(historical.inner.bytes, [u8(65), 0, 66], Replace(&historical));
+    assert(compared == 0 && historical.inner.bytes[0] == 88);
+    return 0;
+}

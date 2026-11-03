@@ -192,7 +192,7 @@ WindowsLibrariesExportWhatTheStartModulesImport :: () {
     declared: string[] = [];
     for (context in [false, true]) {
         lines := strings.SplitLines(link.Start("x86_64-pc-windows-msvc", true, context));
-        imported := link.SystemImports(lines);
+        imported := link.SystemImports(lines, "x86_64-pc-windows-msvc");
         if (context) {
             assert(length(imported) == 1 && imported[0].name == "ucrtbase", "formatting names the UCRT import library");
             Same(imported[0].symbols, ["__stdio_common_vsprintf"]);
@@ -261,12 +261,25 @@ SystemImportsReadTheModulesMarkers :: () {
     found := link.SystemImports(["; chibi-library system:c", "; chibi-library system:user32",
                                  "; chibi-import system:user32 MessageBoxA", "; chibi-import system:kernel32 Sleep",
                                  "; chibi-import system:user32 MessageBoxA", "; chibi-import system:c abs",
-                                 "define i32 @f()"]);
+                                 "define i32 @f()"], "x86_64-unknown-linux-gnu");
     assert(length(found) == 2 && found[0].name == "user32" && found[1].name == "kernel32", "libc is not one");
     Same(found[0].symbols, ["MessageBoxA"]);
     Same(found[1].symbols, ["Sleep"]);
     assert(link.ImportName("Message_Box.A-1@4$") && !link.ImportName("") && !link.ImportName("a b") &&
            !link.ImportName("a\nb"), "definition names");
+}
+
+@test
+CImportsUseTheTargetRuntime :: () {
+    lines := ["; chibi-library system:c", "; chibi-import system:c memchr"];
+    for triple in ["x86_64-unknown-linux-gnu", "aarch64-apple-darwin"] {
+        assert(length(link.SystemImports(lines, triple)) == 0, "POSIX already links its C runtime");
+    }
+    lines.extend(["; chibi-import system:ucrtbase __stdio_common_vsprintf",
+                  "; chibi-import system:ucrtbase memchr", "; chibi-import system:c memchr"]);
+    found := link.SystemImports(lines, "x86_64-pc-windows-msvc");
+    assert(length(found) == 1 && found[0].name == "ucrtbase", "explicit C imports share the UCRT stub");
+    Same(found[0].symbols, ["memchr", "__stdio_common_vsprintf"]);
 }
 
 @test
@@ -348,7 +361,7 @@ SystemImportsKeepFirstAppearancesOfManyUnsortedSymbols :: () {
     for (index in 0..<300) {
         lines.append(strings.Concatenate(["; chibi-import system:user32 ", format_text("S{}", 299 - index)]));
     }
-    found := link.SystemImports(lines);
+    found := link.SystemImports(lines, "x86_64-pc-windows-msvc");
     assert(length(found) == 1 && found[0].name == "user32", "one library");
     Same(found[0].symbols, expected);
 }
@@ -404,9 +417,9 @@ ProgramFormattingControlsWindowsRuntimeImports :: () {
             unformatted = link.RunStart("x86_64-pc-windows-msvc", true, true, false);
             formatted = link.RunStart("x86_64-pc-windows-msvc", true, true, true);
         }
-        assert(length(link.SystemImports(strings.SplitLines(unformatted))) == 0, "an allocation-only program needs kernel32");
+        assert(length(link.SystemImports(strings.SplitLines(unformatted), "x86_64-pc-windows-msvc")) == 0, "an allocation-only program needs kernel32");
         assert(!strings.Contains(unformatted, "@chibi_format_text"), "an unused formatter is absent");
-        imported := link.SystemImports(strings.SplitLines(formatted));
+        imported := link.SystemImports(strings.SplitLines(formatted), "x86_64-pc-windows-msvc");
         assert(length(imported) == 1 && imported[0].name == "ucrtbase", "formatting imports the UCRT");
         Same(imported[0].symbols, ["__stdio_common_vsprintf"]);
     }
@@ -420,7 +433,7 @@ StringOnlyProgramKeepsFormattingWithoutTheCRT :: () {
             if command { module = link.RunStart(triple, false, true, true, false); }
             assert(strings.Contains(module, "define internal void @chibi_format_text"));
             assert(!strings.Contains(module, "@__stdio_common_vsprintf") && !strings.Contains(module, "@snprintf"));
-            assert(length(link.SystemImports(strings.SplitLines(module))) == 0);
+            assert(length(link.SystemImports(strings.SplitLines(module), triple)) == 0);
         }
     }
 }

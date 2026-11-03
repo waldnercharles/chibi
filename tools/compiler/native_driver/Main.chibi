@@ -398,7 +398,7 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     // Math instructions can lower to libm calls. Linux links that library by
     // name; macOS and Windows bind each symbol through their system stubs.
     markers.extend(Markers(start));
-    plan.imports = link.SystemImports(markers);
+    plan.imports = link.SystemImports(markers, triple);
     if (clock_host) {
         imported := link.ClockHostImports(triple);
         if (length(imported.symbols) > 0) { plan.imports.append(imported); }

@@ -56,7 +56,10 @@ Main :: () -> int {
         Read(&test, native.MapLength, abi.IntStorage, empty, 0, integer_map);
         type := native.MapOf(abi.IntStorage, native.ArrayType + abi.IntStorage);
         map := Constant(&test, type, 0);
-        returned = Read(&test, native.MapLength, abi.IntStorage, map, 0, type);
+        Read(&test, native.MapLength, abi.IntStorage, map, 0, type);
+        texts_type := native.MapOf(abi.IntStorage, native.ArrayType + abi.TextStorage);
+        texts_map := Constant(&test, texts_type, 0);
+        returned = Read(&test, native.MapLength, abi.IntStorage, texts_map, 0, texts_type);
     } else if (missing_kind != 0) {
         array := native.ArrayType + abi.IntStorage;
         type := native.MapOf(abi.IntStorage, array);

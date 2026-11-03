@@ -1,0 +1,14 @@
+package remove_family
+
+Box :: struct { values: int[]; label: string; }
+Next :: () -> int {
+    saved: retain Box = {values: [], label: "kept"};
+    saved.values.append(5);
+    candidates: Box[] = [saved];
+    removed := remove_item(candidates, saved);
+    assert(length(removed) == 0 && length(candidates) == 1,
+        "retained snapshots and comparison roots share the same value shape graph");
+    return length(saved.values);
+}
+Main :: () -> int { first := Next(); assert(first == 1); return 0; }
+Frame :: () -> int { second := Next(); assert(second == 2); return 42; }

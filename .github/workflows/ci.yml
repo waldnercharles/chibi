@@ -610,6 +610,7 @@ jobs:
             @{ name = 'nested-map-places'; source = 'test/native_aot/map_programs/NestedPlaces.chibi' },
             @{ name = 'deep-map-places'; source = 'test/native_aot/map_programs/DeepPlaces.chibi' },
             @{ name = 'deep-mapped-arrays'; source = 'test/native_aot/map_programs/DeepArrays.chibi' },
+            @{ name = 'deep-mapped-methods'; source = 'test/native_aot/map_programs/DeepMethods.chibi' },
             @{ name = 'sdk-paths'; source = 'test/bootstrap/fixtures/InstallPaths.chibi' },
             @{ name = 'library-loader'; source = 'test/native_aot/loader/Windows.chibi' }
           )

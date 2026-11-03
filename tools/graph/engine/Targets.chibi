@@ -239,7 +239,6 @@ Files :: (target: string) -> string[] {
         return [
             "test/tools/main.c", "test/tools/case_timings.c", "test/tools/case_timings_test.c",
             "test/tools/fixture.c",
-            "test/tools/web_storage.c",
             "src/host/process.c", "third_party/yyjson/yyjson.c",
             "test/tools/compiler_bootstrap.c",
             "src/host/native_libraries.c", "test/tools/box3d.c"

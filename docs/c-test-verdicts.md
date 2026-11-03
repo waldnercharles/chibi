@@ -47,7 +47,7 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/tools/case_timings_test.c`, `case_timings.c`, `fixture.c`, `policy_worker.c`, `main.c` | 9, 0 | the C test runner and its workers | goes |
 | `test/tools/box3d.c` | 2 | the third-party box3d library | goes with the C engine build |
 | `test/tools/collab.c` (retired 2026-11-02) | 5 | the Node collab server | authority, readiness, logs and transport failures moved to `tools/collab/server/server.test.mjs`; `collab`, `short` and `native-tools` select them |
-| `test/tools/web_storage.c` | 19 | chibi-studio's `web_storage.js` | move to Node tests in its owning repository |
+| `test/tools/web_storage.c` (retired 2026-11-02) | 19 | chibi-studio's `web_storage.js` | all 19 cases now belong to Studio's `tests/web/web-storage.test.cjs`, including browser-export isolation |
 | `test/tools/build_process.c` (retired) | 53 | the C build host's natives | public behavior covered by native OS/CLI/supervisor suites; private contracts retired |
 | `test/tools/chibi_cli.c` (retired 2026-11-02) | 24 | `apps/chibi` launched by the C apphost | native CLI behavior is covered by `ChibiCliTests.chibi` and `test/native_cli/foreground.py`; launcher/VM mechanics leave with the host |
 | `test/tools/native_workloads.c` (retired 2026-11-02) | 2 | `chibi build --native` end to end | checksums, timings and detached-descendant cleanup run through the authored native workload benchmark |

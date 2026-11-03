@@ -60,7 +60,6 @@ tool	language-record-document	@build@/test/language/test_language	--record-docum
 tool	language-record-values	@build@/test/language/test_language	--record-values
 tool	language-program	@build@/test/language/test_language	--program
 tool	language-execution	@build@/test/language/test_language	--execution
-tool	web-storage	@build@/test/tools/test_tools	--web-storage
 group	native-tools	types	collab
 group	short	types	collab
 timeout	chibi-cli	900

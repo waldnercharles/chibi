@@ -7,8 +7,10 @@ target triple = "wasm32-unknown-emscripten"
 %context = type { ptr, ptr, ptr, ptr, ptr }
 %options = type { ptr, i64, ptr, ptr }
 ; Zero-length i128 fields align opaque SDK storage and allocation payloads to 16 bytes.
-%call = type { %context, [0 x i128], [@JUMP_BYTES@ x i8], ptr, ptr, i32, ptr, ptr, i64, i1, ptr, i32 }
+%call = type { %context, [0 x i128], [@JUMP_BYTES@ x i8], ptr, ptr, i32, ptr, ptr, i64, i1, ptr, i32, ptr, i32, ptr }
 %allocation = type { ptr, ptr, [0 x i128], [0 x i8] }
+; Each resource node belongs to this call, independent of authored value roots.
+%resource = type { ptr, i64, i32 }
 @chibi_wasm_active = internal thread_local global ptr null, align 4
 @chibi_wasm_live = internal thread_local global i32 0, align 4
 
@@ -26,6 +28,9 @@ declare ptr @malloc(i32)
 declare void @free(ptr)
 declare void @abort() noreturn
 declare i32 @strnlen(ptr, i32)
+declare i32 @close(i32)
+declare i32 @closedir(ptr)
+declare ptr @asset_compiler_wasm_identity()
 declare i32 @setjmp(ptr) returns_twice
 declare void @longjmp(ptr, i32) noreturn #0
 declare void @llvm.trap() cold noreturn nounwind
@@ -281,6 +286,14 @@ define i32 @chibi_asset_rejected(i32 %document, i32 %line, i32 %column, ptr %mes
 }
 
 define ptr @asset_compiler_wasm_compile(ptr %request, i32 %request_length, ptr %length, ptr %options, ptr %diagnostic) #0 {
+  %output = call ptr @chibi_wasm_compile(ptr %request, i32 %request_length, ptr null, i32 0, ptr %length, ptr %options, ptr %diagnostic)
+  ret ptr %output
+}
+define ptr @asset_compiler_wasm_compile_cached(ptr %request, i32 %request_length, ptr %salt, ptr %length, ptr %options, ptr %diagnostic) #0 {
+  %output = call ptr @chibi_wasm_compile(ptr %request, i32 %request_length, ptr %salt, i32 1, ptr %length, ptr %options, ptr %diagnostic)
+  ret ptr %output
+}
+define internal ptr @chibi_wasm_compile(ptr %request, i32 %request_length, ptr %salt, i32 %cached, ptr %length, ptr %options, ptr %diagnostic) #0 {
 entry:
   store i32 0, ptr %length
   call void @llvm.memset.p0.i32(ptr %diagnostic, i8 0, i32 792, i1 false)
@@ -325,6 +338,10 @@ initialize:
   store ptr %options, ptr %options.at
   %diagnostic.at = getelementptr %call, ptr %call, i32 0, i32 7
   store ptr %diagnostic, ptr %diagnostic.at
+  %salt.at = getelementptr %call, ptr %call, i32 0, i32 12
+  store ptr %salt, ptr %salt.at
+  %cached.at = getelementptr %call, ptr %call, i32 0, i32 13
+  store i32 %cached, ptr %cached.at
   store ptr %call, ptr @chibi_wasm_active
   %stopped = getelementptr %call, ptr %call, i32 0, i32 2
   %jumped = call i32 @setjmp(ptr %stopped) returns_twice
@@ -340,6 +357,9 @@ compile:
   br label %drain
 drain:
   %status = phi i32 [ %jumped, %initialize ], [ %compiled, %compile ]
+  ; Unwind can bypass authored close calls. Resources close before their list
+  ; nodes and every other managed temporary are released.
+  call void @chibi_wasm_close_resources(ptr %call)
   br label %next
 next:
   %head.at = getelementptr %call, ptr %call, i32 0, i32 3
@@ -374,6 +394,193 @@ finish:
   store ptr null, ptr @chibi_wasm_active
   call void @free(ptr %call)
   ret ptr %escaped
+}
+
+; Option selectors are shared with the desktop ABI: program, cache, salt.
+; -1 is NULL/default, 0 is explicit empty, -2 is malformed or over the bound.
+define internal ptr @chibi_wasm_option(i32 %which) {
+entry:
+  %call = call ptr @chibi_wasm_call()
+  switch i32 %which, label %invalid [ i32 0, label %none
+                                    i32 1, label %cache
+                                    i32 2, label %salt ]
+cache:
+  %options.at = getelementptr %call, ptr %call, i32 0, i32 6
+  %options = load ptr, ptr %options.at
+  %has.options = icmp ne ptr %options, null
+  br i1 %has.options, label %load.cache, label %none
+load.cache:
+  %cache.value = load ptr, ptr %options
+  ret ptr %cache.value
+salt:
+  %salt.at = getelementptr %call, ptr %call, i32 0, i32 12
+  %salt.value = load ptr, ptr %salt.at
+  ret ptr %salt.value
+none:
+  ret ptr null
+invalid:
+  call void @llvm.trap()
+  unreachable
+}
+define i32 @chibi_asset_cached() {
+  %call = call ptr @chibi_wasm_call()
+  %at = getelementptr %call, ptr %call, i32 0, i32 13
+  %cached = load i32, ptr %at
+  ret i32 %cached
+}
+define i32 @chibi_asset_option_length(i32 %which) {
+entry:
+  %value = call ptr @chibi_wasm_option(i32 %which)
+  %present = icmp ne ptr %value, null
+  br i1 %present, label %length, label %none
+length:
+  ; Paths have the old 4096-byte bound. Salt retains the public C string domain.
+  %is.salt = icmp eq i32 %which, 2
+  %bound = select i1 %is.salt, i32 2147483647, i32 4097
+  %size = call i32 @strnlen(ptr %value, i32 %bound)
+  %fits = icmp ult i32 %size, %bound
+  %result = select i1 %fits, i32 %size, i32 -2
+  ret i32 %result
+none:
+  ret i32 -1
+}
+define i32 @chibi_asset_option_copy(i32 %which, ptr %buffer, i32 %count) {
+entry:
+  %size = call i32 @chibi_asset_option_length(i32 %which)
+  %nonnegative = icmp sge i32 %size, 0
+  %same = icmp eq i32 %size, %count
+  %valid = and i1 %nonnegative, %same
+  br i1 %valid, label %copy, label %invalid
+copy:
+  %value = call ptr @chibi_wasm_option(i32 %which)
+  call void @llvm.memcpy.p0.p0.i32(ptr %buffer, ptr %value, i32 %count, i1 false)
+  ret i32 0
+invalid:
+  ret i32 -1
+}
+define i32 @chibi_asset_cancelled() {
+entry:
+  %call = call ptr @chibi_wasm_call()
+  %options.at = getelementptr %call, ptr %call, i32 0, i32 6
+  %options = load ptr, ptr %options.at
+  %has.options = icmp ne ptr %options, null
+  br i1 %has.options, label %callback, label %no
+callback:
+  %cancel.at = getelementptr %options, ptr %options, i32 0, i32 2
+  %cancel = load ptr, ptr %cancel.at
+  %has.cancel = icmp ne ptr %cancel, null
+  br i1 %has.cancel, label %check, label %no
+check:
+  %user.at = getelementptr %options, ptr %options, i32 0, i32 3
+  %user = load ptr, ptr %user.at
+  %cancelled = call zeroext i1 %cancel(ptr %user)
+  %result = zext i1 %cancelled to i32
+  ret i32 %result
+no:
+  ret i32 0
+}
+define i32 @chibi_asset_identity_copy(ptr %buffer, i32 %count) {
+entry:
+  %same = icmp eq i32 %count, 64
+  br i1 %same, label %copy, label %invalid
+copy:
+  %identity = call ptr @asset_compiler_wasm_identity()
+  call void @llvm.memcpy.p0.p0.i32(ptr %buffer, ptr %identity, i32 64, i1 false)
+  ret i32 0
+invalid:
+  ret i32 -1
+}
+
+; A node is published before the next authored checkpoint can unwind. The
+; (value,kind) pair disambiguates an fd from a same-valued directory address.
+define i32 @chibi_asset_resource_add(i64 %value, i32 %kind) {
+entry:
+  %call = call ptr @chibi_wasm_call()
+  %fd = icmp eq i32 %kind, 0
+  %fd.fits = icmp ule i64 %value, 2147483647
+  %directory = icmp eq i32 %kind, 1
+  %nonnull = icmp ne i64 %value, 0
+  %pointer.fits = icmp ule i64 %value, 4294967295
+  %pointer.valid = and i1 %nonnull, %pointer.fits
+  %valid.fd = and i1 %fd, %fd.fits
+  %valid.directory = and i1 %directory, %pointer.valid
+  %valid = or i1 %valid.fd, %valid.directory
+  br i1 %valid, label %allocate, label %invalid
+allocate:
+  %node = call ptr @chibi_allocate(ptr %call, i64 24)
+  %head.at = getelementptr %call, ptr %call, i32 0, i32 14
+  %head = load ptr, ptr %head.at
+  store ptr %head, ptr %node
+  %value.at = getelementptr %resource, ptr %node, i32 0, i32 1
+  store i64 %value, ptr %value.at
+  %kind.at = getelementptr %resource, ptr %node, i32 0, i32 2
+  store i32 %kind, ptr %kind.at
+  store ptr %node, ptr %head.at
+  ret i32 0
+invalid:
+  ret i32 -1
+}
+; The caller closes first, then removes the ownership record synchronously.
+define i32 @chibi_asset_resource_remove(i64 %value, i32 %kind) {
+entry:
+  %call = call ptr @chibi_wasm_call()
+  %head.at = getelementptr %call, ptr %call, i32 0, i32 14
+  br label %next
+next:
+  %link = phi ptr [ %head.at, %entry ], [ %node, %following ]
+  %node = load ptr, ptr %link
+  %present = icmp ne ptr %node, null
+  br i1 %present, label %check, label %missing
+check:
+  %value.at = getelementptr %resource, ptr %node, i32 0, i32 1
+  %owned.value = load i64, ptr %value.at
+  %kind.at = getelementptr %resource, ptr %node, i32 0, i32 2
+  %owned.kind = load i32, ptr %kind.at
+  %same.value = icmp eq i64 %value, %owned.value
+  %same.kind = icmp eq i32 %kind, %owned.kind
+  %same = and i1 %same.value, %same.kind
+  br i1 %same, label %remove, label %following
+following:
+  br label %next
+remove:
+  %following.node = load ptr, ptr %node
+  store ptr %following.node, ptr %link
+  call void @chibi_wasm_release(ptr %call, ptr %node)
+  ret i32 0
+missing:
+  ret i32 -1
+}
+define internal void @chibi_wasm_close_resources(ptr %call) {
+entry:
+  %head.at = getelementptr %call, ptr %call, i32 0, i32 14
+  br label %next
+next:
+  %node = load ptr, ptr %head.at
+  %present = icmp ne ptr %node, null
+  br i1 %present, label %read, label %done
+read:
+  %following = load ptr, ptr %node
+  %value.at = getelementptr %resource, ptr %node, i32 0, i32 1
+  %value = load i64, ptr %value.at
+  %kind.at = getelementptr %resource, ptr %node, i32 0, i32 2
+  %kind = load i32, ptr %kind.at
+  store ptr %following, ptr %head.at
+  %fd = icmp eq i32 %kind, 0
+  br i1 %fd, label %close.fd, label %close.directory
+close.fd:
+  %descriptor = trunc i64 %value to i32
+  %closed.fd = call i32 @close(i32 %descriptor)
+  br label %release
+close.directory:
+  %address = trunc i64 %value to i32
+  %directory = inttoptr i32 %address to ptr
+  %closed.directory = call i32 @closedir(ptr %directory)
+  br label %release
+release:
+  call void @chibi_wasm_release(ptr %call, ptr %node)
+  br label %next
+done:
+  ret void
 }
 
 ; The target feature must remain on longjmp-containing functions through LTO.

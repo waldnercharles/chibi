@@ -39,7 +39,7 @@ PublishedFips180Vectors :: () {
     assert(Same(Sum(Ascii("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")),
                 [36, 141, 106, 97, 210, 6, 56, 184, 229, 192, 38, 147, 12, 62, 96, 57,
                  163, 60, 228, 89, 100, 255, 33, 103, 246, 236, 237, 212, 25, 219, 6, 193]));
-    // 112 bytes: two whole blocks read in place, then a padding-only block.
+    // 112 bytes: one whole block, a 48-byte tail, then its padded block.
     // cf5b16a7 78af8380 036ce59e 7b049237 0b249b11 e8f07a51 afac4503 7afee9d1
     assert(Same(Sum(Ascii("abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu")),
                 [207, 91, 22, 167, 120, 175, 131, 128, 3, 108, 229, 158, 123, 4, 146, 55,

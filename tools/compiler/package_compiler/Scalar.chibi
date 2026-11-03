@@ -2039,8 +2039,12 @@ ScalarHeldUnion :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
             return members[field].record;
         }
     }
-    // An element of an array of unions.
+    // A map value or an element of an array of unions.
     if (Is(forest, value, syntax.IndexExpression)) {
+        mapped := ScalarMapShape(forest, text, callables, names, types, package, Field(forest, value, syntax.FieldObject));
+        if (mapped >= 0 && types[mapped].value_storage == UnionStorage && types[mapped].value_container == 0) {
+            return types[mapped].value_record;
+        }
         element := ScalarArrayShape(forest, text, callables, params, names, types, members, package, Field(forest, value, syntax.FieldObject));
         if (element.storage == UnionStorage && element.container == ArrayContainer) {
             return element.record;

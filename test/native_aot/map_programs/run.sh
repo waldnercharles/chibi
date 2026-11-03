@@ -10,7 +10,7 @@ case "$(uname -s)-$(uname -m)" in
     Linux-x86_64) triple=x86_64-unknown-linux-gnu ;;
     *) echo 'native map programs: unsupported test host' >&2; exit 2 ;;
 esac
-for name in Values Strings Iteration Records Effects Receivers ManagedRecords StringEffects ArrayPayload ArrayForeign Compound ArrayBacked ArrayValues; do
+for name in Values Strings Iteration Records Effects Receivers ManagedRecords StringEffects ArrayPayload ArrayForeign Compound ArrayBacked ArrayValues Unions; do
     for level in 0 2; do
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$root/test/native_aot/map_programs/$name.chibi" --entry Main \
@@ -18,7 +18,7 @@ for name in Values Strings Iteration Records Effects Receivers ManagedRecords St
         "$work/$name-O$level"
     done
 done
-for name in MissingRecord ArrayMissing; do
+for name in MissingRecord UnionMissing ArrayMissing; do
     expected='native failure: MapKeyAbsent'
     if [ "$name" = ArrayMissing ]; then expected='native failure: another failure'; fi
     for level in 0 2; do

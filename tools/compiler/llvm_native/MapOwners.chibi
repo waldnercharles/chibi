@@ -1,0 +1,231 @@
+package llvm_native
+
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Entries own their index and payloads. The 40-byte prefix starts with a
+// reference count; a final drop reuses it as the existing ValueDrain node:
+// next@0, context@8, callback@16, span:i32@24, index@32. No descriptor field
+// changes, and no allocation is needed to queue a nested map's release.
+MapOwnerBytes: int : 40;
+MapOwnersRuntime :: () -> string {
+    text := strings.Join([
+        "define internal ptr @chibi_map.entries(ptr %ctx, i32 %capacity, i64 %width) {",
+        "entry:",
+        "  %empty = icmp eq i32 %capacity, 0",
+        "  br i1 %empty, label %none, label %check",
+        "none:",
+        "  ret ptr null",
+        "check:",
+        "  %bounded = icmp ule i32 %capacity, $LIMIT",
+        "  %count = zext i32 %capacity to i64",
+        "  %maximum = udiv i64 $MAX, %count",
+        "  %fits = icmp ule i64 %width, %maximum",
+        "  %valid = and i1 %bounded, %fits",
+        "  br i1 %valid, label %make, label %bad",
+        "make:",
+        "  %bytes = mul i64 %count, %width",
+        "  %total = add i64 %bytes, $HEADER",
+        "  %owner = call ptr @chibi_map.allocate(ptr %ctx, i64 %total)",
+        "  store i64 1, ptr %owner",
+        "  %data = getelementptr i8, ptr %owner, i64 $HEADER",
+        "  ret ptr %data",
+        "bad:",
+        "  call void @llvm.trap()",
+        "  unreachable",
+        "}",
+        "define internal void @chibi_map.entries_give(ptr %ctx, ptr %entries) {",
+        "entry:",
+        "  %present = icmp ne ptr %entries, null",
+        "  br i1 %present, label %give, label %done",
+        "give:",
+        "  %owner = getelementptr i8, ptr %entries, i64 -$HEADER",
+        "  call void @chibi_map.give(ptr %ctx, ptr %owner)",
+        "  br label %done",
+        "done:",
+        "  ret void",
+        "}",
+        "define internal i1 @chibi_map.shared($M %map) {",
+        "entry:",
+        "  %entries = extractvalue $M %map, 4",
+        "  %present = icmp ne ptr %entries, null",
+        "  br i1 %present, label %read, label %empty",
+        "read:",
+        "  %owner = getelementptr i8, ptr %entries, i64 -$HEADER",
+        "  %references = load atomic i64, ptr %owner monotonic, align 8",
+        "  %shared = icmp ugt i64 %references, 1",
+        "  ret i1 %shared",
+        "empty:",
+        "  ret i1 false",
+        "}",
+        "define internal $M @chibi_map.share($M %map) {",
+        "entry:",
+        "  %entries = extractvalue $M %map, 4",
+        "  %present = icmp ne ptr %entries, null",
+        "  br i1 %present, label %keep, label %done",
+        "keep:",
+        "  %owner = getelementptr i8, ptr %entries, i64 -$HEADER",
+        "  %before = atomicrmw add ptr %owner, i64 1 monotonic",
+        "  br label %done",
+        "done:",
+        "  ret $M %map",
+        "}"
+    ], "\n");
+    text = strings.ReplaceAll(text, "$HEADER", format_text("{}", MapOwnerBytes));
+    text = strings.ReplaceAll(text, "$MAX", format_text("{}", -i64(MapOwnerBytes) - 1));
+    text = strings.ReplaceAll(text, "$LIMIT", format_text("{}", MapLimit));
+    return strings.ReplaceAll(text, "$M", abi.MapType());
+}
+
+// A root drop drains once; a contained map appends its last owner to the
+// caller's queue. release_body drops only live entries into that same queue.
+MapOwnedDrop :: (type: int, release_body: string) -> string {
+    text := strings.Join([
+        "define internal void @chibi_map.$N.drop_into(ptr %ctx, $M %map, ptr %pending) {",
+        "entry:",
+        "  %entries = extractvalue $M %map, 4",
+        "  %present = icmp ne ptr %entries, null",
+        "  br i1 %present, label %count, label %done",
+        "count:",
+        "  %owner = getelementptr i8, ptr %entries, i64 -$HEADER",
+        "  %before = atomicrmw sub ptr %owner, i64 1 acq_rel",
+        "  %last = icmp eq i64 %before, 1",
+        "  br i1 %last, label %queue, label %done",
+        "queue:",
+        "  %used = extractvalue $M %map, 1",
+        "  %index = extractvalue $M %map, 5",
+        "  %next = load ptr, ptr %pending",
+        "  store ptr %next, ptr %owner",
+        "  %ctx.at = getelementptr i8, ptr %owner, i64 8",
+        "  store ptr %ctx, ptr %ctx.at",
+        "  %release.at = getelementptr i8, ptr %owner, i64 16",
+        "  store ptr @chibi_map.$N.release, ptr %release.at",
+        "  %length.at = getelementptr i8, ptr %owner, i64 24",
+        "  store i32 %used, ptr %length.at",
+        "  %index.at = getelementptr i8, ptr %owner, i64 32",
+        "  store ptr %index, ptr %index.at",
+        "  store ptr %owner, ptr %pending",
+        "  br label %done",
+        "done:",
+        "  ret void",
+        "}",
+        "define internal void @chibi_map.$N.drop(ptr %ctx, $M %map) {",
+        "entry:",
+        "  %pending = alloca ptr",
+        "  store ptr null, ptr %pending",
+        "  call void @chibi_map.$N.drop_into(ptr %ctx, $M %map, ptr %pending)",
+        "  call void @chibi_value.drain(ptr %pending)",
+        "  ret void",
+        "}",
+        "define internal void @chibi_map.$N.release(ptr %ctx, ptr %owner, i32 %used, ptr %pending) {",
+        "entry:",
+        "  %entries = getelementptr i8, ptr %owner, i64 $HEADER",
+        "  %index.at = getelementptr i8, ptr %owner, i64 32",
+        "  %index = load ptr, ptr %index.at",
+        "  br label %xhead",
+        "xhead:",
+        "  %xi = phi i32 [ 0, %entry ], [ %xnext, %xstep ]",
+        "  %xend = icmp eq i32 %xi, %used",
+        "  br i1 %xend, label %done, label %xlook",
+        "xlook:",
+        "  %xoff = zext i32 %xi to i64",
+        "  %xhe = getelementptr $E, ptr %entries, i64 %xoff, i32 2",
+        "  %hash = load i32, ptr %xhe",
+        "  %alive = icmp ne i32 %hash, 0",
+        "  br i1 %alive, label %xbody, label %xstep",
+        "xbody:",
+        release_body,
+        "  br label %xstep",
+        "xstep:",
+        "  %xnext = add i32 %xi, 1",
+        "  br label %xhead",
+        "done:",
+        "  call void @chibi_map.give(ptr %ctx, ptr %index)",
+        "  call void @chibi_map.give(ptr %ctx, ptr %owner)",
+        "  ret void",
+        "}"
+    ], "\n");
+    text = strings.ReplaceAll(text, "$HEADER", format_text("{}", MapOwnerBytes));
+    text = strings.ReplaceAll(text, "$M", abi.MapType());
+    return strings.ReplaceAll(text, "$N", format_text("{}", type));
+}
+
+// .copy remains a physical immediate-entry clone. Source ValueCopy shares;
+// a later consuming mutation releases its old share after detaching once.
+MapUnique :: (type: int) -> string {
+    text := strings.Join([
+        "define internal $M @chibi_map.$N.unique(ptr %ctx, $M %map, i1 %consume) {",
+        "entry:",
+        "  %shared = call i1 @chibi_map.shared($M %map)",
+        "  br i1 %shared, label %copy, label %same",
+        "same:",
+        "  ret $M %map",
+        "copy:",
+        "  %fresh = call $M @chibi_map.$N.copy(ptr %ctx, $M %map)",
+        "  br i1 %consume, label %drop, label %done",
+        "drop:",
+        "  call void @chibi_map.$N.drop(ptr %ctx, $M %map)",
+        "  br label %done",
+        "done:",
+        "  ret $M %fresh",
+        "}",
+        "define internal $M @chibi_map.$N.set(ptr %ctx, $M %map, $K %key, $V %value, i1 %owns) {",
+        "entry:",
+        "  %unique = call $M @chibi_map.$N.unique(ptr %ctx, $M %map, i1 %owns)",
+        "  %old = extractvalue $M %map, 4",
+        "  %fresh = extractvalue $M %unique, 4",
+        "  %copied = icmp ne ptr %old, %fresh",
+        "  %owned = or i1 %owns, %copied",
+        "  %result = call $M @chibi_map.$N.set_unique(ptr %ctx, $M %unique, $K %key, $V %value, i1 %owned)",
+        "  ret $M %result",
+        "}",
+        "define internal $M @chibi_map.$N.delete(ptr %ctx, $M %map, $K %key, i1 %owns) {",
+        "entry:",
+        "  %shared = call i1 @chibi_map.shared($M %map)",
+        "  br i1 %shared, label %present, label %change",
+        "present:",
+        "  %found = call i1 @chibi_map.$N.has($M %map, $K %key)",
+        "  br i1 %found, label %change, label %same",
+        "same:",
+        "  ret $M %map",
+        "change:",
+        "  %unique = call $M @chibi_map.$N.unique(ptr %ctx, $M %map, i1 %owns)",
+        "  %old = extractvalue $M %map, 4",
+        "  %fresh = extractvalue $M %unique, 4",
+        "  %copied = icmp ne ptr %old, %fresh",
+        "  %owned = or i1 %owns, %copied",
+        "  %result = call $M @chibi_map.$N.delete_unique(ptr %ctx, $M %unique, $K %key, i1 %owned)",
+        "  ret $M %result",
+        "}"
+    ], "\n");
+    text = strings.ReplaceAll(text, "$M", abi.MapType());
+    text = strings.ReplaceAll(text, "$K", TypeName(MapKey(type)));
+    text = strings.ReplaceAll(text, "$V", TypeName(MapValue(type)));
+    return strings.ReplaceAll(text, "$N", format_text("{}", type));
+}
+
+// Diagnose a missing place before allocation. A physical clone compacts
+// entries, so relookup only when detaching moved the table.
+MapReference :: (type: int) -> string {
+    text := strings.Join([
+        "define internal ptr @chibi_map.$N.reference(ptr %ctx, ptr %owner, $K %key) {",
+        "entry:",
+        "  %previous = load $M, ptr %owner",
+        "  %before = call ptr @chibi_map.$N.address($M %previous, $K %key, i1 true)",
+        "  %unique = call $M @chibi_map.$N.unique(ptr %ctx, $M %previous, i1 true)",
+        "  store $M %unique, ptr %owner",
+        "  %previous.data = extractvalue $M %previous, 4",
+        "  %unique.data = extractvalue $M %unique, 4",
+        "  %moved = icmp ne ptr %previous.data, %unique.data",
+        "  br i1 %moved, label %find, label %same",
+        "same:",
+        "  ret ptr %before",
+        "find:",
+        "  %after = call ptr @chibi_map.$N.address($M %unique, $K %key, i1 true)",
+        "  ret ptr %after",
+        "}"
+    ], "\n");
+    text = strings.ReplaceAll(text, "$M", abi.MapType());
+    text = strings.ReplaceAll(text, "$K", TypeName(MapKey(type)));
+    return strings.ReplaceAll(text, "$N", format_text("{}", type));
+}

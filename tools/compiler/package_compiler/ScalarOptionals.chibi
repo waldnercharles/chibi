@@ -14,6 +14,18 @@ ScalarOptionalPrimitive :: (types: TypeDecl[], optional: int) -> ValueType {
         (!Numeric(payload.storage) && payload.storage != BoolStorage)) { return absent; }
     return payload;
 }
+// Coalescing can also select an owned array value. Other optional readers keep
+// their existing primitive-only contract.
+ScalarCoalesceType :: (types: TypeDecl[], optional: int) -> ValueType {
+    if (ScalarOptional(types, optional)) {
+        declared := types[optional];
+        if (declared.value_container == ArrayContainer &&
+            ScalarArrayType(types, declared.value_storage, declared.value_record) != 0) {
+            return {storage: declared.value_storage, container: ArrayContainer, record: declared.value_record};
+        }
+    }
+    return ScalarOptionalPrimitive(types, optional);
+}
 
 // The declared plain primitive field selected by `optional?.field`, or -1.
 ScalarOptionalField :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
@@ -43,10 +55,10 @@ ScalarCoalesce :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
                    callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
                    node: int, rows: facts.Row[]) -> ScalarOperands {
     left := Field(forest, node, syntax.FieldLeft);
-    payload := ScalarOptionalPrimitive(types,
+    payload := ScalarCoalesceType(types,
         ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, left));
     if (payload.storage == 0) {
-        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native coalescing requires a number or bool optional"));
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native coalescing requires a number, bool or array optional"));
     }
     output := rows;
     switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, left, UnionStorage, output) {
@@ -54,10 +66,10 @@ ScalarCoalesce :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
         case .Built(built): output = built;
     }
     at := length(output);
-    output.append(ScalarAt(forest, node, facts.LogicalRow, ScalarTypeOf(payload.storage), facts.LogicalCoalesce, 0, ""));
+    output.append(ScalarAt(forest, node, facts.LogicalRow,
+                           ScalarValueType(types, payload.storage, payload.container, payload.record), facts.LogicalCoalesce, 0, ""));
     right := Field(forest, node, syntax.FieldRight);
-    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants, right, right,
-                          payload.storage, payload.storage, facts.Clamp, output) {
+    switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants, right, payload, output) {
         case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
         case .Built(built): output = built;
     }

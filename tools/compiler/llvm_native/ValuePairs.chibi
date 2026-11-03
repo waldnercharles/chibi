@@ -6,7 +6,7 @@ import strings "core:strings"
 // candidate elements without clearing the largest earlier candidate's table.
 // A desktop bucket is 32 bytes: both borrowed addresses, shape, extent and
 // epoch. Extent distinguishes valid descriptors sharing a backing prefix.
-ValuePairsRuntime :: () -> string {
+ValuePairsRuntime :: (guarded: bool = false) -> string {
     return strings.Join([
         "%chibi.value.pairs = type { ptr, i32, i32, i32 }\n",
         "%chibi.value.pair = type { ptr, ptr, i32, i32, i32 }\n",
@@ -74,9 +74,7 @@ ValuePairsRuntime :: () -> string {
         "  %capacity = select i1 %first, i32 16, i32 %doubled\n",
         "  %end = getelementptr %chibi.value.pair, ptr null, i32 %capacity\n",
         "  %bytes = ptrtoint ptr %end to i64\n",
-        "  %allocate.at = getelementptr { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 2\n",
-        "  %allocate = load ptr, ptr %allocate.at\n",
-        "  %data = call ptr %allocate(ptr %ctx, i64 %bytes)\n",
+        Allocated("data", "%bytes", guarded),
         "  call void @chibi_scalar.zero(ptr %data, i64 %bytes)\n",
         "  %previous = load ptr, ptr %pairs\n",
         "  br label %head\n",
@@ -106,8 +104,7 @@ ValuePairsRuntime :: () -> string {
         "  %has.previous = icmp ne ptr %previous, null\n",
         "  br i1 %has.previous, label %free, label %publish\n",
         "free:\n",
-        "  %release.at = getelementptr { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 4\n",
-        "  %give = load ptr, ptr %release.at\n",
+        ContextCall("give", 4, guarded),
         "  call void %give(ptr %ctx, ptr %previous)\n",
         "  br label %publish\n",
         "publish:\n",
@@ -189,8 +186,7 @@ ValuePairsRuntime :: () -> string {
         "  %present = icmp ne ptr %data, null\n",
         "  br i1 %present, label %free, label %done\n",
         "free:\n",
-        "  %release.at = getelementptr { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 4\n",
-        "  %give = load ptr, ptr %release.at\n",
+        ContextCall("give", 4, guarded),
         "  call void %give(ptr %ctx, ptr %data)\n",
         "  br label %done\n",
         "done:\n",

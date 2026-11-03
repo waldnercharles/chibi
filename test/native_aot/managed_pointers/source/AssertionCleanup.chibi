@@ -1,0 +1,15 @@
+package synchronous_assertion_cleanup
+
+// The assertion condition must finish before any owner is dropped. The
+// borrowed parameter and readonly alias belong to Main's two local owners.
+Check :: (values: ^(int[]), alias: int[]) -> bool {
+    assert(values^[0] == 7 && alias[0] == 7);
+    values^ = [];
+    return alias[0] == 8;
+}
+Main :: () -> int {
+    values: int[] = [7];
+    alias := values;
+    assert(Check(&values, alias), "synchronous assertion releases local owners");
+    return 0;
+}

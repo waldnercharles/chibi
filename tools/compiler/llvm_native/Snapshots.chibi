@@ -185,12 +185,14 @@ SnapshotTables :: (shapes: SnapshotShapes) -> string {
 // allocation/drop helpers and scalar copy/retain/free runtime. Sources remain
 // mapped, destinations remain owned, and work is drained inside one transaction.
 // No managed-pointer heap, foreign resource or task handle crosses this ABI.
+// Guarded fragments require an owned context and managed callback adapters;
+// raw five-pointer consumers keep the default false.
 pub EmitSnapshotRuntime :: (records: Record[], fields: int[], labels: string[], states: Instruction[],
-                            shapes: SnapshotShapes) -> Result {
+                            shapes: SnapshotShapes, guarded: bool = false) -> Result {
     error := SnapshotShapesValid(records, fields, labels, states, shapes);
     if (error != "") { return Result.Rejected(-1, error); }
-    return Result.Emitted(strings.Concatenate([SnapshotMemoRuntime(), SnapshotQueueRuntime(), SnapshotSchemaRuntime(),
-        SnapshotValuesModule(records, fields, shapes, states), SnapshotTransactionRuntime(), SnapshotTables(shapes)]));
+    return Result.Emitted(strings.Concatenate([SnapshotMemoRuntime(guarded), SnapshotQueueRuntime(guarded), SnapshotSchemaRuntime(),
+        SnapshotValuesModule(records, fields, shapes, states, guarded), SnapshotTransactionRuntime(guarded), SnapshotTables(shapes)]));
 }
 
 SnapshotViews :: (roots: int[]) -> string {

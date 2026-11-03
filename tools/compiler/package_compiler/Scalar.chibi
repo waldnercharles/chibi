@@ -170,7 +170,15 @@ ScalarCallbackAddress :: (forest: snapshot.SnapshotNode[], text: string, callabl
     }
     target := callables[found];
     shape := ProcShape(forest, text, signature);
-    matches := target.count == length(shape) - 1 && target.result == shape[length(shape) - 1] && target.result_container == 0;
+    result := shape[length(shape) - 1];
+    mode := abi.CallbackValue;
+    if (result == 0) {
+        // Ordinary preflight checked the void signature. ScalarResults has
+        // normalized its authored body to the internal discarded int result.
+        result = IntStorage;
+        mode = abi.CallbackVoid;
+    }
+    matches := target.count == length(shape) - 1 && target.result == result && target.result_container == 0;
     for (index in 0..<target.count) {
         if (index < length(shape) - 1) {
             given := params[target.first + index];
@@ -181,7 +189,9 @@ ScalarCallbackAddress :: (forest: snapshot.SnapshotNode[], text: string, callabl
         return ScalarOperands.Failed(Diagnose(forest, argument, 0, "the function differs from the parameter's function type"));
     }
     output := rows;
-    output.append(ScalarAt(forest, node, facts.FunctionAddressRow, facts.WordType, found, 0, target.name));
+    address := ScalarAt(forest, node, facts.FunctionAddressRow, facts.WordType, found, 0, target.name);
+    address.literal = i64(mode);
+    output.append(address);
     return ScalarOperands.Built(output);
 }
 // The rows of a call of a foreign function: each argument converted to its
@@ -647,6 +657,8 @@ ScalarVariable :: (names: Name[], name: string) -> Name {
 ScalarRecordOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                    names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> int {
     value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.IndexExpression) &&
+        Is(forest, Field(forest, value, syntax.FieldIndex), syntax.RangeExpression)) { return -1; }
     if (Is(forest, value, syntax.AwaitExpression)) {
         awaited := Unparenthesized(forest, Field(forest, value, syntax.FieldValue));
         if (Is(forest, awaited, syntax.CallExpression)) {
@@ -938,6 +950,8 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
                          callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], operand: int, context: int) -> int {
     original := Unparenthesized(forest, operand);
     if (Is(forest, original, syntax.IndexExpression) || Is(forest, original, syntax.CallExpression)) {
+        range := ScalarArrayRange(forest, text, callables, params, names, types, members, callable.package, original);
+        if (range.operator != 0) { return UnionStorage; }
         view := ScalarViewOperation(forest, text, callables, params, names, types, members, callable.package, original);
         if (view.operation == facts.ViewMake || view.operation == facts.ViewSlice) { return UnionStorage; }
         if (view.operation == facts.ViewLength) { return IntStorage; }
@@ -964,7 +978,7 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         return 0;
     }
     if (Is(forest, node, syntax.BinaryExpression) && Operator(forest, node) == tk.Coalesce) {
-        return ScalarOptionalPrimitive(types, ScalarHeldUnion(forest, text, callables, params, names, types, members,
+        return ScalarCoalesceType(types, ScalarHeldUnion(forest, text, callables, params, names, types, members,
             callable.package, Field(forest, node, syntax.FieldLeft))).storage;
     }
     if (Is(forest, node, syntax.ForceUnwrapExpression)) {
@@ -1252,6 +1266,10 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (text_sequence.operation != 0) {
         return ScalarTextSequenceRows(forest, text, callables, params, callable, names, types, members, constants,
                                        node, text_sequence, rows);
+    }
+    range := ScalarArrayRange(forest, text, callables, params, names, types, members, callable.package, node);
+    if (range.operator != 0) {
+        return ScalarArrayRangeRows(forest, text, callables, params, callable, names, types, members, constants, node, range, rows);
     }
     if (Is(forest, node, syntax.IndexExpression)) {
         return ScalarIndexed(forest, text, callables, params, callable, names, types, members, constants, node, rows);
@@ -2092,6 +2110,10 @@ ScalarHeldUnion :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
     text_sequence := ScalarTextSequenceOf(forest, text, callables, params, names, types, members, package, value);
     optional_text := ScalarTextSequenceOptional(types, text_sequence.operation);
     if (optional_text >= 0) { return optional_text; }
+    range := ScalarArrayRange(forest, text, callables, params, names, types, members, package, value);
+    if (range.operator != 0) {
+        return FindOptional(types, ScalarArrayShape(forest, text, callables, params, names, types, members, package, range.array));
+    }
     if (Is(forest, value, syntax.OptionalMemberExpression)) {
         return ScalarOptionalFieldRecord(forest, text, callables, params, names, types, members, package, value);
     }
@@ -3661,6 +3683,14 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                                            value, record, copied, operands);
                 }
             case .MapEdited(change):
+                if (change.operator == facts.MapArraySet) {
+                    switch ScalarMapArrayAssigned(forest, text, callables, params, callable, names, types, members, constants,
+                                                   statement, change, &variables) {
+                        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                        case .Built(assigned): rows.extend(assigned);
+                    }
+                    continue;
+                }
                 if (change.operator == facts.MapSet && Operator(forest, statement) != tk.Eq) {
                     switch ScalarMapCompound(forest, text, callables, params, callable, names, types, members, constants,
                                               statement, change, &variables) {
@@ -4554,14 +4584,14 @@ ScalarWritten :: (scoped: snapshot.SnapshotNode[], text: string, callables: Call
             eligible := false;
             for (index in 0..<callable.count) {
                 param := marked[callable.first + index];
-                eligible = eligible || (!param.written && (param.reference || param.container == ArrayContainer));
+                eligible = eligible || (!param.written && (param.reference || param.container == ArrayContainer || param.container == MapContainer));
             }
             if (!eligible) { continue; }
             body := Field(scoped, callable.node, syntax.FieldBody);
             names := ScalarForeignNames(scoped, text, body, foreign_buffers);
             for (index in 0..<callable.count) {
                 param := marked[callable.first + index];
-                if ((param.reference || param.container == ArrayContainer) && Holds(names, param.name)) {
+                if ((param.reference || param.container == ArrayContainer || param.container == MapContainer) && Holds(names, param.name)) {
                     param.written = true;
                     marked[callable.first + index] = param;
                 }

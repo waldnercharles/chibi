@@ -3,6 +3,7 @@ package package_compiler
 import facts "project:scalar_facts"
 import snapshot "project:source_snapshot"
 import syntax "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
 
 // Arrays for the scalar producer: a variable, parameter, result or call that
 // is an array of numbers, bool, strings, or records or unions the source
@@ -114,6 +115,14 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         }
         return none;
     }
+    if (Is(forest, value, syntax.BinaryExpression) && Operator(forest, value) == tk.Coalesce) {
+        optional := ScalarHeldUnion(forest, text, callables, params, names, types, members, package,
+                                     Field(forest, value, syntax.FieldLeft));
+        if (ScalarOptional(types, optional) && types[optional].value_container == ArrayContainer) {
+            return {storage: types[optional].value_storage, container: ArrayContainer, record: types[optional].value_record};
+        }
+        return none;
+    }
     if (Is(forest, value, syntax.ArrayExpression)) {
         return ScalarLiteralShape(forest, text, callables, params, names, types, members, package, value);
     }
@@ -149,6 +158,7 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         return none;
     }
     if (Is(forest, value, syntax.IndexExpression)) {
+        if (Is(forest, Field(forest, value, syntax.FieldIndex), syntax.RangeExpression)) { return none; }
         outer := ScalarArrayShape(forest, text, callables, params, names, types, members, package,
                                    Field(forest, value, syntax.FieldObject));
         if (outer.record >= 0 && ScalarNestedCollection(types[outer.record])) { return SequenceElement(types, outer); }
@@ -200,6 +210,51 @@ ScalarNativeCall :: struct {
     // Zero is declaration order. Otherwise two bits per source argument
     // identify its parameter; fixed array natives have at most three inputs.
     order: int;
+}
+// The ordinary sequence checker has already created this range's optional
+// type. Keep bracket and method forms on one path; ordinary array natives
+// with start/count remain separate clamping operations.
+ScalarArrayRange :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                     names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> ScalarNativeCall {
+    absent: ScalarNativeCall = {operator: 0, array: -1, arguments: [], order: 0};
+    value := Unparenthesized(forest, node);
+    if (SequenceOperation(forest, text, names, package, value) != 0) { return absent; }
+    object := Field(forest, value, syntax.FieldObject);
+    range := Field(forest, value, syntax.FieldIndex);
+    if (Is(forest, value, syntax.CallExpression)) {
+        if (CalledFunction(forest, text, callables, [], names, package, value) >= 0) { return absent; }
+        object = Field(forest, Field(forest, value, syntax.FieldFunction), syntax.FieldObject);
+        range = FirstMember(forest, Field(forest, value, syntax.FieldArguments));
+    }
+    shape := ScalarArrayShape(forest, text, callables, params, names, types, members, package, object);
+    if (shape.container != ArrayContainer || ScalarArrayType(types, shape.storage, shape.record) == 0) { return absent; }
+    return {operator: facts.ArrayRange, array: object,
+            arguments: [Field(forest, range, syntax.FieldStart), Field(forest, range, syntax.FieldEnd)], order: 0};
+}
+ScalarArrayRangeRows :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                         callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
+                         node: int, call: ScalarNativeCall, rows: facts.Row[]) -> ScalarOperands {
+    shape := ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, call.array);
+    optional := FindOptional(types, shape);
+    assert(optional >= 0, "the checked range owns an optional type");
+    changed := EvaluationChanges(forest, text, callables, params, [], names, callable.package, call.arguments[0], true);
+    changed.extend(EvaluationChanges(forest, text, callables, params, [], names, callable.package, call.arguments[1], true));
+    copied := ScalarArraySnapshot(forest, text, params, callable, names, call.array, changed);
+    output := rows;
+    switch ScalarArrayStored(forest, text, callables, params, callable, names, types, members, constants,
+                              call.array, shape, copied, output) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): output = built;
+    }
+    for (bound in call.arguments) {
+        switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                              bound, bound, IntStorage, IntStorage, facts.Clamp, output) {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): output = built;
+        }
+    }
+    output.append(ScalarAt(forest, node, facts.ArrayRow, ScalarRecordType(types, optional), facts.ArrayRange, 3, ""));
+    return ScalarOperands.Built(output);
 }
 ScalarArrayArgumentNode :: (forest: snapshot.SnapshotNode[], node: int) -> int {
     if (!Is(forest, node, syntax.NamedArgument)) { return node; }
@@ -564,8 +619,8 @@ ScalarElementValue :: (forest: snapshot.SnapshotNode[], text: string, callables:
                          shape.storage, shape.storage, facts.Clamp, rows);
 }
 // The rows of `operand`, an array of the elements `shape` describes, after
-// `rows`: a variable's read, a call of a function of the source that returns
-// one, or a literal, each element as ScalarElementValue reads it, then its
+// `rows`: a variable, source call or lazy coalesce. A literal reads each
+// element through ScalarElementValue, then constructs its
 // ArrayNew. The array is the variable's own, not a copy.
 ScalarArrayValue :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                      callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
@@ -574,6 +629,9 @@ ScalarArrayValue :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     output := rows;
     array := ScalarArrayType(types, shape.storage, shape.record);
     held := ScalarArrayHeld(forest, text, callables, params, names, types, members, callable.package, node);
+    if (Is(forest, node, syntax.BinaryExpression) && Operator(forest, node) == tk.Coalesce && held != 0) {
+        return ScalarCoalesce(forest, text, callables, params, callable, names, types, members, constants, node, rows);
+    }
     if (Is(forest, node, syntax.Identifier) && held != 0) {
         binding := ScalarVariable(names, Text(forest, text, node));
         type := held;

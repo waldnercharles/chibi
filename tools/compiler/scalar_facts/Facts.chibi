@@ -309,6 +309,8 @@ pub RefRow: int : 39;
 // a foreign function that takes a function: `name` is the function's, `count`
 // is 0 and `type` is the word. The function's parameters and result are
 // numbers or bools and none of its parameters is a reference.
+// `literal` is native_abi.CallbackValue or CallbackVoid; the latter discards
+// the function's internal IntType result and returns void to C.
 pub FunctionAddressRow: int : 40;
 // Tasks. A function that holds a Yield, an Await, or a Call whose `literal` is
 // CallAwaited is a coroutine. A Call row's `literal` is CallPlain (0) for an
@@ -471,13 +473,18 @@ pub MapSpan: int : 8;
 pub MapLiveAt: int : 9;
 pub MapKeyAt: int : 10;
 pub MapValueAt: int : 11;
-// Changes of an int[] entry. Operands are a map reference, key and argument;
+// Changes of an array entry. Operands are a map reference, key and argument;
 // MapArraySet additionally takes its element index before the incoming value.
 pub MapArrayPush: int : 12;
 pub MapArrayExtend: int : 13;
 pub MapArrayRemove: int : 14;
+// The producer checks the initial logical place before RHS effects. Missing
+// final keys or indices report an unclassified unavailable-place failure.
 pub MapArraySet: int : 15;
 pub MapArrayResize: int : 16;
+// A writable numeric array argument from RefMap, observedMap, key. Type is the array value;
+// literal is the map type. The loan retains its historical value until C runs.
+pub MapArrayLoan: int : 17;
 // Like MapGet, but a missing key returns the optional value's Nil variant.
 // The result must have the checked Nil/Some optional layout.
 pub MapGetOptional: int : 18;
@@ -518,6 +525,8 @@ pub Complement: int : 2;
 pub Not: int : 3;
 // The scalar f32 built-in, with the same precision as ordinary math lowering.
 pub SquareRoot: int : 4;
+// Clears the IEEE sign bit of f32 or f64, including zero and NaN.
+pub FloatAbsolute: int : 5;
 
 // Logical operators: the source's && and ||.
 pub LogicalAnd: int : 1;
@@ -611,6 +620,9 @@ pub ArrayPlaceCheck: int : 25;
 // A functional value with its first structurally equal element removed.
 // An absent element returns an independent array value. Inputs are array,item.
 pub ArrayWithoutItem: int : 27;
+// A strict half-open copy: array,start,end -> optional array. Invalid bounds
+// produce Nil without allocation; an empty valid range produces Some(empty).
+pub ArrayRange: int : 28;
 // An immediate nested-array place adds its saved outer index after the
 // canonical RefRow. Existing mutating operators still end the root assignment.
 pub NestedArrayPlace: int : -1;

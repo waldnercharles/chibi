@@ -55,8 +55,8 @@ Inline authored record fields use a typed reference chain into their canonical
 record storage. The foreign loan preserves the earlier buffer while later
 arguments can replace that record. `ForeignPlaces.chibi` checks deep fields,
 by-value isolation, scoped writes, repeated arguments and later replacement.
-Direct retained record buffers and indexed container places still require
-separate writable-path and retained-lease handling.
+Direct retained record buffers and projections through an additional array
+or map still require separate writable-path and retained-lease handling.
 
 `Growth.chibi` counts context allocations for 4,096 appends through a direct
 record field and through a scoped record parameter. Each path allows at most
@@ -98,6 +98,25 @@ at most 16 owner-helper entries for unique backing, or 160 after sharing. The
 last bound covers one detach of 65 child owners rather than work per append.
 Facts borrow the complete element only within a captured read or immediate
 mutation; they never keep an interior address across a source call. Retained
-roots, GC-bearing records and indexed foreign buffers remain explicitly gated.
+roots and GC-bearing records remain explicitly gated. Indexed foreign buffers
+use the logical loan path described below.
 The `record_places` programs check initial and post-RHS failures, method
 argument order, wrong expected categories and unchanged rejected outputs.
+
+`ForeignElements.chibi` passes nested record-array buffers through real libc
+calls. It checks by-value isolation, scoped aliases, receiver/index evaluation,
+later whole-root and leaf replacement, outer reallocation, missing current
+indices, and repeated arguments sharing one leaf. A loan owns the evaluated
+buffer while later arguments run; it resolves the current logical path before
+C writes, keeping a replaced path historical.
+
+`ForeignElementWidth.chibi` repeats 4,096 writes through a record with 64
+sibling arrays. A unique outer/leaf needs no allocation. Sharing detaches the
+outer and leaf once, then leaf work stays independent of sibling count. The
+owner audit bounds the four leaf copy/drop helpers per call plus one detach.
+The canonical runner executes both fixtures at O0/O2 with poisoned frees and
+zero live allocations. `foreign_elements.sh` checks expression bounds category
+1 before later arguments, wrong-category rejection and untouched output on
+rejected retained or pointer-bearing roots. These loans support inline fields
+of pointer-free authored record elements; retained roots and fields reached
+through another growable container remain outside this path.

@@ -229,3 +229,22 @@ RecordElementPlacesProjection :: () {
     // public projections must not alter the original owned facts.
     ValidateRows(rows, "");
 }
+
+IndexedForeignLoansProjection :: () {
+    rows := Produced("package places\nforeign import libc \"system:c\"\nforeign libc{memset::(data:u8[],value:i32,count:u64)->rawptr}\nInner::struct{bytes:u8[];}Entry::struct{inner:Inner;}Main::()->int{rows:Entry[]=[{inner:{bytes:[u8(1)]}}];written:=memset(rows[0].inner.bytes,9,1);return 0;}");
+    ValidateRows(rows, "");
+    selected := -1;
+    for (row,index in rows) {
+        if (row.kind == facts.ArrayElementReferenceRow && row.literal == i64(facts.ArrayElementLoan)) { selected = index; break; }
+    }
+    assert(selected >= 0 && rows[selected + 1].kind == facts.FieldReferenceRow && rows[selected + 2].kind == facts.FieldReferenceRow);
+    mismatch := "scalar array element reference differs from its record";
+    for count in [int(0),2,4] { RejectChanged(rows,[Changed(selected,CountField,i64(count))],mismatch); }
+    RejectChanged(rows,[Changed(selected,ValueField,1)],mismatch);
+    RejectChanged(rows,[Changed(selected,TypeField,i64(facts.BoolType))],mismatch);
+    RejectChanged(rows,[Changed(selected,LiteralField,i64(facts.ArrayElementLoan + 1))],mismatch);
+    RejectChanged(rows,[Changed(selected + 1,KindField,i64(facts.CallRow))],"scalar indexed buffer path is not consumed by one loan");
+    RejectChanged(rows,[Changed(selected + 3,ValueField,i64(facts.ArrayLength))],"scalar indexed buffer path is not consumed by one loan");
+    RejectChanged(rows,[Changed(selected + 3,CountField,2)],"scalar indexed buffer path is not consumed by one loan");
+    ValidateRows(rows, "");
+}

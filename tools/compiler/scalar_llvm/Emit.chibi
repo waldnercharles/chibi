@@ -1526,22 +1526,33 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             stack.append(facts.ReferenceType + operand.type);
             continue;
         } else if (operand.kind == facts.ArrayElementReferenceRow) {
-            base := length(stack) - 2;
+            loan := operand.literal == i64(facts.ArrayElementLoan);
+            count := 2;
+            if (loan) { count = 3; }
+            base := length(stack) - count;
             array := 0;
             if (base >= floor && stack[base] >= facts.ReferenceType) { array = stack[base] - facts.ReferenceType; }
-            if (operand.name != "" || operand.count != 2 || operand.value != 0 || base < floor ||
+            if (operand.name != "" || operand.count != count || operand.value != 0 || base < floor ||
                 Element(records, array) != operand.type || RecordMemberType(rows, records, operand.type, 0) < 0 ||
-                rows[records[operand.type - facts.RecordType]].literal != 0 || stack[base + 1] != facts.IntType ||
+                rows[records[operand.type - facts.RecordType]].literal != 0 || stack[base + count - 1] != facts.IntType ||
+                (loan && stack[base + 1] != array) ||
                 (operand.literal != i64(facts.ArrayElementUnique) && operand.literal != i64(facts.ArrayElementMethod) &&
-                 operand.literal != i64(facts.ArrayElementObserve))) {
+                 operand.literal != i64(facts.ArrayElementObserve) && !loan)) {
                 return "scalar array element reference differs from its record";
             }
             // Every exposed address is consumed inside this statement's
             // captured-only path. No source call can move the backing first.
-            if (row != at + 3 || rows[at + 1].kind != facts.RefRow || rows[at + 2].kind != facts.ReadRow) {
+            if (loan) {
+                next := row + 1;
+                while (next < last && rows[next].kind == facts.FieldReferenceRow) { next += 1; }
+                if (next == row + 1 || next >= last || rows[next].kind != facts.ArrayRow ||
+                    rows[next].value != facts.ArrayLoan || rows[next].count != 1 || rows[next].literal != 0) {
+                    return "scalar indexed buffer path is not consumed by one loan";
+                }
+            } else if (row != at + 3 || rows[at + 1].kind != facts.RefRow || rows[at + 2].kind != facts.ReadRow) {
                 return "scalar array element reference is not a captured place";
             }
-            if (operand.literal == i64(facts.ArrayElementObserve)) {
+            if (!loan && operand.literal == i64(facts.ArrayElementObserve)) {
                 if (rows[at].kind != facts.LocalRow || rows[at].literal != i64(facts.Captured)) {
                     return "scalar array observation is not a captured read";
                 }
@@ -1553,7 +1564,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                         return "scalar array observation outlives its captured read";
                     }
                 }
-            } else if (ArrayReferenceMember(rows, records, at, last - 1) == 0) {
+            } else if (!loan && ArrayReferenceMember(rows, records, at, last - 1) == 0) {
                 return "scalar array element reference is not its canonical mutation";
             }
             stack = slice(stack, 0, base);
@@ -3170,6 +3181,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             start := length(body);
             stack: int[] = [];
             published_place := false;
+            // One contiguous indexed foreign-loan plan, folded before any
+            // physical reference exists. Its root/index remain ordinary SSA.
+            loan_root := -1;
+            loan_outer := -1;
+            loan_index := -1;
+            loan_fields: int[] = [];
             // Fresh arrays this statement's rows read and no longer need.
             pending: int[] = [];
             // The slots that read an owning variable's array, and the variables;
@@ -3304,6 +3321,20 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     continue;
                 }
                 type := NativeType(operand.type);
+                if (operand.kind == facts.ArrayElementReferenceRow && operand.literal == i64(facts.ArrayElementLoan)) {
+                    base := length(stack) - 3;
+                    loan_root = stack[base];
+                    loan_outer = stack[base + 1];
+                    loan_index = stack[base + 2];
+                    loan_fields = [];
+                    stack = slice(stack, 0, base);
+                    stack.append(loan_root);
+                    continue;
+                }
+                if (operand.kind == facts.FieldReferenceRow && loan_root >= 0 && stack[length(stack) - 1] == loan_root) {
+                    loan_fields.append(operand.value);
+                    continue;
+                }
                 slots.append(type);
                 if (operand.kind == facts.LogicalRow) {
                     left := stack[length(stack) - 1];
@@ -4310,7 +4341,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     if (operand.value == facts.ArrayLoan) {
                         input := stack[base];
                         held := slots[shape.first_slot + input];
-                        if (held == native.RefType + type) {
+                        if (input == loan_root) {
+                            item = Op(native.ArrayLoan, type, slot, loan_outer, loan_root, native.ArrayLoanIndexed);
+                            item.literal = i64(shape.arguments);
+                            arguments.extend([length(loan_fields), loan_index]);
+                            arguments.extend(loan_fields);
+                            shape.arguments += 2 + length(loan_fields);
+                            if (Holds(fresh, loan_outer)) { pending.append(loan_outer); }
+                            loan_root = -1;
+                            loan_fields = [];
+                        } else if (held == native.RefType + type) {
                             body.append(Op(native.Deref, type, slot, input, 0, 0));
                             slots.append(type);
                             item = Op(native.ArrayLoan, type, slot + 1, slot, input, 0);

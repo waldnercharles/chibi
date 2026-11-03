@@ -84,10 +84,10 @@ ScalarForeignNames :: (forest: snapshot.SnapshotNode[], text: string, body: int,
 // Resolve authored-record fields once from their canonical variable. An
 // indexed base borrows current array backing only within its captured read
 // or mutation region; callers consume it before callbacks can move backing.
-ScalarInlinePlace :: struct { variable: int; root: int; index_node: int; shape: ValueType; rows: facts.Row[]; }
+ScalarInlinePlace :: struct { variable: int; root: int; root_node: int; index_node: int; shape: ValueType; rows: facts.Row[]; }
 ScalarInlineReference :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], types: TypeDecl[],
                           members: TypeMember[], operand: int, element_variable: int = -1) -> ScalarInlinePlace {
-    absent: ScalarInlinePlace = {variable: -1, root: 0, index_node: -1, shape: {storage: 0, container: 0, record: -1}, rows: []};
+    absent: ScalarInlinePlace = {variable: -1, root: 0, root_node: -1, index_node: -1, shape: {storage: 0, container: 0, record: -1}, rows: []};
     node := Unparenthesized(forest, operand);
     fields: int[] = [];
     while (Is(forest, node, syntax.MemberExpression)) {
@@ -134,7 +134,7 @@ ScalarInlineReference :: (forest: snapshot.SnapshotNode[], text: string, names: 
         }
         index -= 1;
     }
-    return {variable: binding.index, root: root, index_node: index_node, shape: shape, rows: rows};
+    return {variable: binding.index, root: root, root_node: node, index_node: index_node, shape: shape, rows: rows};
 }
 
 // A foreign buffer's writable place is retained alongside its evaluated
@@ -186,12 +186,32 @@ ScalarForeignArrayRows :: (forest: snapshot.SnapshotNode[], text: string, callab
         return ScalarOperands.Built(output);
     }
     if (Is(forest, place, syntax.MemberExpression)) {
-        inline := ScalarInlineReference(forest, text, names, types, members, place);
+        inline := ScalarInlineReference(forest, text, names, types, members, place, 0);
         if (inline.variable < 0 || ScalarValueType(types, inline.shape.storage, inline.shape.container, inline.shape.record) != type) {
             return ScalarOperands.Failed(Diagnose(forest, argument, 0,
                 "native foreign record buffer needs a writable inline record array field"));
         }
-        output.extend(inline.rows);
+        if (inline.index_node >= 0) {
+            output.append(inline.rows[0]);
+            shape := ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, inline.root_node);
+            changed := EvaluationChanges(forest, text, callables, params, [], names, callable.package, inline.index_node, true);
+            copied := ScalarArraySnapshot(forest, text, params, callable, names, inline.root_node, changed);
+            switch ScalarArrayStored(forest, text, callables, params, callable, names, types, members, constants,
+                                      inline.root_node, shape, copied, output) {
+                case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                case .Built(built): output = built;
+            }
+            switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                                  inline.index_node, inline.index_node, IntStorage, IntStorage, facts.Clamp, output) {
+                case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                case .Built(built): output = built;
+            }
+            selected := inline.rows[2];
+            selected.count = 3;
+            selected.literal = i64(facts.ArrayElementLoan);
+            output.append(selected);
+            output.extend(slice(inline.rows, 3, length(inline.rows) - 3));
+        } else { output.extend(inline.rows); }
         output.append(ScalarAt(forest, argument, facts.ArrayRow, type, facts.ArrayLoan, 1, ""));
         return ScalarOperands.Built(output);
     }

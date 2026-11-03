@@ -1,16 +1,15 @@
 #!/bin/sh
 # The native workload timings and checksums, with no C test driver or VM.
 set -eu
+case "$(uname -s)-$(uname -m)" in
+    Linux-x86_64) target=x86_64-unknown-linux-gnu ;;
+    *) echo 'native workloads: Linux x86-64 benchmark unsupported on this host' >&2; exit 0 ;;
+esac
 compiler=${1:?usage: run.sh NATIVE_COMPILER LLVM_BIN}
 llvm=${2:?usage: run.sh NATIVE_COMPILER LLVM_BIN}
 root=$(CDPATH='' cd -- "$(dirname "$0")/../../.." && pwd -P)
 case "$compiler" in /*) ;; *) compiler=$(pwd -P)/$compiler ;; esac
 case "$llvm" in /*) ;; *) llvm=$(pwd -P)/$llvm ;; esac
-case "$(uname -s)-$(uname -m)" in
-    Darwin-arm64) target=aarch64-apple-darwin ;;
-    Linux-x86_64) target=x86_64-unknown-linux-gnu ;;
-    *) echo 'native workloads: unsupported benchmark host' >&2; exit 2 ;;
-esac
 work=$(mktemp -d "${TMPDIR:-/tmp}/chibi-native-workloads.XXXXXX")
 benchmark_child=
 cleanup() {

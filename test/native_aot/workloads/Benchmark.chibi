@@ -47,12 +47,12 @@ ExitStatus :: (status: int) -> int {
 // The parent owns this worker's group. Its child stays attached to that group;
 // wait4 measures only this child and the descendants it waited for, rather
 // than a process-wide RSS maximum left over from earlier workloads.
-Worker :: (arguments: string[]) -> int {
-    if (length(arguments) < 3) { return 2; }
+ChildRun :: (arguments: string[]) -> int {
+    if (length(arguments) < 4) { return 2; }
     folder := arguments[1];
     if (os.ChangeDirectory(folder) != nil) { os.Print("native workloads: cannot enter measurement folder"); return 1; }
     command: string[] = [];
-    for index in 2..<length(arguments) { command.append(arguments[index]); }
+    for index in 3..<length(arguments) { command.append(arguments[index]); }
     clock := resize([u8(0)], 16);
     sampled := posix.MonotonicMilliseconds(&clock);
     if (sampled < 0) { os.Print("native workloads: cannot read measurement clock"); return 1; }
@@ -69,13 +69,187 @@ Worker :: (arguments: string[]) -> int {
     sampled = posix.MonotonicMilliseconds(&clock);
     if (sampled < 0) { os.Print("native workloads: cannot read measurement clock"); return 1; }
     elapsed := sampled * 1000000 + Word(clock, 8, 8) % 1000000 - began;
-    // Both supported 64-bit ABIs put ru_maxrss after two 16-byte timevals.
+    // Linux x86-64 puts its KiB ru_maxrss after two 16-byte timevals.
     peak := Word(usage, 32, 8);
-    if (target.Os == target.Darwin) { peak = peak / 1024; }
     written := os.WriteText(strings.Concatenate([folder, "/metrics"]),
                            format_text("{}\n{}\n{}\n", Word(status, 0, 4), peak, elapsed));
     if (written != nil) { os.Print("native workloads: cannot publish measurement output"); return 1; }
     return 0;
+}
+
+foreign import tree_libc "system:c"
+foreign tree_libc {
+    fork :: () -> i32
+    _Exit :: (status: i32) -> i32
+    pthread_sigmask :: (how: i32, signals: u8[], previous: u8[]) -> i32
+    sigtimedwait :: (signals: u8[], information: u8[], timeout: u8[]) -> i32
+    prctl :: (option: i32, first: u64, second: u64, third: u64, fourth: u64) -> i32
+    gettid :: () -> i32
+    openat :: (directory: i32, path: cstring, flags: i32) -> i32
+    pread :: (descriptor: i32, data: u8[], count: u64, offset: i64) -> i64
+    // Linux x86-64's close and kill syscalls need only integer arguments.
+    syscall :: (number: i64, first: i64, second: i64) -> i64
+}
+when target.Os == target.Linux {
+SysClose: i64 : 3;
+SysKill: i64 : 62;
+SetSubreaper: i32 : 36;
+Interrupted: int : 4;
+NoChildren: int : 10;
+
+// Every listed PID is a direct child of this isolated worker. It cannot be
+// reused before we reap it. Repeated adoption handles different groups and
+// sessions without scanning or signaling unrelated processes.
+DirectChildren :: (path: string) -> (pids: int[], problem: string) {
+    pids: int[] = [];
+    descriptor := openat(-100, path, 0);
+    if (descriptor < 0) { return (pids, "cannot open owned child list"); }
+    bytes := resize([u8(0)], 4096);
+    offset: i64 = 0;
+    pid: i64 = 0;
+    problem := "";
+    while (true) {
+        count := pread(descriptor, bytes, 4096, offset);
+        if (count < 0) {
+            error := posix.ErrorNumber();
+            if (error == Interrupted) { continue; }
+            problem = "cannot read owned child list"; break;
+        }
+        if (count == 0) { break; }
+        offset += count;
+        for index in 0..<int(count) {
+            byte := int(bytes[index]);
+            if (byte >= DigitZero && byte <= DigitNine) {
+                pid = pid * 10 + i64(byte - DigitZero);
+                if (pid > 2147483647) { problem = "invalid owned child PID"; break; }
+            } else if (byte == 32 || byte == 10) {
+                if (pid > 0) { pids.append(int(pid)); }
+                pid = 0;
+            } else { problem = "invalid owned child list"; break; }
+        }
+        if (problem != "") { break; }
+    }
+    closed := syscall(SysClose, i64(descriptor), 0);
+    if (closed != 0 && problem == "") { problem = "cannot close owned child list"; }
+    if (pid > 0 && problem == "") { pids.append(int(pid)); }
+    return (pids, problem);
+}
+
+Drain :: (path: string, signals: u8[], pause: u8[], interrupt: int) -> (signal: int, problem: string) {
+    caught := interrupt;
+    status := resize([u8(0)], 8);
+    usage := resize([u8(0)], 256);
+    information := resize([u8(0)], 128);
+    while (true) {
+        children := DirectChildren(path);
+        if (children.problem != "") { return (caught, children.problem); }
+        for pid in children.pids {
+            killed := syscall(SysKill, i64(pid), 9);
+            if (killed != 0) {
+                error := posix.ErrorNumber();
+                if (error != 3) { return (caught, "cannot kill an owned descendant"); }
+            }
+        }
+        // Reap this whole snapshot before reading the next generation of
+        // adoptees. Each owned PID is listed, signaled and reaped once.
+        for pid in children.pids {
+            while (true) {
+                reaped := wait4(i32(pid), status, 0, usage);
+                if (reaped == i32(pid)) { break; }
+                assert(reaped < 0, "a blocking child wait cannot return zero");
+                error := posix.ErrorNumber();
+                if (error == Interrupted) { continue; }
+                return (caught, "cannot reap an owned descendant");
+            }
+        }
+        if (length(children.pids) != 0) { continue; }
+        reaped := wait4(-1, status, 1, usage);
+        if (reaped < 0) {
+            error := posix.ErrorNumber();
+            if (error == NoChildren) { return (caught, ""); }
+            if (error == Interrupted) { continue; }
+            return (caught, "cannot reap owned descendants");
+        }
+        if (reaped == 0) {
+            noticed := sigtimedwait(signals, information, pause);
+            if (noticed > 0) { caught = int(noticed); }
+        }
+    }
+    return (caught, "cannot finish descendant cleanup");
+}
+
+Worker :: (arguments: string[]) -> int {
+    if (length(arguments) < 4) { return 2; }
+    timeout := Number(arguments[2]);
+    if (timeout <= 0) { return 2; }
+    own := gettid();
+    path := format_text("/proc/{}/task/{}/children", own, own);
+    initial := DirectChildren(path);
+    if (initial.problem != "" || length(initial.pids) != 0) {
+        os.Print("native workloads: worker requires its private Linux child list"); return 1;
+    }
+    // HUP, INT and TERM stay blocked until every adopted descendant is gone.
+    signals := resize([u8(0)], 128);
+    for number in [int(1), 2, 15] {
+        signals[(number - 1) / 8] |= u8(1 << u32((number - 1) % 8));
+    }
+    previous := resize([u8(0)], 128);
+    empty: u8[] = [];
+    blocked := pthread_sigmask(0, signals, previous);
+    if (blocked != 0) { os.Print("native workloads: cannot block worker signals"); return 1; }
+    armed := prctl(SetSubreaper, 1, 0, 0, 0);
+    if (armed != 0) {
+        restored := pthread_sigmask(2, previous, empty);
+        os.Print("native workloads: cannot arm worker subreaper"); return 1;
+    }
+    clock := resize([u8(0)], 16);
+    began := posix.MonotonicMilliseconds(&clock);
+    child: i32 = -1;
+    if (began >= 0) { child = fork(); }
+    if (child == 0) {
+        // This fresh worker is single-threaded. The command runner restores
+        // the original mask before spawning any compiler or LLVM process.
+        restored := pthread_sigmask(2, previous, empty);
+        code := 1;
+        if (restored == 0) { code = ChildRun(arguments); }
+        exited := _Exit(i32(code));
+        return 1;
+    }
+    result := 1;
+    interrupt := 0;
+    if (child > 0) {
+        status := resize([u8(0)], 8);
+        usage := resize([u8(0)], 256);
+        information := resize([u8(0)], 128);
+        pause := resize([u8(0)], 16);
+        // One millisecond as a 64-bit nanosecond timespec field.
+        for byte in 0..<8 { pause[8 + byte] = u8((u64(1000000) >> u32(byte * 8)) & 255); }
+        while (true) {
+            done := wait4(child, status, 1, usage);
+            if (done == child) { result = Decode(Word(status, 0, 4)); break; }
+            if (done < 0) {
+                error := posix.ErrorNumber();
+                if (error == Interrupted) { continue; }
+                os.Print("native workloads: cannot wait for command runner"); break;
+            }
+            noticed := sigtimedwait(signals, information, pause);
+            if (noticed > 0) { interrupt = int(noticed); break; }
+            now := posix.MonotonicMilliseconds(&clock);
+            if (now < 0) { os.Print("native workloads: cannot read worker deadline clock"); break; }
+            if (now - began >= timeout) { result = 124; break; }
+        }
+        drained := Drain(path, signals, pause, interrupt);
+        interrupt = drained.signal;
+        if (drained.problem != "") { os.Print(drained.problem); result = 1; }
+    } else { os.Print("native workloads: cannot fork command runner"); }
+    disarmed := prctl(SetSubreaper, 0, 0, 0, 0);
+    restored := pthread_sigmask(2, previous, empty);
+    if (disarmed != 0 || restored != 0) { os.Print("native workloads: cannot restore worker process state"); return 1; }
+    if (interrupt != 0) { return 128 + interrupt; }
+    return result;
+}
+} else {
+Worker :: (arguments: string[]) -> int { return 2; }
 }
 
 Measured :: struct { status: int; nanoseconds: i64; peak_kb: i64; problem: string; }
@@ -88,7 +262,7 @@ Measure :: (command: string[], folder: string, timeout: int) -> Measured {
     clock := resize([u8(0)], 16);
     began := posix.MonotonicMilliseconds(&clock);
     if (began < 0) { result.problem = "cannot read the benchmark clock"; return result; }
-    launch := [os.ProgramPath(), "--measure", folder];
+    launch := [os.ProgramPath(), "--measure", folder, format_text("{}", timeout)];
     launch.extend(command);
     scope := posix.ForegroundStart(launch);
     if (scope.pid <= 0) { result.problem = scope.problem; return result; }
@@ -96,7 +270,9 @@ Measure :: (command: string[], folder: string, timeout: int) -> Measured {
     while (status == os.StillRunning) {
         status = posix.ForegroundWait(&scope, 100);
         now := posix.MonotonicMilliseconds(&clock);
-        if (now < 0 || (scope.cancelled == 0 && now - began >= i64(timeout))) {
+        budget := i64(timeout);
+        if (target.Os == target.Linux) { budget += 5000; }
+        if (now < 0 || (scope.cancelled == 0 && now - began >= budget)) {
             if (status == os.StillRunning) {
                 // The scope keeps its leader unreaped until group cleanup.
                 // A deadline does not depend on the caller's signal mask.
@@ -110,6 +286,13 @@ Measure :: (command: string[], folder: string, timeout: int) -> Measured {
         }
     }
     result.status = status;
+    if (status == 124) { result.problem = "deadline"; return result; }
+    // The Linux worker consumes cancellation while it reaps descendants.
+    // Its private exit code carries the signal even when only the foreground
+    // worker group, rather than this parent, received the terminal interrupt.
+    if (target.Os == target.Linux && (status == 129 || status == 130 || status == 143)) {
+        result.status = 128 - status;
+    }
     if (scope.problem != "") { result.problem = scope.problem; return result; }
     if (status != 0) { return result; }
     read := os.ReadText(metrics);
@@ -231,13 +414,24 @@ Benchmark :: (launcher: string, llvm: string, root: string, folder: string) -> i
 }
 
 Supervision :: (folder: string) -> int {
+    markers: string[] = [];
     for mode in ["hang", "exit"] {
         marker := strings.Concatenate([folder, "/", mode]);
+        markers.append(marker);
         command := ["/bin/sh", "-c", "(/bin/sleep 1; /usr/bin/touch \"$1\") & if [ \"$2\" = hang ]; then wait; fi", "benchmark-child", marker, mode];
+        if (target.Os == target.Linux) {
+            detached := strings.Concatenate([folder, "/", mode, "-detached"]);
+            markers.append(detached);
+            command = ["/bin/sh", "-c", "(/bin/sleep 1; /usr/bin/touch \"$1\") & /usr/bin/setsid /bin/sh -c '/bin/sleep 1; /usr/bin/touch \"$1\"' detached \"$2\" & if [ \"$3\" = hang ]; then exec /bin/sleep 30; fi", "benchmark-child", marker, detached, mode];
+        }
         timeout := 3000;
         if (mode == "hang") { timeout = 200; }
+        clock := resize([u8(0)], 16);
+        began := posix.MonotonicMilliseconds(&clock);
         measured := Measure(command, folder, timeout);
+        ended := posix.MonotonicMilliseconds(&clock);
         if (mode == "hang" && (measured.status != 124 || measured.problem != "deadline")) { return 1; }
+        if (began < 0 || ended < began || (mode == "hang" && ended - began >= 5000)) { return 1; }
         if (mode == "exit" && (measured.status != 0 || measured.problem != "")) { return 1; }
     }
     parent := os.Capture(["/bin/sh", "-c", "echo $PPID"]);
@@ -245,12 +439,18 @@ Supervision :: (folder: string) -> int {
     if (parent.status != 0 || Number(own) <= 0) { return 1; }
     signal := Measure(["/bin/sh", "-c", "(/bin/sleep 0.1; kill -TERM \"$1\") & (/bin/sleep 1; /usr/bin/touch \"$2\") & wait", "benchmark-child", own, strings.Concatenate([folder, "/signal"])], folder, 3000);
     if (signal.status != -15 || signal.problem != "") { return 1; }
+    if (target.Os == target.Linux) {
+        worker_signal := Measure(["/bin/sh", "-c", "while read -r key value rest; do if [ \"$key\" = PPid: ]; then kill -TERM \"$value\"; break; fi; done < \"/proc/$PPID/status\"; exec /bin/sleep 30"], folder, 3000);
+        if (worker_signal.status != -15 || worker_signal.problem != "") { return 1; }
+    }
     slept := os.Run(["/bin/sleep", "1.2"]);
-    if (slept != 0 || os.Exists(strings.Concatenate([folder, "/hang"])) || os.Exists(strings.Concatenate([folder, "/exit"])) || os.Exists(strings.Concatenate([folder, "/signal"]))) { return 1; }
+    if (slept != 0 || os.Exists(strings.Concatenate([folder, "/signal"]))) { return 1; }
+    for marker in markers { if (os.Exists(marker)) { return 1; } }
     return 0;
 }
 
 Main :: () -> int {
+    if (target.Os != target.Linux) { os.Print("native workloads: Linux x86-64 benchmark unsupported on this host"); return 2; }
     arguments := os.Arguments();
     if (length(arguments) >= 1 && arguments[0] == "--measure") { return Worker(arguments); }
     if (length(arguments) == 2 && arguments[0] == "--verify-supervision") { return Supervision(arguments[1]); }

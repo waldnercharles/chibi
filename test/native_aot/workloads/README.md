@@ -12,7 +12,8 @@ as the program's exit status:
 | `recurse` | calls: recursive Fibonacci and Takeuchi | 138 |
 
 `native-workload-benchmark` runs `Benchmark.chibi` through the native compiler
-on Linux x86-64 and macOS arm64. It builds each kernel with the supplied public
+on Linux x86-64. Other hosts report the benchmark as unsupported, preserving
+the original selector's platform contract. It builds each kernel with the supplied public
 native CLI and LLVM, checks every exit status, and prints the same eight
 `NATIVE_WORKLOAD` rows, one per kernel and mode:
 
@@ -28,10 +29,13 @@ sh test/native_aot/workloads/run.sh /path/to/native/sdk/bin/chibi /path/to/llvm2
 
 The worker samples the monotonic clock around the actual child, excluding its
 own startup and the supervisor's polling. `wait4` reports that child's largest
-process RSS, including descendants it waited for. macOS's byte count is converted
-to KiB. The parent owns the child group through the existing foreground scope,
-with a 300-second build deadline and a 60-second run deadline. Real timeout,
-early-exit and parent-only TERM controls prove group cleanup before timing begins.
+process RSS in KiB, including descendants it waited for. An isolated Linux
+worker owns subreaper and signal-mask state, restores
+the command's original mask, and kills/reaps adopted descendants across groups
+and sessions before returning. It enforces a 300-second build deadline and a
+60-second run deadline. The caller's ordinary process state is unchanged.
+Grouped and `setsid`-detached timeout/early-exit controls, plus parent-only and
+worker-only TERM controls, prove cleanup before timing begins.
 
 Measure on a quiet machine with a Release native compiler. Results include
 process startup and are measurements, not performance targets. The independent

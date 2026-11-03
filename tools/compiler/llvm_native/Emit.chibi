@@ -4697,10 +4697,9 @@ pub MapOf :: (key: int, value: int) -> int {
 MapKeyed :: (key: int) -> bool {
     return key == abi.BoolStorage || Integer(key) || key == abi.TextStorage;
 }
-// The first container payload is int[]. Other nested containers stay closed
-// until their copy, mutable-place and foreign-buffer contracts are verified.
+// Array payloads share the same descriptor and element lifecycle as locals.
 MapArrayValue :: (type: int) -> bool {
-    return type == ArrayType + abi.IntStorage;
+    return type >= ArrayType && type < MapType;
 }
 MapPayloadOwned :: (type: int, owners: bool[]) -> bool {
     return MapArrayValue(type) || ValueOwned(type, owners);
@@ -4710,7 +4709,8 @@ MapShaped :: (records: Record[], type: int) -> bool {
         return false;
     }
     value := MapValue(type);
-    return MapKeyed(MapKey(type)) && (abi.ScalarType(value) != "" || value == abi.TextStorage || MapArrayValue(value) ||
+    return MapKeyed(MapKey(type)) && (abi.ScalarType(value) != "" || value == abi.TextStorage ||
+                                    (MapArrayValue(value) && ElementType(records, value) != 0) ||
                                     (value >= RecordType && value < ArrayType && value - RecordType < length(records)));
 }
 // Map instructions share dependency discovery and validation even when an
@@ -4735,12 +4735,14 @@ MapCalls :: (op: int) -> bool {
 // slot, a key or an index in the right, and MapSet's value in slot `target`.
 MapValid :: (records: Record[], lifecycle: ValueLayout, slots: int[], item: Instruction) -> bool {
     used := MapUsed(item);
-    if (!MapShaped(records, used) || !Typed(slots, item.left, used) ||
-        (!MapArrayValue(MapValue(used)) && !ValueValid(lifecycle, MapValue(used)))) {
+    if (!MapShaped(records, used) || !Typed(slots, item.left, used)) {
         return false;
     }
     key := MapKey(used);
     value := MapValue(used);
+    element := value;
+    if (MapArrayValue(value)) { element -= ArrayType; }
+    if (!ValueValid(lifecycle, element)) { return false; }
     if (item.op == MapLength || item.op == MapSpan) {
         return item.type == abi.IntStorage;
     }

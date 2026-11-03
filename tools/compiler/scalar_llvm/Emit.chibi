@@ -575,7 +575,7 @@ FreshArray :: (operand: facts.Row) -> bool {
         return operand.value == facts.TextFormat || operand.value == facts.TextClone;
     }
     if (operand.kind == facts.MapRow) {
-        return operand.value == facts.MapNew || operand.value == facts.MapCopy ||
+        return operand.value == facts.MapNew || operand.value == facts.MapCopy || operand.value == facts.MapArrayLoan ||
                ((MapGets(operand.value) || operand.value == facts.MapKeyAt || operand.value == facts.MapValueAt) &&
                 (operand.type == facts.StringType || (operand.type >= facts.ArrayType && operand.type < facts.MapType)));
     }
@@ -1050,6 +1050,7 @@ MapOperands :: (operand: facts.Row) -> int {
         if (operand.value == facts.MapArraySet) { return 4; }
         return 3;
     }
+    if (operand.value == facts.MapArrayLoan) { return 3; }
     if ((operand.value >= facts.MapGet && operand.value <= facts.MapValueAt) || operand.value == facts.MapGetOptional) {
         return 2;
     }
@@ -1095,7 +1096,7 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
         return "";
     }
     input := mapped;
-    if (changed) { input += facts.ReferenceType; }
+    if (changed || operand.value == facts.MapArrayLoan) { input += facts.ReferenceType; }
     if (stack[base] != input) {
         return mismatch;
     }
@@ -1109,6 +1110,8 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
         return mismatch;
     }
     if (operand.value == facts.MapGetOptional && OptionalPayloadType(rows, records, value) == 0) { return mismatch; }
+    if (operand.value == facts.MapArrayLoan && (operand.type != value || stack[base + 1] != mapped ||
+        !Scalar(Element(records, value)) || Element(records, value) == facts.BoolType)) { return mismatch; }
     if (operand.value == facts.MapKeyAt && operand.type != key) {
         return mismatch;
     }
@@ -1117,7 +1120,9 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
         if (operand.value == facts.MapLiveAt || operand.value == facts.MapKeyAt || operand.value == facts.MapValueAt) {
             wanted = facts.IntType;
         }
-        if (stack[base + 1] != wanted) {
+        offset := 1;
+        if (operand.value == facts.MapArrayLoan) { offset = 2; }
+        if (stack[base + offset] != wanted) {
             return mismatch;
         }
     }
@@ -2494,7 +2499,7 @@ MapLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: int
     else if (operand.value == facts.MapSet) { op = native.MapSet; }
     else if (operand.value == facts.MapHas) { op = native.MapHas; }
     else if (operand.value == facts.MapDelete) { op = native.MapDelete; }
-    else if (operand.value == facts.MapCopy) { op = native.MapCopy; }
+    else if (operand.value == facts.MapCopy) { op = native.ValueCopy; }
     else if (operand.value == facts.MapSpan) { op = native.MapSpan; }
     else if (operand.value == facts.MapLiveAt) { op = native.MapLiveAt; }
     else if (operand.value == facts.MapKeyAt) { op = native.MapKeyAt; }
@@ -3671,7 +3676,17 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 } else if (operand.kind == facts.MapRow) {
                     base := length(stack) - MapOperands(operand);
                     op := operand.value;
-                    if (MappedArrayChange(op)) {
+                    if (op == facts.MapArrayLoan) {
+                        mapped := NativeType(int(operand.literal));
+                        slots.append(type);
+                        read := Op(native.MapGet, type, slot, stack[base + 1], stack[base + 2], 0);
+                        read.literal = i64(mapped);
+                        body.append(read);
+                        item = Op(native.ArrayLoan, type, slot + 1, slot, stack[base], native.ArrayLoanMap);
+                        item.literal = i64(stack[base + 2]);
+                        if (Holds(fresh, stack[base + 1])) { pending.append(stack[base + 1]); }
+                        slot += 1;
+                    } else if (MappedArrayChange(op)) {
                         array_type := (operand.type - facts.MapType) / 16;
                         array := NativeType(array_type);
                         incoming := stack[base + 2];
@@ -3687,10 +3702,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                             }
                         }
                         current := slot + extra;
-                        slots.extend([type, native.RefType + array, array, array]);
-                        address := Op(native.MapValueAddress, native.RefType + array, current + 2, current + 1, stack[base + 1], 0);
+                        slots.extend([native.RefType + array, array, array]);
+                        address := Op(native.MapValueAddress, native.RefType + array, current + 1, stack[base], stack[base + 1], 1);
                         address.literal = i64(type);
-                        change := Op(native.ArrayPush, array, current + 4, current + 3, incoming, 0);
+                        change := Op(native.ArrayPush, array, current + 3, current + 2, incoming, 0);
                         change.literal = 1;
                         if (op == facts.MapArrayExtend) { change.op = native.ArrayExtend; }
                         else if (op == facts.MapArrayRemove) { change.op = native.ArrayRemove; change.literal = 0; }
@@ -3703,13 +3718,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         }
                         // All source operands have run. Resolve the current
                         // entry, then replace its descriptor without callbacks.
-                        body.extend([Op(native.Deref, type, current + 1, stack[base], 0, 0), address,
-                                     Op(native.Deref, array, current + 3, current + 2, 0, 0), change]);
-                        if (op == facts.MapArrayResize) { body.append(Giving(array, current + 3)); }
-                        body.append(Op(native.Poke, array, 0, current + 2, current + 4, 0));
+                        body.extend([address, Op(native.Deref, array, current + 2, current + 1, 0, 0), change]);
+                        if (op == facts.MapArrayResize) { body.append(Giving(array, current + 2)); }
+                        body.append(Op(native.Poke, array, 0, current + 1, current + 3, 0));
                         if (op == facts.MapArrayExtend && Holds(fresh, stack[base + 2])) { pending.append(stack[base + 2]); }
                         item = Op(native.Deref, type, slot, stack[base], 0, 0);
-                        extra += 4;
+                        extra += 3;
                     } else if (op == facts.MapNew) {
                         // Take every owned reference before inserting. A
                         // duplicate literal key may replace and release an

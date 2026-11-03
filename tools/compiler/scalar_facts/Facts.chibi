@@ -478,6 +478,9 @@ pub MapArrayExtend: int : 13;
 pub MapArrayRemove: int : 14;
 pub MapArraySet: int : 15;
 pub MapArrayResize: int : 16;
+// A writable numeric array argument from RefMap, observedMap, key. Type is the array value;
+// literal is the map type. The loan retains its historical value until C runs.
+pub MapArrayLoan: int : 17;
 // Like MapGet, but a missing key returns the optional value's Nil variant.
 // The result must have the checked Nil/Some optional layout.
 pub MapGetOptional: int : 18;

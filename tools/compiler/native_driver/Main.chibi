@@ -320,6 +320,8 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     // A formatter used in any body piece needs the context callback.
     formatting := Contains(markers, "; chibi-format");
     numeric_formatting := Contains(markers, "; chibi-format-numbers");
+    clock := Contains(markers, "; chibi-clock");
+    clock_host := Contains(markers, "; chibi-clock-host");
     context := strings.Contains(pieces[0], "\ndefine i32 @chibi_scalar(ptr %ctx)");
     if (shared) {
         context = strings.Contains(pieces[0], "\n@chibi_context = external global ");
@@ -374,6 +376,8 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     if (start != "") {
         if (shared && strings.Contains(pieces[0], "; chibi-family\n")) { start = link.ManagedFamilyContext(start, context); }
         else if (strings.Contains(pieces[0], "; chibi-managed\n")) { start = link.ManagedProgramContext(start); }
+        if (clock && !shared) { start = link.ClockProgramContext(start); }
+        if (clock_host) { start = strings.Concatenate([start, link.ClockHostRuntime(triple)]); }
         if (os.WriteText(strings.Concatenate([output, ".start.ll"]), start) != nil) {
             os.Print("native: cannot write the start module");
             return 2;
@@ -391,6 +395,10 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     // name; macOS and Windows bind each symbol through their system stubs.
     markers.extend(Markers(start));
     plan.imports = link.SystemImports(markers);
+    if (clock_host) {
+        imported := link.ClockHostImports(triple);
+        if (length(imported.symbols) > 0) { plan.imports.append(imported); }
+    }
     if (link.TargetOf(triple) == link.LinuxX64) {
         for (imported in plan.imports) { plan.libraries.append(imported.name); }
     }

@@ -1130,6 +1130,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             if (foreign_abi == InvalidForeignABI) {
                 return Result.Rejected(base + pc, "native foreign call differs from its operands");
             }
+            if (!ProgramMode(mode) && item.left == 0 && ClockFactorySymbol(texts[int(item.literal)])) {
+                return Result.Rejected(base + pc, "native clock grant factories belong to the embedding executable");
+            }
         }
         if (item.op == ForeignCall && length(loan_uses) > 0) {
             for (index in 0..<item.target) {
@@ -2340,6 +2343,7 @@ ForeignDeclarations :: (functions: Function[], first: int, last: int, slots: int
                                        texts[int(item.literal)], strings.Join(listed, ", "));
             if (!out.contains(declaration)) {
                 out.append(declaration);
+                if (ClockFactorySymbol(texts[int(item.literal)])) { out.append("; chibi-clock-host\n"); }
             }
         }
     }

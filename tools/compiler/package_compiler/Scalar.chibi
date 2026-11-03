@@ -633,6 +633,17 @@ ScalarVariable :: (names: Name[], name: string) -> Name {
 ScalarRecordOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                    names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> int {
     value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.AwaitExpression)) {
+        awaited := Unparenthesized(forest, Field(forest, value, syntax.FieldValue));
+        if (Is(forest, awaited, syntax.CallExpression)) {
+            callee := CalledFunction(forest, text, callables, [], names, package, awaited);
+            if (callee >= 0 && callables[callee].waits) {
+                shape := TaskSuccessValue(callables[callee], params);
+                if (shape.storage == StructStorage && shape.container == 0) { return shape.record; }
+            }
+        }
+        return -1;
+    }
     if (Is(forest, value, syntax.BinaryExpression) || Is(forest, value, syntax.UnaryExpression)) {
         shape := ScalarBuiltinShape(forest, text, callables, names, types, members, package, value);
         if (shape.storage == StructStorage && MathKind(types, shape.record) != 0) { return shape.record; }
@@ -657,6 +668,12 @@ ScalarRecordOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
         found := Lookup(names, Text(forest, text, value));
         if (found >= 0 && names[found].storage == StructStorage && names[found].container == 0) {
             return names[found].record;
+        }
+        if (found >= 0 && names[found].storage == UnionStorage && names[found].container == 0 &&
+            names[found].record >= 0 && types[names[found].record].kind == TaskResultDecl &&
+            TaskResultPresent(forest, text, names[found], value)) {
+            shape := TaskResultSuccess(types, names[found].record);
+            if (shape.storage == StructStorage && shape.container == 0) { return shape.record; }
         }
         return -1;
     }
@@ -1282,9 +1299,10 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (storage == PointerStorage && !arrayed) {
         type = ScalarPointerType(types, ScalarPointerRecord(forest, text, callables, params, names, types, members, callable.package, node));
     }
-    if (storage == StructStorage && Is(forest, node, syntax.CallExpression) && !arrayed) {
-        // A call of a function that returns a record, as ScalarRecordValue
-        // reads one.
+    if (storage == StructStorage && !arrayed &&
+        (Is(forest, node, syntax.CallExpression) || Is(forest, node, syntax.Identifier))) {
+        // Record operands keep their declared type, including a completed
+        // task's narrowed success value, as ScalarRecordValue reads them.
         type = ScalarRecordType(types, ScalarRecordOf(forest, text, callables, params, names, types, members, callable.package, node));
     }
     // A field of a record: whatever type it holds.
@@ -2217,12 +2235,18 @@ ScalarRecordValue :: (forest: snapshot.SnapshotNode[], text: string, callables: 
         }
     }
     if (Is(forest, node, syntax.Identifier)) {
-        ordinal := ScalarVariable(names, Text(forest, text, node)).index;
+        binding := ScalarVariable(names, Text(forest, text, node));
+        if (binding.storage == UnionStorage && binding.record >= 0 && types[binding.record].kind == TaskResultDecl &&
+            TaskResultPresent(forest, text, binding, node)) {
+            return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, node,
+                                 StructStorage, rows);
+        }
+        ordinal := binding.index;
         output := rows;
         output.append(ScalarAt(forest, node, facts.ReadRow, type, ordinal, 0, ""));
         return ScalarOperands.Built(output);
     }
-    if (Is(forest, node, syntax.CallExpression) || Is(forest, node, syntax.MemberExpression) ||
+    if (Is(forest, node, syntax.AwaitExpression) || Is(forest, node, syntax.CallExpression) || Is(forest, node, syntax.MemberExpression) ||
         Is(forest, node, syntax.IndexExpression)) {
         return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, node, StructStorage,
                              rows);

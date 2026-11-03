@@ -148,11 +148,18 @@ ArrayValueReference :: (item: Instruction, pc: int, program: bool) -> string {
 }
 // The native array domain has 1024 possible element storage IDs. One scan
 // records which operations each used type needs; unused helpers are not emitted.
-ArrayUses :: (code: Instruction[]) -> int[] {
+ArrayUses :: (code: Instruction[], promises: int[]) -> int[] {
     used := resize([int(0)], MapType - ArrayType);
+    for (type in promises) {
+        if (type >= ArrayType && type < MapType) { used[type - ArrayType] |= ArrayDropping; }
+    }
     for (item in code) {
         type := item.type;
         flags := 0;
+        if (item.op == AwaitResult) {
+            type = item.right;
+            flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArraySharing;
+        }
         if (ViewOperation(item.op)) {
             type = ArrayType + ViewElement(item);
             if (item.op == ViewClone || item.op == ViewSlice) { flags = ArrayAllocation; }
@@ -169,8 +176,9 @@ ArrayUses :: (code: Instruction[]) -> int[] {
             if (type >= RefType) { type -= RefType; }
             flags = ArrayDropping;
         }
-        if (MapOperation(item.op)) {
-            type = MapValue(MapUsed(item));
+        mapped := MapInstructionType(item);
+        if (mapped != 0) {
+            type = MapValue(mapped);
             if (MapArrayValue(type)) {
                 flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArraySharing;
             }

@@ -30,7 +30,7 @@ descriptor rejection, shared tracing once per backing/epoch, borrowed array
 imports, cross-heap rejection before epoch shortcuts and malformed pin CFGs.
 Persistent roots also survive a spawning function's stack-boundary restore.
 Real collection after middle, tail and head removal checks non-LIFO cleanup
-and the surviving value at O0/O2. The heap is 56 bytes; persistent nodes are
+and the surviving value at O0/O2. The heap is 64 bytes; persistent nodes are
 32 bytes and unlink in constant time. Stack roots retain their 24-byte ABI.
 
 Raw native IR clients must pin each live pointer-array owning place or fresh
@@ -112,3 +112,10 @@ replace the cell. The source proof uses embedded NUL strings, escaped cells,
 value copies, scoped aliases and replacement during operand evaluation. Its
 normal-threshold peak bound includes backing and text allocations per cell;
 forced-collection runs retain the same zero-live requirement.
+
+The family heap includes callback depth and collection state. Collector
+requests during a guarded callback or active sweep defer to a legitimate
+spilled-root safe point; callback return never collects transient values.
+The raw collector proof checks these requests below threshold, recursive
+release requests, depth bounds and nested construction outside collection.
+Constructing a managed cell during sweep traps before allocation or linking.

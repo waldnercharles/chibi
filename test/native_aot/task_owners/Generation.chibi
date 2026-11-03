@@ -8,6 +8,13 @@ foreign libc {
     access :: (path: cstring, mode: i32) -> i32
 }
 Payload :: struct { text: string; words: string[]; numbers: int[]; }
+Promise :: struct { first: int; last: bool; }
+RecordWorker :: () -> Promise { yield; return {first: 37, last: true}; }
+CheckPromise :: (value: Promise) { assert(value.first == 37 && value.last); }
+OwnedWorker :: () -> Payload { yield; return {text: Text(11), words: [Text(13)], numbers: [int(17)]}; }
+CheckOwned :: (value: Payload) {
+    assert(text_byte_length(value.text) == 11 && text_byte_length(value.words[0]) == 13 && value.numbers[0] == 17);
+}
 Text :: (count: int) -> string { return text_from_bytes(resize([u8(120)], count)); }
 Exists :: (path: string) -> bool { return access(path, 0) == 0; }
 Mark :: (path: string, text: string) {
@@ -29,7 +36,26 @@ Finish :: (payload: Payload) {
 }
 Worker :: () -> int {
     payload: Payload = {text: text_from_bytes([u8(111), 108, 100]), words: [Text(3), Text(5)], numbers: [int(11), 37]};
+    promise := RecordWorker();
+    initial := await promise;
+    if initial is Cancelled { return 1; }
+    else { CheckPromise(initial); }
+    owned := OwnedWorker();
+    first := await owned;
+    if first is Cancelled { return 1; }
+    else {
+        changed := first;
+        CheckOwned(changed);
+        changed.text = Text(7);
+        changed.words[0] = Text(9);
+    }
     while !Exists("allow-old") { yield; }
+    repeated := await promise;
+    if repeated is Cancelled { return 1; }
+    else { CheckPromise(repeated); }
+    again := await owned;
+    if again is Cancelled { return 1; }
+    else { CheckOwned(again); }
     if Exists("failure-case") { Broken(&payload); }
     Finish(payload);
     return 0;

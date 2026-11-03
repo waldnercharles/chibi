@@ -16,7 +16,7 @@ Main :: () -> int {
     if (fixture.error) { return 2; }
     target := abi.LinuxX64();
     if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
-    for (mode in ["positive", "cross_owner", "wrong_pop"]) {
+    for (mode in ["positive", "cross_owner", "wrong_pop", "callback_defers", "callback_underflow", "callback_overflow", "callback_construct_sweep", "callback_nested_constructor"]) {
         module := format_text("{}/collector-{}.ll", work, mode);
         text := strings.Join([format_text("target triple = \"{}\"\n", target.triple), native.ManagedRuntime(), fixture.text,
             format_text("\ndefine i32 @main() {{ %result = call i32 @managed_test.{}()\n ret i32 %result\n}}\n", mode)], "");
@@ -34,7 +34,13 @@ Main :: () -> int {
             linked := host.Link(plan);
             if (linked) { os.Print("The managed collector did not link"); return 1; }
             result := os.Capture([output]);
-            if ((mode == "positive" && result.status != 0) || (mode != "positive" && result.status == 0)) {
+            positive := mode == "positive" || mode == "callback_defers" || mode == "callback_nested_constructor";
+            valid := positive && result.status == 0;
+            if (!positive) { valid = result.status != 0; }
+            if (mode == "callback_construct_sweep") {
+                valid = result.status == -4 || result.status == -5 || result.status == 132 || result.status == 133;
+            }
+            if (!valid) {
                 os.Print(format_text("managed collector {} O{}: status {}, {}{}", mode, level,
                                      result.status, result.stdout, result.stderr));
                 return 1;

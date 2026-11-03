@@ -1,0 +1,9 @@
+package unguarded_record_argument
+Pair :: struct { value: int; }
+Worker :: () -> Pair { yield; return {value: 7}; }
+Consume :: (value: Pair) -> int { return value.value; }
+Main :: () -> int {
+    pending := Worker();
+    joined := await pending;
+    return Consume(joined);
+}

@@ -86,6 +86,7 @@ Main :: () -> int {
     target_source := os.ReadText(strings.Concatenate([args[7], "/target/Target.chibi"]));
     if (target_source.error) { return 2; }
     target := abi.LinuxX64(); if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
+    if (os.Platform() == "Windows") { target = abi.WindowsX64(); }
     visible := route.Visible(args[7]);
     old.text = Shared(old.text, visible, target_source.text, target.triple);
     writer.text = Shared(writer.text, visible, target_source.text, target.triple);
@@ -125,17 +126,29 @@ Main :: () -> int {
         contexts += 1;
     }
     assert(contexts == 1, "one real context owns the reused allocation audit callbacks");
-    if (os.WriteText(start, strings.Concatenate([strings.Join(context, "\n"), "\n", allocations.text]))) { return 2; }
+    start_text := strings.Concatenate([strings.Join(context, "\n"), "\n", allocations.text]);
+    if (os.WriteText(start, start_text)) { return 2; }
+    extension := "so"; if (os.Platform() == "Windows") { extension = "dll"; }
     for (name in ["old", "writer", "broken"]) {
         module := old_module; if (name == "writer") { module = writer_module; } if (name == "broken") { module = broken_module; }
         path := format_text("{}/owned-record-{}.ll", work, name);
         if (os.WriteText(path, module)) { return 2; }
         for (level in [int(0), 2]) {
-            output := format_text("{}/owned-record-{}-O{}.so", work, name, level);
+            output := format_text("{}/owned-record-{}-O{}.{}", work, name, level, extension);
             objects := [strings.Concatenate([output, ".o"]), strings.Concatenate([output, "-start.o"])];
             if (host.Objects(llvm, [path, start], objects, level, 1)) { return 1; }
             plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", false); plan.shared = true;
             if (os.Platform() == "Darwin") { plan.imports = [{name: "System", symbols: ["malloc", "calloc", "free", "write", "abort", "memcpy", "memset", "__error"]}]; }
+            else if (os.Platform() == "Windows") {
+                plan.static = true;
+                plan.imports = link.SystemImports(strings.SplitLines(strings.Concatenate([module, "\n", start_text])), target.triple);
+                // ModuleShared already exports the real family hooks. Export
+                // only the additional adapters this fixture host looks up.
+                plan.exports = ["boundary_set_counter"];
+                if (name == "old") {
+                    plan.exports.extend(["boundary_live", "owned_record_create", "owned_record_check", "owned_record_release"]);
+                } else { plan.exports.append("owned_record_write"); }
+            }
             else { plan.libraries = ["c"]; }
             if (host.Link(plan)) { return 1; }
         }

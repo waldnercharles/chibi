@@ -64,13 +64,38 @@ source Write function. It does not clobber read-only bytes or skip acquisition,
 drop, validation, publication or cleanup. The observer checks both nonempty
 Text owners before byte access and checks the empty field's length. Missing
 ownership cleans up with both images mapped, verifies zero allocation/lease
-counts, and returns 33 before either dlclose. Process exit reclaims mappings.
+counts, and returns 33 before either image close. Process exit reclaims mappings.
+
+## Focused Windows image inventory
+
+`RunOwnedRecordImagesWindows.ps1 -Compiler NATIVE_COMPILER -Llvm LLVM_BIN`
+selects only the eight image cases listed above. It builds two helpers, then
+old/writer/broken DLLs at O0/O2 for the reused-old and writer-created pointee
+modes. It never calls the broader managed/task runners or SourceProbe. Each
+positive requires status 0 without diagnostics; each one-site bypass requires
+status 33 and exactly the missing-Text-owner diagnostic. An unexpected status
+or diagnostic fails the runner and preserves its command logs and artifacts.
+
+The builder uses WindowsX64, the existing shared-image link plan and actual
+generated module/start imports. The compiler supplies its existing family
+exports; explicit fixture exports expose only the adapters used by the host.
+The host uses `core:sys/windows` OpenLibrary/LibrarySymbol/CloseLibrary and the
+same owner, byte, allocation and typed-lease checks as the POSIX path. Windows
+outputs end in `.dll`; existing POSIX `.so` paths are unchanged. The CI step
+retains the existing fixed-point producer guard and overall Windows deadline.
+
+This is an authored Windows port, not a passing-test claim. Its focused local
+validation should cross-link both DLL modes at O0/O2, inspect PE imports/exports
+and the host's loader dependencies, and run the eight unchanged Linux cases.
+Cross-linking and PE inspection cannot establish real Windows unload behavior.
 
 ## Remaining acceptance gates
 
 The exact final OwnedRecords.Main source still needs ordinary/native comparison.
 Ordinary dependency installation/download permission is a separate gate; this
-runner neither requests it nor starts an ordinary build. Linux x86-64 and
-Darwin arm64 are the only implemented dlopen harness paths. Windows loader and
-lifetime ports, supported-platform verification, retained-layout migration,
-product gates and broader native admission remain separate work.
+runner neither requests it nor starts an ordinary build. Real Windows execution
+of the eight image cases remains required. The 20 OwnedRecords semantic,
+assertion and counted-copy cases, plus the narrow pointer-array-field rejection,
+are additional Windows acceptance work not selected by the image runner.
+Supported-platform verification, retained-layout migration, product gates and
+broader native admission remain separate work.

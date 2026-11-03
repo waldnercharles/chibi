@@ -703,6 +703,22 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
+      - name: Check native Windows owned-record image lifetimes
+        id: windows-owned-record-image-proof
+        if: ${{ !cancelled() && steps['windows-fixed-point'].outcome == 'success' }}
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        run: ./test/native_aot/managed_pointers/RunOwnedRecordImagesWindows.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM -Root $PWD.Path
+      - name: Preserve failed Windows owned-record image evidence
+        if: ${{ failure() && steps['windows-owned-record-image-proof'].outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-owned-record-image-evidence
+          path: ${{ runner.temp }}/chibi-owned-record-images-*/**
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
       - name: Check native Windows directory errors and source inventories
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: ./test/native_aot/directories/Run.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM

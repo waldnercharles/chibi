@@ -9,12 +9,14 @@ const read = name => readFileSync(path.join(root, name), 'utf8');
 const workflow = read('.github/workflows/ci.yml');
 const text = read('test/native_aot/managed_pointers/RunTextWindows.ps1');
 const nested = read('test/native_aot/managed_pointers/RunNestedWindows.ps1');
+const owned = read('test/native_aot/managed_pointers/RunOwnedRecordImagesWindows.ps1');
 const quoted = text => [...text.matchAll(/'([^']+)'/g)].map(match => match[1]);
 
 test('Windows lifetime steps fail closed on the existing exact-head fixed point', () => {
   for (const [name, id, runner, evidence] of [
     ['nested-pointer collection and schema guards', 'windows-nested-pointer-proof', 'RunNestedWindows.ps1', 'chibi-nested-pointers-'],
-    ['Text imports across image lifetimes', 'windows-text-import-proof', 'RunTextWindows.ps1', 'chibi-text-import-']]) {
+    ['Text imports across image lifetimes', 'windows-text-import-proof', 'RunTextWindows.ps1', 'chibi-text-import-'],
+    ['owned-record image lifetimes', 'windows-owned-record-image-proof', 'RunOwnedRecordImagesWindows.ps1', 'chibi-owned-record-images-']]) {
     const step = workflow.split(`      - name: Check native Windows ${name}\n`)[1].split(/^      - /m)[0];
     const condition = /^        if: \$\{\{ (.+) \}\}$/m.exec(step)[1];
     for (const outcome of ['success', 'failure', 'skipped', 'cancelled']) {
@@ -70,6 +72,29 @@ test('Windows nested runner keeps the narrow 24-case audit and both schema rejec
   assert.doesNotMatch(nested, /run\.sh|TaskSuite|continue-on-error/);
   assert.match(nested, /\n}\n[^\n]*\nexit 0\n$/);
   assert.doesNotMatch(nested.split('} finally {')[1].split('\n}')[0], /exit 0/);
+});
+
+test('Windows owned-record runner selects exactly eight image cases, not source audits', () => {
+  const posix = read('test/native_aot/managed_pointers/owned-records.sh');
+  assert.deepEqual(quoted(/foreach \(\$name in ([^\n]+)\) \{/.exec(owned)[1]), ['OwnedRecordImages', 'OwnedRecordImagesHost']);
+  const modes = quoted(/foreach \(\$mode in ([^\n]+)\) \{/.exec(owned)[1]);
+  assert.deepEqual(modes, /for mode in ([^;]+); do/.exec(posix)[1].split(' '));
+  assert.match(owned, /foreach \(\$level in 0, 2\)/);
+  assert.equal(modes.length * 2 * 2, 8);
+  for (const image of ['old', 'writer', 'broken']) assert.ok(owned.includes(`owned-record-${image}-O$level.dll`));
+  for (const source of ['text_cells/Record.chibi', 'text_cells/RecordOwned.chibi', 'OwnedRecordOld.ll', 'BoundaryTextAllocation.ll']) {
+    assert.ok(owned.includes(source)); assert.ok(posix.includes(source));
+  }
+  assert.ok(owned.includes("$text.Substring(0, $text.IndexOf($marker))"));
+  assert.ok(owned.includes("[StringSplitOptions]::None).Count - 1) -ne 1"));
+  assert.match(owned, /one-site bypass O\$level" 33/);
+  assert.ok(owned.includes("$lines.Count -ne 1 -or $lines[0] -ne 'owned record Text owner missing before unload'"));
+  assert.ok(owned.includes("Where-Object { $_ -ne '' }).Count -ne 0"));
+  assert.ok(owned.includes('$passed -ne 8'));
+  assert.equal((owned.match(/\$passed \+= 1/g) || []).length, 2);
+  assert.doesNotMatch(owned, /SourceProbe|OwnedRecords\.chibi|OwnedArrayRecordCell|run\.sh|TaskSuite|--emit-llvm|continue-on-error/);
+  assert.match(owned, /\n}\n[^\n]*\nexit 0\n$/);
+  assert.doesNotMatch(owned.split('} finally {')[1].split('\n}')[0], /exit 0/);
 });
 
 test('Windows nested reload uses the real audited close and existing timeout', () => {

@@ -309,3 +309,10 @@ remain until the graph is released. Both nonempty Text fields and the empty
 field are inspected while both images are mapped. The negative omits exactly
 one consuming publication import, cleans up to zero live allocations and zero
 image leases, then returns 33 before either image is explicitly unloaded.
+
+`RunOwnedRecordImagesWindows.ps1` selects only the eight image cases on Windows
+x64, using `.dll` images and the core Windows library loader. Its CI step uses
+the existing fixed-point producer guard and job deadline, retaining failed
+evidence. It does not run the 20 semantic/failure/counted source cases or the
+narrow source rejection. Those remain additional Windows acceptance work;
+the runner's authored inventory is not evidence of real Windows execution.

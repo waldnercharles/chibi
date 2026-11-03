@@ -3635,6 +3635,7 @@ ScalarTextNative :: (native: ResolvedNative) -> bool {
            NativeNameMatches(native, "length") || NativeNameMatches(native, "append") ||
            NativeNameMatches(native, "extend") || NativeNameMatches(native, "slice") ||
            NativeNameMatches(native, "resize") || NativeNameMatches(native, "contains") ||
+           NativeNameMatches(native, "insert") || NativeNameMatches(native, "reverse") ||
            NativeNameMatches(native, "remove_index") ||
            NativeNameMatches(native, "text_bytes") || NativeNameMatches(native, "text_from_bytes");
 }
@@ -4806,6 +4807,7 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
     text_ports := ScalarTextPorts(resolved, resolved_ports);
     text_identities := ScalarTextIdentities(resolved, identities);
     ScalarCollectionCatalog(text_natives, &text_ports);
+    ScalarArrayCatalog(text_natives, &text_ports);
     ScalarTextCatalog(text_natives, &text_ports);
     ScalarMathCatalog(&text_natives, &text_ports, &text_identities);
     // The bootstrap catalog contains data functions only. Printing is a void

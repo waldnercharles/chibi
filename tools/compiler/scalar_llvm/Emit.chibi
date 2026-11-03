@@ -86,7 +86,7 @@ Valued :: (records: int[], type: int) -> bool {
     if (type >= facts.ArrayType) {
         return Element(records, type) != 0;
     }
-    return Scalar(type) || type == facts.StringType || type == facts.TaskType || type == facts.PointerType ||
+    return Scalar(type) || type == facts.StringType || type == facts.TaskType || type == facts.PointerType || type == facts.ViewType ||
            (type >= facts.RecordType && type - facts.RecordType < length(records));
 }
 // The element type of array type `type`, or 0 when it is no array of a
@@ -94,7 +94,7 @@ Valued :: (records: int[], type: int) -> bool {
 Element :: (records: int[], type: int) -> int {
     element := type - facts.ArrayType;
     if (type >= facts.MapType || element < facts.IntType || element >= facts.ArrayType ||
-        element == facts.TaskType || !Valued(records, element)) {
+        element == facts.TaskType || element == facts.ViewType || !Valued(records, element)) {
         return 0;
     }
     return element;
@@ -197,6 +197,7 @@ NativeType :: (type: int) -> int {
     if (type >= facts.ReferenceType) { return native.RefType + NativeType(type - facts.ReferenceType); }
     if (type == facts.TaskType) { return native.TaskType; }
     if (type == facts.PointerType) { return native.PointerType; }
+    if (type == facts.ViewType) { return native.ViewType; }
     if (type >= facts.MapType) {
         return native.MapOf(NativeType((type - facts.MapType) % 16), NativeType((type - facts.MapType) / 16));
     }
@@ -563,6 +564,7 @@ ArrayTyped :: (type: int) -> bool {
 // Whether the operand row gives a new array that whoever takes it owns, rather
 // than one a variable or a lent argument holds.
 FreshArray :: (operand: facts.Row) -> bool {
+    if (operand.kind == facts.ViewRow) { return facts.ViewOperation(operand.value) == facts.ViewClone; }
     if (operand.kind == facts.CallRow) {
         return ArrayTyped(operand.type) || operand.type == facts.StringType || operand.type == facts.TaskType;
     }
@@ -1120,6 +1122,11 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
 // below `floor`. A change of an array is the last operand of an Assign to the
 // variable its first operand reads, or the second last, before the Update of
 // the array's field of that variable's record.
+ArrayPlaceMember :: (rows: facts.Row[], records: int[], operand: facts.Row) -> int {
+    if (operand.literal == i64(facts.OptionalArrayPlace)) { return OptionalPayloadType(rows, records, operand.type); }
+    if (operand.literal != 0) { return MemberType(rows, records, operand.type, int(operand.literal) - 1); }
+    return operand.type;
+}
 ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, operand: facts.Row, stack: int[],
                floor: int) -> string {
     consumed := ArrayOperands(operand);
@@ -1133,19 +1140,29 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
     placed := operand.literal != 0 || ((ArrayChanges(operator) || operator == facts.ArrayResize) &&
               stack[base] == facts.ReferenceType + operand.type);
     if (placed) {
+        optional := operand.literal == i64(facts.OptionalArrayPlace);
         if (operand.literal != 0) {
             mismatch = format_text("{} at {}..{} (parent {}, field {}, operator {}): {}", mismatch,
                 operand.start, operand.end, operand.type, operand.literal - 1, operator,
                 strings.Slice(rows[0].text, operand.start, operand.end - operand.start));
-            if (operand.literal < 1 || operand.literal > i64(2147483647)) { return mismatch; }
+            if (!optional && (operand.literal < 1 || operand.literal > i64(2147483647))) { return mismatch; }
         }
-        field := operand.type;
-        if (operand.literal != 0) { field = MemberType(rows, records, operand.type, int(operand.literal) - 1); }
+        field := ArrayPlaceMember(rows, records, operand);
         element := Element(records, field);
+        assigned := rows[at].kind == facts.AssignRow && rows[at].type == operand.type &&
+            rows[at + 1].kind == facts.RefRow && rows[at + 1].type == operand.type &&
+            rows[at + 1].literal == 0 && rows[at + 1].value == rows[at].value;
+        borrowed := operand.literal == 0 && operator == facts.ArrayPush && Scalar(element) &&
+            rows[at].kind == facts.LocalRow && rows[at].literal == i64(facts.Captured) &&
+            rows[at].type == operand.type && rows[at].count == 4 &&
+            rows[at + 1].kind == facts.ReadRow && rows[at + 1].type == facts.PointerType &&
+            rows[at + 2].kind == facts.ManagedRow && rows[at + 2].value == facts.ManagedBorrow &&
+            rows[at + 2].type == facts.ReferenceType + operand.type &&
+            rows[at + 3].kind == facts.ReadRow && rows[at + 3].type == element;
+        if (optional && (operator != facts.ArraySet || !Scalar(element))) { return mismatch; }
         if ((!ArrayChanges(operator) && operator != facts.ArrayResize) || element == 0 ||
             stack[base] != facts.ReferenceType + operand.type || base != 0 || row != last - 1 ||
-            rows[at].kind != facts.AssignRow || rows[at].type != operand.type || rows[at + 1].kind != facts.RefRow ||
-            rows[at + 1].type != operand.type || rows[at + 1].literal != 0 || rows[at + 1].value != rows[at].value) { return mismatch; }
+            (!assigned && !borrowed)) { return mismatch; }
         if (operator == facts.ArrayReverse) { return ""; }
         wanted := facts.IntType;
         if (operator == facts.ArrayPush) { wanted = element; }
@@ -1311,7 +1328,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                           operand.type >= facts.ReferenceType && ManagedValue(rows, records, operand.type - facts.ReferenceType, operand.literal);
         if ((!texted && operand.text != "") || (!Valued(records, operand.type) && !managed_borrow) || !Located(operand, starts, size) ||
             !Within(operand, scope) ||
-            (operand.kind != facts.LiteralRow && operand.kind != facts.RefRow && operand.kind != facts.MapRow && operand.kind != facts.ArrayRow && operand.kind != facts.CallRow && operand.kind != facts.AwaitResultRow && operand.kind != facts.ForeignRow && operand.kind != facts.ManagedRow && operand.kind != facts.ManagedAddressRow && operand.kind != facts.ManagedFieldRow && operand.kind != facts.TextRow && operand.literal != 0) ||
+            (operand.kind != facts.LiteralRow && operand.kind != facts.RefRow && operand.kind != facts.MapRow && operand.kind != facts.ArrayRow && operand.kind != facts.CallRow && operand.kind != facts.AwaitResultRow && operand.kind != facts.ForeignRow && operand.kind != facts.ManagedRow && operand.kind != facts.ManagedAddressRow && operand.kind != facts.ManagedFieldRow && operand.kind != facts.TextRow && operand.kind != facts.ViewRow && operand.literal != 0) ||
             (operand.kind == facts.CallRow && (operand.literal < 0 || operand.literal > i64(facts.CallSpawned)))) {
             return "invalid scalar operand row";
         }
@@ -1320,6 +1337,12 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 !facts.Fits(operand.literal, operand.type)) {
                 return "noncanonical scalar literal";
             }
+        } else if (operand.kind == facts.ViewRow) {
+            base := length(stack) - ViewOperands(operand);
+            if (base < floor || !ValidView(rows, records, operand, stack, base)) {
+                return "view operation differs from its typed operands";
+            }
+            stack = slice(stack, 0, base);
         } else if (operand.kind == facts.ManagedAddressRow) {
             if (operand.name != "" || operand.type != facts.PointerType || operand.literal == 0 ||
                 !Holds(visible, operand.value) || !ManagedValue(rows, records, variables[operand.value], operand.literal) ||
@@ -2459,7 +2482,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
     }
     pointer_program := false;
     for (row in rows) {
-        pointer_program = pointer_program || row.type == facts.PointerType || row.type == facts.ArrayType + facts.PointerType ||
+        pointer_program = pointer_program || row.type == facts.PointerType || row.type == facts.ViewType || row.kind == facts.ViewRow || row.type == facts.ArrayType + facts.PointerType ||
                           row.kind == facts.ManagedRow || row.kind == facts.ManagedAddressRow || row.kind == facts.ManagedFieldRow;
     }
     if (pointer_program && !program && !family) {
@@ -3069,6 +3092,35 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     if (item.literal == i64(length(texts))) {
                         texts.append(operand.text);
                     }
+                } else if (operand.kind == facts.ViewRow) {
+                    op := facts.ViewOperation(operand.value);
+                    element := NativeType(facts.ViewElement(operand.value));
+                    base := length(stack) - ViewOperands(operand);
+                    operation := native.ViewMake;
+                    switch op {
+                        case facts.ViewMake: operation = native.ViewMake;
+                        case facts.ViewLength: operation = native.ViewLength;
+                        case facts.ViewGet: operation = native.ViewGet;
+                        case facts.ViewSet: operation = native.ViewSet;
+                        case facts.ViewClone: operation = native.ViewClone;
+                        case facts.ViewSlice: operation = native.ViewSlice;
+                        case: assert(false, "validated view operation");
+                    }
+                    item = Op(operation, type, slot, stack[base], 0, 0);
+                    item.literal = operand.literal;
+                    if (op == facts.ViewMake || op == facts.ViewSet || op == facts.ViewSlice) {
+                        item.right = shape.arguments;
+                        arguments.extend([stack[base + 1], stack[base + 2]]);
+                        shape.arguments += 2;
+                        if (op == facts.ViewSet) { item.type = element; item.output = 0; }
+                        else { item.target = element; }
+                    } else if (op == facts.ViewGet) { item.right = stack[base + 1]; }
+                    else if (op == facts.ViewLength) { item.right = element; }
+                    if (op == facts.ViewSet) {
+                        body.append(item);
+                        item = Op(native.Constant, abi.IntStorage, slot, 0, 0, 0);
+                    }
+                    stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.ManagedAddressRow) {
                     item = Op(native.Local, native.PointerType, slot, places[operand.value], 0, 0);
                 } else if (operand.kind == facts.ManagedFieldRow) {
@@ -3579,8 +3631,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     base := length(stack) - ArrayOperands(operand);
                     root := stack[base];
                     fielded := operand.literal != 0;
-                    member := operand.type;
-                    if (fielded) { member = MemberType(rows, declared, operand.type, int(operand.literal) - 1); }
+                    member := ArrayPlaceMember(rows, declared, operand);
                     array := NativeType(member);
                     element := member - facts.ArrayType;
                     op := operand.value;
@@ -3610,6 +3661,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         slots.append(native.RefType + array);
                         field := Op(native.FieldAddress, native.RefType + array, address, local, type, 1);
                         field.literal = operand.literal - 1;
+                        if (operand.literal == i64(facts.OptionalArrayPlace)) { field.literal = 1; }
                         body.append(field);
                         current += 1;
                         extra += 1;
@@ -3635,13 +3687,21 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     if (op == facts.ArrayReverse) { mutation = Op(native.ArrayReverse, array, changed, current, 0, 0); }
                     state_index := RetainedArrayState(retained_array_variables, retained_array_fields, retained_array_states,
                         rows[at].value, int(operand.literal) - 1);
+                    state_type := array;
+                    if (operand.literal == i64(facts.OptionalArrayPlace)) {
+                        retained := SortedIndex(retained_variables, rows[at].value);
+                        if (retained >= 0 && UnionHead(rows, declared, retained_types[retained]) >= 0) {
+                            state_index = retained_states[retained];
+                            state_type = NativeType(retained_types[retained]);
+                        }
+                    }
                     if (state_index >= 0 && op != facts.ArrayResize) {
                         // No source code runs before the following mutation
                         // and publication. Keep the local owner while dropping
                         // the extra global lease, so unique backing can grow.
-                        slots.append(array);
-                        body.extend([Op(native.Constant, array, changed + 1, 0, 0, 0),
-                            Op(native.StateStore, array, 0, changed + 1, 0, state_index)]);
+                        slots.append(state_type);
+                        body.extend([Op(native.Constant, state_type, changed + 1, 0, 0, 0),
+                            Op(native.StateStore, state_type, 0, changed + 1, 0, state_index)]);
                         extra += 1;
                     }
                     body.append(mutation);
@@ -4017,6 +4077,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     if (TrackedRecord(managed, type)) { fresh.append(produced); }
                 }
                 if (operand.kind == facts.MakeRow && TrackedRecord(managed, type)) { fresh.append(produced); }
+                if (operand.kind == facts.ViewRow && facts.ViewOperation(operand.value) == facts.ViewSlice &&
+                    TrackedRecord(managed, type)) { fresh.append(produced); }
                 if (retained_record) {
                     kept := KeepValue(managed, operand.type, produced, slot + 1 + extra);
                     slots.extend(kept.slot_types);

@@ -1,0 +1,45 @@
+package record_summary
+
+import imported "project:record_summary_import"
+
+Inner :: struct { label: string; numbers: int[]; }
+Box :: struct { title: string; inner: Inner; words: string[]; }
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA :: struct { code: int; }
+Make :: (calls: ^int, count: int) -> Box {
+    calls^ += 1;
+    return {title: text_from_bytes(resize([u8(120)], count)),
+            inner: {label: text_from_bytes([u8(105)]), numbers: [int(7), 11]},
+            words: [text_from_bytes([u8(119)]), "tail"]};
+}
+Replace :: (value: ^Box, calls: ^int) -> string {
+    value^ = Make(calls, 9);
+    return "changed";
+}
+Template :: () -> string { return "{}|{:>30s}|{:.1s}|{:x}|{:c}|{:*d}|{:n}"; }
+Main :: () -> int {
+    calls := 0;
+    value := Make(&calls, 3);
+    saved := value;
+    summary := format_text(Template(), value, value, value, value, value, value, value);
+    assert(summary == "record_summary.Box|record_summary.Box|record_summary.Box|record_summary.Box|record_summary.Box|record_summary.Box|record_summary.Box", "record summaries ignore all modifiers");
+    assert(calls == 1 && text_byte_length(value.title) == 3);
+    changed := format_text("{}|{}|{}", value, Replace(&value, &calls), value);
+    assert(changed == "record_summary.Box|changed|record_summary.Box" && calls == 2);
+    assert(text_byte_length(saved.title) == 3 && text_byte_length(value.title) == 9, "summary evaluation preserves value copies");
+    assert(format_text("{}|{}", value.inner, imported.Make()) == "record_summary.Inner|record_summary_import.Named", "nested and imported qualified names");
+    assert(format_text("{}", [imported.Make()][0]) == "record_summary_import.Named", "temporary record-array element");
+    assert(format_text("{}", Make(&calls, 3).inner) == "record_summary.Inner", "fresh base releases after field summary");
+    assert(format_text("{}", [Make(&calls, 3)][0]) == "record_summary.Box", "fresh owning array element");
+    long: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA = {code: 1};
+    assert(format_text("{}", long) == "record_summary.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "qualified names truncate to 63 bytes");
+    for (index in 0..<64) {
+        before := calls;
+        temporary := format_text("{1}|{0}|{1}", Make(&calls, 5), Make(&calls, 7));
+        assert(temporary == "record_summary.Box|record_summary.Box|record_summary.Box" && calls == before + 2);
+    }
+    before := calls;
+    bounded := format_text("{12}|{11}", Make(&calls, 1), Make(&calls, 1), Make(&calls, 1), Make(&calls, 1), Make(&calls, 1), Make(&calls, 1), Make(&calls, 1), Make(&calls, 1), Make(&calls, 1), Make(&calls, 1), Make(&calls, 1), Make(&calls, 1), Make(&calls, 1));
+    assert(bounded == "|record_summary.Box" && calls == before + 13, "ignored arguments still evaluate after the existing 12-value bound");
+    return 0;
+}
+Frame :: () -> int { result := Main(); assert(result == 0); return 42; }

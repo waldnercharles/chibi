@@ -120,8 +120,9 @@ pub TextDrop: int : 34;
 pub TextTake: int : 35;
 // output = format_text(arguments...), a string the runtime makes: the
 // argument slots are this function's arguments[right, right + target), a
-// string format then numbers, bools and strings, as a call's are. The string
-// lives until the call from the VM returns.
+// string format then scalars/text or collection counts, as a call's are.
+// Literal bits 1..12 mark immutable record-name text arguments, whose modifiers
+// are ignored; other bits are zero. These tags need a program/family context.
 pub Format: int : 36;
 // Ends the call from the VM with the failure of the assert at source bytes
 // [left, right) of the function whose stable ID is `literal`: the context's
@@ -836,8 +837,15 @@ FormatTag :: (type: int) -> int {
 FormatValid :: (slots: int[], arguments: int[], item: Instruction) -> bool {
     if (item.type != abi.TextStorage || item.left != 0 || item.target < 1 || item.right < 0 ||
         item.right > length(arguments) - item.target ||
-        !Typed(slots, arguments[item.right], abi.TextStorage)) {
+        !Typed(slots, arguments[item.right], abi.TextStorage) || item.literal < 0 ||
+        (item.literal & ~abi.FormatRecordMask) != 0) {
         return false;
+    }
+    for (argument in 1..<13) {
+        if (abi.FormatRecordArgument(item.literal, argument) &&
+            (argument >= item.target || !Typed(slots, arguments[item.right + argument], abi.TextStorage))) {
+            return false;
+        }
     }
     for (index in 1..<item.target) {
         slot := arguments[item.right + index];
@@ -1219,6 +1227,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             return Result.Rejected(base + pc, "native format differs from its operands");
         }
         if (item.op == Format && !ProgramMode(mode) && !family) {
+            if (item.literal != 0) {
+                return Result.Rejected(base + pc, "aggregate formatting requires a standalone or execution-family context");
+            }
             for (argument in 1..<item.target) {
                 if (FormatTag(slots[arguments[item.right + argument]]) >= abi.FormatArrayTag) {
                     return Result.Rejected(base + pc, "aggregate formatting requires a standalone or execution-family context");
@@ -2921,6 +2932,7 @@ FormatInstruction :: (slots: int[], arguments: int[], item: Instruction, pc: int
         name := format_text("f{}_{}", pc, index);
         out = format_text("{}{}", out, Load(name, type, "s", slot));
         tag := FormatTag(type);
+        if (abi.FormatRecordArgument(item.literal, index)) { tag = abi.FormatRecordTag; }
         empty := format_text("{ i32 {}, i32 0, i64 0, ptr null }", tag);
         if (tag == abi.FormatArrayTag || tag == abi.FormatMapTag) {
             out = format_text("{}  %{}.count = extractvalue {} %{}, 0\n", out, name, TypeName(type), name);

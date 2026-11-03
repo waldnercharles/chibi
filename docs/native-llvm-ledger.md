@@ -16,6 +16,14 @@ standalone managed pointer roots have focused execution and lifetime proofs.
 Aggregate pointers, remaining array/pattern forms, shared collector ownership
 and deep retained snapshots are being completed.
 
+Native `format_text` accepts pointer-free records, including records with owned
+fields. It prints the qualified type name, truncated to 63 bytes, and ignores
+format modifiers as the ordinary runtime does. Operands still execute in source
+order; record temporaries release their owned fields after evaluation. Standalone
+and shared-generation fixtures run at O0/O2. The ordinary oracle checks names and
+modifiers; standalone poison tests check allocation balance. Pointer-bearing
+arguments remain rejected.
+
 Native `run --watch` loads shared generations on Linux x64 and macOS arm64.
 Tests cover rejected edits, Main running once, retained primitive arrays and
 tasks continuing in their original generation. A composed retained-record

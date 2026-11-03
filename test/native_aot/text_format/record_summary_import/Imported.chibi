@@ -1,0 +1,3 @@
+package record_summary_import
+pub Named :: struct { code: int; }
+pub Make :: () -> Named { return {code: 7}; }

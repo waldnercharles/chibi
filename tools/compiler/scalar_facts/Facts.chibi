@@ -162,7 +162,8 @@ package scalar_facts
 // string format_text makes of them, which the runtime allocates. The
 // indexes, starts, counts and byte counts are ints. A fixed text row's
 // `literal` selects its source operand permutation through TextArgument;
-// TextFormat keeps literal 0 and its format first. A record
+// TextFormat keeps its format first; literal bits 1..12 mark record-summary
+// text arguments, whose modifiers are ignored. Other bits are zero. A record
 // literal is a Zero row with the literal's range, then each
 // field's value in source order and its Update, with the field's range. An
 // assignment to a field, `v.f = x`, is an Assign of `v` whose operands read
@@ -546,6 +547,10 @@ pub TextSlice: int : 3;
 pub TextFormat: int : 4;
 // Consume one string, print its bytes and a newline; internal result is int 0.
 pub TextPrint: int : 5;
+// Evaluate one record, then replace its operand with this row's text: the
+// ordinary qualified type name, truncated to 63 bytes. Format's literal marks
+// these text arguments in bits 1..12 so their modifiers remain ignored.
+pub TextRecordSummary: int : 6;
 
 // Array operators.
 pub ArrayNew: int : 1;

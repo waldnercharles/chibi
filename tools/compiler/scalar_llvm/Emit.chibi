@@ -1376,7 +1376,8 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
         // Only a string literal has text, and a foreign call the library it links.
         // A reference's literal selects a record field; its type and index are checked below.
         texted := (operand.kind == facts.LiteralRow && operand.type == facts.StringType) ||
-                  operand.kind == facts.ForeignRow;
+                  operand.kind == facts.ForeignRow ||
+                  (operand.kind == facts.TextRow && operand.value == facts.TextRecordSummary);
         managed_borrow := operand.kind == facts.ManagedRow && operand.value == facts.ManagedBorrow &&
                           operand.type >= facts.ReferenceType && ManagedValue(rows, records, operand.type - facts.ReferenceType, operand.literal);
         if ((!texted && operand.text != "") || (!Valued(records, operand.type) && !managed_borrow) || !Located(operand, starts, size) ||
@@ -1733,6 +1734,15 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 return error;
             }
             stack = slice(stack, 0, length(stack) - ArrayOperands(operand));
+        } else if (operand.kind == facts.TextRow && operand.value == facts.TextRecordSummary) {
+            base := length(stack) - 1;
+            if (operand.name != "" || operand.type != facts.StringType || operand.count != 1 || operand.literal != 0 ||
+                strings.ByteLength(operand.text) > 63 || base < floor ||
+                stack[base] < facts.RecordType || stack[base] >= facts.ArrayType ||
+                rows[records[stack[base] - facts.RecordType]].kind != facts.RecordRow) {
+                return "scalar record summary differs from its operands";
+            }
+            stack = slice(stack, 0, base);
         } else if (operand.kind == facts.TextRow) {
             formats := operand.value == facts.TextFormat;
             consumed := TextOperands(operand.value);
@@ -1746,18 +1756,29 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             orders := 1;
             if (!formats && consumed == 2) { orders = 2; }
             if (!formats && consumed == 3) { orders = 6; }
-            if (operand.literal < 0 || operand.literal >= i64(orders)) {
+            if ((!formats && (operand.literal < 0 || operand.literal >= i64(orders))) ||
+                (formats && (operand.literal < 0 || (operand.literal & ~abi.FormatRecordMask) != 0))) {
                 return "scalar text read differs from its operands";
             }
             base := length(stack) - consumed;
             if (operand.name != "" || consumed == 0 || operand.count != consumed || operand.type != output ||
-                base < floor || stack[base + facts.TextArgument(consumed, int(operand.literal), 0)] != facts.StringType) {
+                base < floor || (!formats && stack[base + facts.TextArgument(consumed, int(operand.literal), 0)] != facts.StringType) ||
+                (formats && stack[base] != facts.StringType)) {
                 return "scalar text read differs from its operands";
+            }
+            if (formats) {
+                for (argument in 1..<13) {
+                    if (abi.FormatRecordArgument(operand.literal, argument) &&
+                        (argument >= consumed || stack[base + argument] != facts.StringType)) {
+                        return "scalar record summary mask differs from its operands";
+                    }
+                }
             }
             // Collection arguments contribute only their by-value counts.
             // The other text natives still take ints after their string.
             for (parameter in 1..<consumed) {
-                index := facts.TextArgument(consumed, int(operand.literal), parameter);
+                index := parameter;
+                if (!formats) { index = facts.TextArgument(consumed, int(operand.literal), parameter); }
                 given := stack[base + index];
                 collection := Element(records, given) > 0 ||
                               (given >= facts.MapType && given < facts.ReferenceType && Valued(records, given));
@@ -3163,7 +3184,29 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 mutated_owned := false;
                 array_place := false;
                 extra := 0;
-                if (operand.kind == facts.LiteralRow && operand.type == facts.StringType) {
+                // The nominal name does not inspect or retain the record's
+                // fields. Its immediate producer can lend the value without
+                // acquiring owners; genuinely fresh inputs still get dropped.
+                record_summary := index + 1 < first + row.count && rows[index + 1].kind == facts.TextRow &&
+                                  rows[index + 1].value == facts.TextRecordSummary;
+                name_only := record_summary &&
+                    ((operand.kind == facts.ReadRow && !Referenced(rows, head, operand.value) &&
+                      !ManagedVariable(pointer_boxes.boxed, operand.value)) ||
+                     operand.kind == facts.FieldRow || operand.kind == facts.PayloadRow ||
+                     operand.kind == facts.UnwrapRow);
+                if ((operand.kind == facts.LiteralRow && operand.type == facts.StringType) ||
+                    (operand.kind == facts.TextRow && operand.value == facts.TextRecordSummary)) {
+                    if (operand.kind == facts.TextRow) {
+                        held := stack[length(stack) - 1];
+                        stack = slice(stack, 0, length(stack) - 1);
+                        if (Holds(fresh, held)) {
+                            dropped := DropValue(managed, slots[shape.first_slot + held], held);
+                            slots.extend(dropped.slot_types);
+                            body.extend(dropped.code);
+                            extra += length(dropped.slot_types);
+                            fresh = Without(fresh, held);
+                        }
+                    }
                     // A repeated literal or default shares one entry.
                     item.literal = i64(length(texts));
                     for (index in 0..<length(texts)) {
@@ -4094,6 +4137,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     // The format and its arguments are argument slots, as a
                     // call's are.
                     item = Op(native.Format, type, slot, 0, shape.arguments, operand.count);
+                    item.literal = operand.literal;
                     base := length(stack) - operand.count;
                     for (argument in 0..<operand.count) {
                         passed := stack[base + argument];
@@ -4198,7 +4242,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     body.extend(glue.before);
                     body.append(item);
                     body.extend(glue.after);
-                } else { body.append(item); }
+                } else if (!name_only) { body.append(item); }
                 produced := slot;
                 if ((operand.kind == facts.ManagedRow && operand.value != facts.ManagedBorrow ||
                     operand.kind == facts.ReadRow && ManagedVariable(pointer_boxes.boxed, operand.value)) &&
@@ -4222,10 +4266,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     // Later operands can replace the source through a scoped
                     // call. Projected reads copy only the selected field;
                     // direct returns use the existing owned-variable move.
-                    projected := index + 1 < first + row.count &&
+                    projected := record_summary || (index + 1 < first + row.count &&
                                  (rows[index + 1].kind == facts.FieldRow || rows[index + 1].kind == facts.PayloadRow ||
                                   rows[index + 1].kind == facts.TagRow || rows[index + 1].kind == facts.UnwrapRow ||
-                                  rows[index + 1].kind == facts.OptionalFieldRow);
+                                  rows[index + 1].kind == facts.OptionalFieldRow));
                     if (!projected && !(row.kind == facts.ReturnRow && row.count == 1)) {
                         kept := KeepValue(managed, operand.type, slot, slot + 1 + extra);
                         slots.extend(kept.slot_types);
@@ -4240,14 +4284,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                      operand.kind == facts.UnwrapRow) &&
                     TrackedRecord(managed, item.right)) {
                     // A later operand may replace even a non-temporary base.
-                    kept := KeepValue(managed, operand.type, produced, slot + 1 + extra);
-                    slots.extend(kept.slot_types);
-                    body.extend(kept.code);
-                    extra += length(kept.slot_types);
-                    produced = kept.value;
-                    if (type == abi.TextStorage && length(closes) > 0) { logical_strings.append(produced); }
-                    else if (type == abi.TextStorage || TrackedRecord(managed, type) ||
-                             (type >= native.ArrayType && type < native.MapType)) { fresh.append(produced); }
+                    if (!record_summary) {
+                        kept := KeepValue(managed, operand.type, produced, slot + 1 + extra);
+                        slots.extend(kept.slot_types);
+                        body.extend(kept.code);
+                        extra += length(kept.slot_types);
+                        produced = kept.value;
+                        if (type == abi.TextStorage && length(closes) > 0) { logical_strings.append(produced); }
+                        else if (type == abi.TextStorage || TrackedRecord(managed, type) ||
+                                 (type >= native.ArrayType && type < native.MapType)) { fresh.append(produced); }
+                    }
                     if (Holds(fresh, item.left)) {
                         dropped := DropValue(managed, item.right, item.left);
                         slots.extend(dropped.slot_types);
@@ -4273,7 +4319,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 if (operand.kind == facts.MakeRow && TrackedRecord(managed, type)) { fresh.append(produced); }
                 if (operand.kind == facts.ViewRow && facts.ViewOperation(operand.value) == facts.ViewSlice &&
                     TrackedRecord(managed, type)) { fresh.append(produced); }
-                if (retained_record) {
+                if (retained_record && !record_summary) {
                     kept := KeepValue(managed, operand.type, produced, slot + 1 + extra);
                     slots.extend(kept.slot_types);
                     body.extend(kept.code);

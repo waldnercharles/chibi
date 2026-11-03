@@ -1784,6 +1784,7 @@ ScalarText :: (forest: snapshot.SnapshotNode[], text: string, callables: Callabl
     // Each fixed source operand stores its parameter in two bits. Variadic
     // formats need no permutation and no temporary argument table.
     parameters := 0;
+    summaries: i64 = 0;
     output := rows;
     for (input, ordinal in inputs) {
         argument := input;
@@ -1807,7 +1808,7 @@ ScalarText :: (forest: snapshot.SnapshotNode[], text: string, callables: Callabl
                                        operator, parameter, argument);
         if (expected.storage == 0) {
             return ScalarOperands.Failed(Diagnose(forest, argument, 0,
-                                                  "scalar proof formats only numbers, bools, strings, arrays and maps"));
+                                                  "scalar proof formats only numbers, bools, strings, records, arrays and maps"));
         }
         if (operator == facts.TextFormat && ScalarFormatPointer(types, members, expected)) {
             return ScalarOperands.Failed(Diagnose(forest, argument, 0,
@@ -1820,6 +1821,9 @@ ScalarText :: (forest: snapshot.SnapshotNode[], text: string, callables: Callabl
         } else if (expected.container == MapContainer) {
             value = ScalarMapValue(forest, text, callables, params, callable, names, types, members, constants,
                                    argument, expected.record, false, output);
+        } else if (expected.storage == StructStorage) {
+            value = ScalarRecordValue(forest, text, callables, params, callable, names, types, members, constants,
+                                      argument, expected.record, output);
         } else {
             value = ScalarConvert(forest, text, callables, params, callable, names, types, members, constants, argument,
                                    argument, expected.storage, expected.storage, facts.Clamp, output);
@@ -1827,6 +1831,14 @@ ScalarText :: (forest: snapshot.SnapshotNode[], text: string, callables: Callabl
         switch value {
             case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
             case .Built(built): output = built;
+        }
+        if (expected.storage == StructStorage && expected.container == 0) {
+            summary := ScalarAt(forest, argument, facts.TextRow, facts.StringType, facts.TextRecordSummary, 1, "");
+            // pin_value_to_string's 64-byte buffer truncates bytes, including
+            // a partial UTF8 code point, rather than inspecting record fields.
+            summary.text = strings.Slice(types[expected.record].type_name, 0, 63);
+            output.append(summary);
+            if (ordinal <= 12) { summaries |= i64(1) << u32(ordinal); }
         }
     }
     count := length(inputs);
@@ -1837,6 +1849,7 @@ ScalarText :: (forest: snapshot.SnapshotNode[], text: string, callables: Callabl
     type := facts.IntType;
     if (operator == facts.TextSlice || operator == facts.TextFormat) { type = facts.StringType; }
     operation := ScalarAt(forest, node, facts.TextRow, type, operator, count, "");
+    if (operator == facts.TextFormat) { operation.literal = summaries; }
     if (operator != facts.TextFormat && count > 1) {
         orders := 2;
         if (count == 3) { orders = 6; }
@@ -1859,7 +1872,7 @@ ScalarText :: (forest: snapshot.SnapshotNode[], text: string, callables: Callabl
 // array/record schemas need not have recursive inline layouts. This is a
 // compile-time schema check, never a walk over runtime elements or pointees.
 ScalarFormatPointer :: (types: TypeDecl[], members: TypeMember[], shape: ValueType) -> bool {
-    if (shape.storage == PointerStorage) { return true; }
+    if (shape.storage == PointerStorage || shape.container == ViewContainer) { return true; }
     if (shape.container == 0 && ScalarTypeOf(shape.storage) != 0) { return false; }
     if (shape.record < 0) { return false; }
     seen: [int: bool] = [:];
@@ -1874,14 +1887,14 @@ ScalarFormatPointer :: (types: TypeDecl[], members: TypeMember[], shape: ValueTy
         if (declared.kind == PointerDecl) { return true; }
         if (declared.kind == MapDecl || declared.kind == CollectionDecl ||
             declared.kind == OptionalDecl || declared.kind == TaskResultDecl) {
-            if (declared.value_storage == PointerStorage) { return true; }
+            if (declared.value_storage == PointerStorage || declared.value_container == ViewContainer) { return true; }
             if (declared.value_record >= 0) { pending.append(declared.value_record); }
         } else if (declared.kind == UnionDecl) {
             for (variant in declared.first..<declared.first + declared.count) { pending.append(variant); }
         } else {
             for (field in declared.first..<declared.first + declared.count) {
                 member := members[field];
-                if (member.storage == PointerStorage) { return true; }
+                if (member.storage == PointerStorage || member.container == ViewContainer) { return true; }
                 if (member.record >= 0) { pending.append(member.record); }
             }
         }
@@ -1890,7 +1903,7 @@ ScalarFormatPointer :: (types: TypeDecl[], members: TypeMember[], shape: ValueTy
 }
 // The shape a text native's parameter `index`, `argument`, takes; storage 0
 // means unsupported. A text native takes its string, then ints, and for
-// format_text its format then a scalar/text value or a collection descriptor.
+// format_text its format then a scalar/text value, record or collection descriptor.
 // Counts stay in the descriptor's value snapshot, not its backing storage.
 ScalarTextArgument :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                        callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
@@ -1908,7 +1921,8 @@ ScalarTextArgument :: (forest: snapshot.SnapshotNode[], text: string, callables:
         found := Lookup(names, Text(forest, text, node));
         if (found >= 0) {
             binding := names[found];
-            if ((binding.container == 0 && ScalarTypeOf(binding.storage) != 0) ||
+            if ((binding.container == 0 && (ScalarTypeOf(binding.storage) != 0 ||
+                 (binding.storage == StructStorage && ScalarRecordType(types, binding.record) != 0))) ||
                 (binding.container == ArrayContainer && ScalarArrayType(types, binding.storage, binding.record) != 0) ||
                 (binding.container == MapContainer && ScalarMapType(types, binding.record) != 0)) {
                 return {storage: binding.storage, container: binding.container, record: binding.record};
@@ -1922,6 +1936,12 @@ ScalarTextArgument :: (forest: snapshot.SnapshotNode[], text: string, callables:
     }
     storage := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants,
                                     argument, 0);
+    if (storage == StructStorage) {
+        record := ScalarRecordOf(forest, text, callables, params, names, types, members, callable.package, node);
+        if (record >= 0 && ScalarRecordType(types, record) != 0) {
+            return {storage: StructStorage, container: 0, record: record};
+        }
+    }
     if (ScalarTypeOf(storage) == 0) {
         storage = 0;
     }

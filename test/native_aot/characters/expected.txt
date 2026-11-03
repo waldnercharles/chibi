@@ -9,4 +9,5 @@ PASS characters.RejectUnsignedMaximum
 PASS characters.ScalarBoundaries
 PASS foreign_character.ForeignCharacterNameIsStillAConversion
 PASS procedure_character.ProcedureCharacterName
+PASS procedure_character.VoidProcedureCallsPreserveTheirEffects
 PASS shadow.AuthoredCharacterName

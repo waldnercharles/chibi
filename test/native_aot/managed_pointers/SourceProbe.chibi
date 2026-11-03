@@ -49,10 +49,27 @@ Main :: () -> int {
             if (strings.HasSuffix(args[index], "/Records.ll")) {
                 checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %peak, 30000");
             }
+            if (strings.HasSuffix(args[index], "/StringArrays.ll") || strings.HasSuffix(args[index], "/ViewStrings.ll")) {
+                // Each 88-byte cell owns backing plus two text allocations.
+                // The 64 KiB threshold permits fewer than 3000 such live
+                // allocations, plus the fixture's few permanent owners.
+                checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %peak, 4096");
+            }
             if (strings.HasSuffix(args[index], "/ViewAppend.ll")) {
                 // One cell plus geometric backing growth for 4096 appends;
                 // a snapshot copy on each append exceeds this by two orders.
                 checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %total, 32");
+            }
+            if (strings.HasSuffix(args[index], "/TextSpan.ll")) {
+                // 4096 immutable windows acquire existing text owners. Only
+                // the source and fixed runtime setup need allocation.
+                checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %total, 32");
+            }
+            if (strings.HasSuffix(args[index], "/TextBorrowed.ll")) {
+                // Uncounted host/literal bytes must be imported before a
+                // view escapes. Each nonempty window needs its own owner.
+                checked_audit = strings.ReplaceAll(checked_audit, "%bounded = icmp ule i64 %peak, 2048",
+                    "%imported = icmp uge i64 %total, 4096\n  %setup = icmp ule i64 %total, 4128\n  %bounded = and i1 %imported, %setup");
             }
             if (os.WriteText(module, strings.Concatenate([current, checked_audit]))) { return 2; }
             for (level in [int(0), 2]) {

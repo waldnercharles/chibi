@@ -1,0 +1,4 @@
+package foreign_strings
+foreign import libc "system:c"
+foreign libc { Touch :: (values: string[]) -> int }
+Main :: () -> int { values: string[] = ["text"]; pointer := &values; return Touch(pointer^); }

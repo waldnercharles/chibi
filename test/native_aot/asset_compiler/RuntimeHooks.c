@@ -21,6 +21,8 @@ extern int chibi_asset_resource_remove(uint64_t, int);
 extern int chibi_asset_publish(const unsigned char *, int);
 extern int chibi_native_scope_begin(uint64_t);
 extern void chibi_native_step(void);
+extern void chibi_native_reference_unavailable(void);
+extern void chibi_native_array_mutation_unavailable(void);
 extern unsigned char *asset_compiler_wasm_compile_cached(
     const char *,
     size_t,
@@ -122,10 +124,10 @@ int chibi_scalar(void *context)
         // This new file belongs to that callback, not to the old temporary.
         EM_ASM(
             {
-                Module['chibiAssetCacheDirty'] = () = > FS.writeFile(
-                                                            UTF8ToString($0),
-                                                            new Uint8Array([77])
-                                                        );
+                Module['chibiAssetCacheDirty'] = function()
+                {
+                    FS.writeFile(UTF8ToString($0), new Uint8Array([77]));
+                };
             },
             temporary_path
         );
@@ -152,13 +154,21 @@ int chibi_scalar(void *context)
     if (mode == 4) {
         return 2;
     }
+    if (mode == 5) {
+        chibi_native_reference_unavailable();
+        abort();
+    }
+    if (mode == 6) {
+        chibi_native_array_mutation_unavailable();
+        abort();
+    }
     return chibi_asset_publish((const unsigned char *)"ok", 2);
 }
 
 int main(void)
 {
     memset(long_salt, 's', sizeof(long_salt) - 1);
-    for (mode = 0; mode != 5; ++mode) {
+    for (mode = 0; mode != 8; ++mode) {
         stopped = false;
         asset_compiler_options options = { .cache_directory = "",
                                            .cancelled = cancelled,
@@ -175,7 +185,7 @@ int main(void)
                                         &diagnostic
                                     )
                                   : asset_compiler_wasm_compile("{}", 2, &length, &options, &diagnostic);
-        if (mode < 2) {
+        if (mode < 2 || mode == 7) {
             require(output && length == 2 && !memcmp(output, "ok", 2));
         } else {
             require(!output && length == 0 && diagnostic.message[0]);
@@ -198,6 +208,6 @@ int main(void)
         }
         require(asset_compiler_wasm_test_allocations() == 0);
     }
-    puts("PASS Wasm call options and resource cleanup after normal return, failure, quota and cancellation");
+    puts("PASS Wasm call options, logical-place recovery and resource cleanup after normal return, failure, quota and cancellation");
     return 0;
 }

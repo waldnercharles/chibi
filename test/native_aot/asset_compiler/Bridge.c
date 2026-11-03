@@ -96,6 +96,26 @@ static bool cancelled(void *user)
     (void)user;
     return true;
 }
+static void report_discovery_failure(
+    const unsigned char *bytes,
+    size_t length,
+    const asset_compiler_diagnostic *diagnostic
+)
+{
+    if (!bytes || length != 329) {
+        fprintf(
+            stderr,
+            "native asset SDK discovery: output=%s length=%zu "
+            "diagnostic=%d:%d:%d %s\n",
+            bytes ? "present" : "NULL",
+            length,
+            diagnostic->document,
+            diagnostic->line,
+            diagnostic->column,
+            diagnostic->message
+        );
+    }
+}
 int main(int argc, char **argv)
 {
     assert(argc == 7);
@@ -249,9 +269,11 @@ int main(int argc, char **argv)
     options.compile_budget = 0;
     options.program = NULL;
     bytes = asset_compiler_compile_closure(request, strlen(request), &length, &options, &diagnostic);
+    report_discovery_failure(bytes, length, &diagnostic);
     assert(bytes && length == 329); /* SDK-relative service discovery. */
     free(bytes);
     bytes = asset_compiler_compile_closure(request, strlen(request), &length, NULL, &diagnostic);
+    report_discovery_failure(bytes, length, &diagnostic);
     assert(bytes && length == 329); /* NULL options use the same discovery. */
     free(bytes);
     options.program = argv[5];

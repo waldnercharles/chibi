@@ -30,7 +30,7 @@ descriptor rejection, shared tracing once per backing/epoch, borrowed array
 imports, cross-heap rejection before epoch shortcuts and malformed pin CFGs.
 Persistent roots also survive a spawning function's stack-boundary restore.
 Real collection after middle, tail and head removal checks non-LIFO cleanup
-and the surviving value at O0/O2. The heap is 56 bytes; persistent nodes are
+and the surviving value at O0/O2. The heap is 64 bytes; persistent nodes are
 32 bytes and unlink in constant time. Stack roots retain their 24-byte ABI.
 
 Raw native IR clients must pin each live pointer-array owning place or fresh
@@ -78,7 +78,7 @@ aliases, value copies, variable element writes/append and canonical foreign
 byte-buffer writes. Inline pointer-bearing record arrays and array-backed
 record cells still need their respective tracing and place lowering.
 
-Numeric/bool pointer-backed views use a 32-byte cell/start/count descriptor.
+Scalar/string pointer-backed views use a 32-byte cell/start/count descriptor.
 They follow replacement and growth of that cell while retaining a fixed window;
 ordinary array copies, view clones and slices keep their value semantics.
 Direct views and their optional union slots are traced. The source proof runs
@@ -86,12 +86,24 @@ the original nine successful kernels, an escaped optional-only root under
 collection, and initial/late mutation failure checks. A separate 4096-append
 entry requires at most 32 allocations; the current implementation uses 13.
 Fatal failure probes check their category with poisoned frees, while successful
-probes also require zero live allocations. Authored unions with one empty
-variant and one primitive-view payload reuse the same traced tag/window layout.
+probes also require zero live allocations. String reads acquire an independent
+text owner before later callbacks can replace the backing. Writes preserve the
+incoming owner before releasing the old element; clones and slices copy through
+the ordinary typed array lifecycle, including each text owner.
+Authored unions with one empty variant and one scalar/string view payload reuse
+the same traced tag/window layout.
 Their source proof covers returned union-only roots, owner replacement, switch
 and `is` bindings, and either tag order. Pattern bindings remain read-only.
-Ordinary source already rejects view fields in records. Views over strings,
-records, nested arrays or union elements, and immutable `text.view(range)`, are
+Immutable text views acquire the existing counted string owner; uncounted
+host or literal bytes are copied before the view escapes. Half-open ranges
+count bytes, including embedded NULs and partial UTF-8 sequences; invalid
+bounds give absence and valid empty ranges give a present empty string.
+Bracket slices and clones independently copy their bytes. The source proof
+checks returned temporaries, callback evaluation order, strict bounds, and
+4096 counted windows without a new backing allocation per window, and 4096
+uncounted windows with an independently owned copy for each.
+Ordinary source already rejects view fields in records. Views over records,
+nested arrays or union elements are
 working ordinary forms still awaiting native support. View containers, retained
 views and suspended view frames also remain outside this admission.
 
@@ -104,3 +116,18 @@ keeps the existing flat-record rule. Backing owners and pointer/view edges
 inside optional cells remain outside this slice. The original four fallible
 pointer cases run at O0/O2, and the poisoned source proof checks escaped cells,
 early returns and forced collection with bounded peak allocation.
+
+String-array cells use the same descriptor and backing lifecycle as numeric
+array cells. Last cell release drops the backing and its owned text values;
+evaluated reads hold independent array owners before later callbacks can
+replace the cell. The source proof uses embedded NUL strings, escaped cells,
+value copies, scoped aliases and replacement during operand evaluation. Its
+normal-threshold peak bound includes backing and text allocations per cell;
+forced-collection runs retain the same zero-live requirement.
+
+The family heap includes callback depth and collection state. Collector
+requests during a guarded callback or active sweep defer to a legitimate
+spilled-root safe point; callback return never collects transient values.
+The raw collector proof checks these requests below threshold, recursive
+release requests, depth bounds and nested construction outside collection.
+Constructing a managed cell during sweep traps before allocation or linking.

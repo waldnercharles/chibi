@@ -76,3 +76,45 @@ PokeRejectsAWrongValue :: () {
     code[16] = Code(native.Poke, 6, 0, 5, 1, 0, 0);
     Rejects(ReferenceModule(code, ReferenceSlots(), [6, Ref]), "native reference differs from its operands");
 }
+
+InlineFieldReferences :: () -> native.Instruction[] {
+    root := native.RecordType;
+    inner := root + 1;
+    array := native.ArrayType + abi.ByteStorage;
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, root, 0, 0, 0, 0, 0),
+            Code(native.Save, root, 0, 0, 0, 0, 0),
+            Code(native.FieldAddress, native.RefType + inner, 1, 0, root, 0, 0),
+            Code(native.Save, native.RefType + inner, 0, 1, 0, 1, 0),
+            Code(native.FieldAddress, native.RefType + array, 2, 1, inner, 1, 0),
+            Code(native.Deref, array, 3, 2, 0, 0, 0),
+            Code(native.ArrayLength, abi.IntStorage, 4, 3, 0, 0, 0),
+            Code(native.Publish, abi.IntStorage, 0, 4, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+InlineFieldModule :: (code: native.Instruction[]) -> native.Result {
+    root := native.RecordType;
+    inner := root + 1;
+    array := native.ArrayType + abi.ByteStorage;
+    shape: native.Function = {result: abi.IntStorage, first_parameter: 0, parameters: 0, first_slot: 0, slots: 5,
+                              first_local: 0, locals: 2, first_code: 0, code: length(code), first_argument: 0, arguments: 0};
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 1, identity: 0}];
+    return native.Emit(abi.LinuxX64(), [shape], [], [root, code[3].type, native.RefType + array, array, abi.IntStorage],
+                       [root, native.RefType + inner], code, [], records, [inner, array], [],
+                       {file: "", directory: ""}, [], [], [], false, 1);
+}
+@test
+InlineFieldReferencesKeepTheirParentLayout :: () {
+    text := Emitted(InlineFieldModule(InlineFieldReferences()));
+    assert(strings.Contains(text, "getelementptr inbounds %record0"));
+    assert(strings.Contains(text, "getelementptr inbounds %record1"));
+}
+@test
+InlineFieldReferencesRejectWrongFieldAndResult :: () {
+    code := InlineFieldReferences();
+    bad := code[3]; bad.literal = 1; code[3] = bad;
+    Rejects(InlineFieldModule(code), "native field reference differs from its record");
+    code = InlineFieldReferences();
+    bad = code[3]; bad.type = native.RefType + abi.IntStorage; code[3] = bad;
+    Rejects(InlineFieldModule(code), "native field reference differs from its record");
+}

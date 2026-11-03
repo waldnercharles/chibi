@@ -1,0 +1,8 @@
+package deep_labels
+Inner :: struct { values: int[]; }
+Root :: struct { inner: Inner; }
+Main :: () -> int {
+    value: Root = {inner: {values: [int(1)]}};
+    value.inner.values.insert(Item: 9, Index: 0);
+    return 0;
+}

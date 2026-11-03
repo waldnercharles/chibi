@@ -7,7 +7,50 @@ following CI merge `a76ea8005`. Further work is composed on
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
-## Current checkpoint, 2 November
+## Current composition: 200b6eb56
+
+The current compiler includes optional and union map values, owned task results,
+string-array views, deep inline array places, ordinary record-array resize
+failures, record formatting, immutable text sequences and true void foreign
+calls. It builds in 20.69 seconds and passes all 480 compiler tests in 24.45
+seconds. Coupled task and managed-pointer/text checks are running against the
+frozen source in `/private/tmp/chibi-200b-proof`; this revision has no new
+fixed-point claim yet.
+
+The preceding `ce3adf842` composition reproduces between macOS stages three and
+four, SHA-256 `7cdad0bf57e64ebfbab323345a731dce39b333708c43c921e7e38110d7bd0f9a`.
+Its three builds took 19.12, 19.62 and 19.81 seconds; the older producer's stage
+two differs. All 474 compiler tests passed in 23.34 seconds. Composed managed
+values passed in 45.80 seconds, tasks including image-unload ownership in 38.63,
+formatting in 10.93 and array operations in 26.73. Evidence is in
+`/private/tmp/chibi-ce3a-proof`.
+
+That source's product build passes with CC/CXX disabled in 62.61 seconds, and
+full SDK installation/relocation passes in 85.10. The C consumer then exposed
+missing logical-place failure adapters in the authored archive. `0cfff8230`
+adds them to the desktop and Wasm runtime templates. The unchanged C consumer
+passes in 7.00 seconds against the rebuilt archive; Wasm resource cleanup and
+successful-call recovery pass at O0/O2 in 2.19. Hosted macOS job `125743532364`
+of run `41583508859` has the same missing-symbol failure at published `6b46f9261`.
+Linux's fixed-point phase is still active; the downstream Windows job has not
+started. These are separate revision-specific results, not platform acceptance.
+
+The parity audit at `a0a7ae3c5` preserves all 255 previously passing names and
+passes 263 tests in the four affected sample families. Seven cases remain
+uncompiled; all are accepted by the ordinary compiler. Strict array ranges and
+aggregate views have active owners. Nested map ownership, mapped foreign
+buffers, managed task results and void C callback adapters are also in progress.
+The collector callback foundation is composed: the heap is 64 bytes and its
+family ABI is 3. Complete callback routing and safe-point polls are still in
+progress; the foundation alone does not fix the reproduced collection-reentry
+failure. Native instruction IDs 107/108 remain reserved for those polls.
+
+The C/VM/recovery deletion candidate remains held until these native behavior
+replacements and supported-platform products pass. Its independent Driver and
+Graph command fixtures preserve the comparison obligations; removing an old
+comparison is not a parity pass. PR #1331 remains open and is not ready to merge.
+
+## Earlier checkpoint, 2 November
 
 The composition at `95ec7d976` includes the bounded constructor fix, authored
 asset-compiler facade and archive builder, native host clock projection and
@@ -644,3 +687,53 @@ new owner decision. Ordinary CI does not replace full sanitizer and clean
 bootstrap acceptance. Further cache work is stopped; performance work targets
 measured compiler-code costs. The latest matched hosted comparison showed no
 overall CI speedup.
+
+
+## Native integration checkpoint: 41ff027d9
+
+The native compiler now supports owned task frames across suspension, plain
+optional managed cells, primitive views in authored unions, retained nested
+array mutation, array-backed record map values and generic owned array map
+payloads. String-array managed cells use the existing typed array copy/drop
+helpers. Inline record fields preserve their canonical place through foreign
+buffer calls. The Linux logical-place failure path now keeps program ownership
+separate from an armed instruction-budget scope.
+
+The exact compiler source at `16ccee98e` reproduces identical macOS stages two,
+three and four, SHA-256
+`07a5532a09e669a0cda04029343375053687274f8a6bc407215e7e1e9e6706af`.
+Builds took 20.56, 21.61 and 24.23 seconds under shared load. All 463 compiler
+tests passed in 22.93 seconds. Its combined managed pointer/view source,
+collector and boundary proofs passed in 89.57 seconds; owned task lifetime
+proofs passed in 33.41 seconds. Full generation, retained snapshot/source and
+image-unload proofs passed at O0 in 51.64 seconds and O2 in 52.18 seconds.
+Evidence is in `/private/tmp/chibi-16cc-proof`.
+
+The subsequent `41ff027d9` compiler builds in 19.45 seconds and passes all 466
+compiler tests in 21.93 seconds (`/private/tmp/chibi-41ff-proof`). This includes
+inline record foreign places and the Windows linker mapping of explicit
+`system:c` imports to UCRT. Windows SDK-relative compiler discovery resolves the
+loader's original executable spelling before adding parent segments; the C
+consumer now runs with an explicit extended-length path. Actual Windows
+execution of these fixes remains required. The preceding hosted run
+`41574174752` failed SDK-relative discovery, the Host's unresolved `memchr`,
+clock source path handling, public watch readiness and the O0 math edge case.
+The clock path is fixed; math now reports the actual signed and hexadecimal
+exit status. No failing assertion or product check was removed.
+
+The target jobs' missing program manifests were downstream of Linux's graph-os
+failure: that stopped before the projects/language selectors that publish the
+native-build/native-link manifests. The exit trap still published arithmetic
+modules. The graph-os fixture's ignored fallible result is corrected. Successful
+acceptance must produce and execute all existing module and program lists.
+
+Remaining work includes owned task results, deeper projected collection places,
+string/composite views, deep composite comparison/removal and exact ordinary
+record-array resize failures. A stress test has also reproduced collection
+reentry during pointer-array backing allocation; its root/lifetime fix is a
+required retirement gate. The final C/VM/recovery deletion candidate stays held
+until these behaviors and supported-platform products pass. Driver and Graph
+command equivalence must survive removal of their obsolete VM oracle through
+independent expected fixture data, including complete command inventories.
+Neither deletion of that comparison nor the current fixed point completes the
+full self-hosting goal.

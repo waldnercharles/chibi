@@ -1,0 +1,57 @@
+package deep_array_fields
+
+Row :: struct { number: int; text: string; }
+Inner :: struct { numbers: int[]; words: string[]; rows: Row[]; }
+Root :: struct { inner: Inner; marker: int; }
+Text :: (value: int) -> string { return text_from_bytes([u8(65), 0, u8(value)]); }
+Make :: (value: int) -> Root {
+    return {inner: {numbers: [value, value + 1], words: [Text(value), Text(value + 1)],
+                    rows: [{number: value, text: Text(value)}]}, marker: value};
+}
+Change :: (root: ^Root) -> int { root^ = Make(7); return 9; }
+ChangedText :: (root: ^Root) -> string { root^ = Make(7); return Text(9); }
+Index :: (calls: ^int) -> int { calls^ += 1; return 0; }
+Copied :: (value: Root) -> Root {
+    value.inner.numbers.append(3);
+    value.inner.words[0] = Text(4);
+    return value;
+}
+Scoped :: (value: ^Root) {
+    value^.inner.words.append(Text(5));
+    value^.inner.numbers[0] = 6;
+}
+Cases :: () {
+    fetched: [int: Root] = [1: Make(1)];
+    item := fetched[1];
+    item.inner.words[0] = Text(3);
+    assert(text_byte_at(item.inner.words[0], 2) == 3 && text_byte_at(fetched[1].inner.words[0], 2) == 1);
+    value := Make(1);
+    original := value;
+    value.inner.words[0] = Text(3);
+    assert(text_byte_at(value.inner.words[0], 2) == 3 && text_byte_at(original.inner.words[0], 2) == 1);
+    value.inner.numbers.append(Change(&value));
+    assert(length(value.inner.numbers) == 3 && value.inner.numbers[0] == 7 && value.inner.numbers[2] == 9 && value.marker == 7);
+    value = Make(1);
+    calls := 0;
+    value.inner.numbers[Index(&calls)] += Change(&value);
+    assert(calls == 1 && value.inner.numbers[0] == 10 && value.inner.numbers[1] == 8 && value.marker == 7);
+    value = Make(1);
+    value.inner.rows[0].text = ChangedText(&value);
+    assert(value.inner.rows[0].number == 7 && text_byte_at(value.inner.rows[0].text, 2) == 9);
+    value = Make(1);
+    value.inner.rows[0].number += Change(&value);
+    assert(value.inner.rows[0].number == 10 && text_byte_at(value.inner.rows[0].text, 2) == 7);
+    copied := Copied(original);
+    assert(length(original.inner.numbers) == 2 && length(copied.inner.numbers) == 3);
+    assert(text_byte_at(original.inner.words[0], 2) == 1 && text_byte_at(copied.inner.words[0], 2) == 4);
+    Scoped(&copied);
+    assert(length(copied.inner.words) == 3 && copied.inner.numbers[0] == 6);
+    copied.inner.words.append(copied.inner.words[0]);
+    assert(length(copied.inner.words) == 4 && text_byte_at(copied.inner.words[3], 2) == 4);
+    copied.inner.numbers.insert(Index: 1, Item: 12);
+    copied.inner.numbers.reverse();
+    copied.inner.numbers.remove_index(0);
+    copied.inner.numbers.resize(2);
+    assert(length(copied.inner.numbers) == 2 && copied.inner.numbers[0] == 2 && copied.inner.numbers[1] == 12);
+}
+Main :: () -> int { Cases(); return 0; }

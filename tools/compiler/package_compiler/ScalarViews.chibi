@@ -7,11 +7,11 @@ import syntax "project:syntax_diagnostics"
 ScalarViewType :: (shape: ValueType) -> int {
     if (shape.container != ViewContainer || shape.record != -1) { return 0; }
     element := ScalarTypeOf(shape.storage);
-    if (element < facts.IntType || element > facts.DoubleType) { return 0; }
+    if (element < facts.IntType || element > facts.StringType) { return 0; }
     return facts.ViewType;
 }
 
-// One empty variant and one primitive-view payload have the existing
+// One empty variant and one scalar/text view payload have the existing
 // {tag, window} layout. Only union projection uses this admission; authored
 // record fields still pass through ScalarMemberType's stricter gate.
 ScalarViewUnionPayload :: (types: TypeDecl[], members: TypeMember[], held: int) -> int {
@@ -55,7 +55,7 @@ ScalarViewEffects :: (types: TypeDecl[], members: TypeMember[], roots: Root[], c
     return 0;
 }
 
-// Only a direct numeric/bool view or a presence-checked optional view is a
+// Only a direct scalar/text view or a presence-checked optional view is a
 // window. Fields and views stored in other containers remain outside this slice.
 ScalarViewShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                     names: Name[], types: TypeDecl[], members: TypeMember[], package: int, operand: int) -> ValueType {
@@ -144,7 +144,7 @@ ScalarViewValue :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
     node := Unparenthesized(forest, operand);
     shape := ScalarViewShape(forest, text, callables, params, names, types, members, callable.package, node);
     if (ScalarViewType(shape) == 0) {
-        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native views require a checked numeric or bool window"));
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native views require a checked scalar or string window"));
     }
     if (Is(forest, node, syntax.ForceUnwrapExpression)) {
         switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants,
@@ -297,12 +297,12 @@ ScalarPointerAppend :: (forest: snapshot.SnapshotNode[], text: string, callables
     if (pointer < 0 || types[pointer].key != 0) { return ScalarOperands.Built([]); }
     shape := ScalarPointerElement(types, pointer);
     element := ScalarTypeOf(shape.storage);
-    if (shape.container != ArrayContainer || shape.record != -1 || element < facts.IntType || element > facts.DoubleType) {
+    if (shape.container != ArrayContainer || shape.record != -1 || element < facts.IntType || element > facts.StringType) {
         return ScalarOperands.Built([]);
     }
     arguments := Members(forest, Field(forest, node, syntax.FieldArguments));
     if (length(arguments) != 1) {
-        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native pointer append requires one numeric or bool element"));
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native pointer append requires one scalar or string element"));
     }
     value := ScalarArrayArgumentNode(forest, arguments[0]);
     output := [ScalarAt(forest, statement, facts.ScopeRow, 0, 0, 0, "")];

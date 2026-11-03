@@ -14,6 +14,9 @@ trap 'rm -rf "$work"' EXIT HUP INT TERM
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$root/test/native_aot/array_operations/Probe.chibi" --entry Main \
     --output "$work/probe" --llvm "$llvm" --target "$target" --level 2 --jobs 2
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/apps/host/Host.chibi" --entry Main --output "$work/host" \
+    --llvm "$llvm" --target "$target" --level 2 --jobs 1
 mkdir "$work/ordinary" "$work/audited"
 "$work/probe" "$llvm" "$work/ordinary"
 "$work/probe" "$llvm" "$work/audited" "$root/test/native_aot/managed_values/Audit.ll"
@@ -60,7 +63,7 @@ for level in 0 2; do
         --root "$root/test/compiler/samples/comptime" "$root/test/compiler/samples/comptime/comptime_records_nest_and_hold_arrays/facts" \
         > "$work/original-records.log" 2>&1 || { cat "$work/original-records.log"; exit 1; }
     grep -F 'PASS project.Calls' "$work/original-records.log" > /dev/null
-    for source in Values Places Replace Assignments RecordFields RetainedFields; do
+    for source in Values Places Replace Assignments RecordFields RetainedFields Resize; do
         for mode in ordinary audited; do
             tools=$llvm
             if [ "$mode" = audited ]; then tools=$work/llvm; fi
@@ -70,6 +73,21 @@ for level in 0 2; do
             "$work/$source-$mode"
         done
     done
+    for entry in Method Functional Field Map; do
+        "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+            --source "$root/test/native_aot/array_operations/ResizeGrowth.chibi" --entry "$entry" \
+            --output "$work/resize-growth" --llvm "$llvm" --target "$target" --level "$level" --jobs 1
+        status=0
+        ("$work/resize-growth" > "$work/resize-growth.log" 2>&1) || status=$?
+        [ "$status" -eq 134 ] || { cat "$work/resize-growth.log"; echo "resize $entry status $status, expected 134" >&2; exit 1; }
+    done
+    mkdir "$work/shared-O$level"
+    "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+        --source "$root/test/native_aot/array_operations/ResizeFailure.chibi" --shared \
+        --output "$work/shared-O$level/live-0.so" --llvm "$llvm" --target "$target" --level "$level" --jobs 1
+    status=0
+    (cd "$work/shared-O$level" && "$work/host" > log 2>&1) || status=$?
+    [ "$status" -eq 134 ] || { cat "$work/shared-O$level/log"; echo "shared resize status $status, expected 134" >&2; exit 1; }
     result=0
     CHIBI_CORE="$root/packages/core" "$compiler" test --llvm "$llvm" -O"$level" "$work/checked" > "$work/checked.log" 2>&1 || result=$?
     [ "$result" -eq 1 ] || { cat "$work/checked.log"; exit 1; }

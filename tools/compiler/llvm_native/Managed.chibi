@@ -7,7 +7,7 @@ import strings "core:strings"
 // roots and calls collection only with execution quiescent or roots spilled.
 // Cells retain static typed layout metadata and drop callbacks. Their images
 // must outlive every cell; standalone executable images live for the process.
-// At 64-bit targets the heap is 56 bytes, each cell header 64, stack root 24 and persistent root 32.
+// At 64-bit targets the heap is 64 bytes, each cell header 64, stack root 24 and persistent root 32.
 // Mark/sweep is O(roots + cells + edges), with no per-edge allocation/recursion.
 // This raw collector is a backend contract. Source admission additionally
 // validates typed descriptors and supplies roots around each safe point.
@@ -44,8 +44,19 @@ pub ManagedRuntime :: () -> string {
         "exit:\n",
         "  ret void\n",
         "}\n",
+        // Callback state belongs to the shared execution family, not an image.
+        "define internal void @chibi_managed.callback_enter(ptr %heap) {\nentry:\n",
+        format_text("  %at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 {}\n", abi.ManagedCallbackField),
+        "  %before = load i32, ptr %at\n  %room = icmp ne i32 %before, -1\n  br i1 %room, label %enter, label %trap\nenter:\n",
+        "  %next = add i32 %before, 1\n  store i32 %next, ptr %at\n  ret void\ntrap:\n  call void @llvm.trap()\n  unreachable\n}\n",
+        "define internal void @chibi_managed.callback_exit(ptr %heap) {\nentry:\n",
+        format_text("  %at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 {}\n", abi.ManagedCallbackField),
+        "  %before = load i32, ptr %at\n  %active = icmp ne i32 %before, 0\n  br i1 %active, label %leave, label %trap\nleave:\n",
+        "  %next = sub i32 %before, 1\n  store i32 %next, ptr %at\n  ret void\ntrap:\n  call void @llvm.trap()\n  unreachable\n}\n",
         "define internal ptr @chibi_managed.new(ptr %ctx, ptr %heap, i64 %bytes, ptr %layout, ptr %drop, i32 %storage) {\n",
         "entry:\n",
+        format_text("  %collecting.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 {}\n", abi.ManagedCollectingField),
+        "  %collecting = load i1, ptr %collecting.at\n  br i1 %collecting, label %trap, label %prepare\nprepare:\n",
         "  %header = ptrtoint ptr getelementptr (%chibi.managed.cell, ptr null, i32 1) to i64\n",
         "  %room = sub i64 -1, %header\n",
         "  %fits = icmp ule i64 %bytes, %room\n",
@@ -63,7 +74,12 @@ pub ManagedRuntime :: () -> string {
         "allocate:\n",
         format_text("  %allocator.at = getelementptr {}, ptr %ctx, i32 0, i32 2\n", abi.ContextType()),
         "  %allocator = load ptr, ptr %allocator.at\n",
+        "  call void @chibi_managed.callback_enter(ptr %heap)\n",
         "  %cell = call ptr %allocator(ptr %ctx, i64 %total)\n",
+        "  call void @chibi_managed.callback_exit(ptr %heap)\n",
+        // A callback may construct another cell. Read the updated accounting
+        // after it returns, just as the list head is reloaded before linking.
+        "  %current.used = load i64, ptr %used.at\n  %current.room = sub i64 -1, %current.used\n  %still.fits = icmp ule i64 %total, %current.room\n  br i1 %still.fits, label %initialize, label %trap\ninitialize:\n",
         "  store %chibi.managed.cell zeroinitializer, ptr %cell\n",
         "  %first = load ptr, ptr %heap\n",
         "  store ptr %first, ptr %cell\n",
@@ -81,7 +97,7 @@ pub ManagedRuntime :: () -> string {
         "  call void @llvm.memset.p0.i64(ptr %payload, i8 0, i64 %bytes, i1 false)\n",
         "  call void @chibi_managed.code(ptr %layout, i64 1)\n",
         "  store ptr %cell, ptr %heap\n",
-        "  %next.used = add i64 %used, %total\n",
+        "  %next.used = add i64 %current.used, %total\n",
         "  store i64 %next.used, ptr %used.at\n",
         "  ret ptr %cell\n",
         "trap:\n",
@@ -194,9 +210,15 @@ pub ManagedRuntime :: () -> string {
         "  ret void\n",
         "}\n",
         "; Only quiescent code with complete spilled roots may call collect/safepoint.\n",
-        "; Callbacks never allocate or collect and drop never follows managed edges.\n",
+        "; Trace/drop callbacks never allocate or mutate managed edges. Collection\n",
+        "; requests defer during callbacks or an active pass; drop never follows edges.\n",
         "define internal void @chibi_managed.collect(ptr %ctx, ptr %heap) {\n",
         "entry:\n",
+        format_text("  %callbacks.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 {}\n", abi.ManagedCallbackField),
+        format_text("  %collecting.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 {}\n", abi.ManagedCollectingField),
+        format_text("  %requested.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 {}\n", abi.ManagedRequestedField),
+        "  %callbacks = load i32, ptr %callbacks.at\n  %in.callback = icmp ne i32 %callbacks, 0\n  %collecting = load i1, ptr %collecting.at\n  %busy = or i1 %in.callback, %collecting\n  br i1 %busy, label %defer, label %begin\ndefer:\n",
+        "  store i1 true, ptr %requested.at\n  ret void\nbegin:\n  store i1 true, ptr %collecting.at\n  store i1 false, ptr %requested.at\n",
         "  %epoch.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 5\n",
         "  %old.epoch = load i64, ptr %epoch.at\n",
         "  %epoch = add i64 %old.epoch, 1\n",
@@ -295,7 +317,9 @@ pub ManagedRuntime :: () -> string {
         "  store i64 %left, ptr %used.at\n",
         format_text("  %release.at = getelementptr {}, ptr %ctx, i32 0, i32 4\n", abi.ContextType()),
         "  %free = load ptr, ptr %release.at\n",
+        "  call void @chibi_managed.callback_enter(ptr %heap)\n",
         "  call void %free(ptr %ctx, ptr %current)\n",
+        "  call void @chibi_managed.callback_exit(ptr %heap)\n",
         "  br label %cells\n",
         "exit:\n",
         "  %kept.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 3\n",
@@ -307,6 +331,8 @@ pub ManagedRuntime :: () -> string {
         "  %threshold = select i1 %large, i64 %bounded, i64 65536\n",
         "  %threshold.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 4\n",
         "  store i64 %threshold, ptr %threshold.at\n",
+        // Requests from release callbacks are satisfied by this outer pass.
+        "  store i1 false, ptr %requested.at\n  store i1 false, ptr %collecting.at\n",
         "  ret void\n",
         "trap:\n",
         "  call void @llvm.trap()\n",
@@ -320,7 +346,9 @@ pub ManagedRuntime :: () -> string {
         "  %configured = load i64, ptr %threshold.at\n",
         "  %set = icmp ugt i64 %configured, 65536\n",
         "  %threshold = select i1 %set, i64 %configured, i64 65536\n",
-        "  %due = icmp uge i64 %used, %threshold\n",
+        "  %threshold.due = icmp uge i64 %used, %threshold\n",
+        format_text("  %requested.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 {}\n", abi.ManagedRequestedField),
+        "  %requested = load i1, ptr %requested.at\n  %due = or i1 %threshold.due, %requested\n",
         "  br i1 %due, label %collect, label %exit\n",
         "collect:\n",
         "  call void @chibi_managed.collect(ptr %ctx, ptr %heap)\n",
@@ -404,7 +432,25 @@ ManagedPointerRuntime :: () -> string {
     text = strings.ReplaceAll(text, "$C", abi.ManagedContextType());
     text = strings.ReplaceAll(text, "$F", format_text("{}", abi.ManagedOwnerField));
     text = strings.ReplaceAll(text, "$P", abi.ManagedPointerType());
-    return strings.Concatenate([text, ManagedTraceRuntime()]);
+    return strings.Concatenate([text, ManagedCallbackRuntime(), ManagedTraceRuntime()]);
+}
+
+// All generated allocating/freeing helpers use these adapters in an owned
+// context. A callback can request collection; only a spilled-root safe point
+// services it. Returning from the callback never collects transient values.
+ManagedCallbackRuntime :: () -> string {
+    return strings.Concatenate([
+        "define internal ptr @chibi_managed.allocate(ptr %ctx, i64 %bytes) {\nentry:\n",
+        "  %heap = call ptr @chibi_managed.owner(ptr %ctx)\n  call void @chibi_managed.callback_enter(ptr %heap)\n",
+        format_text("  %at = getelementptr {}, ptr %ctx, i32 0, i32 2\n", abi.ContextType()),
+        "  %allocate = load ptr, ptr %at\n  %memory = call ptr %allocate(ptr %ctx, i64 %bytes)\n",
+        "  call void @chibi_managed.callback_exit(ptr %heap)\n  ret ptr %memory\n}\n",
+        "define internal void @chibi_managed.release(ptr %ctx, ptr %memory) {\nentry:\n",
+        "  %heap = call ptr @chibi_managed.owner(ptr %ctx)\n  call void @chibi_managed.callback_enter(ptr %heap)\n",
+        format_text("  %at = getelementptr {}, ptr %ctx, i32 0, i32 4\n", abi.ContextType()),
+        "  %release = load ptr, ptr %at\n  call void %release(ptr %ctx, ptr %memory)\n",
+        "  call void @chibi_managed.callback_exit(ptr %heap)\n  ret void\n}\n"
+    ]);
 }
 
 ManagedStorage :: (type: int) -> bool {
@@ -650,7 +696,8 @@ ManagedPinsValid :: (code: Instruction[], slots: int[]) -> string {
         } else if (item.op == OwnerPin || item.op == OwnerUnpin) {
             // Frame cleanup memberships can surround the same collecting call.
         } else if (length(active) > 0) {
-            if (called || (item.op != ClockSample && item.op != Call && item.op != ForeignCall && item.op != Format && item.op != ManagedNew && item.op != Suspend && item.op != Delay && item.op != AwaitHandle && item.op != AwaitResult && item.op != Fail)) {
+            composite_find := item.op == ArrayContains && item.target > 0 && item.literal >= i64(RecordType);
+            if (called || (!composite_find && item.op != ClockSample && item.op != Call && item.op != ForeignCall && item.op != Format && item.op != ManagedNew && item.op != Suspend && item.op != Delay && item.op != AwaitHandle && item.op != AwaitResult && item.op != Fail)) {
                 return "native collector pins must bracket one collecting call";
             }
             called = true;

@@ -1,0 +1,56 @@
+package map_optionals
+
+Value :: struct { name: string; items: int[]; }
+Choice :: union { Empty | Some(value: Value) }
+Text :: (value: int) -> string { return text_from_bytes([u8(65), 0, u8(value)]); }
+Make :: (value: int) -> Value { return {name: Text(value), items: [value]}; }
+Words :: () -> [int: string?] { values: [int: string?] = [1: Text(1)]; return values; }
+Main :: () -> int {
+    numbers: [int: int?] = [1: 7, 2: nil];
+    assert(numbers.has(2) && !numbers.has(3));
+    assert(numbers[2] == nil && numbers[3] == nil);
+    number := numbers[1];
+    if (number != nil) { assert(number == 7); } else { assert(false); }
+    numbers[1] = nil;
+    assert(numbers[1] == nil && numbers.has(1));
+    text: [string: string?] = [Text(1): Text(2)];
+    saved := text;
+    word := text[Text(1)];
+    delete text[Text(1)];
+    if (word != nil) {
+        assert(word == Text(2));
+        saved_word: string = word;
+        word = nil;
+        assert(saved_word == Text(2));
+    } else { assert(false); }
+    assert(text[Text(1)] == nil && saved.has(Text(1)));
+    escaped := Words()[1];
+    if (escaped != nil) { assert(escaped == Text(1)); } else { assert(false); }
+    assert(Words()[2] == nil);
+    records: [int: Value?] = [1: Make(1), 2: nil, 1: Make(2)];
+    record_copy := records;
+    records[1] = nil;
+    item := record_copy[1];
+    if (item != nil) { assert(item.name == Text(2) && item.items[0] == 2); } else { assert(false); }
+    assert(records[1] == nil && records[3] == nil);
+    choices: [int: Choice?] = [1: Choice.Some(Make(3))];
+    selected := choices[1];
+    choices[1] = nil;
+    if (selected != nil) { switch selected {
+        case .Some(held): assert(held.name == Text(3) && held.items[0] == 3);
+        case .Empty: assert(false);
+    } } else { assert(false); }
+    assert(choices[2] == nil);
+    present := 0;
+    for (key, value in record_copy) {
+        delete record_copy[key];
+        if (value != nil) { assert(value.items[0] == 2); present += 1; }
+    }
+    assert(present == 1 && record_copy[1] == nil);
+    for (index in 0..<128) { text[Text(index)] = Text(index); }
+    copy := text;
+    for (index in 0..<128) { delete text[Text(index)]; }
+    last := copy[Text(127)];
+    if (last != nil) { assert(last == Text(127)); } else { assert(false); }
+    return 0;
+}

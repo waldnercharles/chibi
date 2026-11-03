@@ -1,0 +1,3 @@
+package remove_shadow
+remove_item :: (left: int, right: int) -> int { return left + right; }
+Main :: () -> int { assert(remove_item(20, 22) == 42); return 0; }

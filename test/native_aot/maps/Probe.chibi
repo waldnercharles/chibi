@@ -56,7 +56,10 @@ Main :: () -> int {
         Read(&test, native.MapLength, abi.IntStorage, empty, 0, integer_map);
         type := native.MapOf(abi.IntStorage, native.ArrayType + abi.IntStorage);
         map := Constant(&test, type, 0);
-        returned = Read(&test, native.MapLength, abi.IntStorage, map, 0, type);
+        Read(&test, native.MapLength, abi.IntStorage, map, 0, type);
+        texts_type := native.MapOf(abi.IntStorage, native.ArrayType + abi.TextStorage);
+        texts_map := Constant(&test, texts_type, 0);
+        returned = Read(&test, native.MapLength, abi.IntStorage, texts_map, 0, texts_type);
     } else if (missing_kind != 0) {
         array := native.ArrayType + abi.IntStorage;
         type := native.MapOf(abi.IntStorage, array);
@@ -842,7 +845,7 @@ FactModule :: () -> facts.Row[] {
     return rows;
 }
 FactRejections :: (accepted: facts.Row[]) {
-    for (which in 0..<6) {
+    for (which in 0..<7) {
         rows := accepted;
         changed := false;
         for (at in 3..<length(rows)) {
@@ -876,6 +879,10 @@ FactRejections :: (accepted: facts.Row[]) {
                 changed = true;
             } else if (which == 5 && row.value == facts.MapGet) {
                 row.literal += i64(1) << u32(32);
+                rows[at] = row;
+                changed = true;
+            } else if (which == 6 && row.value == facts.MapGet) {
+                row.value = facts.MapGetOptional;
                 rows[at] = row;
                 changed = true;
             }

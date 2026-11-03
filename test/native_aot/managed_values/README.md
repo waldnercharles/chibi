@@ -51,11 +51,12 @@ earlier buffer surviving replacement by a later argument, ordinary parameter
 isolation, scoped writes and temporary arrays. The native probe writes through
 one of two aliases of the same cell while reading the other, after a later
 ordinary array copy; both C pointers must agree and the copy must stay unchanged.
-Source foreign record fields remain rejected pending verification of canonical
-field-place preparation and descriptor writeback after later arguments. Indexed
-places need a writable path resolved after argument evaluation. Locals and
-temporary arrays are supported. The rejected Box fixture keeps the
-caller-unchanged assertion as an acceptance case for that foreign boundary.
+Inline authored record fields use a typed reference chain into their canonical
+record storage. The foreign loan preserves the earlier buffer while later
+arguments can replace that record. `ForeignPlaces.chibi` checks deep fields,
+by-value isolation, scoped writes, repeated arguments and later replacement.
+Direct retained record buffers and indexed container places still require
+separate writable-path and retained-lease handling.
 
 `Growth.chibi` counts context allocations for 4,096 appends through a direct
 record field and through a scoped record parameter. Each path allows at most
@@ -63,3 +64,16 @@ record field and through a scoped record parameter. Each path allows at most
 append. Another 4,096 readonly source array snapshots must allocate no backing.
 Field-place mutations also replace their owner from an argument and
 check the current record's descriptor and sibling fields.
+
+`DeepArrayFields.chibi` checks canonical array mutation through inline record
+prefixes, including fetched map values, by-value and scoped records, saved
+compound values, and callbacks replacing the root or an element's parent.
+Bracket writes check their initial logical place before RHS effects and check
+its current location again after callbacks; their unavailable-place failure
+keeps category zero. `DeepArrayGrowth.chibi` allows at most 16 backing
+allocations for 4,096 appends, both with unique storage and after one CoW detach.
+`DeepArrayWidth.chibi` instruments array copy/drop helper entries while 64
+other live array fields remain unchanged. It permits at most 64 entries across
+4,096 leaf appends, independently of backing allocation counts.
+Direct retained deep array places remain closed until retained leases carry the
+full field path.

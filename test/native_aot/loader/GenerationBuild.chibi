@@ -57,7 +57,7 @@ Main :: () -> int {
     if (compiled.kind != 0) { return 1; }
     plan := link.Program(triple, llvm, [object, start_object], [], [], [], output, "", true);
     plan.shared = true;
-    plan.imports = link.SystemImports(strings.SplitLines(strings.Concatenate([module, start])));
+    plan.imports = link.SystemImports(strings.SplitLines(strings.Concatenate([module, start])), triple);
     linked := host.LinkResult(plan);
     if (linked.kind != 0) { return 1; }
     return 0;

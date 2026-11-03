@@ -15,6 +15,15 @@ and an immediately failed spawn. Markers after unwrap, await and spawn must
 remain absent on failure. The same image-close poison and allocation-balance
 audit covers these paths at O0 and O2.
 
+`RunWindows.ps1` runs these seven typed-generation modes at O0/O2 with the
+production Host body and DLL link plan. Its temporary Host overlay checks each
+image's poison allocator immediately before the real `FreeLibrary`, then
+requires successful close and deletion of every generation file. The explicit
+check replaces the POSIX unload destructor because Windows DLLs keep `/noentry`.
+A phantom allocation must produce the illegal-instruction trap at this boundary;
+the normal typed failure status134 cannot satisfy that control. Actual Windows
+execution is required in addition to cross-linking these fixtures.
+
 Program and family coroutine frames can own strings, arrays, maps and records/unions
 whose lifecycle has no collector-bearing leaves. Each distinct owning local or
 fresh slot has one frame-resident active address, eight bytes on desktop. Calls

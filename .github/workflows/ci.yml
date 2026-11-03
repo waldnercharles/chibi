@@ -552,6 +552,8 @@ jobs:
           $work = $env:RUNNER_TEMP.Replace('\', '/')
           $cases = @(
             @{ name = 'text-format'; source = 'test/native_aot/text_format/Main.chibi' },
+            @{ name = 'collection-format'; source = 'test/native_aot/text_format/Aggregates.chibi' },
+            @{ name = 'family-format'; source = 'test/native_aot/text_format/Family.chibi' },
             @{ name = 'print'; source = 'test/native_aot/output/Main.chibi' },
             @{ name = 'task-timing'; source = 'test/native_aot/tasks/cases/timing/Main.chibi' },
             @{ name = 'square-root'; source = 'test/native_aot/math_scalar/SquareRoot.chibi' },
@@ -559,6 +561,8 @@ jobs:
             @{ name = 'math-kernels'; source = 'test/native_aot/math_scalar/Kernels.chibi' },
             @{ name = 'shadow-kernels'; source = 'test/native_aot/math_scalar/KernelShadow.chibi' },
             @{ name = 'waiting-kernels'; source = 'test/native_aot/math_scalar/KernelWaiting.chibi' },
+            @{ name = 'patterns'; source = 'test/native_aot/patterns/Main.chibi' },
+            @{ name = 'waiting-patterns'; source = 'test/native_aot/patterns/Waiting.chibi' },
             @{ name = 'sdk-paths'; source = 'test/bootstrap/fixtures/InstallPaths.chibi' },
             @{ name = 'library-loader'; source = 'test/native_aot/loader/Windows.chibi' }
           )

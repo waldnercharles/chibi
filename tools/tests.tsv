@@ -47,7 +47,7 @@ tool	fmt	@build@/test/tools/test_tools	--fmt
 tool	language-test-parallel	@build@/test/language/test_language	--test-parallel
 tool	language-ranges	@build@/test/language/test_language	--ranges
 tool	chibi-test-compiler	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/tools/compiler
-tool	language-map-receivers	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/native_aot/map_programs/ArrayPayload.chibi	--core	packages/core	--entry	Main	--timeout-ms	120000
+tool	language-map-receivers	@program@	test/native_aot/map_programs/ArrayPayload.chibi	Main
 tool	chibi-test-core	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/packages/core
 tool	chibi-test-integer-arithmetic	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/test/integer_arithmetic
 tool	chibi-test-core-strings	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/test/core_strings

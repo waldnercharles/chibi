@@ -3795,7 +3795,7 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], authored: snapshot.SnapshotNode
                 table: ^(TypeDecl[]), body_optionals: ^(int[]), members: TypeMember[], constants: ConstDecl[], solid: int[], function: int,
                 ops: Ops, target: Target, natives: ResolvedNative[], ports: ResolvedPort[],
                 identities: u64[], aliases: Name[], retained: Name[], summary: ^ScalarEffectSummary,
-                assertions: ^(ScalarAssertion[])) -> syntax.Diagnostic {
+                assertions: ^(ScalarAssertion[]), math_values: ^bool) -> syntax.Diagnostic {
     operators: NumericOperator[] = [];
     makes: NativeMake[] = [];
     indices: int[] = [];
@@ -3830,6 +3830,9 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], authored: snapshot.SnapshotNode
             if (summary.wanted) { ScalarBodyEffects(summary, function, callables[function].waits, effects, ops, code, hosts, calls); }
             while (length(body_optionals^) < length(table^)) { body_optionals.append(0); }
             for (cell in cells) {
+                if (!math_values^ && cell.storage == StructStorage && MathKind(table^, cell.record) != 0) {
+                    math_values^ = true;
+                }
                 if (cell.storage == UnionStorage && cell.container == 0 && ScalarOptional(table^, cell.record)) {
                     body_optionals^[cell.record] = 1;
                 }
@@ -4258,8 +4261,17 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
     body_optionals: int[] = [];
     assertions: ScalarAssertion[] = [];
     assertion_offsets: int[] = [0];
+    // DeclareMath always provides every built-in type. Only actual values and
+    // authored fields need logical math-write analysis, not that catalog.
     math_values := false;
-    for (declared in records) { if (declared.kind == MathDecl) { math_values = true; break; } }
+    for (param in params) {
+        if (param.storage == StructStorage && MathKind(records, param.record) != 0) { math_values = true; break; }
+    }
+    if (!math_values) {
+        for (field in fields) {
+            if (field.storage == StructStorage && MathKind(records, field.record) != 0) { math_values = true; break; }
+        }
+    }
     for (function in 0..<length(callables)) {
         aliases := ScalarAliases(callables, documents, links, generic_bindings, function);
         used := constants;
@@ -4268,7 +4280,7 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         }
         emitted := ScalarEmits(scoped, forest, documents, text, key, callables, marked, &checked, &body_optionals, members, used, solid, function,
                                ops, target, natives, ports, identities, aliases,
-                               ScalarRetainedNames(scoped, text, checked, callables[function]), summary, &assertions);
+                               ScalarRetainedNames(scoped, text, checked, callables[function]), summary, &assertions, &math_values);
         if (emitted.message != "") { return ScalarOperands.Failed(emitted); }
         assertion_offsets.append(length(assertions));
     }

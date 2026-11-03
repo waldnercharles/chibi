@@ -648,7 +648,8 @@ ManagedPinsValid :: (code: Instruction[], slots: int[]) -> string {
             active = slice(active, 0, length(active) - 1);
             if (length(active) == 0) { called = false; }
         } else if (length(active) > 0) {
-            if (called || (item.op != ClockSample && item.op != Call && item.op != ForeignCall && item.op != ManagedNew && item.op != Suspend && item.op != Delay && item.op != AwaitHandle && item.op != AwaitResult && item.op != Fail)) {
+            composite_find := item.op == ArrayContains && item.target > 0 && item.literal >= i64(RecordType);
+            if (called || (!composite_find && item.op != ClockSample && item.op != Call && item.op != ForeignCall && item.op != ManagedNew && item.op != Suspend && item.op != Delay && item.op != AwaitHandle && item.op != AwaitResult && item.op != Fail)) {
                 return "native collector pins must bracket one collecting call";
             }
             called = true;

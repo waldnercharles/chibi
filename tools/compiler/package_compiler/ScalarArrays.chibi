@@ -254,6 +254,9 @@ ScalarArrayCall :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
     } else if (NameMatches(name, "remove_index") && Is(forest, function, syntax.Identifier)) {
         operator = facts.ArrayWithout;
         wanted = 1;
+    } else if (NameMatches(name, "remove_item") && Is(forest, function, syntax.Identifier)) {
+        operator = facts.ArrayWithoutItem;
+        wanted = 1;
     } else if (NameMatches(name, "insert") && Is(forest, function, syntax.Identifier)) {
         operator = facts.ArrayInserted;
         wanted = 2;
@@ -853,7 +856,7 @@ ScalarArrayArgument :: (forest: snapshot.SnapshotNode[], text: string, callables
         return ScalarArrayValue(forest, text, callables, params, callable, names, types, members, constants, node, shape,
                                 rows);
     }
-    if (operator == facts.ArrayPush || operator == facts.ArrayWith || operator == facts.ArrayContains) {
+    if (operator == facts.ArrayPush || operator == facts.ArrayWith || operator == facts.ArrayContains || operator == facts.ArrayWithoutItem) {
         return ScalarArrayElementValue(forest, text, callables, params, callable, names, types, members, constants, node,
                                        shape, rows);
     }
@@ -886,7 +889,7 @@ ScalarNativeRows :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     }
     // Only arguments after the receiver can invalidate its evaluated value.
     // Functional edits also acquire their input before any later callbacks.
-    copied := native.operator == facts.ArrayWithout || native.operator == facts.ArrayInserted ||
+    copied := native.operator == facts.ArrayWithout || native.operator == facts.ArrayWithoutItem || native.operator == facts.ArrayInserted ||
               native.operator == facts.ArrayReversed || native.operator == facts.ArrayReplaced;
     count := length(native.arguments) + 1;
     first := ScalarArraySourcePosition(native.order, count, 0);
@@ -979,7 +982,7 @@ ScalarLocalArray :: (forest: snapshot.SnapshotNode[], text: string, callables: C
 // function capability stays unusable, while methods keep the ordinary
 // MutationStep contract and its checked labels. No expression copies this catalog.
 ScalarArrayCatalog :: (natives: ResolvedNative[], ports: ^(ResolvedPort[])) {
-    for (name in ["append", "extend", "slice", "resize", "contains", "remove_index", "insert", "reverse", "set_array_elem", "text_bytes", "text_from_bytes"]) {
+    for (name in ["append", "extend", "slice", "resize", "contains", "remove_index", "remove_item", "insert", "reverse", "set_array_elem", "text_bytes", "text_from_bytes"]) {
         operator := facts.ArrayWith;
         parameters := 2;
         if (name == "extend") { operator = facts.ArrayJoin; }
@@ -987,6 +990,7 @@ ScalarArrayCatalog :: (natives: ResolvedNative[], ports: ^(ResolvedPort[])) {
         if (name == "resize") { operator = facts.ArrayResize; }
         if (name == "contains") { operator = facts.ArrayContains; }
         if (name == "remove_index") { operator = facts.ArrayWithout; }
+        if (name == "remove_item") { operator = facts.ArrayWithoutItem; }
         if (name == "insert") { operator = facts.ArrayInserted; parameters = 3; }
         if (name == "reverse") { operator = facts.ArrayReversed; parameters = 1; }
         if (name == "set_array_elem") { operator = facts.ArrayReplaced; parameters = 3; }

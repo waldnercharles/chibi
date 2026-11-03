@@ -19,7 +19,7 @@ ValidView :: (rows: facts.Row[], records: int[], row: facts.Row, stack: int[], b
     op := facts.ViewOperation(row.value);
     element := facts.ViewElement(row.value);
     count := ViewOperands(row);
-    if ((!Scalar(element) && element != facts.StringType &&
+    if ((!Scalar(element) && element != facts.StringType && element != facts.PointerType &&
          (element < facts.RecordType || element >= facts.ArrayType || element - facts.RecordType >= length(records))) || count < 0 || row.count != count || row.name != "" || row.literal == 0 ||
         base < 0 || base > length(stack) - count) { return false; }
     first := facts.ViewType;

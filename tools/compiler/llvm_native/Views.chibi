@@ -13,7 +13,7 @@ ViewElement :: (item: Instruction) -> int {
 }
 ViewValid :: (records: Record[], fields: int[], layout: ValueLayout, slots: int[], arguments: int[], item: Instruction) -> bool {
     element := ViewElement(item);
-    if (element <= 0 || element >= ArrayType || ElementType(records, ArrayType + element) == 0 || !ValueValid(layout, element)) { return false; }
+    if (element <= 0 || element >= ArrayType || ElementType(records, ArrayType + element) == 0 || (element != PointerType && !ValueValid(layout, element))) { return false; }
     left := ViewType;
     if (item.op == ViewMake) { left = PointerType; }
     if (item.literal == 0 || !Typed(slots, item.left, left)) { return false; }

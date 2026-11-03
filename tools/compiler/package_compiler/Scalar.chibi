@@ -1015,6 +1015,8 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         }
         return callables[function].result;
     }
+    view := ScalarViewOperation(forest, text, callables, params, names, types, members, callable.package, node);
+    if (view.operation == facts.ViewGet) { return view.shape.storage; }
     mapped := ScalarMapRead(forest, text, callables, names, types, members, callable.package, node);
     if (mapped.operator == facts.MapHas) { return BoolStorage; }
     if (mapped.operator == facts.MapGet) {
@@ -1357,7 +1359,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         mapped = ScalarMapShape(forest, text, callables, names, types, members, callable.package, node);
     }
     if (mapped >= 0) { type = ScalarMapType(types, mapped); }
-    if (storage == PointerStorage && !arrayed) {
+    if (storage == PointerStorage && !arrayed && !viewed) {
         type = ScalarPointerType(types, ScalarPointerRecord(forest, text, callables, params, names, types, members, callable.package, node));
     }
     if (storage == StructStorage && !arrayed && !viewed &&
@@ -4853,7 +4855,8 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
     aggregate_cells := false;
     for (declared in records) {
         if (((declared.kind == PointerDecl && declared.value_container == ArrayContainer) ||
-             (declared.kind == OptionalDecl && declared.value_container == ViewContainer)) && declared.value_record >= 0) {
+             (declared.kind == OptionalDecl && declared.value_container == ViewContainer)) &&
+            ScalarViewSchemaElement(records, declared.value_storage, declared.value_record)) {
             aggregate_cells = true;
             break;
         }
@@ -4862,17 +4865,17 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         // Authored view unions are emitted even when only their empty tag is
         // used. Their payload admission reads the element's cached schema.
         for (field in fields) {
-            if (field.container == ViewContainer && field.record >= 0) { aggregate_cells = true; break; }
+            if (field.container == ViewContainer && ScalarViewSchemaElement(records, field.storage, field.record)) { aggregate_cells = true; break; }
         }
     }
     if (!aggregate_cells) {
         for (param in params) {
-            if (param.container == ViewContainer && param.record >= 0) { aggregate_cells = true; break; }
+            if (param.container == ViewContainer && ScalarViewSchemaElement(records, param.storage, param.record)) { aggregate_cells = true; break; }
         }
     }
     if (!aggregate_cells) {
         for (callable in seen) {
-            if (callable.result_container == ViewContainer && callable.result_record >= 0) { aggregate_cells = true; break; }
+            if (callable.result_container == ViewContainer && ScalarViewSchemaElement(records, callable.result, callable.result_record)) { aggregate_cells = true; break; }
         }
     }
     if (aggregate_cells) {

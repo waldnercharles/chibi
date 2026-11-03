@@ -88,6 +88,11 @@ Main :: () -> int {
                 // a snapshot copy on each append exceeds this by two orders.
                 checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %total, 32");
             }
+            if (strings.HasSuffix(args[index], "/PointerAppend.ll")) {
+                // 4097 pointed cells plus one array cell and geometric backing
+                // growth. Copying backing at every append exceeds this bound.
+                checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %total, 5200");
+            }
             if (strings.HasSuffix(args[index], "/TextSpan.ll")) {
                 // 4096 immutable windows acquire existing text owners. Only
                 // the source and fixed runtime setup need allocation.

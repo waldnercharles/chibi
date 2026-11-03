@@ -1296,14 +1296,14 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         assigned := rows[at].kind == facts.AssignRow && rows[at].type == operand.type &&
             rows[at + 1].kind == facts.RefRow && rows[at + 1].type == operand.type &&
             rows[at + 1].literal == 0 && rows[at + 1].value == rows[at].value;
-        borrowed := operand.literal == 0 && operator == facts.ArrayPush && (Scalar(element) || element == facts.StringType) &&
+        borrowed := operand.literal == 0 && operator == facts.ArrayPush && (Scalar(element) || element == facts.StringType || element == facts.PointerType) &&
             rows[at].kind == facts.LocalRow && rows[at].literal == i64(facts.Captured) &&
             rows[at].type == operand.type && rows[at].count == 4 &&
             rows[at + 1].kind == facts.ReadRow && rows[at + 1].type == facts.PointerType &&
             rows[at + 2].kind == facts.ManagedRow && rows[at + 2].value == facts.ManagedBorrow &&
             rows[at + 2].type == facts.ReferenceType + operand.type &&
             rows[at + 3].kind == facts.ReadRow && rows[at + 3].type == element;
-        if (optional && (operator != facts.ArraySet || (!Scalar(element) && element != facts.StringType))) { return mismatch; }
+        if (optional && (operator != facts.ArraySet || (!Scalar(element) && element != facts.StringType && element != facts.PointerType))) { return mismatch; }
         receiver := operand.type;
         if (referenced) { receiver = field; }
         if ((!ArrayChanges(operator) && operator != facts.ArrayResize) || element == 0 ||

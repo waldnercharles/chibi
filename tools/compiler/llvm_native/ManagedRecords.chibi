@@ -101,15 +101,16 @@ ManagedStorageClass :: (type: int) -> int {
     return type;
 }
 ManagedPayload :: (records: Record[], layout: ManagedRecordLayout, values: ValueLayout, type: int, tag: i64) -> bool {
-    return abi.ScalarType(type) != "" || type == abi.TextStorage ||
+    return abi.ScalarType(type) != "" || type == abi.TextStorage || type == ArrayType + PointerType ||
            (ManagedArray(type) && ElementType(records, type) != 0 && ValueValid(values, type - ArrayType)) ||
            (ManagedCellRecord(records, layout, type) && records[type - RecordType].identity == tag);
 }
 ManagedArray :: (type: int) -> bool {
     return type >= ArrayType && type < MapType &&
-           (abi.ScalarType(type - ArrayType) != "" || type - ArrayType == abi.TextStorage || type - ArrayType >= RecordType);
+           (abi.ScalarType(type - ArrayType) != "" || type - ArrayType == abi.TextStorage || type - ArrayType == PointerType || type - ArrayType >= RecordType);
 }
-// Array cells own one descriptor. Admitted elements have no GC edges.
+// Array cells own one descriptor. Pointer elements use the same typed tracer
+// as ordinary pointer arrays; other admitted elements have no GC edges.
 // The last cell release drops typed backing and nested owners while leased.
 ManagedArrayModule :: (code: Instruction[], counter: string) -> string {
     out: string[] = [];
@@ -126,7 +127,9 @@ ManagedArrayModule :: (code: Instruction[], counter: string) -> string {
             out.append(format_text("define internal void @chibi_managed.drop.array{}(ptr %ctx, ptr %payload) {{\nentry:\n", type));
             out.append(format_text("  %value = load {}, ptr %payload\n  call void @chibi_array.{}.drop(ptr %ctx, {} %value)\n  ret void\n}}\n", abi.ArrayType(), type, abi.ArrayType()));
         }
-        out.append(format_text("@chibi_managed.layout.array{} = private constant %chibi.managed.layout {{ ptr null, ptr @chibi_managed.validate.array{}, ptr {} }}\n", key, key, counter));
+        trace := "null";
+        if (type == ArrayType + PointerType) { trace = "@chibi_managed.trace.array"; }
+        out.append(format_text("@chibi_managed.layout.array{} = private constant %chibi.managed.layout {{ ptr {}, ptr @chibi_managed.validate.array{}, ptr {} }}\n", key, trace, key, counter));
         out.append(format_text("define internal i1 @chibi_managed.validate.array{}(i64 %offset, i64 %tag, i64 %bytes, i32 %storage) {{\nentry:\n", key));
         out.append(format_text("  %tag.ok = icmp eq i64 %tag, {}\n  %storage.ok = icmp eq i32 %storage, {}\n", item.literal, ManagedStorageClass(type)));
         out.append(format_text("  %bytes.ok = icmp eq i64 %bytes, ptrtoint (ptr getelementptr ({}, ptr null, i32 1) to i64)\n", abi.ArrayType()));

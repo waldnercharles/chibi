@@ -12,7 +12,7 @@ SnapshotKey :: (type: int) -> string {
 SnapshotMemoValue :: () -> string {
     return "  %memo.at = getelementptr %chibi.snapshot.values, ptr %session, i32 0, i32 0\n  %memo = load ptr, ptr %memo.at\n";
 }
-SnapshotText :: () -> string {
+SnapshotText :: (guarded: bool = false) -> string {
     text := abi.TextType();
     out := [format_text("define internal void @chibi_snapshot.value.{}(ptr %ctx, ptr %session, ptr %source, ptr %destination) {{\nentry:\n", abi.TextStorage)];
     out.append(format_text("  %value = load {}, ptr %source\n  %length = extractvalue {} %value, 1\n  %data = extractvalue {} %value, 0\n", text, text, text));
@@ -23,7 +23,7 @@ SnapshotText :: () -> string {
     out.append("  %known = call ptr @chibi_snapshot.memo.find(ptr %memo, ptr %data, i64 %key)\n  %present = icmp ne ptr %known, null\n  br i1 %present, label %reuse, label %clone\nreuse:\n");
     out.append("  %known.value = getelementptr %chibi.snapshot.entry, ptr %known, i32 0, i32 2\n  %word = load i64, ptr %known.value\n  %previous = inttoptr i64 %word to ptr\n  %previous.owner = getelementptr i8, ptr %previous, i64 -8\n  call void @chibi_scalar.retain(ptr %previous.owner)\n  br label %publish\nclone:\n");
     out.append("  %bytes = add i64 %wide.length, 9\n");
-    out.append(Allocated("owner", "%bytes"));
+    out.append(Allocated("owner", "%bytes", guarded));
     out.append("  store i64 1, ptr %owner\n  %copied = getelementptr i8, ptr %owner, i64 8\n  call void @chibi_scalar.copy(ptr %copied, ptr %data, i64 %wide.length)\n  %terminator = getelementptr i8, ptr %copied, i64 %wide.length\n  store i8 0, ptr %terminator\n  %copied.word = ptrtoint ptr %copied to i64\n  call void @chibi_snapshot.memo.put(ptr %ctx, ptr %memo, ptr %data, i64 %key, i64 %copied.word)\n  br label %publish\npublish:\n  %result.data = phi ptr [ %previous, %reuse ], [ %copied, %clone ]\n  %result.owner = phi ptr [ %previous.owner, %reuse ], [ %owner, %clone ]\n");
     out.append(format_text("  %sized = insertvalue {} zeroinitializer, i32 %length, 1\n  %pointed = insertvalue {} %sized, ptr %result.data, 0\n  %result = insertvalue {} %pointed, ptr %result.owner, 2\n  store {} %result, ptr %destination\n  ret void\n}\n", text, text, text, text));
     return strings.Join(out, "");
@@ -85,7 +85,7 @@ SnapshotRange :: (type: int) -> string {
 // The caller validates shapes and keeps every staged destination alive until
 // this session ends. Memo entries borrow those destination owners. They must
 // never replace a stage before committing or aborting the complete transaction.
-SnapshotValuesModule :: (records: Record[], fields: int[], shapes: SnapshotShapes, states: Instruction[]) -> string {
+SnapshotValuesModule :: (records: Record[], fields: int[], shapes: SnapshotShapes, states: Instruction[], guarded: bool = false) -> string {
     used := resize([false], MapType);
     ranged := resize([false], MapType);
     for (node in shapes.nodes) {
@@ -98,7 +98,7 @@ SnapshotValuesModule :: (records: Record[], fields: int[], shapes: SnapshotShape
     out := ["%chibi.snapshot.values = type { ptr, ptr }\n"];
     for (type in 0..<length(used)) {
         if (!used[type] || !ValueOwned(type, layout.owned)) { continue; }
-        if (type == abi.TextStorage) { out.append(SnapshotText()); }
+        if (type == abi.TextStorage) { out.append(SnapshotText(guarded)); }
         else if (type >= ArrayType) { out.append(SnapshotArrayValue(type, layout)); }
         else { out.append(SnapshotRecordValue(type, records, fields, layout)); }
         if (ranged[type]) { out.append(SnapshotRange(type)); }

@@ -5,7 +5,7 @@ import strings "core:strings"
 // Typed jobs borrow source and destination storage for one migration. The
 // ring removes a job before calling it, so callbacks can grow the same queue.
 // A false callback stops schema validation; value-copy callbacks return true.
-SnapshotQueueRuntime :: () -> string {
+SnapshotQueueRuntime :: (guarded: bool = false) -> string {
     return strings.Join([
         "%chibi.snapshot.queue = type { ptr, i32, i32, i32 }\n",
         "%chibi.snapshot.job = type { ptr, ptr, ptr, i32 }\n",
@@ -28,8 +28,7 @@ SnapshotQueueRuntime :: () -> string {
         "  %capacity = select i1 %first, i32 16, i32 %doubled\n",
         "  %end = getelementptr %chibi.snapshot.job, ptr null, i32 %capacity\n",
         "  %bytes = ptrtoint ptr %end to i64\n",
-        "  %allocate.at = getelementptr { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 2\n",
-        "  %allocate = load ptr, ptr %allocate.at\n",
+        ContextCall("allocate", 2, guarded),
         "  %data = call ptr %allocate(ptr %ctx, i64 %bytes)\n",
         "  %previous = load ptr, ptr %queue\n",
         "  %has.previous = icmp ne ptr %previous, null\n",
@@ -47,8 +46,7 @@ SnapshotQueueRuntime :: () -> string {
         "  %trailing.bytes = ptrtoint ptr %trailing.end to i64\n",
         "  call void @chibi_scalar.copy(ptr %data, ptr %first.source, i64 %leading.bytes)\n",
         "  call void @chibi_scalar.copy(ptr %second.destination, ptr %previous, i64 %trailing.bytes)\n",
-        "  %release.at = getelementptr { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 4\n",
-        "  %give = load ptr, ptr %release.at\n",
+        ContextCall("give", 4, guarded),
         "  call void %give(ptr %ctx, ptr %previous)\n",
         "  br label %publish\n",
         "publish:\n",
@@ -133,8 +131,7 @@ SnapshotQueueRuntime :: () -> string {
         "  %present = icmp ne ptr %data, null\n",
         "  br i1 %present, label %free, label %done\n",
         "free:\n",
-        "  %release.at = getelementptr { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 4\n",
-        "  %give = load ptr, ptr %release.at\n",
+        ContextCall("give", 4, guarded),
         "  call void %give(ptr %ctx, ptr %data)\n",
         "  br label %done\n",
         "done:\n",

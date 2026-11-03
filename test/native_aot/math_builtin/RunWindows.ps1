@@ -37,13 +37,15 @@ function Invoke-MathTests([string]$Project, [string]$Level) {
 $completed = $false
 try {
     foreach ($level in 0, 2) {
-        $program = Join-Path $work "trig-$level.exe"
-        & $compilerPath --compiler "$root/tools/compiler" --core "$root/packages/core" `
-            --source "$root/test/native_aot/math_builtin/Deterministic.chibi" --entry Main --output $program `
-            --llvm $llvmPath --target x86_64-pc-windows-msvc --level $level --jobs 2
-        if ($LASTEXITCODE) { throw "could not compile deterministic trigonometry at O$level" }
-        & $program
-        if ($LASTEXITCODE) { throw "deterministic trigonometry failed at O$level" }
+        foreach ($source in 'Deterministic', 'Nested') {
+            $program = Join-Path $work "$source-$level.exe"
+            & $compilerPath --compiler "$root/tools/compiler" --core "$root/packages/core" `
+                --source "$root/test/native_aot/math_builtin/$source.chibi" --entry Main --output $program `
+                --llvm $llvmPath --target x86_64-pc-windows-msvc --level $level --jobs 2
+            if ($LASTEXITCODE) { throw "could not compile built-in math $source at O$level" }
+            & $program
+            if ($LASTEXITCODE) { throw "built-in math $source failed at O$level" }
+        }
         # Scope core selection to each test child; the caller's environment is unchanged.
         $samples = Invoke-MathTests "$root/test/compiler/samples/math" "$level"
         Write-Host $samples.Output
@@ -63,6 +65,21 @@ try {
             throw "logical-place failure categories differ at O$level"
         }
         Write-Host "PASS deterministic trigonometry and original math sample inventory O$level"
+    }
+    foreach ($case in @(
+        @{ Source = 'RejectedView'; Message = 'record fields require a scalar, pointer, record, union or array of those types' },
+        @{ Source = 'RejectedRecursive'; Message = 'record has a recursive inline or array value layout; use a pointer for recursive links' }
+    )) {
+        $preserved = Join-Path $work 'rejected.exe'
+        [IO.File]::WriteAllText($preserved, "preserved`n")
+        $diagnostic = & $compilerPath --compiler "$root/tools/compiler" --core "$root/packages/core" `
+            --source "$root/test/native_aot/math_builtin/$($case.Source).chibi" --entry Main --output $preserved `
+            --llvm $llvmPath --target x86_64-pc-windows-msvc --level 0 --jobs 2 2>&1 | Out-String
+        if ($LASTEXITCODE -ne 1 -or -not $diagnostic.Contains($case.Message) -or
+            [IO.File]::ReadAllText($preserved) -cne "preserved`n") {
+            Write-Host $diagnostic
+            throw "math field rejection or output preservation failed for $($case.Source)"
+        }
     }
     $completed = $true
 } finally {

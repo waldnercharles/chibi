@@ -1,0 +1,38 @@
+package nested_math
+
+Inner :: struct { position: vec3; numbers: int[]; word: string; }
+Box :: struct { xy: Inner; stamp: int; }
+Make :: (x: number, y: number, z: number, stamp: int) -> Box {
+    return {xy: {position: vec3(x, y, z), numbers: [stamp], word: text_from_bytes([u8(98), u8(stamp)])}, stamp: stamp};
+}
+Replace :: (box: ^Box) -> vec2 { box^ = Make(100, 200, 300, 42); return vec2(7, 9); }
+ReplaceArray :: (boxes: ^(Box[])) -> vec2 { boxes^ = [Make(100, 200, 300, 43)]; return vec2(7, 9); }
+Index :: (calls: ^int) -> int { calls^ += 1; return 0; }
+Scoped :: (box: ^Box) { box.xy.position.yx += Replace(box); }
+
+Main :: () -> int {
+    box := Make(1, 2, 3, 4);
+    before := box;
+    box.xy.position.xy += Replace(&box);
+    assert(box.xy.position == vec3(8, 11, 300));
+    assert(box.stamp == 42 && box.xy.numbers[0] == 42 && text_byte_at(box.xy.word, 1) == 42);
+    assert(before.xy.position == vec3(1, 2, 3) && text_byte_at(before.xy.word, 1) == 4);
+    Scoped(&box);
+    assert(box.xy.position == vec3(17, 18, 300));
+    box.xy.position = mat3(1) * vec3(4, 5, 6);
+    assert(box.xy.position == vec3(4, 5, 6));
+
+    boxes := [Make(1, 2, 3, 5)];
+    saved := boxes;
+    calls := 0;
+    boxes[Index(&calls)].xy.position.yx = ReplaceArray(&boxes);
+    assert(calls == 1 && boxes[0].xy.position == vec3(9, 7, 300));
+    assert(boxes[0].stamp == 43 && boxes[0].xy.numbers[0] == 43 && text_byte_at(boxes[0].xy.word, 1) == 43);
+    assert(saved[0].xy.position == vec3(1, 2, 3) && text_byte_at(saved[0].xy.word, 1) == 5);
+    for (i in 0..<128) {
+        boxes[0].xy.position.xy = ReplaceArray(&boxes);
+        box.xy.position.xy = Replace(&box);
+    }
+    assert(box.xy.position == vec3(7, 9, 300) && boxes[0].xy.position == vec3(7, 9, 300));
+    return 0;
+}

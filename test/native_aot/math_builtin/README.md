@@ -5,6 +5,14 @@ and deterministic trigonometry at O0 and O2. `RunWindows.ps1` runs the same
 sources with the fresh Windows compiler. Compile-error samples retain their
 exact diagnostic goldens; no sample is copied, rewritten or skipped.
 
+`Nested.chibi` checks record-field writebacks after RHS replacement, scoped
+receivers, once-only indices, snapshots and managed siblings. Hidden parent
+snapshots end with the assignment's lexical scope.
+`Scopes.chibi` runs under the existing POSIX allocator audit. Subsequent array
+mutations must allocate nothing, proving the parent leases have ended.
+The view and recursive-record fixtures preserve their rejection diagnostics
+and any prior output.
+
 `Deterministic.chibi` pins the existing field sine/cosine approximation's
 exact f32 results, including large angles, negative zero and nonfinite input.
 The finite goldens come from `src/support/cos_sin.h` with contraction disabled.

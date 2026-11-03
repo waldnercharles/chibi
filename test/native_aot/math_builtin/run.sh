@@ -13,10 +13,12 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/chibi-builtin-math.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 cp -R "$root/test/native_aot/math_builtin/failures" "$work/failures"
 for level in 0 2; do
-    "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
-        --source "$root/test/native_aot/math_builtin/Deterministic.chibi" --entry Main \
-        --output "$work/trig-$level" --llvm "$llvm" --target "$target" --level "$level" --jobs 2
-    "$work/trig-$level"
+    for source in Deterministic Nested; do
+        "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+            --source "$root/test/native_aot/math_builtin/$source.chibi" --entry Main \
+            --output "$work/$source-$level" --llvm "$llvm" --target "$target" --level "$level" --jobs 2
+        "$work/$source-$level"
+    done
     CHIBI_CORE="$root/packages/core" "$compiler" test --llvm "$llvm" -O"$level" \
         --root "$root/test/compiler/samples/math" "$root/test/compiler/samples/math"
     status=0
@@ -29,6 +31,20 @@ for level in 0 2; do
     grep -F 'Referenced array element is unavailable' "$work/failures-$level.log" > /dev/null
     [ "$(grep -c 'but it failed with another failure' "$work/failures-$level.log")" -eq 15 ]
     printf 'PASS deterministic trigonometry and original math sample inventory O%s\n' "$level"
+done
+for source in RejectedView RejectedRecursive; do
+    expected='record fields require a scalar, pointer, record, union or array of those types'
+    if [ "$source" = RejectedRecursive ]; then
+        expected='record has a recursive inline or array value layout; use a pointer for recursive links'
+    fi
+    printf 'preserved\n' > "$work/rejected"
+    status=0
+    "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+        --source "$root/test/native_aot/math_builtin/$source.chibi" --entry Main \
+        --output "$work/rejected" --llvm "$llvm" --target "$target" --level 0 --jobs 2 > "$work/rejected.log" 2>&1 || status=$?
+    [ "$status" -eq 1 ] || { cat "$work/rejected.log"; exit 1; }
+    [ "$(cat "$work/rejected")" = preserved ]
+    grep -F "$expected" "$work/rejected.log" > /dev/null
 done
 if [ -n "$reference" ]; then
     status=0

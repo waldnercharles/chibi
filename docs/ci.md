@@ -41,6 +41,9 @@ adaptation, not identical Zig coverage.
 
 Linux builds the Release native CLI and retained C helpers once,
 then the selected Debug products/test drivers. The core suite uses those paths.
+Later core commands pass that Release CLI explicitly through `--native-driver`
+for their native products and selector preparation. The initial Release build
+and the independent native proof retain their verified-seed starting points.
 Native self-host uses the native build entry and fixed compiler for its command
 contracts. Legacy VM comparison remains an explicit opt-in. The native phase then
 runs direct checks covering the driver, cache, minimum version, formatting,

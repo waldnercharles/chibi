@@ -1072,7 +1072,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (type == TaskType || type == RefType + TaskType) {
             return Result.Rejected(-1, "native task parameters require cancellation unwind support");
         }
-        if (waiting[function] && !TaskFrameValue(records, lifecycle, managed_records, type, false, ProgramMode(mode) || family)) {
+        if (waiting[function] && !TaskFrameValue(records, fields, lifecycle, managed_records, type, false, ProgramMode(mode) || family)) {
             return Result.Rejected(-1, "native waiting parameters need scalar values; managed values and dependencies are not supported yet");
         }
         if (!Held(records, type) || (exported && abi.ScalarType(type) == "")) {
@@ -1082,7 +1082,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     plain_references := false;
     for (type in slots) {
         plain_references = plain_references || (waiting[function] && TaskPlainReference(lifecycle, type));
-        if (waiting[function] && !TaskFrameValue(records, lifecycle, managed_records, type, true, ProgramMode(mode) || family)) {
+        if (waiting[function] && !TaskFrameValue(records, fields, lifecycle, managed_records, type, true, ProgramMode(mode) || family)) {
             return Result.Rejected(-1, "native waiting frames cannot own managed values or pointers yet");
         }
         if (!Held(records, type)) {
@@ -1093,7 +1093,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (waiting[function] && TaskPlainReference(lifecycle, type)) {
             return Result.Rejected(-1, "native waiting record references require immediate managed payload access");
         }
-        if (waiting[function] && !TaskFrameValue(records, lifecycle, managed_records, type, true, ProgramMode(mode) || family)) {
+        if (waiting[function] && !TaskFrameValue(records, fields, lifecycle, managed_records, type, true, ProgramMode(mode) || family)) {
             return Result.Rejected(-1, "native waiting frames cannot own managed values or pointers yet");
         }
         if (!Held(records, type)) {
@@ -2974,7 +2974,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     }
     frame_roots: ManagedFrameRoots = {prologue: "", attach: "", cleanup: "", destroy: ""};
     if (managed && coroutine) {
-        frame_roots = ManagedFrame(shape, slots, locals, managed_records, lifecycle);
+        frame_roots = ManagedFrame(shape, slots, locals, records, fields, managed_records, lifecycle);
         out.append(frame_roots.prologue);
     }
     if (managed) {

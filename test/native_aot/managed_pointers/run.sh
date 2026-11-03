@@ -14,7 +14,7 @@ esac
     --source "$root/test/native_aot/managed_pointers/Probe.chibi" --entry Main \
     --output "$work/probe" --llvm "$llvm" --target "$triple" --jobs 1
 "$work/probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/Collector.ll"
-for name in Cells ScopedAliases Transfer Nullable Records WholeArrays WholeArrayForeign StringArrays OptionalCells Views ViewUnions ViewStrings ViewOwned TextSequences Tasks TaskPromises TaskCaptured TaskRecordPromises TaskArrayPromises TaskFailure TaskPromiseFailure; do
+for name in Cells ScopedAliases Transfer Nullable Records WholeArrays WholeArrayForeign StringArrays OptionalCells Views ViewUnions ViewStrings ViewOwned TextSequences Tasks TaskPromises TaskCaptured TaskRecordPromises TaskArrayPromises TaskViews TaskFailure TaskPromiseFailure TaskViewFailure; do
     "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
         --source "$root/test/native_aot/managed_pointers/source/$name.chibi" --entry Main \
         --output "$work/$name.ll" --emit-llvm --target "$triple"
@@ -32,8 +32,8 @@ done
     --source "$root/test/native_aot/managed_pointers/SourceProbe.chibi" --entry Main \
     --output "$work/source-probe" --llvm "$llvm" --target "$triple" --jobs 1
 "$work/source-probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
-    "$work/Cells.ll" "$work/ScopedAliases.ll" "$work/Transfer.ll" "$work/Nullable.ll" "$work/Tasks.ll" "$work/TaskPromises.ll" "$work/TaskCaptured.ll" "$work/TaskRecordPromises.ll" "$work/TaskArrayPromises.ll" "$work/Records.ll" "$work/WholeArrays.ll" "$work/WholeArrayForeign.ll" "$work/StringArrays.ll" "$work/OptionalCells.ll" "$work/Views.ll" "$work/ViewUnions.ll" "$work/ViewStrings.ll" "$work/ViewOwned.ll" "$work/TextSequences.ll" "$work/TextSpan.ll" "$work/TextBorrowed.ll" "$work/ViewAppend.ll"
-"$work/source-probe" --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/TaskFailure.ll" "$work/TaskPromiseFailure.ll"
+    "$work/Cells.ll" "$work/ScopedAliases.ll" "$work/Transfer.ll" "$work/Nullable.ll" "$work/Tasks.ll" "$work/TaskPromises.ll" "$work/TaskCaptured.ll" "$work/TaskRecordPromises.ll" "$work/TaskArrayPromises.ll" "$work/TaskViews.ll" "$work/Records.ll" "$work/WholeArrays.ll" "$work/WholeArrayForeign.ll" "$work/StringArrays.ll" "$work/OptionalCells.ll" "$work/Views.ll" "$work/ViewUnions.ll" "$work/ViewStrings.ll" "$work/ViewOwned.ll" "$work/TextSequences.ll" "$work/TextSpan.ll" "$work/TextBorrowed.ll" "$work/ViewAppend.ll"
+"$work/source-probe" --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/TaskFailure.ll" "$work/TaskPromiseFailure.ll" "$work/TaskViewFailure.ll"
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$root/test/native_aot/managed_pointers/source/TaskRecordPromises.chibi" --entry Failure \
     --output "$work/TaskRecordPromiseFailure.ll" --emit-llvm --target "$triple"
@@ -66,9 +66,9 @@ for name in PatternRows InlineRecords; do
     "$work/$name-emitter" "$work/$name.ll"
 done
 "$work/source-probe" --callbacks "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
-    "$work/Callbacks.ll" "$work/ViewOwned.ll" "$work/CallbackPointerless.ll" "$work/Tasks.ll" "$work/PatternRows.ll" "$work/InlineRecords.ll" "$work/TaskPromises.ll" "$work/TaskCaptured.ll" "$work/TaskRecordPromises.ll" "$work/TaskArrayPromises.ll"
+    "$work/Callbacks.ll" "$work/ViewOwned.ll" "$work/CallbackPointerless.ll" "$work/Tasks.ll" "$work/PatternRows.ll" "$work/InlineRecords.ll" "$work/TaskPromises.ll" "$work/TaskCaptured.ll" "$work/TaskRecordPromises.ll" "$work/TaskArrayPromises.ll" "$work/TaskViews.ll"
 "$work/source-probe" --callbacks --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
-    "$work/CallbackFailure.ll" "$work/TaskPromiseFailure.ll" "$work/TaskRecordPromiseFailure.ll" "$work/TaskArrayFailure.ll" "$work/TaskArrayChildFailure.ll"
+    "$work/CallbackFailure.ll" "$work/TaskPromiseFailure.ll" "$work/TaskRecordPromiseFailure.ll" "$work/TaskArrayFailure.ll" "$work/TaskArrayChildFailure.ll" "$work/TaskViewFailure.ll"
 
 for entry in LengthShrunk ReadShrunk CloneShrunk IndexOutside SetIndexBeforeRight SetShrunkBeforeRight SetShrunkDuringRight SetValidBeforeRight; do
     case "$entry" in

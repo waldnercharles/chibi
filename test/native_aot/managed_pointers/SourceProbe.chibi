@@ -76,7 +76,7 @@ Main :: () -> int {
             if (strings.HasSuffix(args[index], "/Records.ll")) {
                 checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %peak, 30000");
             }
-            if (strings.HasSuffix(args[index], "/StringArrays.ll") || strings.HasSuffix(args[index], "/ViewStrings.ll") || strings.HasSuffix(args[index], "/ViewOwned.ll")) {
+            if (strings.HasSuffix(args[index], "/StringArrays.ll") || strings.HasSuffix(args[index], "/ViewStrings.ll") || strings.HasSuffix(args[index], "/ViewOwned.ll") || strings.HasSuffix(args[index], "/TaskViews.ll")) {
                 // Each 88-byte cell owns backing plus two text allocations.
                 // The 64 KiB threshold permits fewer than 3000 such live
                 // allocations, plus the fixture's few permanent owners. Owned record

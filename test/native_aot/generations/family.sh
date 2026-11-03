@@ -82,6 +82,23 @@ if [ "$result" -ne 7 ]; then cat "$run/host.log" >&2; echo "record roots status$
 test "$(cat "$run/managed-record-done")" = old42
 echo "native generations: typed cyclic record roots, changed layouts and image cell leases O$level passed"
 
+compile ManagedViews "$work/views.so"
+compile ManagedViewsEdited "$work/views-edited.so"
+run=$work/views
+mkdir "$run"
+cp "$work/views.so" "$run/live-0.so"
+(cd "$run" && exec timeout 90 "$host") > "$run/host.log" 2>&1 &
+child=$!
+wait_marker "$run/managed-view-ready" "$run/host.log"
+cp "$work/views-edited.so" "$run/pending.so"
+mv "$run/pending.so" "$run/next.so"
+result=0
+wait "$child" || result=$?
+child=
+if [ "$result" -ne 7 ]; then cat "$run/host.log" >&2; echo "view roots status$result, expected7" >&2; exit 1; fi
+test "$(cat "$run/managed-view-done")" = old42
+echo "native generations: suspended view roots, changed schemas and cancellation O$level passed"
+
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$root/test/native_aot/generations/FamilyProbe.chibi" --entry Main \
     --output "$work/probe" --llvm "$llvm" --target "$triple" --level 2 --jobs 1

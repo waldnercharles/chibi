@@ -119,8 +119,26 @@ The two-image proof checks compatible access, changed-schema rejection and old
 callback-image leases at O0/O2. Source ownership proofs include the original
 nested-array/union lending cases, view-only roots and callback collection.
 Ordinary source already rejects view fields in records. GC-bearing elements,
-view containers, retained views and suspended view frames remain outside this
-admission.
+view containers and retained views remain outside this admission.
+
+Waiting functions keep direct windows and their exact optional/authored-union
+wrappers in persistent frame roots. Each slot/local uses the same 32-byte root
+node as existing collector frames and traces the window's cell. Completion and
+cancellation unlink these nodes before freeing the frame. The source proof
+covers primitive and owned aggregate views, reads/writes after suspension,
+optional and union parameters, a returning spawning caller, nested cancellation,
+and collection requested by allocator/release callbacks. The reload proof changes
+the incoming element schema while an old worker keeps its original view/code.
+View promises remain closed independently of this frame membership.
+
+Ordinary source also accepts direct-view results and handles for those results;
+a handle for an optional-view result retains the ordinary union-result rejection.
+The retained ordinary test runner forbids scheduling, so the async acceptance
+probes compile calls under a false branch, with an invalid-after-yield body as
+a control. They establish source acceptance, not resumed-runtime behavior.
+Synchronous ordinary probes execute views over pointer elements and records
+containing pointer or pointer-array fields. Those GC-bearing element forms are
+remaining native parity work, separate from suspended roots for admitted views.
 
 Optional numeric/bool values and flat numeric/bool record payloads can share
 managed cells. The optional tag and payload move together; nil replacement

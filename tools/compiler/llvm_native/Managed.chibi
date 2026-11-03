@@ -494,7 +494,7 @@ ManagedRoots :: (shape: Function, slots: int[], locals: int[], records: Record[]
 // The nodes and their slots are used by attach and release across suspension,
 // so coroutine lowering puts them in the stable heap frame, not the ramp stack.
 ManagedFrameRoots :: struct { prologue: string; attach: string; cleanup: string; destroy: string; }
-ManagedFrame :: (shape: Function, slots: int[], locals: int[], layout: ManagedRecordLayout, values: ValueLayout) -> ManagedFrameRoots {
+ManagedFrame :: (shape: Function, slots: int[], locals: int[], records: Record[], fields: int[], layout: ManagedRecordLayout, values: ValueLayout) -> ManagedFrameRoots {
     prologue: string[] = ["  %managed.heap = call ptr @chibi_managed.owner(ptr %ctx)\n"];
     attach: string[] = [];
     cleanup: string[] = [];
@@ -506,9 +506,10 @@ ManagedFrame :: (shape: Function, slots: int[], locals: int[], layout: ManagedRe
         if (part == 1) { first = shape.first_local; count = shape.locals; prefix = "l"; types = locals; }
         for (index in 0..<count) {
             type := types[first + index];
-            if (!TaskFrameTraced(layout, type)) { continue; }
+            if (!TaskFrameRoot(records, fields, layout, type)) { continue; }
             trace := "pointer";
-            if (type != PointerType) { trace = format_text("record{}", type - RecordType); }
+            if (type == ViewType) { trace = "view"; }
+            else if (type != PointerType) { trace = format_text("record{}", type - RecordType); }
             if (part == 0) { prologue.append(Store(Zero(type), type, prefix, index)); }
             prologue.append(format_text("  %managed.{}{} = alloca %chibi.managed.persistent\n  store %chibi.managed.persistent zeroinitializer, ptr %managed.{}{}\n", prefix, index, prefix, index));
             attach.append(format_text("  call void @chibi_managed.hold(ptr %managed.heap, ptr %managed.{}{}, ptr %{}{}, ptr @chibi_managed.trace.{})\n", prefix, index, prefix, index, trace));

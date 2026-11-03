@@ -259,7 +259,9 @@ OptionalPayloadType :: (rows: facts.Row[], records: int[], type: int) -> int {
 // Whether `row` is a loop over an array, and whether it also names the index.
 Arrayed :: (row: facts.Row) -> bool {
     return row.kind == facts.ForRow && (row.literal == i64(facts.RangeArray) ||
-                                      row.literal == i64(facts.RangeArray + facts.RangeKeyed));
+                                      row.literal == i64(facts.RangeArray + facts.RangeKeyed) ||
+                                      row.literal == i64(facts.RangeArray + facts.RangeReverse) ||
+                                      row.literal == i64(facts.RangeArray + facts.RangeKeyed + facts.RangeReverse));
 }
 MapIterated :: (row: facts.Row) -> bool {
     return row.kind == facts.ForRow && (row.literal == i64(facts.RangeMap) ||
@@ -267,6 +269,7 @@ MapIterated :: (row: facts.Row) -> bool {
 }
 Keyed :: (row: facts.Row) -> bool {
     return row.kind == facts.ForRow && (row.literal == i64(facts.RangeArray + facts.RangeKeyed) ||
+                                      row.literal == i64(facts.RangeArray + facts.RangeKeyed + facts.RangeReverse) ||
                                       row.literal == i64(facts.RangeMap + facts.RangeKeyed));
 }
 // The first loop binding: an array element, a map value, or a keyed map's key.
@@ -4229,8 +4232,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 // their own, before the element's variable.
                 array := NativeType(facts.ArrayType + row.type);
                 element := NativeType(row.type);
+                reverse := (row.literal & i64(facts.RangeReverse)) != 0;
                 frame: Frame = {kind: row.kind, skip: -1, leave: -1, ends: false, head: 0, index: local + 1,
-                                bound: local, counted: false, reverse: false, escape: length(jumps), empty: -1,
+                                bound: local, counted: false, reverse: reverse, escape: length(jumps), empty: -1,
                                 exits: 0, armed: false, fallback: -1, owned: length(owned_vars), held: -1, held_type: 0, pattern_first: -1};
                 // A loop over a fresh array owns it, in a local of its own.
                 if (Holds(fresh, stack[0])) {
@@ -4243,20 +4247,42 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 if (Keyed(row)) {
                     places.append(local + 1);
                 }
-                slots.append(integer);
-                body.extend([Op(native.Save, array, 0, stack[0], 0, local), Op(native.Constant, integer, slot, 0, 0, 0),
-                             Op(native.Save, integer, 0, slot, 0, local + 1)]);
-                slot += 1;
+                body.append(Op(native.Save, array, 0, stack[0], 0, local));
+                if (reverse) {
+                    // Length zero starts at the signed sentinel -1. The
+                    // head rejects it before any element access.
+                    one := Op(native.Constant, integer, slot + 1, 0, 0, 0);
+                    one.literal = 1;
+                    slots.extend([integer, integer, integer]);
+                    body.extend([Op(native.ArrayLength, integer, slot, stack[0], 0, 0), one,
+                                 Op(native.Sub, integer, slot + 2, slot, slot + 1, 0),
+                                 Op(native.Save, integer, 0, slot + 2, 0, local + 1)]);
+                    slot += 3;
+                } else {
+                    slots.append(integer);
+                    body.extend([Op(native.Constant, integer, slot, 0, 0, 0),
+                                 Op(native.Save, integer, 0, slot, 0, local + 1)]);
+                    slot += 1;
+                }
                 frame.head = length(body);
-                slots.extend([integer, array, integer, abi.BoolStorage]);
-                body.extend([Op(native.Local, integer, slot, local + 1, 0, 0),
-                             Op(native.Local, array, slot + 1, local, 0, 0),
-                             Op(native.ArrayLength, integer, slot + 2, slot + 1, 0, 0),
-                             Op(native.Lt, integer, slot + 3, slot, slot + 2, 0),
-                             Op(native.Branch, 0, 0, slot + 3, 0, length(body) + 6)]);
+                if (reverse) {
+                    slots.extend([integer, integer, abi.BoolStorage]);
+                    body.extend([Op(native.Local, integer, slot, local + 1, 0, 0),
+                                 Op(native.Constant, integer, slot + 1, 0, 0, 0),
+                                 Op(native.Ge, integer, slot + 2, slot, slot + 1, 0),
+                                 Op(native.Branch, 0, 0, slot + 2, 0, length(body) + 5)]);
+                    slot += 3;
+                } else {
+                    slots.extend([integer, array, integer, abi.BoolStorage]);
+                    body.extend([Op(native.Local, integer, slot, local + 1, 0, 0),
+                                 Op(native.Local, array, slot + 1, local, 0, 0),
+                                 Op(native.ArrayLength, integer, slot + 2, slot + 1, 0, 0),
+                                 Op(native.Lt, integer, slot + 3, slot, slot + 2, 0),
+                                 Op(native.Branch, 0, 0, slot + 3, 0, length(body) + 6)]);
+                    slot += 4;
+                }
                 frame.skip = length(body);
                 body.append(Op(native.Jump, 0, 0, 0, 0, 0));
-                slot += 4;
                 slots.extend([array, integer, element]);
                 body.extend([Op(native.Local, array, slot, local, 0, 0), Op(native.Local, integer, slot + 1, local + 1, 0, 0),
                              Op(native.ArrayGet, element, slot + 2, slot, slot + 1, 0),

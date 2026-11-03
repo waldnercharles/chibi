@@ -69,7 +69,7 @@ make the compiler self-hosted.
 | Native executables and runtime | `src/host/`, `src/toolchain/`, `src/execution/`, `src/types/` | Executables stay C until Chibi has a native backend that emits them (LLVM AOT, backend milestone 4 in `docs/self-hosting-build.md`). Their orchestration and policy (command dispatch, export assembly, migration, validation) move to installed `.chibi` modules first. | `test/graph/ChibiCliTests.chibi`, `test/native_cli/foreground.py`, installed-SDK and relocated-SDK command runs, and matching bytecode/SLJIT/native semantics. |
 | First-party engine modules | `src/runtime/`, `src/render/`, `src/ui/`, `src/assets/`, `src/authoring/`, `src/automation/`, `src/capabilities/`, `src/diagnostics/`, `src/platform/`, `src/support/`, `include/chibi/` | M9: Chibi packages over narrow bindings to SDL, Cute, Box2D, Box3D, RmlUi, codecs and platform APIs. `src/ui/rml.cpp` and `test/draw_backend.cpp` stay as pass-through shims while their C++ libraries do. | Each module's existing deterministic fixtures, desktop and browser parity, and ownership tests at every binding. |
 | C regression and differential tests | `test/` pico_unit drivers | A test leaves with the C it tests. When a Chibi component replaces its C reference, its cases move to `@test` under `chibi test`. The uncalled subprocess benchmark wrapper and its test prerequisite are retired; native workload benchmarks remain in `test/tools/native_workloads.c`. | The replacement's `chibi test` cases and the aggregate that ran the C cases. |
-| Collaboration room service | `tools/collab/server/` (Node) | Needs a Chibi network service with HTTP and WebSocket bindings, or a move to `chibi-studio`, whose browser client is its only consumer. | `test/tools/collab.c` room, protocol and storage cases, and Studio collaboration against the service. |
+| Collaboration room service | `tools/collab/server/` (Node) | Needs a Chibi network service with HTTP and WebSocket bindings, or a move to `chibi-studio`, whose browser client is its only consumer. | `tools/collab/server/server.test.mjs` authority, readiness and transport cases, and Studio collaboration against the service. The C launcher is retired. |
 
 ## CMake retirement boundaries, 2026-10-28
 
@@ -188,7 +188,7 @@ staging directories, or limit a child's resources. Its instruction budget,
 
 | Files | Responsibility and callers | Decision |
 | --- | --- | --- |
-| `tools/collab/server/` | Collaboration room service. `test/tools/collab.c`, `docs/collaboration.md`, Studio's client. | **Blocked**: its ledger gate. |
+| `tools/collab/server/` | Collaboration room service. Its Node tests, `docs/collaboration.md`, Studio's client. | **Blocked**: its ledger gate. |
 
 Only Python that an external application imports, such as Blender through
 `bpy`, belongs to that exception; a launcher around it runs under ordinary

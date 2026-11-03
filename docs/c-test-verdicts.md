@@ -39,10 +39,11 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/native_aot/targets/run.c` | 2 | LLVM-built bundles on macOS and Windows | survives, since no VM is in it; it is first-party C, so it becomes a native Chibi runner later |
 | `test/tools/types.c`, `native_values.c`, `program_consumer.c` | 42, 1, 2 | `src/types`, `src/runtime`, `src/authoring/program.h` | goes |
 | `test/tools/compiler_bootstrap.c` | 17 | the bytecode seed loader | goes with the bytecode seed |
-| `test/tools/wasm_browser.c` | 1 | the C VM built to wasm | goes |
-| `test/tools/case_timings_test.c`, `case_timings.c`, `fixture.c`, `policy_worker.c`, `main.c`, `browser.c` | 9, 0 | the C test runner and its workers | goes |
+| `test/tools/wasm_browser.c`, `browser.c`, `browser.h` (retired 2026-11-02) | 1 | the C VM built to wasm and its otherwise unused browser launcher | retired with the selector and graph sources; the live LLVM Wasm compile-only service has separate tests |
+| `test/tools/case_timings_test.c`, `case_timings.c`, `fixture.c`, `policy_worker.c`, `main.c` | 9, 0 | the C test runner and its workers | goes |
 | `test/tools/box3d.c` | 2 | the third-party box3d library | goes with the C engine build |
-| `test/tools/collab.c`, `web_storage.c` | 5, 19 | the Node collab server; chibi-studio's `web_storage.js` | not Chibi: these move to Node tests in their owners' repositories |
+| `test/tools/collab.c` (retired 2026-11-02) | 5 | the Node collab server | authority, readiness, logs and transport failures moved to `tools/collab/server/server.test.mjs`; `collab`, `short` and `native-tools` select them |
+| `test/tools/web_storage.c` | 19 | chibi-studio's `web_storage.js` | move to Node tests in its owning repository |
 | `test/tools/build_process.c` | 53 | the C build host's natives | goes, except 16 core:os cases |
 | `test/tools/chibi_cli.c` (retired 2026-11-02) | 24 | `apps/chibi` launched by the C apphost | native CLI behavior is covered by `ChibiCliTests.chibi` and `test/native_cli/foreground.py`; launcher/VM mechanics leave with the host |
 | `test/tools/native_workloads.c` | 2 | `chibi build --native` end to end | `native_workloads_build_and_run` survives |

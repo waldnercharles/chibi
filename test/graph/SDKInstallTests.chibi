@@ -126,8 +126,8 @@ Contained :: () -> string {
 
 // A source root with only what CompilerTools reads, the compiler and core
 // copied from the build so its resources are current.
-DistributionSource :: (fixture: Fixture) -> string {
-    root := Path([fixture.suite, "/containment source"]);
+DistributionSource :: (fixture: Fixture, name: string) -> string {
+    root := Path([fixture.suite, "/", name]);
     for (directory in ["tools", "docs"]) {
         Make(Path([root, "/", directory]));
     }
@@ -138,6 +138,8 @@ DistributionSource :: (fixture: Fixture) -> string {
                    "LICENSE.md", "COPYING", "COPYING.LESSER", "COPYING.EXAMPLES", "docs/distribution-licensing.md"]) {
         Clone(Path([fixture.checkout, "/", input]), Path([root, "/", input]));
     }
+    Make(Path([root, "/src/authoring"]));
+    Clone(Path([fixture.checkout, "/src/authoring/asset_compiler_host.h"]), Path([root, "/src/authoring/asset_compiler_host.h"]));
     return root;
 }
 
@@ -150,7 +152,7 @@ Refused :: (fixture: Fixture, source: string, output: string) {
 }
 
 DistributionInputsCannotContainOutputOrStaging :: (fixture: Fixture) {
-    source := DistributionSource(fixture);
+    source := DistributionSource(fixture, "containment source");
     tools := Path([source, "/tools"]);
     graph := Path([tools, "/graph"]);
     sentinel := Path([graph, "/containment-sentinel"]);
@@ -290,7 +292,8 @@ CloneGraph :: (fixture: Fixture, name: string) -> string {
     Make(Path([clone, "/share/chibi/tools"]));
     Make(Path([clone, "/lib"]));
     for (input in ["sdk/chibi", "sdk/chibi-asset-compiler", "share/chibi/compiler", "share/chibi/core",
-                   "share/chibi/apps", "share/chibi/engine.json", "lib/chibi-vendor"]) {
+                   "share/chibi/apps", "share/chibi/engine.json", "lib/chibi-vendor",
+                   "lib/libchibi_asset_compiler_host.a", "lib/libchibi_asset_compiler_host.a.json"]) {
         Clone(Path([fixture.build_dir, "/", input]), Path([clone, "/", input]));
     }
     return clone;
@@ -353,6 +356,34 @@ UnexpectedCompilerResourcesFailBeforeStaging :: (fixture: Fixture) {
         assert(result.status == 1 && Says(result, "sdk: graph compiler/core resources are missing or stale"), "extra resource kinds are refused");
         assert(!Exists(output) && !Exists(Path([output, ".chibi-stage"])), "extra resources leave no stage");
     }
+}
+
+NativeArchiveRejectionsLeavePrefixUntouched :: (fixture: Fixture) {
+    for (kind in ["missing receipt", "changed archive", "duplicate field", "missing field"]) {
+        clone := CloneGraph(fixture, Path(["native archive ", kind]));
+        archive := engine.AssetCompilerArchive(clone);
+        receipt := Path([archive, ".json"]);
+        if (kind == "missing receipt") {
+            removed := os.Remove(receipt);
+            assert(removed == nil, "the receipt is removed");
+        } else if (kind == "changed archive") {
+            Write(archive, "stale archive\n");
+        } else if (kind == "duplicate field") {
+            Write(receipt, strings.ReplaceAll(Read(receipt), "\"source_sha256\":", "\"archive_sha256\":"));
+        } else {
+            Write(receipt, "{\"format\":1}");
+        }
+        output := Path([fixture.suite, "/rejected native archive ", kind]);
+        result := Install(fixture, fixture.checkout, clone, output);
+        assert(result.status == 1 && Says(result, "native compiler archive or receipt is missing or stale"), "the invalid native archive is refused");
+        assert(!Exists(output) && !Exists(Path([output, ".chibi-stage"])), "native archive rejection precedes prefix writes");
+    }
+    source := DistributionSource(fixture, "changed facade source");
+    Write(Path([source, "/tools/graph/asset_native_inputs/Extra.chibi"]), "package asset_native_inputs\n");
+    output := Path([fixture.suite, "/rejected native source inventory"]);
+    result := Install(fixture, source, fixture.build_dir, output);
+    assert(result.status == 1 && Says(result, "native compiler archive or receipt is missing or stale"), "an added source invalidates the native receipt");
+    assert(!Exists(output) && !Exists(Path([output, ".chibi-stage"])), "a stale source inventory leaves no prefix");
 }
 
 ManifestName :: () -> string {
@@ -494,6 +525,8 @@ CompilerToolsPackageAndRunAfterRelocation :: (fixture: Fixture) {
         Copied(original, binary, fixture.build_dir, "sdk/chibi");
     }
     Copied(original, "libexec/chibi/chibi-asset-compiler", fixture.build_dir, "sdk/chibi-asset-compiler");
+    Copied(original, "lib/libchibi_asset_compiler_host.a", fixture.build_dir, "lib/libchibi_asset_compiler_host.a");
+    Copied(original, "include/chibi/authoring/asset_compiler_host.h", fixture.checkout, "src/authoring/asset_compiler_host.h");
     for (resource in ["share/chibi/compiler", "share/chibi/core", "share/chibi/apps/host"]) {
         Copied(original, resource, fixture.build_dir, resource);
     }
@@ -628,6 +661,7 @@ pub Run :: () -> int {
     FailedStagedAssetVerificationRemovesOwnedStaging(fixture);
     StaleCompilerResourcesFailBeforeStaging(fixture);
     UnexpectedCompilerResourcesFailBeforeStaging(fixture);
+    NativeArchiveRejectionsLeavePrefixUntouched(fixture);
     CompilerToolsPackageAndRunAfterRelocation(fixture);
     OverlayRetiresOnlyOwnedPaths(fixture);
     cleaned := files.RemoveTree(suite);

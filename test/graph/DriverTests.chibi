@@ -91,7 +91,7 @@ EngineBuildSteps :: (toolchain: Toolchain) {
     assert(Has(log, "--profile release") && !Has(log, "--profile sanitizer"), "a Release build");
     assert(Has(log, "build-release/compile_commands.json"), "the Release graph output");
     log = Plan(toolchain, ["--debug"]);
-    assert(Has(log, "--profile debug") && Has(log, "--target chibi --target chibi-asset-compiler") &&
+    assert(Has(log, "--profile debug") && Has(log, "--target chibi --target chibi-asset-compiler --target chibi_asset_compiler_host") &&
            !Has(log, "--target test_tools"), "the native Debug products");
     log = Plan(toolchain, ["--target", "chibi"]);
     start := strings.Index(log, "--profile sanitizer");
@@ -125,7 +125,7 @@ DebugOptions :: (toolchain: Toolchain) {
 // still belong to the engine graph.
 DefaultTargets :: (toolchain: Toolchain) {
     log := Plan(toolchain, ["--release"]);
-    assert(Has(log, "--target chibi --target chibi-asset-compiler") &&
+    assert(Has(log, "--target chibi --target chibi-asset-compiler --target chibi_asset_compiler_host") &&
            !Has(log, "--target test_tools"), "the default native products");
     named := Plan(toolchain, ["--release", "--target", "chibi"]);
     assert(engine.TargetError(strings.Fields(named), engine.Targets()) == "", "the graph knows each named target");

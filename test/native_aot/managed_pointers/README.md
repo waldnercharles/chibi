@@ -247,3 +247,9 @@ caller and child failures with poisoned zero-live-allocation checks. Reload
 keeps an old completed array promise alive and preserves independent joins.
 Arrays/maps whose elements contain collector edges and view promises remain
 outside this result domain.
+
+Value-only records may combine direct pointer fields with pointer-array and
+text owners. Their structural root metadata does not make them cell layouts.
+`InlineOwners.chibi` checks synchronous copies, repeated promise joins, by-value
+waiting parameters and cancellation under collection. Taking the address of an
+owned record remains rejected until its cell layout owns and traces those fields.

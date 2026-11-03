@@ -376,8 +376,8 @@ ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) ->
             member := rows[head + 1 + field];
             if (member.kind != facts.MemberRow || member.name == "" || member.text != "" || !Stored(records, member.type) ||
                 member.value != field || member.count != 0 ||
-                (record.literal == 0 && (member.type == facts.PointerType ||
-                    (member.literal != 0 && (member.literal != i64(facts.CharNominal) || member.type != facts.IntType)))) ||
+                (record.literal == 0 && member.literal != 0 &&
+                    (member.literal != i64(facts.CharNominal) || member.type != facts.IntType)) ||
                 (record.literal != 0 && (member.literal == 0 || (!Scalar(member.type) && member.type != facts.PointerType))) || !Located(member, starts, size) ||
                 !Within(member, record)) {
                 return "invalid scalar record member row";

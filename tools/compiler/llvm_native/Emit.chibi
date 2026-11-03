@@ -317,6 +317,14 @@ pub ValueDrop: int : 73;
 // repeat left in right. The C call makes matching places unique only after
 // all arguments have finished, preserving aliases and replaced places.
 pub ArrayLoan: int : 74;
+pub ArrayLoanPlace: int : 0;
+pub ArrayLoanMove: int : 1;
+pub ArrayLoanValue: int : 2;
+// Right is RefMap and literal is the immutable key slot. The immediately
+// preceding MapGet captures the array, including the empty missing-key
+// default. No entry address survives later arguments. String keys own one
+// reference until the call resolves the entry.
+pub ArrayLoanMap: int : 3;
 // Borrows an existing array entry at left map/right key; literal is its map
 // type. Target 0 observes a map value; target 1 takes a RefMap and detaches
 // and publishes its canonical owner before borrowing the entry. Resolve after
@@ -1226,10 +1234,24 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             if (length(loan_uses) == 0) { loan_uses = resize([false], length(slots)); }
             element := ElementType(records, item.type);
             if (element == abi.BoolStorage || abi.ScalarType(element) == "" || !Typed(slots, item.left, item.type) ||
-                item.target < 0 || item.target > 2 || item.literal != 0 ||
-                (item.target == 0 && !Typed(slots, item.right, RefType + item.type)) ||
-                (item.target != 0 && item.right != item.left)) {
+                item.target < ArrayLoanPlace || item.target > ArrayLoanMap ||
+                (item.target != ArrayLoanMap && item.literal != 0) ||
+                (item.target == ArrayLoanPlace && !Typed(slots, item.right, RefType + item.type)) ||
+                ((item.target == ArrayLoanMove || item.target == ArrayLoanValue) && item.right != item.left)) {
                 return Result.Rejected(base + pc, "native foreign buffer loan differs from its array or place");
+            }
+            if (item.target == ArrayLoanMap) {
+                mapped := 0;
+                if (Index(item.right, length(slots))) { mapped = slots[item.right] - RefType; }
+                if (!MapShaped(records, mapped) || MapValue(mapped) != item.type ||
+                    item.literal < 0 || item.literal >= i64(length(slots)) || !Typed(slots, int(item.literal), MapKey(mapped)) || pc < 1) {
+                    return Result.Rejected(base + pc, "native map buffer loan differs from its capture");
+                }
+                read := code[pc - 1];
+                if (read.op != MapGet || read.output != item.left || read.type != item.type ||
+                    read.literal != i64(mapped) || read.right != int(item.literal) || read.target != 0) {
+                    return Result.Rejected(base + pc, "native map buffer loan differs from its capture");
+                }
             }
         }
         if ((item.op == ValueCopy || item.op == ValueDrop) &&
@@ -1391,6 +1413,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if (ReadsTarget(item.op) && !Dominates(dominance, definitions[item.target], pc)) {
             return Result.Rejected(base + pc, "native scalar operand is not defined on every path");
+        }
+        if (item.op == ArrayLoan && item.target == ArrayLoanMap && !Dominates(dominance, definitions[int(item.literal)], pc)) {
+            return Result.Rejected(base + pc, "native map buffer key is not defined on every path");
         }
         if (ReadsArguments(item.op)) {
             for (index in 0..<ArgumentCount(item)) {
@@ -1788,14 +1813,6 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, ArrayDropped(item, pc));
     } else if (item.op == TextRetain || item.op == TextRelease) {
         out = format_text("{}{}", out, TextCounted(item, pc));
-    } else if (item.op == ArrayLoan) {
-        out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
-        if (item.target == 1) {
-            out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "s", item.output));
-        } else {
-            out = format_text("{}  %v{} = call {} @chibi_array.{}.copy(ptr %ctx, {} %a{})\n", out, pc, type, item.type, type, pc);
-            out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
-        }
     } else if (item.op == ValueCopy) {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
         if (item.type >= MapType && item.type < RefType) {
@@ -2627,7 +2644,7 @@ CstringHelper :: () -> string {
 // the function's stack buffers, so the callee reads a C string; a string too
 // long for the buffer, or holding a NUL, traps.
 ForeignInstruction :: (slots: int[], arguments: int[], texts: string[], code: Instruction[], origins: int[], item: Instruction, pc: int) -> string {
-    out := format_text("p{}:\n{}", pc, ForeignArrays(arguments, code, origins, item, pc));
+    out := format_text("p{}:\n{}", pc, ForeignArrays(slots, arguments, code, origins, item, pc));
     listed: string[] = [];
     callee := format_text("@{}", texts[int(item.literal)]);
     buffer: int = 0;
@@ -2972,6 +2989,8 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
                                        fallible[item.left]));
         } else if (item.op == ClockSample) {
             out.append(ClockInstruction(item, pc));
+        } else if (item.op == ArrayLoan) {
+            out.append(LoanInstruction(own_slots, item, pc));
         } else if (item.op == ForeignCall) {
             out.append(ForeignInstruction(own_slots, own, texts, code, loan_origins, item, pc));
         } else if (item.op == FunctionAddress) {

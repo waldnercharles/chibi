@@ -1846,13 +1846,18 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
 }
 
 // The operation of the context at field `field`, loaded as `name`.
-ContextCall :: (name: string, field: int) -> string {
+ContextCall :: (name: string, field: int, guarded: bool = false) -> string {
+    if (guarded && (field == 2 || field == 4)) {
+        operation := "allocate";
+        if (field == 4) { operation = "release"; }
+        return format_text("  %{} = getelementptr i8, ptr @chibi_managed.{}, i64 0\n", name, operation);
+    }
     out := format_text("  %{}.at = getelementptr inbounds {}, ptr %ctx, i32 0, i32 {}\n", name, abi.ContextType(), field);
     return format_text("{}  %{} = load ptr, ptr %{}.at\n", out, name, name);
 }
 // The context's allocate of `bytes`, an i64 value, as `name`.
-Allocated :: (name: string, bytes: string) -> string {
-    out := ContextCall(format_text("{}.allocate", name), 2);
+Allocated :: (name: string, bytes: string, guarded: bool = false) -> string {
+    out := ContextCall(format_text("{}.allocate", name), 2, guarded);
     return format_text("{}  %{} = call ptr %{}.allocate(ptr %ctx, i64 {})\n", out, name, name, bytes);
 }
 // The byte size of one `type`, an i64 named `name`.

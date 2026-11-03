@@ -4765,6 +4765,10 @@ ScalarUnion :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: Typ
                 return ScalarOperands.Failed(Diagnose(forest, fields[index], 0,
                                                       "native map payloads require union ownership support"));
             }
+            if (field.storage == PointerStorage) {
+                return ScalarOperands.Failed(Diagnose(forest, fields[index], 0,
+                                                      "native pointer payloads require union tracing support"));
+            }
             if (payload == 0) {
                 return ScalarOperands.Failed(Diagnose(forest, fields[index], 0,
                                                       "scalar proof requires number, bool, string, array, record and union payloads"));

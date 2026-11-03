@@ -161,7 +161,7 @@ Main :: () -> int {
     ScopedPackages();
     ScopedParameterModes();
     LocatedPackages();
-    UnsupportedSources();
+    SourceBoundaries();
     LibraryContracts();
     RetainedLibraryRows();
     CollectionProjection();

@@ -15,6 +15,29 @@ Shape :: (slots: int[], code: native.Instruction[]) -> native.Function {
         first_slot: 0, slots: length(slots), first_local: 0, locals: 0, first_code: 0, code: length(code),
         first_argument: 0, arguments: 0};
 }
+RecordEmission :: (target: abi.Target, mode: int) -> native.Result {
+    number := abi.IntStorage;
+    pointer := native.PointerType;
+    first := native.RecordType;
+    second := first + 1;
+    slots := [first, number, first, pointer, pointer, native.RefType + number, number, number, number];
+    projected := Op(native.ManagedProject, pointer, 4, 3, first, -123);
+    if (mode == 1) { projected.right = second; projected.literal = -125; }
+    if (mode == 2) { projected.target = 1; }
+    if (mode == 3) { projected.literal = -999; }
+    code := [Op(native.Constant, first, 0, 0, 0, 0), Op(native.Constant, number, 1, 0, 0, 7),
+        Op(native.Insert, first, 2, 0, 1, 0), Op(native.ManagedNew, pointer, 3, 2, first, -700), projected,
+        Op(native.ManagedAddress, native.RefType + number, 5, 4, 0, -123), Op(native.Deref, number, 6, 5, 0, 0),
+        Op(native.Constant, number, 7, 0, 0, 7), Op(native.Sub, number, 8, 6, 7, 0),
+        Op(native.Publish, number, 0, 8, 0, 0), Op(native.Return, 0, 0, 0, 0, 0)];
+    records: native.Record[] = [{first: 0, count: 1, identity: -700}, {first: 1, count: 1, identity: -701}];
+    tags: i64[] = [-123, -125];
+    if (mode == 4) { records[0] = {first: 0, count: 1, identity: 0}; }
+    if (mode == 5) { tags = [-123]; }
+    source: native.Source = {file: "", directory: ""};
+    return native.EmitProgramTyped(target, [Shape(slots, code)], [], slots, [], code, [], records,
+        [number, number], tags, [], source, [], [], []);
+}
 Emit :: (target: abi.Target, slots: int[], code: native.Instruction[], embedded: bool,
          records: native.Record[], fields: int[]) -> native.Result {
     shape := Shape(slots, code);
@@ -69,6 +92,16 @@ Main :: () -> int {
         Op(native.Publish, number, 0, 9, 0, 0), Op(native.Return, 0, 0, 0, 0, 0)];
     no_records: native.Record[] = [];
     empty: int[] = [];
+    for (mode in 2..<6) {
+        switch RecordEmission(target, mode) {
+            case .Emitted(text): os.Print("accepted invalid managed record metadata or projection"); return 1;
+            case .Rejected(instruction, message):
+                expected := "projection differs from its typed record field";
+                if (mode == 4) { expected = "initializer differs from its scalar type"; }
+                if (mode == 5) { expected = "identities differ from the field table"; }
+                if (!strings.Contains(message, expected)) { os.Print(message); return 1; }
+        }
+    }
     metadata: native.Record[] = [{first: 0, count: 1, identity: -700}];
     source: native.Source = {file: "", directory: ""};
     for (valid in [true, false]) {
@@ -97,6 +130,12 @@ Main :: () -> int {
     wrong.right = abi.TextStorage;
     invalid[1] = wrong;
     if (!Rejected(target, slots, invalid, false, no_records, empty, "initializer differs")) { return 1; }
+    membership := [Op(native.Constant, array, 0, 0, 0, 0), Op(native.Constant, pointer, 1, 0, 0, 0),
+        Op(native.ArrayContains, abi.BoolStorage, 2, 0, 1, i64(pointer)),
+        Op(native.Constant, number, 3, 0, 0, 0), Op(native.Publish, number, 0, 3, 0, 0),
+        Op(native.Return, 0, 0, 0, 0, 0)];
+    if (!Rejected(target, [array, pointer, abi.BoolStorage, number], membership, false, no_records, empty,
+                  "array operation differs from its operands")) { return 1; }
     pin_slots := [number, array, pointer];
     pinned := [Op(native.Constant, number, 0, 0, 0, 7), Op(native.Constant, array, 1, 0, 0, 0),
         Op(native.Jump, 0, 0, 0, 0, 0), Op(native.ManagedPin, array, 0, 1, 0, 0),
@@ -137,10 +176,21 @@ Main :: () -> int {
     if (os.WriteText(start, link.ManagedProgramContext(link.ProgramStart(target.triple, false, true, false)))) { return 2; }
     for (mode in ["positive", "persistent", "typed_layout", "untraced_layout", "bad_layout_storage", "bad_layout_identity", "bad_layout_root",
                   "wrong_tag", "wrong_storage", "wrong_range", "nil", "wrong_owner", "array_owner", "epoch_wrap",
-                  "code_underflow", "code_overflow", "no_layout_drop"]) {
+                  "code_underflow", "code_overflow", "no_layout_drop", "record", "record_parent"]) {
         module := format_text("{}/native-{}.ll", work, mode);
         body := format_text("\ndefine i32 @managed_source.entry(ptr %ctx) {{\n  %native = call i32 @managed_native.entry(ptr %ctx)\n  %runtime = call i32 @managed_runtime.{}(ptr %ctx)\n  %result = or i32 %native, %runtime\n  ret i32 %result\n}}\n", mode);
-        if (os.WriteText(module, strings.Concatenate([text, fixture.text, body, audit.text]))) { return 2; }
+        current := strings.Concatenate([text, fixture.text, body]);
+        if (mode == "record" || mode == "record_parent") {
+            record_mode := 0;
+            if (mode == "record_parent") { record_mode = 1; }
+            switch RecordEmission(target, record_mode) {
+                case .Rejected(instruction, message): os.Print(message); return 1;
+                case .Emitted(emitted):
+                    current = strings.ReplaceAll(emitted, "define i32 @chibi_scalar(ptr %ctx)",
+                        "define i32 @managed_source.entry(ptr %ctx)");
+            }
+        }
+        if (os.WriteText(module, strings.Concatenate([current, audit.text]))) { return 2; }
         for (level in [int(0), 2]) {
             output := format_text("{}/native-{}-O{}", work, mode, level);
             objects := [strings.Concatenate([output, ".o"]), strings.Concatenate([output, "-start.o"])];
@@ -154,7 +204,7 @@ Main :: () -> int {
             result := os.Capture([output]);
             valid := result.status == 0;
             trapped := mode == "epoch_wrap" || mode == "code_underflow" || mode == "code_overflow" || mode == "no_layout_drop";
-            if (mode != "positive" && mode != "persistent" && mode != "typed_layout" && mode != "untraced_layout" && !trapped) {
+            if (mode != "positive" && mode != "persistent" && mode != "typed_layout" && mode != "untraced_layout" && mode != "record" && !trapped) {
                 valid = result.status == 134 && strings.Contains(result.stderr, "native failure: another failure");
             }
             // Capture preserves negative signals; some runners encode 128+sig.

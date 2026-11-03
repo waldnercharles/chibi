@@ -14,7 +14,7 @@ esac
     --source "$root/test/native_aot/managed_pointers/Probe.chibi" --entry Main \
     --output "$work/probe" --llvm "$llvm" --target "$triple" --jobs 1
 "$work/probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/Collector.ll"
-for name in Cells ScopedAliases Transfer Nullable; do
+for name in Cells ScopedAliases Transfer Nullable Records; do
     "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
         --source "$root/test/native_aot/managed_pointers/source/$name.chibi" --entry Main \
         --output "$work/$name.ll" --emit-llvm --target "$triple"
@@ -23,7 +23,7 @@ done
     --source "$root/test/native_aot/managed_pointers/SourceProbe.chibi" --entry Main \
     --output "$work/source-probe" --llvm "$llvm" --target "$triple" --jobs 1
 "$work/source-probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
-    "$work/Cells.ll" "$work/ScopedAliases.ll" "$work/Transfer.ll" "$work/Nullable.ll"
+    "$work/Cells.ll" "$work/ScopedAliases.ll" "$work/Transfer.ll" "$work/Nullable.ll" "$work/Records.ll"
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$root/test/native_aot/managed_pointers/NativeProbe.chibi" --entry Main \
     --output "$work/native-probe" --llvm "$llvm" --target "$triple" --jobs 1

@@ -9,8 +9,9 @@ unreachable cycles, escaped cells, changed roots, separate owners, bounded
 allocation during 100,000 discarded cycles, and iterative traversal of a
 10,000-cell chain. Cross-owner marks and unmatched root pops trap.
 
-Standalone desktop programs admit numeric/bool scalar cells and
-arrays of those pointers. Cells can escape creator returns; array copies
+Standalone desktop programs admit numeric/bool scalar cells, flat authored
+record cells with numeric/bool or pointer fields, and arrays of those pointers.
+Cells can escape creator returns; array copies
 retain cell identity while detaching on entry replacement. A cell descriptor
 contains its nonmoving root, byte offset and stable semantic pointee tag.
 Reads, writes and scoped borrows validate the tag, owner, scalar storage and
@@ -35,12 +36,18 @@ and the surviving value at O0/O2. The heap is 56 bytes; persistent nodes are
 Raw native IR clients must pin each live pointer-array owning place or fresh
 descriptor around collecting calls and cell construction; borrowed Read slots
 are not owners. Pin regions cannot be entered after their first push. Scalar
-descriptor slots are initialized and rooted until their function returns.
+descriptor slots and pointer-bearing inline record slots are initialized and
+rooted until their function returns. Record field descriptors retain the same
+cell identity. Their exact nominal+layout tag and target-derived offset/size
+are checked before access; field lookup is logarithmic in the field count.
+The source proof includes a live ten-thousand-record chain and twenty thousand
+discarded two-cell cycles, field aliases, copied pointer fields, readonly/scoped
+aliases and once-only compound assignment through a replaced pointer variable.
 
 Generic embedded modules and Wasm require a collector-owner adapter before
-managed admission. Nominal char, record, nested and container cells remain
+managed admission. Nominal char, inline-nested and container cells remain
 closed in this slice, as do pointer buffers at the foreign boundary.
-Pointer-bearing suspended frames and retained values require scheduler roots,
+Inline pointer-bearing record frames and retained values require scheduler roots,
 collector-family adoption and generation metadata retention before admission.
 Trace and drop callbacks must outlive their cells. Drop callbacks release
 external value owners without following managed pointer edges.
@@ -51,5 +58,6 @@ semantic identity and range checks. A counted cell pins its image before
 publication and releases that pin after its drop callback and last metadata
 access. The host must keep images mapped until execution is quiescent and
 both task and cell counts reach zero. Counter overflow/underflow traps.
-This is preparation for record/field source admission and shared-family
-adaptation; those source and generation gates above remain explicit.
+Record metadata remains standalone-only until the shared family emitter wires
+its per-image counter. Arrays of pointer-bearing records and array-backed cell
+payloads require owning-place roots and payload drops before admission.

@@ -87,7 +87,7 @@ original generation; the host keeps that library loaded and polls its tasks betw
 active Frames. Once its tasks finish, the host releases its scheduler and retained state
 and unloads it. Program exit cancels tasks in every remaining generation.
 
-Retained numbers, bools, chars, strings and flat numeric/bool arrays use
+Retained numbers, bools, chars, strings and arrays use
 `Function.variable` keys. Plain records use one key per leaf, such as
 `Frame.position.x`, so migration follows field names rather than layout. Imported
 functions have canonical package prefixes, keeping their retained keys distinct.
@@ -135,13 +135,17 @@ IDs are local indices, while retained keys include the function's canonical
 package identity.
 
 Package generations have a private libc-backed runtime context, so arrays, string
-operations and assertions keep their native behavior. Retained numbers, bools,
-chars, strings and flat numeric/bool arrays migrate by named leaves. Plain records
-can contain numbers, bools, strings and those arrays. Record fields can be
+operations and assertions keep their native behavior. Retained scalar, string,
+array and union bindings migrate by stable names. Plain records flatten their
+fields into named leaves, which can contain those values. Their fields can be
 reordered or added; a new
 leaf takes its initializer. Initializers must be literals, empty arrays or
-constant record construction. Managed arrays, nominal scalar arrays such as
-`char[]`, unions and task handles remain unsupported as retained state. Scalar
+constant record or union construction. String arrays, record arrays and union
+leaves migrate through one snapshot transaction for the generation. Their ordered
+field and variant graphs must match; incompatible layouts or type splitting and
+merging reject the incoming generation. Nominal scalar arrays such as `char[]`,
+managed pointers, views, maps and task handles remain unsupported as retained
+state. Scalar
 chars keep their nominal identity and reject int/char migration, even though both
 use i32 storage. Source record char fields remain outside the ordinary
 record checker's admitted types; the facts representation preserves their nominal
@@ -154,6 +158,20 @@ publish it before subsequent source code runs. The allocation regression bounds
 4,096 appends to at most 16 backing allocations. Nested record array leaves can be copied, edited and
 assigned back; direct nested array mutation remains unsupported. The host checks
 all shared leaf types and array schemas before copying any incoming state.
+
+The backend also exposes `llvm_native.EmitSnapshotLibrary` for explicit native
+clients that supply a complete structural graph. This API stages all retained
+roots in one transaction, clones arrays and strings into the incoming allocator,
+and preserves sharing across roots with the same source descriptor and target
+type. It validates every matched root before copying, then publishes all staged
+values together. An aborted transaction leaves the running generation intact.
+The snapshot graph supports records, unions and arrays of owned values; it rejects
+changed field or variant order, incompatible layouts, and type splitting or
+merging. Native type ordinals may change. Managed pointers, views, tasks, maps and
+external resources remain outside this contract. Package source uses this API for
+union and managed-array leaves; plain records keep their named-leaf migration.
+`test/native_aot/generations/snapshots.sh` checks the emitted callbacks and a real
+host swap, including access after the old image unloads.
 
 The legacy `library` form keeps its scalar-literal retained-state ABI: its bulk word
 manifest exposes initialized numbers and bools before any function runs. Records,

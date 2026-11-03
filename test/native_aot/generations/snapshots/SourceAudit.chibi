@@ -1,0 +1,50 @@
+package retained_source
+foreign import libc "system:c"
+foreign libc {
+    chibi_value_test_allocations :: () -> i64
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fclose :: (file: rawptr) -> i32
+}
+Node :: struct { message: string; values: int[]; }
+Payload :: union { Text(value: string) | Nodes(value: Node[]) }
+State :: struct { names: string[]; nodes: Node[]; payload: Payload; }
+Mark :: (path: string) {
+    file := fopen(path, "w");
+    assert(file != 0);
+    assert(fclose(file) == 0);
+}
+Text :: (n: int) -> string { return text_from_bytes([u8(65), u8(0), u8(n)]); }
+Main :: () -> int { return 0; }
+Frame :: () -> int {
+    Growth();
+    count: retain int = 0;
+    progress: retain State = {names: [], nodes: [], payload: Payload.Text("seed")};
+    count += 1;
+    if count == 1 {
+        progress.names = [Text(1), Text(2)];
+        progress.nodes = [{message: Text(3), values: [7, 9]}];
+        progress.payload = Payload.Nodes(progress.nodes);
+    }
+    assert(length(progress.names) == 2 && text_byte_at(progress.names[0], 2) == 1);
+    assert(length(progress.nodes) == 1 && progress.nodes[0].values[1] == 9);
+    switch progress.payload {
+        case .Nodes(value): assert(value[0].values[0] == 7 && text_byte_at(value[0].message, 2) == 3);
+        case .Text(value): assert(false);
+    }
+    if count == 3 { Mark("ready"); }
+    return 0;
+}
+
+Growth :: () {
+    words: retain string[] = [];
+    items: retain Node[] = [];
+    initial_allocations := chibi_value_test_allocations();
+    for index in 0..<4096 { words.append("held"); }
+    final_allocations := chibi_value_test_allocations();
+    assert(final_allocations - initial_allocations <= 16);
+    initial_allocations = final_allocations;
+    for index in 0..<4096 { items.append({message: "held", values: []}); }
+    final_allocations = chibi_value_test_allocations();
+    assert(final_allocations - initial_allocations <= 16);
+    assert(length(words) == length(items) && length(words) >= 4096);
+}

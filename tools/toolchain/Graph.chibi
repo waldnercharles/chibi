@@ -82,7 +82,9 @@ SDKReflect :: () -> int {
 // compilation without sharing a profile or a build result.
 LibrariesWithArguments :: (arguments: string[]) -> int {
     targets := engine.Targets();
-    targets.extend(engine.WebAssemblyProducts());
+    web_targets := engine.WebAssemblyProducts();
+    archive_targets := engine.NativeArchives();
+    targets.extend(web_targets);
     unknown := engine.TargetError(arguments, targets);
     if (unknown != "") {
         os.Print(unknown);
@@ -92,19 +94,22 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
     jobs := Count(Option(arguments, "--jobs", "8"));
     selected: string[] = [];
     native_products: string[] = [];
+    native_archives: string[] = [];
     web_products: string[] = [];
     for (target in targets) {
         if (engine.Selected(arguments, target)) {
-            if (engine.WebAssemblyProducts().contains(target)) { web_products.append(target); }
+            if (web_targets.contains(target)) { web_products.append(target); }
+            else if (archive_targets.contains(target)) { native_archives.append(target); }
             else if (length(engine.NativeArguments(target)) == 0) { selected.append(target); }
             else { native_products.append(target); }
         }
     }
     native_commands := "[\n\n]\n";
+    archive_commands := "[\n\n]\n";
     web_commands := "[\n\n]\n";
     emcc := Option(arguments, "--emcc", os.Getenv("CHIBI_EMCC"));
     wasm_llvm := Option(arguments, "--wasm-llvm", os.Getenv("CHIBI_WASM_LLVM_BIN"));
-    if (length(native_products) != 0 || length(web_products) != 0) {
+    if (length(native_products) != 0 || length(native_archives) != 0 || length(web_products) != 0) {
         driver := Option(arguments, "--native-driver", "");
         llvm := Option(arguments, "--llvm", "");
         if (!paths.IsAbsolute(build_dir) || driver == "" || llvm == "" || jobs < 1) {
@@ -114,6 +119,7 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
         if (length(native_products) != 0) {
             native_commands = engine.NativeCommands(driver, llvm, os.Root(), build_dir, native_products, jobs);
         }
+        if (length(native_archives) != 0) { archive_commands = engine.NativeArchiveCommands(llvm, os.Root(), build_dir); }
         if (length(web_products) != 0) {
             if (!paths.IsAbsolute(emcc) || !paths.IsAbsolute(wasm_llvm)) {
                 os.Print("graph: the optional Wasm compiler requires --emcc FILE and --wasm-llvm DIR, or CHIBI_EMCC and CHIBI_WASM_LLVM_BIN");
@@ -125,6 +131,11 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
             if (Option(arguments, "--commands-only", "") != "on") {
                 if (length(native_products) != 0 &&
                     engine.BuildNative(driver, llvm, os.Root(), build_dir, native_products, jobs) < 0) { return 1; }
+                if (length(native_archives) != 0 && engine.BuildNativeArchives(llvm, os.Root(), build_dir) < 0) { return 1; }
+                if (length(native_archives) != 0) {
+                    archive_commands = engine.NativeArchiveRecordedCommands(build_dir);
+                    if (archive_commands == "") { return 1; }
+                }
                 if (length(web_products) != 0 &&
                     engine.BuildWebAssembly(driver, llvm, emcc, wasm_llvm, os.Root(), build_dir, jobs) < 0) { return 1; }
                 if (length(web_products) != 0) {
@@ -134,7 +145,7 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
             }
             if (os.MakeDirectory(build_dir) ||
                 os.WriteText(strings.Concatenate([build_dir, "/compile_commands.json"]), "[]\n") ||
-                os.WriteText(strings.Concatenate([build_dir, "/link_commands.json"]), MergeCommands(native_commands, web_commands))) { return 1; }
+                os.WriteText(strings.Concatenate([build_dir, "/link_commands.json"]), MergeCommands(MergeCommands(native_commands, archive_commands), web_commands))) { return 1; }
             return 0;
         }
     }
@@ -257,6 +268,12 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
     if (length(native_products) != 0 && Option(arguments, "--commands-only", "") != "on" &&
         engine.BuildNative(Option(arguments, "--native-driver", ""), Option(arguments, "--llvm", ""),
                            os.Root(), build_dir, native_products, jobs) < 0) { return 1; }
+    if (length(native_archives) != 0 && Option(arguments, "--commands-only", "") != "on" &&
+        engine.BuildNativeArchives(Option(arguments, "--llvm", ""), os.Root(), build_dir) < 0) { return 1; }
+    if (length(native_archives) != 0 && Option(arguments, "--commands-only", "") != "on") {
+        archive_commands = engine.NativeArchiveRecordedCommands(build_dir);
+        if (archive_commands == "") { return 1; }
+    }
     if (length(web_products) != 0 && Option(arguments, "--commands-only", "") != "on" &&
         engine.BuildWebAssembly(Option(arguments, "--native-driver", ""), Option(arguments, "--llvm", ""),
                                 emcc, wasm_llvm, os.Root(), build_dir, jobs) < 0) { return 1; }
@@ -281,8 +298,8 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
     }
     links := strings.Join([build_dir, "/link_commands.json"], "");
     link_commands := engine.LinkCommands(tools, profile, os.Root(), build_dir, selected);
-    if (length(native_products) != 0 || length(web_products) != 0) {
-        link_commands = MergeCommands(MergeCommands(native_commands, web_commands), link_commands);
+    if (length(native_products) != 0 || length(native_archives) != 0 || length(web_products) != 0) {
+        link_commands = MergeCommands(MergeCommands(MergeCommands(native_commands, archive_commands), web_commands), link_commands);
     }
     if (os.WriteText(links, link_commands)) {
         os.Print("graph: writing link_commands.json failed");

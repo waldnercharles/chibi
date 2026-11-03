@@ -45,13 +45,11 @@ void test_tool_compiler_bootstrap(const char *host);
 void test_tool_bootstrap_recovery(const char *host, const char *artifact);
 void test_tool_bootstrap_load(const char *artifact);
 #endif
-void test_tool_web_storage();
 void test_tool_types();
 #ifdef CHIBI_TEST_PROGRAM
 void test_program_sdk();
 #endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
-void test_compiled_math();
 void test_persistent_stores();
 static bool source_runtime_active;
 bool test_source_runtime_active()
@@ -123,23 +121,20 @@ int main(int argc, char **argv)
         return 2;
 #endif
     }
-    bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
     bool types = argc == 2 && !strcmp(argv[1], "--types");
     bool box3d = false;
-    bool whole_math = false, persistent_store = false;
+    bool persistent_store = false;
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
-    whole_math = argc == 2 && !strcmp(argv[1], "--whole-math");
     persistent_store = argc == 2 && !strcmp(argv[1], "--persistent-store");
 #endif
 #ifdef CHIBI_TEST_BOX3D
     box3d = argc == 2 && !strcmp(argv[1], "--box3d");
 #endif
-    if (argc != 1 && !web_storage && !types && !box3d && !persistent_store &&
-        !whole_math) {
+    if (argc != 1 && !types && !box3d && !persistent_store) {
         fprintf(
             stderr,
-            "Usage: %s [--web-storage | --types | --box3d | "
-            "--persistent-store | --whole-math]\n",
+            "Usage: %s [--types | --box3d | "
+            "--persistent-store]\n",
             argv[0]
         );
         return 2;
@@ -147,13 +142,9 @@ int main(int argc, char **argv)
     tool_init();
     pu_display_time(true);
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
-    source_runtime_active = persistent_store || whole_math;
+    source_runtime_active = persistent_store;
     if (source_runtime_active) {
-        if (persistent_store) {
-            test_persistent_stores();
-        } else if (whole_math) {
-            test_compiled_math();
-        }
+        test_persistent_stores();
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
@@ -165,11 +156,7 @@ int main(int argc, char **argv)
         return pu_test_failed() ? 1 : 0;
     }
 #endif
-    if (web_storage) {
-        test_tool_web_storage();
-    } else {
-        test_tool_types();
-    }
+    test_tool_types();
     pu_print_stats();
     return pu_test_failed() ? 1 : 0;
 }

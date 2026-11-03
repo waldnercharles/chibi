@@ -1,0 +1,61 @@
+package optional_cells
+
+Value :: struct { code: int; flag: bool; }
+Main :: () -> int {
+    value: Value? = {code: 7, flag: true};
+    pointer := &value;
+    alias := pointer;
+    copied := value;
+    cleared := Clear(pointer);
+    assert(cleared && value == nil);
+    if copied { assert(copied.code == 7 && copied.flag); } else { assert(false); }
+    Set(alias, 9);
+    if value { assert(value.code == 9); } else { assert(false); }
+    returned := Owner(11);
+    for index in 0..<5000 { discarded := Owner(index); }
+    saved := returned^;
+    if saved { assert(saved.code == 11); } else { assert(false); }
+    replacement: Value? = {code: 31, flag: false};
+    alias^ = replacement;
+    if value { assert(value.code == 31 && !value.flag); } else { assert(false); }
+    value = nil;
+    assert(alias^ == nil);
+    number: int? = 4;
+    numeric := &number;
+    numeric^ = 12;
+    if number { assert(number == 12); } else { assert(false); }
+    numeric^ = nil;
+    assert(number == nil);
+    enabled: bool? = false;
+    boolean := &enabled;
+    sampled := boolean^;
+    assert(sampled != nil);
+    if sampled != nil { assert(!sampled); }
+    boolean^ = true;
+    if enabled { assert(enabled); } else { assert(false); }
+    boolean^ = nil;
+    assert(enabled == nil);
+    early := Early(true);
+    other := Early(false);
+    assert(early == 8 && other == 9);
+    Set(pointer, 17);
+    observed := ReadAfter(pointer, alias);
+    assert(observed == 0 && value == nil);
+    return 0;
+}
+Clear :: (value: ^(Value?)) -> bool { value^ = nil; return true; }
+Set :: (value: ^(Value?), code: int) { value^ = {code: code, flag: true}; }
+Owner :: (code: int) -> ^(Value?) { value: Value? = {code: code, flag: true}; return &value; }
+Early :: (flag: bool) -> int {
+    value: Value? = {code: 8, flag: false};
+    pointer := &value;
+    if flag { selected := pointer^; if selected { return selected.code; } }
+    pointer^ = nil;
+    return 9;
+}
+
+ReadAfter :: (value: ^(Value?), changed: ^(Value?)) -> int {
+    Clear(changed);
+    if value^ { return 1; }
+    return 0;
+}

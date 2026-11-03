@@ -75,6 +75,26 @@ whole-variable and pointer assignments acquire or transfer the incoming value
 before dropping the old one; evaluated reads keep independent value owners.
 The source proof covers escaped array cells, pointer-array owners, scoped
 aliases, value copies, variable element writes/append and canonical foreign
-byte-buffer writes. Inline pointer-bearing record arrays, array-backed record
-cells and pointer-backed views still need their respective tracing and place
-lowering before admission.
+byte-buffer writes. Inline pointer-bearing record arrays and array-backed
+record cells still need their respective tracing and place lowering.
+
+Numeric/bool pointer-backed views use a 32-byte cell/start/count descriptor.
+They follow replacement and growth of that cell while retaining a fixed window;
+ordinary array copies, view clones and slices keep their value semantics.
+Direct views and their optional union slots are traced. The source proof runs
+the original nine successful kernels, an escaped optional-only root under
+collection, and initial/late mutation failure checks. A separate 4096-append
+entry requires at most 32 allocations; the current implementation uses 13.
+Fatal failure probes check their category with poisoned frees, while successful
+probes also require zero live allocations. Authored view fields, view containers,
+retained views and suspended view frames remain outside this admission.
+
+Optional numeric/bool values and flat numeric/bool record payloads can share
+managed cells. The optional tag and payload move together; nil replacement
+and scoped alias writes are visible through every pointer. The cell keeps the
+same 64-byte header and uses a complete optional nominal/layout identity.
+Its immutable validator exposes the whole payload; inline field projection
+keeps the existing flat-record rule. Backing owners and pointer/view edges
+inside optional cells remain outside this slice. The original four fallible
+pointer cases run at O0/O2, and the poisoned source proof checks escaped cells,
+early returns and forced collection with bounded peak allocation.

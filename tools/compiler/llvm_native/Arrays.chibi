@@ -153,7 +153,11 @@ ArrayUses :: (code: Instruction[]) -> int[] {
     for (item in code) {
         type := item.type;
         flags := 0;
-        if (item.op == ArrayValueAddress) {
+        if (ViewOperation(item.op)) {
+            type = ArrayType + ViewElement(item);
+            if (item.op == ViewClone || item.op == ViewSlice) { flags = ArrayAllocation; }
+            if (item.op == ViewSet) { flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation; }
+        } else if (item.op == ArrayValueAddress) {
             type = item.target;
             flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation;
         }
@@ -161,7 +165,7 @@ ArrayUses :: (code: Instruction[]) -> int[] {
             type = item.right;
             flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArraySharing;
         }
-        if (item.op == ManagedPin) {
+        if (item.op == ManagedPin || item.op == OwnerPin) {
             if (type >= RefType) { type -= RefType; }
             flags = ArrayDropping;
         }

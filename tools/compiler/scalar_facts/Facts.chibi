@@ -276,6 +276,9 @@ pub PayloadRow: int : 34;
 pub TextRow: int : 35;
 pub AssertRow: int : 36;
 pub ArrayRow: int : 37;
+// ArraySet's canonical Nil | Some(numeric/bool array) payload place. Its type
+// is the union, literal this marker, and the first operand a root reference.
+pub OptionalArrayPlace: int : -2;
 // A call of a C function the source declares in a foreign block, an operand
 // row that consumes its `count` argument operands, numbers, bools or string
 // literals a C function reads as NUL-ended bytes. `name` is the C symbol,
@@ -360,6 +363,21 @@ pub OperandBindRow: int : 58;
 // A lexical scope without operands. Its header has type/value/count/literal 0
 // and empty names/text; End repeats its located range and releases its owners.
 pub ScopeRow: int : 59;
+// One private clock transport value: zero operands and metadata, exact i64/u64/int/int record.
+pub ClockSampleRow: int : 60;
+// A numeric/bool view operation. Value packs operation * 16 + scalar type;
+// type is the result (make/slice use the ordinary optional record). Count is
+// operand arity. Make carries the full array-cell identity in literal;
+// Get/Set use literal1 for a mutable place check, otherwise literal0.
+pub ViewRow: int : 61;
+pub ViewMake: int : 1;
+pub ViewLength: int : 2;
+pub ViewGet: int : 3;
+pub ViewSet: int : 4;
+pub ViewClone: int : 5;
+pub ViewSlice: int : 6;
+pub ViewOperation :: (value: int) -> int { return value / 16; }
+pub ViewElement :: (value: int) -> int { return value % 16; }
 pub PatternStorage: int : 16;
 // A While immediately after PatternStorage declarations in a Scope. Its
 // captures are released/cleared after each pass, before its next test.
@@ -420,6 +438,8 @@ pub TaskType: int : 13;
 // An identity-preserving managed cell descriptor, distinct from a scoped
 // ReferenceType. Its exact semantic pointee identity travels in the value.
 pub PointerType: int : 14;
+// A fixed window into the current array of a traced managed cell.
+pub ViewType: int : 15;
 // The d-th record or union of the module is type RecordType + d.
 pub RecordType: int : 32;
 // An array of type T is ArrayType + T.
@@ -540,13 +560,13 @@ pub ArrayWithout: int : 16;
 // A foreign argument loan, consuming a numeric array or a reference to its
 // writable descriptor. It keeps the evaluated value alive until the C call.
 pub ArrayLoan: int : 17;
+// Read a logical array place. Unavailability is the ordinary reference
+// failure, distinct from expression indexing's typed bounds failure.
+pub ArrayPlaceGet: int : 20;
 // Mutating insert(array,index,item) and reverse(array) consume their canonical
 // array place as a RefRow, resolve it after arguments, and publish the change.
 pub ArrayInsert: int : 18;
 pub ArrayReverse: int : 19;
-// Read a logical array place. Unavailability is the ordinary reference
-// failure, distinct from expression indexing's typed bounds failure.
-pub ArrayPlaceGet: int : 20;
 // Functional forms give a new value, leaving every input unchanged.
 pub ArrayInserted: int : 21;
 pub ArrayReversed: int : 22;
@@ -632,7 +652,7 @@ pub Floating :: (type: int) -> bool {
 // integer type, any bits for a word or double, 32 bits for a float and 0 for
 // a string, whose value is its text.
 pub Fits :: (literal: i64, type: int) -> bool {
-    if (type == TaskType || type == PointerType) { return literal == 0; }
+    if (type == TaskType || type == PointerType || type == ViewType) { return literal == 0; }
     if (type == StringType) {
         return literal == 0;
     }

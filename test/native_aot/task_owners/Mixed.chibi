@@ -1,0 +1,34 @@
+package mixed_task_owners
+
+Payload :: struct { label: string; values: int[]; }
+Text :: (count: int) -> string { return text_from_bytes(resize([u8(120)], count)); }
+Make :: (value: int) -> ^int { return &value; }
+Worker :: (text: string, values: ^int[], payload: Payload) -> int {
+    yield;
+    formatted := format_text("{}:{}", text, int(values[0]^));
+    payload.label = Text(7);
+    yield;
+    return text_byte_length(formatted) + text_byte_length(payload.label) + values[1]^ + payload.values[0];
+}
+Main :: () -> int {
+    pointers: ^int[] = [Make(11), Make(37)];
+    payload: Payload = {label: Text(5), values: [int(3)]};
+    worker := Worker(Text(2), pointers, payload);
+    pointers = [];
+    payload = {label: Text(9), values: [int(13)]};
+    completed := await worker;
+    if completed is Cancelled { return 1; }
+    else { assert(completed == 52); }
+    for index in 0..<64 {
+        values: ^int[] = [Make(index), Make(index + 1)];
+        kept: Payload = {label: Text(4), values: [int(3)]};
+        pending := Worker(Text(2), values, kept);
+        values = [];
+        kept = {label: "", values: []};
+        yield;
+        cancel pending;
+        cancelled := await pending;
+        assert(cancelled is Cancelled);
+    }
+    return 0;
+}

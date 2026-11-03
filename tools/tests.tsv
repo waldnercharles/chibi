@@ -32,7 +32,6 @@ tool	graph-wasm	@program@	test/graph/WebAssemblyTests.chibi	Run
 tool	graph-os	@program@	test/graph/OsTests.chibi	Run
 tool	graph-sdk-install	@release@/sdk/chibi	run	--core	@root@/packages/core	--llvm	@llvm@	--root	@root@	--collection	graph=@root@/tools/graph	--entry	Run	@root@/test/graph/SDKInstallTests.chibi	--	@release@/sdk/chibi	@release@	@llvm@
 tool	collab	node	--test	@root@/tools/collab/server/server.test.mjs
-tool	whole-math	@build@/test/tools/test_tools	--whole-math
 tool	text-format	sh	test/native_aot/text_format/run.sh	@compiler@	@llvm@
 tool	box3d	@build@/test/tools/test_tools	--box3d
 tool	language-test-parallel	@build@/test/language/test_language	--test-parallel
@@ -44,24 +43,23 @@ tool	chibi-test-integer-arithmetic	env	CHIBI_CORE=@root@/packages/core	@compiler
 tool	chibi-test-core-strings	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/test/core_strings
 tool	chibi-test-time	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/test/standard_library/time
 tool	chibi-test-portable-consumer	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/test/packages/portable_consumer
-tool	chibi-test-samples-base	@release@/sdk/chibi	test	test/compiler/samples/base
+tool	chibi-test-samples-base	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/test/compiler/samples/base
 tool	chibi-test-samples-collections	@release@/sdk/chibi	test	test/compiler/samples/collections
-tool	chibi-test-samples-comptime	@release@/sdk/chibi	test	test/compiler/samples/comptime
+tool	chibi-test-samples-comptime	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/test/compiler/samples/comptime
 tool	chibi-test-samples-fallible	@release@/sdk/chibi	test	test/compiler/samples/fallible
 tool	chibi-test-samples-imports	@release@/sdk/chibi	test	test/compiler/samples/imports
-tool	chibi-test-samples-math	@release@/sdk/chibi	test	test/compiler/samples/math
+tool	chibi-test-samples-math	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/test/compiler/samples/math
 tool	chibi-test-samples-native	sh	test/native_cli/samples-native.sh	@release@/sdk/chibi	@llvm@
-tool	chibi-test-samples-native-arguments	@release@/sdk/chibi	test	test/compiler/samples/native_arguments
+tool	chibi-test-samples-native-arguments	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/test/compiler/samples/native_arguments
 tool	chibi-test-samples-types	@release@/sdk/chibi	test	test/compiler/samples/types
 tool	language-package-compiler-chibi-scalar	sh	test/native_aot/scalar_producer/run.sh	@compiler@	@llvm@
 tool	language-scalar-native	sh	test/native_aot/backend/run.sh	@compiler@	@llvm@
-tool	language-host-packages-compiler	@build@/test/language/test_language	--host-packages-compiler
+tool	language-host-packages-compiler	sh	test/native_aot/host_clock/run.sh	@compiler@	@llvm@
 tool	language-record-compatibility	@build@/test/language/test_language	--record-compatibility
 tool	language-record-document	@build@/test/language/test_language	--record-document
 tool	language-record-values	@build@/test/language/test_language	--record-values
 tool	language-program	@build@/test/language/test_language	--program
 tool	language-execution	@build@/test/language/test_language	--execution
-tool	web-storage	@build@/test/tools/test_tools	--web-storage
 group	native-tools	types	collab
 group	short	types	collab
 timeout	chibi-cli	900
@@ -70,7 +68,7 @@ timeout	graph-build	1200
 timeout	graph-sdk-install	1200
 timeout	bootstrap-load	1800
 exclusive	language-test-parallel
-group	native	graph-c	box3d	persistent-store	whole-math
+group	native	graph-c	box3d	persistent-store
 group	projects	chibi-cli	native-build	native-build-entry
 group	language	language-map-receivers	language-test-parallel	execution-scope	language-execution	language-program	language-ranges	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-comptime	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	chibi-test-core-strings	chibi-test-time	chibi-test-portable-consumer	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	compiler-bootstrap	bootstrap-recovery	native-link
 group	compiler	language-package-compiler-chibi-scalar

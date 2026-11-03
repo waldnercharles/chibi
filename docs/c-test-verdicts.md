@@ -24,14 +24,14 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/language/execution_scope.c`, `capture.c`, `ranges.c` | 8, 6, 7 | VM scopes, budgets, intrinsics, the interval optimizer | goes |
 | `test/language/record_values.c`, `record_document.c`, `record_compatibility.c`, `record_prepared.c` | 15, 5, 1, 0 | `src/types` records, value documents, legacy array callbacks | goes (`text_keys_preserve_suffix_after_nul` is ported) |
 | `test/language/text_format.c` | 2 | `src/runtime/text_format.c`, `src/types/value_format.c` | retired; authored `test/native_aot/text_format` preserves scalar specifiers, owned results and array/map count summaries |
-| `test/language/host_packages_compiler.c` | 2 | `src/host/clock_package`, grants, the compiler host | the unused C program-service catalog case is retired; native formatting/target checks remain, and `base/unknown_parameter_type` preserves its missing-type rejection. Clock cases remain until authored `host:clock` behavior has a native replacement. |
+| `test/language/host_packages_compiler.c` (retired 2026-11-02) | 2 | `src/host/clock_package`, grants, the compiler host | retired; the same selector runs native `host_clock` catalog/private-import checks, public clock policy, two-image grants and collector reentry. The oversized compiler-argument document was private VM transport, not a native quota. |
 | `test/language/native_census.c`, `census_tree.h` | 3 | the C census flattener over CollectScalar | retired after the combined native compiler reproduced byte for byte; the historical report remains |
 | `test/language/program_session.c` | 11 | `src/authoring/program.c` sessions | goes, except 3 Edit-and-Continue cases |
 | `test/language/package_compiler_chibi.c`, `scalar_host.c` | 6, 0 | native backend execution through the C compiler host | six backend cases retired through `test/native_aot/backend`, retained generations and process supervision; `scalar_host.c` is retired with the obsolete C census |
 | `test/language/parallel.c`, `main.c`, `backend.h`, `compiler_cache.h` | 9, 0 | the C test runner | goes |
 | `test/runtime/whole_integer.c` (retired 2026-11-02) | 3 | hand-built integer IR, bytecode against SLJIT | retired; admitted integer rules remain in the authored all-width arithmetic suite and native backend; exact integer math in this file used BF-only instructions, not exact integer source overloads |
 | `test/runtime/whole_conversion.c` (retired 2026-11-02) | 1 | typed scalar selection through hand-built IR | native `math_builtin/Select.chibi` preserves bool/u8/i32/i64/f32/f64 selection, both conditions, NaN and signed zero at O0/O2; its unused conversion helpers leave with it |
-| `test/runtime/whole_math.c` | 2 | hand-built IR, bytecode against SLJIT | goes; the conversion, negation and comparison rules are ported; the math specials wait on owner decisions |
+| `test/runtime/whole_math.c` (retired 2026-11-02) | 2 | hand-built math IR, bytecode against SLJIT | native `math_builtin/Edges.chibi` preserves admitted source special values and live results at O0/O2; unsupported BF-only f64/log10 shapes retire without admitting source overloads |
 | `test/runtime/persistent_store.c` | 1 | `execution_program_set_state` | goes, except retained records across a swap |
 | `test/runtime/reference_cave.c`, `reference_cave.h` (retired 2026-11-02) | 0 | a helper with no live caller | retired with its unused test-driver source entry |
 | `test/support/arena.c`, `asset_value.c` (retired 2026-11-02) | 5, 3 | C allocator internals and `av_doc` ownership, cloning and JSON representation | retired; production support and asset libraries remain for their live C consumers |
@@ -47,7 +47,7 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/tools/case_timings_test.c`, `case_timings.c`, `fixture.c`, `policy_worker.c`, `main.c` | 9, 0 | the C test runner and its workers | goes |
 | `test/tools/box3d.c` | 2 | the third-party box3d library | goes with the C engine build |
 | `test/tools/collab.c` (retired 2026-11-02) | 5 | the Node collab server | authority, readiness, logs and transport failures moved to `tools/collab/server/server.test.mjs`; `collab`, `short` and `native-tools` select them |
-| `test/tools/web_storage.c` | 19 | chibi-studio's `web_storage.js` | move to Node tests in its owning repository |
+| `test/tools/web_storage.c` (retired 2026-11-02) | 19 | chibi-studio's `web_storage.js` | all 19 cases now belong to Studio's `tests/web/web-storage.test.cjs`, including browser-export isolation |
 | `test/tools/build_process.c` (retired) | 53 | the C build host's natives | public behavior covered by native OS/CLI/supervisor suites; private contracts retired |
 | `test/tools/chibi_cli.c` (retired 2026-11-02) | 24 | `apps/chibi` launched by the C apphost | native CLI behavior is covered by `ChibiCliTests.chibi` and `test/native_cli/foreground.py`; launcher/VM mechanics leave with the host |
 | `test/tools/native_workloads.c` (retired 2026-11-02) | 2 | `chibi build --native` end to end | checksums, timings and detached-descendant cleanup run through the authored native workload benchmark |
@@ -141,7 +141,8 @@ Private build-host implementation contracts retire with this harness: pipe wait
 order, its job/result tables, bounded buffers, environment allowlists, VM quotas,
 recovery deadlines and private namespace are not native API requirements. The
 native process and CLI tests cover the surviving cancellation and child lifetime
-behavior. `policy_worker` remains only as a graph executable-staging fixture.
+behavior. Graph compilation, archives and executable staging use the independent
+C fixtures in `test/graph/fixtures`; the old `policy_worker` is retired.
 
 `core:os.WriteText` and `WriteBytes` are truncating writes; they do not inherit the
 private `build.write_file` atomic replacement contract. Accepted compiler outputs
@@ -232,11 +233,30 @@ original index/length diagnostic and status134 without allocating. The obsolete 
 compiler reproduced at stages three and four from the combined `813b93875` source;
 445 compiler tests and managed-record, pattern, array and generation proofs pass.
 
+### Host clock compiler coverage (ported)
+
+`language-host-packages-compiler` now runs `test/native_aot/host_clock/run.sh`
+through the current native compiler. Pure source checks retain missing imports,
+private authored and kernel members, exact case, owning-package permissions,
+unavailable capabilities and ambient-name precedence. Real O0/O2 programs retain
+public `Now`/`Between` normalization, denied/failed/unavailable outcomes, samples
+above `2^53`, repeated reads, domain mismatch, revocation and separate loaded-image
+grants. The provider can collect synchronously without losing live managed roots.
+The explicit seven-slot Wasm owner has its own source, callback and recovery proof.
+
+The C fixture's second case passed 2,200,000 empty path strings to the private
+compiler-host value-document decoder and checked its 4,000,000-value/256 MiB bound
+before compilation. That VM serialization limit retires with the fixture. Native
+asset requests retain their byte/depth bounds and CHECK budget/recovery tests;
+this change does not alter them.
+
 ## Owner decisions
 
 - **Integer `abs`, `min`, `max` and `clamp`.** The retired `whole_integer.c`
   asserted exact integer BF instructions. Source math converts integer operands
   to `number`; retiring this C test does not admit exact integer overloads.
-- **IEEE special values in `core:math`.** `whole_math.c` asserts tan, asin, acos, atan,
-  exp, log, log10, pow, atan2 and clamp at NaN, ±inf, ±0, subnormals and 1e20. The samples
-  pin only finite values. Should the language guarantee libm's results at the specials?
+- **Math special values.** Native `math_builtin/Edges.chibi` pins classification
+  and zero signs for admitted f32 builtins and f32/f64 exp/pow. Finite angles
+  use tolerances. Unsupported BF-only f64/log10 shapes in the retired
+  `whole_math.c` do not admit source overloads. Its clamp expression and the
+  current source clamp keep their distinct operand order and edge results.

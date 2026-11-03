@@ -408,7 +408,7 @@ ManagedPointerRuntime :: () -> string {
 }
 
 ManagedStorage :: (type: int) -> bool {
-    return type == PointerType || type == ArrayType + PointerType;
+    return type == PointerType || type == ViewType || type == ArrayType + PointerType;
 }
 ManagedTypes :: (types: int[]) -> bool {
     for (type in types) {
@@ -433,9 +433,10 @@ ManagedRoots :: (shape: Function, slots: int[], locals: int[], traced: bool[]) -
             // Only GC releases cells, so scalar pointer snapshots are safe
             // roots. Array reads may borrow freed backing; explicit pins
             // instead cover actual owning places across collecting calls.
-            if (type != PointerType && !ManagedTraced(type, traced)) { continue; }
+            if (type != PointerType && type != ViewType && !ManagedTraced(type, traced)) { continue; }
             trace := "pointer";
-            if (type != PointerType) { trace = format_text("record{}", type - RecordType); }
+            if (type == ViewType) { trace = "view"; }
+            else if (type != PointerType) { trace = format_text("record{}", type - RecordType); }
             output.append(Store(Zero(type), type, prefix, index));
             output.append(format_text("  %managed.{}{} = alloca %chibi.managed.root\n", prefix, index));
             output.append(format_text("  call void @chibi_managed.push(ptr %managed.heap, ptr %managed.{}{}, ptr %{}{}, ptr @chibi_managed.trace.{})\n",
@@ -646,8 +647,10 @@ ManagedPinsValid :: (code: Instruction[], slots: int[]) -> string {
             }
             active = slice(active, 0, length(active) - 1);
             if (length(active) == 0) { called = false; }
+        } else if (item.op == OwnerPin || item.op == OwnerUnpin) {
+            // Frame cleanup memberships can surround the same collecting call.
         } else if (length(active) > 0) {
-            if (called || (item.op != Call && item.op != ForeignCall && item.op != ManagedNew && item.op != Suspend && item.op != Delay && item.op != AwaitHandle && item.op != AwaitResult && item.op != Fail)) {
+            if (called || (item.op != ClockSample && item.op != Call && item.op != ForeignCall && item.op != Format && item.op != ManagedNew && item.op != Suspend && item.op != Delay && item.op != AwaitHandle && item.op != AwaitResult && item.op != Fail)) {
                 return "native collector pins must bracket one collecting call";
             }
             called = true;

@@ -1,4 +1,5 @@
 package_compiler/Compile.chibi
+package_compiler/ClockCatalog.chibi
 package_compiler/Body.chibi
 package_compiler/Fallible.chibi
 package_compiler/Generics.chibi
@@ -21,6 +22,7 @@ package_compiler/ScalarNestedPlaces.chibi
 package_compiler/ScalarOptionals.chibi
 package_compiler/ScalarPatterns.chibi
 package_compiler/ScalarPointers.chibi
+package_compiler/ScalarViews.chibi
 package_compiler/ScalarCollections.chibi
 package_compiler/ScalarEffects.chibi
 package_compiler/ScalarGenerations.chibi

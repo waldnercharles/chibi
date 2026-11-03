@@ -4832,6 +4832,13 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         }
     }
     if (!aggregate_cells) {
+        // Authored view unions are emitted even when only their empty tag is
+        // used. Their payload admission reads the element's cached schema.
+        for (field in fields) {
+            if (field.container == ViewContainer && field.record >= 0) { aggregate_cells = true; break; }
+        }
+    }
+    if (!aggregate_cells) {
         for (param in params) {
             if (param.container == ViewContainer && param.record >= 0) { aggregate_cells = true; break; }
         }

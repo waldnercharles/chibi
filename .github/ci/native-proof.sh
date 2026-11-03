@@ -57,6 +57,7 @@ if [ "$CHIBI_FULL" = true ]; then
 sh tools/build.sh build --release --target chibi --target chibi-asset-compiler --target chibi_asset_compiler_host --libclang-root /usr/lib/llvm-18
 sh tools/build.sh test graph-sdk-install
 sh test/native_aot/asset_compiler/bridge.sh "$PWD/build-release/sdk/chibi-asset-compiler" "$PWD/build-release/sdk/chibi" "$CHIBI_LLVM_BIN" clang-18 "$PWD/build-release/lib/libchibi_asset_compiler_host.a"
+sh test/native_aot/asset_compiler/archive.sh "$PWD/build-release/sdk/chibi" "$CHIBI_LLVM_BIN"
 SDK
 fi
 

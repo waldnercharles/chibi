@@ -1,0 +1,93 @@
+package owned_windows_builder
+
+import driver "project:native_driver"
+import host "project:native_link_host"
+import link "project:native_link"
+import route "project:driver_paths"
+import os "core:os"
+import strings "core:strings"
+
+// The real shared context keeps /noentry. Its audit is called explicitly by
+// the test host immediately before FreeLibrary, while the image is mapped.
+Main :: () -> int {
+    arguments := os.Arguments();
+    if length(arguments) != 6 {
+        os.Print("usage: BuildWindows CHECKOUT LLVM typed|edited OUTPUT 0|2 good|bad");
+        return 2;
+    }
+    root := arguments[0];
+    llvm := arguments[1];
+    name := "TypedGeneration";
+    if arguments[2] == "edited" { name = "Edited"; }
+    else if arguments[2] != "typed" { return 2; }
+    output := arguments[3];
+    level := 0;
+    if arguments[4] == "2" { level = 2; }
+    else if arguments[4] != "0" { return 2; }
+    if arguments[5] != "good" && arguments[5] != "bad" { return 2; }
+    triple := "x86_64-pc-windows-msvc";
+    core := strings.Concatenate([root, "/packages/core"]);
+    folder := strings.Concatenate([root, "/test/native_aot/task_owners/"]);
+    source := os.ReadText(strings.Concatenate([folder, name, ".chibi"]));
+    if source.error != nil { return 2; }
+    target := os.ReadText(strings.Concatenate([core, "/target/Target.chibi"]));
+    if target.error != nil { return 2; }
+    audit := os.ReadText(strings.Concatenate([folder, "SharedAudit.ll"]));
+    if audit.error != nil { return 2; }
+    visible := route.Visible(core);
+    module := "";
+    switch driver.ModuleShared(["core"], [visible], ["Main.chibi", strings.Concatenate([visible, "/target/Target.chibi"])],
+                               [source.text, target.text], triple, "", "") {
+        case .Rejected(message): os.Print(message); return 1;
+        case .Emitted(text): module = text;
+    }
+    start := link.SharedContext(triple, true);
+    if strings.Contains(module, "; chibi-family\n") { start = link.ManagedFamilyContext(start, true); }
+    else if strings.Contains(module, "; chibi-managed\n") { start = link.ManagedProgramContext(start); }
+    lines := strings.SplitLines(start);
+    contexts := 0;
+    for index in 0..<length(lines) {
+        if strings.HasPrefix(lines[index], "@chibi_context = hidden global ") {
+            assert(strings.Contains(lines[index], "ptr @chibi_allocate") && strings.Contains(lines[index], "ptr @chibi_release"));
+            lines[index] = strings.ReplaceAll(lines[index], "ptr @chibi_allocate", "ptr @task_owner.shared.allocate");
+            lines[index] = strings.ReplaceAll(lines[index], "ptr @chibi_release", "ptr @task_owner.shared.release");
+            contexts += 1;
+        }
+    }
+    assert(contexts == 1, "one real context owns the audited callbacks");
+    start = strings.Join(lines, "\n");
+    // Windows /noentry does not run llvm.global_dtors. Reuse the poison and
+    // balance implementation, and expose only its explicit test-only check.
+    checked: string[] = [];
+    destructors := 0;
+    for line in strings.SplitLines(audit.text) {
+        if strings.HasPrefix(line, "@llvm.global_dtors = ") { destructors += 1; }
+        else { checked.append(line); }
+    }
+    assert(destructors == 1);
+    counted := strings.Join(checked, "\n");
+    if arguments[5] == "bad" {
+        counted = strings.ReplaceAll(counted, "@task_owner.shared.live = internal global i64 0", "@task_owner.shared.live = internal global i64 1");
+    }
+    if !strings.Contains(start, "declare void @llvm.trap()") { start = strings.Concatenate([start, "\ndeclare void @llvm.trap()\n"]); }
+    start = strings.Concatenate([start, "\n", counted,
+        "\ndefine dllexport i32 @chibi_test_owner_close() {\n  call void @task_owner.shared.closed()\n  ret i32 0\n}\n"]);
+    source_path := strings.Concatenate([output, ".ll"]);
+    object := strings.Concatenate([output, ".o"]);
+    start_path := strings.Concatenate([output, ".start.ll"]);
+    start_object := strings.Concatenate([output, ".start.o"]);
+    written := os.WriteText(source_path, module);
+    if written != nil { return 2; }
+    written = os.WriteText(start_path, start);
+    if written != nil { return 2; }
+    compiled := host.ObjectsResult(llvm, [source_path], [object], level, 1);
+    if compiled.kind != 0 { return 1; }
+    compiled = host.ObjectResult(llvm, start_path, start_object, level);
+    if compiled.kind != 0 { return 1; }
+    plan := link.Program(triple, llvm, [object, start_object], [], [], [], output, "", true);
+    plan.shared = true;
+    plan.imports = link.SystemImports(strings.SplitLines(strings.Concatenate([module, start])), triple);
+    linked := host.LinkResult(plan);
+    if linked.kind != 0 { return 1; }
+    return 0;
+}

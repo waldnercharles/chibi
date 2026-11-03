@@ -1,0 +1,50 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+OptionalTextCellModule :: (fields: int[], tags: i64[], identity: i64, tag: i64, project: bool = false) -> native.Result {
+    record := native.RecordType;
+    slots := [record, native.PointerType, native.RefType + record, record, abi.IntStorage];
+    code := [Code(native.Constant, record, 0, 0, 0, 0, 0),
+        Code(native.ManagedNew, native.PointerType, 1, 0, record, 0, tag),
+        Code(native.ManagedAddress, native.RefType + record, 2, 1, 0, 0, tag),
+        Code(native.Deref, record, 3, 2, 0, 0, 0),
+        Code(native.Constant, abi.IntStorage, 4, 0, 0, 0, 0),
+        Code(native.Publish, abi.IntStorage, 0, 4, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    if (project) {
+        slots[2] = native.PointerType;
+        slots[3] = native.PointerType;
+        code[2] = Code(native.ManagedProject, native.PointerType, 2, 1, record, 1, tag);
+        code[3] = Code(native.Constant, native.PointerType, 3, 0, 0, 0, 0);
+    }
+    source: native.Source = {file: "", directory: ""};
+    return native.EmitProgramTyped(abi.LinuxX64(), [Function(abi.IntStorage, 0, 0, length(slots), 0, length(code), 0, 0)],
+        [], slots, [], code, [], [{first: 0, count: length(fields), identity: identity}], fields, tags, [], source, [], [], []);
+}
+@test
+OptionalTextCellsImportTheirPresentPayloadAndDropItsOwner :: () {
+    text := Emitted(OptionalTextCellModule([abi.IntStorage, abi.TextStorage], [i64(0), 0], -890, -890));
+    assert(strings.Contains(text, "define internal %record0 @chibi_managed.copy.record0("));
+    assert(strings.Contains(text, "switch i32 %tag, label %bad [ i32 0, label %none i32 1, label %some ]"));
+    assert(strings.Contains(text, "%owned = call { ptr, i32, ptr } @chibi_text.share("));
+    assert(strings.Contains(text, "ptr @chibi_value.32.drop_at, i32 32"));
+    assert(strings.Contains(text, "define internal void @chibi_value.32.drop_at("));
+    assert(strings.Contains(text, "%whole.offset = icmp eq i64 %offset, 0"));
+    assert(!strings.Contains(text, "find0.2:"), "optional cells expose no field address layout");
+}
+@test
+OptionalTextCellMetadataKeepsItsClosedShapeAndWholeIdentity :: () {
+    fields := [abi.IntStorage, abi.TextStorage];
+    Rejects(OptionalTextCellModule(fields, [i64(1), 0], -890, -890), "native managed field identity is invalid");
+    Rejects(OptionalTextCellModule(fields, [i64(0), 1], -890, -890), "native managed field identity is invalid");
+    Rejects(OptionalTextCellModule(fields, [i64(0), 0], 0, -890), "native managed cell initializer differs from its scalar type");
+    Rejects(OptionalTextCellModule(fields, [i64(0), 0], -890, -891), "native managed cell initializer differs from its scalar type");
+    Rejects(OptionalTextCellModule([abi.BoolStorage, abi.TextStorage], [i64(0), 0], -890, -890),
+        "native managed record metadata requires scalar or pointer fields");
+    Rejects(OptionalTextCellModule([abi.IntStorage, abi.TextStorage, abi.IntStorage], [i64(0), 0, 0], -890, -890),
+        "native managed record metadata requires scalar or pointer fields");
+    Rejects(OptionalTextCellModule(fields, [i64(0), 0], -890, -890, true),
+        "native managed projection differs from its typed record field");
+}

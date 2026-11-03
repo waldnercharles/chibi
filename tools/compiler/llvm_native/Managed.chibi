@@ -416,8 +416,8 @@ ManagedTypes :: (types: int[]) -> bool {
     }
     return false;
 }
-// All roots refer to initialized stable stack slots. Plain functions pay
-// nothing. Pointer-bearing suspended frames remain rejected by validation.
+// All roots refer to initialized stable slots. Plain functions pay nothing;
+// suspended frames attach their persistent roots after coroutine allocation.
 ManagedRoots :: (shape: Function, slots: int[], locals: int[]) -> string {
     output: string[] = ["  %managed.heap = call ptr @chibi_managed.owner(ptr %ctx)\n",
         "  %managed.head = getelementptr %chibi.managed.heap, ptr %managed.heap, i32 0, i32 1\n",
@@ -656,4 +656,27 @@ ManagedComparison :: (item: Instruction, pc: int) -> string {
         value = format_text("%different{}", pc);
     }
     return strings.Concatenate([out, Store(value, abi.BoolStorage, "s", item.output)]);
+}
+
+// Only the family adapter exports these hooks. A raw C/library bundle keeps
+// its five-pointer context and cannot adopt managed cells accidentally.
+ManagedFamilySymbols :: (runtime: bool, managed: bool) -> string {
+    out: string[] = [format_text("\n@{} = external hidden global i64\n", abi.ManagedImageCounter())];
+    if (!managed) { out.append(format_text("%chibi.managed.heap = type {}\n", abi.ManagedHeapType())); }
+    out.append(format_text("define i64 @chibi_host_family_abi() {{\n  ret i64 {}\n}}\n", abi.ManagedFamilyABI));
+    out.append("define i64 @chibi_host_family_size() {\n  %size = ptrtoint ptr getelementptr (%chibi.managed.heap, ptr null, i32 1) to i64\n  ret i64 %size\n}\n");
+    out.append(format_text("define i64 @chibi_host_cells_pending() {{\n  %count = load atomic i64, ptr @{} acquire, align 8\n  ret i64 %count\n}}\n", abi.ManagedImageCounter()));
+    out.append("define i32 @chibi_host_set_family(ptr %heap) {\nentry:\n  %present = icmp ne ptr %heap, null\n  br i1 %present, label %adopt, label %invalid\ninvalid:\n  ret i32 1\nadopt:\n");
+    if (runtime) {
+        out.append(format_text("  %at = getelementptr {}, ptr @chibi_context, i32 0, i32 {}\n", abi.ManagedContextType(), abi.ManagedOwnerField));
+        out.append("  %old = load ptr, ptr %at\n  %empty = icmp eq ptr %old, null\n  %same = icmp eq ptr %old, %heap\n  %allowed = or i1 %empty, %same\n  br i1 %allowed, label %store, label %invalid\nstore:\n  store ptr %heap, ptr %at\n");
+    }
+    out.append("  ret i32 0\n}\n");
+    out.append("define i32 @chibi_host_family_collect() {\n");
+    if (managed) {
+        out.append(format_text("  %at = getelementptr {}, ptr @chibi_context, i32 0, i32 {}\n", abi.ManagedContextType(), abi.ManagedOwnerField));
+        out.append("  %heap = load ptr, ptr %at\n  %present = icmp ne ptr %heap, null\n  br i1 %present, label %collect, label %invalid\ninvalid:\n  ret i32 2\ncollect:\n  call void @chibi_managed.collect(ptr @chibi_context, ptr %heap)\n  ret i32 0\n");
+    } else { out.append("  ret i32 1\n"); }
+    out.append("}\n");
+    return strings.Join(out, "");
 }

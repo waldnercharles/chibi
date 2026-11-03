@@ -217,7 +217,7 @@ EmitRows :: (collections: string[], directories: string[], paths: string[], sour
         prepared = AssertionLocations(collections, directories, paths, sources, rows, target, os, arch, origins);
     }
     if (shared) {
-        emitted = scalar.EmitShared(target, rows);
+        emitted = scalar.EmitFamilyShared(target, rows);
     } else if (directory == "") {
         emitted = scalar.EmitProgramFor(target, prepared, "");
     } else {

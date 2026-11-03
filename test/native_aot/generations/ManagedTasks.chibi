@@ -1,0 +1,46 @@
+package managed_tasks
+
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fwrite :: (data: cstring, size: u64, count: u64, stream: rawptr) -> u64
+    fclose :: (stream: rawptr) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+}
+Make :: (value: int) -> ^int { return &value; }
+Churn :: () { for index in 0..<3000 { discarded := Make(index); } }
+Mark :: (path: string, text: string) {
+    stream := fopen(path, "wb");
+    assert(stream != 0);
+    written := fwrite(text, 1, u64(text_byte_length(text)), stream);
+    closed := fclose(stream);
+    assert(written == u64(text_byte_length(text)) && closed == 0);
+}
+Allowed :: () -> bool { return access("allow-managed-task", 0) == 0; }
+Done :: () { Mark("managed-task-done", "old42"); }
+Worker :: () -> int {
+    pointer := Make(37);
+    values := [Make(2), Make(3)];
+    while !Allowed() { yield }
+    Churn();
+    assert(pointer^ + values[0]^ + values[1]^ == 42, "old generation keeps its suspended collector roots");
+    Done();
+    return 0;
+}
+Child :: (values: ^int[]) -> int {
+    yield
+    Churn();
+    return values[0]^;
+}
+Cancelled :: () -> int {
+    values := [Make(19)];
+    return await Child(values);
+}
+Main :: () -> int {
+    worker := Worker();
+    cancelled := Cancelled();
+    cancel cancelled
+    Mark("managed-ready", "ready");
+    return 0;
+}
+Frame :: () -> int { Churn(); return 0; }

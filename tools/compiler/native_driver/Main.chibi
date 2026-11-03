@@ -372,7 +372,8 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
         start = link.ProgramStart(triple, static, context, formatting, numeric_formatting);
     }
     if (start != "") {
-        if (strings.Contains(pieces[0], "; chibi-managed\n")) { start = link.ManagedProgramContext(start); }
+        if (shared && strings.Contains(pieces[0], "; chibi-family\n")) { start = link.ManagedFamilyContext(start, context); }
+        else if (strings.Contains(pieces[0], "; chibi-managed\n")) { start = link.ManagedProgramContext(start); }
         if (os.WriteText(strings.Concatenate([output, ".start.ll"]), start) != nil) {
             os.Print("native: cannot write the start module");
             return 2;

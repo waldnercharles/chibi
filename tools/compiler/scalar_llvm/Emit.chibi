@@ -2314,6 +2314,10 @@ pub EmitFor :: (target: abi.Target, rows: facts.Row[]) -> Result {
 pub EmitShared :: (target: abi.Target, rows: facts.Row[]) -> Result {
     return Lower(target, rows, "", false, true, false);
 }
+// Native watch supplies and retains an execution-family owner explicitly.
+pub EmitFamilyShared :: (target: abi.Target, rows: facts.Row[]) -> Result {
+    return Lower(target, rows, "", false, true, false, true);
+}
 // Emit with line tables: each instruction is at the position of the
 // statement row it lowers, the function's own row before its first, and the
 // source row names the file, which is in `directory`.
@@ -2324,7 +2328,7 @@ pub EmitLines :: (rows: facts.Row[], directory: string) -> Result {
 pub EmitProgramFor :: (target: abi.Target, rows: facts.Row[], directory: string) -> Result {
     return Lower(target, rows, directory, directory != "", false, true);
 }
-Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool, shared: bool, program: bool) -> Result {
+Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool, shared: bool, program: bool, family: bool = false) -> Result {
     error := ValidateWith(rows, shared);
     if (error != "") {
         return Result.Invalid(error);
@@ -2337,7 +2341,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         pointer_program = pointer_program || row.type == facts.PointerType || row.type == facts.ArrayType + facts.PointerType ||
                           row.kind == facts.ManagedRow || row.kind == facts.ManagedAddressRow;
     }
-    if (pointer_program && !program) {
+    if (pointer_program && !program && !family) {
         return Result.Invalid("managed pointer roots require a standalone native program");
     }
     state_characters: bool[] = [];
@@ -4405,8 +4409,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         if (generation) {
             library_name = "generation";
         }
-        emitted = native.EmitLibraryStates(target, library_name, names, ids, functions, parameters, slots, locals,
-                                     code, arguments, records, fields, texts, 1, field_names, entries, state_characters);
+        if (family) {
+            emitted = native.EmitFamilyLibraryStates(target, library_name, names, ids, functions, parameters, slots, locals,
+                code, arguments, records, fields, field_tags, texts, 1, field_names, entries, state_characters);
+        } else {
+            emitted = native.EmitLibraryStates(target, library_name, names, ids, functions, parameters, slots, locals,
+                code, arguments, records, fields, texts, 1, field_names, entries, state_characters);
+        }
     }
     switch emitted {
         case .Rejected(instruction, message):

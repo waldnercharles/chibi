@@ -1,0 +1,23 @@
+package managed_tasks
+
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fclose :: (stream: rawptr) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+}
+Make :: (value: int) -> ^int { return &value; }
+Churn :: () { for index in 0..<6000 { discarded := Make(index); } }
+Main :: () -> int { return 99; }
+Frame :: () -> int {
+    // Force this image's collector to walk the old image's suspended roots.
+    Churn();
+    if access("allow-managed-task", 0) != 0 {
+        stream := fopen("allow-managed-task", "wb");
+        assert(stream != 0);
+        closed := fclose(stream);
+        assert(closed == 0);
+    }
+    if access("managed-task-done", 0) == 0 { return 7; }
+    return 0;
+}

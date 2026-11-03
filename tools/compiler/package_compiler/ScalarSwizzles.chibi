@@ -6,9 +6,9 @@ import syntax "project:syntax_diagnostics"
 import strings "core:strings"
 import math "project:math_types"
 
-ScalarMathCapture :: (forest: snapshot.SnapshotNode[], statement: int, type: int, variable: int,
+ScalarCapture :: (forest: snapshot.SnapshotNode[], statement: int, type: int, variable: int,
                       expression: facts.Row[]) -> facts.Row[] {
-    row := ScalarAt(forest, statement, facts.LocalRow, type, variable, length(expression), format_text("math capture {}", variable));
+    row := ScalarAt(forest, statement, facts.LocalRow, type, variable, length(expression), format_text("capture {}", variable));
     row.literal = i64(facts.Captured);
     rows := [row];
     rows.extend(expression);
@@ -94,7 +94,7 @@ ScalarMathAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables:
                                     index_node, index_node, IntStorage, IntStorage, facts.Clamp, []);
         switch converted {
             case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
-            case .Built(built): rows.extend(ScalarMathCapture(forest, statement, facts.IntType, variables, built));
+            case .Built(built): rows.extend(ScalarCapture(forest, statement, facts.IntType, variables, built));
         }
         index = variables;
         variables += 1;
@@ -102,7 +102,7 @@ ScalarMathAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables:
     // Check the logical location before RHS effects, and retain its old value
     // for compound assignments. The final read follows RHS effects instead.
     old := variables;
-    rows.extend(ScalarMathCapture(forest, statement, type, variables,
+    rows.extend(ScalarCapture(forest, statement, type, variables,
                                   ScalarMathReceiver(forest, receiver, root_type, binding.index, array, index, path)));
     variables += 1;
     selected := MathStaticType(types, desired);
@@ -119,7 +119,7 @@ ScalarMathAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables:
     prior := old;
     if (operator != NoOperator && !identity) {
         call := ScalarAt(forest, destination, facts.CallRow, selected_type, BuiltinMember, 1, spelling);
-        rows.extend(ScalarMathCapture(forest, statement, selected_type, variables,
+        rows.extend(ScalarCapture(forest, statement, selected_type, variables,
             [ScalarAt(forest, destination, facts.ReadRow, type, old, 0, ""), call]));
         prior = variables;
         variables += 1;
@@ -133,7 +133,7 @@ ScalarMathAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables:
     incoming_type := ScalarValueType(types, incoming.storage, 0, incoming.record);
     switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants, value, incoming, []) {
         case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
-        case .Built(built): rows.extend(ScalarMathCapture(forest, statement, incoming_type, variables, built));
+        case .Built(built): rows.extend(ScalarCapture(forest, statement, incoming_type, variables, built));
     }
     replacement := variables;
     variables += 1;
@@ -147,7 +147,7 @@ ScalarMathAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables:
             call.literal = i64(operator);
             expression.append(call);
         }
-        rows.extend(ScalarMathCapture(forest, statement, selected_type, variables, expression));
+        rows.extend(ScalarCapture(forest, statement, selected_type, variables, expression));
         replacement = variables;
         variables += 1;
     }
@@ -156,7 +156,7 @@ ScalarMathAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables:
     parent_types: int[] = [];
     if (length(path) > 0) {
         current := variables;
-        rows.extend(ScalarMathCapture(forest, statement, root_type, variables,
+        rows.extend(ScalarCapture(forest, statement, root_type, variables,
             ScalarMathReceiver(forest, receiver, root_type, binding.index, array, index, [])));
         variables += 1;
         current_type := root_type;
@@ -164,7 +164,7 @@ ScalarMathAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables:
         while (field >= 0) {
             parents.append(current);
             parent_types.append(current_type);
-            rows.extend(ScalarMathCapture(forest, statement, path[field].type, variables,
+            rows.extend(ScalarCapture(forest, statement, path[field].type, variables,
                 [ScalarAt(forest, receiver, facts.ReadRow, current_type, current, 0, ""), path[field]]));
             current = variables;
             current_type = path[field].type;

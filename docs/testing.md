@@ -16,10 +16,9 @@ entrypoints and measurement-only loops from regression commands. A short unit
 result does not satisfy unrelated integration requirements or clear a PR hold.
 
 The scalar lane (`language-package-compiler-chibi-scalar`) runs the authored
-compiler, as `compiler_bootstrap_load` recovers it, through `test/language/scalar_host.c`:
-`CollectScalar` produces rows, and a closure of the consumer packages (`scalar_llvm`,
-`llvm_native`, `native_abi`, the `scalar_cases` corpus) validates and emits them.
-Nothing is prepared with stage zero.
+producer and consumer through the native compiler. `CollectScalar` produces
+rows; `scalar_llvm` and `llvm_native` validate and emit them against the real
+source corpus. The old VM-hosted compiler census and its C transport are retired.
 
 ### Authored package tests
 

@@ -1,0 +1,59 @@
+package array_assignment_places
+
+Item :: struct { value: int; text: string; numbers: int[]; }
+Box :: struct { items: Item[]; marker: int; }
+Outer :: struct { item: Item; marker: int; }
+Text :: (n: int) -> string { return text_from_bytes([u8(65), u8(n)]); }
+Make :: (n: int) -> Item { return {value: n, text: Text(n), numbers: [n, n + 1]}; }
+Index :: (count: ^int) -> int { count^ += 1; return 0; }
+Right :: (count: ^int) -> int { count^ += 10; return 7; }
+Retarget :: (index: ^int) -> int { index^ = 1; return 7; }
+Reset :: (box: ^Box) -> int { box^ = {items: [Make(20)], marker: 20}; return 7; }
+ResetIndex :: (box: ^Box) -> int { box^ = {items: [Make(30)], marker: 30}; return 0; }
+
+Main :: () -> int {
+    values := [int(2), 3];
+    calls := 0;
+    values[Index(&calls)] += Right(&calls);
+    assert(calls == 11 && values[0] == 9 && values[1] == 3);
+    index := 0;
+    values[index] = Retarget(&index);
+    assert(index == 1 && values[0] == 7 && values[1] == 3);
+    words := [Text(1), Text(2)];
+    saved_words := words;
+    calls = 0;
+    words[Index(&calls)] = Text(9);
+    assert(calls == 1 && text_byte_at(words[0], 1) == 9 && text_byte_at(saved_words[0], 1) == 1);
+    box: Box = {items: [Make(2)], marker: 2};
+    before := box;
+    calls = 0;
+    box.items[Index(&calls)].value += Reset(&box);
+    assert(calls == 1 && box.items[0].value == 9 && box.marker == 20);
+    assert(box.items[0].numbers[0] == 20 && text_byte_at(box.items[0].text, 1) == 20);
+    assert(before.items[0].value == 2 && before.items[0].numbers[0] == 2);
+    box.items[ResetIndex(&box)].value = 5;
+    assert(box.items[0].value == 5 && box.marker == 30 && box.items[0].numbers[0] == 30);
+    box.items[0] = Make(8);
+    assert(box.items[0].value == 8 && box.items[0].numbers[1] == 9);
+    items := [Make(1), Make(2)];
+    saved_items := items;
+    calls = 0;
+    items[Index(&calls)].text = Text(7);
+    assert(calls == 1 && text_byte_at(items[0].text, 1) == 7 && text_byte_at(saved_items[0].text, 1) == 1);
+    items[0].numbers = [int(6), 7];
+    assert(items[0].numbers[0] == 6 && saved_items[0].numbers[0] == 1);
+    outer: Outer[] = [{item: Make(1), marker: 3}];
+    saved_outer := outer;
+    outer[0].item = Make(9);
+    assert(outer[0].marker == 3 && outer[0].item.numbers[0] == 9 && saved_outer[0].item.value == 1);
+    rows: int[][] = [[1, 2], [3]];
+    saved_rows := rows;
+    rows[0] = [7, 8, 9];
+    assert(length(rows[0]) == 3 && saved_rows[0][0] == 1);
+    for (i in 0..<128) {
+        box.items[0].text = Text(i);
+        items[0] = Make(i);
+    }
+    assert(text_byte_at(box.items[0].text, 1) == 127 && items[0].value == 127);
+    return 0;
+}

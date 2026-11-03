@@ -3356,8 +3356,12 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 built = ScalarMapChanged(forest, text, callables, params, callable, names, types, members, constants,
                                          statement, change, operands);
             case .Element:
-                built = ScalarElementAssigned(forest, text, callables, params, callable, names, types, members, constants,
-                                              statement, operands);
+                switch ScalarElementAssigned(forest, text, callables, params, callable, names, types, members, constants,
+                                               statement, &variables) {
+                    case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                    case .Built(assigned): rows.extend(assigned);
+                }
+                continue;
             case .Changed(object, operator):
                 appended = object;
                 built = ScalarChanged(forest, text, callables, params, callable, names, types, members, constants, statement,

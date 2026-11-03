@@ -141,12 +141,16 @@ pub ArrayLength: int : 38;
 // type; an index outside the array ends the program. Literal1 resolves a
 // logical place: unavailable is generic failure0, not expression bounds1.
 pub ArrayGet: int : 39;
+// Bounds-only logical-place validation, producing bool without reading a leaf.
+pub ArrayGetPlaceCheck: int : 2;
 // output = the left slot's array with its element at the right slot's int
 // index replaced by the value in slot `target`; type is the array type. An
 // index outside the array ends the program, unless literal is ArraySetUnchanged.
-// Both modes consume the incoming element owner, including an ignored value.
+// Every mode consumes the incoming element owner, including an ignored value.
 pub ArraySet: int : 40;
 pub ArraySetUnchanged: int : 1;
+// Source logical-place writes report generic reference unavailability.
+pub ArraySetPlace: int : 2;
 // output = the left slot's array with the right slot's value appended; type
 // is the array type. The elements move to a larger allocation when they are
 // full.
@@ -1284,6 +1288,9 @@ ArrayValid :: (records: Record[], slots: int[], item: Instruction) -> bool {
         return item.type == abi.IntStorage && ElementType(records, held) != 0;
     }
     if (item.op == ArrayGet) {
+        if (item.literal == i64(ArrayGetPlaceCheck)) {
+            return item.type == abi.BoolStorage && ElementType(records, held) != 0 && Typed(slots, item.right, abi.IntStorage);
+        }
         return item.type < ArrayType && item.type > 0 && held == ArrayType + item.type &&
                ElementType(records, held) != 0 && Typed(slots, item.right, abi.IntStorage) &&
                (item.literal == 0 || item.literal == 1);
@@ -1302,7 +1309,7 @@ ArrayValid :: (records: Record[], slots: int[], item: Instruction) -> bool {
     }
     if (item.op == ArrayReverse) { return item.literal == 0 && item.right == 0 && item.target == 0; }
     if (item.op == ArraySet) {
-        return (item.literal == 0 || item.literal == i64(ArraySetUnchanged)) &&
+        return (item.literal >= 0 && item.literal <= i64(ArraySetPlace)) &&
                Typed(slots, item.right, abi.IntStorage) && Typed(slots, item.target, element);
     }
     if (item.op == ArrayPush) {
@@ -1918,7 +1925,8 @@ ArrayRead :: (item: Instruction, pc: int, record_owners: bool[], program: bool) 
         out = format_text("{}{}", out, ArrayRefs(record_owners, item.type, format_text("%s{}", item.target), "1", false));
         out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "s", item.output));
         out = format_text("{}  br label %array_done{}\ninside{}:\n", out, pc, pc);
-    } else if (item.op == ArrayGet && item.literal == 1) {
+    } else if ((item.op == ArrayGet && item.literal != 0) ||
+               (item.op == ArraySet && item.literal == i64(ArraySetPlace))) {
         if (program) { out = format_text("{}  call void @chibi_native_reference_unavailable()\n", out); }
         else { out = format_text("{}  call void @llvm.trap()\n", out); }
         out = format_text("{}  unreachable\ninside{}:\n", out, pc);
@@ -1926,6 +1934,9 @@ ArrayRead :: (item: Instruction, pc: int, record_owners: bool[], program: bool) 
         out = format_text("{}{}", out, ContextCall(format_text("index{}", pc), 3));
         out = format_text("{}  call void %index{}(ptr %ctx, i32 %b{}, i32 %length{})\n  unreachable\ninside{}:\n", out, pc, pc,
                           pc, pc);
+    }
+    if (item.op == ArrayGet && item.literal == i64(ArrayGetPlaceCheck)) {
+        return format_text("{}{}", out, Store("true", abi.BoolStorage, "s", item.output));
     }
     writable := format_text("%a{}", pc);
     if (item.op == ArraySet) {

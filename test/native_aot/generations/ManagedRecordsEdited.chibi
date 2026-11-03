@@ -1,0 +1,32 @@
+package managed_record_tasks
+
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fclose :: (stream: rawptr) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+}
+// A different layout and field order give a different full record identity.
+Link :: struct { next: ^Link?; extra: i64; value: int; }
+Cycle :: (value: int) -> ^Link {
+    first: Link = {next: nil, extra: 7, value: value};
+    second: Link = {next: nil, extra: 9, value: 5};
+    left := &first;
+    right := &second;
+    left.next = right;
+    right.next = left;
+    return left;
+}
+Churn :: () { for index in 0..<6000 { discarded := Cycle(index); } }
+Main :: () -> int { return 99; }
+Frame :: () -> int {
+    Churn();
+    if access("allow-managed-record", 0) != 0 {
+        stream := fopen("allow-managed-record", "wb");
+        assert(stream != 0);
+        closed := fclose(stream);
+        assert(closed == 0);
+    }
+    if access("managed-record-done", 0) == 0 { return 7; }
+    return 0;
+}

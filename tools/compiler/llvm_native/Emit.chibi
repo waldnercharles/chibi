@@ -3142,10 +3142,10 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             return Result.Rejected(-1, "native managed pointer aggregate roots require typed flat records");
         }
         if (record.identity == 0) { continue; }
-        // Family scalar cells have no callbacks. Record metadata belongs to
-        // this image and needs its explicit image counter before shared use.
-        if (!ProgramMode(mode)) {
-            return Result.Rejected(-1, "native managed record layouts require standalone execution until family code leases are wired");
+        // The explicit family adapter supplies a program owner and pins the
+        // image while its immutable typed callbacks remain in live cells.
+        if (!ProgramMode(mode) && !family) {
+            return Result.Rejected(-1, "native managed record layouts require a standalone or execution-family owner");
         }
         if (!managed_records.flat[index] || length(field_tags) == 0) {
             return Result.Rejected(-1, "native managed record metadata requires scalar or pointer fields");
@@ -3307,7 +3307,9 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             for (item in held) {
                 if (item.op == ManagedNew && item.right >= RecordType) { record_roots[item.right - RecordType] = true; }
             }
-            out.append(ManagedRecordModule(records, fields, field_tags, managed_records, record_roots, "null"));
+            counter := "null";
+            if (family) { counter = strings.Concatenate(["@", abi.ManagedImageCounter()]); }
+            out.append(ManagedRecordModule(records, fields, field_tags, managed_records, record_roots, counter));
         }
         // One piece holds every text; each of several, the ones it reads.
         wanted := resize([false], length(texts));

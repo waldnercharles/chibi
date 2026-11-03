@@ -66,6 +66,9 @@ semantic identity and range checks. A counted cell pins its image before
 publication and releases that pin after its drop callback and last metadata
 access. The host must keep images mapped until execution is quiescent and
 both task and cell counts reach zero. Counter overflow/underflow traps.
-Record metadata remains standalone-only until the shared family emitter wires
-its per-image counter. Arrays of pointer-bearing records and array-backed cell
-payloads require owning-place roots and payload drops before admission.
+The explicit shared-family emitter attaches its per-image counter to generated
+record metadata. The generations suite keeps old cyclic record cells alive
+across a layout-changing edit, then checks cancellation and collection release
+their image leases before unloading. Generic library emission remains closed.
+Arrays of pointer-bearing records and array-backed cell payloads require
+owning-place roots and payload drops before admission.

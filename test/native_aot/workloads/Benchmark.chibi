@@ -1,0 +1,261 @@
+package native_workload_benchmark
+
+import os "core:os"
+import posix "core:sys/posix"
+import strings "core:strings"
+import target "core:target"
+
+foreign import benchmark_libc "system:c"
+foreign benchmark_libc {
+    wait4 :: (pid: i32, status: u8[], options: i32, usage: u8[]) -> i32
+    killpg :: (group: i32, signal: i32) -> i32
+}
+
+DigitZero: int : 48;
+DigitNine: int : 57;
+
+Word :: (bytes: u8[], first: int, count: int) -> i64 {
+    value: u64 = 0;
+    for byte in 0..<count { value |= u64(bytes[first + byte]) << u32(byte * 8); }
+    return i64(value);
+}
+
+Number :: (text: string) -> i64 {
+    if (strings.ByteLength(text) == 0) { return -1; }
+    value: i64 = 0;
+    for index in 0..<strings.ByteLength(text) {
+        byte := strings.ByteAt(text, index);
+        if (byte < DigitZero || byte > DigitNine) { return -1; }
+        digit := i64(byte - DigitZero);
+        if (value > (9223372036854775807 - digit) / 10) { return -1; }
+        value = value * 10 + digit;
+    }
+    return value;
+}
+
+Decode :: (word: i64) -> int {
+    signal := int(word & 127);
+    if (signal != 0) { return 0 - signal; }
+    return int((word >> 8) & 255);
+}
+
+ExitStatus :: (status: int) -> int {
+    if (status < 0) { return 128 - status; }
+    return status;
+}
+
+// The parent owns this worker's group. Its child stays attached to that group;
+// wait4 measures only this child and the descendants it waited for, rather
+// than a process-wide RSS maximum left over from earlier workloads.
+Worker :: (arguments: string[]) -> int {
+    if (length(arguments) < 3) { return 2; }
+    folder := arguments[1];
+    if (os.ChangeDirectory(folder) != nil) { os.Print("native workloads: cannot enter measurement folder"); return 1; }
+    command: string[] = [];
+    for index in 2..<length(arguments) { command.append(arguments[index]); }
+    clock := resize([u8(0)], 16);
+    sampled := posix.MonotonicMilliseconds(&clock);
+    if (sampled < 0) { os.Print("native workloads: cannot read measurement clock"); return 1; }
+    // The clock fills the caller's 64-bit timespec. Retain its submillisecond
+    // remainder so worker startup and parent polling do not dominate short runs.
+    began := sampled * 1000000 + Word(clock, 8, 8) % 1000000;
+    child := os.StartRedirected(command, strings.Concatenate([folder, "/stdout"]),
+                               strings.Concatenate([folder, "/stderr"]), true);
+    if (child <= 0) { os.Print(strings.Concatenate(["native workloads: cannot start ", command[0]])); return 1; }
+    status := resize([u8(0)], 8);
+    usage := resize([u8(0)], 256);
+    done := wait4(i32(child), status, 0, usage);
+    if (done != i32(child)) { os.Print("native workloads: cannot collect child status and resource usage"); return 1; }
+    sampled = posix.MonotonicMilliseconds(&clock);
+    if (sampled < 0) { os.Print("native workloads: cannot read measurement clock"); return 1; }
+    elapsed := sampled * 1000000 + Word(clock, 8, 8) % 1000000 - began;
+    // Both supported 64-bit ABIs put ru_maxrss after two 16-byte timevals.
+    peak := Word(usage, 32, 8);
+    if (target.Os == target.Darwin) { peak = peak / 1024; }
+    written := os.WriteText(strings.Concatenate([folder, "/metrics"]),
+                           format_text("{}\n{}\n{}\n", Word(status, 0, 4), peak, elapsed));
+    if (written != nil) { os.Print("native workloads: cannot publish measurement output"); return 1; }
+    return 0;
+}
+
+Measured :: struct { status: int; nanoseconds: i64; peak_kb: i64; problem: string; }
+
+Measure :: (command: string[], folder: string, timeout: int) -> Measured {
+    result: Measured = {status: 1, nanoseconds: 0, peak_kb: 0, problem: ""};
+    metrics := strings.Concatenate([folder, "/metrics"]);
+    removed := os.Remove(metrics);
+    if (removed != nil) { result.problem = "cannot clear measurement output"; return result; }
+    clock := resize([u8(0)], 16);
+    began := posix.MonotonicMilliseconds(&clock);
+    if (began < 0) { result.problem = "cannot read the benchmark clock"; return result; }
+    launch := [os.ProgramPath(), "--measure", folder];
+    launch.extend(command);
+    scope := posix.ForegroundStart(launch);
+    if (scope.pid <= 0) { result.problem = scope.problem; return result; }
+    status := os.StillRunning;
+    while (status == os.StillRunning) {
+        status = posix.ForegroundWait(&scope, 100);
+        now := posix.MonotonicMilliseconds(&clock);
+        if (now < 0 || (scope.cancelled == 0 && now - began >= i64(timeout))) {
+            if (status == os.StillRunning) {
+                // The scope keeps its leader unreaped until group cleanup.
+                // A deadline does not depend on the caller's signal mask.
+                killed := killpg(i32(scope.pid), 9);
+                finished := posix.ForegroundWait(&scope, -1);
+            }
+            result.status = 124;
+            result.problem = "deadline";
+            if (now < 0) { result.problem = "cannot read the benchmark clock"; }
+            return result;
+        }
+    }
+    result.status = status;
+    if (scope.problem != "") { result.problem = scope.problem; return result; }
+    if (status != 0) { return result; }
+    read := os.ReadText(metrics);
+    if (read.error != nil) { result.problem = "measurement worker produced no metrics"; return result; }
+    fields := strings.Split(strings.TrimSpace(read.text), "\n");
+    if (length(fields) != 3) { result.problem = "invalid measurement output"; return result; }
+    word := Number(fields[0]);
+    peak := Number(fields[1]);
+    elapsed := Number(fields[2]);
+    if (word < 0 || word > 65535 || peak < 0 || elapsed < 0) { result.problem = "invalid measurement values"; return result; }
+    result.status = Decode(word);
+    result.peak_kb = peak;
+    result.nanoseconds = elapsed;
+    return result;
+}
+
+Show :: (folder: string, message: string) {
+    os.Print(strings.Concatenate(["native workloads: ", message]));
+    for name in ["stdout", "stderr"] {
+        read := os.ReadText(strings.Concatenate([folder, "/", name]));
+        if (read.error == nil && read.text != "") { os.Print(read.text); }
+    }
+}
+
+Discard :: (path: string) -> bool {
+    if (os.Kind(path) == os.KindDirectory) {
+        listed := os.List(path);
+        if (listed.error != nil) { return false; }
+        for name in listed.names {
+            if (!Discard(strings.Concatenate([path, "/", name]))) { return false; }
+        }
+    }
+    return os.Remove(path) == nil;
+}
+
+Program :: (game: string, mode: string) -> string {
+    folder := strings.Concatenate([game, "/build/native"]);
+    listed := os.List(folder);
+    if (listed.error != nil) { return ""; }
+    found := "";
+    count := 0;
+    for name in listed.names {
+        if (strings.HasPrefix(name, strings.Concatenate([mode, "-"])) && !strings.Contains(name, ".")) {
+            found = strings.Concatenate([folder, "/", name, "/program"]);
+            count += 1;
+        }
+    }
+    if (count != 1 || !os.IsFile(found)) { return ""; }
+    return found;
+}
+
+Build :: (launcher: string, llvm: string, game: string, mode: string, measurement: string) -> Measured {
+    return Measure(["/usr/bin/env", "-i", "PATH=", launcher, "build", "--native", mode, "--llvm", llvm, game],
+                   measurement, 300000);
+}
+
+Benchmark :: (launcher: string, llvm: string, root: string, folder: string) -> int {
+    listed := os.List(folder);
+    if (listed.error != nil || length(listed.names) != 0) {
+        os.Print("native workloads: scratch must be an empty owned directory"); return 2;
+    }
+    measurement := strings.Concatenate([folder, "/measurement"]);
+    made := os.MakeDirectory(measurement);
+    if (made != nil) { os.Print("native workloads: cannot make measurement folder"); return 1; }
+    kernels := ["integrate", "collide", "lex", "recurse"];
+    statuses: int[] = [161, 95, 140, 138];
+    for index in 0..<length(kernels) {
+        kernel := kernels[index];
+        game := strings.Concatenate([folder, "/", kernel]);
+        made = os.MakeDirectory(game);
+        if (made != nil) { os.Print("native workloads: cannot make workload folder"); return 1; }
+        copied := os.Copy(strings.Concatenate([root, "/test/native_aot/workloads/", kernel, "/Main.chibi"]),
+                          strings.Concatenate([game, "/Main.chibi"]));
+        if (copied != nil) { os.Print("native workloads: cannot copy workload source"); return 1; }
+        cold := Build(launcher, llvm, game, "-O2", measurement);
+        if (cold.status != 0 || cold.problem != "") {
+            Show(measurement, strings.Concatenate(["cold build failed: ", cold.problem]));
+            if (cold.status < 0) { return ExitStatus(cold.status); }
+            return 1;
+        }
+        for mode in ["O0", "O2"] {
+            prior := Program(game, mode);
+            if (prior != "" && !Discard(strings.TrimSuffix(prior, "/program"))) {
+                os.Print("native workloads: cannot remove prior native output"); return 1;
+            }
+            warm := Build(launcher, llvm, game, strings.Concatenate(["-", mode]), measurement);
+            program := Program(game, mode);
+            if (warm.status != 0 || warm.problem != "" || program == "") {
+                Show(measurement, strings.Concatenate(["build failed: ", warm.problem]));
+                if (warm.status < 0) { return ExitStatus(warm.status); }
+                return 1;
+            }
+            size := posix.FileSize(program);
+            if (size <= 0) { os.Print("native workloads: cannot size executable"); return 1; }
+            times: i64[] = [];
+            for trial in 0..<3 {
+                ran := Measure(["/usr/bin/env", "-i", "PATH=", program], measurement, 60000);
+                if (ran.status != statuses[index] || ran.problem != "") {
+                    Show(measurement, format_text("{} {} expected {}, got {} ({})", kernel, mode, statuses[index], ran.status, ran.problem));
+                    if (ran.status < 0) { return ExitStatus(ran.status); }
+                    return 1;
+                }
+                times.append(ran.nanoseconds);
+            }
+            for a in 1..<3 {
+                b := a;
+                while (b > 0 && times[b - 1] > times[b]) {
+                    value := times[b - 1]; times[b - 1] = times[b]; times[b] = value;
+                    b -= 1;
+                }
+            }
+            tenths := (times[1] + 50000) / 100000;
+            os.WriteOutput(format_text("NATIVE_WORKLOAD name={} mode={} cold_build_ms={} build_ms={} peak_rss_kb={} size_bytes={} run_ms={}.{} status={}\n",
+                           kernel, mode, (cold.nanoseconds + 500000) / 1000000, (warm.nanoseconds + 500000) / 1000000,
+                           warm.peak_kb, size, tenths / 10, tenths % 10, statuses[index]));
+        }
+    }
+    return 0;
+}
+
+Supervision :: (folder: string) -> int {
+    for mode in ["hang", "exit"] {
+        marker := strings.Concatenate([folder, "/", mode]);
+        command := ["/bin/sh", "-c", "(/bin/sleep 1; /usr/bin/touch \"$1\") & if [ \"$2\" = hang ]; then wait; fi", "benchmark-child", marker, mode];
+        timeout := 3000;
+        if (mode == "hang") { timeout = 200; }
+        measured := Measure(command, folder, timeout);
+        if (mode == "hang" && (measured.status != 124 || measured.problem != "deadline")) { return 1; }
+        if (mode == "exit" && (measured.status != 0 || measured.problem != "")) { return 1; }
+    }
+    parent := os.Capture(["/bin/sh", "-c", "echo $PPID"]);
+    own := strings.TrimSpace(parent.stdout);
+    if (parent.status != 0 || Number(own) <= 0) { return 1; }
+    signal := Measure(["/bin/sh", "-c", "(/bin/sleep 0.1; kill -TERM \"$1\") & (/bin/sleep 1; /usr/bin/touch \"$2\") & wait", "benchmark-child", own, strings.Concatenate([folder, "/signal"])], folder, 3000);
+    if (signal.status != -15 || signal.problem != "") { return 1; }
+    slept := os.Run(["/bin/sleep", "1.2"]);
+    if (slept != 0 || os.Exists(strings.Concatenate([folder, "/hang"])) || os.Exists(strings.Concatenate([folder, "/exit"])) || os.Exists(strings.Concatenate([folder, "/signal"]))) { return 1; }
+    return 0;
+}
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) >= 1 && arguments[0] == "--measure") { return Worker(arguments); }
+    if (length(arguments) == 2 && arguments[0] == "--verify-supervision") { return Supervision(arguments[1]); }
+    if (length(arguments) != 4) {
+        os.Print("usage: workload-benchmark NATIVE_CLI LLVM_BIN SOURCE_ROOT OWNED_SCRATCH"); return 2;
+    }
+    return Benchmark(arguments[0], arguments[1], arguments[2], arguments[3]);
+}

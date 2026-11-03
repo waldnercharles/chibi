@@ -2950,7 +2950,9 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         returns = "ptr";
         attributes = " presplitcoroutine";
     }
-    out: string[] = [format_text("define {}{} @{}({}) #0{} {\nentry:\n", linkage, returns,
+    gc_owners: ManagedOwnerLayout = {slots: [], locals: [], count: 0, ranges: []};
+    if (managed) { gc_owners = ManagedOwnerLocations(shape, code, length(records)); }
+    out: string[] = [ManagedOwnerTrace(gc_owners, function), format_text("define {}{} @{}({}) #0{} {\nentry:\n", linkage, returns,
                                  Symbol(function, mode), strings.Join(listed, ", "), attributes)];
     out.append(format_text("  %budget0 = alloca i32\n  store i32 {}, ptr %budget0\n", step_budget));
     for (index in 0..<shape.slots) {
@@ -2985,9 +2987,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
             }
         }
     }
-    gc_owners: ManagedOwnerLayout = {slots: [], locals: [], count: 0};
-    if (managed) { gc_owners = ManagedOwnerLocations(shape, code); }
-    owner_roots := ManagedOwnerRoots(gc_owners.count, coroutine);
+    owner_roots := ManagedOwnerRoots(gc_owners, coroutine, function);
     out.append(owner_roots.prologue);
     frame_roots.attach = strings.Concatenate([frame_roots.attach, owner_roots.attach]);
     frame_roots.cleanup = strings.Concatenate([frame_roots.cleanup, owner_roots.cleanup]);
@@ -3748,6 +3748,11 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             }
             for (item in held) {
                 if (item.op == ManagedNew && item.right >= RecordType && item.right < ArrayType) { record_roots[item.right - RecordType] = true; }
+                if (item.op == ManagedTrack) {
+                    type := item.type;
+                    if (type >= RefType) { type -= RefType; }
+                    if (ManagedTraced(type, managed_records.traced)) { record_roots[type - RecordType] = true; }
+                }
             }
             counter := "null";
             if (family) { counter = strings.Concatenate(["@", abi.ManagedImageCounter()]); }

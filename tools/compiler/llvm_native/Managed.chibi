@@ -561,7 +561,9 @@ ManagedInstruction :: (item: Instruction, pc: int, records: Record[], fields: in
         layout := "null";
         drop := "null";
         value := format_text("%a{}", pc);
-        if (item.right == abi.TextStorage) {
+        if (item.right == PointerType) {
+            layout = format_text("@chibi_managed.layout.pointer{}", item.literal);
+        } else if (item.right == abi.TextStorage) {
             layout = format_text("@chibi_managed.layout.text{}", item.literal);
             drop = "@chibi_managed.drop.text";
             out = format_text("{}  %owned{} = call {} @chibi_text.share(ptr %ctx, {} %a{})\n", out, pc, abi.TextType(), abi.TextType(), pc);

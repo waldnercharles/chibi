@@ -21,6 +21,15 @@ Nullable pointers use the all-zero descriptor for absence; presence tests,
 assignment and equality preserve the original pointer type. The ordinary
 checker still requires a presence guard before dereferencing a nullable value.
 
+Cells may hold another managed-pointer descriptor. Each escaped pointer local
+adds one 88-byte cell and one traced edge; reads allocate nothing. Its exact
+whole-descriptor layout checks offset zero, the 24-byte payload, pointer storage
+and the complete nested semantic tag, including the terminal record layout.
+`NestedPointers.chibi` promotes the original escaping `Make()->^^int` kernel
+and checks aliases, replacement after creator locals return, `Capture(Make())`,
+scoped relays and failure cleanup under the same forced/callback collection
+audit. Char pointers and new retained pointer/view schemas remain closed.
+
 Source tests cover ordinary/native alias behavior, returned cells, CoW,
 traversal snapshots, replacement during RHS evaluation and moved parameter
 handoffs. Real programs run at O0/O2 with poisoned frees, zero final live

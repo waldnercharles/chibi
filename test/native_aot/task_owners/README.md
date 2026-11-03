@@ -70,6 +70,11 @@ requires balance. A deliberately outstanding allocation must trap, proving that
 the unload check runs. Start modules pass directly through `llc`, so their audit
 is injected there; program bodies pass through `opt`.
 
+`NestedPointers.chibi` passes a returned `^^int` into an old worker. After reload
+the worker collects, replaces the inner pointer and reads its original alias
+before completing. The same host shutdown and image-close balance audit covers
+its descriptor-cell roots and callbacks at O0/O2.
+
 Maps use their existing counted payload lifecycle. Joins acquire copies, inline
 awaits move and zero the child promise, and frame destruction clears the promise
 before dropping it once. Borrowed waiting reference parameters remain closed;

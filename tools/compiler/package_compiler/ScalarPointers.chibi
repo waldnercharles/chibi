@@ -26,6 +26,22 @@ ScalarPointerElement :: (types: TypeDecl[], record: int) -> ValueType {
     if (declared.kind != PointerDecl || (declared.value_container != 0 && declared.value_container != ArrayContainer)) {
         return none;
     }
+    if (declared.value_container == 0 && declared.value_storage == PointerStorage) {
+        target := declared.value_record;
+        // Constructors are acyclic, but bound malformed input too. Resolve a
+        // pointer chain iteratively; its terminal keeps the existing domain.
+        for depth in 0..<length(types) {
+            if (target < 0 || target >= length(types) || types[target].kind != PointerDecl) { return none; }
+            child := types[target];
+            if (child.value_container == 0 && child.value_storage == PointerStorage) {
+                target = child.value_record;
+                continue;
+            }
+            if (ScalarPointerElement(types, target).storage == 0) { return none; }
+            return {storage: PointerStorage, container: 0, record: declared.value_record};
+        }
+        return none;
+    }
     if (declared.value_container == 0 && declared.value_storage == StructStorage && declared.value_record >= 0 &&
         types[declared.value_record].kind == RecordDecl) {
         return {storage: StructStorage, container: 0, record: declared.value_record};
@@ -52,6 +68,25 @@ ScalarPointerType :: (types: TypeDecl[], record: int) -> int {
 // a nominal-only tag can permit a changed generation's layout.
 ScalarPointerTag :: (types: TypeDecl[], value: ValueType) -> i64 {
     nominal := SemanticTag(types, value);
+    if (value.container == 0 && value.storage == PointerStorage) {
+        chain: ValueType[] = [];
+        target := value;
+        while (target.container == 0 && target.storage == PointerStorage) {
+            if (target.record < 0 || target.record >= length(types) || types[target.record].kind != PointerDecl ||
+                length(chain) >= length(types)) { return 0; }
+            chain.append(target);
+            declared := types[target.record];
+            target = {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
+        }
+        if (ScalarPointerElement(types, chain[length(chain) - 1].record).storage == 0) { return 0; }
+        tag := ScalarPointerTag(types, target);
+        index := length(chain) - 1;
+        while (index >= 0) {
+            tag = i64(wrap: binding.ID("native-managed-pointer-cell-v1", format_text("{}:{}", SemanticTag(types, chain[index]), tag)));
+            index -= 1;
+        }
+        return tag;
+    }
     if (value.container == ArrayContainer && value.storage == PointerStorage && ScalarPointerViewElement(types, value.record)) {
         target := ScalarPointerTag(types, ScalarPointerElement(types, value.record));
         return i64(wrap: binding.ID("native-managed-pointer-array-v1", format_text("{}:{}", nominal, target)));
@@ -174,7 +209,8 @@ ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables
             array = ScalarViewType(types, {storage: binding.storage, container: ViewContainer, record: binding.record}) != 0;
         }
         optional := binding.storage == UnionStorage && ScalarPointerOptional(types, binding.record);
-        if (binding.place == ReferencePlace || (binding.container != 0 && !array) || (!scalar && !record && !array && !optional)) { return -1; }
+        pointer := binding.storage == PointerStorage && binding.container == 0 && ScalarPointerType(types, binding.record) != 0;
+        if (binding.place == ReferencePlace || (binding.container != 0 && !array) || (!scalar && !record && !array && !optional && !pointer)) { return -1; }
         pointed: ValueType = {storage: binding.storage, container: binding.container, record: binding.record};
         return FindPointer(types, pointed, false);
     }
@@ -182,6 +218,13 @@ ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables
         named := Unparenthesized(forest, Field(forest, node, syntax.FieldOperand));
         found := Lookup(names, Text(forest, text, named));
         if (names[found].storage == PointerStorage && names[found].container == 0) { return names[found].record; }
+        return -1;
+    }
+    if (Is(forest, node, syntax.DereferenceExpression)) {
+        parent := ScalarPointerRecord(forest, text, callables, params, names, types, members, package,
+                                       Field(forest, node, syntax.FieldOperand));
+        shape := ScalarPointerElement(types, parent);
+        if (shape.storage == PointerStorage && shape.container == 0) { return shape.record; }
         return -1;
     }
     if (Is(forest, node, syntax.Identifier)) {
@@ -249,7 +292,7 @@ ScalarPointerAddress :: (forest: snapshot.SnapshotNode[], text: string, callable
     output := rows;
     address := ScalarAt(forest, node, facts.ManagedAddressRow, facts.PointerType, names[found].index, 0, "");
     shape := ScalarPointerElement(types, record);
-    if (shape.storage == StructStorage || shape.storage == UnionStorage || shape.container == ArrayContainer) {
+    if (shape.storage == StructStorage || shape.storage == UnionStorage || shape.storage == PointerStorage || shape.container == ArrayContainer) {
         address.count = ScalarValueType(types, shape.storage, shape.container, shape.record);
     }
     address.literal = ScalarPointerTag(types, shape);

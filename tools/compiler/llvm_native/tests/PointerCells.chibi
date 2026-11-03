@@ -1,0 +1,44 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+PointerCellModule :: (tag: i64, embedded: bool, family: bool) -> native.Result {
+    pointer := native.PointerType;
+    slots := [pointer, pointer, native.RefType + pointer, pointer, abi.IntStorage];
+    code := [Code(native.Constant, pointer, 0, 0, 0, 0, 0),
+        Code(native.ManagedNew, pointer, 1, 0, pointer, 0, tag),
+        Code(native.ManagedAddress, native.RefType + pointer, 2, 1, 0, 0, tag),
+        Code(native.Deref, pointer, 3, 2, 0, 0, 0),
+        Code(native.Constant, abi.IntStorage, 4, 0, 0, 0, 0),
+        Code(native.Publish, abi.IntStorage, 0, 4, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    shape := Function(abi.IntStorage, 0, 0, length(slots), 0, length(code), 0, 0);
+    source: native.Source = {file: "", directory: ""};
+    if (embedded) { return native.Emit(abi.LinuxX64(), [shape], [], slots, [], code, [], [], [], [], source, [], [], [], false, 1); }
+    if (family) {
+        return native.EmitFamilyLibraryStates(abi.LinuxX64(), "PointerCell", ["Value"], [i64(1)], [shape], [], slots, [],
+            code, [], [], [], [], [], 1, [], -1, []);
+    }
+    return native.EmitProgramTyped(abi.LinuxX64(), [shape], [], slots, [], code, [], [], [], [], [], source, [], [], []);
+}
+@test
+PointerCellsTraceTheirPayloadAndKeepItsCompleteIdentity :: () {
+    text := Emitted(PointerCellModule(-881, false, false));
+    assert(strings.Contains(text, "@chibi_managed.layout.pointer-881 = private constant %chibi.managed.layout { ptr @chibi_managed.trace.pointer, ptr @chibi_managed.validate.pointer-881, ptr null }"));
+    assert(strings.Contains(text, "%storage.ok = icmp eq i32 %storage, 16"));
+    assert(strings.Contains(text, "%tag.ok = icmp eq i64 %tag, -881"));
+    assert(strings.Contains(text, "%bytes.ok = icmp eq i64 %bytes, ptrtoint (ptr getelementptr ({ ptr, i64, i64 }, ptr null, i32 1) to i64)"));
+    assert(strings.Contains(text, "%offset.ok = icmp eq i64 %offset, 0"));
+    assert(!strings.Contains(text, "@chibi_managed.drop.pointer"));
+}
+@test
+PointerCellCallbacksLeaseTheirDefiningImage :: () {
+    text := Emitted(PointerCellModule(-881, false, true));
+    assert(strings.Contains(text, "ptr @chibi_managed.validate.pointer-881, ptr @chibi_generation_cells }"));
+}
+@test
+PointerCellsRetainTheCollectorOwnerAndNonzeroIdentityGates :: () {
+    Rejects(PointerCellModule(0, false, false), "native managed pointer identity is invalid");
+    Rejects(PointerCellModule(-881, true, false), "native managed pointers require a standalone collector owner");
+}

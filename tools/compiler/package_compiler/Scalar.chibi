@@ -1756,14 +1756,18 @@ ScalarReferenceArgument :: (forest: snapshot.SnapshotNode[], text: string, calla
     addressed := Unparenthesized(forest, argument);
     if (Is(forest, addressed, syntax.AddressExpression)) {
         held := Unparenthesized(forest, Field(forest, addressed, syntax.FieldOperand));
-        if (param.storage != PointerStorage && Is(forest, held, syntax.DereferenceExpression) &&
+        if (Is(forest, held, syntax.DereferenceExpression) &&
             !ScalarScopedDereference(forest, text, names, held) && ScalarPointerRecord(forest, text, callables, params, names, types, members, callable.package,
                                   Field(forest, held, syntax.FieldOperand)) >= 0) {
             return ScalarPointerAccess(forest, text, callables, params, callable, names, types, members, constants,
                                         Field(forest, held, syntax.FieldOperand), true, rows);
         }
     }
-    if (param.storage != PointerStorage && !Is(forest, Unparenthesized(forest, argument), syntax.AddressExpression) &&
+    passed := Unparenthesized(forest, argument);
+    forwarded := Lookup(names, ScalarPassedName(forest, text, argument));
+    pointer_reference := param.storage == PointerStorage && Is(forest, passed, syntax.Identifier) &&
+                         forwarded >= 0 && names[forwarded].place == ReferencePlace;
+    if (!pointer_reference && !Is(forest, passed, syntax.AddressExpression) &&
         ScalarPointerRecord(forest, text, callables, params, names, types, members, callable.package, argument) >= 0) {
         return ScalarPointerAccess(forest, text, callables, params, callable, names, types, members, constants,
                                     argument, true, rows);

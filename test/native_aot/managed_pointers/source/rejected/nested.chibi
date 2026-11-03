@@ -1,3 +1,0 @@
-package rejected_nested
-Main :: () -> int { return 0; }
-Make :: () -> ^^int { value := 1; pointer := &value; return &pointer; }

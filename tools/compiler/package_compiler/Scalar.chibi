@@ -2791,11 +2791,12 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
         type := ScalarValueType(types, param.storage, param.container, param.record);
         parameter := ScalarAt(forest, param.node, facts.ParameterRow, type, index, 0, param.name);
         if (param.reference) {
-            parameter.literal = 1;
+            parameter.literal = i64(facts.ParameterReadonlyReference);
+            if (param.written) { parameter.literal = i64(facts.ParameterReference); }
         } else if (param.written) {
             // A parameter the function changes is its own: the caller gives it
             // an array no one else holds.
-            parameter.literal = 2;
+            parameter.literal = i64(facts.ParameterOwnedArray);
         }
         rows.append(parameter);
     }

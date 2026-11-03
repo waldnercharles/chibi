@@ -43,7 +43,8 @@ package scalar_facts
 // - a Function row: its `name`, result `type`, `count` parameters and
 //   declaration range, and in a library its stable symbol ID as `literal`,
 //   the ID the runtime binds it by;
-// - `count` Parameter rows: `name`, `type`, ordinal `value`, name range;
+// - `count` Parameter rows: `name`, `type`, ordinal `value`, name range and
+//   a Parameter mode as `literal`;
 // - a Local row for each named result, with its name's range, whose operand
 //   is its zero: a Literal, or a Zero for a record. A function with one
 //   named result returns its value, and one with several the record of
@@ -351,17 +352,27 @@ pub CallSpawned: int : 2;
 // so a call in the key/value may replace the map before the change applies.
 pub MapRow: int : 50;
 // What a RefRow of `type` pushes on the operand stack, and so what a
-// reference parameter of `type` takes: ReferenceType plus the type. A
-// parameter row whose literal is 1 is a reference parameter. Its variable is
-// of its `type` for every other row, and reading or writing it reads or
+// reference parameter of `type` takes: ReferenceType plus the type.
+// ParameterReference and ParameterReadonlyReference both take a reference.
+// Its variable is of its `type` for every other row, and reading or writing it reads or
 // writes the caller's variable, so a callee changes its caller's records and
 // arrays in place. No other function holds a reference: the caller's
 // variable outlives the call, and none is the entry or in a library.
-// A parameter row whose literal is 2 is an array parameter the function
+// ParameterOwnedArray is an array parameter the function
 // changes, which is its own: the caller's argument is an array no one else
 // holds, a copy or one that is moved, so the function appends to it in place
 // and neither copies it at entry nor leaves a copy for its caller to see.
 pub ReferenceType: int : 1048576;
+// ParameterRow.literal modes. Legacy reference facts conservatively permit
+// writes; readonly facts preserve the same reference ABI without publishing
+// a retained caller's unchanged local after a recursive state write.
+pub ParameterValue: int : 0;
+pub ParameterReference: int : 1;
+pub ParameterOwnedArray: int : 2;
+pub ParameterReadonlyReference: int : 3;
+pub ReferenceParameter :: (mode: i64) -> bool {
+    return mode == i64(ParameterReference) || mode == i64(ParameterReadonlyReference);
+}
 
 // The value types: int and bool, then the other integer types, then the
 // floating ones, then string. The facts carry no compiler storage ordinal.

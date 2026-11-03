@@ -10,10 +10,14 @@ pub ScalarCollection :: struct {
     rows: facts.Row[];
     effects: int[];
     waiting: bool[];
+    // Selected root-package @test function ordinals, only when requested.
+    tests: int[];
 }
 
 ScalarEffectSummary :: struct {
     wanted: bool;
+    collect_tests: bool;
+    tests: int[];
     natives: int[];
     direct: int[];
     waiting: bool[];
@@ -100,8 +104,8 @@ ScalarSynchronous :: (forest: snapshot.SnapshotNode[], callables: Callable[], bi
 pub CollectScalarProgramWithEffects :: (project: string, collection_names: string[], collection_paths: string[],
                                         paths: string[], sources: string[], target: Target, names: string[],
                                         natives: Native[], ports: Port[], identities: u64[], os: int, arch: int,
-                                        chosen: string) -> ScalarCollection {
-    summary: ScalarEffectSummary = {wanted: true, natives: [], direct: [], waiting: [], calls: []};
+                                        chosen: string, test_functions: bool = false) -> ScalarCollection {
+    summary: ScalarEffectSummary = {wanted: true, collect_tests: test_functions, tests: [], natives: [], direct: [], waiting: [], calls: []};
     rows := ScalarCollectWithEffects(project, collection_names, collection_paths, paths, sources, target, names,
                                     natives, ports, identities, true, os, arch, chosen, false, &summary);
     effects: int[] = [];
@@ -109,6 +113,8 @@ pub CollectScalarProgramWithEffects :: (project: string, collection_names: strin
     if (length(rows) > 1 && rows[1].kind != facts.RejectionRow) {
         effects = ScalarClosedEffects(summary);
         waiting = summary.waiting;
+    } else {
+        summary.tests = [];
     }
-    return {rows: rows, effects: effects, waiting: waiting};
+    return {rows: rows, effects: effects, waiting: waiting, tests: summary.tests};
 }

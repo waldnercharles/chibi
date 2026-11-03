@@ -42,7 +42,7 @@ The compiler infers which test closures have no external effects, including
 called and imported functions. Those tests have private invocation storage.
 Tests with random, host, state or other external effects run alone, between
 completed parallel spans. Results and failures are printed in source order,
-not completion order. The instruction limit remains per test.
+not completion order. Each test has its own execution budget.
 
 The native toolchain runs each test in a separate process. Effectful tests
 forward output as it is written; cancellation stops their active child processes.
@@ -85,7 +85,10 @@ A test fails when it:
 - reads past an array boundary or causes another runtime error
 - waits with `await` or `yield`
 - starts a task
-- reaches 100 million instructions
+- reaches 100 million native CHECK or backedge checkpoints
+
+The native budget counts generated checkpoints, rather than VM instructions or
+LLVM instructions. It bounds checked execution, not elapsed wall time.
 
 TODO: Tests in game behavior and library source. The command currently accepts
 package source only.

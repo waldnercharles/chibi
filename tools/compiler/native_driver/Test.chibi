@@ -100,7 +100,6 @@ ExpectedError :: (text: string) -> string {
 
 TestScan :: struct {
     package: string;
-    names: string[];
     declarations: string[];
     attributed: bool;
     problem: string;
@@ -121,7 +120,7 @@ TestAttribute :: (nodes: syntax.Node[], fields: int[], text: string, attribute: 
 // The compiler's parser owns attribute syntax. Comments and whitespace between
 // an attribute and its declaration do not change which function is a test.
 ScanTests :: (text: string) -> TestScan {
-    found: TestScan = {package: "", names: [], declarations: [], attributed: false, problem: ""};
+    found: TestScan = {package: "", declarations: [], attributed: false, problem: ""};
     switch raw.Parse(text) {
         case .Rejected(diagnostic):
             found.problem = format_text("{}:{}: {}", diagnostic.line, diagnostic.column, diagnostic.message);
@@ -143,25 +142,6 @@ ScanTests :: (text: string) -> TestScan {
                 if (fields[index] == syntax.FieldName) {
                     node := nodes[index];
                     found.declarations.append(strings.Slice(text, node.start, node.end - node.start));
-                }
-                if (nodes[index].kind != syntax.FunctionDeclaration) {
-                    continue;
-                }
-                name := "";
-                test := false;
-                member := nodes[index].first_child;
-                while (member >= 0) {
-                    node := nodes[member];
-                    if (fields[member] == syntax.FieldName) {
-                        name = strings.Slice(text, node.start, node.end - node.start);
-                    }
-                    if (node.kind == syntax.Attribute) {
-                        test = test || TestAttribute(nodes, fields, text, member);
-                    }
-                    member = node.next_sibling;
-                }
-                if (test) {
-                    found.names.append(name);
                 }
             }
     }
@@ -200,23 +180,27 @@ TestPrivateName :: (known: string[], prefix: string, ending: string) -> string {
     return format_text("{}{}{}", prefix, suffix, ending);
 }
 
-Dispatcher :: (package: string, dispatcher: string, names: string[]) -> string {
-    text := strings.Concatenate(["package ", package, "\n\n", dispatcher, " :: (index: int) {\n"]);
-    for (index in 0..<length(names)) {
-        text = strings.Concatenate([text, format_text("    if (index == {}) {{\n        {}();\n    }}\n", index, names[index])]);
-    }
-    return strings.Concatenate([text, "}\n"]);
+// Both initial collection and selected-test expansion use this checked branch.
+TestPlaceholder :: (index: int) -> string {
+    return format_text("    if (index == {}) {{ unused := 0; }}\n", index);
+}
+
+// One checked branch is a template, not an estimate of the concrete test count.
+// Generic specialization can produce more tests than attributed declarations.
+Dispatcher :: (package: string, dispatcher: string) -> string {
+    return strings.Concatenate(["package ", package, "\n\n", dispatcher, " :: (index: int) {\n",
+                                TestPlaceholder(0), "}\n"]);
 }
 
 // No core imports: when testing core:os, strings or their dependencies, importing
 // os from inside the tested package would create a self/circular dependency.
-RootProgram :: (package: string, main_name: string, dispatcher: string, count: int) -> string {
+RootProgram :: (package: string, main_name: string, dispatcher: string) -> string {
     return strings.Concatenate(["package ", package, "\n\nforeign {\n",
         "    chibi_native_test_index :: () -> int\n",
         "    chibi_native_test_begin :: () -> int\n",
         "    chibi_native_test_end :: () -> int\n}\n\n",
         main_name, " :: () -> int {\n    index := chibi_native_test_index();\n",
-        format_text("    if (index < 0 || index >= {}) {{ return 2; }}\n", count),
+        "    if (index < 0 || index >= 1) { return 2; }\n",
         "    chibi_native_test_begin();\n    ", dispatcher, "(index);\n    return chibi_native_test_end();\n}\n"]);
 }
 
@@ -312,7 +296,7 @@ Decimal :: (text: string) -> int {
 
 // Checks a package that expects a compile error: it must fail with exactly that first
 // diagnostic, in the file it names. Prints the outcome as a test's; true when it passed.
-RejectedAsExpected :: (label: string, relative: string, file: string, expected: string, inputs: Inputs, core: string) -> bool {
+RejectedAsExpected :: (label: string, relative: string, file: string, expected: string, inputs: Inputs, project: string, core: string) -> bool {
     parent := Directory(relative);
     failing := strings.Concatenate([relative, "/", file]);
     if (relative == "." || relative == "") {
@@ -333,18 +317,27 @@ RejectedAsExpected :: (label: string, relative: string, file: string, expected: 
     rows := compiler.CollectScalarProgram("/project", ["core"], [route.Visible(core)], inputs.paths, inputs.sources, PointerFacts(target),
                                            Names(), Natives(), Ports(), Identities(), platform.os, platform.arch, "");
     actual := "it compiled";
+    actual_start := -1;
+    actual_text := "";
     passed := false;
     if (length(rows) < 2 || rows[1].kind == facts.RejectionRow) {
         diagnostic := rows[length(rows) - 1];
         actual = strings.Concatenate([Place(inputs.paths, inputs.sources, diagnostic.start), ": ", diagnostic.text]);
         passed = actual == strings.Concatenate([failing, ":", message]);
+        actual_start = diagnostic.start;
+        actual_text = diagnostic.text;
     }
     if (passed) {
         Say(format_text("PASS {}.compile_error", label));
         return true;
     }
     Say(format_text("FAIL {}.compile_error", label));
-    Say(format_text("  {}: expected {}, got {}", failing, message, actual));
+    displayed := actual;
+    if (actual_start >= 0) {
+        displayed = strings.Concatenate([Place(TestDiagnosticPaths(inputs.paths, project, core), inputs.sources, actual_start), ": ", actual_text]);
+    }
+    shown := TestDiagnosticPaths([failing], project, core);
+    Say(format_text("  {}: expected {}, got {}", shown[0], message, displayed));
     return false;
 }
 
@@ -403,7 +396,6 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
     }
     rejected := "";
     rejected_file := "";
-    names: string[] = [];
     attributed := false;
     package := "";
     known: string[] = [];
@@ -436,7 +428,6 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
             return result;
         }
         for (name in scanned.declarations) { known.append(name); }
-        names.extend(scanned.names);
         attributed = attributed || scanned.attributed;
     }
     if (rejected == "" && !attributed) {
@@ -470,8 +461,8 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
     entry_file := TestPrivateName(known, "ChibiTestEntry", ".chibi");
     known.append(entry_file);
     dispatch_file := TestPrivateName(known, "ChibiTestDispatch", ".chibi");
-    extra: Extra = {folder: folder, collection: collection, name: dispatch_file, text: Dispatcher(package, dispatcher, names),
-                    entry_name: entry_file, entry_text: RootProgram(package, main_name, dispatcher, length(names))};
+    extra: Extra = {folder: folder, collection: collection, name: dispatch_file, text: Dispatcher(package, dispatcher),
+                    entry_name: entry_file, entry_text: RootProgram(package, main_name, dispatcher)};
     gathered := GatherWith(project, collections, directories, package_path, "", extra);
     if (gathered.problem != "") {
         Complain(strings.Concatenate(["native: ", gathered.problem]));
@@ -481,7 +472,7 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
     gathered.sources = TestSources(gathered.paths, gathered.sources, core, triple);
     if (rejected != "") {
         result.total += 1;
-        if (!RejectedAsExpected(label, Directory(gathered.paths[0]), rejected_file, rejected, gathered, core)) {
+        if (!RejectedAsExpected(relative, Directory(gathered.paths[0]), rejected_file, rejected, gathered, project, core)) {
             result.failed += 1;
         }
         return result;
@@ -500,11 +491,13 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
     visible: string[] = [];
     for (directory in directories) { visible.append(route.Visible(directory)); }
     collected := compiler.CollectScalarProgramWithEffects("/project", collections, visible, gathered.paths, gathered.sources,
-        PointerFacts(target), Names(), Natives(), Ports(), Identities(), platform.os, platform.arch, main_name);
-    prepared: TestProgram = {rows: collected.rows, effects: []};
+        PointerFacts(target), Names(), Natives(), Ports(), Identities(), platform.os, platform.arch, main_name, true);
+    prepared: TestProgram = {rows: collected.rows, sources: gathered.sources, names: [], effects: []};
     if (length(collected.effects) > 0) {
-        prepared = TestProgramRows(collected, gathered.paths, gathered.sources, names, main_name, dispatcher);
+        if (length(collected.tests) == 0) { CacheDiscard(scratch); return result; }
+        prepared = TestProgramRows(collected, gathered.paths, gathered.sources, main_name, dispatcher);
     }
+    gathered.sources = prepared.sources;
     built := EmitCollected(collections, directories, gathered.paths, gathered.sources, triple, main_name, llvm, program,
                            Jobs([]), options, prepared.rows);
     if (built != 0) {
@@ -514,7 +507,7 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
         return result;
     }
     diagnostic_paths := TestDiagnosticPaths(gathered.paths, project, core);
-    result = TestRuns(label, names, prepared.effects, program, scratch, workers, diagnostic_paths, gathered.sources, result);
+    result = TestRuns(label, prepared.names, prepared.effects, program, scratch, workers, diagnostic_paths, gathered.sources, result);
     CacheDiscard(scratch);
     return result;
 }

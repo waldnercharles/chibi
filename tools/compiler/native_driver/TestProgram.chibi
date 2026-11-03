@@ -6,62 +6,15 @@ import strings "core:strings"
 
 TestProgram :: struct {
     rows: facts.Row[];
+    sources: string[];
+    names: string[];
     effects: int[];
-}
-
-// Sort indices once, retaining the source-order test ordinal as their value.
-// The pinned bootstrap accepts plain arrays, so no map type enters its closure.
-TestNameOrder :: (names: string[]) -> int[] {
-    from: int[] = [];
-    for (index in 0..<length(names)) { from.append(index); }
-    to := resize([int(0)], length(names));
-    width := 1;
-    while (width < length(names)) {
-        start := 0;
-        while (start < length(names)) {
-            middle := start + width;
-            if (middle > length(names)) { middle = length(names); }
-            end := middle + width;
-            if (end > length(names)) { end = length(names); }
-            left := start;
-            right := middle;
-            at := start;
-            while (at < end) {
-                if (right >= end || (left < middle && strings.Compare(names[from[left]], names[from[right]]) <= 0)) {
-                    to[at] = from[left];
-                    left += 1;
-                } else {
-                    to[at] = from[right];
-                    right += 1;
-                }
-                at += 1;
-            }
-            start = end;
-        }
-        previous := from;
-        from = to;
-        to = previous;
-        width *= 2;
-    }
-    return from;
-}
-
-TestNamed :: (names: string[], order: int[], name: string) -> int {
-    low := 0;
-    high := length(order);
-    while (low < high) {
-        middle := low + (high - low) / 2;
-        if (strings.Compare(names[order[middle]], name) < 0) { low = middle + 1; }
-        else { high = middle; }
-    }
-    if (low < length(order) && names[order[low]] == name) { return order[low]; }
-    return -1;
 }
 
 // The first files are the tested package, including its generated entry and
 // dispatcher. Imported documents follow, so one joined-byte boundary identifies
-// its functions without conflating names in other packages.
-TestProgramRows :: (collected: compiler.ScalarCollection, paths: string[], sources: string[], names: string[],
+// private wrappers without conflating names in other packages.
+TestProgramRows :: (collected: compiler.ScalarCollection, paths: string[], sources: string[],
                     main_name: string, dispatcher: string) -> TestProgram {
     root_end := 0;
     root := Directory(paths[0]);
@@ -70,60 +23,139 @@ TestProgramRows :: (collected: compiler.ScalarCollection, paths: string[], sourc
         root_end += strings.ByteLength(sources[index]);
         if (!strings.HasSuffix(sources[index], "\n")) { root_end += 1; }
     }
-    order := TestNameOrder(names);
-    masks := resize([int(0)], length(names));
-    waiting := resize([false], length(collected.waiting));
+    names: string[] = [];
+    masks: int[] = [];
+    dispatcher_head := -1;
     dispatcher_function := -1;
     entry_function := -1;
     function := 0;
-    found := 0;
+    test := 0;
     awaits := false;
-    for (row in collected.rows) {
+    for (row, index in collected.rows) {
         if (row.kind != facts.FunctionRow) { continue; }
+        if (test < length(collected.tests) && collected.tests[test] == function) {
+            names.append(row.name);
+            masks.append(collected.effects[function]);
+            awaits = awaits || collected.waiting[function];
+            test += 1;
+        }
         if (row.start < root_end) {
-            test := TestNamed(names, order, row.name);
-            if (test >= 0) {
-                masks[test] = collected.effects[function];
-                waiting[function] = collected.waiting[function];
-                awaits = awaits || waiting[function];
-                found += 1;
-            } else if (row.name == dispatcher) { dispatcher_function = function; }
+            if (row.name == dispatcher) { dispatcher_function = function; dispatcher_head = index; }
             else if (row.name == main_name) { entry_function = function; }
         }
         function += 1;
     }
-    assert(found == length(names) && function == length(collected.effects) &&
+    assert(test == length(collected.tests) && function == length(collected.effects) &&
            function == length(collected.waiting) && dispatcher_function >= 0 && entry_function >= 0,
            "typed test metadata follows the collected functions");
-    rows := collected.rows;
-    if (!awaits) { return {rows: rows, effects: masks}; }
 
-    // Only private generated wrapper calls change. Await waiting tests inline;
-    // otherwise a bare call would spawn before their body reaches a Busy guard.
-    // The ordinary scalar validator still checks these rows at EmitRows.
-    function = -1;
-    for (row, index in collected.rows) {
-        if (row.kind == facts.FunctionRow) {
-            function += 1;
-            if (function == dispatcher_function) {
-                changed := row;
-                changed.value = facts.FunctionVoid;
-                rows[index] = changed;
-            }
-        } else if (row.kind == facts.CallRow && function == dispatcher_function && waiting[row.value]) {
-            changed := row;
-            changed.literal = i64(facts.CallAwaited);
-            changed.type = facts.IntType;
-            rows[index] = changed;
-            discarded := rows[index - 1];
-            assert(discarded.kind == facts.LocalRow && discarded.count == 1, "generated zero-argument test call");
-            discarded.type = facts.IntType;
-            rows[index - 1] = discarded;
-        } else if (row.kind == facts.CallRow && function == entry_function && row.value == dispatcher_function) {
-            changed := row;
-            changed.literal = i64(facts.CallAwaited);
-            rows[index] = changed;
-        }
+    // The private source contains one checked branch. Clone its facts for the
+    // actual concrete test set, including generic specializations. Regenerate
+    // only this virtual file and rebase later locations; authored files stay
+    // byte-for-byte identical and never pass through a second compiler.
+    template_at := dispatcher_head + 2;
+    assert(collected.rows[dispatcher_head].count == 1 &&
+           collected.rows[template_at].kind == facts.IfRow && collected.rows[template_at].count == 3 &&
+           collected.rows[template_at + 1].kind == facts.ReadRow &&
+           collected.rows[template_at + 2].kind == facts.LiteralRow &&
+           collected.rows[template_at + 3].kind == facts.CompareRow &&
+           collected.rows[template_at + 4].kind == facts.LocalRow &&
+           collected.rows[template_at + 5].kind == facts.LiteralRow &&
+           collected.rows[template_at + 6].kind == facts.EndRow &&
+           collected.rows[template_at + 7].kind == facts.ReturnRow,
+           "the generated dispatcher owns one checked branch template");
+    file := -1;
+    file_start := 0;
+    for (source, index in sources) {
+        span := strings.ByteLength(source);
+        if (!strings.HasSuffix(source, "\n")) { span += 1; }
+        if (collected.rows[dispatcher_head].start < file_start + span) { file = index; break; }
+        file_start += span;
     }
-    return {rows: rows, effects: masks};
+    assert(file >= 0, "dispatcher belongs to its virtual source file");
+    template := collected.rows[template_at];
+    token := collected.rows[template_at + 2];
+    prefix_size := template.start - file_start - template.column + 1;
+    parts := [strings.Slice(sources[file], 0, prefix_size)];
+    lines: string[] = [];
+    for (index in 0..<length(names)) {
+        line := TestPlaceholder(index);
+        parts.append(line);
+        lines.append(line);
+    }
+    parts.append("}\n");
+    expanded := strings.Concatenate(parts);
+    file_end := file_start + strings.ByteLength(sources[file]);
+    shifted := strings.ByteLength(expanded) - strings.ByteLength(sources[file]);
+    added_lines := length(names) - 1;
+    changed_sources := sources;
+    joined := collected.rows[0].text;
+    if (shifted != 0) {
+        changed_sources[file] = expanded;
+        parts = [];
+        for (source in changed_sources) {
+            parts.append(source);
+            if (!strings.HasSuffix(source, "\n")) { parts.append("\n"); }
+        }
+        joined = strings.Concatenate(parts);
+    }
+
+    rows: facts.Row[] = [];
+    line_size := strings.ByteLength(lines[0]);
+    function = -1;
+    at := 0;
+    count_bound := false;
+    while (at < length(collected.rows)) {
+        if (at == template_at) {
+            advance := 0;
+            for (target, index in collected.tests) {
+                // Only the rendered ordinal changes width within a branch.
+                extra := strings.ByteLength(lines[index]) - line_size;
+                for (step in 0..<7) {
+                    changed := collected.rows[template_at + step];
+                    if (changed.start > token.start) { changed.start += extra; changed.column += extra; }
+                    if (changed.end > token.start) { changed.end += extra; }
+                    changed.start += advance;
+                    changed.end += advance;
+                    changed.line += index;
+                    if (step == 2) { changed.literal = i64(index); }
+                    else if (step == 4) { changed.value = index + 1; }
+                    else if (step == 5) {
+                        changed.kind = facts.CallRow;
+                        changed.value = target;
+                        changed.name = names[index];
+                        if (collected.waiting[target]) { changed.literal = i64(facts.CallAwaited); }
+                    }
+                    rows.append(changed);
+                }
+                advance += strings.ByteLength(lines[index]);
+            }
+            at += 7;
+            continue;
+        }
+        row := collected.rows[at];
+        if (row.kind == facts.FunctionRow) { function += 1; }
+        if (at == 0) { row.text = joined; }
+        else if (at == dispatcher_head) {
+            row.end += shifted;
+            if (awaits) { row.value = facts.FunctionVoid; }
+        } else if ((function == dispatcher_function && row.kind != facts.ParameterRow) ||
+                   (row.start >= file_end && row.end > row.start)) {
+            row.start += shifted;
+            row.end += shifted;
+            row.line += added_lines;
+        }
+        if (function == entry_function && row.kind == facts.CompareRow && row.value == facts.GreaterEqual) {
+            assert(!count_bound && length(rows) > 0 && rows[length(rows) - 1].kind == facts.LiteralRow,
+                   "generated entry has one literal count bound");
+            rows[length(rows) - 1].literal = i64(length(names));
+            count_bound = true;
+        } else if (awaits && function == entry_function && row.kind == facts.CallRow && row.value == dispatcher_function) {
+            row.literal = i64(facts.CallAwaited);
+        }
+        rows.append(row);
+        at += 1;
+    }
+    assert(count_bound, "generated entry uses the concrete test count");
+    return {rows: rows, sources: changed_sources, names: names, effects: masks};
 }

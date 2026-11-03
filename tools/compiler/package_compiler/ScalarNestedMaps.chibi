@@ -4,135 +4,166 @@ import facts "project:scalar_facts"
 import snapshot "project:source_snapshot"
 import syntax "project:syntax_diagnostics"
 import tk "project:source_tokenizer"
+import strings "core:strings"
 
-// The two outer collection shapes share one canonical publication path. Keys
-// are owned captures; the receiver is resolved only after their RHS effects.
+// One transient record per written index: source key, physical parent/carrier/
+// child types, and the location of its private old-value guard. No path table
+// enters runtime IR; validation and lowering follow the existing type graph.
+ScalarMapPathStep :: struct { node: int; type: int; key: int; carrier: int; child: int; line: int; column: int; }
+
 ScalarNestedMapAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                             callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
                             statement: int, change: ScalarMapCall, next_variable: ^int) -> ScalarOperands {
-    place := Unparenthesized(forest, change.object);
-    object := Unparenthesized(forest, Field(forest, place, syntax.FieldObject));
-    record := ScalarMapShape(forest, text, callables, names, types, members, callable.package, place);
-    outer_map := ScalarMapShape(forest, text, callables, names, types, members, callable.package, object);
-    outer := ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, object);
-    arrayed := outer_map < 0 && outer.container == ArrayContainer && outer.record >= 0 &&
-               ScalarNestedCollection(types[outer.record]) && SequenceElement(types, outer).container == MapContainer;
-    if (!Is(forest, object, syntax.Identifier) || record < 0 || (!arrayed && outer_map < 0) ||
-        (!arrayed && types[outer_map].value_container != MapContainer) ||
+    steps: ScalarMapPathStep[] = [{node: change.key, type: 0, key: 0, carrier: 0, child: 0, line: 0, column: 0}];
+    object := Unparenthesized(forest, change.object);
+    while (Is(forest, object, syntax.IndexExpression)) {
+        steps.append({node: Field(forest, object, syntax.FieldIndex), type: 0, key: 0, carrier: 0, child: 0, line: 0, column: 0});
+        object = Unparenthesized(forest, Field(forest, object, syntax.FieldObject));
+    }
+    if (!Is(forest, object, syntax.Identifier) ||
         (change.operator != facts.MapSet && change.operator != facts.MapDelete)) {
-        return ScalarOperands.Failed(Diagnose(forest, place, 0,
-            "native nested map changes require a map variable or an array variable with map elements"));
+        return ScalarOperands.Failed(Diagnose(forest, change.object, 0,
+            "native nested map changes require a map or array variable and a collection index path"));
     }
-    mapped := ScalarMapType(types, record);
-    root_type := ScalarArrayType(types, outer.storage, outer.record);
-    outer_key_storage := IntStorage;
-    wrapper := ScalarElementType(types, outer);
-    set := facts.ArrayMapSet;
-    remove := facts.ArrayMapDelete;
-    if (!arrayed) {
-        root_type = ScalarMapType(types, outer_map);
-        outer_key_storage = types[outer_map].key;
-        wrapper = ScalarRecordType(types, types[outer_map].parent);
-        set = facts.NestedMapSet;
-        remove = facts.NestedMapDelete;
+    for (index in 0..<length(steps) / 2) {
+        other := length(steps) - index - 1;
+        saved := steps[index]; steps[index] = steps[other]; steps[other] = saved;
     }
-    binding := ScalarVariable(names, Text(forest, text, object)).index;
-    outer_key_type := ScalarTypeOf(outer_key_storage);
-    key_type := ScalarTypeOf(types[record].key);
+    binding := ScalarVariable(names, Text(forest, text, object));
+    current: ValueType = {storage: binding.storage, container: binding.container, record: binding.record};
+    shape: ValueType = {storage: 0, container: 0, record: -1};
+    located := ScalarAt(forest, statement, facts.ScopeRow, 0, 0, 0, "");
+    prefix_line := located.line;
+    prefix_column := located.column;
+    for (index in 0..<length(steps)) {
+        step := steps[index];
+        step.type = ScalarValueType(types, current.storage, current.container, current.record);
+        step.line = prefix_line; step.column = prefix_column;
+        if (strings.ByteAt(text, located.start + index) == 10) { prefix_line += 1; prefix_column = 1; }
+        else { prefix_column += 1; }
+        if (current.container == MapContainer && ScalarMapType(types, current.record) != 0) {
+            declared := types[current.record];
+            step.key = declared.key;
+            step.carrier = (step.type - facts.MapType) / 16;
+            shape = {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
+        } else if (current.container == ArrayContainer && current.record >= 0 && ScalarNestedCollection(types[current.record]) &&
+                   step.type != 0 && index + 1 < length(steps)) {
+            step.key = IntStorage;
+            step.carrier = ScalarElementType(types, current);
+            shape = SequenceElement(types, current);
+        } else {
+            return ScalarOperands.Failed(Diagnose(forest, step.node, 0,
+                "native nested map changes require a map or array variable and a collection index path"));
+        }
+        step.child = ScalarValueType(types, shape.storage, shape.container, shape.record);
+        if (index + 1 < length(steps) &&
+            (step.child == 0 || (shape.container != ArrayContainer && shape.container != MapContainer))) {
+            return ScalarOperands.Failed(Diagnose(forest, step.node, 0,
+                "native nested map changes require map or array descriptors at every intermediate index"));
+        }
+        steps[index] = step;
+        current = shape;
+    }
+    root_type := steps[0].type;
+    leaf := steps[length(steps) - 1];
+    payload := leaf.carrier;
     variables := next_variable^;
-    outer_key := variables;
-    key := variables + 1;
-    variables += 2;
-    rows := [ScalarAt(forest, statement, facts.ScopeRow, 0, 0, 0, "")];
-    outer_node := Field(forest, place, syntax.FieldIndex);
-    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
-                         outer_node, outer_node, outer_key_storage, outer_key_storage, facts.Clamp, []) {
-        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
-        case .Built(built): rows.extend(ScalarCapture(forest, statement, outer_key_type, outer_key, built));
-    }
-    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
-                         change.key, change.key, types[record].key, types[record].key, facts.Clamp, []) {
-        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
-        case .Built(built): rows.extend(ScalarCapture(forest, statement, key_type, key, built));
+    keys := variables;
+    rows := [located];
+    for (step in steps) {
+        switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                             step.node, step.node, step.key, step.key, facts.Clamp, []) {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): rows.extend(ScalarCapture(forest, statement, ScalarTypeOf(step.key), variables, built));
+        }
+        variables += 1;
     }
     previous := variables;
     compound := 0;
     if (change.operator == facts.MapSet && Operator(forest, statement) != tk.Eq) {
         compound = ScalarArithmetic(CompoundOperator(Operator(forest, statement)));
     }
-    shape: ValueType = {storage: types[record].value_storage, container: types[record].value_container,
-                        record: types[record].value_record};
-    payload := ScalarValueType(types, shape.storage, shape.container, shape.record);
-    if (shape.container == MapContainer) { payload = ScalarRecordType(types, types[record].parent); }
     if (compound != 0) {
         if (!Numeric(shape.storage) || shape.container != 0 || shape.record >= 0) {
             return ScalarOperands.Failed(Diagnose(forest, statement, 0, "compound assignment needs numeric operands"));
         }
         rows.extend(ScalarCapture(forest, statement, payload, previous, [ScalarLiteral(forest, statement, payload, 0)]));
         variables += 1;
-        // A missing logical owner contributes the numeric zero, but only the
-        // final write may fail. Existing owners are read after both keys and
-        // before the RHS, including key callbacks that replace the root.
-        read_root := ScalarAt(forest, statement, facts.ReadRow, root_type, binding, 0, "");
-        read_outer := ScalarAt(forest, statement, facts.ReadRow, outer_key_type, outer_key, 0, "");
-        condition: facts.Row[] = [];
-        get := ScalarAt(forest, statement, facts.MapRow, wrapper, facts.MapGetWrapped, 2, "");
-        get.literal = i64(root_type);
-        if (arrayed) {
-            condition = [read_outer, ScalarLiteral(forest, statement, facts.IntType, 0),
-                ScalarAt(forest, statement, facts.CompareRow, facts.BoolType, facts.GreaterEqual, 2, ""),
-                ScalarAt(forest, statement, facts.LogicalRow, facts.BoolType, facts.LogicalAnd, 4, ""),
-                read_outer, read_root, ScalarAt(forest, statement, facts.ArrayRow, facts.IntType, facts.ArrayLength, 1, ""),
-                ScalarAt(forest, statement, facts.CompareRow, facts.BoolType, facts.Less, 2, "")];
-            get.kind = facts.ArrayRow; get.value = facts.ArrayGet; get.literal = 0;
-        } else {
-            has := ScalarAt(forest, statement, facts.MapRow, facts.BoolType, facts.MapHas, 2, "");
-            has.literal = i64(root_type);
-            condition = [read_root, read_outer, has];
+        // Every guard reads the current descriptor only after all key effects.
+        // Its child temporary is scoped to that guard, so all historical
+        // descriptors drop before the RHS and cannot force an extra detach.
+        parent := binding.index;
+        for (step, index in steps) {
+            read_parent := ScalarAt(forest, statement, facts.ReadRow, step.type, parent, 0, "");
+            read_key := ScalarAt(forest, statement, facts.ReadRow, ScalarTypeOf(step.key), keys + index, 0, "");
+            get := ScalarAt(forest, statement, facts.MapRow, step.carrier, facts.MapGet, 2, "");
+            get.literal = i64(step.type);
+            if (step.type < facts.MapType) { get.kind = facts.ArrayRow; get.value = facts.ArrayGet; get.literal = 0; }
+            else if (step.child >= facts.MapType && step.child != step.carrier) { get.value = facts.MapGetWrapped; }
+            expression := [read_parent, read_key, get];
+            if (index + 1 < length(steps)) {
+                if (step.child != step.carrier) { expression.append(ScalarAt(forest, statement, facts.FieldRow, step.child, 0, 1, "")); }
+                condition: facts.Row[] = [];
+                if (step.type < facts.MapType) {
+                    condition = [read_key, ScalarLiteral(forest, statement, facts.IntType, 0),
+                        ScalarAt(forest, statement, facts.CompareRow, facts.BoolType, facts.GreaterEqual, 2, ""),
+                        ScalarAt(forest, statement, facts.LogicalRow, facts.BoolType, facts.LogicalAnd, 4, ""), read_key,
+                        read_parent, ScalarAt(forest, statement, facts.ArrayRow, facts.IntType, facts.ArrayLength, 1, ""),
+                        ScalarAt(forest, statement, facts.CompareRow, facts.BoolType, facts.Less, 2, "")];
+                } else {
+                    has := ScalarAt(forest, statement, facts.MapRow, facts.BoolType, facts.MapHas, 2, "");
+                    has.literal = i64(step.type); condition = [read_parent, read_key, has];
+                }
+                conditional := located; conditional.kind = facts.IfRow; conditional.count = length(condition);
+                conditional.start += index; conditional.end = located.start + length(steps);
+                conditional.line = step.line; conditional.column = step.column; rows.append(conditional);
+                for (operand in condition) {
+                    at := operand; at.start = conditional.start; at.end = at.start + 1;
+                    at.line = conditional.line; at.column = conditional.column; rows.append(at);
+                }
+                capture := ScalarCapture(forest, statement, step.child, variables, expression);
+                for (operand in capture) {
+                    at := operand; at.start = located.start + index + 1; at.end = at.start + 1;
+                    at.line = steps[index + 1].line; at.column = steps[index + 1].column; rows.append(at);
+                }
+                parent = variables; variables += 1;
+            } else {
+                assigned := ScalarAt(forest, statement, facts.AssignRow, payload, previous, length(expression), "");
+                assigned.start += index; assigned.end = assigned.start + 1; assigned.line = step.line; assigned.column = step.column;
+                rows.append(assigned);
+                for (operand in expression) {
+                    at := operand; at.start = assigned.start; at.end = assigned.end; at.line = assigned.line; at.column = assigned.column;
+                    rows.append(at);
+                }
+            }
         }
-        old := ScalarAt(forest, statement, facts.MapRow, payload, facts.MapGet, 2, "");
-        old.literal = i64(mapped);
-        expression := [read_root, read_outer, get,
-            ScalarAt(forest, statement, facts.FieldRow, mapped, 0, 1, ""),
-            ScalarAt(forest, statement, facts.ReadRow, key_type, key, 0, ""), old];
-        // These private statements precede the actual RHS. Reserve two source
-        // bytes for their ordered ranges; the Scope retains the full write.
-        conditional := ScalarAt(forest, statement, facts.IfRow, 0, 0, length(condition), "");
-        conditional.end = conditional.start + 2;
-        rows.append(conditional);
-        for (operand in condition) { located := operand; located.end = located.start + 1; rows.append(located); }
-        assign := ScalarAt(forest, statement, facts.AssignRow, payload, previous, length(expression), "");
-        assign.start += 1; assign.column += 1; assign.end = assign.start + 1;
-        rows.append(assign);
-        for (operand in expression) {
-            located := operand;
-            located.start += 1; located.column += 1; located.end = located.start + 1; rows.append(located);
+        index := length(steps) - 2;
+        while (index >= 0) {
+            close := located; close.kind = facts.EndRow; close.start += index; close.end = located.start + length(steps);
+            close.line = steps[index].line; close.column = steps[index].column; rows.append(close); index -= 1;
         }
-        conditional.kind = facts.EndRow; conditional.count = 0; rows.append(conditional);
     }
     value_node := statement;
     if (change.operator == facts.MapSet) { value_node = Field(forest, statement, syntax.FieldValue); }
-    incoming := [ScalarAt(forest, value_node, facts.RefRow, root_type, binding, 0, ""),
-        ScalarAt(forest, value_node, facts.ReadRow, outer_key_type, outer_key, 0, ""),
-        ScalarAt(forest, value_node, facts.ReadRow, key_type, key, 0, "")];
-    operation := remove;
-    count := 3;
+    incoming := [ScalarAt(forest, value_node, facts.RefRow, root_type, binding.index, 0, "")];
+    for (step, index in steps) { incoming.append(ScalarAt(forest, value_node, facts.ReadRow, ScalarTypeOf(step.key), keys + index, 0, "")); }
+    operation := facts.NestedMapDelete;
+    if (root_type < facts.MapType) { operation = facts.ArrayMapDelete; }
+    count := length(steps) + 1;
     if (change.operator == facts.MapSet) {
         if (shape.container == MapContainer) { incoming.append(ScalarAt(forest, value_node, facts.ZeroRow, payload, 0, 0, "")); }
         if (compound != 0) { incoming.append(ScalarAt(forest, value_node, facts.ReadRow, payload, previous, 0, "")); }
-        switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants,
-                                  value_node, shape, incoming) {
+        switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants, value_node, shape, incoming) {
             case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
             case .Built(built): incoming = built;
         }
         if (shape.container == MapContainer) { incoming.append(ScalarAt(forest, value_node, facts.UpdateRow, payload, 0, 2, "")); }
         if (compound != 0) { incoming.append(ScalarAt(forest, value_node, facts.ArithmeticRow, payload, compound, 2, "")); }
-        operation = set; count = 4;
+        operation = facts.NestedMapSet; if (root_type < facts.MapType) { operation = facts.ArrayMapSet; }
+        count += 1;
     }
     incoming.append(ScalarAt(forest, value_node, facts.MapRow, root_type, operation, count, ""));
-    rows.append(ScalarAt(forest, value_node, facts.AssignRow, root_type, binding, length(incoming), ""));
-    rows.extend(incoming);
-    rows.append(ScalarAt(forest, statement, facts.EndRow, 0, 0, 0, ""));
-    next_variable^ = variables;
+    rows.append(ScalarAt(forest, value_node, facts.AssignRow, root_type, binding.index, length(incoming), "")); rows.extend(incoming);
+    rows.append(ScalarAt(forest, statement, facts.EndRow, 0, 0, 0, "")); next_variable^ = variables;
     return ScalarOperands.Built(rows);
 }

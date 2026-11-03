@@ -7,7 +7,55 @@ following CI merge `a76ea8005`. Further work is composed on
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
-## Current composition: fc0948f79
+## Current composition: 6699cb764
+
+The source at `6699cb764` includes indexed foreign-buffer loans, typed active
+collector-root ranges, separate rooted-copy and rootless-value properties,
+compiler-selected test dispatch, independent native command fixtures and the
+Windows environment-fixture fixes. Its macOS stages two and three reproduce
+byte for byte after 32.51 and 31.69 seconds, SHA-256
+`b633bdae6472338b23530bb8d2bf49c701a42d7cb3ded78d67932f91737dcc08`.
+All 517 compiler tests pass in 26.43 seconds. The frozen source's 3,484 tracked
+blobs are unchanged. Evidence is in
+`/private/tmp/chibi-selected-composed-proof/receipt.json`. Linux is validating
+this same revision separately; no Windows acceptance is claimed for it.
+
+The preceding indexed-loan composition `be4f279b9` builds in 30.26 seconds,
+passes 510 compiler tests in 25.59, and passes its combined indexed-buffer,
+wide-owner, nested-map, borrowed-import, failure-category and preserved-output
+checks at O0/O2 in 30.70. All poisoned allocations balance. Its receipt is
+`/private/tmp/chibi-indexed-composed-proof/receipt.json`. The subsequent
+`bcf732947` integrates deeper canonical map writes with independent source,
+malformed-facts, depth-growth and allocation proofs; its combined proof is next.
+
+The Windows SDK-discovery failure is a test-fixture environment bug. Hosted
+replay `41612530165` checked all 16 combinations of original/probed consumer,
+ordinary/extended loader path and four environment modes. Removing the override
+passed all eight cases; ordinary PowerShell `$null` and explicit-empty controls
+reproduced the exact failure in all eight cases. `[NullString]::Value` removes
+the variable correctly. The facade and three bootstrap fixtures now preserve
+absent, empty and nonempty values distinctly. Production discovery and all
+original C assertions are unchanged. The causal receipt is
+`/private/tmp/chibi-windows-sdk-discovery-72598/environment-fa584-receipt.json`.
+
+Windows CI now runs the complete compiler-root inventory after its fixed point
+and has a 120-minute job allowance. All previous identity guards and product
+checks remain. The independent native Driver/Graph command fixture passes on
+current source in 3.11 seconds with CC/CXX disabled, comparing exact streams,
+statuses and complete ordered inventories for five selected product/fixture
+targets. The native proof's mandatory VM-comparison dependency is being migrated
+to this fixture; the optional historical comparator is still present.
+
+Known behavior gates still have active owners: task view frames and promises;
+GC-bearing array/record promises and container elements; scalar string cells;
+indexed array-field replacement and deeper array-ended collection paths; map
+promises and arrays of task observers. The native test runner must also retain
+imported selected tests and their concrete generic instances. The selected-count
+and source-span fix is integrated, but imported execution parity is a separate
+follow-on. Exact nine-family inventory and supported-platform product validation
+remain required before deleting the held C/VM/recovery candidate.
+
+### Earlier composition: fc0948f79
 
 Owned aggregate array views, canonical nested-map mutations, recursive inline
 GC roots and pointer-only task promises are integrated. Suspended tasks retain

@@ -7,16 +7,39 @@ following CI merge `a76ea8005`. Further work is composed on
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
-## Current composition: 542b5c86d
+## Current composition: ad3e3f5b0
 
 The combined source now includes counted map task results, collector-backed
-arrays of pointer-bearing records, deeper mapped-array methods and typed
-failures across shared execution generations. Failed awaits and immediate
+arrays of pointer-bearing records, deeper mapped-array methods, nested map
+iteration, optional-text cells and typed failures across shared execution
+generations. Failed awaits and immediate
 spawns propagate failure before subsequent source effects. Existing view
 promise roots, parent-child cancellation and original-generation completion
-remain intact. The new combined fixed-point, compiler, task-owner, collector
-and map checks are running against an immutable archive at
-`/private/tmp/chibi-542b-composed-proof`.
+remain intact.
+
+The current candidate builds in 41.77 seconds and passes all 540 compiler tests
+in 30.55. Optional-text source passes eight normal/forced/callback O0/O2 modes
+in 3.43 seconds with zero live allocations; actual source writes across writer
+image unloading pass in 17.14. Nested map iteration passes at O0/O2, including
+compilation, in 0.92 seconds. All 3,540 archived source blobs and modes remain
+unchanged. This focused composition check did not repeat the fixed point.
+Evidence is in `/private/tmp/chibi-ad3-composed-check/receipt.json`.
+
+The preceding `542b5c86d` reproduces byte for byte between stages two and three
+in 36.53 and 35.50 seconds, SHA-256
+`d702b0c191e2ef5f6432818ed8d3294b0e1d1b322866a337f2101eda0117a43c`.
+One new metadata test retained an obsolete diagnostic string; after correcting
+that expectation, all 538 compiler tests pass in 27.45 seconds. The full
+task-owner and collector suites pass in 23.41 and 279.93 seconds. The map suite
+passed its normal and failure cases before reaching a stale rejection of the
+now-supported array-of-map task result at 71.85 seconds. That unchanged source
+passes at O0/O2, and the previously unrun poisoned-owner suffix passes in a
+64.56-second continuation. Both original archives' 3,533 source blobs and modes
+are unchanged. These resumed checks retain the original failure logs; they are
+not complete second suite runs. Receipts are in
+`/private/tmp/chibi-542b-composed-proof`,
+`/private/tmp/chibi-542b-validation-remainder` and
+`/private/tmp/chibi-542b-map-remainder`.
 
 The preceding `1d5386d9f` composition preserves imported selected tests, concrete
 generic instances and source ordering. Its macOS stages two and three reproduce
@@ -37,12 +60,17 @@ verified font/library fixtures. Evidence is in
 `/private/tmp/chibi-final-nine-preparation/final-receipt.json`.
 
 Remaining confirmed source behavior work covers task-observer arrays,
-pointer-element views, map-valued-map iteration, optional-text cells and owned
-record cells. Supported-platform product checks and Windows bootstrap
+pointer-element views and boxed argument handoff, collector-array mutation in
+waiting frames, map comparison within arrays, and owned record cells.
+Supported-platform product checks and Windows bootstrap
 acceptance remain required. The isolated retirement branch is reconciling
 legacy CI callers, selectors, recovery artifacts and host/VM code with the
 current native command contracts and fixtures; the deletion is not yet applied
-to this branch.
+to this branch. Held checkpoint `7aa6f842b` passes the native command, runner
+and graph checks, a Release build with C disabled (56.66 seconds), installed SDK
+checks (91.79) and the C facade consumer (7.75). Its reconciliation `de39d4cf`
+preserves the current source and fixture additions; that later merge received
+source checks only. Evidence is in `/private/tmp/chibi-retirement-preparation`.
 
 The approved c5 Linux/macOS bootstrap package is published and both pins are
 advanced. The separate audited 14f7 package still awaits approval. Temporary

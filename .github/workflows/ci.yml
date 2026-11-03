@@ -601,6 +601,8 @@ jobs:
             @{ name = 'view-promises'; source = 'test/native_aot/managed_pointers/source/TaskViewPromises.chibi' },
             @{ name = 'map-promises'; source = 'test/native_aot/task_owners/MapPromises.chibi' },
             @{ name = 'gc-record-arrays'; source = 'test/native_aot/managed_pointers/source/RecordArrays.chibi' },
+            @{ name = 'optional-string-cells'; source = 'test/native_aot/managed_pointers/source/OptionalStrings.chibi' },
+            @{ name = 'record-array-mutation'; source = 'test/native_aot/managed_pointers/source/RecordArrayMutation.chibi' },
             @{ name = 'square-root'; source = 'test/native_aot/math_scalar/SquareRoot.chibi' },
             @{ name = 'shadow-root'; source = 'test/native_aot/math_scalar/Shadow.chibi' },
             @{ name = 'math-kernels'; source = 'test/native_aot/math_scalar/Kernels.chibi' },
@@ -617,6 +619,8 @@ jobs:
             @{ name = 'deep-mapped-arrays'; source = 'test/native_aot/map_programs/DeepArrays.chibi' },
             @{ name = 'record-field-arrays'; source = 'test/native_aot/managed_values/RecordFieldArrays.chibi' },
             @{ name = 'deep-mapped-methods'; source = 'test/native_aot/map_programs/DeepMethods.chibi' },
+            @{ name = 'nested-map-iteration'; source = 'test/native_aot/map_programs/NestedIteration.chibi' },
+            @{ name = 'map-array-promises'; source = 'test/native_aot/map_programs/TaskMaps.chibi' },
             @{ name = 'sdk-paths'; source = 'test/bootstrap/fixtures/InstallPaths.chibi' },
             @{ name = 'library-loader'; source = 'test/native_aot/loader/Windows.chibi' }
           )
@@ -645,6 +649,22 @@ jobs:
       - name: Check native Windows host clocks
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: ./test/native_aot/host_clock/Run.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -LLVM $env:CHIBI_WINDOWS_LLVM
+      - name: Check native Windows typed failures and image ownership
+        id: windows-typed-proof
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        run: ./test/native_aot/task_owners/RunWindows.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM -Root $PWD.Path
+      - name: Preserve failed Windows typed failure evidence
+        if: ${{ failure() && steps.windows-typed-proof.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-typed-failure-evidence
+          path: ${{ runner.temp }}/chibi-typed-generation-*/**
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
       - name: Check native Windows directory errors and source inventories
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: ./test/native_aot/directories/Run.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM

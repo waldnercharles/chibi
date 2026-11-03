@@ -1,0 +1,93 @@
+package pointer_element_windows
+
+Box :: (value: int) -> ^int { return &value; }
+Owner :: (value: int) -> view (^int)[]? {
+    values: ^int[] = [Box(value), Box(value + 1)]; pointer := &values;
+    return pointer.view(0..<2);
+}
+Churn :: () { for index in 0..<3000 { discarded := Owner(index); } }
+Escaped :: () -> view (^int)[] { return Owner(7)!; }
+BoolWindow :: () -> view (^bool)[] {
+    yes := true; no := false; values: ^bool[] = [&yes, &no]; pointer := &values;
+    return pointer.view(0..<2)!;
+}
+// The original ordinary pointer-element view kernel executes synchronously.
+Kernel :: () -> int {
+    number := 7; values: ^int[] = [&number]; pointer := &values;
+    selected := pointer.view(0..<1);
+    if selected { return selected[0]^; }
+    return -1;
+}
+Growth :: () {
+    values: ^int[] = [Box(3)]; pointer := &values;
+    selected := pointer.view(0..<1);
+    if selected {
+        for index in 0..<128 { pointer.append(Box(index)); }
+        Churn();
+        assert(selected.length() == 1 && selected[0]^ == 3);
+        pointer^ = [Box(41), Box(42)]; Churn();
+        assert(selected[0]^ == 41, "a window resolves the current pointer-array cell");
+    } else { assert(false); }
+}
+Inputs :: () -> ^int[] { return [Box(7), Box(8)]; }
+Capture :: (values: ^int[]) -> ^(^int[]) { values[0] = Box(9); return &values; }
+CaptureAfterScalar :: (first: int, values: ^int[]) -> ^(^int[]) { values[0] = &first; return &values; }
+BorrowedWaiting :: (values: ^int[]) -> ^(^int[]) { yield; return &values; }
+Bound :: (order: ^int, digit: int, value: int) -> int { order^ = order^ * 10 + digit; return value; }
+Main :: () -> int {
+    original := Kernel(); assert(original == 7);
+    captured := Capture(Inputs()); Churn(); values := captured^;
+    assert(values[0]^ == 9 && values[1]^ == 8);
+    after_scalar := CaptureAfterScalar(19, Inputs()); Churn(); mixed := after_scalar^;
+    assert(mixed[0]^ == 19 && mixed[1]^ == 8);
+    flags := BoolWindow(); Churn(); assert(flags[0]^ && !flags[1]^);
+    flags[1]^ = true; assert(flags[1]^);
+    selected := Escaped(); Churn();
+    saved := selected[0]; selected[0] = Box(19); Churn();
+    assert(saved^ == 7 && selected[0]^ == 19);
+    selected[1]^ = 23; Churn(); assert(selected[1]^ == 23);
+    cloned := selected.clone(); cloned[0] = Box(31); Churn();
+    assert(cloned[0]^ == 31 && selected[0]^ == 19);
+    order := 0;
+    sliced := selected.slice(Bound(&order, 1, 0)..<Bound(&order, 2, 2));
+    assert(order == 12);
+    if sliced {
+        sliced[0] = Box(37); Churn();
+        assert(sliced[0]^ == 37 && sliced[1]^ == 23 && selected[0]^ == 19);
+    } else { return 1; }
+    bad := selected.slice(-1..<2); assert(!bad);
+    valid_empty := selected.slice(1..<1);
+    if valid_empty { assert(length(valid_empty) == 0); } else { return 2; }
+    Growth();
+    return 0;
+}
+AppendStress :: () -> int {
+    values: ^int[] = [Box(7)]; pointer := &values;
+    selected := pointer.view(0..<1);
+    for index in 0..<4096 { pointer.append(Box(index)); }
+    if selected { assert(selected[0]^ == 7 && selected.length() == 1); } else { return 1; }
+    return 0;
+}
+Waiter :: () -> view (^int)[] { selected := Escaped(); yield; Churn(); return selected; }
+Hold :: (window: view (^int)[]) -> int { while true { yield } }
+Tasks :: () -> int {
+    captured := await BorrowedWaiting(Inputs()); Churn(); values := captured^;
+    assert(values[0]^ == 7 && values[1]^ == 8);
+    pending := Waiter(); alias := pending; yield; yield; Churn();
+    joined := await pending;
+    if joined is Cancelled { return 1; }
+    else { window := joined; Churn(); assert(window[0]^ == 7); window[0] = Box(53); }
+    again := await alias;
+    if again is Cancelled { return 2; }
+    else { window := again; assert(window[0]^ == 53); }
+    selected := await Waiter(); Churn(); assert(selected[1]^ == 8);
+    gone := Hold(selected); yield; Churn(); cancel gone
+    cancelled := await gone; assert(cancelled is Cancelled);
+    return 0;
+}
+Failure :: () -> int {
+    selected := Escaped();
+    assert(selected[0]^ == 7);
+    assert(false, "pointer-array cell cleanup after a failed view read");
+    return 0;
+}

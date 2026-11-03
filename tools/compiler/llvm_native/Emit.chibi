@@ -1107,6 +1107,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     loan_uses: bool[] = [];
     pins := false;
     owner_pins := false;
+    backing_references := false;
     for (slot in slots) {
         definitions.append(int(-1));
     }
@@ -1116,6 +1117,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         item := code[pc];
         pins = pins || item.op == ManagedPin || item.op == ManagedUnpin;
         owner_pins = owner_pins || item.op == OwnerPin || item.op == OwnerUnpin;
+        backing_references = backing_references || item.op == ArrayValueAddress || item.op == MapValueAddress;
         if (item.op < Constant || item.op >= InstructionCount ||
             (item.op > Cancel && item.op < CancelAfter && item.op != TypedFail)) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
@@ -1446,6 +1448,10 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     }
     if (plain_references) {
         error := TaskReferencesValid(lifecycle, slots, code, arguments, definitions);
+        if (error != "") { return Result.Rejected(base, error); }
+    }
+    if (waiting[function] && backing_references) {
+        error := TaskBackingReferencesValid(slots, locals, code, arguments, lifecycle.owned);
         if (error != "") { return Result.Rejected(base, error); }
     }
     dominance := Dominators(code);

@@ -41,5 +41,8 @@ reindexing and outer plain-record field reordering/new initialization. Main runs
 once and a local copy survives subsequent mutation. `SourceAudit.chibi` also runs
 at O0/O2 in its production shared context and execution-family heap with the
 common poisoned allocator. It calls Frame three times, bounds each 4,096-element
-retained string/record-array growth to 16 backing allocations, releases twice,
+retained string/record-array growth to 16 backing allocations. A 1,000-row
+retained nested array has the same bound for 4,096 inner appends, while a retained
+optional array performs 4,096 guarded element writes without allocation. It
+checks that a saved nested value survives mutation, releases twice,
 and requires zero live allocations. No GC-pointer retained state is admitted.

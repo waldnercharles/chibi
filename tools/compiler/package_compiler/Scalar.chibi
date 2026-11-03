@@ -4112,7 +4112,7 @@ ScalarRetainedNames :: (forest: snapshot.SnapshotNode[], text: string, types: Ty
         if (Is(forest, node, syntax.StateDeclaration)) {
             declared := StateType(forest, text, &table, 0, node);
             place := StatePlace;
-            if (declared.storage == StructStorage || declared.container == ArrayContainer) {
+            if (declared.storage == StructStorage || declared.storage == UnionStorage || declared.container == ArrayContainer) {
                 // The ordinary preflight checks a mutable aggregate local;
                 // native retained lowering supplies its persistent storage.
                 place = CellPlace;

@@ -3691,6 +3691,17 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     address := root;
                     current := slot + 1 + extra;
                     if (nested) {
+                        // Drop the extra global lease before outer uniqueness;
+                        // source value aliases keep their own backing owners.
+                        state_index := RetainedArrayState(retained_array_variables, retained_array_fields, retained_array_states,
+                            rows[at].value, -1);
+                        if (state_index >= 0) {
+                            slots.append(type);
+                            body.extend([Op(native.Constant, type, current, 0, 0, 0),
+                                Op(native.StateStore, type, 0, current, 0, state_index)]);
+                            current += 1;
+                            extra += 1;
+                        }
                         address = current;
                         slots.append(native.RefType + array);
                         selected := Op(native.ArrayValueAddress, native.RefType + array, address, root, stack[base + 1], type);

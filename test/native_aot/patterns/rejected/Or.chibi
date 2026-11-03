@@ -1,0 +1,7 @@
+package rejected_or_pattern
+Value :: union { Some(number: int) | Nothing }
+Main :: () -> int {
+    value := Value.Some(7);
+    if value is .Some(number) || true { return number; }
+    return 0;
+}

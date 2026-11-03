@@ -1,0 +1,25 @@
+package pattern_leases
+
+foreign { chibi_pattern_test_live :: () -> u64 }
+Value :: union { Nothing | Word(text: string) }
+Touch :: (calls: ^int) { calls^ = 0; }
+Next :: (calls: ^int, baseline: u64) -> Value {
+    live := chibi_pattern_test_live();
+    if calls^ > 0 {
+        assert(live == baseline, "a continued pattern drops its captures before evaluating the next subject");
+    }
+    calls^ += 1;
+    if calls^ <= 3 { return Value.Word(text_from_bytes([u8(119), 111, 114, 100])); }
+    return Value.Nothing;
+}
+Main :: () -> int {
+    calls := 0;
+    Touch(&calls);
+    baseline := chibi_pattern_test_live();
+    while Next(&calls, baseline) is .Word(text) {
+        assert(text == "word");
+        continue;
+    }
+    assert(calls == 4);
+    return 0;
+}

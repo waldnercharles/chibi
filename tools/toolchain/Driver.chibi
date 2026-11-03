@@ -25,7 +25,7 @@ import paths "graph:install"
 // (see Runner). The other verbs are `test`, `install`,
 // `format`, `clean`, `census`, `native-evidence`, `sdk-reflect`,
 // `bootstrap-artifact`, `bootstrap-recover`,
-// `publish-seed`, `native-census` and `native-self-host`; Usage lists them.
+// `publish-seed` and `native-self-host`; Usage lists them.
 
 Join :: (parts: string[]) -> string {
     return strings.Join(parts, "")
@@ -717,26 +717,6 @@ Bootstrap :: (arguments: string[], mode: string) -> int {
     return Step("seed-folder", ["rm", "-rf", seed], dry)
 }
 
-// Rewrites docs/native-compiler-census.md: the first native blocker of each
-// self-hosted compiler function.
-NativeCensus :: (arguments: string[]) -> int {
-    dry := Flag(arguments, "--dry-run")
-    directory := Option(arguments, "--build", "build")
-    options := ["--target", "test_language", "--build", directory]
-    if (dry) {
-        options = extend(options, ["--dry-run"])
-    }
-    status := Build(options)
-    if (status != 0) {
-        return status
-    }
-    return Step(
-        "native-census",
-        [Join([Absolute(directory), "/test/language/test_language"]), "--native-census", "docs/native-compiler-census.md"],
-        dry
-    )
-}
-
 // Whole seconds from date(1); the build host has no clock.
 Clock :: () -> int {
     seconds := 0
@@ -1194,7 +1174,7 @@ Usage :: () -> int {
     os.Print("usage: build [--release|--debug|--profile NAME] [--build DIR] [--target NAME]... [--jobs N] [--dry-run]")
     os.Print("       build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--timeout SECONDS] [--list] [--dry-run] NAME...")
     os.Print("       build install [--prefix DIR] [--release-build DIR]")
-    os.Print("       build format [--check] | clean | census | publish-seed | native-census | native-evidence --build DIR --output DIR --nm PATH --sha SHA --sanitizers ON|OFF ...")
+    os.Print("       build format [--check] | clean | census | publish-seed | native-evidence --build DIR --output DIR --nm PATH --sha SHA --sanitizers ON|OFF ...")
     os.Print("       build native-self-host --llvm DIR [--stage-one PROGRAM] [--windows DIR] [--work DIR] [--release-build DIR] [--build-host PATH --compiler-host PATH] [--stage-two-only] [--compare-vm [--skip-vm-comparison]] [--dry-run]")
     os.Print("       build native-vendor-sample --llvm DIR --native-driver PROGRAM [--work DIR] [--dry-run]")
     os.Print("       build bootstrap-artifact | bootstrap-recover [--release-build DIR]")
@@ -1245,9 +1225,6 @@ Main :: () -> int {
     }
     if (verb == "publish-seed") {
         return Step("publish-seed", ["sh", "tools/bootstrap/publish-seed.sh"], dry)
-    }
-    if (verb == "native-census") {
-        return NativeCensus(arguments)
     }
     if (verb == "native-vendor-sample") {
         return NativeVendorSample(arguments)

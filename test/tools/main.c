@@ -40,7 +40,6 @@ int main(int argc, char **argv)
     return pu_test_failed() ? 1 : 0;
 }
 #else
-void test_native_workload_benchmark(const char *binary);
 #ifdef CHIBI_TEST_COMPILER_ARTIFACT
 void test_tool_compiler_bootstrap(const char *host);
 void test_tool_bootstrap_recovery(const char *host, const char *artifact);
@@ -198,13 +197,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "%s requires Chibi::program\n", argv[1]);
         return 2;
 #endif
-    }
-    if (argc == 3 && !strcmp(argv[1], "--native-workload-benchmark")) {
-        tool_init();
-        pu_display_time(true);
-        test_native_workload_benchmark(argv[2]);
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
     }
     if (document_selector(argc, argv)) {
         tool_init();

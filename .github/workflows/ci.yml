@@ -401,7 +401,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/clang+llvm-22.1.8-x86_64-pc-windows-msvc/bin
-          key: llvm-windows-x64-22.1.8-d96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234
+          key: llvm-windows-x64-22.1.8-archive-tools-v2-d96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234
       - name: Install the LLVM optimizer and code generator
         # The runner's LLVM installer has clang and lld, not opt and llc.
         # The full upstream archive supplies those tools; verify its bytes.
@@ -413,9 +413,10 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $name = 'clang+llvm-22.1.8-x86_64-pc-windows-msvc'
           $llvm = "$env:RUNNER_TEMP/$name/bin"
-          foreach ($tool in 'opt', 'llc', 'lld-link') {
+          foreach ($tool in 'opt', 'llc', 'lld-link', 'llvm-link', 'llvm-lib') {
             if (!(Test-Path "$llvm/$tool.exe" -PathType Leaf)) { throw "missing LLVM tool $tool" }
-            & "$llvm/$tool.exe" --version
+            if ($tool -eq 'llvm-lib') { & "$llvm/$tool.exe" /? }
+            else { & "$llvm/$tool.exe" --version }
             if ($LASTEXITCODE) { throw "LLVM tool $tool is unusable" }
           }
           "CHIBI_WINDOWS_LLVM=$llvm" >> $env:GITHUB_ENV
@@ -636,7 +637,7 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ runner.temp }}/clang+llvm-22.1.8-x86_64-pc-windows-msvc/bin
-        key: llvm-windows-x64-22.1.8-d96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234
+        key: llvm-windows-x64-22.1.8-archive-tools-v2-d96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234
     - name: Install the verified Windows linker
       if: runner.os == 'Windows' && steps.targets-llvm-cache.outputs.cache-hit != 'true'
       shell: pwsh

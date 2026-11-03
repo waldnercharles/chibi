@@ -65,7 +65,9 @@ The remaining sections record earlier implementations, their measured proofs,
 and explicitly retained comparison oracles. They include former SDK layouts,
 CMake commands and build-host protocols. Their commands and pending items
 describe those checkpoints. Use the current workflow above for default build,
-installation and recovery.
+installation and recovery. The former first-host downloader and pin table are
+removed; their historical protocol descriptions below do not provide a recovery
+route. Native seeds own the current build entry.
 
 ### Recording proof
 
@@ -347,7 +349,8 @@ on`, which writes every target's compile commands; it links the root
 `compile_commands.json` to them, as CMake did, for clangd. `LOCAL_CMAKE_FLAGS`
 no longer apply there; the graph finds the profile's toolchain on the
 machine. Without a current host, the driver (`tools/toolchain/Driver.chibi`, run as `chibi build` or
-`tools/build.sh`) fetches the pinned first one with `tools/bootstrap.sh` and the graph builds its own. The SDK, web and Studio builds
+`tools/build.sh`) fetched the first host through the now-removed downloader,
+and the graph built its own. The SDK, web and Studio builds
 still use CMake as below, so a source, define or library CMake gains
 belongs in `tools/graph/engine/Targets.chibi` too.
 
@@ -388,8 +391,8 @@ retired; this proof is not a second full suite on every push. See [CI modes](ci.
 
 The CMake build that supplied the `build-cmake` parity tree (the Makefile's
 `graph-reference` target) and the retained CMake native route were removed in
-ef553b24b, and the Makefile was retired in e4aa7b4e2. The driver fetches the
-pinned first host with `tools/bootstrap.sh`.
+ef553b24b, and the Makefile was retired in e4aa7b4e2. The current driver uses
+the verified native seed; the first-host downloader and pin table have been removed.
 
 The graph parses compiler dependency files in Chibi, reading their bytes once
 and treating line continuations as spaces. It unescapes only paths that need
@@ -419,7 +422,7 @@ results. Older hosts take first-host recovery before a warm full graph can
 exhaust their retained helper storage while trying to rebuild them.
 `--protocol-version` reports the version without loading compiler inputs or
 starting a build. A cold build or an older host
-fetches the pinned host with `tools/bootstrap.sh` (the driver's bootstrap step). `BUILD_HOST` and
+previously fetched the pinned host through the now-removed downloader. `BUILD_HOST` and
 `BUILD_PROGRAM` can select a relocated installation. The explicit recovery
 target remains available if the authored driver cannot run.
 

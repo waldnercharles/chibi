@@ -33,6 +33,7 @@ sh test/native_aot/failures/run.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/task_busy/run.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/optionals/run.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/fallible/run.sh "$driver" "$CHIBI_LLVM_BIN"
+sh test/native_aot/patterns/run.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/bootstrap/native-entry.sh
 sh test/bootstrap/native-runner.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/tasks/run.sh "$driver" "$CHIBI_LLVM_BIN"

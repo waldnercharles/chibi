@@ -126,7 +126,8 @@ Failures must be diagnosed; moving them off PRs does not make them acceptable.
 | `compiler-recovery.yml` | Scheduled/manual-full, three isolated 30-minute platform jobs plus 5-minute comparison; compiler bytes and scalar evidence checked |
 | `no-c-compiler.yml` | Scheduled/manual-full, same 90-minute clean-machine proof and vendor sample |
 | `linux-graph.yml` | Manual `graph` mode, same 45-minute limit and distinct host/harness identity checks |
-| `bootstrap-host.yml`, `compiler-runtime-seed.yml`, `native-seed.yml` | [Manual preparation and publication procedure](ci-maintenance.md); no automatic release/pin writer |
+| `bootstrap-host.yml` | Removed with its unused host downloader and pin table |
+| `compiler-runtime-seed.yml`, `native-seed.yml` | [Manual preparation and publication procedure](ci-maintenance.md); no automatic release/pin writer |
 | `source-bundle.yml` | On-demand source-bundle script, no automatic packaging on main |
 | `ci-control.yml` | Retired; native Actions controls replace label-driven privileged automation |
 

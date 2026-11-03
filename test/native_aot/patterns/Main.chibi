@@ -1,0 +1,106 @@
+package pattern_values
+
+Box :: struct { number: int; text: string; data: int[]; }
+Value :: union { Nothing | Count(number: int) | Word(text: string) | Packed(boxed: Box) }
+
+Subject :: (calls: ^int, kind: int) -> Value {
+    calls^ += 1;
+    if kind == 1 { return Value.Word(format_text("word {}", calls^)); }
+    if kind == 2 { return Value.Packed({number: calls^, text: format_text("box {}", calls^), data: [calls^]}); }
+    return Value.Nothing;
+}
+Next :: (calls: ^int, limit: int) -> Value {
+    calls^ += 1;
+    if calls^ <= limit { return Value.Word(format_text("word {}", calls^)); }
+    return Value.Nothing;
+}
+Reset :: (value: ^Value) -> bool { value^ = Value.Nothing; return true; }
+
+@test
+ShortCircuitAndShadowing :: () {
+    calls := 0;
+    if false && Subject(&calls, 1) is .Word(text) && text != "" { assert(false); }
+    if true || Subject(&calls, 1) is .Word { assert(calls == 0); }
+    assert(calls == 0);
+    outer := 90;
+    if (Subject(&calls, 0) is .Word) || true { assert(outer == 90); }
+    assert(calls == 1 && outer == 90);
+    if !(Subject(&calls, 1) is .Word) { assert(false); }
+    assert(calls == 2);
+    value := Value.Count(3);
+    number := 99;
+    if number == 99 && value is .Count(number) && number == 3 { assert(number == 3); }
+    assert(number == 99);
+    value = Value.Count(0);
+    if value is .Count(number) && cos(f32(number)) == f32(1) { assert(number == 0); }
+    else { assert(false); }
+}
+
+@test
+SnapshotsOutliveSourceChanges :: () {
+    calls := 0;
+    value := Subject(&calls, 1);
+    if value is .Word(text) {
+        value = Value.Nothing;
+        assert(text == "word 1");
+    } else { assert(false); }
+    value = Subject(&calls, 1);
+    if value is .Word(text) && Reset(&value) {
+        assert(text == "word 2" && value is .Nothing);
+    } else { assert(false); }
+    value = Subject(&calls, 2);
+    if value is .Packed(boxed) {
+        value = Value.Nothing;
+        assert(boxed.number == 3 && boxed.text == "box 3" && boxed.data[0] == 3);
+        copied := boxed;
+        copied.data[0] = 17;
+        assert(boxed.data[0] == 3 && copied.data[0] == 17);
+    } else { assert(false); }
+    if Value.Word(text_from_bytes([u8(119), 111, 114, 100])) is .Word(text) {
+        assert(text == "word");
+    } else { assert(false); }
+    if Value.Word(text_from_bytes([u8(119), 111, 114, 100])) is .Packed(boxed) {
+        assert(false);
+    }
+}
+
+Returned :: () -> string {
+    calls := 0;
+    while Next(&calls, 1) is .Word(text) { return text; }
+    return "none";
+}
+
+@test
+LoopTestsRefreshAndCleanEveryExit :: () {
+    calls := 0;
+    while Next(&calls, 0) is .Word(text) { assert(false); }
+    assert(calls == 1);
+    calls = 0;
+    while Next(&calls, 1) is .Word(text) && false { assert(false); }
+    assert(calls == 1);
+    calls = 0;
+    total := 0;
+    while Next(&calls, 5) is .Word(text) {
+        assert(text == format_text("word {}", calls));
+        total += 1;
+        if total == 1 { continue; }
+        if total == 3 { break; }
+    }
+    assert(calls == 3 && total == 3);
+    calls = 0;
+    total = 0;
+    while Next(&calls, 2000) is .Word(text) {
+        assert(text != "");
+        total += 1;
+    }
+    assert(calls == 2001 && total == 2000);
+    text := Returned();
+    assert(text == "word 1");
+}
+
+Main :: () -> int {
+    ShortCircuitAndShadowing();
+    SnapshotsOutliveSourceChanges();
+    LoopTestsRefreshAndCleanEveryExit();
+    return 0;
+}

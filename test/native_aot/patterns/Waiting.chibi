@@ -1,0 +1,17 @@
+package waiting_patterns
+
+Value :: union { Nothing | Count(number: int) }
+Worker :: () -> int {
+    value := Value.Count(7);
+    if value is .Count(number) {
+        value = Value.Count(99);
+        yield;
+        return number;
+    }
+    return 0;
+}
+Main :: () -> int {
+    number := await Worker();
+    if number != 7 { return 1; }
+    return 0;
+}

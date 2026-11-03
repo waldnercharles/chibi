@@ -12,7 +12,7 @@ case "$(uname -s)-$(uname -m)" in
     *) echo 'native record places: unsupported test host' >&2; exit 2 ;;
 esac
 for level in 0 2; do
-    for name in Initial Inner Late LateInner Method; do
+    for name in Initial Inner Late LateInner Method ReplacementInitial ReplacementLate; do
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$root/test/native_aot/managed_values/record_places/$name.chibi" --entry Main \
             --output "$work/$name-O$level" --llvm "$llvm" --target "$triple" --level "$level" --jobs 1

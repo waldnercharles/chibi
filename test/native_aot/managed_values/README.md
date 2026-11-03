@@ -120,3 +120,14 @@ zero live allocations. `foreign_elements.sh` checks expression bounds category
 rejected retained or pointer-bearing roots. These loans support inline fields
 of pointer-free authored record elements; retained roots and fields reached
 through another growable container remain outside this path.
+
+`RecordFieldArrays.chibi` replaces whole array fields inside indexed records,
+including empty arrays, counted strings and records, self-aliases, scoped
+parameters, RHS root replacement and index callbacks. The initial outer place
+is checked before RHS effects; final writeback follows the current record.
+Incoming ownership precedes the old leaf's release. `RecordFieldWidth.chibi`
+keeps 64 sibling arrays live while replacing a field 4,096 times. Unique
+replacement allocates no backing and touches four leaf owner helpers per turn;
+sharing adds at most one outer allocation and one sibling-owner traversal.
+The canonical runner executes both at O0/O2 with poisoned frees and zero live
+allocations, and `record_places` covers the matching failure order and category.

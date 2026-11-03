@@ -13,13 +13,14 @@ foreign libc { strtoll :: (text: cstring, end: rawptr, base: i32) -> i64 }
 Op :: (op: int, type: int, output: int, left: int, right: int, target: int, literal: i64) -> native.Instruction {
     return {op: op, type: type, output: output, left: left, right: right, target: target, literal: literal};
 }
-Module :: (target: abi.Target, ordinal: int, tag: i64, create: bool) -> string {
+Module :: (target: abi.Target, ordinal: int, tag: i64, create: bool, pointers: bool = false) -> string {
     record := native.RecordType + ordinal;
     inner := native.ArrayType + abi.IntStorage;
     array := native.ArrayType + record;
     records: native.Record[] = [{first: 0, count: 2, identity: 0}];
     fields := [abi.IntStorage, inner];
     if (ordinal == 1) { records = [{first: 0, count: 1, identity: 0}, {first: 1, count: 2, identity: 0}]; fields = [abi.DoubleStorage, abi.IntStorage, inner]; }
+    if (pointers) { array = native.ArrayType + native.PointerType; records = []; fields = []; }
     parameters: int[] = [];
     slots: int[] = [];
     code: native.Instruction[] = [];
@@ -35,6 +36,15 @@ Module :: (target: abi.Target, ordinal: int, tag: i64, create: bool) -> string {
             Op(native.ManagedNew, native.PointerType, 7, 6, array, 0, tag),
             Op(native.ArrayDrop, array, 0, 6, 0, 0, 0),
             Op(native.Publish, native.PointerType, 0, 7, 0, 0, 0), Op(native.Return, 0, 0, 0, 0, 0, 0)];
+        if (pointers) {
+            slots = [abi.IntStorage, native.PointerType, array, array, native.PointerType];
+            code = [Op(native.Constant, abi.IntStorage, 0, 0, 0, 0, 7),
+                Op(native.ManagedNew, native.PointerType, 1, 0, abi.IntStorage, 0, 12345),
+                Op(native.Constant, array, 2, 0, 0, 0, 0), Op(native.ArrayPush, array, 3, 2, 1, 0, 1),
+                Op(native.ManagedNew, native.PointerType, 4, 3, array, 0, tag),
+                Op(native.ArrayDrop, array, 0, 3, 0, 0, 0),
+                Op(native.Publish, native.PointerType, 0, 4, 0, 0, 0), Op(native.Return, 0, 0, 0, 0, 0, 0)];
+        }
         adapter = strings.Concatenate([
             "@view_schema.root = internal global %chibi.managed.root zeroinitializer\n",
             "@view_schema.owner = internal global { ptr, i64, i64 } zeroinitializer\n",
@@ -58,6 +68,15 @@ Module :: (target: abi.Target, ordinal: int, tag: i64, create: bool) -> string {
             Op(native.ViewGet, record, 2, 0, 1, 0, tag), Op(native.Extract, inner, 3, 2, record, 0, 1),
             Op(native.ArrayGet, abi.IntStorage, 4, 3, 1, 0, 0),
             Op(native.Publish, abi.IntStorage, 0, 4, 0, 0, 0), Op(native.Return, 0, 0, 0, 0, 0, 0)];
+        if (pointers) {
+            slots = [native.ViewType, abi.IntStorage, native.PointerType, native.RefType + abi.IntStorage, abi.IntStorage];
+            code = [Op(native.Argument, native.ViewType, 0, 0, 0, 0, 0),
+                Op(native.Constant, abi.IntStorage, 1, 0, 0, 0, 0),
+                Op(native.ViewGet, native.PointerType, 2, 0, 1, 0, tag),
+                Op(native.ManagedAddress, native.RefType + abi.IntStorage, 3, 2, 0, 0, 12345),
+                Op(native.Deref, abi.IntStorage, 4, 3, 0, 0, 0),
+                Op(native.Publish, abi.IntStorage, 0, 4, 0, 0, 0), Op(native.Return, 0, 0, 0, 0, 0, 0)];
+        }
         adapter = strings.Concatenate([
             "define i32 @view_schema_read(ptr %window) {\nentry:\n",
             "  %value = load { { ptr, i64, i64 }, i32, i32 }, ptr %window\n",
@@ -73,7 +92,9 @@ Module :: (target: abi.Target, ordinal: int, tag: i64, create: bool) -> string {
 }
 Main :: () -> int {
     args := os.Arguments();
-    if (length(args) != 5) { return 2; }
+    if (length(args) != 5 && length(args) != 6) { return 2; }
+    pointers := length(args) == 6;
+    if (pointers && args[5] != "--pointers") { return 2; }
     work := args[0]; llvm := args[1];
     tags: i64[] = [];
     for (identity in slice(args, 2, 3)) {
@@ -97,7 +118,7 @@ Main :: () -> int {
             ordinal := 1; tag := tags[0];
             if (name == "old") { ordinal = 0; }
             if (name == "changed") { tag = tags[2]; }
-            text := Module(target, ordinal, tag, name == "old");
+            text := Module(target, ordinal, tag, name == "old", pointers);
             if (text == "") { return 1; }
             path := format_text("{}/schema-{}.ll", work, name);
             output := format_text("{}/schema-{}-O{}.so", work, name, level);

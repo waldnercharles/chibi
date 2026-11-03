@@ -1,0 +1,63 @@
+package waiting_record_array_mutation
+
+Holder :: struct { pointer: ^int; label: string; values: int[]; }
+Make :: (value: int) -> Holder {
+    return {pointer: &value, label: text_from_bytes([u8(65), u8(value), u8(0)]), values: [value, value + 1]};
+}
+Churn :: () { for (index in 0..<2500) { value := index; pointer := &value; pointer^ += 1; } }
+Ready :: () -> int { if false { yield; } return 0; }
+ReadyWrite :: () -> int {
+    ready := await Ready();
+    rows: Holder[] = [Make(7)];
+    rows[0] = Make(9);
+    Churn();
+    return ready + rows[0].pointer^ - 9;
+}
+Replace :: (rows: ^(Holder[])) -> int {
+    rows^ = [Make(31), Make(32)];
+    Churn();
+    return 17;
+}
+Yielded :: (value: int) -> Holder { saved := Make(value); yield; Churn(); return saved; }
+AwaitedWrite :: () -> int {
+    rows: Holder[] = [Make(1), Make(2)];
+    original := rows;
+    // The canonical address is evaluated before Replace, then survives the
+    // child suspension. Publication must update the current frame descriptor.
+    rows[1] = await Yielded(Replace(&rows));
+    Churn();
+    assert(rows[0].pointer^ == 31 && rows[1].pointer^ == 17);
+    assert(original[0].pointer^ == 1 && original[1].pointer^ == 2);
+    assert(rows[1].values[1] == 18 && rows[1].label.length() == 3);
+    return 0;
+}
+Hold :: () -> Holder { saved := Make(41); while true { yield; } return saved; }
+Writing :: () -> int {
+    rows: Holder[] = [Make(3)];
+    rows[0] = await Hold();
+    return rows[0].pointer^;
+}
+Main :: () -> int {
+    ready := await ReadyWrite();
+    assert(ready == 0);
+    replaced := await AwaitedWrite();
+    assert(replaced == 0);
+    pending := Writing();
+    yield; yield; Churn();
+    cancel pending;
+    cancelled := await pending;
+    assert(cancelled is Cancelled);
+    Churn();
+    return 0;
+}
+Broken :: () -> Holder {
+    saved := Make(51);
+    yield;
+    assert(false, "awaited record-array write releases its canonical frame owner");
+    return saved;
+}
+Failure :: () -> int {
+    rows: Holder[] = [Make(53)];
+    rows[0] = await Broken();
+    return 0;
+}

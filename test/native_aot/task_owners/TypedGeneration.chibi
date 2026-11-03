@@ -1,13 +1,20 @@
 package owned_typed_generation
 
+import target "core:target"
+
 foreign import libc "system:c"
 foreign libc {
     fopen :: (path: cstring, mode: cstring) -> rawptr
     fclose :: (stream: rawptr) -> i32
     access :: (path: cstring, mode: i32) -> i32
+    _access :: (path: cstring, mode: i32) -> i32
 }
 Payload :: struct { words: string[]; numbers: int[]; }
-Exists :: (path: string) -> bool { return access(path, 0) == 0; }
+when target.Os == target.Windows {
+    Exists :: (path: string) -> bool { return _access(path, 0) == 0; }
+} else {
+    Exists :: (path: string) -> bool { return access(path, 0) == 0; }
+}
 Mark :: (path: string) {
     stream := fopen(path, "wb");
     assert(stream != 0);

@@ -4,10 +4,23 @@ import facts "project:scalar_facts"
 import snapshot "project:source_snapshot"
 import syntax "project:syntax_diagnostics"
 
+// Pointer elements reuse the existing pointer-array collector protocol. This
+// first domain keeps exact numeric/bool pointees; aggregate targets need their
+// own reachable schema and stay outside this admission.
+ScalarPointerViewElement :: (types: TypeDecl[], record: int) -> bool {
+    if (record < 0 || record >= length(types) || types[record].kind != PointerDecl || types[record].key != 0) { return false; }
+    shape := ScalarPointerElement(types, record);
+    return shape.container == 0 && shape.record == -1 && (Numeric(shape.storage) || shape.storage == BoolStorage);
+}
+ScalarViewSchemaElement :: (types: TypeDecl[], storage: int, record: int) -> bool {
+    return record >= 0 && !(storage == PointerStorage && ScalarPointerViewElement(types, record));
+}
+
 ScalarViewType :: (types: TypeDecl[], shape: ValueType) -> int {
     if (shape.container != ViewContainer) { return 0; }
     if (shape.record >= 0) {
         if (shape.record >= length(types)) { return 0; }
+        if (shape.storage == PointerStorage && ScalarPointerViewElement(types, shape.record)) { return facts.ViewType; }
         kind := types[shape.record].kind;
         if (kind == RecordDecl || kind == UnionDecl || kind == OptionalDecl || ScalarNestedCollection(types[shape.record])) {
             return facts.ViewType;
@@ -28,7 +41,7 @@ ScalarViewSignature :: (types: TypeDecl[], storage: int, container: int, record:
         shape = {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
     }
     if (storage == PointerStorage && container == 0) { shape = ScalarPointerElement(types, record); }
-    if ((shape.container == ViewContainer || (storage == PointerStorage && container == 0 && shape.container == ArrayContainer)) && shape.record >= 0) {
+    if ((shape.container == ViewContainer || (storage == PointerStorage && container == 0 && shape.container == ArrayContainer)) && ScalarViewSchemaElement(types, shape.storage, shape.record)) {
         return types[shape.record].native_schema != 0;
     }
     return true;
@@ -57,7 +70,7 @@ ScalarViewUnionMemberType :: (types: TypeDecl[], members: TypeMember[], held: in
     if (view == 0) { return ScalarMemberType(types, members, field); }
     if (ScalarViewUnionPayload(types, members, held) != field) { return 0; }
     shape := ScalarMemberShape(members, field);
-    if (shape.record >= 0 && types[shape.record].native_schema == 0) { return 0; }
+    if (ScalarViewSchemaElement(types, shape.storage, shape.record) && types[shape.record].native_schema == 0) { return 0; }
     return view;
 }
 
@@ -156,6 +169,8 @@ ScalarViewOperation :: (forest: snapshot.SnapshotNode[], text: string, callables
     if (!Is(forest, function, syntax.MemberExpression)) { return none; }
     object := Unparenthesized(forest, Field(forest, function, syntax.FieldObject));
     if (QualifierOf(forest, text, names, package, object) >= 0) { return none; }
+    selected := SequenceOperation(forest, text, names, package, node);
+    if (selected < 0 || CalledFunction(forest, text, callables, [], names, package, node) >= 0) { return none; }
     method := Text(forest, text, Field(forest, function, syntax.FieldMember));
     first := FirstMember(forest, Field(forest, node, syntax.FieldArguments));
     if (method == "view") {
@@ -172,6 +187,11 @@ ScalarViewOperation :: (forest: snapshot.SnapshotNode[], text: string, callables
         shape.container = ViewContainer;
         if (ScalarViewType(types, shape) == 0) { return none; }
         return {operation: facts.ViewMake, object: object, range: first, shape: shape};
+    }
+    if (selected == 0) {
+        shape := ScalarViewShape(forest, text, callables, params, names, types, members, package, object);
+        if (shape.storage == 0) { return none; }
+        return {operation: facts.ViewSlice, object: object, range: first, shape: shape};
     }
     if ((method != "length" && method != "clone") || first >= 0) { return none; }
     shape := ScalarViewShape(forest, text, callables, params, names, types, members, package, object);
@@ -368,8 +388,9 @@ ScalarPointerAppend :: (forest: snapshot.SnapshotNode[], text: string, callables
     pointer := ScalarPointerRecord(forest, text, callables, params, names, types, members, callable.package, object);
     if (pointer < 0 || types[pointer].key != 0) { return ScalarOperands.Built([]); }
     shape := ScalarPointerElement(types, pointer);
-    element := ScalarTypeOf(shape.storage);
-    if (shape.container != ArrayContainer || shape.record != -1 || element < facts.IntType || element > facts.StringType) {
+    element := ScalarElementType(types, shape);
+    pointer_element := shape.storage == PointerStorage && ScalarPointerViewElement(types, shape.record);
+    if (shape.container != ArrayContainer || (!pointer_element && (shape.record != -1 || element < facts.IntType || element > facts.StringType))) {
         return ScalarOperands.Built([]);
     }
     arguments := Members(forest, Field(forest, node, syntax.FieldArguments));
@@ -386,8 +407,8 @@ ScalarPointerAppend :: (forest: snapshot.SnapshotNode[], text: string, callables
     }
     variables^ += 1;
     incoming := variables^;
-    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
-                         value, value, shape.storage, shape.storage, facts.Clamp, []) {
+    switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                              value, {storage: shape.storage, container: 0, record: shape.record}, []) {
         case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
         case .Built(built):
             output.extend(ScalarCapture(forest, statement, element, incoming, built));

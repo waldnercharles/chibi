@@ -1,0 +1,37 @@
+package task_observer_allocations
+foreign { chibi_task_owner_allocations :: () -> u64 }
+Text :: (count: int) -> string { return text_from_bytes(resize([u8(120)], count)); }
+Child :: (count: int) -> string { if false { yield } return Text(count); }
+Main :: () -> int {
+    values := [Child(7)];
+    for index in 0..<255 { values.append(Child(9)); }
+    yield;
+    before := chibi_task_owner_allocations();
+    for index in 0..<128 {
+        copied := values;
+        assert(length(copied) == 256);
+    }
+    shared := chibi_task_owner_allocations();
+    assert(shared == before, "observer array aliases do not clone task or array storage");
+    changed := values;
+    changed[0] = changed[1];
+    detached := chibi_task_owner_allocations();
+    assert(detached == shared + 1, "first observer array mutation detaches one backing");
+    changed[1] = changed[2];
+    same := chibi_task_owner_allocations();
+    assert(same == detached, "unique observer array mutation does not allocate");
+    original := await values[0];
+    if original is Cancelled { return 1; }
+    else { assert(text_byte_length(original) == 7); }
+    replaced := await changed[0];
+    if replaced is Cancelled { return 2; }
+    else { assert(text_byte_length(replaced) == 9); }
+    for index in 0..<128 {
+        // An invalid forgiving replacement must not acquire an observer that
+        // no array element owns. Completed payloads make a leak observable.
+        changed.set_array_elem(-1, values[0]);
+    }
+    values = [];
+    changed = [];
+    return 0;
+}

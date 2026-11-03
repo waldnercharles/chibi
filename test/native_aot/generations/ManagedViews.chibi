@@ -11,6 +11,17 @@ Owner :: (number: int) -> view Pair[]? {
     values: Pair[] = [Pair.Row([number, 5])]; pointer := &values;
     return pointer.view(0..<1);
 }
+PointerOwner :: (number: int) -> view (^int)[]? {
+    other := 5; values: ^int[] = [&number, &other]; pointer := &values;
+    return pointer.view(0..<2);
+}
+PointerPromise :: () -> view (^int)[] {
+    if false { yield }
+    selected := PointerOwner(61);
+    if selected { return selected; }
+    assert(false, "the fixed pointer view range is valid");
+    return await PointerPromise();
+}
 Churn :: () { for index in 0..<3000 { discarded := Owner(index); } }
 Mark :: (path: string, text: string) {
     stream := fopen(path, "wb"); assert(stream != 0);
@@ -28,6 +39,8 @@ Promise :: () -> view Pair[] {
 Worker :: () -> int {
     selected := Owner(37);
     promised := Promise();
+    pointer_window := PointerOwner(37);
+    pointer_promise := PointerPromise();
     while !Allowed() { yield }
     Churn();
     if selected {
@@ -40,6 +53,13 @@ Worker :: () -> int {
         window := joined; Churn(); pair := window[0];
         switch pair { case .Row(xs): assert(xs[0] + xs[1] == 66, "old view promise keeps its schema through reload"); case: assert(false); }
     }
+    if pointer_window {
+        window := pointer_window; Churn();
+        assert(window[0]^ + window[1]^ == 42, "old pointer-array cells retain their traced children");
+    } else { assert(false); }
+    pointer_joined := await pointer_promise;
+    if pointer_joined is Cancelled { return 2; }
+    else { window := pointer_joined; Churn(); assert(window[0]^ + window[1]^ == 66); }
     Mark("managed-view-done", "old42");
     return 0;
 }

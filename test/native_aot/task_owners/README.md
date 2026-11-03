@@ -15,6 +15,15 @@ and an immediately failed spawn. Markers after unwrap, await and spawn must
 remain absent on failure. The same image-close poison and allocation-balance
 audit covers these paths at O0 and O2.
 
+`RunWindows.ps1` runs these seven typed-generation modes at O0/O2 with the
+production Host body and DLL link plan. Its temporary Host overlay checks each
+image's poison allocator immediately before the real `FreeLibrary`, then
+requires successful close and deletion of every generation file. The explicit
+check replaces the POSIX unload destructor because Windows DLLs keep `/noentry`.
+A phantom allocation must produce the illegal-instruction trap at this boundary;
+the normal typed failure status134 cannot satisfy that control. Actual Windows
+execution is required in addition to cross-linking these fixtures.
+
 Program and family coroutine frames can own strings, arrays, maps and records/unions
 whose lifecycle has no collector-bearing leaves. Each distinct owning local or
 fresh slot has one frame-resident active address, eight bytes on desktop. Calls
@@ -66,5 +75,21 @@ awaits move and zero the child promise, and frame destruction clears the promise
 before dropping it once. Borrowed waiting reference parameters remain closed;
 backing-derived array/map references cannot cross suspension or escape their
 immediate access region. Collector-bearing result roots have separate coverage
-in `managed_pointers/run.sh`. Task-observer arrays and explicit task-valued
-parameters remain separate functionality gates.
+in `managed_pointers/run.sh`.
+
+`TaskObservers.chibi` preserves inferred arrays of eight-byte task observers,
+including nested arrays, indexed and loop reads, source replacement while
+awaiting, cancellation and discarded arrays whose children still finish.
+Physical backing copies acquire observers; last backing release drops them.
+Sharing a descriptor counts its backing and does not visit task elements.
+`TaskObserverAllocations.chibi` requires 128 copies of 256 completed observers
+to allocate nothing, then one backing detach for the first mutation and none
+for the next. Invalid forgiving replacements must release all completed
+payloads at shutdown. Original-generation completed observers survive reload
+and close with a balanced allocator. `TaskObserverFailure.chibi` covers failure
+after transferring an indexed observer out of its array.
+
+Direct task-valued record fields and explicit task-array parameters/results
+retain the ordinary compiler's rejection. Native typed task-array promises
+reuse the existing array copy/drop contract; source syntax does not gain a new
+parameter or result type.

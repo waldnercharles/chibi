@@ -70,6 +70,8 @@ OptionalWrapStep :: (forest: snapshot.SnapshotNode[], document: int, types: Type
     return CleanupSequenceValues(wrapped, [value], ops, target, at, node);
 }
 SequenceNominal :: (types: TypeDecl[], value: ValueType) -> u64 {
+    // A task records its callable, never a type-table ordinal.
+    if (value.storage == TaskStorage) { return 0; }
     if (value.record < 0) {
         return 0;
     }
@@ -77,7 +79,7 @@ SequenceNominal :: (types: TypeDecl[], value: ValueType) -> u64 {
     if (declared.kind == MapDecl) {
         return 0;
     }
-    if (declared.kind == CollectionDecl && declared.value_record >= 0 &&
+    if (declared.kind == CollectionDecl && declared.value_storage != TaskStorage && declared.value_record >= 0 &&
         types[declared.value_record].kind == OptionalDecl) {
         return 0;
     }
@@ -88,6 +90,7 @@ SequenceNominal :: (types: TypeDecl[], value: ValueType) -> u64 {
     return declared.id;
 }
 SequenceFlags :: (types: TypeDecl[], value: ValueType) -> int {
+    if (value.storage == TaskStorage) { return 0; }
     if (value.record < 0) {
         return 0;
     }
@@ -106,6 +109,7 @@ SequenceFlags :: (types: TypeDecl[], value: ValueType) -> int {
     return 0;
 }
 SequenceElement :: (types: TypeDecl[], value: ValueType) -> ValueType {
+    if (value.storage == TaskStorage) { return {storage: TaskStorage, container: 0, record: value.record}; }
     if (value.record >= 0) {
         declared := types[value.record];
         if (declared.kind == CollectionDecl) {
@@ -135,7 +139,11 @@ SequenceArrayType :: (types: TypeDecl[], element: ValueType) -> ValueType {
     if (declared < 0) {
         return {storage: 0, container: 0, record: -1};
     }
-    return {storage: element.storage, container: 1, record: declared};
+    storage := element.storage;
+    // Collected task descriptors use the synthetic record's identity. Keep
+    // direct Task.record reserved for its callable, including nested arrays.
+    if (storage == TaskStorage) { storage = StructStorage; }
+    return {storage: storage, container: 1, record: declared};
 }
 // The collection of `element` in `table`, which gains it when it has none.
 // The table changes in place, so declaring each type costs its own entry.
@@ -258,13 +266,13 @@ OptionalType :: (types: TypeDecl[], value: ValueType, optional: bool) -> ValueTy
 OptionalTag :: (types: TypeDecl[], value: ValueType) -> u64 {
     semantic := value;
     flags := SequenceFlags(types, value);
-    if (value.record >= 0 && types[value.record].kind == OptionalDecl) {
+    if (value.storage != TaskStorage && value.record >= 0 && types[value.record].kind == OptionalDecl) {
         declared := types[value.record];
         semantic = {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
     }
     nominal := SequenceNominal(types, semantic);
     collection: u64 = 0;
-    if (semantic.record >= 0 && (types[semantic.record].kind == MapDecl || types[semantic.record].kind == CollectionDecl)) {
+    if (semantic.storage != TaskStorage && semantic.record >= 0 && (types[semantic.record].kind == MapDecl || types[semantic.record].kind == CollectionDecl)) {
         collection = types[semantic.record].id;
     }
     if (collection != 0) {

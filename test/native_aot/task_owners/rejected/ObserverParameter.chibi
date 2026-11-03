@@ -1,0 +1,4 @@
+package task_array_parameter
+Child :: () -> int { yield; return 7; }
+CancelAll :: (values: task[]) { for child in values { cancel child; } }
+Main :: () -> int { values := [Child()]; CancelAll(values); return 0; }

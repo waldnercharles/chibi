@@ -585,7 +585,7 @@ CompilerToolsPackageAndRunAfterRelocation :: (fixture: Fixture) {
     head := [host, "run", "--llvm", fixture.llvm, "--root", fixture.checkout,
              "--collection", Path(["graph=", relocated, "/share/chibi/graph"]), "--entry", "Libraries",
              Path([relocated, "/share/chibi/tools/toolchain/Graph.chibi"]), "--"];
-    profile := ["--target", "chibi_support", "--commands-only", "on", "--profile", "explicit", "--compiler", "/usr/bin/false",
+    profile := ["--target", "chibi_graph_fixture", "--commands-only", "on", "--profile", "explicit", "--compiler", "/usr/bin/false",
                 "--cxx-compiler", "/usr/bin/false", "--compiler-id", "Clang", "--build-type", "Release", "--warnings", "off",
                 "--architecture", "", "--sysroot", "", "--sanitizers", "", "--debug-compilation-dir", "",
                 "--ranlib", "/usr/bin/false", "--third-party", fixture.archive, "--libclang-include", "", "--libclang-library", ""];
@@ -594,7 +594,7 @@ CompilerToolsPackageAndRunAfterRelocation :: (fixture: Fixture) {
     commands.extend(profile);
     result = Bare(commands);
     assert(result.status == 0, "the installed graph writes commands");
-    assert(length(json.JsonItems(Read(Path([graph_build, "/compile_commands.json"])))) == 3, "chibi_support's three compiles");
+    assert(length(json.JsonItems(Read(Path([graph_build, "/compile_commands.json"])))) == 3, "the fixture archive's three compiles");
 
     // An explicit profile rejects an omitted archiver even when PATH has an ar:
     // no machine default enters it.

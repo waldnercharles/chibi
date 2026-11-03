@@ -162,3 +162,12 @@ DeepMappedMethodsProjection :: () {
         assert(found == 4);
     }
 }
+
+NestedMapIterationProjection :: () {
+    for (source in ["package nested_iteration\nMain::()->int{values:[int:[int:int]]=[1:[2:3]];total:int=0;for(item in values){total+=item[2];}return total;}\n",
+                    "package nested_iteration\nMain::()->int{values:[int:[int:int]]=[1:[2:3]];total:int=0;for(key,item in values){total+=key+item[2];}return total;}\n"]) {
+        rows := Produced(source);
+        assert(rows[1].kind == facts.DocumentRow);
+        ValidateRows(rows, "");
+    }
+}

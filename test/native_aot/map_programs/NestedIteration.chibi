@@ -1,0 +1,41 @@
+package nested_iteration
+Item :: struct { name:string; values:int[]; }
+Word :: (last:u8) -> string { return text_from_bytes([u8(97),0,last]); }
+Make :: () -> [string:[string:Item]] { return [Word(98):["first":{name:Word(99),values:[1,2]}],Word(100):["first":{name:Word(101),values:[3,4]}]]; }
+Early :: () -> int { for (item in Make()) { for (value in item) { return value.values[0]; } } return 0; }
+Main :: () -> int {
+    source := Make();
+    saved := source;
+    visits:int=0;
+    total:int=0;
+    for (key,item in source) {
+        assert(key == Word(u8(98+visits*2)));
+        source = [:];
+        copy := item;
+        first := copy["first"];
+        assert(first.name == Word(u8(99+visits*2)));
+        total += first.values[0];
+        copy["first"] = {name:"new",values:[]};
+        assert(item["first"].name == first.name);
+        visits += 1;
+    }
+    assert(visits==2 && total==4 && !source.has(Word(98)));
+    total=0;
+    for (item in saved) { for (value in item) { total += value.values[1]; } }
+    assert(total==6);
+    visits=0;
+    for (item in Make()) { visits+=1; if(visits==1){continue;} break; }
+    assert(visits==2 && Early()==1);
+    levels:[int:[int:[int:int]]] = [1:[2:[3:4]],5:[6:[7:8]]];
+    total=0;
+    for (outer in levels) { for (middle in outer) { for (number in middle) { total+=number; } } }
+    assert(total==12);
+    rows:[int:int][] = [[1:2],[1:3]];
+    total=0;
+    for (item,index in rows) { total+=item[1]+index; }
+    assert(total==6);
+    empty:[int:[int:int]] = [:];
+    for (item in empty) { assert(false); }
+    for (key,item in empty) { assert(false); }
+    return 0;
+}

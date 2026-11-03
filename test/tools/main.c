@@ -52,7 +52,6 @@ void test_program_sdk();
 #endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
 void test_compiled_math();
-void test_compiled_selects();
 void test_persistent_stores();
 static bool source_runtime_active;
 bool test_source_runtime_active()
@@ -171,21 +170,20 @@ int main(int argc, char **argv)
     bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
     bool types = argc == 2 && !strcmp(argv[1], "--types");
     bool box3d = false;
-    bool whole_math = false, whole_select = false, persistent_store = false;
+    bool whole_math = false, persistent_store = false;
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     whole_math = argc == 2 && !strcmp(argv[1], "--whole-math");
     persistent_store = argc == 2 && !strcmp(argv[1], "--persistent-store");
-    whole_select = argc == 2 && !strcmp(argv[1], "--whole-select");
 #endif
 #ifdef CHIBI_TEST_BOX3D
     box3d = argc == 2 && !strcmp(argv[1], "--box3d");
 #endif
     if (argc != 1 && !web_storage && !types && !box3d && !persistent_store &&
-        !whole_math && !whole_select) {
+        !whole_math) {
         fprintf(
             stderr,
             "Usage: %s [--web-storage | --types | --box3d | "
-            "--persistent-store | --whole-math | --whole-select | --fmt]\n",
+            "--persistent-store | --whole-math | --fmt]\n",
             argv[0]
         );
         return 2;
@@ -193,14 +191,12 @@ int main(int argc, char **argv)
     tool_init();
     pu_display_time(true);
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
-    source_runtime_active = persistent_store || whole_math || whole_select;
+    source_runtime_active = persistent_store || whole_math;
     if (source_runtime_active) {
         if (persistent_store) {
             test_persistent_stores();
         } else if (whole_math) {
             test_compiled_math();
-        } else if (whole_select) {
-            test_compiled_selects();
         }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;

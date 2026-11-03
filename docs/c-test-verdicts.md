@@ -30,7 +30,8 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/language/package_compiler_chibi.c`, `scalar_host.c` | 6, 0 | native backend execution through the C compiler host | six backend cases retired through `test/native_aot/backend`, retained generations and process supervision; `scalar_host.c` is retired with the obsolete C census |
 | `test/language/parallel.c`, `main.c`, `backend.h`, `compiler_cache.h` | 9, 0 | the C test runner | goes |
 | `test/runtime/whole_integer.c` (retired 2026-11-02) | 3 | hand-built integer IR, bytecode against SLJIT | retired; admitted integer rules remain in the authored all-width arithmetic suite and native backend; exact integer math in this file used BF-only instructions, not exact integer source overloads |
-| `test/runtime/whole_conversion.c`, `whole_math.c` | 1, 2 | hand-built IR, bytecode against SLJIT | goes; the conversion, negation and comparison rules are ported; the math specials wait on owner decisions |
+| `test/runtime/whole_conversion.c` (retired 2026-11-02) | 1 | typed scalar selection through hand-built IR | native `math_builtin/Select.chibi` preserves bool/u8/i32/i64/f32/f64 selection, both conditions, NaN and signed zero at O0/O2; its unused conversion helpers leave with it |
+| `test/runtime/whole_math.c` | 2 | hand-built IR, bytecode against SLJIT | goes; the conversion, negation and comparison rules are ported; the math specials wait on owner decisions |
 | `test/runtime/persistent_store.c` | 1 | `execution_program_set_state` | goes, except retained records across a swap |
 | `test/runtime/reference_cave.c`, `reference_cave.h` (retired 2026-11-02) | 0 | a helper with no live caller | retired with its unused test-driver source entry |
 | `test/support/arena.c`, `asset_value.c` (retired 2026-11-02) | 5, 3 | C allocator internals and `av_doc` ownership, cloning and JSON representation | retired; production support and asset libraries remain for their live C consumers |

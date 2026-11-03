@@ -26,4 +26,7 @@ Pass an ordinary compiler as the third `run.sh` argument to compare that same
 fixture's outcomes directly.
 
 `select.sh` and `Select.ps1` separately execute the typed native selection
-primitive at O0 and O2, checking both outcomes, bool, NaN and negative zero.
+primitive at O0 and O2, checking both outcomes for bool, u8, i32, i64, f32 and
+f64, plus NaN and negative zero. The i64 alternatives share their low32 bits;
+the f64 alternatives differ below f32 precision. These width controls preserve
+the sole live case from the retired `whole_conversion.c` C test.

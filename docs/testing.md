@@ -323,18 +323,15 @@ order, a zero-initialized arena, and collectable values found by address
 through the page index across sweeps and a reset. It passes 360 assertions in
 0.06 seconds.
 
-The focused room-service check is `chibi build test collab` after
-`chibi build --target test_tools`. It runs the real Node server from the C
-dispatcher. Health readiness must succeed before the existing 401/201/403
-authority checks. Unexpected responses report the method, path, expected and
-actual status, byte count, transport errno or parse error, and the server's JSON
-error code when available. A failed case prints its server output and retains
-the temporary `server.log` at the reported path; passing cases remove their
-files. Failure cases exercise invalid server configuration, an occupied port, a
-live process without health readiness, and real receive timeout/connection
-refusal. They use process signals and sockets rather than replacement server
-responses. These cases also run in `short`; the focused command does not
-certify that selector or the groups.
+The focused room-service check is `chibi build test collab`, or
+`node --test tools/collab/server/server.test.mjs`. It runs the real Node server
+without a C host. Health readiness must succeed before the 401/201/403 authority
+checks. A failed case reports its server output and retains the temporary
+`server.log`; passing cases remove their files. Failure cases exercise invalid
+server configuration, an occupied port, a live process without health readiness,
+and real receive timeout/connection refusal. The two process-signal cases run on
+POSIX; the other three also run on Windows. The `short` and `native-tools` groups
+include the same room-service cases alongside the existing type tests.
 
 Routine CI and the correctness groups exclude benchmark selectors.
 `chibi build test benchmarks` runs the benchmarks, or name one:

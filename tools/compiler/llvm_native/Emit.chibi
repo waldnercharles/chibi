@@ -42,6 +42,9 @@ pub Result :: union {
 pub Record :: struct {
     first: int;
     count: int;
+    // Stable nominal-and-layout identity for managed payloads; zero for an
+    // untagged ordinary value. Local record ordinals never identify a cell.
+    identity: i64;
 }
 pub RecordType: int : 32;
 // An owning generational task observer, spelled i64 but never a numeric scalar.
@@ -135,7 +138,8 @@ pub ArrayType: int : 1024;
 // output = the length of the left slot's array, an int.
 pub ArrayLength: int : 38;
 // output = the left slot's array element at the right slot's int index, of
-// type; an index outside the array ends the program.
+// type; an index outside the array ends the program. Literal1 resolves a
+// logical place: unavailable is generic failure0, not expression bounds1.
 pub ArrayGet: int : 39;
 // output = the left slot's array with its element at the right slot's int
 // index replaced by the value in slot `target`; type is the array type. An
@@ -1267,7 +1271,8 @@ ArrayValid :: (records: Record[], slots: int[], item: Instruction) -> bool {
     }
     if (item.op == ArrayGet) {
         return item.type < ArrayType && item.type > 0 && held == ArrayType + item.type &&
-               ElementType(records, held) != 0 && Typed(slots, item.right, abi.IntStorage);
+               ElementType(records, held) != 0 && Typed(slots, item.right, abi.IntStorage) &&
+               (item.literal == 0 || item.literal == 1);
     }
     if (item.op == ArrayContains) {
         searched := ElementType(records, held);
@@ -1641,7 +1646,7 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
     } else if MapOperation(item.op) {
         out = format_text("{}{}", out, MapRead(item, pc));
     } else if ((item.op >= ArrayLength && item.op <= ArrayRemove) || item.op == ArrayInsert || item.op == ArrayReverse) {
-        out = format_text("{}{}", out, ArrayRead(item, pc, record_owners));
+        out = format_text("{}{}", out, ArrayRead(item, pc, record_owners, program));
     } else if (item.op == Select) {
         out = format_text("{}{}", out, Load(format_text("c{}", pc), abi.BoolStorage, "s", item.left));
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.right));
@@ -1853,7 +1858,7 @@ ArrayDropped :: (item: Instruction, pc: int) -> string {
 // copy of its elements. A read or write is only inside the array, so none
 // passes the elements, and an append that fills the array moves its elements
 // to an allocation twice the size, or four elements.
-ArrayRead :: (item: Instruction, pc: int, record_owners: bool[]) -> string {
+ArrayRead :: (item: Instruction, pc: int, record_owners: bool[], program: bool) -> string {
     array := abi.ArrayType();
     // Every array type is the same LLVM type.
     out := Load(format_text("a{}", pc), ArrayType + abi.IntStorage, "s", item.left);
@@ -1892,9 +1897,15 @@ ArrayRead :: (item: Instruction, pc: int, record_owners: bool[]) -> string {
     out = format_text("{}{}", out, Load(format_text("b{}", pc), abi.IntStorage, "s", item.right));
     out = format_text("{}  %in{} = icmp ult i32 %b{}, %length{}\n", out, pc, pc, pc);
     out = format_text("{}  br i1 %in{}, label %inside{}, label %outside{}\noutside{}:\n", out, pc, pc, pc, pc);
-    out = format_text("{}{}", out, ContextCall(format_text("index{}", pc), 3));
-    out = format_text("{}  call void %index{}(ptr %ctx, i32 %b{}, i32 %length{})\n  unreachable\ninside{}:\n", out, pc, pc,
-                      pc, pc);
+    if (item.op == ArrayGet && item.literal == 1) {
+        if (program) { out = format_text("{}  call void @chibi_native_reference_unavailable()\n", out); }
+        else { out = format_text("{}  call void @llvm.trap()\n", out); }
+        out = format_text("{}  unreachable\ninside{}:\n", out, pc);
+    } else {
+        out = format_text("{}{}", out, ContextCall(format_text("index{}", pc), 3));
+        out = format_text("{}  call void %index{}(ptr %ctx, i32 %b{}, i32 %length{})\n  unreachable\ninside{}:\n", out, pc, pc,
+                          pc, pc);
+    }
     writable := format_text("%a{}", pc);
     if (item.op == ArraySet) {
         out = format_text("{}  %unique{} = call {} @chibi_array.{}.unique(ptr %ctx, {} %a{}, i32 %length{}, i1 true)\n", out, pc, array, item.type, array, pc, pc);
@@ -3083,7 +3094,7 @@ Declarations :: (code: Instruction[]) -> string {
     return strings.Join(out, "");
 }
 Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
-           code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[], source: Source,
+           code: Instruction[], arguments: int[], records: Record[], fields: int[], field_tags: i64[], texts: string[], source: Source,
            names: string[], lines: int[], columns: int[], mode: int, step_budget: int) -> Result {
     if (step_budget <= 0) {
         return Result.Rejected(-1, "native CHECK budget must be positive");
@@ -3099,6 +3110,10 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     }
     if (!RecordLayout(records, fields)) {
         return Result.Rejected(-1, "native records differ from their field table");
+    }
+    // All later metadata indexing uses this same canonical flat field extent.
+    if (length(field_tags) != 0 && length(field_tags) != length(fields)) {
+        return Result.Rejected(-1, "native managed field identities differ from the field table");
     }
     if (ManagedTypes(fields)) {
         return Result.Rejected(-1, "native managed pointer aggregate roots are not implemented yet");
@@ -3249,7 +3264,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             out.append(StateDeclarations(states, held));
         }
         if (ProgramMode(mode)) {
-            out.append("declare void @chibi_native_step()\ndeclare void @chibi_native_failure(i32) noreturn\n");
+            out.append("declare void @chibi_native_step()\ndeclare void @chibi_native_failure(i32) noreturn\ndeclare void @chibi_native_reference_unavailable() noreturn\n");
         }
         out.append(MathImports(target, held));
         printed := false;
@@ -3541,7 +3556,7 @@ pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots
     if (main) {
         mode = MainEntry;
     }
-    return Module(target, functions, parameters, slots, locals, code, arguments, records, fields, texts, source, names,
+    return Module(target, functions, parameters, slots, locals, code, arguments, records, fields, [], texts, source, names,
                   lines, columns, mode, step_budget);
 }
 
@@ -3550,8 +3565,20 @@ pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots
 pub EmitProgram :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
              code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[],
              source: Source, names: string[], lines: int[], columns: int[]) -> Result {
-    return Module(target, functions, parameters, slots, locals, code, arguments, records, fields, texts, source, names,
+    return Module(target, functions, parameters, slots, locals, code, arguments, records, fields, [], texts, source, names,
                   lines, columns, ProgramEntry, 1);
+}
+
+// Managed record programs retain stable pointee and field identities in a
+// parallel immutable table. Ordinary scalar/record callers need no metadata.
+pub EmitProgramTyped :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
+             code: Instruction[], arguments: int[], records: Record[], fields: int[], field_tags: i64[], texts: string[],
+             source: Source, names: string[], lines: int[], columns: int[]) -> Result {
+    if (length(field_tags) != length(fields)) {
+        return Result.Rejected(-1, "native managed field identities differ from the field table");
+    }
+    return Module(target, functions, parameters, slots, locals, code, arguments, records, fields, field_tags, texts, source,
+                  names, lines, columns, ProgramEntry, 1);
 }
 
 // Whether `name` can end a C symbol: an ASCII letter or `_`, then letters,
@@ -4232,7 +4259,7 @@ pub EmitLibraryStates :: (target: abi.Target, name: string, names: string[], ids
     // A library has no line tables yet.
     source: Source = {file: "", directory: ""};
     no_positions: int[] = [];
-    switch Module(target, functions, parameters, slots, locals, code, arguments, records, fields, texts, source,
+    switch Module(target, functions, parameters, slots, locals, code, arguments, records, fields, [], texts, source,
                   names, no_positions, no_positions, NoEntry, step_budget) {
         case .Rejected(instruction, message):
             return Result.Rejected(instruction, message);

@@ -9,6 +9,8 @@ declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)
 %managed_test.node = type { ptr, ptr, i64 }
 @managed_test.live = internal global i64 0
 @managed_test.peak = internal global i64 0
+@managed_test.code_live = internal global i64 0
+@managed_test.layout = private constant %chibi.managed.layout { ptr @managed_test.trace, ptr null, ptr @managed_test.code_live }
 @managed_test.failure = private constant [30 x i8] c"managed pointer assertion %d\0A\00"
 @managed_test.context = internal global { ptr, ptr, ptr, ptr, ptr } {
   ptr null, ptr null, ptr @managed_test.allocate, ptr null, ptr @managed_test.release
@@ -72,6 +74,9 @@ entry:
 }
 define internal void @managed_test.drop(ptr %ctx, ptr %payload) {
 entry:
+  %code = load atomic i64, ptr @managed_test.code_live acquire, align 8
+  %mapped = icmp ugt i64 %code, 0
+  call void @managed_test.check(i1 %mapped, i32 18)
   ; Never inspect the managed edge: a cycle peer may already have been swept.
   %external.at = getelementptr %managed_test.node, ptr %payload, i32 0, i32 1
   %external = load ptr, ptr %external.at
@@ -87,7 +92,7 @@ define internal ptr @managed_test.new(ptr %heap, i64 %value, i1 %external) {
 entry:
   %bytes = ptrtoint ptr getelementptr (%managed_test.node, ptr null, i32 1) to i64
   %cell = call ptr @chibi_managed.new(ptr @managed_test.context, ptr %heap, i64 %bytes,
-                                    ptr @managed_test.trace, ptr @managed_test.drop, i32 0)
+                                    ptr @managed_test.layout, ptr @managed_test.drop, i32 0)
   %payload = getelementptr %chibi.managed.cell, ptr %cell, i32 1
   %value.at = getelementptr %managed_test.node, ptr %payload, i32 0, i32 2
   store i64 %value, ptr %value.at
@@ -127,6 +132,9 @@ entry:
   call void @chibi_managed.push(ptr %heap, ptr %second, ptr %second.slot, ptr @managed_test.root)
   call void @chibi_managed.collect(ptr @managed_test.context, ptr %heap)
   call void @managed_test.count(i64 4, i32 2)
+  %code.rooted = load atomic i64, ptr @managed_test.code_live acquire, align 8
+  %code.pinned = icmp eq i64 %code.rooted, 2
+  call void @managed_test.check(i1 %code.pinned, i32 16)
   %av.at = getelementptr %managed_test.node, ptr %ap, i32 0, i32 2
   %av = load i64, ptr %av.at
   %av.good = icmp eq i64 %av, 11
@@ -204,6 +212,9 @@ chain.done:
   %used = load i64, ptr %used.at
   %zero = icmp eq i64 %used, 0
   call void @managed_test.check(i1 %zero, i32 15)
+  %code.final = load atomic i64, ptr @managed_test.code_live acquire, align 8
+  %code.released = icmp eq i64 %code.final, 0
+  call void @managed_test.check(i1 %code.released, i32 17)
   ret i32 0
 }
 define internal i32 @managed_test.cross_owner() {

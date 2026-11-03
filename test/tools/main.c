@@ -51,9 +51,7 @@ void test_tool_build_process(const char *worker, const char *host);
 void test_tool_build_process_files(const char *worker, const char *host);
 void test_tool_build_timings(const char *worker, const char *host);
 #endif
-void test_tool_collab();
 void test_tool_web_storage();
-void test_tool_wasm_browser();
 void test_tool_types();
 void test_arena();
 #ifdef CHIBI_TEST_PROGRAM
@@ -218,8 +216,6 @@ int main(int argc, char **argv)
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
-    bool collab = argc == 2 && !strcmp(argv[1], "--collab");
-    bool wasm_browser = argc == 2 && !strcmp(argv[1], "--wasm-browser");
     bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
     bool arena = argc == 2 && !strcmp(argv[1], "--arena");
     bool types = argc == 2 && !strcmp(argv[1], "--types");
@@ -238,13 +234,11 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
     native_values = argc == 2 && !strcmp(argv[1], "--native-values");
 #endif
-    if (argc != 1 && !collab && !web_storage && !wasm_browser &&
-        !native_values && !arena && !types && !box3d && !persistent_store &&
-        !whole_math && !whole_integer && !whole_select) {
+    if (argc != 1 && !web_storage && !native_values && !arena && !types && !box3d &&
+        !persistent_store && !whole_math && !whole_integer && !whole_select) {
         fprintf(
             stderr,
-            "Usage: %s [--collab | --web-storage | "
-            "--wasm-browser | --arena | --types | "
+            "Usage: %s [--web-storage | --arena | --types | "
             "--native-values | --box3d | --persistent-store | --whole-math | "
             "--whole-integer | --whole-select | "
             "--asset-values | --fmt]\n",
@@ -285,11 +279,7 @@ int main(int argc, char **argv)
         return pu_test_failed() ? 1 : 0;
     }
 #endif
-    if (wasm_browser) {
-        test_tool_wasm_browser();
-    } else if (collab) {
-        test_tool_collab();
-    } else if (web_storage) {
+    if (web_storage) {
         test_tool_web_storage();
     } else if (types) {
         test_tool_types();
@@ -299,7 +289,6 @@ int main(int argc, char **argv)
         test_tool_types();
     } else {
         test_tool_types();
-        test_tool_collab();
     }
     pu_print_stats();
     return pu_test_failed() ? 1 : 0;

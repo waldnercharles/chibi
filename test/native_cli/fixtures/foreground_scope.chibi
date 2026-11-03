@@ -1,0 +1,26 @@
+package foreground_scope_probe
+
+import os "core:os"
+import posix "core:sys/posix"
+
+foreign import scope_libc "system:c"
+foreign scope_libc { raise :: (signal: i32) -> i32 }
+
+Main :: () -> int {
+    for iteration in 0..<8 {
+        scope := posix.ForegroundStart(["/bin/sh", "-c", "exit 7"]);
+        if (scope.pid <= 0) { os.Print(scope.problem); return 1; }
+        status := posix.ForegroundWait(&scope, -1);
+        if (status != 7 || scope.problem != "") { os.Print(scope.problem); return 1; }
+    }
+    arguments := os.Arguments();
+    if (length(arguments) == 0) { return 0; }
+    number: i32 = 0;
+    if (arguments[0] == "interrupt") { number = 2; }
+    else if (arguments[0] == "terminate") { number = 15; }
+    else if (arguments[0] == "hangup") { number = 1; }
+    else { return 2; }
+    raised := raise(number);
+    if (raised != 0) { return 1; }
+    return 0;
+}

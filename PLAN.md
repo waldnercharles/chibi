@@ -1,13 +1,39 @@
 # Native toolchain continuation
 
 The November 2 handoff continues in PR #1331 on `codex/native-default-20261102`.
-The published checkpoint `b0f4dfa0b` has compiler/core source `776ead2f1`, following
-CI merge `a76ea8005`. Further work is composed
-on `codex/native-runtime-completion-20261102`. The owner's checkout and
+The earlier published checkpoint `b0f4dfa0b` has compiler/core source `776ead2f1`,
+following CI merge `a76ea8005`. Further work is composed on
+`codex/native-runtime-completion-20261102` and published to the same PR. The owner's checkout and
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
 ## Current checkpoint, 2 November
+
+`85b37934c` closes reordered callback arguments, including mixed named and
+positional calls. Arguments evaluate in written order; the compiler rearranges
+existing operand slots without runtime copies. Its matching compiler builds in
+201.78 seconds and passes 442 compiler tests in 22.82 seconds. All six argument
+permutations, mixed types and string replacement pass at O0/O2 and through the
+ordinary compiler. The producer suite passes 152 corpus cases, 169 existing
+malformed cases and nine new operand-exchange rejection cases in 65.80 seconds.
+Independent review's positional-ordinal finding is fixed and closed.
+
+The composition also includes lazy primitive coalescing, optional field reads,
+generic bool constants, empty switch arms, array insert/reverse backend operations,
+streaming SHA-256 and the pure cache format. The preceding composed compiler
+passes managed pointer/task, poisoned managed-value and optional/fallible suites.
+`456a1dc32` adds typed collector layouts and per-image cell counters while retaining
+the 64-byte cell and 56-byte heap. `040c44bb2` adds Wasm compile-call options and
+resource cleanup, with actual Node quota/cancellation/normal/failure checks.
+Shared-family unload and aggregate source admission remain separate work.
+
+The authored workload benchmark has the matching eight output rows, but review
+found missing detached-descendant cleanup. Real opt/llc processes can occupy
+separate process groups. The C supervisor and canonical selector remain until
+the replacement preserves timeout and early-exit cleanup, including actual Linux
+execution. The live desktop/browser compile facade and cache are also still being
+replaced; its first authored desktop C consumer passes compile, relocation,
+diagnostics, quota and cancellation, without first-party C implementation code.
 
 CI run `41539102677` at `c5c0a1ac2` reproduces Linux stages three and four
 byte for byte (`1d1d289a2429fe2ee2a75a71a959bf21590a02ff3ebf7cd8af1037a11bf1268e`).
@@ -55,8 +81,10 @@ The earlier composed `2ed86e078` compiler reproduces between stages two and
 three: `d5c343e4f68b6ba02c47c320be0ef8df337b5565b22702c8b0729be7753f98d3`.
 Those stages take 109.40 and 69.30 seconds. Its 436 compiler tests, nullable
 managed-pointer tests and nested-array tests pass. Its generation suite exposes
-a retained-record scoped-reference reentry regression (exit 2 instead of 3),
-which remains under investigation; this is not complete runtime acceptance.
+a retained-record scoped-reference reentry regression (exit 2 instead of 3).
+The cause is stale publication of a readonly reference after a nested call updates
+retained state. A fix preserving parameter write classification and alias-order
+controls is in progress; this is not complete runtime acceptance.
 
 The next composition includes primitive optional payload reads, source-ordered
 named text calls, persistent collector roots, and the VM decoder ownership split.
@@ -97,8 +125,9 @@ cells and pointer arrays. Its source/runtime proof passes in 26.66 seconds:
 normal and forced collection, poisoned frees, bounded peak allocation, zero
 final live allocations, malformed descriptors, cross-owner rejection and shared
 array tracing once per collection epoch. Nullable pointers and retained primitive
-arrays are integrated. Aggregate pointers, suspended collector frames, shared
-execution-family heaps and deep retained snapshots remain active work. Each new
+arrays are integrated. Standalone suspended collector roots and failure cleanup
+are now covered. Aggregate pointers, shared execution-family heaps and deep retained
+snapshots remain active work. Each new
 composition still needs its matching runtime and platform checks.
 
 Remaining ownership is explicit:
@@ -110,7 +139,7 @@ Remaining ownership is explicit:
 - Producer and collector lanes: remaining array operations, aggregate pointers
   and precise ownership roots; reload lane: deep retained snapshots and schemas.
 - Driver lane: remaining authored language samples and error-result handling.
-- Tasks lane: suspended collector roots and shared execution-family ownership;
+- Tasks lane: shared execution-family ownership and generation code lifetime;
   the browser facade already uses LLVM, and its final authored compile/cache
   integration shares the CLI lane's request and resource contracts.
 - Cutover lane: final host/VM consumer inventory and proven obsolete target deletion.

@@ -1645,12 +1645,14 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 base < floor || stack[base + facts.TextArgument(consumed, int(operand.literal), 0)] != facts.StringType) {
                 return "scalar text read differs from its operands";
             }
-            // format_text's arguments are numbers, bools and strings; the
-            // other natives' are ints.
+            // Collection arguments contribute only their by-value counts.
+            // The other text natives still take ints after their string.
             for (parameter in 1..<consumed) {
                 index := facts.TextArgument(consumed, int(operand.literal), parameter);
                 given := stack[base + index];
-                if ((formats && (given < facts.IntType || given > facts.StringType)) ||
+                collection := Element(records, given) > 0 ||
+                              (given >= facts.MapType && given < facts.ReferenceType && Valued(records, given));
+                if ((formats && (given < facts.IntType || given > facts.StringType) && !collection) ||
                     (!formats && given != facts.IntType)) {
                     return "scalar text read differs from its operands";
                 }
@@ -3815,7 +3817,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     item = Op(native.Format, type, slot, 0, shape.arguments, operand.count);
                     base := length(stack) - operand.count;
                     for (argument in 0..<operand.count) {
-                        arguments.append(stack[base + argument]);
+                        passed := stack[base + argument];
+                        arguments.append(passed);
+                        if (ArrayTyped(slots[shape.first_slot + passed]) && Holds(fresh, passed)) {
+                            pending.append(passed);
+                        }
                     }
                     shape.arguments += operand.count;
                     stack = slice(stack, 0, base);

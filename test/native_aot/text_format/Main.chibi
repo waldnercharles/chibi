@@ -3,7 +3,7 @@ package text_format
 import strings "core:strings"
 
 // Language-level regression through the installed scalar format_text callback.
-// The first conversion example is shared with test/language/text_format.c.
+// Keeps the scalar conversion example from the retired C boundary test.
 Main :: () -> int {
     largest: u64 = 18446744073709551615;
     pi: f64 = 3.14159265;

@@ -1,0 +1,22 @@
+package text_format_family
+
+Summary :: () -> string {
+    words: string[] = [text_from_bytes([u8(97)]), "b"];
+    entries: [string: int] = ["Ada": 1];
+    result := format_text("{:>30s}|{:.1s}", words, entries);
+    words = [];
+    entries = [:];
+    return result;
+}
+Main :: () -> int {
+    for (index in 0..<32) {
+        snapshot := Summary();
+        assert(snapshot == "Array[2]|Map[1]", "family formatter owns its returned text");
+    }
+    return 0;
+}
+Frame :: () -> int {
+    result := Main();
+    assert(result == 0);
+    return 42;
+}

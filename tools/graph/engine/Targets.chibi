@@ -224,7 +224,7 @@ Files :: (target: string) -> string[] {
             "test/language/execution.c",
             "test/language/capture.c",
             "test/language/ranges.c",
-            "test/language/text_format.c", "test/language/host_packages_compiler.c",
+            "test/language/host_packages_compiler.c",
             "test/language/execution_scope.c",
             "test/parallel.c", "test/language/parallel.c"
         ];

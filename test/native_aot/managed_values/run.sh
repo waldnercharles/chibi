@@ -46,17 +46,21 @@ entry:
 }
 LIVE
 for level in 0 2; do
-    for source in Records Foreign Backed Growth Fields Clock Hash ConditionalOptionals NestedMath MathScopes Patterns PatternLeases; do
+    for source in Records Foreign Backed Growth Fields Clock Hash ConditionalOptionals NestedMath MathScopes Patterns PatternLeases TextFormat TextFormatMain TextFormatStrings TextFormatFamily; do
         input=$root/test/native_aot/managed_values/$source.chibi
         export CHIBI_VALUE_ENTRY=chibi_value_test_entry CHIBI_VALUE_AUDIT=$root/test/native_aot/managed_values/Audit.ll
         if [ "$source" = Records ]; then input=$records_source; fi
         if [ "$source" = NestedMath ]; then input=$root/test/native_aot/math_builtin/Nested.chibi; fi
         if [ "$source" = MathScopes ]; then input=$root/test/native_aot/math_builtin/Scopes.chibi; fi
-        if [ "$source" = ConditionalOptionals ] || [ "$source" = Patterns ] || [ "$source" = PatternLeases ]; then
+        if [ "$source" = ConditionalOptionals ] || [ "$source" = Patterns ] || [ "$source" = PatternLeases ] || [ "$source" = TextFormat ] || [ "$source" = TextFormatMain ] || [ "$source" = TextFormatStrings ] || [ "$source" = TextFormatFamily ]; then
             case "$source" in
                 Patterns) input=$root/test/native_aot/patterns/Main.chibi ;;
                 PatternLeases) input=$root/test/native_aot/patterns/Leases.chibi ;;
                 ConditionalOptionals) input=$root/test/native_aot/fallible/conditional_optionals/Main.chibi ;;
+                TextFormat) input=$root/test/native_aot/text_format/Aggregates.chibi ;;
+                TextFormatMain) input=$root/test/native_aot/text_format/Main.chibi ;;
+                TextFormatStrings) input=$root/test/native_aot/text_format/Strings.chibi ;;
+                TextFormatFamily) input=$root/test/native_aot/text_format/Family.chibi ;;
             esac
             export CHIBI_VALUE_ENTRY=managed_source.entry CHIBI_VALUE_AUDIT=$work/conditional-audit.ll
         fi

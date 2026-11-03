@@ -1757,12 +1757,26 @@ ScalarText :: (forest: snapshot.SnapshotNode[], text: string, callables: Callabl
         if (operator != facts.TextFormat) { parameters |= parameter << u32(ordinal * 2); }
         expected := ScalarTextArgument(forest, text, callables, params, callable, names, types, members, constants,
                                        operator, parameter, argument);
-        if (expected == 0) {
+        if (expected.storage == 0) {
             return ScalarOperands.Failed(Diagnose(forest, argument, 0,
-                                                  "scalar proof formats only numbers, bools and strings"));
+                                                  "scalar proof formats only numbers, bools, strings, arrays and maps"));
         }
-        switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants, argument,
-                             argument, expected, expected, facts.Clamp, output) {
+        if (operator == facts.TextFormat && ScalarFormatPointer(types, members, expected)) {
+            return ScalarOperands.Failed(Diagnose(forest, argument, 0,
+                                                  "Native calls cannot retain managed pointer arguments"));
+        }
+        value := ScalarOperands.Built([]);
+        if (expected.container == ArrayContainer) {
+            value = ScalarArrayValue(forest, text, callables, params, callable, names, types, members, constants,
+                                     argument, expected, output);
+        } else if (expected.container == MapContainer) {
+            value = ScalarMapValue(forest, text, callables, params, callable, names, types, members, constants,
+                                   argument, expected.record, false, output);
+        } else {
+            value = ScalarConvert(forest, text, callables, params, callable, names, types, members, constants, argument,
+                                   argument, expected.storage, expected.storage, facts.Clamp, output);
+        }
+        switch value {
             case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
             case .Built(built): output = built;
         }
@@ -1792,25 +1806,79 @@ ScalarText :: (forest: snapshot.SnapshotNode[], text: string, callables: Callabl
     output.append(operation);
     return ScalarOperands.Built(output);
 }
-// The storage a text native's parameter `index`, `argument`, takes, or 0 when
-// none can carry it: a text native's string, then its ints, and for
-// format_text its format then any number, bool or string as it is. The call
-// step rejects an untyped number there first.
+// The ordinary native-value boundary rejects managed pointers, including
+// those inside containers. Visit each reachable declared type once: recursive
+// array/record schemas need not have recursive inline layouts. This is a
+// compile-time schema check, never a walk over runtime elements or pointees.
+ScalarFormatPointer :: (types: TypeDecl[], members: TypeMember[], shape: ValueType) -> bool {
+    if (shape.storage == PointerStorage) { return true; }
+    if (shape.container == 0 && ScalarTypeOf(shape.storage) != 0) { return false; }
+    if (shape.record < 0) { return false; }
+    seen: [int: bool] = [:];
+    pending: int[] = [shape.record];
+    index := 0;
+    while (index < length(pending)) {
+        record := pending[index];
+        index += 1;
+        if (record in seen) { continue; }
+        seen[record] = true;
+        declared := types[record];
+        if (declared.kind == PointerDecl) { return true; }
+        if (declared.kind == MapDecl || declared.kind == CollectionDecl ||
+            declared.kind == OptionalDecl || declared.kind == TaskResultDecl) {
+            if (declared.value_storage == PointerStorage) { return true; }
+            if (declared.value_record >= 0) { pending.append(declared.value_record); }
+        } else if (declared.kind == UnionDecl) {
+            for (variant in declared.first..<declared.first + declared.count) { pending.append(variant); }
+        } else {
+            for (field in declared.first..<declared.first + declared.count) {
+                member := members[field];
+                if (member.storage == PointerStorage) { return true; }
+                if (member.record >= 0) { pending.append(member.record); }
+            }
+        }
+    }
+    return false;
+}
+// The shape a text native's parameter `index`, `argument`, takes; storage 0
+// means unsupported. A text native takes its string, then ints, and for
+// format_text its format then a scalar/text value or a collection descriptor.
+// Counts stay in the descriptor's value snapshot, not its backing storage.
 ScalarTextArgument :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                        callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
-                       constants: ConstDecl[], operator: int, index: int, argument: int) -> int {
+                       constants: ConstDecl[], operator: int, index: int, argument: int) -> ValueType {
+    shape: ValueType = {storage: TextStorage, container: 0, record: -1};
     if (index == 0 || operator == ScalarTextEqual) {
-        return TextStorage;
+        return shape;
     }
     if (operator != facts.TextFormat) {
-        return IntStorage;
+        shape.storage = IntStorage;
+        return shape;
+    }
+    node := ScalarTarget(forest, argument);
+    if (Is(forest, node, syntax.Identifier)) {
+        found := Lookup(names, Text(forest, text, node));
+        if (found >= 0) {
+            binding := names[found];
+            if ((binding.container == 0 && ScalarTypeOf(binding.storage) != 0) ||
+                (binding.container == ArrayContainer && ScalarArrayType(types, binding.storage, binding.record) != 0) ||
+                (binding.container == MapContainer && ScalarMapType(types, binding.record) != 0)) {
+                return {storage: binding.storage, container: binding.container, record: binding.record};
+            }
+        }
+    } else {
+        array := ScalarVisitedShape(forest, text, callables, params, callable, names, types, members, constants, node);
+        if (array.container == ArrayContainer && ScalarArrayType(types, array.storage, array.record) != 0) { return array; }
+        mapped := ScalarMapShape(forest, text, callables, names, types, callable.package, node);
+        if (mapped >= 0) { return {storage: UnionStorage, container: MapContainer, record: mapped}; }
     }
     storage := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants,
                                     argument, 0);
     if (ScalarTypeOf(storage) == 0) {
-        return 0;
+        storage = 0;
     }
-    return storage;
+    shape.storage = storage;
+    return shape;
 }
 // Only the runtime's fixed text signatures use the compact permutation.
 // Reject calls through a different capability with ordinary catalog binding;

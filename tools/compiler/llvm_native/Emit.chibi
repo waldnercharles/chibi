@@ -1630,7 +1630,7 @@ Spelled :: (literal: i64, type: int) -> i64 {
     return literal - (i64(1) << u32(bits));
 }
 EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], fields: int[], texts: string[],
-                    coroutine: bool, program: bool, record_owners: bool[]) -> string {
+                    coroutine: bool, program: bool, scoped: bool, record_owners: bool[]) -> string {
     out := format_text("p{}:\n", pc);
     type := TypeName(item.type);
     if (item.op == Constant && item.type == abi.TextStorage) {
@@ -1666,13 +1666,13 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
     } else if (item.op == TypedFail) {
         return format_text("{}  call void @chibi_native_failure(i32 {})\n  unreachable\n", out, item.literal);
     } else if (item.op == Branch) {
-        if (program && item.target <= pc) { out = format_text("{}  call void @chibi_native_step()\n", out); }
+        if (scoped && item.target <= pc) { out = format_text("{}  call void @chibi_native_step()\n", out); }
         out = format_text("{}{}", out, Load(format_text("a{}", pc), 1, "s", item.left));
         return format_text("{}{}", out, format_text("  br i1 %a{}, label %p{}, label %p{}\n", pc, item.target, pc + 1));
     } else if (item.op == Jump) {
-        if (program && item.target <= pc) { out = format_text("{}  call void @chibi_native_step()\n", out); }
+        if (scoped && item.target <= pc) { out = format_text("{}  call void @chibi_native_step()\n", out); }
         return format_text("{}{}", out, format_text("  br label %p{}\n", item.target));
-    } else if (item.op == Check && program) {
+    } else if (item.op == Check && scoped) {
         out = format_text("{}  call void @chibi_native_step()\n", out);
     } else if (item.op == Check) {
         // CHECKs, not LLVM instructions, consume the caller's positive bound.
@@ -2806,7 +2806,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         } else if (ViewOperation(item.op)) {
             out.append(ViewInstruction(item, pc, own));
         } else if (managed && (item.op == Return || item.op == End) && !coroutine) {
-            returned := EmitInstruction(item, pc, result, records, fields, texts, coroutine, scoped, record_owners);
+            returned := EmitInstruction(item, pc, result, records, fields, texts, coroutine, ProgramMode(mode), scoped, record_owners);
             out.append(strings.ReplaceAll(returned, "  ret ", strings.Concatenate([ManagedUnroots(function == 0 && mode == ProgramEntry), "  ret "])));
         } else if (item.op == Call && item.literal == i64(CallAwaited)) {
             out.append(AwaitedCallInstruction(functions, parameters, own, item, pc, mode, testing));
@@ -2864,7 +2864,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         } else if (item.op == Format) {
             out.append(FormatInstruction(own_slots, own, item, pc));
         } else {
-            out.append(EmitInstruction(item, pc, result, records, fields, texts, coroutine, scoped, record_owners));
+            out.append(EmitInstruction(item, pc, result, records, fields, texts, coroutine, ProgramMode(mode), scoped, record_owners));
         }
     }
     // A function fails with its result's zero, which no caller reads; a coroutine

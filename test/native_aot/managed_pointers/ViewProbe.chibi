@@ -1,0 +1,191 @@
+package view_native_probe
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import host "project:native_link_host"
+import link "project:native_link"
+import os "core:os"
+import strings "core:strings"
+
+Program :: struct { slots: int[]; code: native.Instruction[]; arguments: int[]; }
+Put :: (program: ^Program, op: int, type: int, left: int, right: int, target: int, literal: i64) -> int {
+    slot := length(program.slots);
+    program.slots.append(type);
+    program.code.append({op: op, type: type, output: slot, left: left, right: right, target: target, literal: literal});
+    return slot;
+}
+Void :: (program: ^Program, op: int, type: int, left: int, right: int, target: int, literal: i64) {
+    program.code.append({op: op, type: type, output: 0, left: left, right: right, target: target, literal: literal});
+}
+Number :: (program: ^Program, value: int) -> int { return Put(program, native.Constant, abi.IntStorage, 0, 0, 0, i64(value)); }
+Array :: (program: ^Program, values: int[]) -> int {
+    array := native.ArrayType + abi.IntStorage;
+    slot := Put(program, native.Constant, array, 0, 0, 0, 0);
+    for (value in values) {
+        number := Number(program, value);
+        slot = Put(program, native.ArrayPush, array, slot, number, 0, 1);
+    }
+    return slot;
+}
+Check :: (program: ^Program, got: int, expected: int) {
+    right := Number(program, expected);
+    same := length(program.slots);
+    program.slots.append(abi.BoolStorage);
+    program.code.append({op: native.Eq, type: abi.IntStorage, output: same, left: got, right: right, target: 0, literal: 0});
+    next := length(program.code) + 2;
+    Void(program, native.Branch, 0, same, 0, next, 0);
+    Void(program, native.TypedFail, 0, 0, 0, 0, 4);
+}
+Range :: (program: ^Program, first: int, last: int) -> int {
+    index := length(program.arguments);
+    program.arguments.extend([first, last]);
+    return index;
+}
+Set :: (program: ^Program, view: int, index: int, value: int) {
+    arguments := Range(program, Number(program, index), Number(program, value));
+    Void(program, native.ViewSet, abi.IntStorage, view, arguments, 0, 1);
+}
+Get :: (program: ^Program, view: int, index: int) -> int {
+    position := Number(program, index);
+    return Put(program, native.ViewGet, abi.IntStorage, view, position, 0, 0);
+}
+Replace :: (program: ^Program, cell: int, replacement: int) {
+    array := native.ArrayType + abi.IntStorage;
+    address := Put(program, native.ManagedAddress, native.RefType + array, cell, 0, 0, -880);
+    previous := Put(program, native.Deref, array, address, 0, 0, 0);
+    Void(program, native.ArrayDrop, array, previous, 0, 0, 0);
+    Void(program, native.Poke, array, address, replacement, 0, 0);
+}
+Emit :: (target: abi.Target, program: Program) -> native.Result {
+    shape: native.Function = {result: abi.IntStorage, first_parameter: 0, parameters: 0, first_slot: 0,
+        slots: length(program.slots), first_local: 0, locals: 0, first_code: 0, code: length(program.code),
+        first_argument: 0, arguments: length(program.arguments)};
+    records: native.Record[] = [{first: 0, count: 2, identity: 0}, {first: 2, count: 2, identity: 0}];
+    fields := [abi.IntStorage, native.ViewType, abi.IntStorage, native.ArrayType + abi.IntStorage];
+    source: native.Source = {file: "", directory: ""};
+    return native.EmitProgram(target, [shape], [], program.slots, [], program.code, program.arguments,
+                              records, fields, [], source, [], [], []);
+}
+Build :: (mode: int) -> Program {
+    program: Program = {slots: [], code: [], arguments: []};
+    array := native.ArrayType + abi.IntStorage;
+    source := Array(&program, [1, 2, 3]);
+    cell := Put(&program, native.ManagedNew, native.PointerType, source, array, 0, -880);
+    Void(&program, native.ArrayDrop, array, source, 0, 0, 0);
+    first := Number(&program, 1);
+    last := Number(&program, 3);
+    made := Put(&program, native.ViewMake, native.RecordType, cell, Range(&program, first, last), abi.IntStorage, -880);
+    tag := Put(&program, native.Extract, abi.IntStorage, made, native.RecordType, 0, 0);
+    Check(&program, tag, 1);
+    view := Put(&program, native.Extract, native.ViewType, made, native.RecordType, 0, 1);
+    address := Put(&program, native.ManagedAddress, native.RefType + array, cell, 0, 0, -880);
+    borrowed := Put(&program, native.Deref, array, address, 0, 0, 0);
+    snapshot := Put(&program, native.ValueCopy, array, borrowed, 0, 0, 0);
+    Set(&program, view, 0, 8);
+    Check(&program, Get(&program, view, 0), 8);
+    before := Put(&program, native.ArrayGet, abi.IntStorage, snapshot, first, 0, 0);
+    Check(&program, before, 2);
+    Void(&program, native.ArrayDrop, array, snapshot, 0, 0, 0);
+    cloned := Put(&program, native.ViewClone, array, view, 0, 0, 0);
+    zero := Number(&program, 0);
+    copied := Put(&program, native.ArrayGet, abi.IntStorage, cloned, zero, 0, 0);
+    Check(&program, copied, 8);
+    Void(&program, native.ArrayDrop, array, cloned, 0, 0, 0);
+    replacement := Array(&program, [4, 5, 6, 7]);
+    Replace(&program, cell, replacement);
+    Set(&program, view, 1, 9);
+    Check(&program, Get(&program, view, 0), 5);
+    Check(&program, Get(&program, view, 1), 9);
+    length := Put(&program, native.ViewLength, abi.IntStorage, view, abi.IntStorage, 0, 0);
+    Check(&program, length, 2);
+    sliced := Put(&program, native.ViewSlice, native.RecordType + 1, view, Range(&program, zero, first), abi.IntStorage, 0);
+    slice_tag := Put(&program, native.Extract, abi.IntStorage, sliced, native.RecordType + 1, 0, 0);
+    Check(&program, slice_tag, 1);
+    selected := Put(&program, native.Extract, array, sliced, native.RecordType + 1, 0, 1);
+    changed := Put(&program, native.ArraySet, array, selected, zero, Number(&program, 7), 0);
+    Check(&program, Get(&program, view, 0), 5);
+    Void(&program, native.ArrayDrop, array, changed, 0, 0, 0);
+    empty := Put(&program, native.ViewMake, native.RecordType, cell, Range(&program, zero, zero), abi.IntStorage, -880);
+    empty_tag := Put(&program, native.Extract, abi.IntStorage, empty, native.RecordType, 0, 0);
+    Check(&program, empty_tag, 1);
+    outside := Number(&program, 99);
+    missing := Put(&program, native.ViewMake, native.RecordType, cell, Range(&program, zero, outside), abi.IntStorage, -880);
+    missing_tag := Put(&program, native.Extract, abi.IntStorage, missing, native.RecordType, 0, 0);
+    Check(&program, missing_tag, 0);
+    if (mode == 4) {
+        ignored := Put(&program, native.ViewGet, abi.DoubleStorage, view, zero, 0, 0);
+    }
+    if (mode == 5) {
+        ignored := Put(&program, native.ViewLength, abi.IntStorage, view, abi.DoubleStorage, 0, 0);
+    }
+    shorter := Array(&program, [9]);
+    Replace(&program, cell, shorter);
+    absent := Put(&program, native.ViewSlice, native.RecordType + 1, view, Range(&program, zero, first), abi.IntStorage, 0);
+    absent_tag := Put(&program, native.Extract, abi.IntStorage, absent, native.RecordType + 1, 0, 0);
+    Check(&program, absent_tag, 0);
+    if (mode == 1) { ignored := Put(&program, native.ViewLength, abi.IntStorage, view, abi.IntStorage, 0, 0); }
+    if (mode == 2) { ignored := Get(&program, view, 0); }
+    if (mode == 3) { Set(&program, view, 0, 7); }
+    Void(&program, native.Publish, abi.IntStorage, zero, 0, 0, 0);
+    Void(&program, native.Return, 0, 0, 0, 0, 0);
+    return program;
+}
+Main :: () -> int {
+    args := os.Arguments();
+    if (length(args) != 3) { return 2; }
+    work := args[0];
+    llvm := args[1];
+    audit := os.ReadText(args[2]);
+    if (audit.error) { return 2; }
+    target := abi.MacOSArm64();
+    if (os.Platform() != "Darwin") { target = abi.LinuxX64(); }
+    start := format_text("{}/view-start.ll", work);
+    if (os.WriteText(start, link.ManagedProgramContext(link.ProgramStart(target.triple, false, true, false)))) { return 2; }
+    for (invalid in 0..<4) {
+        program := Build(0);
+        for (index in 0..<length(program.code)) {
+            item := program.code[index];
+            if (item.op != native.ViewMake) { continue; }
+            if (invalid == 0) { item.right = length(program.arguments) - 1; }
+            if (invalid == 1) { item.target = abi.TextStorage; }
+            if (invalid == 2) { item.left = 0; }
+            if (invalid == 3) { item.type += 1; program.slots[item.output] = item.type; }
+            program.code[index] = item;
+            break;
+        }
+        switch Emit(target, program) {
+            case .Emitted(text): os.Print("accepted malformed view operands"); return 1;
+            case .Rejected(instruction, message):
+                if (!strings.Contains(message, "view operation differs")) { os.Print(message); return 1; }
+        }
+    }
+    for (mode in 0..<6) {
+        program := Build(mode);
+        text := "";
+        switch Emit(target, program) {
+            case .Rejected(instruction, message): os.Print(format_text("view IR{}: {}", instruction, message)); return 1;
+            case .Emitted(emitted): text = emitted;
+        }
+        text = strings.ReplaceAll(text, "define i32 @chibi_scalar(ptr %ctx)", "define i32 @managed_source.entry(ptr %ctx)");
+        module := format_text("{}/view-{}.ll", work, mode);
+        if (os.WriteText(module, strings.Concatenate([text, audit.text]))) { return 2; }
+        for (level in [int(0), 2]) {
+            output := format_text("{}/view-{}-O{}", work, mode, level);
+            objects := [strings.Concatenate([output, ".o"]), strings.Concatenate([output, "-start.o"])];
+            if (host.Objects(llvm, [module, start], objects, level, 1)) { return 1; }
+            plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", false);
+            if (os.Platform() == "Darwin") { plan.imports = [{name: "System", symbols: ["malloc", "calloc", "free", "printf", "write", "dprintf", "abort"]}]; }
+            if (host.Link(plan)) { return 1; }
+            result := os.Capture([output]);
+            valid := result.status == 0;
+            if (mode > 0) {
+                failure := "ViewOutOfRange";
+                if (mode >= 3) { failure = "another failure"; }
+                valid = result.status == 134 && strings.Contains(result.stderr, failure);
+            }
+            if (!valid) { os.Print(format_text("view{} O{} status{} {}{}", mode, level, result.status, result.stdout, result.stderr)); return 1; }
+            os.Print(format_text("PASS native view{} O{} {}", mode, level, result.stdout));
+        }
+    }
+    return 0;
+}

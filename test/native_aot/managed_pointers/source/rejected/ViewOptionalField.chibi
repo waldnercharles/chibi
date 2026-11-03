@@ -1,0 +1,3 @@
+package rejected_optional_view_field
+Holder :: struct { window: view int[]?; }
+Main :: () -> int { return 0; }

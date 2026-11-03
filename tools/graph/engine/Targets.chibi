@@ -35,7 +35,7 @@ pub Targets :: () -> string[] {
         targets.extend(ToolConsumers());
         targets.append("test_tools");
     }
-    targets.extend(["policy_worker", "reflect"]);
+    targets.extend(["chibi_graph_fixture", "graph_headerless", "reflect"]);
     return targets;
 }
 
@@ -207,8 +207,11 @@ Files :: (target: string) -> string[] {
             "src/toolchain/compiler_artifact.c"
         ];
     }
-    if (target == "policy_worker") {
-        return ["test/tools/policy_worker.c"];
+    if (target == "chibi_graph_fixture") {
+        return ["test/graph/fixtures/archive/first.c", "test/graph/fixtures/archive/second.c", "test/graph/fixtures/archive/third.c"];
+    }
+    if (target == "graph_headerless") {
+        return ["test/graph/fixtures/headerless.c"];
     }
     if (target == "test_language") {
         return [
@@ -250,6 +253,7 @@ Files :: (target: string) -> string[] {
 // `third-party/`, whose files a target publishes as its headers, keeping their
 // paths below it.
 pub HeaderSource :: (target: string) -> string {
+    if (target == "chibi_graph_fixture") { return "test/graph/fixtures/include"; }
     if (target == "chibi_json") {
         return "third_party/yyjson";
     }
@@ -262,6 +266,7 @@ pub HeaderSource :: (target: string) -> string {
 // The headers a target publishes, below its HeaderSource. Windows adds posix
 // shims to chibi_support; this graph does not build Windows yet.
 pub PublicHeaders :: (target: string) -> string[] {
+    if (target == "chibi_graph_fixture") { return ["graph_fixture/fixture.h"]; }
     if (target == "chibi_compiler_host") {
         return ["toolchain/compiler_host.h"];
     }
@@ -505,6 +510,7 @@ pub Renames :: (target: string) -> string[] {
 // path is below the source root, or below the third-party archive for
 // `third-party/`.
 pub Includes :: (target: string) -> string[] {
+    if (target == "chibi_graph_fixture") { return ["public/graph_fixture"]; }
     if (target == "chibi_program_consumer") {
         return [
             "build/test/tools/testing/include", "public/program", "public/source_catalog",
@@ -864,9 +870,6 @@ pub Defines :: (target: string) -> string[] {
     if (target == "chibi_task_pool_runtime") {
         return ["CHIBI_HAS_ENKITS=1", "ENKITS_TASK_PRIORITIES_NUM=3"];
     }
-    if (target == "policy_worker") {
-        return ["_DEFAULT_SOURCE", "_POSIX_C_SOURCE=200809L"];
-    }
     if (target == "test_language") {
         return [
             "CHIBI_PACKAGE_TEST_POOL=1", "CHIBI_TEST_ENKITS=1",
@@ -914,7 +917,7 @@ pub Options :: (target: string) -> string[] {
     if (target == "chibi_math_capabilities") {
         return ["-ffp-contract=off"];
     }
-    if (target == "policy_worker") {
+    if (target == "graph_headerless") {
         return ["-UNDEBUG"];
     }
     if (target == "test_language") {
@@ -1049,7 +1052,8 @@ pub ProgramDirectory :: (target: string) -> string {
     if (target == "test_language") {
         return "test/language";
     }
-    if (target == "policy_worker" || target == "test_tools") {
+    if (target == "graph_headerless") { return "test/graph"; }
+    if (target == "test_tools") {
         return "test/tools";
     }
     return "";
@@ -1124,7 +1128,7 @@ pub Runs :: (target: string) -> string[] {
 pub Programs :: () -> string[] {
     programs := [
         "reflect", "chibi-build-host", "chibi-compiler-host",
-        "policy_worker"
+        "graph_headerless"
     ];
     if (os.Platform() == "Darwin" || os.Platform() == "Linux") {
         programs.extend(["chibi-compile", "test_language", "test_tools"]);

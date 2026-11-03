@@ -18,9 +18,11 @@ package_compiler/Behavior.chibi
 package_compiler/Scalar.chibi
 package_compiler/ScalarForeign.chibi
 package_compiler/ScalarArrays.chibi
+package_compiler/ScalarNestedPlaces.chibi
 package_compiler/ScalarOptionals.chibi
 package_compiler/ScalarPatterns.chibi
 package_compiler/ScalarPointers.chibi
+package_compiler/ScalarViews.chibi
 package_compiler/ScalarCollections.chibi
 package_compiler/ScalarEffects.chibi
 package_compiler/ScalarGenerations.chibi

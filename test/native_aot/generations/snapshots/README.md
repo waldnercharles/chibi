@@ -1,7 +1,7 @@
 # Native retained snapshot ABI
 
-The fixtures call `llvm_native.EmitSnapshotLibrary` directly. Source `retain`
-admission is still separate and retains its current restrictions.
+The raw fixtures call `llvm_native.EmitSnapshotLibrary` directly. The `Source*`
+fixtures compile ordinary package source through the same transaction API.
 
 `Probe.chibi` emits the production callbacks and runs `Runtime.ll` through the
 existing poisoned allocator at O0 and O2. It covers transactional publication and
@@ -34,3 +34,12 @@ sh test/native_aot/generations/snapshots.sh COMPILER LLVM_BIN LEVEL HOST OWNED_W
 The runtime/live harness currently runs on Linux x86-64 and macOS arm64. Windows
 callback exports and pointer widths are covered by emission review; this fixture
 does not claim Windows execution.
+
+`source.sh` compiles retained string arrays, array-backed record arrays and union
+payloads. The real host rejects a changed record schema, then accepts native type
+reindexing and outer plain-record field reordering/new initialization. Main runs
+once and a local copy survives subsequent mutation. `SourceAudit.chibi` also runs
+at O0/O2 in its production shared context and execution-family heap with the
+common poisoned allocator. It calls Frame three times, bounds each 4,096-element
+retained string/record-array growth to 16 backing allocations, releases twice,
+and requires zero live allocations. No GC-pointer retained state is admitted.

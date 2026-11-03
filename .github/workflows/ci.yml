@@ -588,6 +588,9 @@ jobs:
               "PASS native Windows $($case.name) O$level" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
             }
           }
+      - name: Check native Windows host clocks
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
+        run: ./test/native_aot/host_clock/Run.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -LLVM $env:CHIBI_WINDOWS_LLVM
       - name: Check native Windows built-in math
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |

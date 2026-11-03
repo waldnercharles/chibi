@@ -404,10 +404,11 @@ run the authored programs in `test/graph` natively: the profile's
 flags, argument checks and target selection; the driver's plans; toolchain
 discovery against fixture installations; `tools/graph/c`'s steps,
 response-file links and dependency files; and, in `graph-build`, Debug builds
-of `chibi_support` in a copy of the sources that rebuild only what changed,
-retry a failed compile alone and link an archive that runs, plus a launcher
-build whose failing compiler leaves the staged headers in place. `graph-build`
-compiles about fifteen C files and takes about 2.5 minutes.
+of the three-source `chibi_graph_fixture` archive in a private fixture copy.
+It checks source and header changes, deleted objects, changed flags, retrying
+only a failed compile, and a consumer that calls all three archive members.
+The `graph_headerless` program checks executable staging, successful execution
+and preservation of the archive's published headers after compiler failure.
 
 `chibi-cli-installed` runs the same native CLI and process suite against
 `dist/sdk/bin/chibi`; run `chibi build install --prefix dist/sdk` first.

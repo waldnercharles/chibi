@@ -141,7 +141,8 @@ Private build-host implementation contracts retire with this harness: pipe wait
 order, its job/result tables, bounded buffers, environment allowlists, VM quotas,
 recovery deadlines and private namespace are not native API requirements. The
 native process and CLI tests cover the surviving cancellation and child lifetime
-behavior. `policy_worker` remains only as a graph executable-staging fixture.
+behavior. Graph compilation, archives and executable staging use the independent
+C fixtures in `test/graph/fixtures`; the old `policy_worker` is retired.
 
 `core:os.WriteText` and `WriteBytes` are truncating writes; they do not inherit the
 private `build.write_file` atomic replacement contract. Accepted compiler outputs

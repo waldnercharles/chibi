@@ -122,6 +122,14 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         if (found >= 0 && names[found].container == ArrayContainer) {
             return {storage: names[found].storage, container: ArrayContainer, record: names[found].record};
         }
+        if (found >= 0 && names[found].container == 0 && names[found].storage == UnionStorage &&
+            ScalarOptional(types, names[found].record)) {
+            declared := types[names[found].record];
+            optional: ValueType = {storage: UnionStorage, container: 0, record: names[found].record};
+            if (declared.value_container == ArrayContainer && OptionalValuePresent(forest, text, names, value, optional)) {
+                return {storage: declared.value_storage, container: ArrayContainer, record: declared.value_record};
+            }
+        }
         return none;
     }
     if (Is(forest, value, syntax.IndexExpression)) {
@@ -144,6 +152,10 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         return none;
     }
     if (Is(forest, value, syntax.CallExpression)) {
+        view := ScalarViewOperation(forest, text, callables, params, names, types, members, package, value);
+        if (view.operation == facts.ViewClone) {
+            return {storage: view.shape.storage, container: ArrayContainer, record: view.shape.record};
+        }
         if (ScalarMakeArray(forest, text, callables, names, package, value)) {
             return ScalarMadeShape(forest, text, callables, params, names, types, members, package, value);
         }
@@ -250,6 +262,8 @@ ScalarArrayCall :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
         wanted = 2;
     } else if (NameMatches(name, "reverse") && Is(forest, function, syntax.Identifier)) {
         operator = facts.ArrayReversed;
+    } else if (NameMatches(name, "clone") && Is(forest, function, syntax.MemberExpression)) {
+        operator = facts.ArrayCopy;
     } else if (NameMatches(name, "contains")) {
         operator = facts.ArrayContains;
         wanted = 1;
@@ -371,6 +385,10 @@ ScalarChangeOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
         ScalarArrayShape(forest, text, callables, params, names, types, members, package, object).storage != 0) {
         return object;
     }
+    if (Is(forest, object, syntax.IndexExpression) &&
+        ScalarNestedPlaceShape(forest, text, callables, params, names, types, members, package, object).storage != 0) {
+        return object;
+    }
     return -1;
 }
 // The Array operator of the method `statement` calls: ArrayPush for append,
@@ -478,7 +496,12 @@ ScalarArrayHeld :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
 // The facts type of member `field` of a record or union: a number, bool,
 // string, array, or record or union the source declares; 0 for any other.
 ScalarMemberType :: (types: TypeDecl[], members: TypeMember[], field: int) -> int {
-    if (members[field].storage == TaskStorage) { return 0; }
+    if (members[field].storage == TaskStorage || members[field].container == ViewContainer) { return 0; }
+    // Only the compiler-generated optional owns a view payload in this slice.
+    // Authored aggregate fields do not inherit that admission through T?.
+    if (members[field].container == 0 && members[field].storage == UnionStorage &&
+        ScalarOptional(types, members[field].record) &&
+        types[members[field].record].value_container == ViewContainer) { return 0; }
     return ScalarValueType(types, members[field].storage, members[field].container, members[field].record);
 }
 // The shape of member `field`: its storage, container and record.
@@ -491,6 +514,9 @@ ScalarMemberShape :: (members: TypeMember[], field: int) -> ValueType {
 ScalarElementValue :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                        callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
                        constants: ConstDecl[], node: int, shape: ValueType, rows: facts.Row[]) -> ScalarOperands {
+    if (shape.container == ViewContainer) {
+        return ScalarViewValue(forest, text, callables, params, callable, names, types, members, constants, node, rows);
+    }
     if (shape.container == MapContainer) {
         return ScalarMapValue(forest, text, callables, params, callable, names, types, members, constants,
                               node, shape.record, true, rows);
@@ -525,8 +551,11 @@ ScalarArrayValue :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     array := ScalarArrayType(types, shape.storage, shape.record);
     held := ScalarArrayHeld(forest, text, callables, params, names, types, members, callable.package, node);
     if (Is(forest, node, syntax.Identifier) && held != 0) {
-        output.append(ScalarAt(forest, node, facts.ReadRow, held, ScalarVariable(names, Text(forest, text, node)).index,
-                               0, ""));
+        binding := ScalarVariable(names, Text(forest, text, node));
+        type := held;
+        if (binding.container == 0) { type = ScalarRecordType(types, binding.record); }
+        output.append(ScalarAt(forest, node, facts.ReadRow, type, binding.index, 0, ""));
+        if (type != held) { output.append(ScalarAt(forest, node, facts.PayloadRow, held, 0, 1, "")); }
         return ScalarOperands.Built(output);
     }
     if ((Is(forest, node, syntax.CallExpression) || Is(forest, node, syntax.MemberExpression) || Is(forest, node, syntax.DereferenceExpression) ||
@@ -633,7 +662,9 @@ ScalarLength :: (forest: snapshot.SnapshotNode[], text: string, callables: Calla
 ScalarArrayReceiver :: (forest: snapshot.SnapshotNode[], statement: int, root: int, variable: int,
                         array: int, field: int, index: int) -> facts.Row[] {
     rows := [ScalarAt(forest, statement, facts.ReadRow, root, variable, 0, "")];
-    if (field >= 0) { rows.append(ScalarAt(forest, statement, facts.FieldRow, array, field, 1, "")); }
+    if (field == facts.OptionalArrayPlace) {
+        rows.append(ScalarAt(forest, statement, facts.PayloadRow, array, 0, 1, ""));
+    } else if (field >= 0) { rows.append(ScalarAt(forest, statement, facts.FieldRow, array, field, 1, "")); }
     rows.append(ScalarAt(forest, statement, facts.ReadRow, facts.IntType, index, 0, ""));
     return rows;
 }
@@ -647,6 +678,10 @@ ScalarElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, callabl
     place := destination;
     if (fielded) { place = Unparenthesized(forest, Field(forest, destination, syntax.FieldObject)); }
     object := Unparenthesized(forest, Field(forest, place, syntax.FieldObject));
+    if (Is(forest, object, syntax.IndexExpression)) {
+        return ScalarNestedAssigned(forest, text, callables, params, callable, names, types, members, constants,
+                                     statement, next_variable);
+    }
     index_node := Field(forest, place, syntax.FieldIndex);
     shape := ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, object);
     array := ScalarArrayHeld(forest, text, callables, params, names, types, members, callable.package, object);
@@ -663,6 +698,13 @@ ScalarElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, callabl
         return ScalarOperands.Failed(Diagnose(forest, destination, 0, "scalar proof assigns only elements of array variables"));
     }
     binding := ScalarVariable(names, Text(forest, text, variable));
+    // A guarded optional array retains one canonical Some payload slot. Its
+    // dedicated place tag does not admit arbitrary union fields or methods.
+    if (array_field == -1 && binding.container == 0 && binding.storage == UnionStorage &&
+        ScalarOptional(types, binding.record) && types[binding.record].value_container == ArrayContainer &&
+        shape.record == -1 && (Numeric(shape.storage) || shape.storage == BoolStorage)) {
+        array_field = facts.OptionalArrayPlace;
+    }
     root := ScalarValueType(types, binding.storage, binding.container, binding.record);
     element := ScalarElementType(types, shape);
     stored := SequenceElement(types, shape);
@@ -734,7 +776,8 @@ ScalarElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, callabl
         changed.append(ScalarAt(forest, destination, facts.UpdateRow, element, selected, 2, ""));
     } else { changed.extend(incoming); }
     write := ScalarAt(forest, destination, facts.ArrayRow, root, facts.ArraySet, 3, "");
-    if (array_field >= 0) { write.literal = i64(array_field + 1); }
+    if (array_field == facts.OptionalArrayPlace) { write.literal = i64(facts.OptionalArrayPlace); }
+    else if (array_field >= 0) { write.literal = i64(array_field + 1); }
     changed.append(write);
     rows.append(ScalarAt(forest, statement, facts.AssignRow, root, binding.index, length(changed), ""));
     rows.extend(changed);

@@ -1,0 +1,20 @@
+package retained_standalone
+Node :: struct { words: string[]; }
+Choice :: union { None | Some(value: Node[]) }
+Main :: () -> int {
+    assert(Next() == 1 && Next() == 2 && Next() == 3);
+    return 0;
+}
+Next :: () -> int {
+    items: retain Node[] = [];
+    selected: retain Choice = Choice.None;
+    old := items;
+    items.append({words: ["saved"]});
+    assert(length(items) == length(old) + 1);
+    selected = Choice.Some(items);
+    switch selected {
+        case .Some(value): assert(length(value) == length(items) && value[0].words[0] == "saved");
+        case .None: assert(false);
+    }
+    return length(items);
+}

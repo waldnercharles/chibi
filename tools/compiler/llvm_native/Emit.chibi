@@ -52,6 +52,8 @@ pub TaskType: int : 15;
 // Root cell, byte offset and stable semantic pointee identity. This owning
 // language value is distinct from the caller-storage reference in RefType.
 pub PointerType: int : 16;
+// A traced array-cell pointer with a fixed i32 start/count window.
+pub ViewType: int : 17;
 // The source file of a module's line tables and its directory. An empty file
 // emits no debug information, and the module is the same text as without it.
 pub Source :: struct {
@@ -362,7 +364,25 @@ pub ArrayInsert: int : 95;
 pub ArrayReverse: int : 96;
 // Sample the explicitly owned clock grant once, into an i64/u64/int/int record.
 pub ClockSample: int : 97;
-pub InstructionCount: int : 98;
+// Make/Slice use argument slots [right,right+2) for first/end; target is the
+// numeric/bool element type. Make's literal is its array-cell semantic tag.
+// They produce an ordinary optional record with tag0 and payload1 fields.
+pub ViewMake: int : 98;
+// Length's right is element metadata. Get reads right's int index. Set reads
+// [right,right+2) index/value arguments and has no output. Clone gives an array.
+pub ViewLength: int : 99;
+pub ViewGet: int : 100;
+pub ViewSet: int : 101;
+pub ViewClone: int : 102;
+pub ViewSlice: int : 103;
+// Uniquify/store the outer array at left (RefType + target), then borrow
+// its right-indexed wrapper's one array field. The RefInner output lasts
+// only until the outer backing changes, as MapValueAddress does. A producer
+// consumes it in one contiguous deref/mutate/poke sequence after all callbacks.
+pub ArrayValueAddress: int : 106;
+pub ArrayAddressBracket: int : 0;
+pub ArrayAddressMethod: int : 1;
+pub InstructionCount: int : 107;
 // A Call's `literal`: an ordinary call, an awaited call (the callee is a waiting
 // function, run inline in the waiting caller, giving its result), or a spawn (the
 // callee is a waiting function, started as a task of its own, giving an owning
@@ -380,7 +400,8 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
     return Index(slot, length(slots)) && slots[slot] == type;
 }
 Produces :: (op: int) -> bool {
-    return op == ClockSample || op == ManagedProject || op == ArrayInsert || op == ArrayReverse || op == Select || op == ManagedNew || op == ManagedAddress || op == Print || op == TaskCopy || op == TaskRunning || op == AwaitResult || op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
+    if (ViewOperation(op)) { return op != ViewSet; }
+    return op == ArrayValueAddress || op == ClockSample || op == ManagedProject || op == ArrayInsert || op == ArrayReverse || op == Select || op == ManagedNew || op == ManagedAddress || op == Print || op == TaskCopy || op == TaskRunning || op == AwaitResult || op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
            op == ForeignCall || op == StateLoad || op == FunctionAddress || op == Sqrt || op == ValueCopy || op == ArrayLoan || (MapOperation(op) && op != MapDrop);
 }
 Comparison :: (op: int) -> bool {
@@ -390,7 +411,8 @@ Unary :: (op: int) -> bool {
     return op == Neg || op == BitNot || op == Sqrt;
 }
 ReadsLeft :: (op: int) -> bool {
-    return op == ManagedProject || op == ArrayInsert || op == ArrayReverse || op == Select || op == ManagedNew || op == ManagedAddress || op == ManagedPin || op == Print || op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
+    if (ViewOperation(op)) { return true; }
+    return op == ArrayValueAddress || op == ManagedProject || op == ArrayInsert || op == ArrayReverse || op == Select || op == ManagedNew || op == ManagedAddress || op == ManagedPin || op == Print || op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
            (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText || op == ArrayDrop || op == TextRetain ||
            op == TextRelease || op == StateStore || op == Deref || op == Poke || op == ValueCopy || op == ValueDrop || op == ArrayLoan || op == AwaitHandle || op == Cancel ||
            op == CancelAfter || op == Delay || op == Sqrt || (op >= TaskCopy && op <= AwaitResult) || MapOperation(op);
@@ -422,7 +444,8 @@ Fits :: (literal: i64, type: int) -> bool {
     return literal >= 0 - half && literal < half;
 }
 ReadsRight :: (op: int) -> bool {
-    return op == Select || (op >= Add && op <= Ne && !Unary(op)) || op == Insert || op == Poke || (op >= TextByte && op <= TextTake) ||
+    if (op == ViewGet) { return true; }
+    return op == ArrayValueAddress || op == Select || (op >= Add && op <= Ne && !Unary(op)) || op == Insert || op == Poke || (op >= TextByte && op <= TextTake) ||
            ArrayReadsRight(op) || (op >= MapGet && op <= MapDelete && op != MapCopy && op != MapDrop) || op == MapKeyAt ||
            op == MapValueAt || op == MapLiveAt || op == MapValueAddress || op == CancelAfter || op == ArrayLoan;
 }
@@ -439,19 +462,23 @@ ReadsTarget :: (op: int) -> bool {
 // Whether an array instruction calls the runtime context: an index check, or
 // an allocation.
 ArrayCalls :: (op: int) -> bool {
-    return op == ArrayGet || op == ArraySet || op == ArrayPush || op == ArrayCopy || op == ArrayExtend ||
+    return op == ArrayValueAddress || op == ArrayGet || op == ArraySet || op == ArrayPush || op == ArrayCopy || op == ArrayExtend ||
            op == ArraySlice || op == ArrayResize || op == ArrayBytes || op == ArrayText || op == ArrayDrop ||
            op == TextRelease || op == ArrayRemove || op == ArrayLoan || op == ArrayInsert || op == ArrayReverse;
 }
 // Whether an instruction reads argument slots: a call's or a format's.
 ReadsArguments :: (op: int) -> bool {
-    return op == Call || op == Format || op == ForeignCall;
+    return op == Call || op == Format || op == ForeignCall || ViewArguments(op);
+}
+ArgumentCount :: (item: Instruction) -> int {
+    if (ViewArguments(item.op)) { return 2; }
+    return item.target;
 }
 // The element type of array type `type`, or 0 when it is no array of a
 // scalar, a string or one of the module's records.
 ElementType :: (records: Record[], type: int) -> int {
     element := type - ArrayType;
-    if (element <= 0 || element >= ArrayType || element == TaskType || !Valued(records, element)) {
+    if (element <= 0 || element >= ArrayType || element == TaskType || element == ViewType || !Valued(records, element)) {
         return 0;
     }
     return element;
@@ -467,7 +494,7 @@ Held :: (records: Record[], type: int) -> bool {
 // Whether `type` is a scalar, a string, one of the module's records or an
 // array of one of them.
 Valued :: (records: Record[], type: int) -> bool {
-    if (type == PointerType) { return true; }
+    if (type == PointerType || type == ViewType) { return true; }
     if (type == TaskType) { return true; }
     if (type >= MapType) {
         return MapShaped(records, type);
@@ -479,6 +506,7 @@ Valued :: (records: Record[], type: int) -> bool {
 }
 // The LLVM type of a scalar, string, record or array type the module holds.
 TypeName :: (type: int) -> string {
+    if (type == ViewType) { return abi.ManagedViewType(); }
     if (type == PointerType) { return abi.ManagedPointerType(); }
     if (type == TaskType) { return "i64"; }
     if (type >= RefType) {
@@ -811,18 +839,20 @@ FormatValid :: (slots: int[], arguments: int[], item: Instruction) -> bool {
     }
     return true;
 }
-// Retained arrays contain only inline scalars until managed snapshots can
-// copy their complete graph into the incoming generation's allocator.
+// Primitive arrays keep their schema-qualified per-key ABI. Managed
+// elements instead use complete structural snapshots.
 StateArray :: (type: int) -> bool {
     return type >= ArrayType && type < MapType && abi.ScalarType(type - ArrayType) != "";
 }
 // A load names a retained state and its initializer; a store owns a copy.
-StateValid :: (slots: int[], texts: string[], item: Instruction, layout: ValueLayout, snapshots: bool) -> bool {
+StateValid :: (slots: int[], texts: string[], item: Instruction, layout: ValueLayout, composites: bool) -> bool {
     aggregate := false;
-    if (snapshots && item.type >= RecordType && item.type < MapType) {
+    if (composites && item.type >= RecordType && item.type < MapType) {
         held := item.type;
         if (held >= ArrayType) { held -= ArrayType; }
-        aggregate = ValueValid(layout, held);
+        if (held < RecordType || Index(held - RecordType, length(layout.valid))) {
+            aggregate = ValueValid(layout, held);
+        }
     }
     if ((abi.ScalarType(item.type) == "" && item.type != abi.TextStorage && !StateArray(item.type) && !aggregate) || item.target < 0) {
         return false;
@@ -1002,7 +1032,8 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         item := code[pc];
         pins = pins || item.op == ManagedPin || item.op == ManagedUnpin;
         if (item.op < Constant || item.op >= InstructionCount ||
-            (item.op > Cancel && item.op < CancelAfter && item.op != TypedFail)) {
+            (item.op > Cancel && item.op < CancelAfter && item.op != TypedFail) ||
+            (item.op > ViewSlice && item.op < ArrayValueAddress)) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {
@@ -1018,7 +1049,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         // A record's only constant is its zero, and a string's is a text of
         // the table.
         if (item.op == Constant && ((abi.ScalarType(item.type) != "" && !Fits(item.literal, item.type)) ||
-                                    ((item.type >= RecordType || item.type == TaskType || item.type == PointerType) && item.literal != 0) ||
+                                    ((item.type >= RecordType || item.type == TaskType || item.type == PointerType || item.type == ViewType) && item.literal != 0) ||
                                     (item.type == abi.TextStorage &&
                                      (item.literal < 0 || item.literal >= i64(length(texts)))))) {
             return Result.Rejected(base + pc, "native constant is outside its type");
@@ -1104,6 +1135,14 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
                 return Result.Rejected(base + pc, "native field reference differs from its record");
             }
         }
+        if (item.op == ArrayValueAddress) {
+            member := NestedArrayElement(records, fields, item.target);
+            if (member == 0 || item.type != RefType + member || !Typed(slots, item.left, RefType + item.target) ||
+                !Typed(slots, item.right, abi.IntStorage) ||
+                (item.literal != i64(ArrayAddressBracket) && item.literal != i64(ArrayAddressMethod))) {
+                return Result.Rejected(base + pc, "native nested array reference differs from its wrapper");
+            }
+        }
         if (item.op == Insert) {
             field := FieldType(records, fields, item.type, item.literal);
             if (field == 0 || !Typed(slots, item.left, item.type) || !Typed(slots, item.right, field)) {
@@ -1155,6 +1194,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (MapOperation(item.op) && !MapValid(records, fields, slots, item)) {
             return Result.Rejected(base + pc, "native map operation differs from its operands");
         }
+        if (ViewOperation(item.op) && !ViewValid(records, fields, slots, arguments, item)) {
+            return Result.Rejected(base + pc, "native view operation differs from its operands");
+        }
         if (item.op >= TextLength && item.op <= TextTake && !TextValid(slots, item)) {
             return Result.Rejected(base + pc, "native text read differs from its operands");
         }
@@ -1168,7 +1210,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
                 }
             }
         }
-        if ((item.op == StateLoad || item.op == StateStore) && !StateValid(slots, texts, item, lifecycle, snapshots)) {
+        if ((item.op == StateLoad || item.op == StateStore) && !StateValid(slots, texts, item, lifecycle, snapshots || ProgramMode(mode))) {
             return Result.Rejected(base + pc, "native retained state differs from its operands");
         }
         foreign_abi := InvalidForeignABI;
@@ -1285,7 +1327,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             return Result.Rejected(base + pc, "native scalar operand is not defined on every path");
         }
         if (ReadsArguments(item.op)) {
-            for (index in 0..<item.target) {
+            for (index in 0..<ArgumentCount(item)) {
                 if (!Dominates(dominance, definitions[arguments[item.right + index]], pc)) {
                     return Result.Rejected(base + pc, "native call argument is not defined on every path");
                 }
@@ -1558,7 +1600,7 @@ Encoded :: (literal: i64, type: int, name: string) -> string {
 // The zero a slot, local or result starts as, which is also a record's
 // constant. A string's is empty text.
 Zero :: (type: int) -> string {
-    if (type >= RecordType || type == abi.TextStorage || type == PointerType) {
+    if (type >= RecordType || type == abi.TextStorage || type == PointerType || type == ViewType) {
         return "zeroinitializer";
     }
     if (abi.Floating(type)) {
@@ -1582,7 +1624,7 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         literal := int(item.literal);
         text := format_text("{ ptr @{}, i32 {}, ptr null }", TextSymbol(literal), strings.ByteLength(texts[literal]));
         out = format_text("{}{}", out, Store(text, item.type, "s", item.output));
-    } else if (item.op == Constant && (item.type >= RecordType || item.type == PointerType)) {
+    } else if (item.op == Constant && (item.type >= RecordType || item.type == PointerType || item.type == ViewType)) {
         out = format_text("{}{}", out, Store(Zero(item.type), item.type, "s", item.output));
     } else if (item.op == Constant && abi.Floating(item.type)) {
         out = format_text("{}{}", out, Encoded(item.literal, item.type, format_text("v{}", pc)));
@@ -1652,6 +1694,8 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}  %v{} = getelementptr inbounds {}, ptr {}, i32 0, i32 {}\n", out, pc, TypeName(item.right),
                            base_address, item.literal);
         out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    } else if (item.op == ArrayValueAddress) {
+        out = format_text("{}{}", out, ArrayValueReference(item, pc, program));
     } else if (item.op == Deref) {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), RefType + item.type, "s", item.left));
         out = format_text("{}  %v{} = load {}, ptr %a{}\n", out, pc, type, pc);
@@ -1890,7 +1934,7 @@ TextHelpers :: () -> string {
 // Whether `code` counts references, so the module has the helpers.
 Counts :: (code: Instruction[]) -> bool {
     for (item in code) {
-        if (item.op == TextRetain || item.op == TextRelease || item.op == ValueCopy || item.op == ValueDrop || item.op == ArrayDrop || Holding(item.type) ||
+        if (item.op == ArrayValueAddress || item.op == TextRetain || item.op == TextRelease || item.op == ValueCopy || item.op == ValueDrop || item.op == ArrayDrop || Holding(item.type) ||
             ((item.op == StateLoad || item.op == StateStore) && (item.type == abi.TextStorage || item.type >= RecordType))) {
             return true;
         }
@@ -2741,6 +2785,8 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         item := code[shape.first_code + pc];
         if ((item.op >= ManagedNew && item.op <= ManagedUnpin) || item.op == ManagedProject) {
             out.append(ManagedInstruction(item, pc, records, coroutine));
+        } else if (ViewOperation(item.op)) {
+            out.append(ViewInstruction(item, pc, own));
         } else if (managed && (item.op == Return || item.op == End) && !coroutine) {
             returned := EmitInstruction(item, pc, result, records, fields, texts, coroutine, scoped, record_owners);
             out.append(strings.ReplaceAll(returned, "  ret ", strings.Concatenate([ManagedUnroots(function == 0 && mode == ProgramEntry), "  ret "])));
@@ -3202,7 +3248,8 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     managed_records := ManagedRecordLayouts(records, fields);
     for (index in 0..<length(records)) {
         record := records[index];
-        if (ManagedTraced(RecordType + index, managed_records.traced) && (!managed_records.flat[index] || record.identity == 0)) {
+        if (ManagedTraced(RecordType + index, managed_records.traced) &&
+            (!managed_records.flat[index] || record.identity == 0) && !ViewOptional(records, fields, RecordType + index, ViewType)) {
             return Result.Rejected(-1, "native managed pointer aggregate roots require typed flat records");
         }
         if (record.identity == 0) { continue; }
@@ -3346,6 +3393,9 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             out.append("declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)\n");
             out.append(ManagedRuntime());
             out.append(ManagedPointerRuntime());
+            if (ViewTypes(parameters) || ViewTypes(slots) || ViewTypes(locals) || ViewTypes(fields)) {
+                out.append(ViewTraceRuntime());
+            }
         }
         for (index in 0..<length(records)) {
             record := records[index];
@@ -3382,6 +3432,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             counter := "null";
             if (family) { counter = strings.Concatenate(["@", abi.ManagedImageCounter()]); }
             out.append(ManagedArrayModule(held, counter));
+            out.append(ViewModule(held));
         }
         // One piece holds every text; each of several, the ones it reads.
         wanted := resize([false], length(texts));
@@ -3410,7 +3461,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             out.append(StateDeclarations(states, held));
         }
         if (ProgramMode(mode)) {
-            out.append("declare void @chibi_native_step()\ndeclare void @chibi_native_failure(i32) noreturn\ndeclare void @chibi_native_reference_unavailable() noreturn\n");
+            out.append("declare void @chibi_native_step()\ndeclare void @chibi_native_failure(i32) noreturn\ndeclare void @chibi_native_reference_unavailable() noreturn\ndeclare void @chibi_native_array_mutation_unavailable() noreturn\n");
         } else if (family && managed) {
             out.append("declare void @chibi_native_failure(i32) noreturn\n");
         }
@@ -4407,6 +4458,16 @@ pub EmitFamilyLibraryStates :: (target: abi.Target, name: string, names: string[
     return LibraryStates(target, name, names, ids, functions, parameters, slots, locals, code, arguments,
         records, fields, field_tags, texts, step_budget, field_names, entries, state_characters, true, false, empty);
 }
+// Snapshot roots use the same family allocator and keep GC-bearing values
+// closed; the transaction copies only the validated reference-counted graph.
+pub EmitFamilySnapshotLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
+                                 parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
+                                 records: Record[], fields: int[], field_tags: i64[], texts: string[], step_budget: int,
+                                 field_names: string[], entries: int, state_characters: bool[], shapes: SnapshotShapes) -> Result {
+    return LibraryStates(target, name, names, ids, functions, parameters, slots, locals, code, arguments,
+        records, fields, field_tags, texts, step_budget, field_names, entries, state_characters, true, true, shapes);
+}
+
 LibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
                           parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
                           records: Record[], fields: int[], field_tags: i64[], texts: string[], step_budget: int, field_names: string[], entries: int,

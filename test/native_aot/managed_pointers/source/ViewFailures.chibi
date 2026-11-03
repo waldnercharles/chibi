@@ -1,0 +1,45 @@
+package view_failures
+
+Main :: () -> int { return LengthShrunk(); }
+Explode :: () -> int { assert(false, "view RHS ran"); return 7; }
+Shrink :: (owner: ^(int[])) -> int { owner^ = []; return 7; }
+LengthShrunk :: () -> int {
+    values: int[] = [1, 2, 3]; owner := &values; window := owner.view(1..<3);
+    if window { owner^ = [9]; return window.length(); }
+    return -1;
+}
+ReadShrunk :: () -> int {
+    values: int[] = [1, 2, 3]; owner := &values; window := owner.view(1..<3);
+    if window { owner^ = [9]; return window[0]; }
+    return -1;
+}
+CloneShrunk :: () -> int {
+    values: int[] = [1, 2, 3]; owner := &values; window := owner.view(1..<3);
+    if window { owner^ = [9]; copied := window.clone(); return copied.length(); }
+    return -1;
+}
+IndexOutside :: () -> int {
+    values: int[] = [1, 2, 3]; owner := &values; window := owner.view(1..<3);
+    if window { return window[2]; }
+    return -1;
+}
+SetIndexBeforeRight :: () -> int {
+    values: int[] = [1, 2, 3]; owner := &values; window := owner.view(1..<3);
+    if window { window[2] = Explode(); }
+    return -1;
+}
+SetShrunkBeforeRight :: () -> int {
+    values: int[] = [1, 2, 3]; owner := &values; window := owner.view(1..<3);
+    if window { owner^ = [9]; window[0] = Explode(); }
+    return -1;
+}
+SetShrunkDuringRight :: () -> int {
+    values: int[] = [1, 2, 3]; owner := &values; window := owner.view(1..<3);
+    if window { window[0] = Shrink(owner); }
+    return -1;
+}
+SetValidBeforeRight :: () -> int {
+    values: int[] = [1, 2, 3]; owner := &values; window := owner.view(1..<3);
+    if window { window[0] = Explode(); }
+    return -1;
+}

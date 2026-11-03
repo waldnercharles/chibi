@@ -221,6 +221,11 @@ pub ManagedLayoutType :: () -> string {
 pub ManagedPointerType :: () -> string {
     return "{ ptr, i64, i64 }";
 }
+// A fixed window follows the current value of one nonmoving array cell.
+// Its pointer descriptor plus two i32 bounds occupy 32 bytes on 64-bit hosts.
+pub ManagedViewType :: () -> string {
+    return "{ { ptr, i64, i64 }, i32, i32 }";
+}
 // Pointer-array sharing must key tracing by both heap identity and epoch.
 // Existing scalar/record backings keep their own smaller owner layouts.
 pub ManagedArrayPrefix: int : 24;

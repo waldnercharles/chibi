@@ -1,0 +1,20 @@
+package snapshot_source_probe
+import os "core:os"
+foreign import libc "system:c"
+foreign libc {
+    dlopen :: (path: cstring, flags: i32) -> rawptr
+    dlsym :: (image: rawptr, name: cstring) -> rawptr
+    dlclose :: (image: rawptr) -> i32
+}
+Main :: () -> int {
+    arguments := os.Arguments();
+    if length(arguments) != 1 { return 2; }
+    image := dlopen(arguments[0], 2);
+    assert(image != 0);
+    address := dlsym(image, "chibi_snapshot_source_audit");
+    assert(address != 0);
+    audit: fn() -> i32 = address;
+    result := audit();
+    assert(dlclose(image) == 0);
+    return int(result);
+}

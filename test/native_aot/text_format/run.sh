@@ -20,7 +20,7 @@ for level in 0 2; do
     done
 done
 # Keep the ordinary native-call restriction on managed pointer arguments.
-for source in RejectedPointers RejectedRecordPointers RejectedUnionPointers; do
+for source in RejectedPointers RejectedRecordPointers RejectedUnionPointers RejectedUnionPayload; do
     printf 'preserved\n' > "$work/rejected"
     result=0
     "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
@@ -28,7 +28,12 @@ for source in RejectedPointers RejectedRecordPointers RejectedUnionPointers; do
         --llvm "$llvm" --target "$triple" --level 0 --jobs 1 > "$work/rejected.log" 2>&1 || result=$?
     test "$result" -eq 1
     test "$(cat "$work/rejected")" = preserved
-    grep -F 'Native calls cannot retain managed pointer arguments' "$work/rejected.log" >/dev/null
+    expected='Native calls cannot retain managed pointer arguments'
+    if [ "$source" = RejectedUnionPayload ]; then expected='native pointer payloads require union tracing support'; fi
+    if ! grep -F "$expected" "$work/rejected.log" >/dev/null; then
+        cat "$work/rejected.log" >&2
+        exit 1
+    fi
 done
 # The shared image supplies its own formatter and joins the host's heap family.
 # Its exported helpers keep the existing ABI restriction on scoped references.

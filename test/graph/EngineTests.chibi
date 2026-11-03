@@ -44,7 +44,7 @@ DebugFlagsKeepInstrumentation :: () {
         for (sanitizers in ["", "address,undefined"]) {
             for (frames in [false, true]) {
                 for (optimization in ["", "0", "1"]) {
-                    flags := engine.Flags(Debug(sanitizers, frames, optimization), "/build", "chibi_support", language);
+                    flags := engine.Flags(Debug(sanitizers, frames, optimization), "/build", "chibi_graph_fixture", language);
                     assert(Has(flags, "-g"), "debug info");
                     assert(!Has(flags, "-fomit-frame-pointer") && Count(flags, "-DNDEBUG") == 0, "assertions and frames kept");
                     assert(Has(flags, "-fsanitize=address,undefined") == (sanitizers != ""), "sanitizers");
@@ -63,7 +63,7 @@ DebugFlagsKeepInstrumentation :: () {
 
 // Tests compile with assertions even where the profile would drop them.
 TestsKeepAssertions :: () {
-    for (target in ["policy_worker", "test_tools", "test_language"]) {
+    for (target in ["graph_headerless", "test_tools", "test_language"]) {
         assert(Has(engine.Options(target), "-UNDEBUG"), "test target undefines NDEBUG");
     }
 }
@@ -93,9 +93,13 @@ DebugOptionsAreValidated :: () {
 // Every named target must exist before anything is written.
 ArgumentsAreValidated :: () {
     targets := engine.Targets();
-    assert(engine.TargetError(["--target", "chibi_support"], targets) == "", "a known target");
+    assert(engine.TargetError(["--target", "chibi_graph_fixture"], targets) == "", "a known target");
+    for (fixture in ["chibi_graph_fixture", "graph_headerless"]) {
+        assert(!engine.Selected([], fixture), "C fixtures are explicit-only targets");
+        assert(engine.Selected(["--target", fixture], fixture), "a named C fixture is selected");
+    }
     assert(engine.TargetError(["--commands-only", "on", "--target", "chibi-clt"], targets) == "graph: unknown target 'chibi-clt'", "an unknown target");
-    assert(engine.TargetError(["--target", "chibi_support", "--target", "chibi-clt"], targets) == "graph: unknown target 'chibi-clt'", "a later unknown target");
+    assert(engine.TargetError(["--target", "chibi_graph_fixture", "--target", "chibi-clt"], targets) == "graph: unknown target 'chibi-clt'", "a later unknown target");
     assert(engine.TargetError(["--commands-only", "on", "--target"], targets) == "graph: --target requires a target name", "a missing target");
     assert(engine.TargetError(["--target", "--commands-only", "on"], targets) == "graph: --target requires a target name", "an option as target");
 }

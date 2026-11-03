@@ -63,3 +63,5 @@ if [ "$result" -ne 42 ]; then
 fi
 test -f "$run/unloaded"
 echo "native retained snapshots: callbacks O0/O2, rejected schema, native type reindex, actual unload and Main once passed O$level"
+
+sh "$fixtures/source.sh" "$compiler" "$llvm" "$level" "$host" "$work/source"

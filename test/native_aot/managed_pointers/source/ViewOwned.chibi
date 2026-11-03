@@ -1,0 +1,111 @@
+package view_owned_elements
+
+Pair :: union { Row(xs: int[]) | None }
+Row :: struct { xs: int[]; label: string; }
+Flat :: struct { number: i64; }
+
+Hold :: (window: view int[][], owner: ^(int[][])) -> int {
+    row := window[0];
+    owner^[0] = [9];
+    return row[0] * 10 + length(row);
+}
+Viewed :: () -> int {
+    values: int[][] = [[1, 2], [3]];
+    pointer := &values;
+    selected := pointer.view(0..<2);
+    if selected { return Hold(selected, pointer); }
+    return -1;
+}
+HoldPair :: (window: view Pair[], owner: ^(Pair[])) -> int {
+    pair := window[0];
+    owner^[0] = Pair.None;
+    switch pair { case .Row(xs): return length(xs); case: return -2; }
+}
+ViewedPair :: () -> int {
+    values: Pair[] = [Pair.Row([1, 2]), Pair.None];
+    pointer := &values;
+    selected := pointer.view(0..<2);
+    if selected { return HoldPair(selected, pointer); }
+    return -1;
+}
+HoldRecord :: (window: view Row[], owner: ^(Row[])) -> bool {
+    row := window[0];
+    owner^[0] = {xs: [9], label: "changed"};
+    return row.xs[0] == 1 && row.label == "row2";
+}
+ViewedRecord :: () -> bool {
+    values: Row[] = [{xs: [1, 2], label: text_from_bytes([u8(114), u8(111), u8(119), u8(50)])}];
+    owner := &values;
+    selected := owner.view(0..<1);
+    if selected { return HoldRecord(selected, owner); }
+    return false;
+}
+Copies :: () -> bool {
+    values: Pair[] = [Pair.Row([1, 2]), Pair.None];
+    snapshot := values;
+    pointer := &values;
+    selected := pointer.view(0..<2);
+    if selected {
+        cloned := selected.clone();
+        copied := selected[0..<1];
+        selected[0] = Pair.None;
+        if copied {
+            a := cloned[0];
+            b := copied[0];
+            c := snapshot[0];
+            switch a { case .Row(xs): assert(length(xs) == 2); case: return false; }
+            switch b { case .Row(xs): assert(xs[0] == 1); case: return false; }
+            switch c { case .Row(xs): assert(xs[1] == 2); case: return false; }
+            return selected.length() == 2;
+        }
+    }
+    return false;
+}
+Right :: (owner: ^(int[][])) -> int[] { owner^ = [[8], [9]]; return [4, 5]; }
+WriteAfterRight :: () -> int {
+    values: int[][] = [[1, 2], [3]];
+    owner := &values;
+    selected := owner.view(0..<2);
+    if selected { selected[0] = Right(owner); return values[0][0] * 10 + values[1][0]; }
+    return -1;
+}
+OwnedWindow :: () -> view Pair[]? {
+    values: Pair[] = [Pair.Row([5, 6])];
+    owner := &values;
+    return owner.view(0..<1);
+}
+ForwardWindow :: (window: view Pair[]?) -> view Pair[]? { return window; }
+Churn :: (number: int) -> ^(Pair[]) {
+    values: Pair[] = [Pair.Row([number])];
+    return &values;
+}
+OnlyWindow :: () -> int {
+    selected := ForwardWindow(OwnedWindow());
+    for (index in 0..<4096) { temporary := Churn(index); assert(temporary^[0] is .Row); }
+    if selected {
+        pair := selected[0];
+        switch pair { case .Row(xs): return xs[0] * 10 + xs[1]; case: return -2; }
+    }
+    return -1;
+}
+FlatWindow :: () -> bool {
+    values: Flat[] = [{number: 4294967297}];
+    owner := &values;
+    selected := owner.view(0..<1);
+    if selected {
+        selected[0] = {number: 8589934595};
+        copied := selected.clone();
+        return selected[0].number == i64(8589934595) && copied[0].number == i64(8589934595);
+    }
+    return false;
+}
+Main :: () -> int {
+    nested := Viewed(); assert(nested == 12);
+    union_value := ViewedPair(); assert(union_value == 2);
+    record := ViewedRecord(); assert(record);
+    copies := Copies(); assert(copies);
+    order := WriteAfterRight(); assert(order == 49);
+    root := OnlyWindow(); assert(root == 56);
+    flat := FlatWindow(); assert(flat);
+    return 0;
+}

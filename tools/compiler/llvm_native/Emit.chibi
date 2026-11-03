@@ -387,7 +387,7 @@ pub ArrayReverse: int : 96;
 // Sample the explicitly owned clock grant once, into an i64/u64/int/int record.
 pub ClockSample: int : 97;
 // Make/Slice use argument slots [right,right+2) for first/end; target is the
-// numeric/bool element type. Make's literal is its array-cell semantic tag.
+// element type. Every operation's literal is its full expected array-cell tag.
 // They produce an ordinary optional record with tag0 and payload1 fields.
 pub ViewMake: int : 98;
 // Length's right is element metadata. Get reads right's int index. Set reads
@@ -401,13 +401,16 @@ pub ViewSlice: int : 103;
 // canonical local. Pin type is its value type; unpin type is zero.
 pub OwnerPin: int : 104;
 pub OwnerUnpin: int : 105;
-// Uniquify/store the outer array at left (RefType + target), then borrow
-// its right-indexed wrapper's one array or map field. The RefInner output lasts
-// only until the outer backing changes, as MapValueAddress does. A producer
-// consumes it in one contiguous deref/mutate/poke sequence after all callbacks.
+// Borrow right's record element from the array at left (RefType + target),
+// or its one-field wrapper's array/map descriptor. Modes 0 and 1 publish
+// unique backing first; full-record Observe mode 2 only checks and borrows. Consume
+// the address before callbacks or changes to its parent, as MapValueAddress.
 pub ArrayValueAddress: int : 106;
 pub ArrayAddressBracket: int : 0;
 pub ArrayAddressMethod: int : 1;
+// Full-record projection only: borrow without detaching or changing backing.
+// The address lasts until the owner changes; consume it before source calls.
+pub ArrayAddressObserve: int : 2;
 // Deferred callback requests are tested on the common path. Poll never
 // suspends; current owning descriptors already have stable registrations.
 pub ManagedPending: int : 107;
@@ -1065,15 +1068,17 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (type == TaskType || type == RefType + TaskType) {
             return Result.Rejected(-1, "native task parameters require cancellation unwind support");
         }
-        if (waiting[function] && !TaskFrameValue(records, lifecycle, type, false, ProgramMode(mode) || family)) {
+        if (waiting[function] && !TaskFrameValue(records, lifecycle, managed_records, type, false, ProgramMode(mode) || family)) {
             return Result.Rejected(-1, "native waiting parameters need scalar values; managed values and dependencies are not supported yet");
         }
         if (!Held(records, type) || (exported && abi.ScalarType(type) == "")) {
             return Result.Rejected(-1, "unsupported native scalar parameter");
         }
     }
+    plain_references := false;
     for (type in slots) {
-        if (waiting[function] && !TaskFrameValue(records, lifecycle, type, true, ProgramMode(mode) || family)) {
+        plain_references = plain_references || (waiting[function] && TaskPlainReference(lifecycle, type));
+        if (waiting[function] && !TaskFrameValue(records, lifecycle, managed_records, type, true, ProgramMode(mode) || family)) {
             return Result.Rejected(-1, "native waiting frames cannot own managed values or pointers yet");
         }
         if (!Held(records, type)) {
@@ -1081,14 +1086,17 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
     }
     for (type in locals) {
-        if (waiting[function] && !TaskFrameValue(records, lifecycle, type, true, ProgramMode(mode) || family)) {
+        if (waiting[function] && TaskPlainReference(lifecycle, type)) {
+            return Result.Rejected(-1, "native waiting record references require immediate managed payload access");
+        }
+        if (waiting[function] && !TaskFrameValue(records, lifecycle, managed_records, type, true, ProgramMode(mode) || family)) {
             return Result.Rejected(-1, "native waiting frames cannot own managed values or pointers yet");
         }
         if (!Held(records, type)) {
             return Result.Rejected(-1, "native scalar local cannot hold a managed value or pointer");
         }
     }
-    if (waiting[function] && !TaskPromiseValue(records, lifecycle, result, ProgramMode(mode) || family)) {
+    if (waiting[function] && !TaskPromiseValue(records, lifecycle, managed_records, result, ProgramMode(mode) || family)) {
         return Result.Rejected(-1, "native waiting results require a pointer-free value and program-owned cleanup");
     }
     definitions: int[] = [];
@@ -1146,12 +1154,12 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
                 return Result.Rejected(base + pc, "native managed pointer identity is invalid");
             }
             if (item.op == ManagedNew &&
-                (item.type != PointerType || !ManagedPayload(records, managed_records, item.right, item.literal) ||
+                (item.type != PointerType || !ManagedPayload(records, managed_records, lifecycle, item.right, item.literal) ||
                  !Typed(slots, item.left, item.right))) {
                 return Result.Rejected(base + pc, "native managed cell initializer differs from its scalar type");
             }
             if (item.op == ManagedAddress &&
-                (item.type < RefType || !ManagedTarget(records, managed_records, item.type - RefType, item.literal) ||
+                (item.type < RefType || !ManagedTarget(records, managed_records, lifecycle, item.type - RefType, item.literal) ||
                  !Typed(slots, item.left, PointerType) || item.right != 0)) {
                 return Result.Rejected(base + pc, "native managed pointer resolution differs from its scalar target");
             }
@@ -1222,11 +1230,13 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             }
         }
         if (item.op == ArrayValueAddress) {
+            element := ElementType(records, item.target);
+            record := element >= RecordType && element < ArrayType && item.type == RefType + element;
             member := NestedArrayElement(records, fields, item.target);
-            if (member == 0 || !ValueValid(lifecycle, item.target - ArrayType) ||
-                item.type != RefType + member || !Typed(slots, item.left, RefType + item.target) ||
-                !Typed(slots, item.right, abi.IntStorage) ||
-                (item.literal != i64(ArrayAddressBracket) && item.literal != i64(ArrayAddressMethod))) {
+            if ((!record && (member == 0 || item.type != RefType + member)) || !ValueValid(lifecycle, element) ||
+                !Typed(slots, item.left, RefType + item.target) || !Typed(slots, item.right, abi.IntStorage) ||
+                (item.literal != i64(ArrayAddressBracket) && item.literal != i64(ArrayAddressMethod) &&
+                 (!record || item.literal != i64(ArrayAddressObserve)))) {
                 return Result.Rejected(base + pc, "native nested array reference differs from its wrapper");
             }
         }
@@ -1296,7 +1306,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (MapOperation(item.op) && !MapValid(records, fields, lifecycle, slots, item)) {
             return Result.Rejected(base + pc, "native map operation differs from its operands");
         }
-        if (ViewOperation(item.op) && !ViewValid(records, fields, slots, arguments, item)) {
+        if (ViewOperation(item.op) && !ViewValid(records, fields, lifecycle, slots, arguments, item)) {
             return Result.Rejected(base + pc, "native view operation differs from its operands");
         }
         if (TextSequenceOperation(item.op) && !TextSequenceValid(records, fields, slots, item)) {
@@ -1365,7 +1375,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if (((item.op == TaskCopy || item.op == TaskDrop) && item.type != TaskType) ||
             (item.op == TaskRunning && item.type != abi.BoolStorage) ||
-            (item.op == AwaitResult && !TaskResultValid(records, fields, slots, lifecycle, ProgramMode(mode) || family, item))) {
+            (item.op == AwaitResult && !TaskResultValid(records, fields, slots, lifecycle, managed_records, ProgramMode(mode) || family, item))) {
             return Result.Rejected(base + pc, "native task observer or result differs from its type");
         }
         if ((item.op == CancelAfter && !Typed(slots, item.right, abi.DoubleStorage)) ||
@@ -1420,6 +1430,10 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     }
     if (owner_pins) {
         error := TaskOwnersValid(code, slots, locals, records, lifecycle);
+        if (error != "") { return Result.Rejected(base, error); }
+    }
+    if (plain_references) {
+        error := TaskReferencesValid(lifecycle, slots, code, arguments, definitions);
         if (error != "") { return Result.Rejected(base, error); }
     }
     dominance := Dominators(code);
@@ -1770,7 +1784,11 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         if (item.type == TaskType) { out = format_text("{}{}", out, Store("0", TaskType, "s", item.left)); }
     } else if (item.op == Publish) {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
-        out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "result", 0));
+        if (coroutine) {
+            // coro.promise observers read the complete payload after this ramp
+            // returns. Keep every field even when local tracing reads only one.
+            out = format_text("{}  store volatile {} %a{}, ptr %result0\n", out, type, pc);
+        } else { out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "result", 0)); }
         if (item.type == TaskType) { out = format_text("{}{}", out, Store("0", TaskType, "s", item.left)); }
     } else if ((item.op == Return || item.op == End) && coroutine) {
         // The result is in the promise; the coroutine finishes at its final suspension.
@@ -2856,7 +2874,7 @@ AwaitedCallInstruction :: (functions: Function[], parameters: int[], arguments: 
     out = format_text("{}p{}.destroy:\n  call void @llvm.coro.destroy(ptr %v{})\n  br label %coro.cleanup\n", out, pc, pc);
     out = format_text("{}p{}.finished:\n  %promise{} = call ptr @llvm.coro.promise(ptr %v{}, i32 8, i1 false)\n", out, pc, pc, pc);
     out = format_text("{}  %result{} = load {}, ptr %promise{}\n", out, pc, TypeName(item.type), pc);
-    if (ValueOwned(item.type, owners)) {
+    if (ValueOwned(item.type, owners) || item.type == PointerType) {
         out = format_text("{}  store {} zeroinitializer, ptr %promise{}\n", out, TypeName(item.type), pc);
     }
     out = format_text("{}  call void @llvm.coro.destroy(ptr %v{})\n", out, pc);
@@ -2933,9 +2951,9 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         owner_locations = TaskOwnerLocations(shape, code);
         out.append(TaskOwnerPrologue(owner_locations));
     }
-    frame_roots: ManagedFrameRoots = {prologue: "", attach: "", cleanup: ""};
+    frame_roots: ManagedFrameRoots = {prologue: "", attach: "", cleanup: "", destroy: ""};
     if (managed && coroutine) {
-        frame_roots = ManagedFrame(shape, slots, locals);
+        frame_roots = ManagedFrame(shape, slots, locals, managed_records);
         out.append(frame_roots.prologue);
     }
     if (managed) {
@@ -3007,7 +3025,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         } else if ((item.op >= ManagedNew && item.op <= ManagedUnpin) || item.op == ManagedProject) {
             out.append(ManagedInstruction(item, pc, records, coroutine));
         } else if (ViewOperation(item.op)) {
-            out.append(ViewInstruction(item, pc, own));
+            out.append(ViewInstruction(item, pc, own, record_owners));
         } else if (managed && (item.op == Return || item.op == End) && !coroutine) {
             returned := EmitInstruction(item, pc, result, records, fields, texts, coroutine, ProgramMode(mode), scoped, record_owners, guarded);
             out.append(strings.ReplaceAll(returned, "  ret ", strings.Concatenate([ManagedUnroots(function == 0 && mode == ProgramEntry), "  ret "])));
@@ -3084,7 +3102,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     if (coroutine) {
         out.append(CoroutineEpilogue(strings.Concatenate([TaskOwnerCleanup(owner_locations, "final"), TaskFrameCleanup(shape, locals, code, "final"), ManagedFramePins(shape, code, "final"), frame_roots.cleanup]),
                                      strings.Concatenate([TaskOwnerCleanup(owner_locations, "cancel"), TaskFrameCleanup(shape, locals, code, "cancel"), ManagedFramePins(shape, code, "cancel"), frame_roots.cleanup,
-                                                          TaskPromiseCleanup(result, ValueOwned(result, record_owners))]), guarded));
+                                                          TaskPromiseCleanup(result, ValueOwned(result, record_owners)), frame_roots.destroy]), guarded));
     }
     out.append("trap:\n  call void @llvm.trap()\n  unreachable\n}\n");
     return strings.Join(out, "");
@@ -3501,8 +3519,8 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     for (index in 0..<length(records)) {
         record := records[index];
         if (ManagedTraced(RecordType + index, managed_records.traced) &&
-            (!managed_records.flat[index] || record.identity == 0) && !ViewOptional(records, fields, RecordType + index, ViewType)) {
-            return Result.Rejected(-1, "native managed pointer aggregate roots require typed flat records");
+            !managed_records.traceable[index] && !ViewOptional(records, fields, RecordType + index, ViewType)) {
+            return Result.Rejected(-1, "native managed pointer aggregate roots require scalar or pointer-only inline records");
         }
         if (record.identity == 0) { continue; }
         // The explicit family adapter supplies a program owner and pins the
@@ -3535,7 +3553,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             }
         }
     }
-    for (shape in functions) { managed = managed || ManagedStorage(shape.result); }
+    for (shape in functions) { managed = managed || ManagedStorage(shape.result) || ManagedTraced(shape.result, managed_records.traced); }
     polling := false;
     for (item in code) { polling = polling || item.op == ManagedPending || item.op == ManagedPoll || item.op == ManagedTrack; }
     managed = managed || polling;
@@ -3545,7 +3563,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     if (managed && !ProgramMode(mode) && !family) {
         return Result.Rejected(-1, "native managed pointers require a standalone collector owner");
     }
-    if (managed && !family && ManagedStorage(functions[0].result)) {
+    if (managed && !family && (ManagedStorage(functions[0].result) || ManagedTraced(functions[0].result, managed_records.traced))) {
         return Result.Rejected(-1, "a standalone entry cannot export managed pointers");
     }
     if (source.file != "" && abi.DebugFormat(target) == "") {
@@ -3690,6 +3708,9 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             record_roots := resize([false], length(records));
             for (function in first..<last) {
                 shape := functions[function];
+                if (ManagedTraced(shape.result, managed_records.traced)) {
+                    record_roots[shape.result - RecordType] = true;
+                }
                 for (part in 0..<2) {
                     types := slots;
                     begin := shape.first_slot;

@@ -55,11 +55,11 @@ entry:
 LIVE
 cat "$root/test/native_aot/managed_values/Audit.ll" "$root/test/native_aot/managed_values/OwnerCalls.ll" > "$work/width-audit.ll"
 for level in 0 2; do
-    for source in Records Foreign ForeignVoid ForeignPlaces ForeignRecord ForeignPath DeepArrayFields DeepArrayGrowth DeepArrayWidth Backed Growth Fields Clock Hash ConditionalOptionals NestedMath MathScopes Patterns PatternLeases TextFormat TextFormatMain TextFormatStrings TextFormatFamily TextFormatRecords TextFormatOptionalRecords MapCopies NestedMapCopies; do
+    for source in Records Foreign ForeignVoid ForeignPlaces ForeignRecord ForeignPath DeepArrayFields DeepArrayGrowth DeepArrayWidth RecordArrayPlaces RecordArrayWidth Backed Growth Fields Clock Hash ConditionalOptionals NestedMath MathScopes Patterns PatternLeases TextFormat TextFormatMain TextFormatStrings TextFormatFamily TextFormatRecords TextFormatOptionalRecords MapCopies NestedMapCopies; do
         input=$root/test/native_aot/managed_values/$source.chibi
         project=$root/tools/compiler
         export CHIBI_VALUE_ENTRY=chibi_value_test_entry CHIBI_VALUE_AUDIT=$root/test/native_aot/managed_values/Audit.ll CHIBI_VALUE_OWNER_AUDIT=0
-        if [ "$source" = DeepArrayWidth ]; then export CHIBI_VALUE_OWNER_AUDIT=1 CHIBI_VALUE_AUDIT=$work/width-audit.ll; fi
+        if [ "$source" = DeepArrayWidth ] || [ "$source" = RecordArrayWidth ]; then export CHIBI_VALUE_OWNER_AUDIT=1 CHIBI_VALUE_AUDIT=$work/width-audit.ll; fi
         if [ "$source" = Records ]; then input=$records_source; fi
         if [ "$source" = NestedMath ]; then input=$root/test/native_aot/math_builtin/Nested.chibi; fi
         if [ "$source" = MathScopes ]; then input=$root/test/native_aot/math_builtin/Scopes.chibi; fi
@@ -100,6 +100,7 @@ for level in 0 2; do
         if grep -q 'RHS evaluated\|IndexOutOfRange' "$work/deep-$source.log"; then cat "$work/deep-$source.log"; exit 1; fi
     done
 done
+sh "$root/test/native_aot/managed_values/record_places.sh" "$compiler" "$llvm" "$work/record-places"
 # Mutating method labels follow the ordinary parameter-order rule.
 printf 'preserved\n' > "$work/deep-labels"
 set +e

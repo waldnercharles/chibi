@@ -1,3 +1,0 @@
-package pointer_promise_rejection
-Worker :: () -> ^int { value := 7; yield; return &value; }
-Main :: () -> int { pending := Worker(); await pending; return 0; }

@@ -36,6 +36,7 @@ RecordPromiseCode :: () -> native.Instruction[] {
 RecordPromisesUseTheirDeclaredPayload :: () {
     text := Emitted(RecordPromise([abi.IntStorage, abi.IntStorage, native.RecordType], RecordPromiseCode()));
     assert(strings.Contains(text, "%payload2 = load %record0, ptr %promise2"));
+    assert(strings.Contains(text, "store volatile %record0 %a3, ptr %result0"));
     code := RecordPromiseCode();
     item := code[2]; item.right = abi.IntStorage; code[2] = item;
     Rejects(RecordPromise([abi.IntStorage, abi.IntStorage, native.RecordType], code),
@@ -52,20 +53,66 @@ OwnedPromisesRequireTheProgramOwner :: () {
     Rejects(RecordPromise([abi.TextStorage, abi.IntStorage, native.RecordType], RecordPromiseCode(), false),
             "native waiting frames cannot own managed values or pointers yet");
 }
+// The promise root is independent of live local roots: normal final
+// suspension unlinks locals, while only destruction unlinks result0.
 @test
-CollectorPointersRequirePromiseRootsBeforeAdmission :: () {
+CollectorPromisesRemainRootedUntilDestruction :: () {
     code := RecordPromiseCode();
-    code[2] = Code(native.AwaitHandle, 0, 0, 0, 0, 0, 0);
+    code[2] = Code(native.AwaitResult, native.RecordType, 1, 0, native.PointerType, 0, 0);
     code[8] = Code(native.Constant, native.PointerType, 0, 0, 0, 0, 0);
     code[9] = Code(native.Publish, native.PointerType, 0, 0, 0, 0, 0);
+    functions := [Function(abi.IntStorage, 0, 0, 3, 0, 6, 0, 0), Function(native.PointerType, 0, 3, 1, 6, 5, 0, 0)];
+    slots := [native.TaskType, native.RecordType, abi.IntStorage, native.PointerType];
+    records: native.Record[] = [{first: 0, count: 2, identity: 0}];
+    fields := [abi.IntStorage, native.PointerType];
     empty: int[] = [];
     texts: string[] = [];
-    records: native.Record[] = [];
-    Rejects(native.EmitProgram(abi.LinuxX64(),
-        [Function(abi.IntStorage, 0, 0, 3, 0, 6, 0, 0), Function(native.PointerType, 0, 3, 1, 6, 5, 0, 0)],
-        empty, [native.TaskType, abi.IntStorage, abi.IntStorage, native.PointerType], empty, code, empty,
-        records, empty, texts, {file: "", directory: ""}, texts, empty, empty),
-        "native waiting results require a pointer-free value and program-owned cleanup");
+    source: native.Source = {file: "", directory: ""};
+    text := Emitted(native.EmitProgram(abi.LinuxX64(), functions, empty, slots, empty, code, empty,
+                                      records, fields, texts, source, texts, empty, empty));
+    assert(strings.Contains(text, "call void @chibi_managed.hold(ptr %managed.heap, ptr %managed.promise, ptr %result0, ptr @chibi_managed.trace.pointer)"));
+    assert(strings.Contains(text, "coro.final:\n  call void @chibi_managed.unhold(ptr %managed.s0)\n  %coro.last"));
+    assert(strings.Contains(text, "store { ptr, i64, i64 } zeroinitializer, ptr %result0\n  call void @chibi_managed.unhold(ptr %managed.promise)"));
+    assert(strings.Contains(text, "define internal void @chibi_managed.trace.record0"));
+    assert(!strings.Contains(text, "@chibi_managed.layout0 ="));
+    Rejects(native.Emit(abi.LinuxX64(), functions, empty, slots, empty, code, empty,
+                        records, fields, texts, source, texts, empty, empty, false, 1),
+            "native managed pointers require a standalone collector owner");
+}
+@test
+StructuralPromiseWrappersCannotAllocateManagedCells :: () {
+    code := [Code(native.Constant, native.RecordType, 0, 0, 0, 0, 0),
+             Code(native.ManagedNew, native.PointerType, 1, 0, native.RecordType, 0, 1),
+             Code(native.Constant, abi.IntStorage, 2, 0, 0, 0, 0),
+             Code(native.Publish, abi.IntStorage, 0, 2, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    empty: int[] = [];
+    texts: string[] = [];
+    Rejects(native.EmitProgram(abi.LinuxX64(), [Function(abi.IntStorage, 0, 0, 3, 0, 5, 0, 0)], empty,
+        [native.RecordType, native.PointerType, abi.IntStorage], empty, code, empty,
+        [{first: 0, count: 2, identity: 0}], [abi.IntStorage, native.PointerType], texts,
+        {file: "", directory: ""}, texts, empty, empty),
+        "native managed cell initializer differs from its scalar type");
+}
+@test
+WaitingParametersCannotBorrowCallerStackReferences :: () {
+    code := [Code(native.Constant, abi.IntStorage, 0, 0, 0, 0, 0),
+             Code(native.Publish, abi.IntStorage, 0, 0, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0),
+             Code(native.Suspend, 0, 0, 0, 0, 0, 0),
+             Code(native.Constant, abi.IntStorage, 0, 0, 0, 0, 0),
+             Code(native.Publish, abi.IntStorage, 0, 0, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    functions := [Function(abi.IntStorage, 0, 0, 1, 0, 3, 0, 0), Function(abi.IntStorage, 1, 1, 1, 3, 4, 0, 0)];
+    empty: int[] = [];
+    texts: string[] = [];
+    for type in [native.RefType + native.PointerType, native.RefType + native.RecordType] {
+        Rejects(native.EmitProgram(abi.LinuxX64(), functions, [type],
+            [abi.IntStorage, abi.IntStorage], empty, code, empty,
+            [{first: 0, count: 1, identity: 0}], [abi.IntStorage], texts,
+            {file: "", directory: ""}, texts, empty, empty),
+            "native waiting parameters need scalar values; managed values and dependencies are not supported yet");
+    }
 }
 @test
 SharedRecordResultGraphDoesNotExpandItsPaths :: () {
@@ -92,4 +139,59 @@ SharedRecordResultGraphDoesNotExpandItsPaths :: () {
         empty, [abi.IntStorage, type], empty, code, empty, records, fields, texts,
         {file: "", directory: ""}, texts, empty, empty));
     assert(strings.Contains(text, "%record30 = type { %record29, %record29 }"));
+}
+
+ManagedRecordAccess :: (mode: int) -> native.Result {
+    record := native.RecordType;
+    reference := native.RefType + record;
+    worker := [Code(native.Constant, record, 0, 0, 0, 0, 0),
+               Code(native.ManagedNew, native.PointerType, 1, 0, record, 0, 17),
+               Code(native.ManagedAddress, reference, 2, 1, 0, 0, 17),
+               Code(native.Deref, record, 3, 2, 0, 0, 0),
+               Code(native.Suspend, 0, 0, 0, 0, 0, 0)];
+    if (mode == 1) {
+        worker[3] = Code(native.Suspend, 0, 0, 0, 0, 0, 0);
+        worker[4] = Code(native.Deref, record, 3, 2, 0, 0, 0);
+    }
+    if (mode == 2) { worker.append(Code(native.Deref, record, 4, 2, 0, 0, 0)); }
+    if (mode == 3) { worker.append(Code(native.Jump, 0, 0, 0, 0, 3, 0)); }
+    // Other reference origins remain outside this narrow payload-access domain,
+    // even if their eventual consumer would otherwise be immediate.
+    if (mode == 4) { worker[2] = Code(native.LocalAddress, reference, 2, 0, 0, 0, 0); }
+    worker.extend([Code(native.Constant, abi.IntStorage, 5, 0, 0, 0, 0),
+                   Code(native.Publish, abi.IntStorage, 0, 5, 0, 0, 0),
+                   Code(native.Return, 0, 0, 0, 0, 0, 0)]);
+    code := [Code(native.Constant, abi.IntStorage, 0, 0, 0, 0, 0),
+             Code(native.Publish, abi.IntStorage, 0, 0, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    code.extend(worker);
+    functions := [Function(abi.IntStorage, 0, 0, 1, 0, 3, 0, 0), Function(abi.IntStorage, 0, 1, 6, 3, length(worker), 0, 0)];
+    shape := functions[1]; shape.locals = 1; functions[1] = shape;
+    return native.EmitProgramTyped(abi.LinuxX64(), functions, [],
+        [abi.IntStorage, record, native.PointerType, reference, record, record, abi.IntStorage],
+        [record], code, [], [{first: 0, count: 1, identity: 17}], [abi.IntStorage], [i64(0)], [],
+        {file: "", directory: ""}, [], [], []);
+}
+@test
+WaitingRecordPayloadReferencesCannotEscapeTheirAccess :: () {
+    Emitted(ManagedRecordAccess(0));
+    for mode in 1..<5 {
+        Rejects(ManagedRecordAccess(mode), "native waiting record references require immediate managed payload access");
+    }
+}
+
+@test
+NestedPointerRecordPromisesUseTheExistingTraceGraph :: () {
+    functions := [Function(abi.IntStorage, 0, 0, 3, 0, 6, 0, 0),
+                  Function(native.RecordType, 0, 3, 1, 6, 5, 0, 0)];
+    records: native.Record[] = [{first: 0, count: 1, identity: 0},
+                               {first: 1, count: 2, identity: 0},
+                               {first: 3, count: 1, identity: 0}];
+    text := Emitted(native.EmitProgram(abi.LinuxX64(), functions, [],
+        [native.TaskType, native.RecordType + 1, abi.IntStorage, native.RecordType], [], RecordPromiseCode(), [],
+        records, [native.RecordType + 2, abi.IntStorage, native.RecordType, native.PointerType], [],
+        {file: "", directory: ""}, [], [], []));
+    assert(strings.Contains(text, "ptr %managed.promise, ptr %result0, ptr @chibi_managed.trace.record0"));
+    assert(strings.Contains(text, "call void @chibi_managed.trace.record2(ptr %heap, ptr %field0)"));
+    assert(strings.Contains(text, "call void @chibi_managed.trace.record0(ptr %heap, ptr %field1)"));
 }

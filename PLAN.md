@@ -7,7 +7,28 @@ following CI merge `a76ea8005`. Further work is composed on
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
-## Current composition: 72598f131
+## Current composition: 1adf9004f
+
+The newer composition adds counted map backing with canonical writable entries,
+strict array ranges and lazy optional-array fallbacks, synchronous assertion
+cleanup, checked directory enumeration, optional snapshot callback guards, and
+true void C callback adapters. The callback source and raw-facts boundaries pass;
+an actual C caller passes at O0/O2 in 1.26 seconds, the character/UTF-8 suite in
+11.63, and the composed map suite with poisoned frees in 66.30. The compiler
+passes 483 tests in 35.52 seconds before the final callback literal-validator
+correction; focused source and malformed-facts checks pass after that correction.
+Evidence is in `/private/tmp/chibi-void-callback-proof/receipt.json`.
+
+The exact nine-family sample audit passes 455 of 456 cases with no runtime
+failures and preserves all 441 original passing names. All sample source Git
+blobs are unchanged. Only `collections/view_element_lending/facts.Calls` remains
+uncompiled; aggregate view ownership is in progress. The inventory and original
+foreign/font setup receipts are in `/private/tmp/chibi-original-nine-matrix`.
+Checked directory enumeration still needs the pending GC poll's OS-error
+preservation proof and hosted Windows execution. Map source sharing and nested
+map dependencies are separate work beyond the composed ownership foundation.
+
+### Published-seed chain at 72598f131
 
 The current compiler includes optional and union map values, owned task results,
 string-array views, deep inline array places, ordinary record-array resize
@@ -18,9 +39,14 @@ checks ran for 67.80 seconds before an outdated fixture asserted the former
 56-byte heap size. `56af95c23` updates that assertion to 64 bytes; the remaining
 native, view, optional and rejection checks pass in 49.95 seconds. Evidence is
 in `/private/tmp/chibi-200b-proof`. `72598f131` also preserves the independently
-verified dynamic named task-result fixture. This revision has no new
-fixed-point claim yet. A build from the published macOS seed is in progress in
-`/private/tmp/chibi-published-seed-current-proof`.
+verified dynamic named task-result fixture. A fresh build from the published
+macOS seed takes 1194.70 seconds because that seed retains the older type-lookup
+cost. The next stages take 29.34 and 20.11 seconds and reproduce byte for byte:
+SHA-256 `c387cc619e0afd01d1a2f958040845f9a9782cbd8daa4da6cb2c7b4c777e0841`.
+That binary also matches the compiler used for these 480-test and managed/task
+proofs. `/private/tmp/chibi-published-seed-current-proof/receipt.json` records the
+seed identity, source, all stage hashes and timings. This establishes the chain
+for `72598f131`, not a fixed point for the later composition above.
 
 The preceding `ce3adf842` composition reproduces between macOS stages three and
 four, SHA-256 `7cdad0bf57e64ebfbab323345a731dce39b333708c43c921e7e38110d7bd0f9a`.

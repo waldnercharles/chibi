@@ -10,6 +10,12 @@ declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)
 @managed_test.live = internal global i64 0
 @managed_test.peak = internal global i64 0
 @managed_test.code_live = internal global i64 0
+@managed_test.callback_heap = internal global ptr null
+@managed_test.allocate_collects = internal global i1 false
+@managed_test.release_collects = internal global i1 false
+@managed_test.recursive_calls = internal global i32 0
+@managed_test.release_constructs = internal global i1 false
+@managed_test.allocate_constructs = internal global i1 false
 @managed_test.layout = private constant %chibi.managed.layout { ptr @managed_test.trace, ptr null, ptr @managed_test.code_live }
 @managed_test.failure = private constant [30 x i8] c"managed pointer assertion %d\0A\00"
 @managed_test.context = internal global { ptr, ptr, ptr, ptr, ptr } {
@@ -34,6 +40,21 @@ entry:
 }
 define internal ptr @managed_test.allocate(ptr %ctx, i64 %bytes) {
 entry:
+  %requested = load i1, ptr @managed_test.allocate_collects
+  br i1 %requested, label %collect, label %allocate
+collect:
+  %heap = load ptr, ptr @managed_test.callback_heap
+  call void @chibi_managed.collect(ptr %ctx, ptr %heap)
+  br label %allocate
+allocate:
+  %construct = load i1, ptr @managed_test.allocate_constructs
+  br i1 %construct, label %new.cell, label %reserve
+new.cell:
+  store i1 false, ptr @managed_test.allocate_constructs
+  %owner = load ptr, ptr @managed_test.callback_heap
+  %nested = call ptr @chibi_managed.new(ptr %ctx, ptr %owner, i64 0, ptr null, ptr null, i32 0)
+  br label %reserve
+reserve:
   %size = add i64 %bytes, 16
   %allocation = call ptr @malloc(i64 %size)
   %good = icmp ne ptr %allocation, null
@@ -51,6 +72,24 @@ entry:
 }
 define internal void @managed_test.release(ptr %ctx, ptr %memory) {
 entry:
+  %requested = load i1, ptr @managed_test.release_collects
+  br i1 %requested, label %collect, label %release
+collect:
+  %heap = load ptr, ptr @managed_test.callback_heap
+  %before = load i32, ptr @managed_test.recursive_calls
+  %next.call = add i32 %before, 1
+  store i32 %next.call, ptr @managed_test.recursive_calls
+  call void @chibi_managed.collect(ptr %ctx, ptr %heap)
+  br label %release
+release:
+  %construct = load i1, ptr @managed_test.release_constructs
+  br i1 %construct, label %new.cell, label %give
+new.cell:
+  %owner = load ptr, ptr @managed_test.callback_heap
+  %invalid = call ptr @chibi_managed.new(ptr %ctx, ptr %owner, i64 0, ptr null, ptr null, i32 0)
+  call void @managed_test.check(i1 false, i32 308)
+  br label %give
+give:
   %allocation = getelementptr i8, ptr %memory, i64 -16
   %bytes = load i64, ptr %allocation
   call void @llvm.memset.p0.i64(ptr %memory, i8 -91, i64 %bytes, i1 true)
@@ -234,5 +273,102 @@ entry:
   store %chibi.managed.heap zeroinitializer, ptr %heap
   store %chibi.managed.root zeroinitializer, ptr %root
   call void @chibi_managed.pop(ptr %heap, ptr %root)
+  ret i32 0
+}
+
+; Callback requests do not collect transient values, and a below-threshold
+; safe point must service the request once callback execution has returned.
+define internal i32 @managed_test.callback_defers() {
+entry:
+  %heap = alloca %chibi.managed.heap
+  store %chibi.managed.heap zeroinitializer, ptr %heap
+  %bytes = ptrtoint ptr getelementptr (%chibi.managed.heap, ptr null, i32 1) to i64
+  %budget = icmp eq i64 %bytes, 64
+  call void @managed_test.check(i1 %budget, i32 300)
+  %depth.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 7
+  %collecting.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 8
+  %requested.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 9
+  %depth.offset = ptrtoint ptr getelementptr (%chibi.managed.heap, ptr null, i32 0, i32 7) to i64
+  %collecting.offset = ptrtoint ptr getelementptr (%chibi.managed.heap, ptr null, i32 0, i32 8) to i64
+  %requested.offset = ptrtoint ptr getelementptr (%chibi.managed.heap, ptr null, i32 0, i32 9) to i64
+  %depth.layout = icmp eq i64 %depth.offset, 56
+  %collecting.layout = icmp eq i64 %collecting.offset, 60
+  %requested.layout = icmp eq i64 %requested.offset, 61
+  %flags.layout = and i1 %collecting.layout, %requested.layout
+  %layout = and i1 %depth.layout, %flags.layout
+  call void @managed_test.check(i1 %layout, i32 301)
+  store ptr %heap, ptr @managed_test.callback_heap
+  store i1 true, ptr @managed_test.allocate_collects
+  %cell = call ptr @chibi_managed.new(ptr @managed_test.context, ptr %heap, i64 0, ptr null, ptr null, i32 0)
+  store i1 false, ptr @managed_test.allocate_collects
+  call void @managed_test.count(i64 1, i32 302)
+  %requested = load i1, ptr %requested.at
+  %depth = load i32, ptr %depth.at
+  %outside = icmp eq i32 %depth, 0
+  %deferred = and i1 %requested, %outside
+  call void @managed_test.check(i1 %deferred, i32 303)
+  call void @chibi_managed.callback_enter(ptr %heap)
+  call void @chibi_managed.callback_enter(ptr %heap)
+  call void @chibi_managed.safepoint(ptr @managed_test.context, ptr %heap)
+  call void @managed_test.count(i64 1, i32 304)
+  call void @chibi_managed.callback_exit(ptr %heap)
+  call void @chibi_managed.callback_exit(ptr %heap)
+  store i1 true, ptr @managed_test.release_collects
+  call void @chibi_managed.safepoint(ptr @managed_test.context, ptr %heap)
+  store i1 false, ptr @managed_test.release_collects
+  call void @managed_test.count(i64 0, i32 305)
+  %called = load i32, ptr @managed_test.recursive_calls
+  %once = icmp eq i32 %called, 1
+  call void @managed_test.check(i1 %once, i32 306)
+  %pending = load i1, ptr %requested.at
+  %collecting = load i1, ptr %collecting.at
+  %busy = or i1 %pending, %collecting
+  %idle = xor i1 %busy, true
+  call void @managed_test.check(i1 %idle, i32 307)
+  store ptr null, ptr @managed_test.callback_heap
+  ret i32 0
+}
+define internal i32 @managed_test.callback_underflow() {
+  %heap = alloca %chibi.managed.heap
+  store %chibi.managed.heap zeroinitializer, ptr %heap
+  call void @chibi_managed.callback_exit(ptr %heap)
+  ret i32 0
+}
+define internal i32 @managed_test.callback_overflow() {
+  %heap = alloca %chibi.managed.heap
+  store %chibi.managed.heap zeroinitializer, ptr %heap
+  %at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 7
+  store i32 -1, ptr %at
+  call void @chibi_managed.callback_enter(ptr %heap)
+  ret i32 0
+}
+
+define internal i32 @managed_test.callback_construct_sweep() {
+  %heap = alloca %chibi.managed.heap
+  store %chibi.managed.heap zeroinitializer, ptr %heap
+  store ptr %heap, ptr @managed_test.callback_heap
+  %cell = call ptr @chibi_managed.new(ptr @managed_test.context, ptr %heap, i64 0, ptr null, ptr null, i32 0)
+  store i1 true, ptr @managed_test.release_constructs
+  call void @chibi_managed.collect(ptr @managed_test.context, ptr %heap)
+  ret i32 0
+}
+
+define internal i32 @managed_test.callback_nested_constructor() {
+  %heap = alloca %chibi.managed.heap
+  store %chibi.managed.heap zeroinitializer, ptr %heap
+  store ptr %heap, ptr @managed_test.callback_heap
+  store i1 true, ptr @managed_test.allocate_constructs
+  %cell = call ptr @chibi_managed.new(ptr @managed_test.context, ptr %heap, i64 0, ptr null, ptr null, i32 0)
+  call void @managed_test.count(i64 2, i32 309)
+  %used.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 3
+  %used = load i64, ptr %used.at
+  %sized = icmp eq i64 %used, 128
+  call void @managed_test.check(i1 %sized, i32 310)
+  call void @chibi_managed.collect(ptr @managed_test.context, ptr %heap)
+  call void @managed_test.count(i64 0, i32 311)
+  %after = load i64, ptr %used.at
+  %empty = icmp eq i64 %after, 0
+  call void @managed_test.check(i1 %empty, i32 312)
+  store ptr null, ptr @managed_test.callback_heap
   ret i32 0
 }

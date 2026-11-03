@@ -179,3 +179,19 @@ WaitingRecordPayloadReferencesCannotEscapeTheirAccess :: () {
         Rejects(ManagedRecordAccess(mode), "native waiting record references require immediate managed payload access");
     }
 }
+
+@test
+NestedPointerRecordPromisesUseTheExistingTraceGraph :: () {
+    functions := [Function(abi.IntStorage, 0, 0, 3, 0, 6, 0, 0),
+                  Function(native.RecordType, 0, 3, 1, 6, 5, 0, 0)];
+    records: native.Record[] = [{first: 0, count: 1, identity: 0},
+                               {first: 1, count: 2, identity: 0},
+                               {first: 3, count: 1, identity: 0}];
+    text := Emitted(native.EmitProgram(abi.LinuxX64(), functions, [],
+        [native.TaskType, native.RecordType + 1, abi.IntStorage, native.RecordType], [], RecordPromiseCode(), [],
+        records, [native.RecordType + 2, abi.IntStorage, native.RecordType, native.PointerType], [],
+        {file: "", directory: ""}, [], [], []));
+    assert(strings.Contains(text, "ptr %managed.promise, ptr %result0, ptr @chibi_managed.trace.record0"));
+    assert(strings.Contains(text, "call void @chibi_managed.trace.record2(ptr %heap, ptr %field0)"));
+    assert(strings.Contains(text, "call void @chibi_managed.trace.record0(ptr %heap, ptr %field1)"));
+}

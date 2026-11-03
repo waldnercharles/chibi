@@ -177,9 +177,18 @@ The existing forwarding graph propagates this rule through synchronous callers,
 so no borrowed stack reference survives a task's suspension. The source proof
 keeps captures alive after their spawning caller returns and cancels them under
 allocation pressure. Borrowed native reference parameters, pointer-array
-results, inline records containing pointers and view promises remain closed.
+results and view promises remain closed.
 
 Waiting functions may read or replace a plain optional cell through an immediate
 managed-address access. The temporary record reference cannot enter a local,
 call argument or later statement, and control flow cannot enter its read or
 write/readback chain. Borrowed record-reference parameters remain rejected.
+
+Pointer-only nested record promises reuse the same typed result slot and
+persistent root. Child-record trace helpers follow initialized inline fields;
+record copies share pointer identities while scalar fields retain value
+semantics. The source proof covers repeated joins, by-value waiting parameters,
+eager completion, cancellation and propagated failures. Reload keeps an old
+nested promise's cyclic graph alive while the incoming generation uses a
+changed cell layout. Pointer-bearing records with backing owners, arrays, maps or views
+remain outside this task-result domain.

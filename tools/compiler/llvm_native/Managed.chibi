@@ -499,10 +499,17 @@ ManagedInstruction :: (item: Instruction, pc: int, records: Record[], persistent
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.right, "s", item.left));
         out = format_text("{}{}", out, Sized(format_text("bytes{}", pc), item.right));
         layout := "null";
-        if (item.right >= RecordType) { layout = format_text("@chibi_managed.layout{}", item.right - RecordType); }
-        out = format_text("{}  %cell{} = call ptr @chibi_managed.new(ptr %ctx, ptr %managed.heap, i64 %bytes{}, ptr {}, ptr null, i32 {})\n", out, pc, pc, layout, ManagedStorageClass(item.right));
+        drop := "null";
+        value := format_text("%a{}", pc);
+        if (ManagedArray(item.right)) {
+            layout = format_text("@chibi_managed.layout.array{}.{}", item.right, item.literal);
+            drop = format_text("@chibi_managed.drop.array{}", item.right);
+            out = format_text("{}  %owned{} = call {} @chibi_array.{}.copy(ptr %ctx, {} %a{})\n", out, pc, TypeName(item.right), item.right, TypeName(item.right), pc);
+            value = format_text("%owned{}", pc);
+        } else if (item.right >= RecordType) { layout = format_text("@chibi_managed.layout{}", item.right - RecordType); }
+        out = format_text("{}  %cell{} = call ptr @chibi_managed.new(ptr %ctx, ptr %managed.heap, i64 %bytes{}, ptr {}, ptr {}, i32 {})\n", out, pc, pc, layout, drop, ManagedStorageClass(item.right));
         out = format_text("{}  %payload{} = getelementptr %chibi.managed.cell, ptr %cell{}, i32 1\n", out, pc, pc);
-        out = format_text("{}  store {} %a{}, ptr %payload{}\n", out, TypeName(item.right), pc, pc);
+        out = format_text("{}  store {} {}, ptr %payload{}\n", out, TypeName(item.right), value, pc);
         pointer := abi.ManagedPointerType();
         out = format_text("{}  %root{} = insertvalue {} zeroinitializer, ptr %cell{}, 0\n", out, pc, pointer, pc);
         out = format_text("{}  %value{} = insertvalue {} %root{}, i64 {}, 2\n", out, pc, pointer, pc, item.literal);

@@ -222,6 +222,9 @@ DeclareAddressPointers :: (forest: snapshot.SnapshotNode[], text: string, input_
 // takes addresses doesn't add a layer over the pointers earlier packages added.
 // The address of a local that holds a pointer an address made declares its
 // own, as the local is boxed.
+// Synthetic optional and collection types are seeded by actual spellings or
+// body demands. Pointing to every synthetic optional would generate new
+// pointer-array optionals for the next package to point to again.
 DeclareUniversePointers :: (input_types: TypeDecl[], package: int) -> TypeDecl[] {
     types := input_types;
     scalar: int = 1;
@@ -255,7 +258,8 @@ DeclareUniversePointers :: (input_types: TypeDecl[], package: int) -> TypeDecl[]
         two_deep := declared.kind == PointerDecl && declared.value_storage == PointerStorage &&
                     declared.value_container == 0;
         if (declared.kind != VariantDecl && declared.kind != NamespaceDecl &&
-            declared.kind != BuiltinScalarDecl && storage > 0 && !two_deep) {
+            declared.kind != BuiltinScalarDecl && declared.kind != OptionalDecl &&
+            declared.kind != CollectionDecl && storage > 0 && !two_deep) {
             EnsurePointer(&types, {storage: storage, container: container, record: index}, false, package);
         }
         index += 1;

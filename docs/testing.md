@@ -298,15 +298,17 @@ C consumers. Admitted integer behavior remains in
 does not admit exact integer `abs`, `min`, `max` or `clamp` overloads. Source
 math converts integer operands to `number`.
 
-`fmt` runs two cases on the vendored fmt library: positional, typed and
-aligned arguments with escaped braces, and the runtime specifier path Format
-Text takes, where an out-of-range placeholder renders empty. 12 assertions in
-0.05 seconds with ASan/UBSan.
+The C `fmt` selector is retired. Its language behavior is covered by
+`text-format`, including ten positional inputs and empty arguments or missing
+placeholders. The vendored C library remains for its live runtime callers.
 
-The independently reviewed `text-format` selector runs two fixed public native
-formatting cases, with 41 assertions covering scalar formats, owned string and
-array display, rejected printf modifiers and bounded placeholder indices. It
-passes in 0.799 seconds under ASan/UBSan; there is no world, process or GPU work.
+The `text-format` selector compiles and runs the authored formatter fixtures at
+O0/O2, including scalar conversions, raw/NUL text, modifier rejection, bounded
+indices, array/map count snapshots and owned results. It also exercises a shared
+execution-family context and checks standalone Windows imports: scalar numeric
+formatting uses UCRT; text/count-only formatting does not. The former C boundary cases are
+retired. `managed_values/run.sh` audits all four fixtures with poisoned frees and
+requires zero live allocations.
 
 `box3d` selects one in-tree check of the archive's prebuilt Box3D (v0.1.0,
 the copy Cute pins). A box falls onto static ground and comes to rest, then

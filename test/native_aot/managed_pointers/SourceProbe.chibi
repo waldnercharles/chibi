@@ -51,7 +51,7 @@ Main :: () -> int {
                 if (host.Objects(llvm, [module, start], objects, level, 1)) { return 1; }
                 plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", false);
                 if (os.Platform() == "Darwin") {
-                    runtime: link.Import = {name: "System", symbols: ["malloc", "calloc", "free", "write", "dprintf", "printf", "abort"]};
+                    runtime: link.Import = {name: "System", symbols: ["malloc", "calloc", "free", "write", "dprintf", "printf", "abort", "memset"]};
                     plan.imports = [runtime];
                 }
                 if (host.Link(plan)) { return 1; }

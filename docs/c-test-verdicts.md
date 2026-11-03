@@ -23,7 +23,7 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/language/execution.c` | 54 | hand-built `behavior_function` IR on `src/execution` | goes; its 5 language-rule cases are ported |
 | `test/language/execution_scope.c`, `capture.c`, `ranges.c` | 8, 6, 7 | VM scopes, budgets, intrinsics, the interval optimizer | goes |
 | `test/language/record_values.c`, `record_document.c`, `record_compatibility.c`, `record_prepared.c` | 15, 5, 1, 0 | `src/types` records, value documents, legacy array callbacks | goes (`text_keys_preserve_suffix_after_nul` is ported) |
-| `test/language/text_format.c` | 2 | `src/runtime/text_format.c`, `src/types/value_format.c` | goes, except the format specifiers (see "Owner decisions") |
+| `test/language/text_format.c` | 2 | `src/runtime/text_format.c`, `src/types/value_format.c` | retired; authored `test/native_aot/text_format` preserves scalar specifiers, owned results and array/map count summaries |
 | `test/language/host_packages_compiler.c` | 2 | `src/host/clock_package`, grants, the compiler host | the unused C program-service catalog case is retired; native formatting/target checks remain, and `base/unknown_parameter_type` preserves its missing-type rejection. Clock cases remain until authored `host:clock` behavior has a native replacement. |
 | `test/language/native_census.c`, `census_tree.h` | 3 | the C census flattener over CollectScalar | retired after the combined native compiler reproduced byte for byte; the historical report remains |
 | `test/language/program_session.c` | 11 | `src/authoring/program.c` sessions | goes, except 3 Edit-and-Continue cases |
@@ -36,7 +36,7 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/runtime/reference_cave.c`, `reference_cave.h` (retired 2026-11-02) | 0 | a helper with no live caller | retired with its unused test-driver source entry |
 | `test/support/arena.c`, `asset_value.c` (retired 2026-11-02) | 5, 3 | C allocator internals and `av_doc` ownership, cloning and JSON representation | retired; production support and asset libraries remain for their live C consumers |
 | `test/support/reflected_types.c` | 0 | C reflected type hooks used by the source-runtime tests | goes with its remaining consumers |
-| `test/support/fmt.c` | 2 | `third_party/fmt` behind `src/runtime/text_format.c` | goes; `{}` holes are covered by `FormatsTextWithoutTheVM` |
+| `test/support/fmt.c` (retired 2026-11-02) | 2 | `third_party/fmt` behind `src/runtime/text_format.c` | retired; native `text-format` covers positional, typed and aligned arguments, escaped braces and empty/missing placeholders; the vendored C library remains for its live runtime callers |
 | `test/host/process.c`, `state_file.c`, `concurrent.c`, `main.c` (retired 2026-11-02) | 1, 1, 0, 0 | `src/host` | unselected utilities retired with their graph targets; unused `src/host/state_file.c/.h` retired with its only test caller |
 | `test/parallel.c` | 0 | the pico_unit scheduler | goes |
 | `test/native_aot/targets/run.c` | 2 | LLVM-built bundles on macOS and Windows | survives, since no VM is in it; it is first-party C, so it becomes a native Chibi runner later |
@@ -234,10 +234,6 @@ compiler reproduced at stages three and four from the combined `813b93875` sourc
 
 ## Owner decisions
 
-- **`format_text` specifiers.** The VM's `format_text` takes `{0}`, `{1}`, `{:.2f}`,
-  `{:x}` and `{:<5.3s}` (`fmt.c`, `text_format.c`). The native one takes only `{}`. Either
-  native code gains the specifiers and they become samples, or they leave the language
-  along with these tests.
 - **Integer `abs`, `min`, `max` and `clamp`.** The retired `whole_integer.c`
   asserted exact integer BF instructions. Source math converts integer operands
   to `number`; retiring this C test does not admit exact integer overloads.

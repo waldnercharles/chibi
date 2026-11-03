@@ -106,6 +106,17 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     if (Is(forest, value, syntax.ArrayExpression)) {
         return ScalarLiteralShape(forest, text, callables, params, names, types, members, package, value);
     }
+    if (ScalarScopedDereference(forest, text, names, value)) {
+        return ScalarArrayShape(forest, text, callables, params, names, types, members, package,
+                                 Field(forest, value, syntax.FieldOperand));
+    }
+    if (Is(forest, value, syntax.DereferenceExpression) && !ScalarScopedDereference(forest, text, names, value)) {
+        pointer := ScalarPointerRecord(forest, text, callables, params, names, types, members, package,
+                                        Field(forest, value, syntax.FieldOperand));
+        shape := ScalarPointerElement(types, pointer);
+        if (shape.container == ArrayContainer) { return shape; }
+        return none;
+    }
     if (Is(forest, value, syntax.Identifier)) {
         found := Lookup(names, Text(forest, text, value));
         if (found >= 0 && names[found].container == ArrayContainer) {
@@ -518,7 +529,7 @@ ScalarArrayValue :: (forest: snapshot.SnapshotNode[], text: string, callables: C
                                0, ""));
         return ScalarOperands.Built(output);
     }
-    if ((Is(forest, node, syntax.CallExpression) || Is(forest, node, syntax.MemberExpression) ||
+    if ((Is(forest, node, syntax.CallExpression) || Is(forest, node, syntax.MemberExpression) || Is(forest, node, syntax.DereferenceExpression) ||
          Is(forest, node, syntax.IndexExpression)) && held != 0) {
         return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, node, 0, rows);
     }
@@ -555,7 +566,7 @@ ScalarArrayStored :: (forest: snapshot.SnapshotNode[], text: string, callables: 
             mapped := ScalarMapRead(forest, text, callables, names, types, callable.package, node);
             // A map array read already owns its evaluated value. Keeping it
             // transfers that reference without copying its backing again.
-            if (copied && ScalarBorrowed(forest, node) && mapped.operator != facts.MapGet) {
+            if (copied && (ScalarBorrowed(forest, node) || ScalarScopedDereference(forest, text, names, node)) && mapped.operator != facts.MapGet) {
                 output.append(ScalarAt(forest, operand, facts.ArrayRow, ScalarArrayType(types, shape.storage, shape.record),
                                        facts.ArrayCopy, 1, ""));
             }

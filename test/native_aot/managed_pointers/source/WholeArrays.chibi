@@ -1,0 +1,70 @@
+package whole_arrays
+
+WholeArray :: () -> int {
+    values: int[] = [1, 2];
+    pointer: ^(int[]) = &values;
+    pointer^ = [8, 9, 10];
+    return length(values) * 100 + values[0] * 10 + values[2];
+}
+Owner :: () -> ^(int[]) { values: int[] = [4, 5]; return &values; }
+Replace :: (values: ^(int[])) { values^ = [7, 8, 9]; }
+ReadAfter :: (read: ^(int[]), changed: ^(int[])) -> int {
+    Replace(changed);
+    return length(read^) * 10 + read^[0];
+}
+Churn :: () { for index in 0..<2500 { discarded := Owner(); } }
+CopyBefore :: (first: int[], changed: ^(int[])) -> int {
+    Replace(changed);
+    return first[0] * 10 + changed^[0];
+}
+Parameter :: (values: int[]) -> ^(int[]) { return &values; }
+Early :: (choose: bool) -> ^(int[]) {
+    values: int[] = [3, 4];
+    pointer := &values;
+    if choose { return pointer; }
+    values = [5, 6];
+    return pointer;
+}
+Main :: () -> int {
+    assert(WholeArray() == 390);
+    values: int[] = [1, 2];
+    previous := values;
+    pointer := &values;
+    alias := pointer;
+    values = [4, 5];
+    assert(alias^[0] == 4 && previous[0] == 1);
+    read_after := ReadAfter(pointer, alias);
+    assert(read_after == 37 && values[2] == 9);
+    alias^ = alias^;
+    assert(values[0] == 7);
+    copied_before := CopyBefore(values, alias);
+    assert(copied_before == 77);
+    values[0] = 33;
+    values.append(77);
+    assert(alias^[0] == 33 && alias^[3] == 77);
+    escaped := Owner();
+    holders := [Owner(), Owner()];
+    Churn();
+    assert(escaped^[0] == 4 && escaped^[1] == 5);
+    holders[0]^ = [31];
+    assert(holders[0]^[0] == 31 && holders[1]^[0] == 4);
+    original: int[] = [11, 12];
+    copied := Parameter(original);
+    copied^ = [21];
+    assert(original[0] == 11 && copied^[0] == 21);
+    assert(Early(true)^[0] == 3 && Early(false)^[0] == 5);
+    flags: bool[] = [true, false];
+    flag_pointer := &flags;
+    flag_pointer^ = [false, true];
+    assert(!flags[0] && flags[1]);
+    bytes: u8[] = [u8(1)];
+    byte_pointer := &bytes;
+    byte_pointer^ = [u8(253)];
+    assert(bytes[0] == 253);
+    for index in 0..<2500 {
+        transient := Parameter([index, index + 1]);
+        transient^ = [index + 2];
+        assert(transient^[0] == index + 2);
+    }
+    return 0;
+}

@@ -1,0 +1,10 @@
+package dynamic_named_promise
+Worker :: () -> (value: int, text: string) {
+    yield
+    return (7, text_from_bytes([u8(119), 111, 114, 100]));
+}
+Main :: () -> int {
+    value := await Worker();
+    assert(value.value == 7);
+    return text_byte_length(value.text) - 4;
+}

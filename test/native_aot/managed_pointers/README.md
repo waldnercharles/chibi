@@ -40,6 +40,13 @@ descriptor slots and pointer-bearing inline record slots are initialized and
 rooted until their function returns. Record field descriptors retain the same
 cell identity. Their exact nominal+layout tag and target-derived offset/size
 are checked before access; field lookup is logarithmic in the field count.
+Inline root tracing also follows nested scalar/pointer-only records. One trace
+helper per reachable record type calls its child helpers, so shared type graphs
+do not expand into every leaf path during emission. Untagged result wrappers
+can be roots without becoming managed cell layouts or projectable pointees.
+`InlineRecords.chibi` returns a wrapper as the sole initialized root, requests
+collection through allocator callbacks, then reads its nested cell value.
+
 The source proof includes a live ten-thousand-record chain and twenty thousand
 discarded two-cell cycles, field aliases, copied pointer fields, readonly/scoped
 aliases and once-only compound assignment through a replaced pointer variable.

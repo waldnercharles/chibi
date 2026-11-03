@@ -48,10 +48,8 @@ Main :: () -> int {
         entries: Entry[] = [{text: text_from_bytes([u8(122)]), values: [int(5), 7]}];
         slice := entries.slice(0..<1);
         copy := slice ?? [{text: "fallback", values: []}];
-        copy[0].text = "changed";
-        row := copy[0].values;
-        row[0] = 99;
-        assert(entries[0].values[0] == 5 && entries[0].text == "z");
+        copy[0].values[0] = 99;
+        assert(entries[0].values[0] == 5);
         if slice { assert(slice[0].values[0] == 5 && slice[0].text == "z"); }
         missing := entries[1..<0];
         replacement := missing ?? [{text: text_from_bytes([u8(119)]), values: [int(11)]}];

@@ -1,0 +1,94 @@
+package package_compiler
+
+import schema "project:native_schema"
+
+ScalarSchemaPart :: struct { hash: u64; supported: bool; }
+ScalarSchemaView :: union { Prepared(types: TypeDecl[]) | Failed(message: string) }
+
+// A field's exact source storage/container and stable referenced identity
+// describe its native representation. Referenced definitions are separate
+// graph nodes so a nested union change also changes each parent's schema.
+ScalarSchemaValue :: (types: TypeDecl[], mapping: int[], value: ValueType,
+                       edges: ^(int[]), hash: u64) -> ScalarSchemaPart {
+    out := HashBytes(HashBytes(hash, u64(wrap: value.storage), 4), u64(wrap: value.container), 4);
+    supported := (value.container == 0 || value.container == ArrayContainer) &&
+        (Numeric(value.storage) || value.storage == BoolStorage || value.storage == TextStorage ||
+         value.storage == StructStorage || value.storage == UnionStorage);
+    key: u64 = 0;
+    if (value.record >= 0) {
+        if (value.record >= length(types) || mapping[value.record] < 0) { supported = false; }
+        else { key = types[value.record].id; edges.append(mapping[value.record]); }
+    } else if (value.storage == StructStorage || value.storage == UnionStorage) { supported = false; }
+    return {hash: HashBytes(out, key, 8), supported: supported};
+}
+ScalarSchemaFields :: (types: TypeDecl[], members: TypeMember[], mapping: int[],
+                        first: int, count: int, edges: ^(int[]), hash: u64) -> ScalarSchemaPart {
+    out := HashBytes(hash, u64(count), 4);
+    supported := true;
+    for (index in first..<first + count) {
+        member := members[index];
+        part := ScalarSchemaValue(types, mapping, {storage: member.storage, container: member.container, record: member.record},
+                                   edges, HashText(out, member.name));
+        out = part.hash;
+        supported = supported && part.supported;
+    }
+    return {hash: out, supported: supported};
+}
+
+// Run only after ordinary body checking, on its final private native view.
+// This fills the extra eight-byte native_schema cache without changing the
+// ordinary layout hash, type IDs, field offsets or existing pointer tags.
+// Own definitions are hashed once; the graph pass memoizes their complete
+// reachable definitions without recursively expanding shared/cyclic types.
+ScalarPrepareNativeSchemas :: (types: TypeDecl[], members: TypeMember[], target: Target) -> ScalarSchemaView {
+    mapping := resize([int(0)], length(types));
+    for (index in 0..<length(mapping)) { mapping[index] = -1; }
+    nodes: schema.Node[] = [];
+    for (declared, index in types) {
+        if (!ScalarDeclares(types, declared) && declared.kind != BuiltinScalarDecl) { continue; }
+        mapping[index] = length(nodes);
+        nodes.append({key: declared.id, body: 0, first: 0, count: 0, supported: declared.id != 0});
+    }
+    edges: int[] = [];
+    for (declared, index in types) {
+        slot := mapping[index];
+        if (slot < 0) { continue; }
+        first := length(edges);
+        hash := HashText(u64(1469598103934665603), "native-owned-value-schema-v1");
+        hash = HashBytes(HashBytes(hash, u64(declared.kind), 4), u64(target.pointer_size), 4);
+        error: u64 = 0;
+        if (declared.error) { error = 1; }
+        hash = HashBytes(hash, error, 1);
+        part: ScalarSchemaPart = {hash: hash, supported: false};
+        if (declared.kind == RecordDecl || declared.kind == MathDecl) {
+            part = ScalarSchemaFields(types, members, mapping, declared.first, declared.count, &edges, hash);
+        } else if (declared.kind == UnionDecl) {
+            part = {hash: HashBytes(hash, u64(declared.count), 4), supported: true};
+            for (variant in declared.first..<declared.first + declared.count) {
+                payload := types[variant];
+                marker: u64 = 0;
+                if (payload.error) { marker = 1; }
+                held := HashBytes(HashText(part.hash, payload.name), marker, 1);
+                fields := ScalarSchemaFields(types, members, mapping, payload.first, payload.count, &edges, held);
+                part = {hash: fields.hash, supported: part.supported && fields.supported};
+            }
+        } else if (declared.kind == OptionalDecl || ScalarNestedCollection(declared)) {
+            part = ScalarSchemaValue(types, mapping,
+                {storage: declared.value_storage, container: declared.value_container, record: declared.value_record}, &edges, hash);
+        } else if (declared.kind == BuiltinScalarDecl) {
+            part = {hash: HashBytes(hash, u64(declared.storage), 4), supported: Numeric(declared.storage)};
+        }
+        nodes[slot] = {key: declared.id, body: part.hash, first: first, count: length(edges) - first,
+                       supported: nodes[slot].supported && part.supported};
+    }
+    switch schema.Fingerprints(nodes, edges) {
+        case .Rejected(message): return ScalarSchemaView.Failed(message);
+        case .Ready(hashes):
+            prepared := types;
+            for (index in 0..<length(prepared)) {
+                prepared[index].native_schema = 0;
+                if (mapping[index] >= 0) { prepared[index].native_schema = hashes[mapping[index]]; }
+            }
+            return ScalarSchemaView.Prepared(prepared);
+    }
+}

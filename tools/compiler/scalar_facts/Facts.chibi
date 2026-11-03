@@ -385,6 +385,13 @@ pub ViewRow: int : 61;
 // selected value type, value is its field ordinal, and count is one. The
 // address stays valid only while its enclosing canonical variable is live.
 pub FieldReferenceRow: int : 62;
+// Borrow the exact record element from RefArray and an int index. Value is
+// zero, count is two. Unique/Method detach and publish; Observe only checks.
+// Consume the address before any call or change to the parent array.
+pub ArrayElementReferenceRow: int : 63;
+pub ArrayElementUnique: int : 0;
+pub ArrayElementMethod: int : 1;
+pub ArrayElementObserve: int : 2;
 pub ViewMake: int : 1;
 pub ViewLength: int : 2;
 pub ViewGet: int : 3;
@@ -488,6 +495,9 @@ pub MapArrayLoan: int : 17;
 // Like MapGet, but a missing key returns the optional value's Nil variant.
 // The result must have the checked Nil/Some optional layout.
 pub MapGetOptional: int : 18;
+// A missing nested-map key gives an empty descriptor in its one-field carrier.
+// Generic record MapGet keeps its absent-key failure.
+pub MapGetWrapped: int : 19;
 
 // Compare operators: the source's <, <=, >, >=, == and !=, signed or
 // unsigned as their operands' type is. On floats, each is false when an

@@ -113,7 +113,7 @@ for folder in "$root"/test/native_aot/tasks/rejected/*; do
         exit 1
     fi
     case "$name" in
-        pointer_array_result) grep -q 'native managed pointer aggregate roots require typed flat records' "$work/rejection" ;;
+        pointer_array_result) grep -q 'native managed pointer aggregate roots require scalar or pointer-only inline records' "$work/rejection" ;;
         unguarded_pointer) grep -Fq 'dereference requires a pointer' "$work/rejection" ;;
         unguarded_record) grep -Fq "Unknown field 'value'" "$work/rejection" ;;
         unguarded_argument) grep -Fq 'argument differs from its parameter type' "$work/rejection" ;;

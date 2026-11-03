@@ -22,8 +22,8 @@ Make :: (path: string) {
     assert(error == nil, "the owned fixture directory exists");
 }
 
-// Only these three OS calls are replaced in the private core copy. All actual
-// native handles still close; errors never depend on permissions or timing.
+// Three enumeration calls and their exact error-read checkpoints are privately
+// staged. Real handles close; failures never depend on permissions or timing.
 Stage :: (source: string, archive: string, windows: bool) -> string {
     package := "posix";
     declarations := ["opendir :: (path: cstring) -> rawptr", "readdir :: (directory: rawptr) -> rawptr",
@@ -47,6 +47,18 @@ Stage :: (source: string, archive: string, windows: bool) -> string {
         assert(strings.Count(text, declarations[index]) == 1, "the native call's exact ABI is pinned");
         text = strings.Replace(text, declarations[index], "", 1);
         text = strings.ReplaceAll(text, strings.Concatenate([calls[index], "("]), strings.Concatenate([names[index], "("]));
+    }
+    reads := ["memcpy(error_bytes, error_address, 4)"];
+    checkpoints := ["chibi_directory_errno_copy(error_bytes, error_address, 4)"];
+    signatures.append("chibi_directory_errno_copy :: (destination: u8[], source: rawptr, count: u64) -> rawptr");
+    if (windows) {
+        reads = ["error := GetLastError();", "error = GetLastError();"];
+        checkpoints = ["error := chibi_directory_error();", "error = chibi_directory_error();"];
+        signatures[length(signatures) - 1] = "chibi_directory_error :: () -> u32";
+    }
+    for (index in 0..<length(reads)) {
+        assert(strings.Count(text, reads[index]) == 1, "the actual checked-list error capture is pinned");
+        text = strings.Replace(text, reads[index], checkpoints[index], 1);
     }
     prefix := strings.Concatenate(["package ", package, "\n"]);
     added := strings.Concatenate([prefix, "foreign import directory_faults \"", archive, "\"\nforeign directory_faults {\n",
@@ -76,6 +88,7 @@ Run :: () -> int {
     if (os.Platform() == "Darwin") { errno = "__error"; }
     template = strings.ReplaceAll(template, "@ERRNO@", errno);
     if (windows) { template = Text(strings.Concatenate([fixture, "/Windows.ll"])); }
+    template = strings.Concatenate([template, Text(strings.Concatenate([fixture, "/Poll.ll"]))]);
     source := strings.Concatenate([work.path, "/fault.ll"]);
     Write(source, strings.Concatenate(["target triple = \"", triple, "\"\n", template]));
     object := strings.Concatenate([work.path, "/fault.o"]);
@@ -89,7 +102,7 @@ Run :: () -> int {
         platform_source = strings.Concatenate([core, "/sys/windows/Windows.chibi"]);
         plan := link.Program(triple, llvm, [], [], [], [], strings.Concatenate([work.path, "/unused.exe"]), "", true);
         plan.work = work.path;
-        Write(link.ImportPath(plan, "kernel32"), link.Definition("kernel32", ["FindFirstFileW", "FindNextFileW", "FindClose", "SetLastError"]));
+        Write(link.ImportPath(plan, "kernel32"), link.Definition("kernel32", ["FindFirstFileW", "FindNextFileW", "FindClose", "SetLastError", "GetLastError"]));
         imported := os.Run(link.ImportCommand(plan, "kernel32"));
         assert(imported == 0, "the private test import library builds without an SDK");
         command = [strings.Concatenate([llvm, "/llvm-lib.exe"]), strings.Concatenate(["/out:", archive]), object,
@@ -100,6 +113,8 @@ Run :: () -> int {
     Write(platform_source, Stage(Text(platform_source), archive, windows));
     probe := strings.Concatenate([work.path, "/Probe.chibi"]);
     Write(probe, strings.ReplaceAll(Text(strings.Concatenate([fixture, "/Probe.chibi"])), "@ARCHIVE@", archive));
+    poll := strings.Concatenate([work.path, "/Poll.chibi"]);
+    Write(poll, strings.ReplaceAll(Text(strings.Concatenate([fixture, "/Poll.chibi"])), "@ARCHIVE@", archive));
     files := strings.Concatenate([work.path, "/files"]);
     empty := strings.Concatenate([work.path, "/empty"]);
     project := strings.Concatenate([work.path, "/project"]);
@@ -110,16 +125,18 @@ Run :: () -> int {
     Write(strings.Concatenate([project, "/Main.chibi"]), "package cached\nMain :: () -> int { return 42; }\n");
     os.Print(strings.Concatenate(["directory failure evidence: ", work.path]));
     for (level in ["0", "2"]) {
-        output := strings.Concatenate([work.path, "/probe-", level, suffix]);
-        status := os.Run([compiler, "--compiler", strings.Concatenate([root, "/tools/compiler"]), "--core", core,
-                          "--source", probe, "--entry", "Main", "--collection", strings.Concatenate(["graph=", root, "/tools/graph"]),
-                          "--output", output, "--llvm", llvm, "--target", triple, "--level", level, "--jobs", "2"]);
-        if (status != 0) { return 1; }
-        child := os.Start([output, files, empty, project, compiler, llvm], os.Inherited);
-        if (child <= 0) { return 1; }
-        status = os.Wait(child, 30000);
-        if (status == os.StillRunning) { killed := os.Kill(child); return 1; }
-        if (status != 0) { return 1; }
+        for (input in [probe, poll]) {
+            output := strings.Concatenate([work.path, "/probe-", level, suffix]);
+            status := os.Run([compiler, "--compiler", strings.Concatenate([root, "/tools/compiler"]), "--core", core,
+                              "--source", input, "--entry", "Main", "--collection", strings.Concatenate(["graph=", root, "/tools/graph"]),
+                              "--output", output, "--llvm", llvm, "--target", triple, "--level", level, "--jobs", "2"]);
+            if (status != 0) { return 1; }
+            child := os.Start([output, files, empty, project, compiler, llvm], os.Inherited);
+            if (child <= 0) { return 1; }
+            status = os.Wait(child, 30000);
+            if (status == os.StillRunning) { killed := os.Kill(child); return 1; }
+            if (status != 0) { return 1; }
+        }
     }
     removed := paths.RemoveTree(work.path);
     assert(removed, "successful fixtures remove only their owned workspace");

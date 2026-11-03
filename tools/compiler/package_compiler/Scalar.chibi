@@ -483,10 +483,17 @@ ScalarReturnsValue :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
 ScalarVoid :: (callable: Callable) -> bool {
     return callable.result == 0 && callable.result_container == 0 && callable.results == 0;
 }
-// Optional map payloads are live when their containing map is live, even if
-// no present value is extracted into a separate optional local.
+// Optional payloads are live through their map or pointer signature, even
+// when no present value is extracted into a separate optional local.
 ScalarOptionalRoot :: (types: TypeDecl[], storage: int, container: int, record: int) -> int {
     if (container == MapContainer && record >= 0 && record < length(types) && types[record].kind == MapDecl) {
+        declared := types[record];
+        if (declared.value_storage == UnionStorage && declared.value_container == 0 && ScalarOptional(types, declared.value_record)) {
+            return declared.value_record;
+        }
+    }
+    if (storage == PointerStorage && container == 0 && record >= 0 && record < length(types) &&
+        types[record].kind == PointerDecl) {
         declared := types[record];
         if (declared.value_storage == UnionStorage && declared.value_container == 0 && ScalarOptional(types, declared.value_record)) {
             return declared.value_record;

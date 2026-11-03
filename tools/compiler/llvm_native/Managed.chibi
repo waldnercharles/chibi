@@ -493,8 +493,8 @@ ManagedRoots :: (shape: Function, slots: int[], locals: int[], traced: bool[]) -
 }
 // The nodes and their slots are used by attach and release across suspension,
 // so coroutine lowering puts them in the stable heap frame, not the ramp stack.
-ManagedFrameRoots :: struct { prologue: string; attach: string; cleanup: string; }
-ManagedFrame :: (shape: Function, slots: int[], locals: int[]) -> ManagedFrameRoots {
+ManagedFrameRoots :: struct { prologue: string; attach: string; cleanup: string; destroy: string; }
+ManagedFrame :: (shape: Function, slots: int[], locals: int[], layout: ManagedRecordLayout) -> ManagedFrameRoots {
     prologue: string[] = ["  %managed.heap = call ptr @chibi_managed.owner(ptr %ctx)\n"];
     attach: string[] = [];
     cleanup: string[] = [];
@@ -505,14 +505,27 @@ ManagedFrame :: (shape: Function, slots: int[], locals: int[]) -> ManagedFrameRo
         types := slots;
         if (part == 1) { first = shape.first_local; count = shape.locals; prefix = "l"; types = locals; }
         for (index in 0..<count) {
-            if (types[first + index] != PointerType) { continue; }
-            prologue.append(Store(Zero(PointerType), PointerType, prefix, index));
+            type := types[first + index];
+            if (!TaskFrameTraced(layout, type)) { continue; }
+            trace := "pointer";
+            if (type != PointerType) { trace = format_text("record{}", type - RecordType); }
+            if (part == 0) { prologue.append(Store(Zero(type), type, prefix, index)); }
             prologue.append(format_text("  %managed.{}{} = alloca %chibi.managed.persistent\n  store %chibi.managed.persistent zeroinitializer, ptr %managed.{}{}\n", prefix, index, prefix, index));
-            attach.append(format_text("  call void @chibi_managed.hold(ptr %managed.heap, ptr %managed.{}{}, ptr %{}{}, ptr @chibi_managed.trace.pointer)\n", prefix, index, prefix, index));
+            attach.append(format_text("  call void @chibi_managed.hold(ptr %managed.heap, ptr %managed.{}{}, ptr %{}{}, ptr @chibi_managed.trace.{})\n", prefix, index, prefix, index, trace));
             cleanup.append(format_text("  call void @chibi_managed.unhold(ptr %managed.{}{})\n", prefix, index));
         }
     }
-    return {prologue: strings.Join(prologue, ""), attach: strings.Join(attach, ""), cleanup: strings.Join(cleanup, "")};
+    destroy := "";
+    if (TaskFrameTraced(layout, shape.result)) {
+        // One 32-byte persistent node. Unlike local snapshots, the promise
+        // remains a root through final suspension until its last observer.
+        trace := "pointer";
+        if (shape.result != PointerType) { trace = format_text("record{}", shape.result - RecordType); }
+        prologue.append("  %managed.promise = alloca %chibi.managed.persistent\n  store %chibi.managed.persistent zeroinitializer, ptr %managed.promise\n");
+        attach.append(format_text("  call void @chibi_managed.hold(ptr %managed.heap, ptr %managed.promise, ptr %result0, ptr @chibi_managed.trace.{})\n", trace));
+        destroy = format_text("  store {} zeroinitializer, ptr %result0\n  call void @chibi_managed.unhold(ptr %managed.promise)\n", TypeName(shape.result));
+    }
+    return {prologue: strings.Join(prologue, ""), attach: strings.Join(attach, ""), cleanup: strings.Join(cleanup, ""), destroy: destroy};
 }
 // A cancelled/failed continuation can bypass unpin. Each active pin names
 // exactly one owned array descriptor; clear it before dropping that owner.

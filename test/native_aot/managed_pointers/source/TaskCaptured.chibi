@@ -1,0 +1,78 @@
+package managed_task_captures
+
+Holder :: struct { value: ^int; }
+Make :: (value: int) -> ^int { return &value; }
+Churn :: () { for index in 0..<3000 { discarded := Make(index); } }
+Total :: (add: int) -> int { count: retain int = 0; count += add; return count; }
+Write :: (value: ^int) -> int { yield; value^ = 1; return 0; }
+Read :: (value: ^int) -> int { yield; Churn(); yield; return value^; }
+ReadNullable :: (value: ^int?) -> int { yield; Churn(); if value != nil { return value^; } return -1; }
+ReadRecord :: (value: Holder) -> int { yield; Churn(); return value.value^; }
+Forward :: (value: ^int) -> int { result := await Read(value); Total(result); return result; }
+Start :: () -> int {
+    value := 17;
+    // Both the forwarding parameter and the waiting parameter must capture
+    // a managed cell, not a borrowed reference into this returning frame.
+    child := Forward(&value);
+    value = 23;
+    return 0;
+}
+Remember :: (value: ^int) -> int { yield; Total(value^); return 0; }
+Orphan :: () {
+    value := 11;
+    Remember(&value);
+    value = 13;
+}
+Main :: () -> int {
+    dependency := 0;
+    Write(&dependency);
+    yield
+    assert(dependency == 1);
+    value := 3;
+    reader := Read(&value);
+    value = 7;
+    Churn();
+    result := await reader;
+    if result is Cancelled { return 1; }
+    else { assert(result == 7 && value == 7); }
+
+    Start();
+    Churn();
+    yield
+    yield
+    yield
+    Orphan();
+    Churn();
+    yield
+    yield
+    assert(Total(0) == 36);
+
+    holder: Holder = {value: Make(37)};
+    record_reader := ReadRecord(holder);
+    holder.value = Make(-1);
+    Churn();
+    record_result := await record_reader;
+    if record_result is Cancelled { return 4; }
+    else { assert(record_result == 37 && holder.value^ == -1); }
+
+    nullable: ^int? = Make(29);
+    retained := ReadNullable(nullable);
+    nullable = nil;
+    Churn();
+    present := await retained;
+    if present is Cancelled { return 3; }
+    else { assert(present == 29); }
+    absent := await ReadNullable(nil);
+    assert(absent == -1);
+
+    for index in 0..<64 {
+        captured := Make(index);
+        pending := Read(captured);
+        captured = Make(-1);
+        Churn();
+        cancel pending
+        joined := await pending;
+        assert(joined is Cancelled);
+    }
+    return 0;
+}

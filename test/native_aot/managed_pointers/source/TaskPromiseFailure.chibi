@@ -1,0 +1,16 @@
+package managed_promise_failure
+
+Make :: (value: int) -> ^int { return &value; }
+Worker :: () -> ^int { yield; return Make(42); }
+Broken :: () -> ^int {
+    joined := await Worker();
+    yield
+    assert(joined^ == 0, "pointer promise failure preserves caller and child cleanup");
+    return joined;
+}
+Main :: () -> int {
+    failed := Broken();
+    yield
+    await failed
+    return 0;
+}

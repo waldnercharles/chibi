@@ -510,6 +510,9 @@ pub ArrayWithout: int : 16;
 // A foreign argument loan, consuming a numeric array or a reference to its
 // writable descriptor. It keeps the evaluated value alive until the C call.
 pub ArrayLoan: int : 17;
+// Read a logical array place. Unavailability is the ordinary reference
+// failure, distinct from expression indexing's typed bounds failure.
+pub ArrayPlaceGet: int : 20;
 // A Local row whose `literal` is SwitchSubject holds the union a switch is on
 // when the switch is not on a variable, so each arm's bindings can read it
 // again. It has the switch statement's range, a Switch row of the same range
@@ -528,6 +531,9 @@ pub Retained: int : 2;
 // A plain-record IntType MemberRow uses this literal flag for char; a retained
 // IntType LocalRow combines it with Retained. Other kinds keep their literals.
 pub CharNominal: int : 4;
+// A compiler-created local captures part of one source statement. Following
+// captures and its writeback may share that range; operands keep real ranges.
+pub Captured: int : 8;
 
 // A For row's range flags. RangeArray stands alone or with RangeKeyed,
 // which declares the next variable, an int, as the index of the element.

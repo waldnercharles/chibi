@@ -967,6 +967,7 @@ Holds :: (values: int[], wanted: int) -> bool {
 // array, an array and an index, an element or another array, or an array and
 // two ints or an index and an element; 0 for no operator.
 ArrayOperands :: (operand: facts.Row) -> int {
+    if (operand.value == facts.ArrayPlaceGet) { return 2; }
     if (operand.value == facts.ArrayNew) {
         return operand.count;
     }
@@ -1124,7 +1125,7 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         }
         return "";
     }
-    if (operator == facts.ArrayGet) {
+    if (operator == facts.ArrayGet || operator == facts.ArrayPlaceGet) {
         if (operand.type >= facts.ArrayType || Element(records, stack[base]) != operand.type ||
             stack[base + 1] != facts.IntType) {
             return mismatch;
@@ -1720,6 +1721,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         mapped := MapIterated(row);
         // A local holding the union a switch is on, followed by that switch.
         subject := row.kind == facts.LocalRow && row.literal == i64(facts.SwitchSubject);
+        captured := row.kind == facts.LocalRow && row.literal == i64(facts.Captured);
         retained := row.kind == facts.LocalRow &&
                     (row.literal == i64(facts.Retained) || row.literal == i64(facts.Retained | facts.CharNominal));
         if (retained && ManagedVariable(boxes.boxed, row.value)) {
@@ -1745,7 +1747,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         }
         declares := row.kind == facts.LocalRow || ranged;
         typed := declares || row.kind == facts.AssignRow || row.kind == facts.SwitchRow || row.kind == facts.CaseRow;
-        if ((row.text != "" && row.kind != facts.AssertRow) || (row.literal != 0 && !ranged && !subject && !retained) || !Located(row, starts, size) ||
+        if ((row.text != "" && row.kind != facts.AssertRow) || (row.literal != 0 && !ranged && !subject && !retained && !captured) || !Located(row, starts, size) ||
             (row.kind != facts.EndRow && row.start < earliest) || (!declares && row.name != "") ||
             (!typed && row.type != 0) || (!declares && row.kind != facts.AssignRow && row.value != 0)) {
             return "invalid scalar statement row";
@@ -1864,7 +1866,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         // A switch's subject local shares its range with the switch, and the
         // copies of written array parameters share the one byte that opens the
         // body: no statement starts there but the next copy.
-        if (subject || (row.kind == facts.LocalRow && row.end - row.start == 1)) {
+        if (subject || captured || (row.kind == facts.LocalRow && row.end - row.start == 1)) {
             earliest = row.start;
         }
         if (row.kind == facts.LocalRow) {
@@ -2193,8 +2195,10 @@ ArrayLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: i
     if (operand.value == facts.ArrayLength) {
         return Op(native.ArrayLength, type, slot, stack[base], 0, 0);
     }
-    if (operand.value == facts.ArrayGet) {
-        return Op(native.ArrayGet, type, slot, stack[base], stack[base + 1], 0);
+    if (operand.value == facts.ArrayGet || operand.value == facts.ArrayPlaceGet) {
+        item := Op(native.ArrayGet, type, slot, stack[base], stack[base + 1], 0);
+        if (operand.value == facts.ArrayPlaceGet) { item.literal = 1; }
+        return item;
     }
     if (operand.value == facts.ArraySet) {
         return Op(native.ArraySet, type, slot, stack[base], stack[base + 1], stack[base + 2]);
@@ -3423,7 +3427,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                             moving = -1;
                         }
                     }
-                    if (op == facts.ArrayLength || op == facts.ArrayGet || op == facts.ArrayContains ||
+                    if (op == facts.ArrayLength || op == facts.ArrayGet || op == facts.ArrayPlaceGet || op == facts.ArrayContains ||
                         op == facts.ArraySlice || op == facts.ArrayResize || op == facts.ArrayWith ||
                         op == facts.ArrayJoin || op == facts.ArrayCopy || op == facts.ArrayText) {
                         if (Holds(fresh, stack[base])) {
@@ -3432,8 +3436,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                     // A later operand can replace even a borrowed element's
                     // array or slot, so acquire its value at the read.
-                    retained_element = op == facts.ArrayGet && type == abi.TextStorage;
-                    retained_record = op == facts.ArrayGet && TrackedRecord(managed, type);
+                    retained_element = (op == facts.ArrayGet || op == facts.ArrayPlaceGet) && type == abi.TextStorage;
+                    retained_record = (op == facts.ArrayGet || op == facts.ArrayPlaceGet) && TrackedRecord(managed, type);
                     // The record bytes are loaded before a temporary array drops.
                     // A scalar projection never owns or drops its managed siblings.
                     if (retained_record && index + 1 < first + row.count &&

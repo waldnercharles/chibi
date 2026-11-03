@@ -1,0 +1,16 @@
+FAIL facts.InitialAssertion
+FAIL facts.InitialBudget
+FAIL facts.InitialDepth
+FAIL facts.InitialIndex
+FAIL facts.InitialMap
+FAIL facts.InitialNil
+FAIL facts.InitialView
+FAIL facts.LateAssertion
+FAIL facts.LateBudget
+FAIL facts.LateDepth
+FAIL facts.LateIndex
+FAIL facts.LateMap
+FAIL facts.LateNil
+FAIL facts.LateView
+FAIL facts.ShrunkIndex
+PASS facts.DirectIndex

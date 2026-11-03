@@ -59,6 +59,6 @@ MapLoansRejectBadKeysAndBrokenCaptureChains :: () {
     code.insert(7, Code(native.Check, 0, 0, 0, 0, 0, 0));
     Rejects(MapLoanModule(code, abi.IntStorage), "native map buffer loan differs from its capture");
     code = MapLoanCode(abi.IntStorage);
-    item = original; item.target = native.ArrayLoanMap + 1; code[7] = item;
+    item = original; item.target = native.ArrayLoanIndexed + 1; code[7] = item;
     Rejects(MapLoanModule(code, abi.IntStorage), "native foreign buffer loan differs from its array or place");
 }

@@ -35,7 +35,7 @@ for level in 0 2; do
     test "$failed" -eq 1
     grep -F 'expected IndexOutOfRange, but it failed with another failure' "$work/wrong-category-O$level.log" >/dev/null
 done
-for name in RejectedRetained RejectedForeign RejectedPointer; do
+for name in RejectedRetained RejectedPointer; do
     printf 'preserved\n' > "$work/$name"
     failed=0
     "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \

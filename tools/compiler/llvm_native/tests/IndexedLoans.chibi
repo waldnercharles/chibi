@@ -1,0 +1,52 @@
+package llvm_native_calls
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+IndexedLoanModule :: (path: int[], first: i64, invalid: int) -> native.Result {
+    outer := native.ArrayType + native.RecordType;
+    leaf := native.ArrayType + abi.ByteStorage;
+    index_type := abi.IntStorage;
+    if (invalid == 1) { index_type = abi.BoolStorage; }
+    root := 1;
+    if (invalid == 2) { root = 0; }
+    if (invalid == 3) { leaf = native.ArrayType + abi.IntStorage; }
+    fields := [abi.TextStorage,native.RecordType + 1,native.ArrayType + abi.ByteStorage];
+    if (invalid == 4) { fields[0] = native.MapOf(abi.IntStorage,native.ArrayType + native.PointerType); }
+    code := [Code(native.Check,0,0,0,0,0,0),Code(native.Constant,outer,0,0,0,0,0),
+             Code(native.Save,outer,0,0,0,0,0),Code(native.LocalAddress,native.RefType + outer,1,0,0,0,0),
+             Code(native.Constant,index_type,2,0,0,0,0),
+             Code(native.ArrayLoan,leaf,3,0,root,native.ArrayLoanIndexed,first),
+             Code(native.ForeignCall,abi.IntStorage,4,0,length(path),1,0),
+             Code(native.ArrayDrop,leaf,0,3,0,0,0),
+             Code(native.Publish,abi.IntStorage,0,4,0,0,0),Code(native.Return,0,0,0,0,0,0)];
+    if (invalid == 5) {
+        code.remove_index(4);
+        code.insert(5,Code(native.Constant,index_type,2,0,0,0,0));
+    }
+    function: native.Function = {result:abi.IntStorage,first_parameter:0,parameters:0,first_slot:0,slots:5,
+        first_local:0,locals:1,first_code:0,code:length(code),first_argument:0,arguments:length(path) + 1};
+    return native.Emit(abi.LinuxX64(),[function],[],[outer,native.RefType + outer,index_type,leaf,abi.IntStorage],
+        [outer],code,append(path,int(3)),[{first:0,count:2,identity:0},{first:2,count:1,identity:0}],fields,
+        ["probe"],{file:"",directory:""},[],[],[],false,1);
+}
+@test
+IndexedLoansCaptureLeavesAndResolveCanonicalPaths :: () {
+    text := Emitted(IndexedLoanModule([2,2,1,0],0,0));
+    assert(strings.Contains(text,"%indexed5.field1 = getelementptr"));
+    assert(strings.Contains(text,"%loan6_0.unique_outer = call"));
+    assert(strings.Contains(text,"%loan6_0.matches = phi i1"));
+    assert(strings.Contains(text,"%loan6_0.canonical.field1 = getelementptr"));
+}
+@test
+IndexedLoansRejectMalformedCountPositionPathAndOwners :: () {
+    expected := "native indexed buffer loan differs from its captured path";
+    for first in [i64(-1),i64(4),i64(2147483648)] { Rejects(IndexedLoanModule([2,2,1,0],first,0),expected); }
+    for count in [int(-1),0,3,2147483647] { Rejects(IndexedLoanModule([count,2,1,0],0,0),expected); }
+    for index in [int(-1),5,2147483647] { Rejects(IndexedLoanModule([2,index,1,0],0,0),expected); }
+    for path in [[int(2),2,-1,0],[int(2),2,2,0],[int(2),2,0,0],[int(2),2,1,1]] {
+        Rejects(IndexedLoanModule(path,0,0),expected);
+    }
+    for invalid in 1..<5 { Rejects(IndexedLoanModule([2,2,1,0],0,invalid),expected); }
+    Rejects(IndexedLoanModule([2,2,1,0],0,5),"native indexed buffer position is not defined on every path");
+}

@@ -1,0 +1,52 @@
+package foreign_elements
+foreign import libc "system:c"
+foreign libc {
+    memset :: (data:u8[],value:i32,count:u64) -> rawptr
+    memcmp :: (left:u8[],right:u8[],count:u64) -> i32
+    memmove :: (left:u8[],right:u8[],count:u64) -> rawptr
+}
+foreign { chibi_value_test_allocations :: () -> i64 }
+Inner :: struct { bytes: u8[]; }
+Entry :: struct { text: string; inner: Inner; other: u8[]; }
+Make :: (value:u8) -> Entry { return {text:text_from_bytes([u8(65),u8(0),value]),inner:{bytes:[value,u8(2)]},other:[u8(3)]}; }
+Replace :: (rows: ^(Entry[])) -> i32 { rows^ = [Make(8)]; return 9; }
+ReplaceIndex :: (rows: ^(Entry[]), calls:^int) -> int { calls^ += 1; rows^ = [Make(7)]; return 0; }
+Remove :: (rows: ^(Entry[])) -> i32 { rows^.resize(0); return 9; }
+Leaf :: (rows: ^(Entry[])) -> i32 { row := rows^[0]; row.inner.bytes = [u8(6)]; rows^[0] = row; return 9; }
+Grow :: (rows: ^(Entry[])) -> i32 {
+    for value in 0..<128 { rows^.append(Make(u8(wrap:value))); }
+    return 9;
+}
+Scoped :: (rows: ^(Entry[]), changed: ^(Entry[])) {
+    written := memset(rows^[0].inner.bytes,Replace(changed),1);
+}
+ByValue :: (rows:Entry[]) -> int { written := memset(rows[0].inner.bytes,9,1); return int(rows[0].inner.bytes[0]); }
+Main :: () -> int {
+    rows := [Make(1)];
+    original := rows;
+    written := memset(rows[0].inner.bytes,9,1);
+    assert(rows[0].inner.bytes[0] == 9 && original[0].inner.bytes[0] == 1);
+    assert(rows[0].text == original[0].text && rows[0].other[0] == 3);
+    own := ByValue(original);
+    assert(own == 9 && original[0].inner.bytes[0] == 1);
+    rows = [Make(1)];
+    calls := 0;
+    compared := memcmp(rows[ReplaceIndex(&rows,&calls)].inner.bytes,[u8(1)],1);
+    assert(compared == 0 && calls == 1 && rows[0].inner.bytes[0] == 7);
+    written = memset(rows[0].inner.bytes,Replace(&rows),1);
+    assert(rows[0].inner.bytes[0] == 8);
+    written = memset(rows[0].inner.bytes,Leaf(&rows),1);
+    assert(rows[0].inner.bytes[0] == 6);
+    written = memset(rows[0].inner.bytes,Grow(&rows),1);
+    assert(rows[0].inner.bytes[0] == 9 && length(rows) == 129);
+    allocated := chibi_value_test_allocations();
+    copied := memmove(rows[0].inner.bytes,rows[0].inner.bytes,1);
+    completed := chibi_value_test_allocations();
+    assert(completed == allocated, "repeated loans resolve to one unique leaf");
+    assert(rows[0].inner.bytes[0] == 9);
+    Scoped(&rows,&rows);
+    assert(length(rows) == 1 && rows[0].inner.bytes[0] == 8);
+    written = memset(rows[0].inner.bytes,Remove(&rows),1);
+    assert(length(rows) == 0);
+    return 0;
+}

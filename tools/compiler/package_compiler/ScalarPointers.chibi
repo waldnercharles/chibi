@@ -53,7 +53,13 @@ ScalarPointerType :: (types: TypeDecl[], record: int) -> int {
 ScalarPointerTag :: (types: TypeDecl[], value: ValueType) -> i64 {
     nominal := SemanticTag(types, value);
     if (value.container == ArrayContainer && value.storage == PointerStorage && ScalarPointerViewElement(types, value.record)) {
-        target := ScalarPointerTag(types, ScalarPointerElement(types, value.record));
+        pointed := ScalarPointerElement(types, ScalarPointerArrayRecord(types, value.record));
+        target := ScalarPointerTag(types, pointed);
+        if (pointed.record >= 0) {
+            schema := types[pointed.record].native_schema;
+            if (schema == 0) { return 0; }
+            target = i64(wrap: HashBytes(u64(wrap: target), schema, 8));
+        }
         return i64(wrap: binding.ID("native-managed-pointer-array-v1", format_text("{}:{}", nominal, target)));
     }
     if (value.container == ArrayContainer && value.record >= 0) {
@@ -214,10 +220,14 @@ ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables
     }
     if (Is(forest, node, syntax.IndexExpression)) {
         view := ScalarViewOperation(forest, text, callables, params, names, types, members, package, node);
-        if (view.operation == facts.ViewGet && view.shape.storage == PointerStorage) { return view.shape.record; }
+        if (view.operation == facts.ViewGet && view.shape.storage == PointerStorage) {
+            return ScalarPointerArrayRecord(types, view.shape.record);
+        }
         array := ScalarArrayShape(forest, text, callables, params, names, types, members, package,
                                   Field(forest, node, syntax.FieldObject));
-        if (array.container == ArrayContainer && array.storage == PointerStorage) { return array.record; }
+        if (array.container == ArrayContainer && array.storage == PointerStorage) {
+            return ScalarPointerArrayRecord(types, array.record);
+        }
     }
     return -1;
 }

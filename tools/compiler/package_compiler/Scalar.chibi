@@ -566,6 +566,7 @@ ScalarResults :: (callables: Callable[], params: Param[], types: TypeDecl[], mem
     // points to an earlier collection, and the facts record domain is <1024.
     for (index in 0..<length(records)) {
         declared := records[index];
+        if (declared.kind == CollectionDecl && ScalarPointerViewElement(records, index)) { continue; }
         if (declared.kind == CollectionDecl &&
             (!ScalarNestedCollection(declared) || declared.value_storage == PointerStorage ||
              (declared.value_storage != TaskStorage && declared.value_record >= index) ||
@@ -4883,7 +4884,7 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
     for (declared in records) {
         if (((declared.kind == PointerDecl && declared.value_container == ArrayContainer) ||
              (declared.kind == OptionalDecl && declared.value_container == ViewContainer)) &&
-            ScalarViewSchemaElement(records, declared.value_storage, declared.value_record)) {
+            ScalarViewSchemaRecord(records, declared.value_storage, declared.value_record) >= 0) {
             aggregate_cells = true;
             break;
         }
@@ -4892,17 +4893,17 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         // Authored view unions are emitted even when only their empty tag is
         // used. Their payload admission reads the element's cached schema.
         for (field in fields) {
-            if (field.container == ViewContainer && ScalarViewSchemaElement(records, field.storage, field.record)) { aggregate_cells = true; break; }
+            if (field.container == ViewContainer && ScalarViewSchemaRecord(records, field.storage, field.record) >= 0) { aggregate_cells = true; break; }
         }
     }
     if (!aggregate_cells) {
         for (param in params) {
-            if (param.container == ViewContainer && ScalarViewSchemaElement(records, param.storage, param.record)) { aggregate_cells = true; break; }
+            if (param.container == ViewContainer && ScalarViewSchemaRecord(records, param.storage, param.record) >= 0) { aggregate_cells = true; break; }
         }
     }
     if (!aggregate_cells) {
         for (callable in seen) {
-            if (callable.result_container == ViewContainer && ScalarViewSchemaElement(records, callable.result, callable.result_record)) { aggregate_cells = true; break; }
+            if (callable.result_container == ViewContainer && ScalarViewSchemaRecord(records, callable.result, callable.result_record) >= 0) { aggregate_cells = true; break; }
         }
     }
     if (aggregate_cells) {

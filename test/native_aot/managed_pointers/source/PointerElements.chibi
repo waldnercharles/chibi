@@ -1,0 +1,76 @@
+package pointer_element_kinds
+
+Row :: struct { number: int; link: ^int; }
+Box :: (value: int) -> ^int { return &value; }
+MakeRow :: (number: int) -> ^Row {
+    linked := number + 1;
+    value: Row = {number: number, link: &linked};
+    return &value;
+}
+NullableOwner :: () -> view (^int?)[] {
+    values: (^int?)[] = [Box(7), nil]; pointer := &values;
+    return pointer.view(0..<2)!;
+}
+RecordOwner :: () -> view (^Row)[] {
+    values: (^Row)[] = [MakeRow(7), MakeRow(11)]; pointer := &values;
+    return pointer.view(0..<2)!;
+}
+ReadNullable :: (window: view (^int?)[], index: int) -> int {
+    pointer := window[index];
+    if pointer { return pointer^; }
+    return -1;
+}
+ReadRecord :: (window: view (^Row)[]) -> int {
+    pointer := window[0];
+    return pointer.number + pointer.link^;
+}
+Churn :: () { for index in 0..<1024 { discarded := RecordOwner(); } }
+Main :: () -> int {
+    nullable := NullableOwner(); Churn();
+    first := ReadNullable(nullable, 0); missing := ReadNullable(nullable, 1);
+    assert(first == 7 && missing == -1);
+    nullable[0] = nil; nullable[1] = Box(19); Churn();
+    first = ReadNullable(nullable, 0); second := ReadNullable(nullable, 1);
+    assert(first == -1 && second == 19);
+    copied := nullable.clone(); copied[1] = nil; Churn();
+    assert(!copied[0] && !copied[1]);
+    second = ReadNullable(nullable, 1); assert(second == 19);
+    sliced := nullable.slice(0..<2);
+    if sliced { sliced[0] = Box(23); pointer := sliced[0]; if pointer { assert(pointer^ == 23); } else { return 1; } }
+    else { return 2; }
+    first = ReadNullable(nullable, 0); assert(first == -1);
+
+    records := RecordOwner(); Churn();
+    total := ReadRecord(records); assert(total == 15);
+    saved := records[0]; records[0] = MakeRow(29); Churn();
+    assert(saved.number == 7 && saved.link^ == 8);
+    total = ReadRecord(records); assert(total == 59);
+    records[0].number = 31; records[0].link^ = 37; Churn();
+    total = ReadRecord(records); assert(total == 68);
+    cloned := records.clone(); cloned[0] = MakeRow(41); Churn();
+    assert(cloned[0].number == 41 && records[0].number == 31);
+    return 0;
+}
+WaitNullable :: () -> view (^int?)[] { window := NullableOwner(); yield; Churn(); return window; }
+WaitRecord :: () -> view (^Row)[] { window := RecordOwner(); yield; Churn(); return window; }
+Hold :: (window: view (^Row)[]) -> int { while true { yield } }
+Tasks :: () -> int {
+    nullable := await WaitNullable(); Churn();
+    first := ReadNullable(nullable, 0); assert(first == 7);
+    pending := WaitRecord(); alias := pending; yield; Churn();
+    joined := await pending;
+    if joined is Cancelled { return 1; }
+    else { window := joined; total := ReadRecord(window); assert(total == 15); window[0] = MakeRow(43); }
+    again := await alias;
+    if again is Cancelled { return 2; }
+    else { window := again; total := ReadRecord(window); assert(total == 87); }
+    window := await WaitRecord(); waiting := Hold(window); yield; Churn(); cancel waiting
+    stopped := await waiting; assert(stopped is Cancelled);
+    return 0;
+}
+Failure :: () -> int {
+    window := RecordOwner(); Churn();
+    total := ReadRecord(window); assert(total == 15);
+    assert(false, "pointer-element view cleanup");
+    return 0;
+}

@@ -22,6 +22,7 @@ import tk "project:source_tokenizer"
 ScalarElementType :: (types: TypeDecl[], shape: ValueType) -> int {
     if (shape.storage == TaskStorage) { return facts.TaskType; }
     if (shape.record >= length(types)) { return 0; }
+    if (shape.storage == PointerStorage && ScalarPointerViewElement(types, shape.record)) { return facts.PointerType; }
     if (shape.storage != TaskStorage && shape.record >= 0 && ScalarNestedCollection(types[shape.record])) { return ScalarRecordType(types, shape.record); }
     return ScalarValueType(types, shape.storage, 0, shape.record);
 }
@@ -30,6 +31,7 @@ ScalarElementType :: (types: TypeDecl[], shape: ValueType) -> int {
 ScalarArrayType :: (types: TypeDecl[], storage: int, record: int) -> int {
     if (storage == TaskStorage) { return facts.ArrayType + facts.TaskType; }
     if (record >= length(types)) { return 0; }
+    if (storage == PointerStorage && ScalarPointerViewElement(types, record)) { return facts.ArrayType + facts.PointerType; }
     element := ScalarValueType(types, storage, 0, record);
     if (record >= 0 && ScalarNestedCollection(types[record])) { element = ScalarRecordType(types, record); }
     if (element == 0) {

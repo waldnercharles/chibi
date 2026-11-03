@@ -531,6 +531,10 @@ pub ArrayPlaceGet: int : 20;
 // Functional forms give a new value, leaving every input unchanged.
 pub ArrayInserted: int : 21;
 pub ArrayReversed: int : 22;
+// Native set_array_elem ignores an invalid index, for both function and method.
+// Bracket assignment keeps ArraySet and its checked-index failure.
+pub ArrayReplaced: int : 23;
+pub ArrayReplace: int : 24;
 // A Local row whose `literal` is SwitchSubject holds the union a switch is on
 // when the switch is not on a variable, so each arm's bindings can read it
 // again. It has the switch statement's range, a Switch row of the same range

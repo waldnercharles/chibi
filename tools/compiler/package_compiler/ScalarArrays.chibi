@@ -174,7 +174,8 @@ ScalarArrayParameter :: (operator: int, parameter: int) -> string {
     if (operator == facts.ArrayResize) { return "Index"; }
     if (operator == facts.ArrayJoin || operator == facts.ArrayExtend) { return "Other Array"; }
     if (operator == facts.ArrayWithout || operator == facts.ArrayRemove ||
-        ((operator == facts.ArrayInserted || operator == facts.ArrayInsert) && parameter == 1)) { return "Index"; }
+        ((operator == facts.ArrayInserted || operator == facts.ArrayInsert ||
+          operator == facts.ArrayReplaced || operator == facts.ArrayReplace) && parameter == 1)) { return "Index"; }
     return "Item";
 }
 ScalarArraySourcePosition :: (order: int, count: int, parameter: int) -> int {
@@ -232,6 +233,9 @@ ScalarArrayCall :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
         wanted = 1;
     } else if (NameMatches(name, "insert") && Is(forest, function, syntax.Identifier)) {
         operator = facts.ArrayInserted;
+        wanted = 2;
+    } else if (NameMatches(name, "set_array_elem") && Is(forest, function, syntax.Identifier)) {
+        operator = facts.ArrayReplaced;
         wanted = 2;
     } else if (NameMatches(name, "reverse") && Is(forest, function, syntax.Identifier)) {
         operator = facts.ArrayReversed;
@@ -342,7 +346,7 @@ ScalarChangeOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     function := Field(forest, call, syntax.FieldFunction);
     operator := ScalarChangeKind(forest, text, statement);
     arguments := 1;
-    if (operator == facts.ArrayInsert) { arguments = 2; }
+    if (operator == facts.ArrayInsert || operator == facts.ArrayReplace) { arguments = 2; }
     if (operator == facts.ArrayReverse) { arguments = 0; }
     if (!Is(forest, function, syntax.MemberExpression) || operator == 0 ||
         length(Members(forest, Field(forest, call, syntax.FieldArguments))) != arguments) {
@@ -378,6 +382,7 @@ ScalarChangeKind :: (forest: snapshot.SnapshotNode[], text: string, statement: i
     }
     if (NameMatches(method, "resize")) { return facts.ArrayResize; }
     if (NameMatches(method, "insert")) { return facts.ArrayInsert; }
+    if (NameMatches(method, "set_array_elem")) { return facts.ArrayReplace; }
     if (NameMatches(method, "reverse")) { return facts.ArrayReverse; }
     return 0;
 }
@@ -834,7 +839,7 @@ ScalarChanged :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     for (input, index in arguments) {
         value := ScalarArrayArgumentNode(forest, input);
         argued := ScalarOperands.Built(output);
-        if (operator == facts.ArrayInsert && index == 1) {
+        if ((operator == facts.ArrayInsert || operator == facts.ArrayReplace) && index == 1) {
             argued = ScalarArrayElementValue(forest, text, callables, params, callable, names, types, members,
                                              constants, value, shape, output);
         } else {
@@ -898,7 +903,8 @@ ScalarNativeRows :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     }
     // Only arguments after the receiver can invalidate its evaluated value.
     // Functional edits also acquire their input before any later callbacks.
-    copied := native.operator == facts.ArrayWithout || native.operator == facts.ArrayInserted || native.operator == facts.ArrayReversed;
+    copied := native.operator == facts.ArrayWithout || native.operator == facts.ArrayInserted ||
+              native.operator == facts.ArrayReversed || native.operator == facts.ArrayReplaced;
     count := length(native.arguments) + 1;
     first := ScalarArraySourcePosition(native.order, count, 0);
     for (argument, parameter in native.arguments) {
@@ -917,7 +923,7 @@ ScalarNativeRows :: (forest: snapshot.SnapshotNode[], text: string, callables: C
                                         native.array, shape, copied, output);
         } else {
             argument := native.arguments[parameter - 1];
-            if (native.operator == facts.ArrayInserted && parameter == 2) {
+            if ((native.operator == facts.ArrayInserted || native.operator == facts.ArrayReplaced) && parameter == 2) {
                 argued = ScalarArrayElementValue(forest, text, callables, params, callable, names, types, members,
                                                  constants, argument, shape, output);
             } else {
@@ -990,7 +996,7 @@ ScalarLocalArray :: (forest: snapshot.SnapshotNode[], text: string, callables: C
 // function capability stays unusable, while methods keep the ordinary
 // MutationStep contract and its checked labels. No expression copies this catalog.
 ScalarArrayCatalog :: (natives: ResolvedNative[], ports: ^(ResolvedPort[])) {
-    for (name in ["append", "extend", "slice", "resize", "contains", "remove_index", "insert", "reverse", "text_bytes", "text_from_bytes"]) {
+    for (name in ["append", "extend", "slice", "resize", "contains", "remove_index", "insert", "reverse", "set_array_elem", "text_bytes", "text_from_bytes"]) {
         operator := facts.ArrayWith;
         parameters := 2;
         if (name == "extend") { operator = facts.ArrayJoin; }
@@ -1000,6 +1006,7 @@ ScalarArrayCatalog :: (natives: ResolvedNative[], ports: ^(ResolvedPort[])) {
         if (name == "remove_index") { operator = facts.ArrayWithout; }
         if (name == "insert") { operator = facts.ArrayInserted; parameters = 3; }
         if (name == "reverse") { operator = facts.ArrayReversed; parameters = 1; }
+        if (name == "set_array_elem") { operator = facts.ArrayReplaced; parameters = 3; }
         if (name == "text_bytes") { operator = facts.ArrayBytes; parameters = 1; }
         if (name == "text_from_bytes") { operator = facts.ArrayText; parameters = 1; }
         canonical := true;
@@ -1021,7 +1028,7 @@ ScalarArrayCatalog :: (natives: ResolvedNative[], ports: ^(ResolvedPort[])) {
                 if (index < parameters) { port_name = ScalarArrayParameter(operator, index); }
                 if (index > 0 && index < parameters &&
                     (operator == facts.ArraySlice || operator == facts.ArrayResize || operator == facts.ArrayWithout ||
-                     (operator == facts.ArrayInserted && index == 1))) { storage = IntStorage; }
+                     ((operator == facts.ArrayInserted || operator == facts.ArrayReplaced) && index == 1))) { storage = IntStorage; }
                 if (operator == facts.ArrayContains && index == parameters) { storage = BoolStorage; container = 0; port_name = "Return Value"; }
                 if (operator == facts.ArrayBytes) {
                     storage = TextStorage;

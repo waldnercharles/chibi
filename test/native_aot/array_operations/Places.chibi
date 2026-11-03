@@ -37,6 +37,18 @@ Main :: () -> int {
     values = [1, 2];
     named := insert(Item: Reset(&values), Array: values, Index: 0);
     assert(length(named) == 2 && named[0] == 7 && named[1] == 9 && values[0] == 9);
+    values = [1, 2];
+    values.set_array_elem(0, Reset(&values));
+    assert(length(values) == 1 && values[0] == 7);
+    values = [1, 2];
+    values.set_array_elem(1, Reset(&values));
+    assert(length(values) == 1 && values[0] == 9);
+    values = [1, 2];
+    replaced := set_array_elem(values, 0, Reset(&values));
+    assert(length(replaced) == 2 && replaced[0] == 7 && replaced[1] == 2 && values[0] == 9);
+    values = [1, 2];
+    late_replaced := set_array_elem(Item: Reset(&values), Array: values, Index: 0);
+    assert(length(late_replaced) == 1 && late_replaced[0] == 7 && values[0] == 9);
     order := 0;
     ordered := insert(Item: Number(&order, 3, 7), Array: Array(&order), Index: Number(&order, 1, 0));
     assert(order == 321 && length(ordered) == 3 && ordered[0] == 7 && ordered[1] == 4);
@@ -44,5 +56,7 @@ Main :: () -> int {
     box.values.insert(ResetBox(&box), 5);
     box.values.reverse();
     assert(length(box.values) == 2 && box.values[0] == 9 && box.values[1] == 5 && box.marker == 9);
+    box.values.set_array_elem(ResetBox(&box), 5);
+    assert(length(box.values) == 1 && box.values[0] == 5 && box.marker == 9);
     return 0;
 }

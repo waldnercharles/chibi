@@ -385,6 +385,10 @@ ScalarChangeOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
         ScalarArrayShape(forest, text, callables, params, names, types, members, package, object).storage != 0) {
         return object;
     }
+    // Ordinary body checking already established an array method. Its field
+    // plan is resolved only when lowering, rather than allocating it twice.
+    if (Is(forest, object, syntax.MemberExpression) &&
+        Is(forest, Unparenthesized(forest, Field(forest, object, syntax.FieldObject)), syntax.MemberExpression)) { return object; }
     if (Is(forest, object, syntax.IndexExpression) &&
         ScalarNestedPlaceShape(forest, text, callables, params, names, types, members, package, object).storage != 0) {
         return object;
@@ -681,6 +685,11 @@ ScalarElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, callabl
     if (Is(forest, object, syntax.IndexExpression)) {
         return ScalarNestedAssigned(forest, text, callables, params, callable, names, types, members, constants,
                                      statement, next_variable);
+    }
+    if (Is(forest, object, syntax.MemberExpression) &&
+        Is(forest, Unparenthesized(forest, Field(forest, object, syntax.FieldObject)), syntax.MemberExpression)) {
+        return ScalarInlineArrayAssigned(forest, text, callables, params, callable, names, types, members, constants,
+                                          statement, object, next_variable);
     }
     index_node := Field(forest, place, syntax.FieldIndex);
     shape := ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, object);
@@ -1038,4 +1047,134 @@ ScalarArrayCatalog :: (natives: ResolvedNative[], ports: ^(ResolvedPort[])) {
             }
         }
     }
+}
+
+// A deep inline array field keeps its canonical root and borrows the selected
+// descriptor only after argument effects. The final facts prefix contains no
+// calls, so an interior address cannot outlive the immediate mutation.
+ScalarInlineArrayAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                              callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
+                              statement: int, object: int, next_variable: ^int) -> ScalarOperands {
+    place := ScalarInlineReference(forest, text, names, types, members, object);
+    if (place.variable < 0 || place.shape.container != ArrayContainer) {
+        return ScalarOperands.Failed(Diagnose(forest, object, 0, "native array mutation requires a writable inline record array field"));
+    }
+    shape := place.shape;
+    array := ScalarArrayType(types, shape.storage, shape.record);
+    element := ScalarElementType(types, shape);
+    method := Is(forest, statement, syntax.ExpressionStatement);
+    operator := facts.ArraySet;
+    rows := [ScalarAt(forest, statement, facts.ScopeRow, 0, 0, 0, "")];
+    arguments: facts.Row[] = [];
+    variables := next_variable^;
+    if (method) {
+        operator = ScalarChangeKind(forest, text, statement);
+        call := FirstMember(forest, statement);
+        for (input, ordinal in Members(forest, Field(forest, call, syntax.FieldArguments))) {
+            value := ScalarArrayArgumentNode(forest, input);
+            type := facts.IntType;
+            prepared := ScalarOperands.Built([]);
+            if (operator == facts.ArrayExtend) { type = array; }
+            if (operator == facts.ArrayPush || ((operator == facts.ArrayInsert || operator == facts.ArrayReplace) && ordinal == 1)) {
+                type = element;
+                prepared = ScalarArrayElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                                                   value, shape, []);
+            } else {
+                prepared = ScalarArrayArgument(forest, text, callables, params, callable, names, types, members, constants,
+                                               value, shape, operator, []);
+            }
+            switch prepared {
+                case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                case .Built(built): rows.extend(ScalarCapture(forest, statement, type, variables, built));
+            }
+            arguments.append(ScalarAt(forest, statement, facts.ReadRow, type, variables, 0, ""));
+            variables += 1;
+        }
+    } else {
+        destination := Unparenthesized(forest, Field(forest, statement, syntax.FieldTarget));
+        fielded := Is(forest, destination, syntax.MemberExpression);
+        indexed := destination;
+        if (fielded) { indexed = Unparenthesized(forest, Field(forest, destination, syntax.FieldObject)); }
+        index_node := Field(forest, indexed, syntax.FieldIndex);
+        if (Is(forest, index_node, syntax.RangeExpression)) {
+            return ScalarOperands.Failed(Diagnose(forest, destination, 0, "native array assignment requires an element index"));
+        }
+        index := variables;
+        switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                              index_node, index_node, IntStorage, IntStorage, facts.Clamp, []) {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): rows.extend(ScalarCapture(forest, statement, facts.IntType, variables, built));
+        }
+        variables += 1;
+        // The same resolved field ordinals read the initial logical value.
+        reads := place.rows;
+        read := reads[0]; read.kind = facts.ReadRow; reads[0] = read;
+        for (prefix in 1..<length(reads)) { read = reads[prefix]; read.kind = facts.FieldRow; reads[prefix] = read; }
+        selected := SequenceElement(types, shape);
+        field := -1;
+        value_type := element;
+        if (fielded) {
+            member := ScalarMember(forest, text, callables, params, names, types, members, callable.package, destination);
+            if (member < 0) { return ScalarOperands.Failed(Diagnose(forest, destination, 0, "native array element field is unavailable")); }
+            field = member - types[shape.record].first;
+            selected = ScalarMemberShape(members, member);
+            value_type = ScalarValueType(types, selected.storage, selected.container, selected.record);
+        }
+        compound := ScalarArithmetic(CompoundOperator(Operator(forest, statement)));
+        if (compound != 0 && (!Numeric(selected.storage) || selected.container != 0 || selected.record >= 0)) {
+            return ScalarOperands.Failed(Diagnose(forest, destination, 0, "native array compound assignment requires a numeric value"));
+        }
+        initial := reads;
+        initial.append(ScalarAt(forest, statement, facts.ReadRow, facts.IntType, index, 0, ""));
+        checked_type := facts.BoolType;
+        check := facts.ArrayPlaceCheck;
+        if (compound != 0) { checked_type = value_type; check = facts.ArrayPlaceGet; }
+        initial.append(ScalarAt(forest, indexed, facts.ArrayRow, checked_type, check, 2, ""));
+        if (compound != 0 && fielded) {
+            checked := initial[length(initial) - 1]; checked.type = element; initial[length(initial) - 1] = checked;
+            initial.append(ScalarAt(forest, destination, facts.FieldRow, value_type, field, 1, ""));
+        }
+        previous := variables;
+        rows.extend(ScalarCapture(forest, statement, checked_type, variables, initial));
+        variables += 1;
+        incoming: facts.Row[] = [];
+        if (compound != 0) { incoming.append(ScalarAt(forest, statement, facts.ReadRow, value_type, previous, 0, "")); }
+        prepared := ScalarOperands.Built([]);
+        value := Field(forest, statement, syntax.FieldValue);
+        if (fielded) {
+            prepared = ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants, value, selected, incoming);
+        } else {
+            prepared = ScalarArrayElementValue(forest, text, callables, params, callable, names, types, members, constants, value, shape, incoming);
+        }
+        switch prepared {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): incoming = built;
+        }
+        if (compound != 0) { incoming.append(ScalarAt(forest, statement, facts.ArithmeticRow, value_type, compound, 2, "")); }
+        replacement := variables;
+        rows.extend(ScalarCapture(forest, statement, value_type, variables, incoming));
+        variables += 1;
+        if (fielded) {
+            updated := reads;
+            updated.extend([ScalarAt(forest, statement, facts.ReadRow, facts.IntType, index, 0, ""),
+                            ScalarAt(forest, indexed, facts.ArrayRow, element, facts.ArrayPlaceGet, 2, ""),
+                            ScalarAt(forest, statement, facts.ReadRow, value_type, replacement, 0, ""),
+                            ScalarAt(forest, destination, facts.UpdateRow, element, field, 2, "")]);
+            replacement = variables;
+            rows.extend(ScalarCapture(forest, statement, element, variables, updated));
+            variables += 1;
+        }
+        arguments.extend([ScalarAt(forest, statement, facts.ReadRow, facts.IntType, index, 0, ""),
+                          ScalarAt(forest, statement, facts.ReadRow, element, replacement, 0, "")]);
+    }
+    changed := place.rows;
+    changed.extend(arguments);
+    write := ScalarAt(forest, statement, facts.ArrayRow, place.root, operator, 1 + length(arguments), "");
+    write.literal = i64(facts.ArrayReferencePlace);
+    changed.append(write);
+    rows.append(ScalarAt(forest, statement, facts.AssignRow, place.root, place.variable, length(changed), ""));
+    rows.extend(changed);
+    rows.append(ScalarAt(forest, statement, facts.EndRow, 0, 0, 0, ""));
+    next_variable^ = variables;
+    return ScalarOperands.Built(rows);
 }

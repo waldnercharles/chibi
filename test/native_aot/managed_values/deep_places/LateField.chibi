@@ -1,0 +1,6 @@
+package deep_late_field
+Row :: struct { number: int; }
+Inner :: struct { values: Row[]; }
+Root :: struct { inner: Inner; }
+Erase :: (root: ^Root) -> int { root^ = {inner: {values: []}}; return 9; }
+Main :: () -> int { value: Root = {inner: {values: [{number: 1}]}}; value.inner.values[0].number = Erase(&value); return 0; }

@@ -1,0 +1,5 @@
+package deep_initial
+Inner :: struct { values: int[]; }
+Root :: struct { inner: Inner; }
+Rhs :: () -> int { assert(false, "RHS evaluated"); return 9; }
+Main :: () -> int { value: Root = {inner: {values: []}}; value.inner.values[0] = Rhs(); return 0; }

@@ -1,0 +1,19 @@
+package deep_array_growth
+foreign { chibi_value_test_allocations :: () -> i64 }
+Inner :: struct { values: int[]; }
+Root :: struct { inner: Inner; }
+Main :: () -> int {
+    value: Root = {inner: {values: []}};
+    before := chibi_value_test_allocations();
+    for index in 0..<4096 { value.inner.values.append(index); }
+    completed := chibi_value_test_allocations();
+    assert(completed - before <= 16, "deep inline append reuses unique backing capacity");
+    assert(length(value.inner.values) == 4096 && value.inner.values[4095] == 4095);
+    alias := value;
+    before = chibi_value_test_allocations();
+    for index in 0..<4096 { value.inner.values.append(index); }
+    completed = chibi_value_test_allocations();
+    assert(completed - before <= 16, "deep inline append detaches once from a value alias");
+    assert(length(value.inner.values) == 8192 && length(alias.inner.values) == 4096);
+    return 0;
+}

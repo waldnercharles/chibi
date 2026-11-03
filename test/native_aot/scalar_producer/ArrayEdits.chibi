@@ -112,3 +112,19 @@ ForeignPlacesProjection :: () {
     assert(retained[1].kind == facts.RejectionRow);
     assert(retained[1].text == "native foreign record buffer needs a writable inline record array field");
 }
+
+InlineArrayPlacesProjection :: () {
+    rows := Produced("package places\nInner::struct{values:int[];}Root::struct{inner:Inner;}Main::()->int{value:Root={inner:{values:[int(1)]}};other:Root={inner:{values:[int(8)]}};value.inner.values.append(3);value.inner.values[0]+=2;return value.inner.values[0];}");
+    ValidateRows(rows, "");
+    change := -1;
+    for (row, index in rows) {
+        if (row.kind == facts.ArrayRow && row.literal == i64(facts.ArrayReferencePlace) && row.value == facts.ArrayPush) { change = index; }
+    }
+    assert(change >= 4 && rows[change - 4].kind == facts.RefRow && rows[change - 4].value == 0);
+    mismatch := "scalar array operation differs from its operands";
+    RejectChanged(rows, [Changed(change, CountField, 1)], mismatch);
+    RejectChanged(rows, [Changed(change, CountField, 3)], mismatch);
+    RejectChanged(rows, [Changed(change, LiteralField, 0)], mismatch);
+    RejectChanged(rows, [Changed(change - 4, ValueField, 1)], mismatch);
+    RejectChanged(rows, [Changed(change - 1, KindField, i64(facts.LiteralRow)), Changed(change - 1, ValueField, 0)], mismatch);
+}

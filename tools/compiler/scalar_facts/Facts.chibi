@@ -279,6 +279,9 @@ pub ArrayRow: int : 37;
 // ArraySet's canonical Nil | Some(numeric/bool array) payload place. Its type
 // is the union, literal this marker, and the first operand a root reference.
 pub OptionalArrayPlace: int : -2;
+// A canonical inline record field reference chain followed by captured argument reads.
+// The array mutation gives the original root record after updating its leaf.
+pub ArrayReferencePlace: int : -3;
 // A call of a C function the source declares in a foreign block, an operand
 // row that consumes its `count` argument operands, numbers, bools or string
 // literals a C function reads as NUL-ended bytes. `name` is the C symbol,

@@ -1,0 +1,73 @@
+package array_operation_values
+
+Item :: struct { id: int; text: string; values: int[]; }
+Text :: (number: int) -> string { return text_from_bytes([u8(65), u8(number)]); }
+Make :: (number: int) -> Item { return {id: number, text: Text(number), values: [number, number + 1]}; }
+Main :: () -> int {
+    values: int[] = [2, 4];
+    original := values;
+    values.insert(Index: -1, Item: 1);
+    values.insert(index: 2147483647, item: 8);
+    values.reverse();
+    assert(length(values) == 4 && values[0] == 8 && values[1] == 4 && values[2] == 2 && values[3] == 1);
+    assert(length(original) == 2 && original[0] == 2 && original[1] == 4);
+    assert(contains(Item: int(2), Array: original));
+    part := original.slice(Count: 1, Start: 1);
+    assert(length(part) == 1 && part[0] == 4);
+    edited := insert(Item: int(3), Array: original, Index: 1);
+    reversed := reverse(Array: edited);
+    assert(length(edited) == 3 && edited[0] == 2 && edited[1] == 3 && edited[2] == 4);
+    assert(reversed[0] == 4 && reversed[1] == 3 && reversed[2] == 2 && original[0] == 2);
+    assert(insert(Array: original, Index: 1, Item: int(3))[1] == 3);
+    assert(insert(Array: original, Item: int(3), Index: 1)[1] == 3);
+    assert(insert(Index: 1, Array: original, Item: int(3))[1] == 3);
+    assert(insert(Index: 1, Item: int(3), Array: original)[1] == 3);
+    assert(insert(Item: int(3), Array: original, Index: 1)[1] == 3);
+    assert(insert(Item: int(3), Index: 1, Array: original)[1] == 3);
+    assert(insert(original, Item: int(3), Index: 1)[1] == 3);
+    assert(insert(Array: original, 1, Item: int(3))[1] == 3);
+    empty: int[] = [];
+    empty.append(Item: 6);
+    empty.remove_index(Index: 0);
+    empty.reverse();
+    reversed_empty := reverse(empty);
+    assert(length(empty) == 0 && length(reversed_empty) == 0);
+    empty.insert(-9, 5);
+    empty.reverse();
+    assert(length(empty) == 1 && empty[0] == 5);
+    flags: bool[] = [true, false, true];
+    flags.insert(1, false);
+    flags.reverse();
+    assert(flags[0] && !flags[1] && !flags[2] && flags[3]);
+    zero: number = 0;
+    invalid := zero / zero;
+    floats: number[] = [invalid, -0.0, 1.0];
+    floats.reverse();
+    assert(floats[0] == 1.0 && 1.0 / floats[1] < 0.0 && floats[2] != floats[2]);
+
+    words: string[] = [Text(1), Text(2)];
+    saved_words := words;
+    words.insert(1, words[0]);
+    words.reverse();
+    assert(text_byte_at(words[0], 1) == 2 && text_byte_at(words[1], 1) == 1 && text_byte_at(words[2], 1) == 1);
+    assert(length(saved_words) == 2 && text_byte_at(saved_words[0], 1) == 1);
+    fresh_words := reverse(insert([Text(3), Text(4)], 1, Text(5)));
+    assert(length(fresh_words) == 3 && text_byte_at(fresh_words[0], 1) == 4 && text_byte_at(fresh_words[1], 1) == 5);
+
+    items: Item[] = [Make(1), Make(2)];
+    saved_items := items;
+    items.insert(1, items[0]);
+    items.reverse();
+    assert(items[0].id == 2 && items[1].id == 1 && items[2].id == 1);
+    assert(text_byte_at(items[1].text, 1) == 1 && items[1].values[1] == 2);
+    assert(saved_items[0].id == 1 && saved_items[1].values[0] == 2);
+    fresh_items := reverse(insert([Make(3), Make(4)], 1, Make(5)));
+    assert(fresh_items[0].id == 4 && fresh_items[1].id == 5 && fresh_items[2].values[0] == 3);
+    growing: Item[] = [];
+    for (index in 0..<80) { growing.insert(0, Make(index)); }
+    growing.reverse();
+    for (item, index in growing) {
+        assert(item.id == index && item.values[0] == index && text_byte_at(item.text, 1) == index);
+    }
+    return 0;
+}

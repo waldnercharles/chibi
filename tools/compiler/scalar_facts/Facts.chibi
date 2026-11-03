@@ -510,6 +510,13 @@ pub ArrayWithout: int : 16;
 // A foreign argument loan, consuming a numeric array or a reference to its
 // writable descriptor. It keeps the evaluated value alive until the C call.
 pub ArrayLoan: int : 17;
+// Mutating insert(array,index,item) and reverse(array) consume their canonical
+// array place as a RefRow, resolve it after arguments, and publish the change.
+pub ArrayInsert: int : 18;
+pub ArrayReverse: int : 19;
+// Functional forms give a new value, leaving every input unchanged.
+pub ArrayInserted: int : 21;
+pub ArrayReversed: int : 22;
 // A Local row whose `literal` is SwitchSubject holds the union a switch is on
 // when the switch is not on a variable, so each arm's bindings can read it
 // again. It has the switch statement's range, a Switch row of the same range

@@ -14,7 +14,8 @@ if ($sha256 -ne 'd96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a23
   throw 'LLVM archive SHA-256 differs from the pinned release'
 }
 Write-Host ('LLVM checksum verified in {0:F2} s' -f $phase.Elapsed.TotalSeconds)
-$members = @("$name/bin/opt.exe", "$name/bin/llc.exe", "$name/bin/lld-link.exe", "$name/bin/*.dll")
+$members = @("$name/bin/opt.exe", "$name/bin/llc.exe", "$name/bin/lld-link.exe",
+             "$name/bin/llvm-link.exe", "$name/bin/llvm-lib.exe", "$name/bin/*.dll")
 $sevenZip = (Get-Command 7z.exe, 7z -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
 if (!$sevenZip -and $env:ProgramFiles) {
   $candidate = "$env:ProgramFiles/7-Zip/7z.exe"
@@ -22,7 +23,7 @@ if (!$sevenZip -and $env:ProgramFiles) {
 }
 $phase.Restart()
 if ($sevenZip) {
-  # XZ contains one tar file. Decompress it once, then select the three
+  # XZ contains one tar file. Decompress it once, then select the required
   # executables and their DLLs instead of writing every LLVM tool.
   $expanded = "$env:RUNNER_TEMP/llvm-unpack"
   New-Item -ItemType Directory -Force $expanded | Out-Null

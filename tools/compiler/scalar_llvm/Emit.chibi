@@ -94,7 +94,7 @@ Valued :: (records: int[], type: int) -> bool {
 Element :: (records: int[], type: int) -> int {
     element := type - facts.ArrayType;
     if (type >= facts.MapType || element < facts.IntType || element >= facts.ArrayType ||
-        element == facts.TaskType || element == facts.ViewType || !Valued(records, element)) {
+        element == facts.ViewType || !Valued(records, element)) {
         return 0;
     }
     return element;
@@ -1451,7 +1451,7 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         }
     } else if (operator == facts.ArrayPush || operator == facts.ArrayWith || operator == facts.ArrayWithoutItem) {
         if (stack[base + 1] != element ||
-            (operator == facts.ArrayWithoutItem && !Retainable(rows, records, element))) {
+            (operator == facts.ArrayWithoutItem && element != facts.TaskType && !Retainable(rows, records, element))) {
             return mismatch;
         }
     } else if (operator == facts.ArrayExtend || operator == facts.ArrayJoin) {
@@ -3486,6 +3486,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 item: native.Instruction = {op: native.Constant, type: type, output: slot, left: 0, right: 0,
                                             target: 0, literal: operand.literal};
                 retained_element := false;
+                retained_task := false;
                 retained_record := false;
                 retained_array := false;
                 mutated_owned := false;
@@ -4319,7 +4320,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     argument := root;
                     if (operand.count > first_argument - base) { argument = stack[first_argument]; }
                     if (op == facts.ArraySet || op == facts.ArrayInsert || op == facts.ArrayReplace) { argument = stack[first_argument + 1]; }
-                    if (op == facts.ArrayPush || op == facts.ArraySet || op == facts.ArrayInsert || op == facts.ArrayReplace || op == facts.ArrayAssign) {
+                    if (op == facts.ArrayAssign || (element != facts.TaskType &&
+                        (op == facts.ArrayPush || op == facts.ArraySet || op == facts.ArrayInsert || op == facts.ArrayReplace))) {
                         if (Holds(fresh, argument)) { fresh = Without(fresh, argument); }
                         else {
                             incoming_type := element;
@@ -4480,6 +4482,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     // A later operand can replace even a borrowed element's
                     // array or slot, so acquire its value at the read.
                     retained_element = (op == facts.ArrayGet || op == facts.ArrayPlaceGet) && type == abi.TextStorage;
+                    retained_task = (op == facts.ArrayGet || op == facts.ArrayPlaceGet) && type == native.TaskType;
                     retained_record = (op == facts.ArrayGet || op == facts.ArrayPlaceGet) && TrackedRecord(managed, type);
                     // The record bytes are loaded before a temporary array drops.
                     // A scalar projection never owns or drops its managed siblings.
@@ -4896,6 +4899,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     extra += length(kept.slot_types);
                     produced = kept.value;
                 }
+                if (retained_task) {
+                    slots.append(native.TaskType);
+                    body.append(Op(native.TaskCopy, native.TaskType, slot + 1 + extra, produced, 0, 0));
+                    produced = slot + 1 + extra;
+                    extra += 1;
+                }
                 if (retained_element) {
                     body.append(Op(native.TextRetain, abi.TextStorage, 0, slot, 0, 0));
                 }
@@ -4906,7 +4915,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     fresh = Without(fresh, spent);
                 }
                 pending = [];
-                fresh_value := (FreshArray(operand) && !array_place) || retained_element || mutated_owned ||
+                fresh_value := (FreshArray(operand) && !array_place) || retained_element || retained_task || mutated_owned ||
                                (operand.kind == facts.AwaitResultRow && TrackedRecord(managed, operand.type));
                 if (fresh_value && length(closes) > 0 && type == abi.TextStorage) {
                     logical_strings.append(produced);
@@ -5198,8 +5207,18 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 body.append(Op(native.Jump, 0, 0, 0, 0, 0));
                 slots.extend([array, integer, element]);
                 body.extend([Op(native.Local, array, slot, local, 0, 0), Op(native.Local, integer, slot + 1, local + 1, 0, 0),
-                             Op(native.ArrayGet, element, slot + 2, slot, slot + 1, 0),
-                             Op(native.Save, element, 0, slot + 2, 0, local + 2)]);
+                             Op(native.ArrayGet, element, slot + 2, slot, slot + 1, 0)]);
+                if (element == native.TaskType) {
+                    // The loop binding owns its observer even if the source
+                    // array is replaced while this iteration is suspended.
+                    slots.append(element);
+                    body.extend([Op(native.TaskCopy, element, slot + 3, slot + 2, 0, 0),
+                                 Op(native.Save, element, 0, slot + 3, 0, local + 2)]);
+                    owned_vars.append(length(places) - 1);
+                    if (Keyed(row)) { owned_vars[length(owned_vars) - 1] -= 1; }
+                    owned_types.append(element);
+                    slot += 1;
+                } else { body.append(Op(native.Save, element, 0, slot + 2, 0, local + 2)); }
                 slot += 3;
                 local += 3;
                 frames.append(frame);

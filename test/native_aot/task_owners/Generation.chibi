@@ -13,6 +13,7 @@ RecordWorker :: () -> Promise { yield; return {first: 37, last: true}; }
 CheckPromise :: (value: Promise) { assert(value.first == 37 && value.last); }
 OwnedWorker :: () -> Payload { yield; return {text: Text(11), words: [Text(13)], numbers: [int(17)]}; }
 MapWorker :: () -> [int: string] { if false { yield } return [1: Text(21)]; }
+ObserverWorker :: (count: int) -> string { yield; return Text(count); }
 CheckOwned :: (value: Payload) {
     assert(text_byte_length(value.text) == 11 && text_byte_length(value.words[0]) == 13 && value.numbers[0] == 17);
 }
@@ -43,6 +44,9 @@ Worker :: () -> int {
     else { CheckPromise(initial); }
     owned := OwnedWorker();
     mapped := MapWorker();
+    observers := [ObserverWorker(23), ObserverWorker(29)];
+    shared_observers := observers;
+    observers = [];
     first := await owned;
     if first is Cancelled { return 1; }
     else {
@@ -64,6 +68,14 @@ Worker :: () -> int {
     map_again := await mapped;
     if map_again is Cancelled { return 1; }
     else { value := map_again; assert(text_byte_length(value[1]) == 21, "old map promise preserves independent joins after reload"); }
+    observed := await shared_observers[0];
+    if observed is Cancelled { return 1; }
+    else { assert(text_byte_length(observed) == 23); }
+    shared_observers[0] = shared_observers[0];
+    for index in 0..<64 { shared_observers.set_array_elem(-1, shared_observers[0]); }
+    repeated_observer := await shared_observers[0];
+    if repeated_observer is Cancelled { return 1; }
+    else { assert(text_byte_length(repeated_observer) == 23); }
     if Exists("failure-case") { Broken(&payload); }
     Finish(payload);
     return 0;

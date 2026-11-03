@@ -69,8 +69,14 @@ observers. `task_owners/run.sh` covers cancellation, failure and reload balance.
 Map results retain the existing supported key/payload domain; joins copy their
 counted descriptors, and old-generation results keep independent map values.
 
-This is a tested subset, not the VM deletion gate. Task-valued parameters and
-task-observer arrays remain closed. The source producer
+Inferred task-observer arrays use the existing counted array backing. Indexed
+and loop reads acquire observers before their source array can be replaced;
+physical copies acquire each element, and the last backing release drops them.
+Nested arrays use the existing collection carrier. Their allocation, failure
+and original-generation proofs are in `task_owners/run.sh`.
+
+Explicit task-valued parameters, task-array parameters/results and task-valued
+record fields retain the ordinary compiler's rejection. The source producer
 uses the canonical success type to make handles from different producers
 interchangeable, with void distinct from its internal int result. The rejection
 cases keep cross-type assignments and unsupported task parameters/results

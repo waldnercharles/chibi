@@ -535,7 +535,7 @@ ArgumentCount :: (item: Instruction) -> int {
 // scalar, a string or one of the module's records.
 ElementType :: (records: Record[], type: int) -> int {
     element := type - ArrayType;
-    if (element <= 0 || element >= ArrayType || element == TaskType || element == ViewType || !Valued(records, element)) {
+    if (element <= 0 || element >= ArrayType || element == ViewType || !Valued(records, element)) {
         return 0;
     }
     return element;
@@ -1019,11 +1019,18 @@ WaitingFunctions :: (functions: Function[], code: Instruction[]) -> bool[] {
 // Whether any function waits or starts a task.
 Tasks :: (code: Instruction[]) -> bool {
     for (item in code) {
+        if (item.type == ArrayType + TaskType) { return true; }
         if (item.op == TaskCopy || item.op == TaskDrop || item.op == TaskRunning || item.op == AwaitResult || item.op == Suspend || item.op == AwaitHandle || item.op == Cancel || item.op == CancelAfter || item.op == Delay ||
             (item.op == Call && item.literal != i64(CallPlain))) {
             return true;
         }
     }
+    return false;
+}
+// A synthetic collection carrier can demand observer lifecycle helpers
+// without a direct Task instruction in the function that copies the record.
+TaskArrayFields :: (fields: int[]) -> bool {
+    for (type in fields) { if (type == ArrayType + TaskType) { return true; } }
     return false;
 }
 // A call names another function of the module, with its result type and one
@@ -1306,7 +1313,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if ((item.op == ValueCopy || item.op == ValueDrop) &&
             (!Typed(slots, item.left, item.type) ||
-             (ElementType(records, item.type) != 0 && !ValueCollectorCopyable(lifecycle, item.type - ArrayType)) ||
+             (ElementType(records, item.type) != 0 && item.type != ArrayType + TaskType && !ValueCollectorCopyable(lifecycle, item.type - ArrayType)) ||
              (item.type != abi.TextStorage && ElementType(records, item.type) == 0 &&
               !MapPayloadValid(records, lifecycle, item.type) &&
               (item.type < RecordType || item.type >= ArrayType || !ValueCollectorCopyable(lifecycle, item.type) ||
@@ -2022,6 +2029,11 @@ Holding :: (type: int) -> bool {
     return type == ArrayType + abi.TextStorage;
 }
 ArrayRefs :: (record_owners: bool[], type: int, data: string, count: string, keep: bool) -> string {
+    if (type == ArrayType + TaskType) {
+        operation := "release";
+        if (keep) { operation = "retain"; }
+        return format_text("  call void @chibi_tasks.{}_range(ptr {}, i32 {})\n", operation, data, count);
+    }
     if (Holding(type)) {
         if (keep) { return format_text("  call void @chibi_scalar.retain_range(ptr {}, i32 {})\n", data, count); }
         return format_text("  call void @chibi_scalar.free_range(ptr %ctx, ptr {}, i32 {})\n", data, count);
@@ -2226,7 +2238,9 @@ ArrayRead :: (item: Instruction, pc: int, record_owners: bool[], program: bool) 
     forgiving := item.op == ArraySet && item.literal == i64(ArraySetUnchanged);
     if (forgiving) {
         // The prepared item owns its leaves even when no element is replaced.
-        out = format_text("{}{}", out, ArrayRefs(record_owners, item.type, format_text("%s{}", item.target), "1", false));
+        if (item.type != ArrayType + TaskType) {
+            out = format_text("{}{}", out, ArrayRefs(record_owners, item.type, format_text("%s{}", item.target), "1", false));
+        }
         out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "s", item.output));
         out = format_text("{}  br label %array_done{}\ninside{}:\n", out, pc, pc);
     } else if ((item.op == ArrayGet && item.literal != 0) ||
@@ -2241,6 +2255,10 @@ ArrayRead :: (item: Instruction, pc: int, record_owners: bool[], program: bool) 
     }
     if (item.op == ArrayGet && item.literal == i64(ArrayGetPlaceCheck)) {
         return format_text("{}{}", out, Store("true", abi.BoolStorage, "s", item.output));
+    }
+    if (item.op == ArraySet && item.type == ArrayType + TaskType) {
+        out = format_text("{}{}", out, Load(format_text("incoming{}", pc), TaskType, "s", item.target));
+        out = format_text("{}  call void @chibi_tasks.retain(i64 %incoming{})\n", out, pc);
     }
     writable := format_text("%a{}", pc);
     if (item.op == ArraySet) {
@@ -2269,6 +2287,7 @@ ArrayPushed :: (item: Instruction, pc: int) -> string {
     array := abi.ArrayType();
     element := item.type - ArrayType;
     out := Load(format_text("c{}", pc), element, "s", item.right);
+    if (element == TaskType) { out = format_text("{}  call void @chibi_tasks.retain(i64 %c{})\n", out, pc); }
     out = format_text("{}  %next{} = add i32 %length{}, 1\n", out, pc, pc);
     out = format_text("{}  %unique{} = call {} @chibi_array.{}.unique(ptr %ctx, {} %a{}, i32 %next{}, i1 {})\n",
                       out, pc, array, item.type, array, pc, pc, item.literal == 1);
@@ -3566,7 +3585,8 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     if (!abi.Supported(target)) {
         return Result.Rejected(-1, "unsupported native target");
     }
-    if (abi.Same(target, abi.WebAssembly32()) && Tasks(code)) {
+    tasks := Tasks(code) || TaskArrayFields(fields);
+    if (abi.Same(target, abi.WebAssembly32()) && tasks) {
         return Result.Rejected(-1, "native WebAssembly tasks have no runtime yet");
     }
     if (!Layout(functions, parameters, slots, locals, code, arguments)) {
@@ -3677,13 +3697,13 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         return Result.Rejected(-1, "native retained states differ from their loads");
     }
     // A program's main has no context to pass.
-    runtime := Runtime(code, family) || managed || snapshots || clock_owner;
+    runtime := Runtime(code, family) || tasks || managed || snapshots || clock_owner;
     guarded := managed || (family && runtime);
     if (runtime && mode == MainEntry) {
         return Result.Rejected(-1, "a native program cannot call the runtime yet");
     }
     // A waiting entry is a coroutine that chibi_scalar runs with the tasks.
-    if (Tasks(code) && (mode == ScalarEntry || mode == ProgramEntry)) {
+    if (tasks && (mode == ScalarEntry || mode == ProgramEntry)) {
         if (mode == ProgramEntry) { mode = ProgramCoroutineEntry; } else { mode = CoroutineEntry; }
     }
     debug := source.file != "";
@@ -3729,7 +3749,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     // A program splits into pieces that opt and llc compile at once; a
     // library's manifests and line tables' metadata name every function, so
     // those stay one piece.
-    bounds := Pieces(functions, mode != NoEntry && !debug && !Tasks(code));
+    bounds := Pieces(functions, mode != NoEntry && !debug && !tasks);
     pieces := length(bounds) - 1;
     home: int[] = [];
     for (piece in 0..<pieces) {
@@ -3881,7 +3901,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         if (printed) { out.append("declare void @chibi_print_string(ptr, ptr, i32)\n"); }
         out.append(format_text("{}declare void @llvm.trap()\n{}{}", Failures(functions, code, texts, first, last, ProgramMode(mode)),
                                Declarations(held), foreign_declarations));
-        if (Tasks(held)) {
+        if (tasks) {
             out.append(CoroutineDeclarations());
             if (testing) { out.append("declare void @chibi_native_test_busy(i32)\n"); }
         }
@@ -3895,7 +3915,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             }
             out.append(format_text("\n{}", text));
         }
-        if (Tasks(held)) {
+        if (tasks) {
             timed := false;
             for (item in held) {
                 timed = timed || item.op == CancelAfter || item.op == Delay;
@@ -3947,6 +3967,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
                 loan.instruction < functions[last - 1].first_code + functions[last - 1].code) { loan_arrays.append(loan.type); }
         }
         value_uses := ValueUses(held, records, fields, record_owners, promises, loan_arrays);
+        if (value_uses.arrays[TaskType] != 0) { out.append(TaskArrayRuntime()); }
         array_helpers := ArrayModule(value_uses.arrays, record_owners, rooted_lifecycle.backed, managed_records.traced, guarded);
         out.append(array_helpers);
         value_comparisons := piece == 0 && length(comparison_roots) > 0;
@@ -5004,7 +5025,7 @@ LibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[],
         case .Emitted(text):
             module = text;
     }
-    runtime := Runtime(code, family) || snapshots;
+    runtime := Runtime(code, family) || TaskArrayFields(fields) || snapshots;
     retained_text := false;
     for (item in RetainedStates(code)) {
         retained_text = retained_text || item.type == abi.TextStorage;

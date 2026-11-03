@@ -20,24 +20,26 @@ import tk "project:source_tokenizer"
 // The facts type of the elements `shape` describes, a number, bool, string,
 // or a record or union the source declares; 0 for any other.
 ScalarElementType :: (types: TypeDecl[], shape: ValueType) -> int {
-    if (shape.storage == TaskStorage || shape.record >= length(types)) { return 0; }
-    if (shape.record >= 0 && ScalarNestedCollection(types[shape.record])) { return ScalarRecordType(types, shape.record); }
+    if (shape.storage == TaskStorage) { return facts.TaskType; }
+    if (shape.record >= length(types)) { return 0; }
+    if (shape.storage != TaskStorage && shape.record >= 0 && ScalarNestedCollection(types[shape.record])) { return ScalarRecordType(types, shape.record); }
     return ScalarValueType(types, shape.storage, 0, shape.record);
 }
 // The facts type of an array whose elements are of `storage` and `record`, or
 // 0 when they are of no such type.
 ScalarArrayType :: (types: TypeDecl[], storage: int, record: int) -> int {
+    if (storage == TaskStorage) { return facts.ArrayType + facts.TaskType; }
     if (record >= length(types)) { return 0; }
     element := ScalarValueType(types, storage, 0, record);
     if (record >= 0 && ScalarNestedCollection(types[record])) { element = ScalarRecordType(types, record); }
-    if (element == 0 || storage == TaskStorage) {
+    if (element == 0) {
         return 0;
     }
     return facts.ArrayType + element;
 }
 // Whether elements of `storage` can be in a scalar module's array.
 ScalarArrayElement :: (storage: int) -> bool {
-    return storage != TaskStorage && (ScalarTypeOf(storage) != 0 || storage == PointerStorage || storage == StructStorage || storage == UnionStorage);
+    return ScalarTypeOf(storage) != 0 || storage == PointerStorage || storage == StructStorage || storage == UnionStorage;
 }
 // The array the literal `node` is, from its first element when that names its
 // own storage: a string, a bool, a number conversion such as `u8(0)`, a call of
@@ -65,10 +67,12 @@ ScalarLiteralShape :: (forest: snapshot.SnapshotNode[], text: string, callables:
         storage = BoolStorage;
     } else if (Is(forest, first, syntax.CallExpression)) {
         callee := CalledFunction(forest, text, callables, [], names, package, first);
-        if (callee >= 0 && callables[callee].result_container == 0) {
+        if (callee >= 0 && callables[callee].waits && !ImmediatelyAwaited(forest, first)) {
+            storage = TaskStorage;
+            record = callee;
+        } else if (callee >= 0 && callables[callee].result_container == 0) {
             storage = callables[callee].result;
             record = callables[callee].result_record;
-            if (callables[callee].waits && !ImmediatelyAwaited(forest, first)) { storage = TaskStorage; }
         } else if (callee < 0) {
             storage = NumberConversionType(forest, text, first);
         }
@@ -167,7 +171,7 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         if (Is(forest, Field(forest, value, syntax.FieldIndex), syntax.RangeExpression)) { return none; }
         outer := ScalarArrayShape(forest, text, callables, params, names, types, members, package,
                                    Field(forest, value, syntax.FieldObject));
-        if (outer.record >= 0 && ScalarNestedCollection(types[outer.record])) { return SequenceElement(types, outer); }
+        if (outer.storage != TaskStorage && outer.record >= 0 && ScalarNestedCollection(types[outer.record])) { return SequenceElement(types, outer); }
         read := ScalarMapRead(forest, text, callables, names, types, members, package, value);
         record := ScalarMapShape(forest, text, callables, names, types, members, package, read.object);
         if (read.operator == facts.MapGet && ScalarMapArrayValue(types, record)) {
@@ -725,7 +729,7 @@ ScalarIndexed :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             output = built;
     }
     output.append(ScalarAt(forest, node, facts.ArrayRow, ScalarElementType(types, shape), facts.ArrayGet, 2, ""));
-    if (shape.record >= 0 && ScalarNestedCollection(types[shape.record])) {
+    if (shape.storage != TaskStorage && shape.record >= 0 && ScalarNestedCollection(types[shape.record])) {
         inner := SequenceElement(types, shape);
         output.append(ScalarAt(forest, node, facts.FieldRow,
                               ScalarValueType(types, inner.storage, inner.container, inner.record), 0, 1, ""));

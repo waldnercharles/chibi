@@ -1,0 +1,21 @@
+package method_map_reentry
+
+foreign {
+    chibi_value_equal_test_arm :: () -> int
+}
+Make :: (value: int) -> ^int { return &value; }
+Pointers :: () -> ^int[] { return [Make(11), Make(37)]; }
+Main :: () -> int {
+    // The callee's individual pointer slots have left scope. Only this
+    // owning array can keep both cells reachable during the callback.
+    held := Pointers();
+    values: [int:int][] = [[1:2],[3:4]];
+    wanted: [int:int] = [1:2];
+    armed := chibi_value_equal_test_arm();
+    assert(armed == 0);
+    values.remove_item(wanted);
+    assert(length(values) == 1 && values[0][3] == 4);
+    assert(held[0]^ + held[1]^ == 48,
+        "equality scratch allocation keeps unrelated pointer-array owners live during collection");
+    return 0;
+}

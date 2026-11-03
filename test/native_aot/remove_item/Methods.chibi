@@ -1,0 +1,56 @@
+package remove_methods
+Box :: struct { label: string; values: int[]; }
+Inner :: struct { words: string[]; }
+Outer :: struct { inner: Inner; }
+Text :: (count: int) -> string { return text_from_bytes(resize([u8(120)], count)); }
+Replace :: (words: ^(string[]), trace: ^int) -> string {
+    trace^ += 1;
+    words^ = [Text(3), Text(7)];
+    return Text(3);
+}
+Plain :: () {
+    numbers := [int(1), 2, 1];
+    original := numbers;
+    numbers.remove_item(1);
+    assert(length(numbers) == 2 && numbers[0] == 2 && numbers[1] == 1);
+    numbers.remove_item(9);
+    numbers.remove_item(1);
+    assert(length(numbers) == 1 && length(original) == 3);
+    flags := [false, true, false];
+    flags.remove_item(false);
+    assert(length(flags) == 2 && flags[0] && !flags[1]);
+    words := [Text(3), Text(5), Text(3)];
+    saved := words;
+    words.remove_item(Text(3));
+    assert(length(words) == 2 && text_byte_length(words[0]) == 5 && length(saved) == 3);
+    words.remove_item(words[1]);
+    assert(length(words) == 1);
+    trace := 0;
+    words.remove_item(Replace(&words, &trace));
+    assert(trace == 1 && length(words) == 1 && text_byte_length(words[0]) == 7);
+    nested := [[Text(3), Text(5)], [Text(7)]];
+    nested[0].remove_item(Text(3));
+    assert(length(nested[0]) == 1 && text_byte_length(nested[0][0]) == 5);
+    inline: Outer = {inner: {words: [Text(3), Text(5)]}};
+    inline.inner.words.remove_item(Text(3));
+    assert(length(inline.inner.words) == 1 && text_byte_length(inline.inner.words[0]) == 5);
+    boxes: Box[] = [{label: Text(3), values: [1,2]}, {label: Text(5), values: [7]}, {label: Text(3), values: [1,2]}];
+    box_alias := boxes;
+    wanted: Box = {label: Text(3), values: [1,2]};
+    boxes.remove_item(wanted);
+    assert(length(boxes) == 2 && text_byte_length(boxes[0].label) == 5 && boxes[0].values[0] == 7);
+    assert(length(box_alias) == 3 && box_alias[0].values[1] == 2);
+}
+Maps :: () {
+    first: [int:int] = [1:2,3:4];
+    same: [int:int] = [3:4,1:2];
+    last: [int:int] = [9:10];
+    values: [int:int][] = [first, same, last];
+    alias := values;
+    values.remove_item(same);
+    assert(length(values) == 2 && values[0][1] == 2 && values[1][9] == 10);
+    assert(length(alias) == 3 && alias[0][3] == 4);
+    values.remove_item(values[0]);
+    assert(length(values) == 1 && values[0][9] == 10);
+}
+Main :: () -> int { Plain(); Maps(); return 0; }

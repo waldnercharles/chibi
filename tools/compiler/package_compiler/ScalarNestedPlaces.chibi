@@ -66,7 +66,8 @@ ScalarNestedAssigned :: (forest: snapshot.SnapshotNode[], text: string, callable
             type := facts.IntType;
             prepared := ScalarOperands.Built([]);
             if (changed == facts.ArrayExtend) { type = inner_type; }
-            if (changed == facts.ArrayPush || ((changed == facts.ArrayInsert || changed == facts.ArrayReplace) && ordinal == 1)) {
+            if (changed == facts.ArrayPush || changed == facts.ArrayWithoutItem ||
+                ((changed == facts.ArrayInsert || changed == facts.ArrayReplace) && ordinal == 1)) {
                 type = value_type;
                 prepared = ScalarArrayElementValue(forest, text, callables, params, callable, names, types, members, constants,
                                                    value, inner, []);

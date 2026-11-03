@@ -31,6 +31,23 @@ Main :: () -> int {
         // no array element owns. Completed payloads make a leak observable.
         changed.set_array_elem(-1, values[0]);
     }
+    missing := Child(11);
+    yield;
+    before_method := chibi_task_owner_allocations();
+    for index in 0..<128 { changed.remove_item(missing); }
+    after_misses := chibi_task_owner_allocations();
+    assert(after_misses == before_method, "missing observer removal does not detach or allocate");
+    snapshot := changed;
+    changed.remove_item(changed[0]);
+    after_remove := chibi_task_owner_allocations();
+    assert(after_remove == after_misses + 1, "first shared observer removal detaches one backing");
+    changed.remove_item(changed[0]);
+    after_unique := chibi_task_owner_allocations();
+    assert(after_unique == after_remove, "unique observer removal does not allocate");
+    assert(length(snapshot) == 256 && length(changed) == 254);
+    preserved := await snapshot[0];
+    if preserved is Cancelled { return 3; }
+    else { assert(text_byte_length(preserved) == 9); }
     values = [];
     changed = [];
     return 0;

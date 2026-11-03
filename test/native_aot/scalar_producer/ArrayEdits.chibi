@@ -1,0 +1,59 @@
+package native_driver
+
+ArrayEditOperation :: (rows: facts.Row[], operator: int) -> int {
+    for (row, index in rows) {
+        if (row.kind == facts.ArrayRow && row.value == operator) { return index; }
+    }
+    assert(false, "array edit fixture contains its operation");
+    return -1;
+}
+ArrayEditsProjection :: () {
+    source := "package arrays\nMain::()->int{other:int[]=[9];values:int[]=[1,2];values.insert(0,3);values.reverse();fresh:=insert(values,0,int(4));flipped:=reverse(fresh);return length(flipped);}";
+    rows := Produced(source);
+    assert(rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+    inserted := ArrayEditOperation(rows, facts.ArrayInsert);
+    reversed := ArrayEditOperation(rows, facts.ArrayReverse);
+    fresh_insert := ArrayEditOperation(rows, facts.ArrayInserted);
+    fresh_reverse := ArrayEditOperation(rows, facts.ArrayReversed);
+    mismatch := "scalar array operation differs from its operands";
+    RejectChanged(rows, [Changed(inserted, CountField, 2)], mismatch);
+    RejectChanged(rows, [Changed(inserted, CountField, 4)], mismatch);
+    RejectChanged(rows, [Changed(reversed, CountField, 0)], mismatch);
+    RejectChanged(rows, [Changed(reversed, CountField, 2)], mismatch);
+    RejectChanged(rows, [Changed(fresh_insert, CountField, 2)], mismatch);
+    RejectChanged(rows, [Changed(fresh_reverse, CountField, 2)], mismatch);
+    // Both arrays are already visible. A valid reference to the wrong root
+    // must not mutate it under an assignment to the original variable.
+    assert(rows[inserted - 3].kind == facts.RefRow && rows[inserted - 3].value == 1);
+    assert(rows[reversed - 1].kind == facts.RefRow && rows[reversed - 1].value == 1);
+    RejectChanged(rows, [Changed(inserted - 3, ValueField, 0)], mismatch);
+    RejectChanged(rows, [Changed(reversed - 1, ValueField, 0)], mismatch);
+    RejectChanged(rows, [Changed(inserted - 2, TypeField, i64(facts.BoolType))], mismatch);
+    RejectChanged(rows, [Changed(inserted - 1, TypeField, i64(facts.BoolType)), Changed(inserted - 1, LiteralField, 0)], mismatch);
+    RejectChanged(rows, [Changed(inserted - 3, TypeField, i64(facts.StringType))], "scalar reference differs from its variable");
+    RejectChanged(rows, [Changed(fresh_insert, ValueField, i64(facts.ArrayInsert))], "scalar array change is not the assignment of its array");
+    RejectChanged(rows, [Changed(fresh_reverse, ValueField, i64(facts.ArrayReverse))], "scalar array change is not the assignment of its array");
+    bad_field := ChangedRows(rows, [Changed(inserted, LiteralField, 1)]);
+    row := bad_field[inserted];
+    diagnostic := format_text("{} at {}..{} (parent {}, field 0, operator {}): {}", mismatch,
+        row.start, row.end, row.type, row.value, strings.Slice(source, row.start, row.end - row.start));
+    ValidateRows(bad_field, diagnostic);
+    natives := Natives();
+    ports := Ports();
+    for (native in natives) {
+        if (native.name == "insert") {
+            argument := ports[native.first + 1]; argument.name = "Position"; ports[native.first + 1] = argument;
+        }
+    }
+    rejected := CollectionRows("Main::()->int{a:int[]=[1];b:=insert(a,0,int(2));return length(b);}", natives, ports);
+    assert(rejected[1].kind == facts.RejectionRow);
+    unused := CollectionRows("Main::()->int{return 0;}", natives, ports);
+    assert(unused[1].kind == facts.DocumentRow && scalar.Validate(unused) == "");
+    // Methods are ordinary typed place intrinsics. Their labels are checked
+    // against the supplied catalog, independently of a function capability.
+    method := CollectionRows("Main::()->int{a:int[]=[1];a.insert(Position:0,Item:2);return length(a);}", natives, ports);
+    assert(method[1].kind == facts.DocumentRow && scalar.Validate(method) == "");
+    shadow := CollectionRows("Main::()->int{return insert(2);}insert::(n:int)->int{return n;}", natives, ports);
+    assert(shadow[1].kind == facts.DocumentRow && scalar.Validate(shadow) == "");
+}

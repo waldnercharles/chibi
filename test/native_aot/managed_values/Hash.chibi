@@ -1,0 +1,16 @@
+package facade_stream_hash
+
+import sha256 "core:hash/sha256"
+
+foreign { chibi_value_test_allocations :: () -> u64 }
+
+Main :: () -> int {
+    data := resize([u8(0)], 262144);
+    stream := sha256.Begin();
+    before := chibi_value_test_allocations();
+    added := sha256.Update(&stream, data);
+    observed := chibi_value_test_allocations();
+    assert(added && observed == before, "4096 complete SHA-256 blocks reuse the same scratch without allocation");
+    assert(sha256.FinishHex(stream) == "8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90");
+    return 0;
+}

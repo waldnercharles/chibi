@@ -1,0 +1,65 @@
+package conditional_optionals
+
+Point :: struct { x: int; bit: bool; owner: string; data: int[]; }
+
+Fallback :: (calls: ^int) -> int { calls^ += 1; return 9; }
+Never :: () -> int { assert(false, "a present optional skips the fallback"); return -1; }
+Choose :: (calls: ^int, present: bool) -> int? {
+    calls^ += 1;
+    if present { return 0; }
+    return nil;
+}
+Read :: (calls: ^int, present: bool) -> Point? {
+    calls^ += 1;
+    if present { return {x: 0, bit: false, owner: format_text("owned {}", calls^), data: [calls^]}; }
+    return nil;
+}
+Narrow :: (value: i16?) -> i16 { return value ?? i16(9); }
+
+@test
+Calls :: () {
+    calls := 0;
+    value := Choose(&calls, true) ?? Fallback(&calls);
+    assert(value == 0 && calls == 1);
+    value = Choose(&calls, false) ?? Fallback(&calls);
+    assert(value == 9 && calls == 3);
+    present: int? = 7;
+    value = present ?? Never();
+    assert(value == 7);
+    absent: int? = nil;
+    value = absent ?? present ?? Fallback(&calls);
+    assert(value == 7 && calls == 3);
+    value = Choose(&calls, false) ?? Choose(&calls, true) ?? Fallback(&calls);
+    assert(value == 0 && calls == 5);
+    value = Choose(&calls, false) ?? Choose(&calls, false) ?? Fallback(&calls);
+    assert(value == 9 && calls == 8);
+    bit: bool? = false;
+    actual := bit ?? true;
+    assert(!actual);
+    bit = nil;
+    actual = bit ?? true;
+    assert(actual);
+    narrow := Narrow(i16(-7));
+    assert(narrow == i16(-7));
+    narrow = Narrow(nil);
+    assert(narrow == i16(9));
+    field := Read(&calls, true)?.x;
+    assert(field != nil && calls == 9);
+    value = field ?? -1;
+    assert(value == 0);
+    field = Read(&calls, false)?.x;
+    assert(field == nil && calls == 10);
+    value = field ?? 23;
+    assert(value == 23);
+    false_field := Read(&calls, true)?.bit;
+    assert(false_field != nil && calls == 11);
+    actual = false_field ?? true;
+    assert(!actual);
+    for index in 0..<2000 {
+        kept := Read(&calls, true)?.x;
+        assert(kept != nil);
+    }
+    assert(calls == 2011);
+}
+
+Main :: () -> int { Calls(); return 0; }

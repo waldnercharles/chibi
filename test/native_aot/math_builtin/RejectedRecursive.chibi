@@ -1,0 +1,3 @@
+package recursive_math_field
+Bad :: struct { position: vec3; child: Bad; }
+Main :: () -> int { return 0; }

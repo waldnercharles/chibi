@@ -1,0 +1,3 @@
+package view_math_field
+Bad :: struct { position: view vec3[]; }
+Main :: () -> int { return 0; }

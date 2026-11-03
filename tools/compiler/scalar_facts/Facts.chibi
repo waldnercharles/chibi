@@ -338,6 +338,16 @@ pub ManagedBorrow: int : 4;
 // Eager scalar selection: bool condition, then same-typed yes and no values.
 // Values are numeric or bool, never managed values or references.
 pub SelectRow: int : 54;
+// Maps Nil | Some(record) to Nil | Some(field), selecting plain numeric/bool
+// field `value`. Both optional shapes are canonical; count is one.
+pub OptionalFieldRow: int : 56;
+// Exchanges two evaluation-stack values without copying them. `value` and
+// `count` are depths below the top, 0 <= value < count; type and literal are 0.
+// Named calls evaluate arguments in source order, then arrange their slots.
+pub OperandSwapRow: int : 57;
+// A lexical scope without operands. Its header has type/value/count/literal 0
+// and empty names/text; End repeats its located range and releases its owners.
+pub ScopeRow: int : 59;
 // A source void waiting function has no success payload despite its internal int.
 pub FunctionVoid: int : 1;
 pub CallPlain: int : 0;
@@ -460,6 +470,9 @@ pub SquareRoot: int : 4;
 // Logical operators: the source's && and ||.
 pub LogicalAnd: int : 1;
 pub LogicalOr: int : 2;
+// Consumes Nil | Some(number/bool); its RHS span runs only for Nil and must
+// leave the same payload type as this row. The present path reads that payload.
+pub LogicalCoalesce: int : 3;
 
 // Fixed text operands stay in source evaluation order. This selects the
 // source ordinal of a parameter from a validated permutation: the identity
@@ -511,6 +524,16 @@ pub ArrayWithout: int : 16;
 // A foreign argument loan, consuming a numeric array or a reference to its
 // writable descriptor. It keeps the evaluated value alive until the C call.
 pub ArrayLoan: int : 17;
+// Read a logical array place. Unavailability is the ordinary reference
+// failure, distinct from expression indexing's typed bounds failure.
+pub ArrayPlaceGet: int : 20;
+// Mutating insert(array,index,item) and reverse(array) consume their canonical
+// array place as a RefRow, resolve it after arguments, and publish the change.
+pub ArrayInsert: int : 18;
+pub ArrayReverse: int : 19;
+// Functional forms give a new value, leaving every input unchanged.
+pub ArrayInserted: int : 21;
+pub ArrayReversed: int : 22;
 // A Local row whose `literal` is SwitchSubject holds the union a switch is on
 // when the switch is not on a variable, so each arm's bindings can read it
 // again. It has the switch statement's range, a Switch row of the same range
@@ -529,6 +552,9 @@ pub Retained: int : 2;
 // A plain-record IntType MemberRow uses this literal flag for char; a retained
 // IntType LocalRow combines it with Retained. Other kinds keep their literals.
 pub CharNominal: int : 4;
+// A compiler-created local captures part of one source statement. Following
+// captures and its writeback may share that range; operands keep real ranges.
+pub Captured: int : 8;
 
 // A For row's range flags. RangeArray stands alone or with RangeKeyed,
 // which declares the next variable, an int, as the index of the element.

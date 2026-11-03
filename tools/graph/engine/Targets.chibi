@@ -200,7 +200,7 @@ Files :: (target: string) -> string[] {
         ];
     }
     if (target == "chibi_program") {
-        return ["src/authoring/program.c", "src/authoring/program_service.c"];
+        return ["src/authoring/program.c"];
     }
     if (target == "chibi_program_consumer") {
         return ["test/tools/program_consumer.c"];
@@ -255,9 +255,7 @@ Files :: (target: string) -> string[] {
             "test/tools/main.c", "test/tools/case_timings.c", "test/tools/case_timings_test.c",
             "test/tools/fixture.c",
             "test/tools/native_workloads.c",
-            "test/tools/collab.c",
-            "test/tools/web_storage.c", "test/tools/browser.c",
-            "test/tools/wasm_browser.c", "test/support/arena.c",
+            "test/tools/web_storage.c", "test/support/arena.c",
             "src/host/process.c", "third_party/yyjson/yyjson.c",
             "test/tools/build_process.c",
             "test/tools/compiler_bootstrap.c",
@@ -409,7 +407,7 @@ pub PublicHeaders :: (target: string) -> string[] {
         return ["authoring/package_tests.h", "authoring/source_package_io.h", "authoring/package_compile.h"];
     }
     if (target == "chibi_program") {
-        return ["authoring/program.h", "authoring/program_service.h"];
+        return ["authoring/program.h"];
     }
     return [];
 }
@@ -1137,12 +1135,16 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_PACKAGE_COMPILER_SCALAR_FOREIGN_BYTES=bytes:tools/compiler/package_compiler/ScalarForeign.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALAR_BYTES=bytes:tools/compiler/package_compiler/Scalar.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALARARRAYS_BYTES=bytes:tools/compiler/package_compiler/ScalarArrays.chibi",
+            "CHIBI_PACKAGE_COMPILER_SCALAR_OPTIONALS_BYTES=bytes:tools/compiler/package_compiler/ScalarOptionals.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALAR_POINTERS_BYTES=bytes:tools/compiler/package_compiler/ScalarPointers.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALAR_COLLECTIONS_BYTES=bytes:tools/compiler/package_compiler/ScalarCollections.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALAREFFECTS_BYTES=bytes:tools/compiler/package_compiler/ScalarEffects.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALARGENERATIONS_BYTES=bytes:tools/compiler/package_compiler/ScalarGenerations.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALARMAPS_BYTES=bytes:tools/compiler/package_compiler/ScalarMaps.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALARMATH_BYTES=bytes:tools/compiler/package_compiler/ScalarMath.chibi",
+            "CHIBI_PACKAGE_COMPILER_SCALAR_BUILTIN_MATH_BYTES=bytes:tools/compiler/package_compiler/ScalarBuiltinMath.chibi",
+            "CHIBI_PACKAGE_COMPILER_SCALAR_SWIZZLES_BYTES=bytes:tools/compiler/package_compiler/ScalarSwizzles.chibi",
+            "CHIBI_PACKAGE_COMPILER_SCALAR_TRIG_BYTES=bytes:tools/compiler/package_compiler/ScalarTrig.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALARWASMABI_BYTES=bytes:tools/compiler/package_compiler/ScalarWasmABI.chibi",
             "CHIBI_PACKAGE_COMPILER_FALLIBLE_BYTES=bytes:tools/compiler/package_compiler/Fallible.chibi",
             "CHIBI_PACKAGE_COMPILER_SEQUENCES_BYTES=bytes:tools/compiler/package_compiler/Sequences.chibi",

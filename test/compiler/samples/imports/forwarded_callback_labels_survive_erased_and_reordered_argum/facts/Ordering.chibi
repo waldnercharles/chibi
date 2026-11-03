@@ -1,0 +1,56 @@
+package facts
+
+Three :: (a: int, b: int, c: int) -> int { return a * 100 + b * 10 + c; }
+Permutations :: (operation: fn(a: int, b: int, c: int) -> int) {
+    order := 0;
+    result := operation(a: Mark(&order, 1, 1), b: Mark(&order, 2, 2), c: Mark(&order, 3, 3));
+    assert(order == 123 && result == 123);
+    order = 0;
+    result = operation(a: Mark(&order, 1, 1), c: Mark(&order, 2, 3), b: Mark(&order, 3, 2));
+    assert(order == 123 && result == 123);
+    order = 0;
+    result = operation(b: Mark(&order, 1, 2), a: Mark(&order, 2, 1), c: Mark(&order, 3, 3));
+    assert(order == 123 && result == 123);
+    order = 0;
+    result = operation(b: Mark(&order, 1, 2), c: Mark(&order, 2, 3), a: Mark(&order, 3, 1));
+    assert(order == 123 && result == 123);
+    order = 0;
+    result = operation(c: Mark(&order, 1, 3), a: Mark(&order, 2, 1), b: Mark(&order, 3, 2));
+    assert(order == 123 && result == 123);
+    order = 0;
+    result = operation(c: Mark(&order, 1, 3), b: Mark(&order, 2, 2), a: Mark(&order, 3, 1));
+    assert(order == 123 && result == 123);
+    order = 0;
+    result = operation(c: Mark(&order, 1, 3), Mark(&order, 2, 1), Mark(&order, 3, 2));
+    assert(order == 123 && result == 123);
+    order = 0;
+    result = operation(Mark(&order, 1, 1), c: Mark(&order, 2, 3), Mark(&order, 3, 2));
+    assert(order == 123 && result == 123);
+}
+
+Mixed :: (value: int, flag: bool, text: string) -> int {
+    if flag { return -1; }
+    return value + text_byte_length(text);
+}
+MixedArguments :: (operation: fn(value: int, flag: bool, text: string) -> int) -> int {
+    return operation(text: "abc", 5, false);
+}
+
+Replace :: (value: ^string) -> int { value^ = format_text("{}", int(999)); return 7; }
+Original :: (changed: int, before: string) -> int {
+    assert(before == "123");
+    return changed;
+}
+OwnedArguments :: (operation: fn(changed: int, before: string) -> int) -> int {
+    text := format_text("{}", int(123));
+    result := operation(before: text, changed: Replace(&text));
+    assert(text == "999");
+    return result;
+}
+
+@test
+ArgumentOrder :: () {
+    Permutations(Three);
+    assert(MixedArguments(Mixed) == 8);
+    assert(OwnedArguments(Original) == 7);
+}

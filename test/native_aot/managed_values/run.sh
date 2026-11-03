@@ -22,7 +22,7 @@ set -eu
 for source do
     case "$source" in *.ll)
         if grep -q 'define i32 @chibi_scalar(ptr %ctx)' "$source"; then
-            sed -e 's/define i32 @chibi_scalar(ptr %ctx)/define i32 @chibi_value_test_entry(ptr %ctx)/' -e '/^declare i64 @chibi_value_test_allocations()$/d' "$source" > "$source.audit"
+            sed -e "s/define i32 @chibi_scalar(ptr %ctx)/define i32 @$CHIBI_VALUE_ENTRY(ptr %ctx)/" -e '/^declare i64 @chibi_value_test_allocations()$/d' "$source" > "$source.audit"
             cat "$CHIBI_VALUE_AUDIT" >> "$source.audit"
             mv "$source.audit" "$source"
         fi ;;
@@ -33,11 +33,22 @@ WRAPPER
 chmod +x "$work/llvm/opt"
 ln -s "$llvm/llc" "$work/llvm/llc"
 ln -s "$llvm/$linker" "$work/llvm/$linker"
-export CHIBI_VALUE_LLVM=$llvm CHIBI_VALUE_AUDIT=$root/test/native_aot/managed_values/Audit.ll
+export CHIBI_VALUE_LLVM=$llvm
+# Managed pointer programs retain the real execution-family owner and formatter.
+# The source audit checks the same poison/balance contract without replacing it.
+# Its printf report belongs to its standalone probe's explicit link imports.
+sed '/%printed = call /d' "$root/test/native_aot/managed_pointers/SourceAudit.ll" > "$work/conditional-audit.ll"
 for level in 0 2; do
-    for source in Records Foreign Backed Growth Fields Clock; do
+    for source in Records Foreign Backed Growth Fields Clock Hash ConditionalOptionals NestedMath MathScopes; do
         input=$root/test/native_aot/managed_values/$source.chibi
+        export CHIBI_VALUE_ENTRY=chibi_value_test_entry CHIBI_VALUE_AUDIT=$root/test/native_aot/managed_values/Audit.ll
         if [ "$source" = Records ]; then input=$records_source; fi
+        if [ "$source" = NestedMath ]; then input=$root/test/native_aot/math_builtin/Nested.chibi; fi
+        if [ "$source" = MathScopes ]; then input=$root/test/native_aot/math_builtin/Scopes.chibi; fi
+        if [ "$source" = ConditionalOptionals ]; then
+            input=$root/test/native_aot/fallible/conditional_optionals/Main.chibi
+            export CHIBI_VALUE_ENTRY=managed_source.entry CHIBI_VALUE_AUDIT=$work/conditional-audit.ll
+        fi
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$input" --entry Main \
             --output "$work/$source-O$level" --llvm "$work/llvm" --target "$triple" --level "$level" --jobs 1

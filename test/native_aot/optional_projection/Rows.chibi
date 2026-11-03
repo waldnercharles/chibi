@@ -1,0 +1,89 @@
+package optional_row_checks
+
+import facts "project:scalar_facts"
+import scalar "project:scalar_llvm"
+import os "core:os"
+
+Row :: (kind: int, type: int, value: int, count: int, name: string) -> facts.Row {
+    return {kind: kind, type: type, value: value, count: count, literal: 0, name: name, text: "",
+             start: 0, end: 8, line: 1, column: 1};
+}
+Rows :: (present: bool) -> facts.Row[] {
+    source := Row(facts.SourceRow, 0, 0, 0, "Optional.chibi");
+    source.text = "optional";
+    source.end = 0;
+    source.line = 0;
+    source.column = 0;
+    document := source;
+    document.kind = facts.DocumentRow;
+    document.name = "project:Optional.chibi";
+    document.text = "";
+    point := facts.RecordType;
+    optional_point := point + 1;
+    optional_int := point + 2;
+    rows := [source, document, Row(facts.RecordRow, 0, 0, 1, "Point"), Row(facts.MemberRow, facts.IntType, 0, 0, "x"),
+        Row(facts.UnionRow, 0, 0, 2, "OptionalPoint"), Row(facts.VariantRow, 0, 0, 0, "Nil"),
+        Row(facts.VariantRow, 0, 1, 1, "Some"), Row(facts.MemberRow, point, 0, 0, "value"),
+        Row(facts.UnionRow, 0, 0, 2, "OptionalInt"), Row(facts.VariantRow, 0, 0, 0, "Nil"),
+        Row(facts.VariantRow, 0, 1, 1, "Some"), Row(facts.MemberRow, facts.IntType, 0, 0, "value"),
+        Row(facts.FunctionRow, facts.IntType, 0, 0, "Main"), Row(facts.ReturnRow, 0, 0, 4, "")];
+    if present {
+        rows.append(Row(facts.ZeroRow, point, 0, 0, ""));
+        rows.append(Row(facts.MakeRow, optional_point, 1, 1, ""));
+    } else { rows.append(Row(facts.MakeRow, optional_point, 0, 0, "")); }
+    rows.append(Row(facts.OptionalFieldRow, optional_int, 0, 1, ""));
+    rows.append(Row(facts.LogicalRow, facts.IntType, facts.LogicalCoalesce, 1, ""));
+    literal := Row(facts.LiteralRow, facts.IntType, 0, 0, "");
+    literal.literal = 42;
+    rows.append(literal);
+    returned := rows[13];
+    returned.count = length(rows) - 14;
+    rows[13] = returned;
+    return rows;
+}
+Invalid :: (rows: facts.Row[]) -> bool {
+    return scalar.Validate(rows) != "" && length(scalar.EmitBytes(rows)) == 0;
+}
+Main :: () -> int {
+    for present in [false, true] {
+        rows := Rows(present);
+        message := scalar.Validate(rows);
+        if message != "" { os.Print(message); return 1; }
+        assert(length(scalar.EmitBytes(rows)) > 0);
+    }
+    base := Rows(false);
+    for variant in 0..<18 {
+        rows := base;
+        field := rows[15];
+        logical := rows[16];
+        switch variant {
+            case 0: field.value = -1;
+            case 1: field.value = 1;
+            case 2: field.count = 0;
+            case 3: field.count = 2;
+            case 4: field.type = facts.IntType;
+            case 5: field.literal = 1;
+            case 6: field.name = "field";
+            case 7: logical.count = 0;
+            case 8: logical.count = 2;
+            case 9: logical.type = facts.BoolType;
+            case 10: logical.value = 4;
+            case 11: logical.literal = 1;
+            case 12: logical.name = "coalesce";
+            case 13:
+                row := rows[5]; row.name = "Absent"; rows[5] = row;
+            case 14:
+                row := rows[9]; row.name = "Absent"; rows[9] = row;
+            case 15:
+                row := rows[3]; row.type = facts.StringType; rows[3] = row;
+            case 16:
+                row := rows[17]; row.type = facts.BoolType; row.literal = 1; rows[17] = row;
+            case 17:
+                row := rows[14]; row.type = facts.IntType; rows[14] = row;
+        }
+        rows[15] = field;
+        rows[16] = logical;
+        assert(Invalid(rows), "malformed optional projection must publish no LLVM");
+    }
+    return 0;
+}

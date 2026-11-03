@@ -1,0 +1,4 @@
+package facts
+Stopped :: (handle: Missing) -> int { return 0; }
+
+// error: 2:13: parameter type is not supported yet

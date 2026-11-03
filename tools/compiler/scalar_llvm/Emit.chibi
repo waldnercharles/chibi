@@ -1427,6 +1427,20 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             }
             stack.append(facts.ReferenceType + operand.type);
             continue;
+        } else if (operand.kind == facts.FieldReferenceRow) {
+            base := length(stack) - 1;
+            parent := 0;
+            if (base >= floor && stack[base] >= facts.ReferenceType) { parent = stack[base] - facts.ReferenceType; }
+            field := operand.type;
+            if (operand.name != "" || operand.count != 1 || base < floor ||
+                (!Scalar(field) && field != facts.StringType && Element(records, field) == 0 &&
+                 !(field >= facts.RecordType && field < facts.ArrayType && field - facts.RecordType < length(records))) ||
+                RecordMemberType(rows, records, parent, i64(operand.value)) != field) {
+                return "scalar field reference differs from its record";
+            }
+            stack = slice(stack, 0, base);
+            stack.append(facts.ReferenceType + operand.type);
+            continue;
         } else if (operand.kind == facts.LogicalRow) {
             base := length(stack) - 1;
             if (operand.count < 1 || operand.count > last - row - 1) {
@@ -3258,6 +3272,21 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     } else {
                         item = Op(native.LocalAddress, native.RefType + type, slot, places[operand.value], 0, 0);
                     }
+                } else if (operand.kind == facts.FieldReferenceRow) {
+                    input := stack[length(stack) - 1];
+                    parent := slots[shape.first_slot + input] - native.RefType;
+                    locals.append(native.RefType + parent);
+                    body.append(Op(native.Save, native.RefType + parent, 0, input, 0, local));
+                    slots[length(slots) - 1] = native.RefType + type;
+                    item = Op(native.FieldAddress, native.RefType + type, slot, local, parent, 1);
+                    item.literal = i64(operand.value);
+                    local += 1;
+                    origin := SortedIndex(reference_slots, input);
+                    if (origin >= 0) {
+                        reference_slots.append(slot);
+                        reference_variables.append(reference_variables[origin]);
+                    }
+                    stack = slice(stack, 0, length(stack) - 1);
                 } else if (operand.kind == facts.ReadRow) {
                     item = Op(native.Local, type, slot, places[operand.value], 0, 0);
                     any_slots.append(slot);

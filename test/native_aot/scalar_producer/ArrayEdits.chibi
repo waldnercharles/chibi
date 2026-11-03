@@ -79,3 +79,36 @@ ArrayPlacesProjection :: () {
     RejectChanged(rows, [Changed(check - 1, TypeField, i64(facts.BoolType))], "scalar read differs from its variable");
     RejectChanged(rows, [Changed(check, ValueField, i64(facts.ArrayPlaceCheck + 1))], mismatch);
 }
+
+ForeignPlacesProjection :: () {
+    rows := Produced("package places\nforeign import libc \"system:c\"\nforeign libc {memset::(data:u8[],value:i32,count:u64)->rawptr}\nInner::struct{bytes:u8[];}Box::struct{inner:Inner;}Main::()->int{box:Box={inner:{bytes:[u8(65)]}};written:=memset(box.inner.bytes,9,1);return int(box.inner.bytes[0]);}");
+    ValidateRows(rows, "");
+    first := -1;
+    for (row, index in rows) {
+        if (row.kind == facts.FieldReferenceRow) { first = index; break; }
+    }
+    assert(first >= 0 && rows[first + 1].kind == facts.FieldReferenceRow);
+    mismatch := "scalar field reference differs from its record";
+    RejectChanged(rows, [Changed(first, CountField, 0)], mismatch);
+    RejectChanged(rows, [Changed(first, CountField, 2)], mismatch);
+    RejectChanged(rows, [Changed(first, ValueField, -1)], mismatch);
+    RejectChanged(rows, [Changed(first, ValueField, 2147483647)], mismatch);
+    RejectChanged(rows, [Changed(first, TypeField, i64(facts.BoolType))], mismatch);
+    RejectChanged(rows, [Changed(first + 1, TypeField, i64(facts.ArrayType + facts.IntType))], mismatch);
+    RejectChanged(rows, [Changed(first, LiteralField, 1)], "invalid scalar operand row");
+    RejectChanged(rows, [Changed(first, TypeField, 0)], "invalid scalar operand row");
+    // A parameter avoids an earlier initializer write masking this leaf-domain check.
+    domain := Produced("package places\nforeign import libc \"system:c\"\nforeign libc {memset::(data:u8[],value:i32,count:u64)->rawptr}\nInner::struct{bytes:u8[];}Box::struct{inner:Inner;}Main::()->int{return 0;}Touch::(box:Box)->int{written:=memset(box.inner.bytes,9,1);return 0;}");
+    member := -1;
+    leaf := -1;
+    for (row, index in domain) {
+        if (row.kind == facts.MemberRow && row.name == "bytes") { member = index; }
+        if (row.kind == facts.FieldReferenceRow) { leaf = index; }
+    }
+    assert(member >= 0 && leaf >= 0);
+    ValidateRows(domain, "");
+    RejectChanged(domain, [Changed(member, TypeField, i64(facts.ViewType)), Changed(leaf, TypeField, i64(facts.ViewType))], mismatch);
+    retained := Produced("package places\nforeign import libc \"system:c\"\nforeign libc {memset::(data:u8[],value:i32,count:u64)->rawptr}\nBox::struct{bytes:u8[];}Main::()->int{box:retain Box={bytes:[u8(65)]};written:=memset(box.bytes,9,1);return 0;}");
+    assert(retained[1].kind == facts.RejectionRow);
+    assert(retained[1].text == "native foreign record buffer needs a writable inline record array field");
+}

@@ -1139,7 +1139,8 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             if (item.target == 1) {
                 held = RefType + item.right;
             }
-            if (field == 0 || item.type != RefType + field || (abi.ScalarType(field) == "" && ElementType(records, field) == 0) ||
+            if (field == 0 || item.type != RefType + field || (abi.ScalarType(field) == "" && ElementType(records, field) == 0 &&
+                 !(field >= RecordType && field < ArrayType && ValueValid(lifecycle, field))) ||
                 (item.target != 0 && item.target != 1) || !Typed(locals, item.left, held)) {
                 return Result.Rejected(base + pc, "native field reference differs from its record");
             }

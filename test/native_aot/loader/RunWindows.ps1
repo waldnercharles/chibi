@@ -23,7 +23,7 @@ try {
     $generationBuilder = "$work/generation-builder.exe"
     & $compilerPath --compiler "$root/tools/compiler" --core "$root/packages/core" `
         --package . --source "$root/test/native_aot/loader/GenerationBuild.chibi" --entry Main --output $generationBuilder `
-        --llvm $llvmPath --target x86_64-pc-windows-msvc --level 0 --jobs 2
+        --llvm $llvmPath --target x86_64-pc-windows-msvc --level 2 --jobs 2
     if ($LASTEXITCODE) { throw 'could not compile the source-generation DLL builder' }
     $watchProof = "$work/watch-proof.exe"
     & $compilerPath --compiler "$root/tools/compiler" --core "$root/packages/core" `

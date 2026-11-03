@@ -31,10 +31,10 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/language/parallel.c`, `main.c`, `backend.h`, `compiler_cache.h` | 9, 0 | the C test runner | goes |
 | `test/runtime/whole_integer.c`, `whole_conversion.c`, `whole_math.c` | 3, 1, 2 | hand-built IR, bytecode against SLJIT | goes; the conversion, negation and comparison rules are ported, and integer `abs`/`min`/`max`/`clamp` and the math specials wait on owner decisions |
 | `test/runtime/persistent_store.c` | 1 | `execution_program_set_state` | goes, except retained records across a swap |
-| `test/runtime/reference_cave.c` | 0 | a helper with no live caller | goes (dead) |
+| `test/runtime/reference_cave.c`, `reference_cave.h` (retired 2026-11-02) | 0 | a helper with no live caller | retired with its unused test-driver source entry |
 | `test/support/arena.c`, `asset_value.c`, `reflected_types.c` | 5, 3, 0 | `src/support` used only by the VM | goes |
 | `test/support/fmt.c` | 2 | `third_party/fmt` behind `src/runtime/text_format.c` | goes; `{}` holes are covered by `FormatsTextWithoutTheVM` |
-| `test/host/process.c`, `state_file.c`, `concurrent.c`, `main.c` | 1, 1, 0, 0 | `src/host` | goes (no row runs them; `state_file.c` is dead) |
+| `test/host/process.c`, `state_file.c`, `concurrent.c`, `main.c` (retired 2026-11-02) | 1, 1, 0, 0 | `src/host` | unselected utilities retired with their graph targets; unused `src/host/state_file.c/.h` retired with its only test caller |
 | `test/parallel.c` | 0 | the pico_unit scheduler | goes |
 | `test/native_aot/targets/run.c` | 2 | LLVM-built bundles on macOS and Windows | survives, since no VM is in it; it is first-party C, so it becomes a native Chibi runner later |
 | `test/tools/types.c`, `native_values.c`, `program_consumer.c` | 42, 1, 2 | `src/types`, `src/runtime`, `src/authoring/program.h` | goes |

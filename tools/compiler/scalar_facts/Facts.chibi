@@ -159,7 +159,9 @@ package scalar_facts
 // TextFormat consumes the `count` most recent, at least one, a string format
 // then each argument, a number, bool or string of its own type, to give the
 // string format_text makes of them, which the runtime allocates. The
-// indexes, starts, counts and byte counts are ints. A record
+// indexes, starts, counts and byte counts are ints. A fixed text row's
+// `literal` selects its source operand permutation through TextArgument;
+// TextFormat keeps literal 0 and its format first. A record
 // literal is a Zero row with the literal's range, then each
 // field's value in source order and its Update, with the field's range. An
 // assignment to a field, `v.f = x`, is an Assign of `v` whose operands read
@@ -448,8 +450,26 @@ pub SquareRoot: int : 4;
 pub LogicalAnd: int : 1;
 pub LogicalOr: int : 2;
 
-// Text operators: the runtime's text_byte_length, text_byte_at, text_slice
-// and format_text.
+// Fixed text operands stay in source evaluation order. This selects the
+// source ordinal of a parameter from a validated permutation: the identity
+// is 0, two operands have 2 orders, and three have 6 lexicographic orders.
+pub TextArgument :: (count: int, order: int, parameter: int) -> int {
+    if (count == 2) {
+        if (order == 1) { return 1 - parameter; }
+        return parameter;
+    }
+    if (count != 3 || order == 0) { return parameter; }
+    switch order {
+        case 1: if (parameter == 0) { return 0; } return 3 - parameter;
+        case 2: if (parameter == 2) { return 2; } return 1 - parameter;
+        case 3: return (parameter + 1) % 3;
+        case 4: return (parameter + 2) % 3;
+        case 5: return 2 - parameter;
+        case: assert(false);
+    }
+    return 0;
+}
+// Text operators of the runtime.
 pub TextLength: int : 1;
 pub TextByte: int : 2;
 pub TextSlice: int : 3;
@@ -490,10 +510,14 @@ pub SwitchSubject: int : 1;
 // and its result is the updated whole record. Arguments finish before the
 // current field descriptor is read; the final Assign targets that record.
 // A Local row whose `literal` is Retained declares a retained number, bool,
-// standalone string or numeric/bool record. Its operands construct a constant initial
+// string, numeric/bool array or plain record of those values. Initial array
+// leaves are empty; the other operands construct a constant initial
 // value. Native lowering migrates record leaves by their field paths under
 // Function.variable, so reordering fields does not change their identities.
 pub Retained: int : 2;
+// A plain-record IntType MemberRow uses this literal flag for char; a retained
+// IntType LocalRow combines it with Retained. Other kinds keep their literals.
+pub CharNominal: int : 4;
 
 // A For row's range flags. RangeArray stands alone or with RangeKeyed,
 // which declares the next variable, an int, as the index of the element.
@@ -546,7 +570,7 @@ pub Floating :: (type: int) -> bool {
 // integer type, any bits for a word or double, 32 bits for a float and 0 for
 // a string, whose value is its text.
 pub Fits :: (literal: i64, type: int) -> bool {
-    if (type == TaskType) { return literal == 0; }
+    if (type == TaskType || type == PointerType) { return literal == 0; }
     if (type == StringType) {
         return literal == 0;
     }

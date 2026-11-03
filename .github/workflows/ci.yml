@@ -265,11 +265,6 @@ jobs:
         include-hidden-files: true
         if-no-files-found: warn
         retention-days: 7
-    - name: Build timing host regressions (ready drivers)
-      env:
-        CHIBI_TOOLS_BUILD_DIR: build/test/tools
-        CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
-      run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" build-timings
     - name: Tooling and process integrations
       env:
         CHIBI_TEST_TIMINGS: ${{ runner.temp }}/case-timings
@@ -526,13 +521,25 @@ jobs:
       - name: Check native Windows DLL isolation and generation watch
         id: windows-dll-proof
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         run: ./test/native_aot/loader/RunWindows.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM -Root $PWD.Path
+      - name: Check public native Windows watch
+        id: windows-public-watch-proof
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        run: ./test/native_aot/loader/RunPublicWindows.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM -Root $PWD.Path
       - name: Preserve failed Windows DLL evidence
-        if: ${{ failure() && steps.windows-dll-proof.outcome == 'failure' }}
+        if: ${{ failure() && (steps.windows-dll-proof.outcome == 'failure' || steps.windows-public-watch-proof.outcome == 'failure') }}
         uses: actions/upload-artifact@v4
         with:
           name: windows-dll-evidence
-          path: ${{ runner.temp }}/chibi-dll-loader-*/**
+          path: |
+            ${{ runner.temp }}/chibi-dll-loader-*/**
+            ${{ runner.temp }}/chibi-public-watch-*/**
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7

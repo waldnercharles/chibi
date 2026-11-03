@@ -293,3 +293,14 @@ for expected in 130 143; do
     finish "$expected"
 done
 printf 'native watch: explicit Frame statuses 130 and 143 are preserved\n'
+
+mkdir "$work/arrays"
+sed 's/        Ready();/        print_string("array-watch-ready");/' \
+    "$root/test/native_aot/generations/ArrayFirst.chibi" > "$work/arrays/Main.chibi"
+log=$work/arrays.log
+"$driver" run --watch -O0 --llvm "$llvm" "$work/arrays" >"$log" 2>&1 &
+process=$!
+wait_log 'array-watch-ready'
+cp "$root/test/native_aot/generations/ArrayEdited.chibi" "$work/arrays/Main.chibi"
+finish 7
+printf 'native watch: numeric/bool arrays and record array fields migrate with Main-once\n'

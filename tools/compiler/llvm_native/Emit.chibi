@@ -1163,12 +1163,12 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
                 return Result.Rejected(base + pc, "native managed pointer identity is invalid");
             }
             if (item.op == ManagedNew &&
-                (item.type != PointerType || !ManagedPayload(records, fields, managed_records, lifecycle, item.right, item.literal) ||
+                (item.type != PointerType || !ManagedPayload(records, managed_records, lifecycle, item.right, item.literal) ||
                  !Typed(slots, item.left, item.right))) {
                 return Result.Rejected(base + pc, "native managed cell initializer differs from its scalar type");
             }
             if (item.op == ManagedAddress &&
-                (item.type < RefType || !ManagedTarget(records, fields, managed_records, lifecycle, item.type - RefType, item.literal) ||
+                (item.type < RefType || !ManagedTarget(records, managed_records, lifecycle, item.type - RefType, item.literal) ||
                  !Typed(slots, item.left, PointerType) || item.right != 0)) {
                 return Result.Rejected(base + pc, "native managed pointer resolution differs from its scalar target");
             }
@@ -2085,7 +2085,7 @@ ValueUses :: (code: Instruction[], records: Record[], fields: int[], owners: boo
         if (mapped != 0) { ValueReach(&build, mapped, false, false); continue; }
         type := 0;
         if (item.op == OwnerPin || item.op == ValueCopy || item.op == ValueDrop || item.op == StateLoad || item.op == StateStore) { type = item.type; }
-        if (item.op == AwaitResult || (item.op == ManagedNew && ManagedOptionalText(records, fields, item.right))) { type = item.right; }
+        if (item.op == AwaitResult || (item.op == ManagedNew && item.right >= RecordType && item.right < ArrayType && owners[item.right - RecordType])) { type = item.right; }
         if (type >= RecordType && type < ArrayType) {
             ValueReach(&build, type, false, item.op == OwnerPin || item.op == AwaitResult);
         }
@@ -3076,7 +3076,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         if (item.op == ManagedPending || item.op == ManagedPoll || item.op == ManagedTrack) {
             out.append(ManagedPollInstruction(item, pc, gc_owners));
         } else if ((item.op >= ManagedNew && item.op <= ManagedUnpin) || item.op == ManagedProject) {
-            out.append(ManagedInstruction(item, pc, records, fields, coroutine));
+            out.append(ManagedInstruction(item, pc, records, record_owners, coroutine));
         } else if (ViewOperation(item.op)) {
             out.append(ViewInstruction(item, pc, own, record_owners));
         } else if (managed && (item.op == Return || item.op == End) && !coroutine) {
@@ -3596,14 +3596,14 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         if (!ProgramMode(mode) && !family) {
             return Result.Rejected(-1, "native managed record layouts require a standalone or execution-family owner");
         }
-        optional_text := ManagedOptionalText(records, fields, RecordType + index);
+        optional_text := ManagedOptionalText(records, fields, field_tags, RecordType + index);
         if ((!managed_records.flat[index] && !managed_records.plain[index] && !optional_text) || length(field_tags) == 0) {
-            return Result.Rejected(-1, "native managed record metadata requires scalar or pointer fields");
+            return Result.Rejected(-1, "native managed record metadata requires scalar, text or pointer fields");
         }
         if (optional_text && (field_tags[record.first] != 0 || field_tags[record.first + 1] != 0)) {
             return Result.Rejected(-1, "native managed field identity is invalid");
         }
-        whole := managed_records.plain[index] && field_tags[record.first] == 0;
+        whole := (managed_records.plain[index] || optional_text) && field_tags[record.first] == 0;
         if (managed_records.flat[index]) {
             for (field in record.first..<record.first + record.count) {
                 if ((field_tags[field] == 0) != whole) { return Result.Rejected(-1, "native managed field identity is invalid"); }
@@ -3824,7 +3824,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             for (item in held) {
                 if (item.op == ManagedNew && item.right >= RecordType && item.right < ArrayType) {
                     record_roots[item.right - RecordType] = true;
-                    cell_text = cell_text || ManagedOptionalText(records, fields, item.right);
+                    cell_text = cell_text || ValueOwned(item.right, record_owners);
                 }
                 if (item.op == ManagedTrack) {
                     type := item.type;

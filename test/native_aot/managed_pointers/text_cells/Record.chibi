@@ -1,0 +1,11 @@
+package record_text_cell_writer
+Value :: struct { pointer: ^int; label: string; }
+Number :: (value: int) -> ^int { return &value; }
+Literal :: () -> Value { return {pointer: Number(31), label: "new image literal"}; }
+Write :: (pointer: ^Value) -> ^Value { alias := pointer; alias^ = Literal(); return alias; }
+Main :: () -> int {
+    value: Value = {pointer: Number(7), label: "old"};
+    pointer := &value;
+    changed := Write(pointer);
+    return text_byte_length(changed.label);
+}

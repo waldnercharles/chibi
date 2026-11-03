@@ -278,5 +278,17 @@ view promises remain separate.
 Value-only records may combine direct pointer fields with pointer-array and
 text owners. Their structural root metadata does not make them cell layouts.
 `InlineOwners.chibi` checks synchronous copies, repeated promise joins, by-value
-waiting parameters and cancellation under collection. Taking the address of an
-owned record remains rejected until its cell layout owns and traces those fields.
+waiting parameters and cancellation under collection.
+
+Flat authored record cells can also own Text fields beside scalar/bool and
+pointer fields. Their typed copy imports borrowed Text leaves before publishing
+the cell; its tracer follows pointer fields and its last drop releases Text.
+Whole-value, boxed-variable and scoped replacements acquire incoming text before
+releasing previous owners. Pointer fields retain their location identity.
+Owned constructor inputs remain rooted until the new cell reaches its canonical
+Pointer local. The source proof covers field aliases, snapshots, returned and
+parameter cells, cycles and failure cleanup. A two-image proof writes an actual
+returned record literal into an old cell, unloads the writer, and reads the text
+afterward; bypassing the import fails. Nonzero authored field identities keep
+`{int, string}` distinct from a whole optional string's zero field identities.
+Inline-nested, array, map and view fields in a cell remain separate admission work.

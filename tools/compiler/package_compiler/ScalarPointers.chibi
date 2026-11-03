@@ -400,11 +400,11 @@ ScalarManagedRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], mem
         output[heads[index]] = header;
         for (ordinal in 0..<declared.count) {
             field := members[declared.first + ordinal];
-            scalar := field.record == -1 && (Numeric(field.storage) || field.storage == BoolStorage);
+            scalar := field.record == -1 && (Numeric(field.storage) || field.storage == BoolStorage || field.storage == TextStorage);
             pointer := field.storage == PointerStorage && ScalarPointerType(types, field.record) != 0;
             if (field.container != 0 || (!scalar && !pointer) || CharType(types, field.storage, field.container, field.record)) {
                 return ScalarOperands.Failed(Diagnose(forest, declared.node, 0,
-                    "native managed record cells require flat numeric, bool or pointer fields"));
+                    "native managed record cells require flat numeric, bool, string or pointer fields"));
             }
             member := output[heads[index] + 1 + ordinal];
             member.literal = ScalarPointerTag(types, {storage: field.storage, container: 0, record: field.record});

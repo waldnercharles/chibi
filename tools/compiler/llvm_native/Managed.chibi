@@ -552,7 +552,7 @@ ManagedUnroots :: (is_entry: bool) -> string {
     if (is_entry) { output = strings.Concatenate([output, "  call void @chibi_managed.collect(ptr %ctx, ptr %managed.heap)\n"]); }
     return output;
 }
-ManagedInstruction :: (item: Instruction, pc: int, records: Record[], fields: int[], persistent: bool) -> string {
+ManagedInstruction :: (item: Instruction, pc: int, records: Record[], owners: bool[], persistent: bool) -> string {
     out := format_text("p{}:\n", pc);
     if (item.op == ManagedNew) {
         out = format_text("{}  call void @chibi_managed.safepoint(ptr %ctx, ptr %managed.heap)\n", out);
@@ -574,7 +574,7 @@ ManagedInstruction :: (item: Instruction, pc: int, records: Record[], fields: in
         } else if (item.right >= RecordType) {
             index := item.right - RecordType;
             layout = format_text("@chibi_managed.layout{}", index);
-            if (ManagedOptionalText(records, fields, item.right)) {
+            if (ValueOwned(item.right, owners)) {
                 drop = format_text("@chibi_value.{}.drop_at", item.right);
                 out = format_text("{}  %owned{} = call {} @chibi_managed.copy.record{}(ptr %ctx, {} %a{})\n", out, pc, TypeName(item.right), index, TypeName(item.right), pc);
                 value = format_text("%owned{}", pc);

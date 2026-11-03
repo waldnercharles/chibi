@@ -41,10 +41,10 @@ OptionalTextCellMetadataKeepsItsClosedShapeAndWholeIdentity :: () {
     Rejects(OptionalTextCellModule(fields, [i64(0), 1], -890, -890), "native managed field identity is invalid");
     Rejects(OptionalTextCellModule(fields, [i64(0), 0], 0, -890), "native managed cell initializer differs from its scalar type");
     Rejects(OptionalTextCellModule(fields, [i64(0), 0], -890, -891), "native managed cell initializer differs from its scalar type");
-    Rejects(OptionalTextCellModule([abi.BoolStorage, abi.TextStorage], [i64(0), 0], -890, -890),
-        "native managed record metadata requires scalar or pointer fields");
-    Rejects(OptionalTextCellModule([abi.IntStorage, abi.TextStorage, abi.IntStorage], [i64(0), 0, 0], -890, -890),
-        "native managed record metadata requires scalar or pointer fields");
+    Rejects(OptionalTextCellModule([abi.IntStorage, native.ArrayType + abi.IntStorage], [i64(0), 0], -890, -890),
+        "native managed record metadata requires scalar, text or pointer fields");
+    Rejects(OptionalTextCellModule([abi.IntStorage, abi.TextStorage, native.ArrayType + abi.IntStorage], [i64(0), 0, 0], -890, -890),
+        "native managed record metadata requires scalar, text or pointer fields");
     Rejects(OptionalTextCellModule(fields, [i64(0), 0], -890, -890, true),
         "native managed projection differs from its typed record field");
 }

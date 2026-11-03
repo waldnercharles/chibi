@@ -378,7 +378,7 @@ ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) ->
                 member.value != field || member.count != 0 ||
                 (record.literal == 0 && member.literal != 0 &&
                     (member.literal != i64(facts.CharNominal) || member.type != facts.IntType)) ||
-                (record.literal != 0 && (member.literal == 0 || (!Scalar(member.type) && member.type != facts.PointerType))) || !Located(member, starts, size) ||
+                (record.literal != 0 && (member.literal == 0 || (!Scalar(member.type) && member.type != facts.StringType && member.type != facts.PointerType))) || !Located(member, starts, size) ||
                 !Within(member, record)) {
                 return "invalid scalar record member row";
             }
@@ -3641,12 +3641,14 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         slots[length(slots) - 1] = native.RefType + target;
                         body.append(address);
                         if (operand.value == facts.ManagedWrite) {
-                            if (target >= native.RecordType && target < native.ArrayType &&
-                                OptionalPayloadType(rows, declared, operand.type) == facts.StringType) {
+                            if (TrackedRecord(managed, operand.type)) {
                                 incoming := stack[base + 1];
-                                locals.append(target);
-                                kept := ManagedOptionalTextCopy(target, incoming, slot + 1 + extra, local, length(body));
-                                local += 1;
+                                kept: HeldValue = {code: [], slot_types: [], value: incoming};
+                                if (OptionalPayloadType(rows, declared, operand.type) == facts.StringType) {
+                                    locals.append(target);
+                                    kept = ManagedOptionalTextCopy(target, incoming, slot + 1 + extra, local, length(body));
+                                    local += 1;
+                                } else { kept = ManagedFlatTextCopy(records, fields, target, incoming, slot + 1 + extra); }
                                 slots.extend(kept.slot_types);
                                 body.extend(kept.code);
                                 extra += length(kept.slot_types);
@@ -5362,6 +5364,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 locals.append(local_type);
                 places.append(local);
                 if (boxed) {
+                    pin_input := native.ValueCollectorOwner(value_layout, type) && !Holds(fresh, value);
+                    if (pin_input) { body.append(Op(native.ManagedTrack, type, 0, value, 0, native.ManagedTrackSlot)); }
                     slots.append(native.PointerType);
                     glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
                         fresh, slots, shape.first_slot, frames, slot + 1, next_root, waiting_function, records, value_layout);
@@ -5373,6 +5377,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     body.append(made);
                     body.extend(glue.after);
                     body.append(Op(native.Save, native.PointerType, 0, slot, 0, local));
+                    if (pin_input) { body.append(Op(native.ManagedTrack, type, 0, value, 0, native.ManagedClearSlot)); }
                     slot += 1 + length(glue.types);
                 } else if (type == native.TaskType && row.name == "_") {
                     slots.append(type);
@@ -5465,10 +5470,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 address := Op(native.ManagedAddress, native.RefType + type, slot + 1, slot, 0, 0);
                 address.literal = pointer_boxes.tags[row.value];
                 body.append(address);
-                if (OptionalPayloadType(rows, declared, row.type) == facts.StringType) {
-                    locals.append(type);
-                    kept := ManagedOptionalTextCopy(type, value, slot + 2, local, length(body));
-                    local += 1;
+                if (TrackedRecord(managed, row.type)) {
+                    kept: HeldValue = {code: [], slot_types: [], value: value};
+                    if (OptionalPayloadType(rows, declared, row.type) == facts.StringType) {
+                        locals.append(type);
+                        kept = ManagedOptionalTextCopy(type, value, slot + 2, local, length(body));
+                        local += 1;
+                    } else { kept = ManagedFlatTextCopy(records, fields, type, value, slot + 2); }
                     slots.extend(kept.slot_types);
                     body.extend(kept.code);
                     body.extend(DropValue(managed, row.type, value).code);
@@ -5509,10 +5517,14 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 body.append(Op(native.Local, native.RefType + type, slot, places[row.value], 0, 0));
                 if (TrackedRecord(managed, type)) {
                     pointer := slot;
-                    if (OptionalPayloadType(rows, declared, row.type) == facts.StringType) {
-                        locals.append(type);
-                        kept := ManagedOptionalTextCopy(type, value, slot + 1, local, length(body));
-                        local += 1;
+                    if (OptionalPayloadType(rows, declared, row.type) == facts.StringType ||
+                        rows[declared[row.type - facts.RecordType]].literal != 0) {
+                        kept: HeldValue = {code: [], slot_types: [], value: value};
+                        if (OptionalPayloadType(rows, declared, row.type) == facts.StringType) {
+                            locals.append(type);
+                            kept = ManagedOptionalTextCopy(type, value, slot + 1, local, length(body));
+                            local += 1;
+                        } else { kept = ManagedFlatTextCopy(records, fields, type, value, slot + 1); }
                         slots.extend(kept.slot_types);
                         body.extend(kept.code);
                         body.extend(DropValue(managed, row.type, value).code);

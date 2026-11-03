@@ -7,6 +7,7 @@ mode=${4:-text}
 case "$mode" in
     text) writer=Writer ;;
     optional) writer=Optional; work=$work-optional ;;
+    record) writer=Record; work=$work-record ;;
     *) echo 'native string cells: unsupported mode' >&2; exit 2 ;;
 esac
 root=$(CDPATH='' cd -- "$(dirname "$0")/../../.." && pwd -P)
@@ -24,7 +25,7 @@ library=$(sed -nE 's/^native: (.*\/generation\.so)( is up to date)?$/\1/p' "$wor
 [ -n "$library" ] || { cat "$work/source-build.log" >&2; exit 1; }
 module=${library%/*}/source.ll
 tag=$(sed -nE 's/^@chibi_managed\.layout\.text(-?[0-9]+) =.*/\1/p' "$module")
-if [ "$mode" = optional ]; then
+if [ "$mode" != text ]; then
     tag=$(sed -nE 's/^  %whole.tag = icmp eq i64 %tag, (-?[0-9]+)$/\1/p' "$module")
 fi
 [ -n "$tag" ] || { echo 'native string cells: source has no typed text layout' >&2; exit 1; }
@@ -33,7 +34,11 @@ for name in TextCellImages TextCellImagesHost; do
         --source "$root/test/native_aot/managed_pointers/$name.chibi" --entry Main \
         --output "$work/$name" --llvm "$llvm" --target "$triple" --jobs 1
 done
-if [ "$mode" = optional ]; then
+if [ "$mode" = record ]; then
+    pointer_tag=$(sed -nE 's/^  %tag0 = icmp eq i64 %tag, (-?[0-9]+)$/\1/p' "$module")
+    text_tag=$(sed -nE 's/^  %tag1 = icmp eq i64 %tag, (-?[0-9]+)$/\1/p' "$module")
+    "$work/TextCellImages" "$work" "$llvm" "$module" "$tag" record "$pointer_tag" "$text_tag"
+elif [ "$mode" = optional ]; then
     "$work/TextCellImages" "$work" "$llvm" "$module" "$tag" optional
 else
     "$work/TextCellImages" "$work" "$llvm" "$module" "$tag"

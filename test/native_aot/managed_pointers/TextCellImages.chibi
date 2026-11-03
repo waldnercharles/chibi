@@ -8,14 +8,15 @@ import strings "core:strings"
 foreign import libc "system:c"
 foreign libc { strtoll :: (text: cstring, end: rawptr, base: i32) -> i64 }
 
-Old :: (target: abi.Target, tag: i64, optional: bool) -> string {
+Old :: (target: abi.Target, tag: i64, optional: bool, authored: bool, member_tags: i64[]) -> string {
     text := abi.TextStorage; pointer := native.PointerType;
     records: native.Record[] = []; fields: int[] = []; tags: i64[] = [];
-    if (optional) {
+    if (optional || authored) {
         text = native.RecordType;
         records = [{first: 0, count: 2, identity: tag}];
         fields = [abi.IntStorage, abi.TextStorage];
         tags = [i64(0), 0];
+        if (authored) { fields[0] = native.PointerType; tags = member_tags; }
     }
     code: native.Instruction[] = [
         {op: native.Constant, type: text, output: 0, left: 0, right: 0, target: 0, literal: 0},
@@ -32,9 +33,9 @@ Old :: (target: abi.Target, tag: i64, optional: bool) -> string {
     }
     owner := format_text("  %heap.at = getelementptr {}, ptr @chibi_context, i32 0, i32 {}\n  %heap = load ptr, ptr %heap.at\n", abi.ManagedContextType(), abi.ManagedOwnerField);
     payload := abi.TextType();
-    if (optional) { payload = "%record0"; }
+    if (optional || authored) { payload = "%record0"; }
     load := format_text("  %text = load {}, ptr %address\n", abi.TextType());
-    if (optional) { load = "  %optional = load %record0, ptr %address\n  %text = extractvalue %record0 %optional, 1\n"; }
+    if (optional || authored) { load = "  %optional = load %record0, ptr %address\n  %text = extractvalue %record0 %optional, 1\n"; }
     return strings.Concatenate([module,
         "@text_cell.root = internal global %chibi.managed.root zeroinitializer\n",
         format_text("@text_cell.value = internal global {} zeroinitializer\n", abi.ManagedPointerType()),
@@ -51,9 +52,19 @@ Old :: (target: abi.Target, tag: i64, optional: bool) -> string {
         format_text("  store {} zeroinitializer, ptr @text_cell.value\n  ret i32 0\n}}\n", abi.ManagedPointerType())]);
 }
 Main :: () -> int {
-    args := os.Arguments(); if (length(args) < 4 || length(args) > 5) { return 2; }
+    args := os.Arguments();
+    if (length(args) != 4 && length(args) != 5 && length(args) != 7) { return 2; }
     optional := length(args) == 5;
-    if (optional && args[4] != "optional") { return 2; }
+    authored := length(args) == 7;
+    if ((optional && args[4] != "optional") || (authored && args[4] != "record")) { return 2; }
+    member_tags: i64[] = [];
+    if (authored) {
+        for (index in 5..<7) {
+            member := strtoll(args[index], 0, 10);
+            if (member == 0 || format_text("{}", member) != args[index]) { return 2; }
+            member_tags.append(member);
+        }
+    }
     work := args[0]; llvm := args[1];
     read := os.ReadText(args[2]); if (read.error) { return 2; }
     tag := strtoll(args[3], 0, 10); if (tag == 0 || format_text("{}", tag) != args[3]) { return 2; }
@@ -94,7 +105,7 @@ Main :: () -> int {
     if (skipped != 1) { return 2; }
     negative := strings.ReplaceAll(source, body, strings.Join(broken, "\n"));
     target := abi.LinuxX64(); if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
-    old := Old(target, tag, optional); if (old == "") { return 1; }
+    old := Old(target, tag, optional, authored, member_tags); if (old == "") { return 1; }
     start := strings.Concatenate([work, "/text-cell-start.ll"]);
     if (os.WriteText(start, link.ManagedFamilyContext(link.SharedContext(target.triple, true), true))) { return 2; }
     for (name in ["old", "writer", "broken"]) {

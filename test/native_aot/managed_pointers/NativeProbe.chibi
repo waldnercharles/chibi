@@ -193,7 +193,7 @@ Main :: () -> int {
             case .Emitted(text): os.Print("accepted an unsafe optional cell layout or projection"); return 1;
             case .Rejected(instruction, message):
                 expected := "projection differs";
-                if (mode == 4) { expected = "metadata requires scalar or pointer fields"; }
+                if (mode == 4) { expected = "metadata requires scalar, text or pointer fields"; }
                 if (!strings.Contains(message, expected)) { os.Print(message); return 1; }
         }
     }

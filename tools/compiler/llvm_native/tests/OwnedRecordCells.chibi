@@ -1,0 +1,28 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+@test
+OwnedFlatCellsCopyTextAndTracePointersWithOneLayout :: () {
+    text := Emitted(OptionalTextCellModule([native.PointerType, abi.TextStorage], [i64(-901), -902], -900, -900));
+    assert(strings.Contains(text, "define internal %record0 @chibi_managed.copy.record0("));
+    assert(strings.Contains(text, "%owned1 = call { ptr, i32, ptr } @chibi_text.share("));
+    assert(strings.Contains(text, "ptr @chibi_managed.trace.record0, ptr @chibi_managed.validate.record0"));
+    assert(strings.Contains(text, "ptr @chibi_value.32.drop_at, i32 32"));
+    assert(strings.Contains(text, "call void @chibi_managed.trace.pointer(ptr %heap, ptr %field0)"));
+    assert(!strings.Contains(text, "switch i32 %tag"), "authored record fields remain active independently of their values");
+    assert(strings.Contains(text, "%tag1 = icmp eq i64 %tag, -902"));
+    assert(strings.Contains(text, "%storage1 = icmp eq i32 %storage, 13"));
+}
+@test
+AuthoredIntTextCellsRemainDistinctFromOptionalText :: () {
+    text := Emitted(OptionalTextCellModule([abi.IntStorage, abi.TextStorage], [i64(-901), -902], -900, -900));
+    assert(!strings.Contains(text, "switch i32 %tag"));
+    assert(strings.Contains(text, "find0.2:"), "authored fields keep their independently checked addresses");
+    Rejects(OptionalTextCellModule([native.PointerType, abi.TextStorage], [i64(0), 0], -900, -900),
+        "native managed field identity is invalid");
+    Rejects(OptionalTextCellModule([native.PointerType, abi.TextStorage], [i64(-901), 0], -900, -900),
+        "native managed field identity is invalid");
+}

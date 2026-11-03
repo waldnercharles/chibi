@@ -70,6 +70,26 @@ ManagedOptionalTextCopy :: (type: int, value: int, next: int, place: int, pc: in
         Op(native.Save, type, 0, next + 6, 0, place), Op(native.Local, type, next + 7, place, 0, 0)],
         slot_types: [type, number, number, NativeType(facts.BoolType), text, text, type, type], value: next + 7};
 }
+// Flat authored cells keep their pointer identities and import each text leaf.
+// The validated native field table gives the exact active fields; no tag test
+// applies to an authored {int, string} record.
+ManagedFlatTextCopy :: (records: native.Record[], fields: int[], type: int, value: int, next: int) -> HeldValue {
+    found: HeldValue = {code: [], slot_types: [], value: value};
+    text := NativeType(facts.StringType);
+    record := records[type - native.RecordType];
+    for (field in 0..<record.count) {
+        if (fields[record.first + field] != text) { continue; }
+        slot := next + length(found.slot_types);
+        payload := Op(native.Extract, text, slot, found.value, type, 0);
+        payload.literal = i64(field);
+        replaced := Op(native.Insert, type, slot + 2, found.value, slot + 1, 0);
+        replaced.literal = i64(field);
+        found.code.extend([payload, Op(native.ValueCopy, text, slot + 1, slot, 0, 0), replaced]);
+        found.slot_types.extend([text, text, type]);
+        found.value = slot + 2;
+    }
+    return found;
+}
 ManagedValue :: (rows: facts.Row[], records: int[], type: int, tag: i64) -> bool {
     if (Scalar(type) || type == facts.StringType || type == facts.PointerType) { return tag != 0; }
     if (type >= facts.ArrayType && type < facts.MapType &&

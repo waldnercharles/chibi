@@ -288,13 +288,15 @@ discard path-specific intervals, and opaque calls that end a proof. Allocation
 and instruction assertions establish removed work; elapsed time is not an
 optimization oracle.
 
-`asset-values` runs nine cases on KDL asset text and the native value tree:
-typed scalars at the 64-bit limits, slashdash, annotated arrays and source
-ranges; reals and floats that read back bit for bit and write plainly;
-escaped separators; thirteen malformed documents reported with a line and
-column; owned snapshots and subtrees; ordered objects; exact numeric
-equality; and JSON that owns its strings. 172 assertions in 0.05 seconds with
-ASan/UBSan; in memory, CPU only.
+The C `arena`, `asset-values`, `native-values` and `whole-integer` selectors
+were retired on 2026-11-02 under [the C test verdicts](c-test-verdicts.md).
+Their allocator, asset-document and native-capability ABI checks belonged to
+the C implementation. Production support and asset libraries remain for live
+C consumers. Admitted integer behavior remains in
+[`test/integer_arithmetic`](../test/integer_arithmetic/README.md) and the
+[native backend suite](../test/native_aot/backend/README.md). This retirement
+does not admit exact integer `abs`, `min`, `max` or `clamp` overloads. Source
+math converts integer operands to `number`.
 
 `fmt` runs two cases on the vendored fmt library: positional, typed and
 aligned arguments with escaped braces, and the runtime specifier path Format
@@ -306,19 +308,10 @@ formatting cases, with 41 assertions covering scalar formats, owned string and
 array display, rejected printf modifiers and bounded placeholder indices. It
 passes in 0.799 seconds under ASan/UBSan; there is no world, process or GPU work.
 
-`native-values` selects one independently reviewed native SDK case. It checks
-canonical ABI lookup, NaN comparisons, integer saturation, nominal enums, vector
-conversion and output ownership after input/table retirement. The scoped native
-consumer passes 43 assertions in 0.403 seconds, without files, processes or GPU.
 `box3d` selects one in-tree check of the archive's prebuilt Box3D (v0.1.0,
 the copy Cute pins). A box falls onto static ground and comes to rest, then
 closest raycasts hit the box, hit the ground and miss. It needs a native tools
 build and passes 14 assertions in 0.052 seconds, without files, processes or GPU.
-`arena` checks the support arena allocator: growth that keeps earlier
-allocations intact and aligned, a reset that hands back the retained blocks in
-order, a zero-initialized arena, and collectable values found by address
-through the page index across sweeps and a reset. It passes 360 assertions in
-0.06 seconds.
 
 The focused room-service check is `chibi build test collab`, or
 `node --test tools/collab/server/server.test.mjs`. It runs the real Node server

@@ -230,17 +230,9 @@ Files :: (target: string) -> string[] {
             "test/tools/types.c"
         ];
     }
-    if (target == "chibi_native_consumer") {
-        return [
-            "test/tools/native_values.c"
-        ];
-    }
-    if (target == "chibi_asset_values_consumer") {
-        return ["test/support/asset_value.c"];
-    }
     if (target == "chibi_source_runtime_consumer") {
         return [
-            "test/runtime/whole_math.c", "test/runtime/whole_integer.c",
+            "test/runtime/whole_math.c",
             "test/runtime/whole_conversion.c",
             "test/runtime/persistent_store.c", "test/support/reflected_types.c"
         ];
@@ -249,7 +241,7 @@ Files :: (target: string) -> string[] {
         return [
             "test/tools/main.c", "test/tools/case_timings.c", "test/tools/case_timings_test.c",
             "test/tools/fixture.c",
-            "test/tools/web_storage.c", "test/support/arena.c",
+            "test/tools/web_storage.c",
             "src/host/process.c", "third_party/yyjson/yyjson.c",
             "test/tools/compiler_bootstrap.c",
             "src/host/native_libraries.c", "test/support/fmt.c", "test/tools/box3d.c"
@@ -480,7 +472,6 @@ pub PrivateDirectory :: (target: string) -> string {
 ToolConsumers :: () -> string[] {
     return [
         "chibi_sdk_contracts",
-        "chibi_native_consumer", "chibi_asset_values_consumer",
         "chibi_source_runtime_consumer", "chibi_program_consumer"
     ];
 }
@@ -773,26 +764,6 @@ pub Includes :: (target: string) -> string[] {
             "public/native_types", "public/native_capabilities"
         ];
     }
-    if (target == "chibi_native_consumer") {
-        return [
-            "build/test/tools/testing/include", "public/behavior_runtime", "public/execution", "public/types", "public/support",
-            "public/execution_contract", "public/capabilities", "public/tasks", "public/events",
-            "public/native_types", "public/native_capabilities",
-            "public/task_pool_runtime",
-            "public/asset_values",
-            "public/input_action",
-            "public/comparison_capabilities",
-            "public/conversion_capabilities", "public/host_native_default",
-            "public/host_native_catalog", "public/source_catalog",
-            "public/native_prepared"
-        ];
-    }
-    if (target == "chibi_asset_values_consumer") {
-        return [
-            "build/test/tools/testing/include", "public/asset_values",
-            "public/support", "public/asset_json", "public/json"
-        ];
-    }
     if (target == "chibi_source_runtime_consumer") {
         return [
             "build/test/tools/testing/include",
@@ -864,9 +835,6 @@ CommonSystemIncludes :: (target: string) -> string[] {
     if (target == "chibi_sdk_contracts") {
         return ["public/math"];
     }
-    if (target == "chibi_native_consumer") {
-        return ["public/math"];
-    }
     if (target == "chibi_source_runtime_consumer") {
         return ["public/math"];
     }
@@ -914,18 +882,12 @@ pub Defines :: (target: string) -> string[] {
             "CHIBI_TEST_SOURCE_RUNTIME=1"
         ];
     }
-    if (target == "chibi_native_consumer") {
-        return [
-            "CHIBI_SOURCE_ROOT=\"{source_root}\"", "CHIBI_TEST_NATIVE_RUNTIME=1",
-            "CHIBI_TEST_PREPARATION=1"
-        ];
-    }
     if (target == "test_tools") {
         return [
             "CF_RUNTIME_SHADER_COMPILATION", "CF_STATIC",
-            "CHIBI_SOURCE_ROOT=\"{source_root}\"", "CHIBI_TEST_ASSET_VALUES=1",
+            "CHIBI_SOURCE_ROOT=\"{source_root}\"",
             "CHIBI_TEST_BOX3D=1", "CHIBI_TEST_COMPILER_ARTIFACT=1",
-            "CHIBI_TEST_FMT=1", "CHIBI_TEST_NATIVE_RUNTIME=1", "CHIBI_TEST_PROGRAM=1",
+            "CHIBI_TEST_FMT=1", "CHIBI_TEST_PROGRAM=1",
             "CHIBI_TEST_SOURCE_RUNTIME=1",
             "IMGUI_USE_WCHAR32", "ImDrawIdx=unsigned int", "_DARWIN_C_SOURCE", "_DEFAULT_SOURCE",
             "_POSIX_C_SOURCE=200809L"
@@ -963,12 +925,6 @@ pub Options :: (target: string) -> string[] {
         return ["-UNDEBUG"];
     }
     if (target == "chibi_sdk_contracts") {
-        return ["-UNDEBUG"];
-    }
-    if (target == "chibi_native_consumer") {
-        return ["-UNDEBUG"];
-    }
-    if (target == "chibi_asset_values_consumer") {
         return ["-UNDEBUG"];
     }
     if (target == "chibi_source_runtime_consumer") {
@@ -1216,8 +1172,8 @@ pub LinkedObjects :: (target: string) -> string[] {
     }
     if (target == "test_tools") {
         return [
-            "chibi_sdk_contracts", "chibi_program_consumer", "chibi_native_consumer",
-            "chibi_asset_values_consumer", "chibi_source_runtime_consumer"
+            "chibi_sdk_contracts", "chibi_program_consumer",
+            "chibi_source_runtime_consumer"
         ];
     }
     return [];

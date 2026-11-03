@@ -176,8 +176,9 @@ ArrayUses :: (code: Instruction[], promises: int[]) -> int[] {
             if (type >= RefType) { type -= RefType; }
             flags = ArrayDropping;
         }
-        if (MapOperation(item.op)) {
-            type = MapValue(MapUsed(item));
+        mapped := MapInstructionType(item);
+        if (mapped != 0) {
+            type = MapValue(mapped);
             if (MapArrayValue(type)) {
                 flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArraySharing;
             }

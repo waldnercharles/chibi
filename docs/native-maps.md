@@ -48,14 +48,25 @@ and the bounds. The compiler uses no map, but tools and games do, and the VM can
 %map   = { i32 count, i32 used, i32 capacity, i32 slots, ptr entries, ptr index }   ; 32 bytes, align 8 (abi.MapType)
 entry  = { key, value, i32 hash }          ; used entries, in insertion order; hash 0 = dead
 slot   = { i32 hash, i32 entry + 1 }       ; 8 bytes; `slots` of them, 0 entry = empty
+owner  = { i64 references, [32 x i8] release_scratch } ; 40 bytes immediately before entries
 ```
 
 `count` is the live entries, `used` the entries array's length including dead ones (`used - count` dead), `capacity` its
 room, `slots` a power of two with `capacity * 4 <= slots * 3` (set whenever the index is built; 0 without one). The zero map
 is all zero and owns nothing. Capacity starts at 4 and becomes `max(4, 2 * count)` when the entries are full.
+The entries owner also owns the index. Native `ValueCopy` shares this owner in O(1); mutation detaches shared entries.
+Native `MapCopy` preserves the raw API's independent-entry allocation contract, copying only immediate entries and
+sharing their counted children. Its cost is O(n). Authored copies still use that physical operation until all source
+mutation and foreign-loan routes resolve a canonical owning place.
+Nonzero map descriptors must originate from map operations or counted copies. The native API does not import
+ownerless external map buffers; map parameters carry this same internal ownership contract.
+
+On the last drop, the owner prefix becomes an existing value-release queue node: next pointer at offset0, context at offset8,
+typed release callback at offset16, span at offset24 and index pointer at offset32. Nested teardown therefore uses one iterative drain,
+with no release-queue allocation or recursion through child containers.
 
 Byte budget (AGENTS.md "Know the data"): the header is 32 bytes. An entry costs `key + value + 4` bytes rounded to its
-alignment. The index costs 8 bytes per slot: between 4/3 and 8/3 slots per unit of capacity, so 10.7 to 21.3 bytes per
+alignment. Each allocated entries buffer adds the 40-byte owner prefix. The index costs 8 bytes per slot: between 4/3 and 8/3 slots per unit of capacity, so 10.7 to 21.3 bytes per
 entry of capacity, and about 16 bytes per live entry in a map that has just grown.
 
 ## Bounds
@@ -75,7 +86,11 @@ value is released), `MapDelete` releases the entry's strings, `MapCopy` retains 
 A read of a missing scalar or string key gives the value type's zero; a native int[] read gives an empty array. A missing record key fails with `MapKeyAbsent`.
 Reads borrow. Writing through a missing key (`m[a][b] = v`) ends the call.
 
-Native `MapValueAddress` (75) borrows an existing int[] entry. Resolve it after argument callbacks and immediately update the array descriptor with `Poke`; replacing, growing or dropping the map invalidates the address. A missing entry produces an unnamed failure, matching the ordinary mutation-place failure rather than a typed `MapKeyAbsent`. This address cannot be retained across later foreign arguments.
+Native `MapValueAddress` (75) borrows an existing array entry. Target 0 observes its map value. Target 1 requires a reference
+to the canonical map descriptor, makes shared entries unique and publishes that descriptor before returning the entry
+address. Resolve it after argument callbacks and immediately update the array descriptor with `Poke`; replacing,
+growing or dropping the map invalidates the address. A missing entry produces an unnamed failure, matching the ordinary
+mutation-place failure rather than a typed `MapKeyAbsent`. This address cannot be retained across later foreign arguments.
 
 ## Plan and state
 

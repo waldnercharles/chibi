@@ -338,14 +338,15 @@ Routine CI and the correctness groups exclude benchmark selectors.
 
 - `native-workload-benchmark` builds the four kernels in
   `test/native_aot/workloads` with `chibi build --native` and the LLVM tools in
-  `CHIBI_LLVM_BIN`, checks each program's status against the VM's, and prints the
-  build time, peak memory, size and median run time at O0 and O2. Each build
-  runs under a Linux subreaper, so a timeout, an interrupt or the launcher's exit
-  kills every process the build started, including those in groups or sessions
-  of their own; a fake-launcher case checks that no descendant survives. It runs
-  on Linux x86-64, the one target the driver admits, against the Release
-  launcher, and skips the builds without `CHIBI_LLVM_BIN`. It takes about
-  70 seconds.
+  `CHIBI_LLVM_BIN`, checks the recorded checksums, and prints build time,
+  per-child peak RSS, size and median-of-three run time at O0 and O2. Its
+  authored runner keeps subreaper and signal-mask state in an isolated worker,
+  restoring the command's mask and reaping descendants across groups and sessions.
+  Grouped/detached timeout and early-exit controls plus parent-only and worker-only
+  TERM checks run before measurement. It requires the Release native CLI and
+  LLVM 22+ on Linux x86-64; other hosts report it as unsupported. The C test
+  driver is retired; [the workload guide](../test/native_aot/workloads/README.md)
+  describes direct use.
 
 Each fixture owns its fixed trial count and reports timings alongside correctness
 assertions. Setup and correctness checks stay outside timed loops; no

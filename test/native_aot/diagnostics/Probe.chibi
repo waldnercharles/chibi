@@ -49,6 +49,14 @@ Main :: () -> int {
     Rejected(["Main.chibi", "lib/Lib.chibi"], [root_source, unsupported], strings.Concatenate([root_source, unsupported]),
              "p", "Native calls cannot retain managed pointer arguments", 6, 104);
 
+    // Ordinary source supports string cells; native scalar cells remain gated.
+    // This passes ordinary body checking before the facts producer rejects it.
+    late := "package lib\npub Value :: () -> int { value := \"text\"; pointer := &value; return text_byte_length(pointer^) - 3; }\n";
+    Rejected(["Main.chibi"], [late], late, "pointer := &value;",
+             "scalar proof supports only number, bool and string values", 2, 43);
+    Rejected(["Main.chibi", "lib/Lib.chibi"], [root_source, late], strings.Concatenate([root_source, late]),
+             "pointer := &value;", "scalar proof supports only number, bool and string values", 5, 43);
+
     // The on-disk target is deliberately a different length from its replacement.
     uses_target := "package main\nimport target \"core:target\"\nimport lib \"project:lib\"\nMain :: () -> int { return lib.Value() + target.Native; }\n";
     actual_target := compiler.TargetPackageText(1, 1, 64, 1);

@@ -41,10 +41,34 @@ proof, not a complete second managed-suite run. Evidence is in
 `/private/tmp/chibi-a730-composed-proof` and
 `/private/tmp/chibi-a730-validation-continuation/receipt.json`.
 
-Remaining confirmed source work covers owned flat record cells, views over
-collector-bearing record arrays, and the method form of task-observer removal.
-Their owners are checking actual source lifetime,
-aliasing and reload behavior. Final product and platform checks, the held
+The finite retirement audit compares the registered native rejections with the
+ordinary compiler and calls the affected code where a declaration alone would
+not establish its behavior. It confirms these remaining source obligations:
+
+- Escaping nested managed pointers (`^^int`), including aliasing and replacement.
+- Pointer-element views with nullable pointers or record targets.
+- Nested pointer arrays and nested maps whose values contain managed pointers.
+- Owned record cells, optional record cells with Text or pointer fields, and
+  cells holding optional views; collector-bearing optional-view parameters and
+  results also need their existing source behavior preserved.
+- Record-array views with owned fields, including nested inline Text and
+  `string[]`. Text from a writer image must acquire ownership before publication
+  into an older cell, both for element writes and whole-array replacement.
+- The method form of task-observer removal, sharing existing canonical array
+  mutation and comparison behavior.
+
+Character pointers, the audited foreign managed-pointer forms, view fields,
+readonly view mutation, retained addresses and unguarded nullable dereferences
+are rejected by the ordinary compiler too. They are not preservation gaps.
+Receipts and exact source controls are under
+`/private/tmp/chibi-retirement-closure-f255`. The existing accepted rootless
+record-array Text escape paths are also bound by
+`/private/tmp/chibi-rootless-text-escape-audit/receipt.json`; their inspection
+uses emitted source and does not execute dangling pointers. The owners are
+implementing one shared boundary importer for these ownership transfers; ordinary
+counted copies retain their existing copy-on-write behavior.
+
+Final product and platform checks, the held
 host/VM/recovery deletion, and verified platform seed acceptance remain required.
 Archived engine and Studio services remain outside the live replacement scope.
 

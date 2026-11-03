@@ -1,0 +1,96 @@
+name: Native self-host
+
+# Temporary branch-only producer. Keep this at the guarded legacy workflow path.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-self-host-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native-self-host:
+    name: Native self-host (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify the dispatched source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=normal)"
+          printf 'producer source %s\n' "$(git rev-parse HEAD)"
+          printf 'producer tree %s\n' "$(git rev-parse 'HEAD^{tree}')"
+      - name: Install the native LLVM tools
+        run: sh .github/native-llvm.sh
+      - name: Prove the native fixed point and cross-build Windows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          : "${CHIBI_LLVM_BIN:?Install the native LLVM tools before this proof}"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=normal)"
+          seed="$RUNNER_TEMP/native-seed/chibi"
+          sh tools/bootstrap/native-seed.sh linux-x64 "$seed"
+          test -x "$seed"
+          sha256sum "$seed"
+          sh tools/build.sh build native-self-host \
+            --native-driver "$seed" --stage-one "$seed" \
+            --llvm "$CHIBI_LLVM_BIN" --jobs 4 \
+            --windows "$RUNNER_TEMP/windows" 2>&1 \
+            | tee "$RUNNER_TEMP/native-self-host.log"
+          test -x "$PWD/build-native-self-host/stage3/chibi"
+          test -s "$RUNNER_TEMP/windows/chibi.exe"
+          sha256sum "$RUNNER_TEMP/windows/chibi.exe"
+      - name: Check native diagnostic coordinates
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          sh test/native_aot/diagnostics/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+      - name: Check native test attributes
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          sh test/native_aot/test_attributes/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+      - name: Verify the tested source
+        if: always()
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=normal)"
+      - name: Keep stage two for Windows
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-stage-two-windows
+          path: ${{ runner.temp }}/windows/chibi.exe
+          if-no-files-found: error
+          retention-days: 1
+      - name: Summarize the proof
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo '### Native self-host'
+            printf 'Source: %s\n' "$GITHUB_SHA"
+            echo '```'
+            grep -E '^(stage|native-self-host|native runner|PASS exact Driver)' "$RUNNER_TEMP/native-self-host.log" || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-self-host-log
+          path: ${{ runner.temp }}/native-self-host.log
+          if-no-files-found: error
+          retention-days: 1

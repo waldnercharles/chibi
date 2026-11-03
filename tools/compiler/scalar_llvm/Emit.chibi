@@ -4592,7 +4592,19 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     body.extend(glue.before);
                     body.append(fail);
                     body.extend(glue.after);
-                } else { body.extend([Op(native.Branch, 0, 0, value, 0, length(body) + 2), fail]); }
+                } else {
+                    // A failed synchronous assertion exits this frame just as
+                    // a return does. Condition evaluation and its borrowed
+                    // arguments have finished before the owners are released.
+                    skip_failure := length(body);
+                    body.append(Op(native.Branch, 0, 0, value, 0, 0));
+                    drops := DropAll(rows, declared, managed, owned_vars, owned_types, places, 0, [], frames, true, slot, length(body));
+                    slots.extend(drops.slot_types);
+                    slot += length(drops.slot_types);
+                    body.extend(drops.code);
+                    body.append(fail);
+                    body = Patched(body, skip_failure);
+                }
             } else if (row.kind == facts.LocalRow && (row.literal == i64(facts.Retained) ||
                        row.literal == i64(facts.Retained | facts.CharNominal))) {
                 type := NativeType(row.type);

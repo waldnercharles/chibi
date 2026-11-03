@@ -98,7 +98,7 @@ TaskDropValue :: (type: int, prefix: string, value: string) -> string {
 TaskOwnerBoundary :: (item: Instruction) -> bool {
     op := item.op;
     return (op == ArrayResize && item.literal == i64(ArrayResizeInitialized)) || op == ClockSample || op == Call || op == ForeignCall || op == ManagedNew || op == Format ||
-           op == Suspend || op == Delay || op == AwaitHandle || op == AwaitResult || op == Fail;
+           op == Suspend || op == Delay || op == AwaitHandle || op == AwaitResult || op == Fail || op == TypedFail;
 }
 TaskOwnersValid :: (code: Instruction[], slots: int[], locals: int[], records: Record[], layout: ValueLayout) -> string {
     active_kinds: int[] = [];

@@ -4,6 +4,14 @@ Box :: struct { values: int[]; label: string; }
 Next :: () -> int {
     saved: retain Box = {values: [], label: "kept"};
     saved.values.append(5);
+    snapshots: retain Box[] = [];
+    snapshots.append(saved);
+    assert(length(snapshots)==length(saved.values));
+    inner: [int:int] = [1:2];
+    maps: [int:int][] = [inner];
+    assert(contains(maps,inner));
+    removed_maps:=remove_item(maps,inner);
+    assert(length(removed_maps)==0 && maps[0][1]==2);
     candidates: Box[] = [saved];
     removed := remove_item(candidates, saved);
     assert(length(removed) == 0 && length(candidates) == 1,

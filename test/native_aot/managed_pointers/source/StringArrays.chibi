@@ -1,0 +1,48 @@
+package string_array_cells
+
+Main :: () -> int {
+    values: string[] = [Text(1), Text(2)];
+    pointer := &values;
+    alias := pointer;
+    historical := values;
+    pointer^ = [Text(3)];
+    assert(text_byte_at(values[0], 2) == 3 && text_byte_at(historical[0], 2) == 1);
+    values = [Text(4), Text(5)];
+    assert(text_byte_at(alias^[1], 2) == 5);
+    snapshot := pointer^;
+    alias^ = [Text(6)];
+    assert(text_byte_at(snapshot[0], 2) == 4 && text_byte_at(values[0], 2) == 6);
+    alias^ = values;
+    assert(text_byte_at(pointer^[0], 2) == 6);
+    before := snapshot[0] == Replace(&snapshot, 9);
+    assert(before);
+    kept := Owner(11);
+    for index in 0..<5000 { discarded := Owner(index % 127); }
+    assert(text_byte_at(kept^[0], 2) == 11);
+    saved := kept^[0];
+    kept^ = [];
+    assert(text_byte_at(saved, 2) == 11 && length(kept^) == 0);
+    transferred := Transfer([Text(21)]);
+    assert(text_byte_at(transferred^[0], 2) == 21);
+    readonly := ReadAfter(pointer, alias);
+    assert(readonly == 29 && text_byte_at(values[0], 2) == 29);
+    sum := 0;
+    for index in 0..<1000 {
+        escaped := Owner(index % 127);
+        sum += text_byte_at(escaped^[0], 2);
+    }
+    assert(sum > 0);
+    return 0;
+}
+Text :: (value: int) -> string { return text_from_bytes([u8(65), u8(0), u8(wrap: value)]); }
+Owner :: (value: int) -> ^(string[]) { values: string[] = [Text(value), Text(value + 1)]; return &values; }
+Transfer :: (values: string[]) -> ^(string[]) { pointer := &values; return pointer; }
+Replace :: (values: ^(string[]), value: int) -> string {
+    saved := values^[0];
+    values^ = [Text(value)];
+    return saved;
+}
+ReadAfter :: (read: ^(string[]), changed: ^(string[])) -> int {
+    changed^ = [Text(29)];
+    return text_byte_at(read^[0], 2);
+}

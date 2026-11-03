@@ -34,7 +34,8 @@ ScalarPointerElement :: (types: TypeDecl[], record: int) -> ValueType {
     }
     if (declared.value_record != -1) { return none; }
     type := ScalarTypeOf(declared.value_storage);
-    if (type < facts.IntType || type > facts.DoubleType) { return none; }
+    text_array := type == facts.StringType && declared.value_container == ArrayContainer;
+    if ((type < facts.IntType || type > facts.DoubleType) && !text_array) { return none; }
     return {storage: declared.value_storage, container: declared.value_container, record: -1};
 }
 ScalarPointerType :: (types: TypeDecl[], record: int) -> int {
@@ -142,9 +143,9 @@ ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables
         binding := names[found];
         scalar := binding.record == -1 && ScalarTypeOf(binding.storage) >= facts.IntType && ScalarTypeOf(binding.storage) <= facts.DoubleType;
         record := binding.storage == StructStorage && binding.record >= 0 && types[binding.record].kind == RecordDecl;
-        array := scalar && binding.container == ArrayContainer;
+        array := (scalar || (binding.storage == TextStorage && binding.record == -1)) && binding.container == ArrayContainer;
         optional := binding.storage == UnionStorage && ScalarPointerOptional(types, binding.record);
-        if (binding.place == ReferencePlace || (binding.container != 0 && !array) || (!scalar && !record && !optional)) { return -1; }
+        if (binding.place == ReferencePlace || (binding.container != 0 && !array) || (!scalar && !record && !array && !optional)) { return -1; }
         pointed: ValueType = {storage: binding.storage, container: binding.container, record: binding.record};
         return FindPointer(types, pointed, false);
     }

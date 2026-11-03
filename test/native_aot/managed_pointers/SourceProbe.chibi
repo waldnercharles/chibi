@@ -49,6 +49,12 @@ Main :: () -> int {
             if (strings.HasSuffix(args[index], "/Records.ll")) {
                 checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %peak, 30000");
             }
+            if (strings.HasSuffix(args[index], "/StringArrays.ll")) {
+                // Each 88-byte cell owns backing plus two text allocations.
+                // The 64 KiB threshold permits fewer than 3000 such live
+                // allocations, plus the fixture's few permanent owners.
+                checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %peak, 4096");
+            }
             if (strings.HasSuffix(args[index], "/ViewAppend.ll")) {
                 // One cell plus geometric backing growth for 4096 appends;
                 // a snapshot copy on each append exceeds this by two orders.

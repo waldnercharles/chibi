@@ -1,0 +1,77 @@
+package pattern_rows
+
+import facts "project:scalar_facts"
+import scalar "project:scalar_llvm"
+import os "core:os"
+
+Row :: (kind: int, type: int, value: int, count: int) -> facts.Row {
+    return {kind: kind, type: type, value: value, count: count, literal: 0, name: "", text: "",
+            start: 0, end: 1, line: 1, column: 1};
+}
+Rows :: () -> facts.Row[] {
+    source := Row(facts.SourceRow, 0, 0, 0);
+    source.name = "Pattern.chibi";
+    source.text = "        ";
+    source.end = 0; source.line = 0; source.column = 0;
+    document := source;
+    document.kind = facts.DocumentRow;
+    document.name = "project:Pattern.chibi"; document.text = "";
+    record := Row(facts.UnionRow, 0, 0, 2); record.name = "Value";
+    none := Row(facts.VariantRow, 0, 0, 0); none.name = "Nothing";
+    some := Row(facts.VariantRow, 0, 1, 1); some.name = "Word";
+    member := Row(facts.MemberRow, facts.StringType, 0, 0); member.name = "text";
+    function := Row(facts.FunctionRow, facts.IntType, 0, 0); function.name = "Main"; function.end = 8;
+    scope := Row(facts.ScopeRow, 0, 0, 0); scope.end = 7;
+    capture := Row(facts.LocalRow, facts.RecordType, 0, 1);
+    capture.name = "capture"; capture.literal = i64(facts.PatternStorage);
+    binding := Row(facts.LocalRow, facts.StringType, 1, 1);
+    binding.name = "binding"; binding.literal = i64(facts.PatternStorage);
+    loop := Row(facts.WhileRow, 0, 0, 1); loop.literal = i64(facts.PatternLoop); loop.end = 6;
+    closed := loop; closed.kind = facts.EndRow; closed.count = 0; closed.literal = 0;
+    scope_end := scope; scope_end.kind = facts.EndRow;
+    returned := Row(facts.ReturnRow, 0, 0, 1); returned.start = 7; returned.end = 8; returned.column = 8;
+    answer := returned; answer.kind = facts.LiteralRow; answer.type = facts.IntType; answer.count = 0; answer.literal = 42;
+    return [source, document, record, none, some, member, function, scope,
+        capture, Row(facts.ZeroRow, facts.RecordType, 0, 0),
+        binding, Row(facts.LiteralRow, facts.StringType, 0, 0),
+        loop, Row(facts.LiteralRow, facts.BoolType, 0, 0), closed, scope_end, returned, answer];
+}
+Invalid :: (rows: facts.Row[]) -> bool { return scalar.Validate(rows) != "" && length(scalar.EmitBytes(rows)) == 0; }
+Main :: () -> int {
+    rows := Rows();
+    error := scalar.Validate(rows);
+    if error != "" { os.Print(error); return 1; }
+    assert(length(scalar.EmitBytes(rows)) > 0, "owned loop captures use native local types");
+    // A bind consumes one value and leaves the existing expression stack alone.
+    bound := slice(rows, 0, 12);
+    condition := rows[12]; condition.count = 3;
+    bound.extend([condition, Row(facts.LiteralRow, facts.StringType, 0, 0),
+                  Row(facts.OperandBindRow, facts.StringType, 1, 1), rows[13]]);
+    bound.extend(slice(rows, 14, 4));
+    assert(scalar.Validate(bound) == "" && length(scalar.EmitBytes(bound)) > 0);
+    for variant in 0..<12 {
+        changed := bound;
+        binding_row := changed[14];
+        local := changed[10];
+        loop := changed[12];
+        switch variant {
+            case 0: binding_row.value = 2;
+            case 1: binding_row.value = -1;
+            case 2: binding_row.type = facts.IntType;
+            case 3: binding_row.count = 0;
+            case 4: binding_row.count = 2;
+            case 5: binding_row.literal = 1;
+            case 6: binding_row.name = "binding";
+            case 7: binding_row.text = "binding";
+            case 8: local.literal = 0;
+            case 9: loop.literal = i64(facts.PatternLoop | facts.Captured);
+            case 10: local.literal = i64(facts.Captured);
+            case 11:
+                // An ordinary local before the loop cannot be cleared as a capture.
+                capture := changed[8]; capture.literal = 0; changed[8] = capture;
+        }
+        changed[14] = binding_row; changed[10] = local; changed[12] = loop;
+        assert(Invalid(changed), "malformed bindings or loop captures publish no LLVM");
+    }
+    return 0;
+}

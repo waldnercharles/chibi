@@ -419,6 +419,8 @@ jobs:
             @{ name = 'view-promises'; source = 'test/native_aot/managed_pointers/source/TaskViewPromises.chibi' },
             @{ name = 'map-promises'; source = 'test/native_aot/task_owners/MapPromises.chibi' },
             @{ name = 'gc-record-arrays'; source = 'test/native_aot/managed_pointers/source/RecordArrays.chibi' },
+            @{ name = 'optional-string-cells'; source = 'test/native_aot/managed_pointers/source/OptionalStrings.chibi' },
+            @{ name = 'record-array-mutation'; source = 'test/native_aot/managed_pointers/source/RecordArrayMutation.chibi' },
             @{ name = 'square-root'; source = 'test/native_aot/math_scalar/SquareRoot.chibi' },
             @{ name = 'shadow-root'; source = 'test/native_aot/math_scalar/Shadow.chibi' },
             @{ name = 'math-kernels'; source = 'test/native_aot/math_scalar/Kernels.chibi' },

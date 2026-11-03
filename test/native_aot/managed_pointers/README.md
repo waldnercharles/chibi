@@ -198,5 +198,17 @@ record copies share pointer identities while scalar fields retain value
 semantics. The source proof covers repeated joins, by-value waiting parameters,
 eager completion, cancellation and propagated failures. Reload keeps an old
 nested promise's cyclic graph alive while the incoming generation uses a
-changed cell layout. Pointer-bearing records with backing owners, arrays, maps or views
-remain outside this task-result domain.
+changed cell layout.
+
+Pointer-array promises and inline records containing pointer arrays use the
+existing copy/drop graph. Each join acquires its own descriptor; inline await
+moves and clears the child's promise before destruction. One 32-byte promise
+root survives final suspension. Owning frame locations use an eight-byte active
+address table grouped by static type, with direct trace loops per type. Borrowed
+record snapshots do not remain roots after their backing owner is replaced.
+The source proof includes completed-before-join collection, repeated joins,
+copy-on-write mutation, nested pointer and text fields, cancellation and both
+caller and child failures with poisoned zero-live-allocation checks. Reload
+keeps an old completed array promise alive and preserves independent joins.
+Arrays/maps whose elements contain collector edges and view promises remain
+outside this result domain.

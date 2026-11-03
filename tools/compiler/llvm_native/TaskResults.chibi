@@ -20,7 +20,8 @@ TaskFrameTraced :: (layout: ManagedRecordLayout, type: int) -> bool {
 TaskFrameValue :: (records: Record[], layout: ValueLayout, managed: ManagedRecordLayout, type: int, observer: bool, owned: bool) -> bool {
     if (owned && TaskFrameTraced(managed, type)) { return true; }
     if (owned && TaskOwnedType(records, layout, type)) { return true; }
-    if (owned && observer && type >= RefType && TaskOwnedType(records, layout, type - RefType)) { return true; }
+    if (owned && observer && type >= RefType && TaskOwnedType(records, layout, type - RefType) &&
+        !ValueCollectorOwner(layout, type - RefType)) { return true; }
     if (type == TaskType) { return observer; }
     if (type == PointerType || type == ArrayType + PointerType) { return true; }
     if (observer && type >= RefType &&
@@ -64,7 +65,8 @@ TaskReferencesValid :: (layout: ValueLayout, slots: int[], code: Instruction[], 
     return "";
 }
 TaskPromiseValue :: (records: Record[], layout: ValueLayout, managed: ManagedRecordLayout, type: int, owned: bool) -> bool {
-    return TaskFramePlain(layout, type) || (owned && (TaskOwnedType(records, layout, type) || TaskFrameTraced(managed, type)));
+    return TaskFramePlain(layout, type) || (owned && (type == ArrayType + PointerType ||
+           TaskOwnedType(records, layout, type) || TaskFrameTraced(managed, type)));
 }
 TaskResultValid :: (records: Record[], fields: int[], slots: int[], layout: ValueLayout, managed: ManagedRecordLayout, owned: bool, item: Instruction) -> bool {
     record := item.type - RecordType;

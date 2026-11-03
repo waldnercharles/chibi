@@ -46,10 +46,14 @@ Main :: () -> int {
     target := abi.LinuxX64();
     if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
     start := format_text("{}/source-audit-start.ll", work);
-    if (os.WriteText(start, link.ManagedProgramContext(link.ProgramStart(target.triple, false, true, false)))) { return 2; }
     for (index in 3..<length(args)) {
         source := os.ReadText(args[index]);
         if (source.error) { return 2; }
+        // Match the emitted module's actual context callbacks. Formatting
+        // fixtures need the same owned-text runtime as public native programs.
+        formatting := strings.Contains(source.text, "; chibi-format\n");
+        numbers := strings.Contains(source.text, "; chibi-format-numbers\n");
+        if (os.WriteText(start, link.ManagedProgramContext(link.ProgramStart(target.triple, false, true, formatting, numbers)))) { return 2; }
         text := strings.ReplaceAll(source.text, "define i32 @chibi_scalar(ptr %ctx)",
             "define i32 @managed_source.entry(ptr %ctx)");
         // ScopedAliases has no managed values but still proves the scoped

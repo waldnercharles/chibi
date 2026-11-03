@@ -536,6 +536,15 @@ pub TextSlice: int : 3;
 pub TextFormat: int : 4;
 // Consume one string, print its bytes and a newline; internal result is int 0.
 pub TextPrint: int : 5;
+// TextView and TextRange consume string/start/end in source order and give
+// Nil | Some(string), absent unless 0 <= start <= end <= byte length. View
+// acquires the existing owner or imports uncounted bytes; Range and Clone
+// copy nonempty bytes. Clone
+// consumes one string and gives its independently owned string copy. Their
+// literal is zero. TextRecordSummary owns the separate operator 6.
+pub TextView: int : 7;
+pub TextRange: int : 8;
+pub TextClone: int : 9;
 
 // Array operators.
 pub ArrayNew: int : 1;

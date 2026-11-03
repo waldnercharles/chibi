@@ -60,6 +60,17 @@ Main :: () -> int {
                 // a snapshot copy on each append exceeds this by two orders.
                 checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %total, 32");
             }
+            if (strings.HasSuffix(args[index], "/TextSpan.ll")) {
+                // 4096 immutable windows acquire existing text owners. Only
+                // the source and fixed runtime setup need allocation.
+                checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %total, 32");
+            }
+            if (strings.HasSuffix(args[index], "/TextBorrowed.ll")) {
+                // Uncounted host/literal bytes must be imported before a
+                // view escapes. Each nonempty window needs its own owner.
+                checked_audit = strings.ReplaceAll(checked_audit, "%bounded = icmp ule i64 %peak, 2048",
+                    "%imported = icmp uge i64 %total, 4096\n  %setup = icmp ule i64 %total, 4128\n  %bounded = and i1 %imported, %setup");
+            }
             if (os.WriteText(module, strings.Concatenate([current, checked_audit]))) { return 2; }
             for (level in [int(0), 2]) {
                 output := format_text("{}/source-audit-{}-{}-O{}", work, index, forced, level);

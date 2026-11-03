@@ -1,0 +1,111 @@
+package text_sequences
+
+Route :: union { clone | length }
+Bytes :: () -> string { return text_from_bytes([u8(65), u8(0), u8(195), u8(169), u8(90)]); }
+Span :: () -> string? { return Bytes().view(1..<4); }
+Cloned :: () -> string {
+    held := Span();
+    if held { return held.clone(); }
+    return "missing";
+}
+Sliced :: () -> string? {
+    held := Span();
+    if held { return held[1..<3]; }
+    return nil;
+}
+MethodSliced :: () -> string? { return Bytes().slice(1..<4); }
+HasSpan :: (first: int, last: int) -> bool {
+    held := Bytes().view(first..<last);
+    if held { return true; }
+    return false;
+}
+HasSlice :: (first: int, last: int) -> bool {
+    held := Bytes()[first..<last];
+    if held { return true; }
+    return false;
+}
+HasMethodSlice :: (first: int, last: int) -> bool {
+    held := Bytes().slice(first..<last);
+    if held { return true; }
+    return false;
+}
+Bounds :: () -> bool {
+    if (!HasSpan(0, 0) || !HasSpan(5, 5) || !HasSpan(0, 5)) { return false; }
+    if (HasSpan(-1, 0) || HasSpan(0, 6) || HasSpan(4, 3) ||
+        HasSpan(-2147483648, 0) || HasSpan(0, 2147483647)) { return false; }
+    if (!HasSlice(0, 0) || !HasSlice(5, 5) || !HasSlice(0, 5) ||
+        HasSlice(-1, 0) || HasSlice(0, 6) || HasSlice(4, 3) ||
+        HasSlice(-2147483648, 0) || HasSlice(0, 2147483647)) { return false; }
+    if (!HasMethodSlice(0, 0) || !HasMethodSlice(5, 5) || !HasMethodSlice(0, 5) ||
+        HasMethodSlice(-1, 0) || HasMethodSlice(0, 6) || HasMethodSlice(4, 3) ||
+        HasMethodSlice(-2147483648, 0) || HasMethodSlice(0, 2147483647)) { return false; }
+    empty := "".view(0..<0);
+    absent := "".view(1..<1);
+    if absent { return false; }
+    if empty { copied := empty.clone(); return empty.length() == 0 && copied == ""; }
+    return false;
+}
+Receiver :: (order: ^int) -> string { order^ = order^ * 10 + 1; return Bytes(); }
+First :: (order: ^int) -> int { order^ = order^ * 10 + 2; return 1; }
+Last :: (order: ^int) -> int { order^ = order^ * 10 + 3; return 4; }
+Replace :: (value: ^string) -> int { value^ = ""; return 1; }
+Order :: () -> bool {
+    order := 0;
+    held := Receiver(&order).view(First(&order)..<Last(&order));
+    method_order := 0;
+    method := Receiver(&method_order).slice(First(&method_order)..<Last(&method_order));
+    value := Bytes();
+    prior := value.view(Replace(&value)..<4);
+    if held {
+        if prior {
+            if method {
+                return order == 123 && method_order == 123 && held.length() == 3 &&
+                       prior == held && method == held && value == "";
+            }
+        }
+    }
+    return false;
+}
+Churn :: () { for (index in 0..<4096) { transient := Bytes(); } }
+SpanStress :: () -> int {
+    source := Bytes();
+    total := 0;
+    for (index in 0..<4096) {
+        selected := source.view(1..<4);
+        if selected { total += selected.length(); }
+    }
+    assert(total == 12288);
+    return 0;
+}
+BorrowedStress :: () -> int {
+    total := 0;
+    for (index in 0..<4096) {
+        selected := "borrowed".view(1..<4);
+        if selected { total += selected.length(); }
+    }
+    assert(total == 12288);
+    return 0;
+}
+Main :: () -> int {
+    valid := Bounds(); assert(valid);
+    ordered := Order(); assert(ordered);
+    held := Span(); copied := Cloned(); sliced := Sliced(); method := MethodSliced();
+    Churn();
+    if held {
+        assert(held.length() == 3 && text_byte_at(held, 0) == 0 &&
+               text_byte_at(held, 1) == 195 && text_byte_at(held, 2) == 169);
+        assert(copied == held);
+    } else { assert(false); }
+    if sliced { assert(sliced.length() == 2 && text_byte_at(sliced, 0) == 195 && text_byte_at(sliced, 1) == 169); }
+    else { assert(false); }
+    if method { assert(method.length() == 3 && text_byte_at(method, 0) == 0); }
+    else { assert(false); }
+    continuation := "é".view(1..<2);
+    if continuation { assert(continuation.length() == 1 && text_byte_at(continuation, 0) == 169); }
+    else { assert(false); }
+    values: int[] = [1, 2]; pointer := &values; array := pointer.view(0..<2);
+    if array { assert(array.length() == 2); } else { assert(false); }
+    variant := Route.clone(); other := Route.length();
+    assert(variant is .clone); assert(other is .length);
+    return 0;
+}

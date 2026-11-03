@@ -493,7 +493,10 @@ pub MapValueAt: int : 11;
 pub MapArrayPush: int : 12;
 pub MapArrayExtend: int : 13;
 pub MapArrayRemove: int : 14;
-// The producer checks the initial logical place before RHS effects. Missing
+// A mapped array bracket write: RefRoot, all path keys, then the incoming
+// element, count at least 4. A deeper path may start at an array but must cross
+// a map and end at an array. The producer checks the complete initial place
+// before RHS effects, then resolves its current canonical owner again. Missing
 // final keys or indices report an unclassified unavailable-place failure.
 pub MapArraySet: int : 15;
 pub MapArrayResize: int : 16;

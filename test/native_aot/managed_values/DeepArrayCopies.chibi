@@ -1,0 +1,23 @@
+package deep_mapped_array_copies
+foreign { chibi_value_test_allocations :: () -> i64 }
+Main :: () -> int {
+    values: [int:[int:int[]]] = [1:[2:[0]]];
+    old := values;
+    before := chibi_value_test_allocations();
+    values[1][2][0] += 1;
+    detached := chibi_value_test_allocations();
+    assert(detached - before == 3, "two maps and the leaf array detach once after the initial read closes");
+    for (index in 0..<4096) { values[1][2][0] += 1; }
+    completed := chibi_value_test_allocations();
+    assert(completed == detached && values[1][2][0] == 4097 && old[1][2][0] == 0);
+    mixed: [int:int[]][] = [[1:[0]]];
+    old_mixed := mixed;
+    mixed_before := chibi_value_test_allocations();
+    mixed[0][1][0] += 1;
+    mixed_detached := chibi_value_test_allocations();
+    assert(mixed_detached - mixed_before == 3);
+    for (index in 0..<4096) { mixed[0][1][0] += 1; }
+    mixed_completed := chibi_value_test_allocations();
+    assert(mixed_completed == mixed_detached && mixed[0][1][0] == 4097 && old_mixed[0][1][0] == 0);
+    return 0;
+}

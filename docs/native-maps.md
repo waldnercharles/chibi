@@ -147,3 +147,13 @@ allocations for 4,096 unique compound writes, for both all-map and mixed paths.
 The producer growth check emits 126,910 / 251,046 / 499,786 / 998,374 bytes at map
 depths 4 / 8 / 16 / 32, with exactly depth minus one canonical projections.
 Malformed variable arities and intermediate non-carrier records remain rejected.
+
+Mapped-array bracket writes also follow deeper typed paths through maps and
+arrays. Operator 15 preserves its existing four-operand path and accepts longer
+captured-key paths that cross a map and end at an array. The complete initial
+place is checked before the RHS; unlike a map leaf, a missing array place cannot
+be repaired by that RHS. The final store resolves the current owners again.
+`DeepArrays` checks this distinction, key callbacks, scoped aliases and owned
+record/map elements. `DeepArrayCopies` requires exactly three detach allocations
+for shared map/map/array and array/map/array paths, then zero allocations across
+4,096 further unique writes. Bounds and owner failures remain unclassified.

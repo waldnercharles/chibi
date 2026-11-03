@@ -1,0 +1,126 @@
+package boundary_text_images_host
+
+import os "core:os"
+import target "core:target"
+foreign import libc "system:c"
+foreign libc {
+    dlopen :: (path: cstring, flags: i32) -> rawptr
+    dlsym :: (image: rawptr, name: cstring) -> rawptr
+    dlclose :: (image: rawptr) -> i32
+    calloc :: (count: u64, width: u64) -> rawptr
+    free :: (memory: rawptr)
+}
+Required :: (image: rawptr, name: string) -> rawptr { address := dlsym(image, name); assert(address != 0); return address; }
+when target.Os == target.Darwin { Open :: (path: string) -> rawptr { return dlopen(path, 262); } }
+else { Open :: (path: string) -> rawptr { return dlopen(path, 2); } }
+Main :: () -> int {
+    args := os.Arguments();
+    if (length(args) != 4 || (args[2] != "Labels" && args[2] != "Leaf")) { return 2; }
+    boundaries := ["view", "replace", "constructor", "scoped_set", "scoped_append", "scoped_extend"];
+    labels := args[2] == "Labels";
+    if (labels) { boundaries.extend(["scoped_field", "scoped_field_append", "scoped_field_extend", "scoped_text_set", "scoped_rhs", "aliases"]); }
+    if (!boundaries.contains(args[3])) { return 2; }
+    old := Open(args[0]); writer := Open(args[1]); assert(old != 0 && writer != 0);
+    size: fn() -> i64 = Required(old, "chibi_host_family_size");
+    writer_size: fn() -> i64 = Required(writer, "chibi_host_family_size");
+    adopt_old: fn(heap: rawptr) -> i32 = Required(old, "chibi_host_set_family");
+    adopt_writer: fn(heap: rawptr) -> i32 = Required(writer, "chibi_host_set_family");
+    counter_old: fn(counter: rawptr) -> i32 = Required(old, "boundary_set_counter");
+    counter_writer: fn(counter: rawptr) -> i32 = Required(writer, "boundary_set_counter");
+    allocations: fn() -> i64 = Required(old, "boundary_live");
+    create: fn(incoming: rawptr, empty: i32) -> i32 = Required(old, "boundary_create");
+    expose: fn(pointer: rawptr) -> i32 = Required(old, "boundary_pointer");
+    check: fn(count: i32) -> i32 = Required(old, "boundary_check");
+    counted: fn(incoming: rawptr, published: i32) -> rawptr = Required(old, "boundary_counted");
+    rows: fn(array: rawptr) -> i32 = Required(writer, "boundary_rows");
+    write: fn(pointer: rawptr) -> i32 = Required(writer, "boundary_write");
+    replace: fn(pointer: rawptr) -> i32 = Required(writer, "boundary_replace");
+    release: fn() -> i32 = Required(old, "boundary_release");
+    pending_old: fn() -> i64 = Required(old, "chibi_host_cells_pending");
+    pending_writer: fn() -> i64 = Required(writer, "chibi_host_cells_pending");
+    collect: fn() -> i32 = Required(old, "chibi_host_family_collect");
+    bytes := size(); other_bytes := writer_size(); assert(bytes > 0 && bytes <= 4096 && bytes == other_bytes);
+    heap := calloc(1, u64(bytes)); value := calloc(1, 24); assert(heap != 0 && value != 0);
+    counter := calloc(1, 8); assert(counter != 0);
+    configured_old := counter_old(counter); configured_writer := counter_writer(counter);
+    assert(configured_old == 0 && configured_writer == 0);
+    first := adopt_old(heap); second := adopt_writer(heap); assert(first == 0 && second == 0);
+    expected := 14; expected_rows := 4; first_labels := 3;
+    if (labels) { expected = 17; expected_rows = 2; }
+    if (args[3] == "replace" || args[3] == "constructor" || args[3] == "scoped_extend") {
+        expected = 20; if (labels) { expected = 34; }
+    }
+    if (args[3] == "scoped_append") { expected_rows += 1; first_labels = 0; }
+    if (args[3] == "scoped_extend") { expected_rows *= 2; first_labels = 0; }
+    if (args[3] == "scoped_field_append") { expected = 48; first_labels = 4; }
+    if (args[3] == "scoped_field_extend") { expected = 51; first_labels = 6; }
+    if (args[3] == "scoped_text_set") { expected = 34; }
+    if (args[3] == "scoped_rhs") { expected = 48; first_labels = 4; }
+    if (args[3] == "aliases") { expected = 2176; expected_rows = 128; }
+    held: rawptr = 0;
+    seeded := args[3] == "constructor" || args[3] == "aliases" || args[3] == "scoped_field_append" ||
+              args[3] == "scoped_field_extend" || args[3] == "scoped_text_set";
+    if (seeded) {
+        if (args[3] == "aliases") {
+            wide_rows: fn(array: rawptr) -> i32 = Required(writer, "boundary_wide_rows");
+            made := wide_rows(value); assert(made == 0);
+        } else { made := rows(value); assert(made == 0); }
+        if (args[3] == "constructor" || args[3] == "aliases") { held = counted(value, 0); assert(held != 0); }
+        created := create(value, 0); assert(created == 0);
+    } else { created := create(value, 1); assert(created == 0); }
+    if (args[3] != "constructor" && args[3] != "aliases") {
+        exposed := expose(value); assert(exposed == 0);
+        if (args[3] == "view") { written := write(value); assert(written == 0); }
+        else if (args[3] == "replace") { replaced := replace(value); assert(replaced == 0); }
+        else {
+            scoped: fn(pointer: rawptr) -> i32 = Required(writer, format_text("boundary_{}", args[3]));
+            written := scoped(value); assert(written == 0);
+        }
+    }
+    imported := check(expected_rows);
+    // A missing owner is an expected negative-control outcome, not permission
+    // to unmap borrowed bytes. Destroy every published value while both images
+    // are mapped, and leave image teardown to process exit on this path.
+    if (imported < 0) {
+        released := release(); assert(released == 0);
+        collected := collect(); assert(collected == 0);
+        remaining_old := pending_old(); remaining_writer := pending_writer();
+        assert(remaining_old == 0 && remaining_writer == 0);
+        live := allocations(); assert(live == 0, "negative path releases every owning edge before process exit");
+        free(value); free(heap); free(counter);
+        if (imported == -33) { os.Print("boundary Text owner missing before unload"); return 33; }
+        os.Print("boundary Text bytes differ before unload"); return 34;
+    }
+    assert(imported == expected, "every published Text is inspected while both images are mapped");
+    if (held != 0) { retained := counted(value, 1); assert(retained == held, "already-counted Text keeps its owner"); }
+    if (labels) {
+        labels_count: fn() -> i32 = Required(old, "boundary_labels_count");
+        actual_labels := labels_count(); assert(actual_labels == first_labels);
+        if (args[3] == "view") {
+            unique_owner: fn() -> i64 = Required(writer, "boundary_unique_owner");
+            unique_references: fn() -> i64 = Required(writer, "boundary_unique_references");
+            published_owner: fn() -> i64 = Required(old, "boundary_first_backing");
+            references := unique_references(); incoming_owner := unique_owner(); final_owner := published_owner();
+            assert(references == 1 && incoming_owner != 0 && final_owner == incoming_owner,
+                "the consuming importer preserves genuinely unique nested backing");
+        }
+        if (args[3] == "aliases") {
+            aliases: fn() -> i32 = Required(old, "boundary_aliases");
+            shared := aliases(); assert(shared == 0, "late reverse aliases reuse their imported backing after queue and memo growth");
+        }
+    }
+    old_cells := pending_old(); writer_cells := pending_writer(); assert(old_cells == 1 && writer_cells == 0);
+    collected := collect(); assert(collected == 0);
+    before_close := check(expected_rows); assert(before_close == expected);
+    closed_writer := dlclose(writer); assert(closed_writer == 0);
+    after_close := check(expected_rows); assert(after_close == expected, "owned Text survives writer unload");
+    collected = collect(); assert(collected == 0);
+    rooted := pending_old(); assert(rooted == 1);
+    released := release(); assert(released == 0);
+    collected = collect(); assert(collected == 0);
+    remaining := pending_old(); assert(remaining == 0);
+    live := allocations(); assert(live == 0, "all cross-image allocations are released before the counter");
+    closed_old := dlclose(old); assert(closed_old == 0);
+    free(value); free(heap); free(counter);
+    return 0;
+}

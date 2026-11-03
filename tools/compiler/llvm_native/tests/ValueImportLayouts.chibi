@@ -1,0 +1,94 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+
+@test
+PublicationTextReachabilityKeepsPointersOpaque :: () {
+    records: native.Record[] = [{first: 0, count: 2, identity: 0}, {first: 2, count: 1, identity: 0}];
+    layout := native.ValueLayouts(records, [native.PointerType, native.ArrayType + native.PointerType, abi.TextStorage]);
+    for type in [abi.IntStorage, native.PointerType, native.ArrayType + native.PointerType, native.RecordType] {
+        assert(!native.ValueHasText(layout, type));
+        assert(native.ValueImportable(layout, type));
+    }
+    for type in [abi.TextStorage, native.ArrayType + abi.TextStorage, native.RecordType + 1,
+                 native.ArrayType + native.RecordType + 1] {
+        assert(native.ValueHasText(layout, type) && native.ValueImportable(layout, type));
+    }
+    assert(!layout.valid[0] && layout.collector_copyable[0], "import facts must not widen rootless admission");
+    layout = native.ValueLayouts(records, [native.PointerType, abi.TextStorage, abi.IntStorage]);
+    assert(layout.text[0] && layout.importable[0] && !layout.valid[0]);
+    assert(!layout.text[1] && layout.importable[1]);
+}
+
+@test
+PublicationFactsCloseDeepSharedGraphs :: () {
+    // 64 and 256 nodes have only 128 and 512 field edges, despite two
+    // identical child paths per layer. No value instances are expanded.
+    for arrays in [false, true] {
+        for count in [int(64), 256] {
+            records: native.Record[] = [];
+            fields: int[] = [];
+            for index in 0..<count {
+                child := abi.TextStorage;
+                if (index + 1 < count) {
+                    child = native.RecordType + index + 1;
+                    if (arrays) { child += native.ArrayType; }
+                }
+                records.append({first: length(fields), count: 2, identity: 0});
+                fields.extend([child, child]);
+            }
+            layout := native.ValueLayouts(records, fields);
+            assert(length(layout.text) == count && length(layout.importable) == count);
+            for index in 0..<count {
+                assert(layout.text[index] && layout.importable[index] && layout.valid[index] && layout.owned[index]);
+                assert(layout.backed[index] == (arrays && index + 1 < count));
+            }
+        }
+    }
+}
+
+@test
+PublicationFactsCloseRecursiveBackingGraphs :: () {
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 2, identity: 0}];
+    layout := native.ValueLayouts(records,
+        [native.ArrayType + native.RecordType + 1, native.ArrayType + native.RecordType, abi.TextStorage]);
+    for index in 0..<2 {
+        assert(layout.valid[index] && layout.text[index] && layout.importable[index] && layout.backed[index]);
+    }
+}
+
+@test
+PublicationMapExclusionReachesInlineAndArrayParents :: () {
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 1, identity: 0},
+                               {first: 2, count: 1, identity: 0}];
+    maps := [native.MapOf(abi.IntStorage, abi.IntStorage), native.MapOf(abi.TextStorage, abi.IntStorage),
+             native.MapOf(abi.IntStorage, abi.TextStorage), native.MapOf(abi.IntStorage, native.ArrayType + abi.TextStorage)];
+    for mapped, index in maps {
+        layout := native.ValueLayouts(records, [native.ArrayType + native.RecordType + 1, native.RecordType + 2, mapped]);
+        assert(!native.ValueImportable(layout, mapped));
+        assert(native.ValueHasText(layout, mapped) == (index != 0));
+        for parent in 0..<3 {
+            assert(!layout.importable[parent] && layout.text[parent] == (index != 0));
+            assert(layout.valid[parent] && layout.owned[parent] && layout.backed[parent],
+                "map-free publication must leave existing map-bearing lifecycle admission intact");
+        }
+    }
+}
+
+@test
+PublicationRejectsUnsupportedLeavesWithoutHidingText :: () {
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 2, identity: 0}];
+    for leaf in [native.ViewType, native.TaskType, native.RefType + abi.TextStorage] {
+        layout := native.ValueLayouts(records, [native.RecordType + 1, abi.TextStorage, leaf]);
+        for index in 0..<2 {
+            assert(layout.text[index] && !layout.importable[index] && !layout.collector_copyable[index]);
+        }
+    }
+    layout := native.ValueLayouts(records, [native.RecordType + 1, abi.TextStorage, native.ArrayType + native.TaskType]);
+    assert(layout.importable[0] && layout.importable[1], "opaque observer arrays retain their existing lifecycle");
+    for type in [int(-1), 0, native.TaskType, native.ViewType, native.RecordType + 2,
+                 native.ArrayType + native.RecordType + 2, native.RefType + abi.TextStorage] {
+        assert(!native.ValueImportable(layout, type));
+    }
+}

@@ -1,0 +1,76 @@
+package boundary_text_labels
+
+Row :: struct { labels: string[]; }
+Literal :: () -> string { return "writer\u0000literal"; }
+Labels :: () -> string[] { return [Literal(), text_from_bytes([u8(65), u8(0), u8(90)]), ""]; }
+Rows :: () -> Row[] { row: Row = {labels: Labels()}; return [row, row]; }
+Write :: (window: view Row[]) { window[0] = {labels: Labels()}; }
+Replace :: (pointer: ^(Row[])) -> ^(Row[]) { pointer^ = Rows(); return pointer; }
+
+ScopedSet :: (rows: ^(Row[])) { rows^[0] = {labels: Labels()}; }
+ScopedAppend :: (rows: ^(Row[])) { rows^.append({labels: Labels()}); }
+ScopedExtend :: (rows: ^(Row[])) { rows^.extend(Rows()); }
+ScopedField :: (rows: ^(Row[])) { rows^[0].labels = Labels(); }
+ScopedFieldAppend :: (rows: ^(Row[])) { rows^[0].labels.append(Literal()); }
+ScopedFieldExtend :: (rows: ^(Row[])) { rows^[0].labels.extend(Labels()); }
+ScopedTextSet :: (rows: ^(Row[])) { rows^[0].labels[0] = Literal(); }
+RhsLabels :: (rows: ^(Row[])) -> string[] { rows^ = Rows(); labels := Labels(); labels.append(Literal()); return labels; }
+ScopedRhs :: (rows: ^(Row[])) { rows^[0].labels = RhsLabels(rows); }
+WideRows :: () -> Row[] {
+    rows: Row[] = [];
+    for (index in 0..<64) { rows.append({labels: Labels()}); }
+    for (index in 0..<64) { row := rows[63 - index]; rows.append(row); }
+    return rows;
+}
+
+// The image runner extracts the prefix above this marker. It has no ManagedNew.
+Constructor :: (rows: Row[]) -> ^(Row[]) { return &rows; }
+SetLabel :: (rows: ^(Row[]), label: string) { rows^[0] = {labels: [label]}; }
+Main :: () -> int {
+    rows := Rows(); snapshot := rows;
+    pointer := &rows;
+    selected := pointer.view(0..<2);
+    if selected {
+        Write(selected);
+        selected[0] = selected[0];
+        assert(selected[0].labels[0] == "writer\u0000literal");
+        assert(text_byte_length(selected[0].labels[1]) == 3 && text_byte_at(selected[0].labels[1], 1) == 0);
+        selected[0] = {labels: ["changed"]};
+        assert(snapshot[0].labels[0] == "writer\u0000literal" && snapshot[1].labels[0] == "writer\u0000literal");
+        assert(rows[1].labels[0] == "writer\u0000literal");
+    } else { assert(false, "fixture window must be present"); }
+    pointer^ = pointer^;
+    Replace(pointer);
+    assert(length(rows) == 2 && rows[0].labels[0] == "writer\u0000literal");
+    ScopedSet(pointer);
+    assert(rows[0].labels[0] == "writer\u0000literal");
+    ScopedAppend(pointer);
+    assert(length(rows) == 3 && rows[2].labels[0] == "writer\u0000literal");
+    ScopedExtend(pointer);
+    assert(length(rows) == 5 && rows[3].labels[0] == "writer\u0000literal");
+    ScopedField(pointer);
+    assert(rows[0].labels[0] == "writer\u0000literal" && text_byte_at(rows[0].labels[1], 1) == 0);
+    ScopedFieldAppend(pointer);
+    assert(length(rows[0].labels) == 4 && rows[0].labels[3] == "writer\u0000literal");
+    ScopedFieldExtend(pointer);
+    assert(length(rows[0].labels) == 7 && text_byte_at(rows[0].labels[5], 1) == 0);
+    ScopedTextSet(pointer);
+    assert(rows[0].labels[0] == "writer\u0000literal");
+    before_rhs := rows;
+    ScopedRhs(pointer);
+    assert(length(rows) == 2 && length(rows[0].labels) == 4 && rows[1].labels[0] == "writer\u0000literal");
+    assert(text_byte_at(rows[0].labels[1], 1) == 0 && length(before_rhs) == 5 && length(before_rhs[0].labels) == 7);
+    pointer^ = pointer^;
+    assert(rows[0].labels[0] == "writer\u0000literal");
+    wide := WideRows(); wide_snapshot := wide; wide_pointer := &wide;
+    SetLabel(wide_pointer, "changed");
+    assert(wide_pointer^[0].labels[0] == "changed");
+    assert(wide_snapshot[0].labels[0] == "writer\u0000literal" && wide_pointer^[127].labels[0] == "writer\u0000literal");
+    copied := Constructor(snapshot);
+    copied^ = copied^;
+    SetLabel(copied, "replacement");
+    assert(copied^[0].labels[0] == "replacement");
+    assert(snapshot[0].labels[0] == "writer\u0000literal" && copied^[1].labels[0] == "writer\u0000literal");
+    assert(text_byte_length(copied^[1].labels[1]) == 3 && text_byte_at(copied^[1].labels[1], 2) == 90);
+    return 0;
+}

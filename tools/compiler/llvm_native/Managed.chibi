@@ -552,7 +552,7 @@ ManagedUnroots :: (is_entry: bool) -> string {
     if (is_entry) { output = strings.Concatenate([output, "  call void @chibi_managed.collect(ptr %ctx, ptr %managed.heap)\n"]); }
     return output;
 }
-ManagedInstruction :: (item: Instruction, pc: int, records: Record[], fields: int[], persistent: bool) -> string {
+ManagedInstruction :: (item: Instruction, pc: int, records: Record[], fields: int[], values: ValueLayout, persistent: bool) -> string {
     out := format_text("p{}:\n", pc);
     if (item.op == ManagedNew) {
         out = format_text("{}  call void @chibi_managed.safepoint(ptr %ctx, ptr %managed.heap)\n", out);
@@ -581,6 +581,15 @@ ManagedInstruction :: (item: Instruction, pc: int, records: Record[], fields: in
                 out = format_text("{}  %owned{} = call {} @chibi_managed.copy.record{}(ptr %ctx, {} %a{})\n", out, pc, TypeName(item.right), index, TypeName(item.right), pc);
                 value = format_text("%owned{}", pc);
             }
+        }
+        if (ManagedArray(item.right) && ValueHasText(values, item.right) && ValueImportable(values, item.right)) {
+            // Acquisition above owns one array edge. Normalize its nested Text
+            // before the cell publishes it; allocator callbacks defer GC until
+            // the next spilled-root safe point.
+            out = format_text("{}  store {} {}, ptr %import{}\n", out, TypeName(item.right), value, pc);
+            out = format_text("{}  call void @chibi_value.{}.import(ptr %ctx, ptr %import{})\n", out, item.right, pc);
+            out = format_text("{}  %imported{} = load {}, ptr %import{}\n", out, pc, TypeName(item.right), pc);
+            value = format_text("%imported{}", pc);
         }
         out = format_text("{}  %cell{} = call ptr @chibi_managed.new(ptr %ctx, ptr %managed.heap, i64 %bytes{}, ptr {}, ptr {}, i32 {})\n", out, pc, pc, layout, drop, ManagedStorageClass(item.right));
         out = format_text("{}  %payload{} = getelementptr %chibi.managed.cell, ptr %cell{}, i32 1\n", out, pc, pc);

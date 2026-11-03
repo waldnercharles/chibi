@@ -1,0 +1,154 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Pure emitter contracts only. Zero aggregates are fresh values, so mode 1
+// consumes their ownership without a preparatory copy or a constructor.
+PublicationCode :: (type: int, mode: int) -> native.Instruction[] {
+    return [Code(native.Constant, type, 0, 0, 0, 0, 0), Code(native.ValueCopy, type, 1, 0, 0, mode, 0),
+        Code(native.ValueDrop, type, 0, 1, 0, 0, 0), Code(native.Constant, abi.IntStorage, 2, 0, 0, 0, 0),
+        Code(native.Publish, abi.IntStorage, 0, 2, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+PublicationModule :: (code: native.Instruction[], type: int, records: native.Record[], fields: int[], family: bool = false) -> native.Result {
+    shape := Function(abi.IntStorage, 0, 0, 3, 0, length(code), 0, 0);
+    slots := [type, type, abi.IntStorage];
+    if (family) {
+        return native.EmitFamilyLibraryStates(abi.LinuxX64(), "Publication", ["Write"], [i64(1)], [shape], [], slots, [],
+            code, [], records, fields, resize([i64(0)], length(fields)), ["text"], 1, [], -1, []);
+    }
+    return native.Emit(abi.LinuxX64(), [shape], [], slots, [], code, [], records, fields, ["text"],
+        {file: "", directory: ""}, [], [], [], false, 1);
+}
+PublicationFunction :: (text: string, declaration: string) -> string {
+    parts := strings.Split(text, declaration);
+    assert(length(parts) == 2, "publication helper must have exactly one definition");
+    return strings.Split(parts[1], "\n}\n")[0];
+}
+
+@test
+PublicationTextConsumesWithoutAnExtraReference :: () {
+    text := Emitted(PublicationModule(PublicationCode(abi.TextStorage, native.ValueImport), abi.TextStorage, [], []));
+    assert(strings.Contains(text, "store { ptr, i32, ptr } %a1, ptr %s1\n  call void @chibi_value.13.import(ptr %ctx, ptr %s1)"));
+    body := PublicationFunction(text, "define internal void @chibi_value.13.import(");
+    assert(strings.Contains(body, "%counted = icmp ne ptr %owner, null\n  br i1 %counted, label %done, label %copy"));
+    assert(strings.Contains(body, "@chibi_text.copy(ptr %ctx, ptr %data, i32 %length)"));
+    assert(!strings.Contains(body, "@chibi_scalar.retain") && !strings.Contains(body, "@chibi_text.share"));
+    assert(!strings.Contains(text, "%chibi.value.import = type") && !strings.Contains(text, "@chibi_snapshot.memo."));
+    assert(!strings.Contains(text, "@chibi_snapshot.queue."));
+}
+
+@test
+PublicationKeepsModeZeroCopiesAndMapAdmission :: () {
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}];
+    fields := [native.MapOf(abi.TextStorage, abi.TextStorage)];
+    types := [abi.TextStorage, native.ArrayType + abi.TextStorage, fields[0], native.RecordType];
+    calls := [format_text("%copied1 = call {} @chibi_text.share(", abi.TextType()),
+              format_text("%copied1 = call {} @chibi_array.1037.copy(", abi.ArrayType()),
+              format_text("%copied1 = call {} @chibi_map.share(", abi.MapType()),
+              "call void @chibi_value.32.keep_at(ptr %ctx, ptr %s1)"];
+    for type, index in types {
+        text := Emitted(PublicationModule(PublicationCode(type, 0), type, records, fields));
+        assert(strings.Contains(text, calls[index]));
+        assert(!strings.Contains(text, "@chibi_import.") && !strings.Contains(text, "%chibi.value.import"));
+        assert(!strings.Contains(text, "@chibi_value.13.import(") && !strings.Contains(text, "@chibi_value.32.import("));
+    }
+}
+
+@test
+PublicationModeRejectsUnknownTargetsAndReservedOperands :: () {
+    diagnostic := "native value lifecycle requires an array or managed aggregate operand";
+    for target in [int(-1), 2, 2147483647] {
+        Rejects(PublicationModule(PublicationCode(abi.TextStorage, target), abi.TextStorage, [], []), diagnostic);
+    }
+    for invalid in 0..<4 {
+        code := PublicationCode(abi.TextStorage, native.ValueImport);
+        if (invalid == 0) { code[1].right = 1; }
+        if (invalid == 1) { code[1].literal = 1; }
+        if (invalid == 2) { code[1].left = 2; }
+        if (invalid == 3) { code[2].target = native.ValueImport; }
+        Rejects(PublicationModule(code, abi.TextStorage, [], []), diagnostic);
+    }
+}
+
+@test
+PublicationModeRequiresTextAndACompleteImportableGraph :: () {
+    diagnostic := "native value lifecycle requires an array or managed aggregate operand";
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}];
+    for field in [native.ArrayType + abi.IntStorage, native.MapOf(abi.TextStorage, abi.TextStorage)] {
+        Emitted(PublicationModule(PublicationCode(native.RecordType, 0), native.RecordType, records, [field]));
+        Rejects(PublicationModule(PublicationCode(native.RecordType, native.ValueImport), native.RecordType, records, [field]), diagnostic);
+    }
+    for type in [abi.IntStorage, native.ArrayType + abi.IntStorage, native.MapOf(abi.TextStorage, abi.TextStorage)] {
+        Rejects(PublicationModule(PublicationCode(type, native.ValueImport), type, [], []), diagnostic);
+    }
+    records = [{first: 0, count: 1, identity: 0}, {first: 1, count: 1, identity: 0}];
+    fields := [native.ArrayType + native.RecordType + 1, native.MapOf(abi.TextStorage, abi.TextStorage)];
+    Emitted(PublicationModule(PublicationCode(native.RecordType, 0), native.RecordType, records, fields));
+    Rejects(PublicationModule(PublicationCode(native.RecordType, native.ValueImport), native.RecordType, records, fields), diagnostic);
+}
+
+@test
+PublicationNestedInlineRecordsKeepRootlessAdmission :: () {
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 1, identity: 0}];
+    text := Emitted(PublicationModule(PublicationCode(native.RecordType, native.ValueImport), native.RecordType,
+        records, [native.RecordType + 1, abi.TextStorage]));
+    for helper in ["define internal void @chibi_value.32.import(", "define internal void @chibi_import.visit.33(",
+                   "define internal void @chibi_import.visit.13("] {
+        assert(strings.Count(text, helper) == 1);
+    }
+    assert(strings.Contains(text, "ptr @chibi_import.range.33, i32 1)"));
+    assert(!strings.Contains(text, "%chibi.managed.heap = type"));
+}
+
+@test
+PublicationWriterOnlyDemandsItsWholeHelperClosure :: () {
+    records: native.Record[] = [{first: 0, count: 3, identity: 0}, {first: 3, count: 1, identity: 0},
+                               {first: 4, count: 1, identity: 0}];
+    array := native.ArrayType + native.RecordType + 1;
+    fields := [array, array, native.ArrayType + abi.IntStorage, abi.TextStorage, abi.TextStorage];
+    code := PublicationCode(native.RecordType, native.ValueImport);
+    for item in code { assert(item.op != native.ManagedNew); }
+    text := Emitted(PublicationModule(code, native.RecordType, records, fields, true));
+    for operation in ["allocate", "clone", "copy", "unique"] {
+        assert(strings.Count(text, format_text("define internal {} @chibi_array.{}.{}(", abi.ArrayType(), array, operation)) == 1);
+    }
+    assert(strings.Count(text, format_text("define internal void @chibi_array.{}.drop(", array)) == 1);
+    for helper in ["define internal void @chibi_scalar.copy(", "define internal void @chibi_scalar.retain(",
+                   "define internal void @chibi_scalar.free(", "define internal { ptr, i32, ptr } @chibi_text.copy(",
+                   "define internal ptr @chibi_managed.allocate(", "define internal void @chibi_managed.release(",
+                   "define internal void @chibi_value.32.import(", "define internal void @chibi_import.visit.33("] {
+        assert(strings.Count(text, helper) == 1);
+    }
+    assert(strings.Contains(text, "ptr @chibi_managed.allocate, i64 0"));
+    assert(strings.Contains(text, "ptr @chibi_managed.release, i64 0"));
+    assert(!strings.Contains(text, "@chibi_import.visit.34("), "an unused text record must not demand an importer");
+    assert(!strings.Contains(text, "@chibi_import.visit.1030("), "non-text fields keep their ordinary lifecycle only");
+}
+
+@test
+PublicationImportsInlineTextWithoutFollowingPointerCells :: () {
+    records: native.Record[] = [{first: 0, count: 3, identity: 0}];
+    text := Emitted(PublicationModule(PublicationCode(native.RecordType, native.ValueImport), native.RecordType,
+        records, [native.PointerType, native.ArrayType + native.PointerType, abi.TextStorage], true));
+    assert(strings.Contains(text, "define internal void @chibi_import.visit.13("));
+    assert(!strings.Contains(text, "@chibi_import.visit.16(") && !strings.Contains(text, "@chibi_import.visit.1040("));
+    body := PublicationFunction(text, "define internal void @chibi_import.visit.32(");
+    assert(!strings.Contains(body, "@chibi_managed.address("));
+}
+
+@test
+PublicationArrayImportKeepsSourcesUntilTraversalEnds :: () {
+    array := native.ArrayType + abi.TextStorage;
+    text := Emitted(PublicationModule(PublicationCode(array, native.ValueImport), array, [], []));
+    visit := PublicationFunction(text, "define internal void @chibi_import.visit.1037(");
+    assert(strings.Contains(visit, "@chibi_array.1037.unique(ptr %ctx, { i32, i32, ptr, ptr } %incoming, i32 %length, i1 false)"));
+    assert(strings.Contains(visit, "%destination = ptrtoint ptr %value to i64"));
+    assert(strings.Contains(visit, "ptr @chibi_import.retire.1037, i32 %length)"));
+    root := PublicationFunction(text, "define internal void @chibi_value.1037.import(");
+    traverse := strings.Index(root, "@chibi_snapshot.queue.drain(ptr %ctx, ptr %queue, ptr %session)");
+    forget := strings.Index(root, "@chibi_snapshot.memo.release(ptr %ctx, ptr %memo)");
+    retire := strings.Index(root, "@chibi_snapshot.queue.drain(ptr %ctx, ptr %retired, ptr %session)");
+    assert(traverse >= 0 && forget > traverse && retire > forget);
+}

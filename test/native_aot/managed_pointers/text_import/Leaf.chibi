@@ -1,0 +1,48 @@
+package boundary_text_leaf
+
+Leaf :: struct { label: string; }
+Row :: struct { leaf: Leaf; }
+Literal :: () -> string { return "writer\u0000literal"; }
+Rows :: () -> Row[] {
+    counted := text_from_bytes([u8(65), u8(0), u8(90)]);
+    return [{leaf: {label: Literal()}}, {leaf: {label: counted}}, {leaf: {label: ""}}, {leaf: {label: counted}}];
+}
+Write :: (window: view Row[]) { window[0] = {leaf: {label: Literal()}}; }
+Replace :: (pointer: ^(Row[])) -> ^(Row[]) { pointer^ = Rows(); return pointer; }
+
+ScopedSet :: (rows: ^(Row[])) { rows^[0] = {leaf: {label: Literal()}}; }
+ScopedAppend :: (rows: ^(Row[])) { rows^.append({leaf: {label: Literal()}}); }
+ScopedExtend :: (rows: ^(Row[])) { rows^.extend(Rows()); }
+
+// The image runner extracts the prefix above this marker. It has no ManagedNew.
+Constructor :: (rows: Row[]) -> ^(Row[]) { return &rows; }
+SetLabel :: (rows: ^(Row[]), label: string) { rows^[1] = {leaf: {label: label}}; }
+Main :: () -> int {
+    rows := Rows(); snapshot := rows;
+    pointer := &rows;
+    selected := pointer.view(0..<4);
+    if selected {
+        Write(selected);
+        selected[0] = selected[0];
+        assert(selected[0].leaf.label == "writer\u0000literal");
+        selected[0] = {leaf: {label: "changed"}};
+        assert(snapshot[0].leaf.label == "writer\u0000literal" && rows[0].leaf.label == "changed");
+        assert(text_byte_length(selected[1].leaf.label) == 3 && text_byte_at(selected[1].leaf.label, 1) == 0);
+    } else { assert(false, "fixture window must be present"); }
+    pointer^ = pointer^;
+    Replace(pointer);
+    assert(length(rows) == 4 && rows[0].leaf.label == "writer\u0000literal");
+    ScopedSet(pointer);
+    assert(rows[0].leaf.label == "writer\u0000literal");
+    ScopedAppend(pointer);
+    assert(length(rows) == 5 && rows[4].leaf.label == "writer\u0000literal");
+    ScopedExtend(pointer);
+    assert(length(rows) == 9 && rows[5].leaf.label == "writer\u0000literal");
+    copied := Constructor(snapshot);
+    copied^ = copied^;
+    SetLabel(copied, "replacement");
+    assert(copied^[1].leaf.label == "replacement");
+    assert(text_byte_length(snapshot[1].leaf.label) == 3 && text_byte_at(snapshot[1].leaf.label, 2) == 90);
+    assert(text_byte_length(copied^[3].leaf.label) == 3 && text_byte_at(copied^[3].leaf.label, 1) == 0);
+    return 0;
+}

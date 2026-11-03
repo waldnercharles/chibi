@@ -1,0 +1,33 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+@test
+PublicationSnapshotsAndEqualityShareTransactionRuntimes :: () {
+    for retained in [false, true] {
+        array := native.ArrayType + native.RecordType;
+        code := [Code(native.Constant, array, 0, 0, 0, 0, 0),
+            Code(native.Constant, native.RecordType, 1, 0, 0, 0, 0),
+            Code(native.ValueCopy, native.RecordType, 2, 1, 0, native.ValueImport, 0),
+            Code(native.ArrayContains, abi.IntStorage, 3, 0, 2, 2, i64(native.RecordType)),
+            Code(native.ValueDrop, native.RecordType, 0, 2, 0, 0, 0), Code(native.ValueDrop, array, 0, 0, 0, 0, 0),
+            Code(native.Publish, abi.IntStorage, 0, 3, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+        shapes := SnapshotShape();
+        if (retained) { code[0].op = native.StateLoad; }
+        else { shapes.roots = []; }
+        text := Emitted(native.EmitValuesLibrary(abi.LinuxX64(), "ImportSharing", ["Write"], [i64(1)],
+            [Function(abi.IntStorage, 0, 0, 4, 0, length(code), 0, 0)], [],
+            [array, native.RecordType, native.RecordType, abi.IntStorage], [], code, [],
+            [{first: 0, count: 2, identity: 0}], [abi.IntStorage, abi.TextStorage], [i64(0), 0], ["Write.rows"],
+            1, ["count", "text"], -1, [], shapes, false, retained));
+        for declaration in ["%chibi.snapshot.memo = type", "%chibi.snapshot.queue = type",
+                            "define internal ptr @chibi_snapshot.memo.find(", "define internal void @chibi_snapshot.memo.put(",
+                            "define internal void @chibi_snapshot.queue.put(", "define internal i1 @chibi_snapshot.queue.drain(",
+                            "define internal void @chibi_value.32.import(", "define hidden i1 @chibi_value_equal.1("] {
+            assert(strings.Count(text, declaration) == 1);
+        }
+        assert(strings.Contains(text, "@chibi_snapshot.value.") == retained);
+    }
+}

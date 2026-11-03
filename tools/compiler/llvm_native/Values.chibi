@@ -6,19 +6,22 @@ import strings "core:strings"
 // The record graph is closed after type validation. Reverse edges propagate
 // ownership and unsupported leaves once, including recursion through arrays.
 pub ValueLayout :: struct {
-    valid: bool[]; owned: bool[]; backed: bool[];
+    valid: bool[]; owned: bool[]; backed: bool[]; text: bool[]; importable: bool[];
     collector_copyable: bool[]; collector_owned: bool[]; collector_backed: bool[];
 }
 pub ValueLayouts :: (records: Record[], fields: int[]) -> ValueLayout {
     found: ValueLayout = {valid: resize([true], length(records)), owned: resize([false], length(records)),
-                           backed: resize([false], length(records)), collector_copyable: [], collector_owned: [], collector_backed: []};
+                           backed: resize([false], length(records)), text: resize([false], length(records)),
+                           importable: resize([true], length(records)), collector_copyable: [], collector_owned: [], collector_backed: []};
     heads := resize([int(0)], length(records));
-    for (index in 0..<length(records)) { heads[index] = -1; found.valid[index] = true; }
+    for (index in 0..<length(records)) { heads[index] = -1; found.valid[index] = true; found.importable[index] = true; }
     parents: int[] = [];
     next: int[] = [];
     invalid: int[] = [];
     owned: int[] = [];
     backed: int[] = [];
+    text: int[] = [];
+    mapped: int[] = [];
     collector := false;
     for (parent in 0..<length(records)) {
         record := records[parent];
@@ -31,6 +34,7 @@ pub ValueLayouts :: (records: Record[], fields: int[]) -> ValueLayout {
                 if (!found.owned[parent]) { found.owned[parent] = true; owned.append(parent); }
                 if (!found.backed[parent]) { found.backed[parent] = true; backed.append(parent); }
             } else if (type >= MapType && type < RefType) {
+                if (found.importable[parent]) { found.importable[parent] = false; mapped.append(parent); }
                 if (!MapShaped(records, type)) { child = 0; }
                 else {
                     child = MapValue(type);
@@ -42,6 +46,8 @@ pub ValueLayouts :: (records: Record[], fields: int[]) -> ValueLayout {
                 found.owned[parent] = true;
                 owned.append(parent);
             }
+            if ((child == abi.TextStorage || (type >= MapType && type < RefType && MapKey(type) == abi.TextStorage)) &&
+                !found.text[parent]) { found.text[parent] = true; text.append(parent); }
             if (child >= RecordType && child < ArrayType) {
                 index := child - RecordType;
                 parents.append(parent);
@@ -53,10 +59,12 @@ pub ValueLayouts :: (records: Record[], fields: int[]) -> ValueLayout {
             }
         }
     }
-    for (pass in 0..<3) {
+    for (pass in 0..<5) {
         pending := invalid;
         if (pass == 1) { pending = owned; }
         if (pass == 2) { pending = backed; }
+        if (pass == 3) { pending = text; }
+        if (pass == 4) { pending = mapped; }
         at := 0;
         while (at < length(pending)) {
             edge := heads[pending[at]];
@@ -66,6 +74,8 @@ pub ValueLayouts :: (records: Record[], fields: int[]) -> ValueLayout {
                 if (pass == 0 && found.valid[parent]) { found.valid[parent] = false; changed = true; }
                 if (pass == 1 && !found.owned[parent]) { found.owned[parent] = true; changed = true; }
                 if (pass == 2 && !found.backed[parent]) { found.backed[parent] = true; changed = true; }
+                if (pass == 3 && !found.text[parent]) { found.text[parent] = true; changed = true; }
+                if (pass == 4 && found.importable[parent]) { found.importable[parent] = false; changed = true; }
                 if (changed) { pending.append(parent); }
                 edge = next[edge];
             }
@@ -129,7 +139,29 @@ pub ValueLayouts :: (records: Record[], fields: int[]) -> ValueLayout {
         found.collector_owned = found.owned;
         found.collector_backed = found.backed;
     }
+    for (index in 0..<length(records)) {
+        found.importable[index] = found.importable[index] && found.collector_copyable[index];
+    }
     return found;
+}
+// Pointer cells are opaque edges. Publication imports only text in the value's
+// own inline fields and counted containers, never text in a pointee's payload.
+pub ValueHasText :: (layout: ValueLayout, type: int) -> bool {
+    if (type == abi.TextStorage) { return true; }
+    if (type >= MapType && type < RefType) {
+        return MapKey(type) == abi.TextStorage || ValueHasText(layout, MapValue(type));
+    }
+    if (type >= ArrayType && type < MapType) { return ValueHasText(layout, type - ArrayType); }
+    return type >= RecordType && type < ArrayType && layout.text[type - RecordType];
+}
+// Publication's first closed domain reuses counted arrays and inline records.
+// Map publication needs its own owning traversal; ordinary map copies and
+// existing source admission are deliberately independent of this operation.
+pub ValueImportable :: (layout: ValueLayout, type: int) -> bool {
+    if (type == PointerType) { return true; }
+    if (type < RecordType) { return type == abi.TextStorage || abi.ScalarType(type) != ""; }
+    if (type >= ArrayType && type < MapType) { return ValueImportable(layout, type - ArrayType); }
+    return type < ArrayType && Index(type - RecordType, length(layout.importable)) && layout.importable[type - RecordType];
 }
 // Collector copies require active roots at every collecting boundary. This
 // property does not admit those values into maps, cells or retained snapshots.

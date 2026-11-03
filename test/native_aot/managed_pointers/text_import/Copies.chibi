@@ -1,0 +1,17 @@
+package boundary_text_copies
+
+Row :: struct { labels: string[]; }
+Copy :: (rows: Row[]) -> Row[] { return rows; }
+Main :: () -> int {
+    counted := text_from_bytes([u8(65), u8(0), u8(90)]);
+    labels: string[] = [];
+    for (index in 0..<1024) { labels.append(counted); }
+    rows: Row[] = [{labels: labels}, {labels: labels}];
+    total := 0;
+    for (index in 0..<4096) {
+        copied := Copy(rows);
+        total += length(copied[0].labels);
+    }
+    assert(total == 4194304 && text_byte_at(rows[1].labels[0], 1) == 0);
+    return 0;
+}

@@ -1,0 +1,218 @@
+package boundary_text_images
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import link "project:native_link"
+import host "project:native_link_host"
+import driver "project:native_driver"
+import route "project:driver_paths"
+import os "core:os"
+import strings "core:strings"
+foreign import libc "system:c"
+foreign libc { strtoll :: (text: cstring, end: rawptr, base: i32) -> i64 }
+
+Shape :: struct { array: int; tag: i64; row: string; }
+Schema :: (source: string) -> Shape {
+    found: Shape = {array: 0, tag: 0, row: ""};
+    prefix := "define internal ptr @chibi_view.";
+    for (line in strings.SplitLines(source)) {
+        if (!strings.HasPrefix(line, prefix) || !strings.Contains(line, ".try(ptr %heap,")) { continue; }
+        end := strings.Index(line, ".try(");
+        words := strings.Split(strings.Slice(line, strings.ByteLength(prefix), end - strings.ByteLength(prefix)), ".");
+        assert(length(words) == 2 && found.array == 0, "one rootless view schema per fixture");
+        array := strtoll(words[0], 0, 10); tag := strtoll(words[1], 0, 10);
+        assert(array >= i64(native.ArrayType + native.RecordType) && array < i64(native.MapType) && tag != 0);
+        assert(format_text("{}", array) == words[0] && format_text("{}", tag) == words[1]);
+        found = {array: int(array), tag: tag, row: format_text("%record{}", int(array) - native.ArrayType - native.RecordType)};
+    }
+    assert(found.array != 0, "source must emit its actual view schema");
+    return found;
+}
+Symbol :: (source: string, name: string) -> string {
+    found := "";
+    for (line in strings.SplitLines(source)) {
+        if (!strings.HasPrefix(line, "; chibi-function ")) { continue; }
+        words := strings.Split(line, " ");
+        if (length(words) != 4 || words[3] != name) { continue; }
+        assert(found == "", "source function must be unambiguous");
+        found = strings.Concatenate(["@chibi_scalar.", words[2]]);
+    }
+    assert(found != "", "source function metadata is required");
+    return found;
+}
+RowCheck :: (labels: bool, row: string) -> string {
+    if (!labels) {
+        return format_text("define internal i32 @boundary.row(ptr %row) {{\nentry:\n  %text = getelementptr {}, ptr %row, i32 0, i32 0, i32 0\n  %result = call i32 @boundary.text(ptr %text)\n  ret i32 %result\n}}\n", row);
+    }
+    return strings.Concatenate([
+        format_text("define internal i32 @boundary.row(ptr %row) {{\nentry:\n  %labels.at = getelementptr {}, ptr %row, i32 0, i32 0\n", row),
+        "  %labels = load { i32, i32, ptr, ptr }, ptr %labels.at\n  %length = extractvalue { i32, i32, ptr, ptr } %labels, 0\n",
+        "  %valid = icmp ule i32 %length, 6\n  br i1 %valid, label %start, label %bad\nstart:\n",
+        "  %data = extractvalue { i32, i32, ptr, ptr } %labels, 2\n  br label %head\nhead:\n",
+        "  %index = phi i32 [ 0, %start ], [ %next, %good ]\n  %total = phi i32 [ 0, %start ], [ %sum, %good ]\n",
+        "  %done = icmp eq i32 %index, %length\n  br i1 %done, label %exit, label %text\ntext:\n",
+        "  %at = getelementptr { ptr, i32, ptr }, ptr %data, i32 %index\n  %checked = call i32 @boundary.text(ptr %at)\n",
+        "  %failed = icmp slt i32 %checked, 0\n  br i1 %failed, label %failure, label %good\ngood:\n",
+        "  %sum = add i32 %total, %checked\n  %next = add i32 %index, 1\n  br label %head\nfailure:\n  ret i32 %checked\nbad:\n  ret i32 -34\nexit:\n  ret i32 %total\n}\n"]);
+}
+OldAdapter :: (source: string, template: string, audit: string, labels: bool, shape: Shape) -> string {
+    counted := format_text("  %row = getelementptr {}, ptr %data, i32 1\n  %text.at = getelementptr {}, ptr %row, i32 0, i32 0, i32 0\n", shape.row, shape.row);
+    if (labels) {
+        counted = format_text("  %labels.at = getelementptr {}, ptr %data, i32 0, i32 0\n  %labels = load {{ i32, i32, ptr, ptr }}, ptr %labels.at\n  %texts = extractvalue {{ i32, i32, ptr, ptr }} %labels, 2\n  %text.at = getelementptr {{ ptr, i32, ptr }}, ptr %texts, i32 1\n", shape.row);
+    }
+    result := template;
+    // Longer tokens precede their prefixes; the templates contain no source data.
+    result = strings.ReplaceAll(result, "$COUNTED", counted);
+    result = strings.ReplaceAll(result, "$ARRAY", format_text("{}", shape.array));
+    count := "4"; if (labels) { count = "2"; }
+    result = strings.ReplaceAll(result, "$COUNT", count);
+    result = strings.ReplaceAll(result, "$STORAGE", format_text("{}", native.ArrayType + native.RecordType));
+    result = strings.ReplaceAll(result, "$CTOR", Symbol(source, "Constructor"));
+    result = strings.ReplaceAll(result, "$CTX", abi.ManagedContextType());
+    result = strings.ReplaceAll(result, "$HEAP", format_text("{}", abi.ManagedOwnerField));
+    result = strings.ReplaceAll(result, "$ROW", shape.row);
+    result = strings.ReplaceAll(result, "$TAG", format_text("{}", shape.tag));
+    result = strings.ReplaceAll(result, "$A", abi.ArrayType());
+    result = strings.ReplaceAll(result, "$P", abi.ManagedPointerType());
+    return strings.Concatenate([result, audit, RowCheck(labels, shape.row)]);
+}
+WriterAdapter :: (source: string, count: int, labels: bool, shape: Shape) -> string {
+    pointer := abi.ManagedPointerType(); array := abi.ArrayType(); view := abi.ManagedViewType();
+    assert(strings.Contains(source, format_text("i32 {}(ptr %ctx, {} %arg0)", Symbol(source, "Write"), view)),
+        "source Write uses the synchronous no-result i32 ABI");
+    result := strings.Concatenate([
+        format_text("define i32 @boundary_rows(ptr %out) {{\nentry:\n  %value = call {} {}(ptr @chibi_context)\n  store {} %value, ptr %out\n  ret i32 0\n}}\n", array, Symbol(source, "Rows"), array),
+        format_text("define i32 @boundary_write(ptr %pointer) {{\nentry:\n  %pointer.value = load {}, ptr %pointer\n", pointer),
+        format_text("  %owner = insertvalue {} zeroinitializer, {} %pointer.value, 0\n  %view = insertvalue {} %owner, i32 {}, 2\n", view, pointer, view, count),
+        format_text("  %ignored = call i32 {}(ptr @chibi_context, {} %view)\n  ret i32 0\n}}\n", Symbol(source, "Write"), view),
+        format_text("define i32 @boundary_replace(ptr %pointer) {{\nentry:\n  %value = load {}, ptr %pointer\n  %result = call {} {}(ptr @chibi_context, {} %value)\n  store {} %result, ptr %pointer\n  ret i32 0\n}}\n", pointer, pointer, Symbol(source, "Replace"), pointer, pointer)]);
+    names := ["ScopedSet", "ScopedAppend", "ScopedExtend"];
+    exports := ["scoped_set", "scoped_append", "scoped_extend"];
+    if (labels) {
+        names.extend(["ScopedField", "ScopedFieldAppend", "ScopedFieldExtend", "ScopedTextSet", "ScopedRhs"]);
+        exports.extend(["scoped_field", "scoped_field_append", "scoped_field_extend", "scoped_text_set", "scoped_rhs"]);
+        result = strings.Concatenate([result,
+            format_text("define i32 @boundary_wide_rows(ptr %out) {{\nentry:\n  %value = call {} {}(ptr @chibi_context)\n  store {} %value, ptr %out\n  ret i32 0\n}}\n", array, Symbol(source, "WideRows"), array)]);
+    }
+    for (name, index in names) {
+        symbol := Symbol(source, name);
+        assert(strings.Contains(source, format_text("i32 {}(ptr %ctx, ptr %arg0)", symbol)), "scoped array fixture must use a borrowed descriptor address");
+        result = strings.Concatenate([result,
+            format_text("define i32 @boundary_{}(ptr %pointer) {{\nentry:\n", exports[index]),
+            format_text("  %heap.at = getelementptr {}, ptr @chibi_context, i32 0, i32 {}\n  %heap = load ptr, ptr %heap.at\n", abi.ManagedContextType(), abi.ManagedOwnerField),
+            format_text("  %value = load {}, ptr %pointer\n  %address = call ptr @chibi_managed.address(ptr %heap, {} %value, i64 {}, i64 ptrtoint (ptr getelementptr ({}, ptr null, i32 1) to i64), i32 {})\n", pointer, pointer, shape.tag, array, native.ArrayType + native.RecordType),
+            format_text("  %ignored = call i32 {}(ptr @chibi_context, ptr %address)\n  ret i32 0\n}}\n", symbol)]);
+    }
+    return result;
+}
+// Capture the fresh Labels() backing immediately before the real consuming
+// import. The observer does not retain, allocate, move, or change the value.
+UniqueWrite :: (source: string, row: string) -> string {
+    symbol := Symbol(source, "Write");
+    lines: string[] = []; active := false; captured := 0;
+    for (line in strings.SplitLines(source)) {
+        if (strings.HasPrefix(line, "define ")) { active = strings.Contains(line, strings.Concatenate([" ", symbol, "("])); }
+        if (active && strings.HasPrefix(line, "  call void @chibi_value.") &&
+            strings.Contains(line, ".import(ptr %ctx, ptr %s") && strings.HasSuffix(line, ")")) {
+            first := strings.LastIndex(line, "ptr ") + 4;
+            slot := strings.Slice(line, first, strings.ByteLength(line) - first - 1);
+            lines.append(format_text("  %boundary.row = load {}, ptr {}\n  %boundary.labels = extractvalue {} %boundary.row, 0", row, slot, row));
+            lines.append("  %boundary.owner = extractvalue { i32, i32, ptr, ptr } %boundary.labels, 3\n  %boundary.identity = ptrtoint ptr %boundary.owner to i64");
+            lines.append("  %boundary.references = load atomic i64, ptr %boundary.owner monotonic, align 8\n  store i64 %boundary.identity, ptr @boundary.unique.owner\n  store i64 %boundary.references, ptr @boundary.unique.references");
+            captured += 1;
+        }
+        lines.append(line);
+        if (line == "}") { active = false; }
+    }
+    assert(captured == 1, "observe exactly one fresh source ViewSet value");
+    lines.append("@boundary.unique.owner = internal global i64 0\n@boundary.unique.references = internal global i64 0");
+    lines.append("define i64 @boundary_unique_owner() {\n  %owner = load i64, ptr @boundary.unique.owner\n  ret i64 %owner\n}\n");
+    lines.append("define i64 @boundary_unique_references() {\n  %references = load i64, ptr @boundary.unique.references\n  ret i64 %references\n}\n");
+    return strings.Join(lines, "\n");
+}
+BypassWrite :: (source: string) -> string {
+    symbol := Symbol(source, "Write");
+    lines: string[] = []; active := false; skipped := 0;
+    for (line in strings.SplitLines(source)) {
+        if (strings.HasPrefix(line, "define ")) { active = strings.Contains(line, strings.Concatenate([" ", symbol, "("])); }
+        if (active && strings.HasPrefix(line, "  call void @chibi_value.") &&
+            strings.Contains(line, ".import(ptr %ctx, ptr %s") && strings.HasSuffix(line, ")")) {
+            skipped += 1;
+            lines.append("  ; negative control: omit only this publication import");
+        } else { lines.append(line); }
+        if (line == "}") { active = false; }
+    }
+    assert(skipped == 1, "negative control must bypass exactly one source ViewSet publication import");
+    return strings.Join(lines, "\n");
+}
+Shared :: (source: string, visible: string, target_source: string, triple: string) -> string {
+    switch driver.ModuleShared(["core"], [visible], ["Main.chibi", strings.Concatenate([visible, "/target/Target.chibi"])],
+        [source, target_source], triple, "", "") {
+        case .Rejected(message): os.Print(message); return "";
+        case .Emitted(text): return text;
+    }
+}
+Main :: () -> int {
+    args := os.Arguments();
+    if (length(args) != 10 || (args[2] != "Labels" && args[2] != "Leaf")) { return 2; }
+    work := args[0]; llvm := args[1]; labels := args[2] == "Labels";
+    old := os.ReadText(args[3]); if (old.error) { return 2; }
+    writer := os.ReadText(args[4]); if (writer.error) { return 2; }
+    template := os.ReadText(args[5]); if (template.error) { return 2; }
+    audit := os.ReadText(args[6]); if (audit.error) { return 2; }
+    allocations := os.ReadText(args[7]); if (allocations.error) { return 2; }
+    core := args[8];
+    label_audit := os.ReadText(args[9]); if (label_audit.error) { return 2; }
+    target_source := os.ReadText(strings.Concatenate([core, "/target/Target.chibi"]));
+    if (target_source.error) { return 2; }
+    target := abi.LinuxX64(); if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
+    visible := route.Visible(core);
+    old.text = Shared(old.text, visible, target_source.text, target.triple);
+    writer.text = Shared(writer.text, visible, target_source.text, target.triple);
+    if (old.text == "" || writer.text == "") { return 1; }
+    if (os.WriteText(strings.Concatenate([work, "/old-source.ll"]), old.text) ||
+        os.WriteText(strings.Concatenate([work, "/writer-source.ll"]), writer.text)) { return 2; }
+    old_shape := Schema(old.text); writer_shape := Schema(writer.text); assert(old_shape.tag == writer_shape.tag);
+    assert(strings.Contains(writer.text, "; chibi-family\n"), "writer-only source requires a guarded family");
+    assert(strings.Contains(writer.text, "@chibi_text.copy(") && strings.Contains(writer.text, "@chibi_text.share("));
+    assert(!strings.Contains(writer.text, "call ptr @chibi_managed.new("), "writer-only source must not construct cells");
+    count := 4; if (labels) { count = 2; }
+    old_audit := audit.text;
+    if (labels) {
+        label_audit.text = strings.ReplaceAll(label_audit.text, "$ROW", old_shape.row);
+        label_audit.text = strings.ReplaceAll(label_audit.text, "$A", abi.ArrayType());
+        old_audit = strings.Concatenate([old_audit, label_audit.text]);
+        writer.text = UniqueWrite(writer.text, writer_shape.row);
+    }
+    old_module := strings.Concatenate([old.text, OldAdapter(old.text, template.text, old_audit, labels, old_shape)]);
+    writer_adapter := WriterAdapter(writer.text, count, labels, writer_shape);
+    writer_module := strings.Concatenate([writer.text, writer_adapter]);
+    broken_module := strings.Concatenate([BypassWrite(writer.text), writer_adapter]);
+    start := strings.Concatenate([work, "/boundary-start.ll"]);
+    context := strings.SplitLines(link.ManagedFamilyContext(link.SharedContext(target.triple, true), true));
+    contexts := 0;
+    for (index in 0..<length(context)) {
+        if (!strings.HasPrefix(context[index], "@chibi_context = hidden global ")) { continue; }
+        assert(strings.Contains(context[index], "ptr @chibi_allocate") && strings.Contains(context[index], "ptr @chibi_release"));
+        context[index] = strings.ReplaceAll(context[index], "ptr @chibi_allocate", "ptr @boundary.allocate");
+        context[index] = strings.ReplaceAll(context[index], "ptr @chibi_release", "ptr @boundary.release");
+        contexts += 1;
+    }
+    assert(contexts == 1, "one real context owns the audited callbacks");
+    if (os.WriteText(start, strings.Concatenate([strings.Join(context, "\n"), "\n", allocations.text]))) { return 2; }
+    for (name in ["old", "writer", "broken"]) {
+        module := old_module; if (name == "writer") { module = writer_module; } if (name == "broken") { module = broken_module; }
+        path := format_text("{}/boundary-{}.ll", work, name);
+        if (os.WriteText(path, module)) { return 2; }
+        for (level in [int(0), 2]) {
+            output := format_text("{}/boundary-{}-O{}.so", work, name, level);
+            objects := [strings.Concatenate([output, ".o"]), strings.Concatenate([output, "-start.o"])];
+            if (host.Objects(llvm, [path, start], objects, level, 1)) { return 1; }
+            plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", false); plan.shared = true;
+            if (os.Platform() == "Darwin") { plan.imports = [{name: "System", symbols: ["malloc", "calloc", "free", "write", "abort", "memcpy", "memset", "__error"]}]; }
+            else { plan.libraries = ["c"]; }
+            if (host.Link(plan)) { return 1; }
+        }
+    }
+    return 0;
+}

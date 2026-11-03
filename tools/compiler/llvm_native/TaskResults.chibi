@@ -173,6 +173,10 @@ TaskBackingReferencesValid :: (slots: int[], locals: int[], code: Instruction[],
             if (item.op != ArrayExtend || value == 0 || item.left != item.right) { return failure; }
         }
         if ((item.op == Save || item.op == Publish || item.op == OwnerPin) && value != 0) { return failure; }
+        // Import consumes an acquired owner. A descriptor read through an
+        // interior backing address still borrows that edge until mode 0 copies
+        // it; treating the consuming transform as acquisition would steal it.
+        if (item.op == ValueCopy && item.target == ValueImport && value != 0) { return failure; }
         mutation := item.op == ArraySet || item.op == ArrayPush || item.op == ArrayExtend ||
                     item.op == ArrayRemove || item.op == ArrayInsert || item.op == ArrayReverse ||
                     item.op == MapSet || item.op == MapDelete;
@@ -182,7 +186,7 @@ TaskBackingReferencesValid :: (slots: int[], locals: int[], code: Instruction[],
             continue;
         }
         if (item.op == TextRetain && value != 0) { borrowed[item.left] = 0; }
-        copied := item.op == ValueCopy || item.op == ArrayCopy || item.op == ArraySlice ||
+        copied := (item.op == ValueCopy && item.target == 0) || item.op == ArrayCopy || item.op == ArraySlice ||
                   item.op == ArrayResize || item.op == ArrayText || item.op == MapCopy || item.op == TextClone ||
                   (item.op == ArrayLoan && item.target != ArrayLoanMove);
         if (value != 0 && Produces(item.op) && ValueOwned(item.type, owners) && !copied) { borrowed[item.output] = token; }
@@ -191,7 +195,7 @@ TaskBackingReferencesValid :: (slots: int[], locals: int[], code: Instruction[],
         safe := item.op == Check || item.op == Constant || item.op == Local || item.op == LocalAddress ||
                 item.op == FieldAddress || item.op == Deref || item.op == Extract ||
                 (item.op >= Add && item.op <= Ne) || item.op == Convert || item.op == Select ||
-                item.op == ValueCopy || item.op == ArrayCopy || item.op == ArraySlice || item.op == ArrayResize ||
+                (item.op == ValueCopy && item.target == 0) || item.op == ArrayCopy || item.op == ArraySlice || item.op == ArrayResize ||
                 item.op == ArrayLength || item.op == ArrayGet || item.op == ArrayContains || item.op == ArrayBytes ||
                 item.op == ArrayText || item.op == MapCopy || item.op == MapGet || item.op == MapHas ||
                 item.op == MapLength || item.op == MapSpan || item.op == MapLiveAt || item.op == MapKeyAt ||

@@ -40,6 +40,14 @@ ManagedVariables :: (rows: facts.Row[], head: int, last: int) -> ManagedBoxes {
 ManagedVariable :: (boxed: bool[], variable: int) -> bool {
     return variable >= 0 && variable < length(boxed) && boxed[variable];
 }
+// The caller has acquired one owner already. A publication consumes it without
+// another retain; map-bearing shapes keep their existing, separate lifecycle.
+ImportValue :: (layout: native.ValueLayout, type: int, value: int, next: int) -> HeldValue {
+    if (!native.ValueImportable(layout, type) || !native.ValueHasText(layout, type)) {
+        return {code: [], slot_types: [], value: value};
+    }
+    return {code: [Op(native.ValueCopy, type, next, value, 0, native.ValueImport)], slot_types: [type], value: next};
+}
 // Plain optional payloads copy as bytes; Text uses the whole-cell owner path.
 // Other backing owners and collector edges require their own cell layout.
 ManagedOptional :: (rows: facts.Row[], records: int[], type: int) -> bool {

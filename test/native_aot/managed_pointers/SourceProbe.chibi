@@ -173,6 +173,8 @@ Main :: () -> int {
                 if (failure != "") { checked = "poisoned failure category"; }
                 os.Print(format_text("PASS managed source {} force={} O{} {}", args[index], forced, level, checked));
                 os.Print(result.stdout);
+                // Preserve child diagnostics for strict callers as well as failures.
+                if (result.stderr != "") { os.Print(result.stderr); }
             }
         }
     }

@@ -3340,6 +3340,24 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             logical_first: int[] = [];
             logical_fresh: int[] = [];
             first := at + 1;
+            // ArrayReferencePlace admits only a root/index/field prefix and
+            // already-captured argument reads. Keep logical root/index reads
+            // in order, but defer physical projection until incoming ownership
+            // is normalized. No interior address spans importer callbacks.
+            prefix_end := -1;
+            enclosing_body: native.Instruction[] = [];
+            publication_prefix: native.Instruction[] = [];
+            if (row.kind == facts.AssignRow && row.count > 0 &&
+                (Referenced(rows, head, row.value) || ManagedVariable(pointer_boxes.boxed, row.value))) {
+                tail := rows[first + row.count - 1];
+                root_type := NativeType(row.type);
+                if (tail.kind == facts.ArrayRow && tail.literal == i64(facts.ArrayReferencePlace) &&
+                    native.ValueImportable(value_layout, root_type) && native.ValueHasText(value_layout, root_type)) {
+                    prefix_end = first + row.count - tail.count;
+                    enclosing_body = body;
+                    body = [];
+                }
+            }
             // Borrowed strings need an owner before a later operand can
             // replace their source. A scoped string can alias another scoped
             // parameter; ordinary locals only alias their own variable.
@@ -3354,6 +3372,19 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 }
             }
             for (index in first..<first + row.count + 1) {
+                if (index == prefix_end) {
+                    publication_prefix = body;
+                    body = enclosing_body;
+                    enclosing_body = [];
+                    captured := 0;
+                    while (captured < length(publication_prefix)) {
+                        operation := publication_prefix[captured].op;
+                        if (operation == native.ArrayValueAddress || operation == native.FieldAddress || operation == native.Save) { break; }
+                        body.append(publication_prefix[captured]);
+                        captured += 1;
+                    }
+                    publication_prefix = slice(publication_prefix, captured, length(publication_prefix));
+                }
                 while (length(closes) > 0 && closes[length(closes) - 1] == index) {
                     open := length(closes) - 1;
                     right := stack[length(stack) - 1];
@@ -3629,6 +3660,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         if (Holds(fresh, incoming)) { fresh = Without(fresh, incoming); }
                         else { body.append(Op(native.TextRetain, abi.TextStorage, 0, incoming, 0, 0)); }
                     }
+                    if (set) {
+                        imported := ImportValue(value_layout, element, stack[base + 2], slot + 1 + extra);
+                        slots.extend(imported.slot_types);
+                        body.extend(imported.code);
+                        extra += length(imported.slot_types);
+                        stack[base + 2] = imported.value;
+                    }
                     if (op == facts.ViewMake || set || op == facts.ViewSlice) {
                         item.right = shape.arguments;
                         arguments.extend([stack[base + 1], stack[base + 2]]);
@@ -3663,7 +3701,6 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     if (operand.value == facts.ManagedBorrow) { item = address; }
                     else {
                         slots[length(slots) - 1] = native.RefType + target;
-                        body.append(address);
                         if (operand.value == facts.ManagedWrite) {
                             if (target >= native.RecordType && target < native.ArrayType &&
                                 OptionalPayloadType(rows, declared, operand.type) == facts.StringType) {
@@ -3678,6 +3715,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                                     body.extend(DropValue(managed, operand.type, incoming).code);
                                     fresh = Without(fresh, incoming);
                                 }
+                                body.append(address);
                                 previous := slot + 1 + extra;
                                 slots.append(target);
                                 body.extend([Op(native.Deref, target, previous, slot, 0, 0),
@@ -3704,13 +3742,19 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                                     incoming = slot + 1 + extra;
                                     extra += 1;
                                 }
+                                imported := ImportValue(value_layout, target, incoming, slot + 1 + extra);
+                                slots.extend(imported.slot_types);
+                                body.extend(imported.code);
+                                extra += length(imported.slot_types);
+                                incoming = imported.value;
+                                body.append(address);
                                 previous := slot + 1 + extra;
                                 slots.append(target);
                                 body.extend([Op(native.Deref, target, previous, slot, 0, 0), Giving(target, previous),
                                     Op(native.Poke, target, 0, slot, incoming, 0)]);
                                 extra += 1;
-                            } else { body.append(Op(native.Poke, target, 0, slot, stack[base + 1], 0)); }
-                        }
+                            } else { body.extend([address, Op(native.Poke, target, 0, slot, stack[base + 1], 0)]); }
+                        } else { body.append(address); }
                         slots.append(target);
                         item = Op(native.Deref, target, slot + 1 + extra, slot, 0, 0);
                         slot += 1 + extra;
@@ -4337,6 +4381,15 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     array := NativeType(member);
                     element := member - facts.ArrayType;
                     op := operand.value;
+                    // Scoped and promoted roots can belong to an older image.
+                    // Ordinary local array edits keep their shallow lifecycle.
+                    publication := Referenced(rows, head, row.value) || ManagedVariable(pointer_boxes.boxed, row.value) ||
+                        (row.kind == facts.LocalRow && row.literal == i64(facts.Captured) && row.count == 4 &&
+                         rows[at + 2].kind == facts.ManagedRow && rows[at + 2].value == facts.ManagedBorrow);
+                    // The initial importer domain is the whole root value;
+                    // unrelated map-bearing siblings stay on their existing
+                    // path until owning map traversal is established.
+                    publication = publication && native.ValueImportable(value_layout, NativeType(row.type));
                     // Appended/replaced elements transfer one owned value.
                     first_argument := base + 1;
                     if (nested) { first_argument += 1; }
@@ -4355,10 +4408,41 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                             extra += length(kept.slot_types);
                             argument = kept.value;
                         }
+                        if (publication) {
+                            incoming_type := NativeType(element);
+                            if (op == facts.ArrayAssign) { incoming_type = array; }
+                            imported := ImportValue(value_layout, incoming_type, argument, slot + 1 + extra);
+                            slots.extend(imported.slot_types);
+                            body.extend(imported.code);
+                            extra += length(imported.slot_types);
+                            argument = imported.value;
+                        }
                     }
-                    if (op == facts.ArrayExtend && Holds(fresh, argument)) { pending.append(argument); }
-                    // Capture the canonical address before arguments, and
-                    // resolve its current descriptor after all their effects.
+                    if (op == facts.ArrayExtend) {
+                        if (publication && native.ValueImportable(value_layout, array) && native.ValueHasText(value_layout, array)) {
+                            // Extend borrows its source and copies each edge.
+                            // Hold/import that source once, then drop it after
+                            // the canonical destination has consumed the copy.
+                            if (Holds(fresh, argument)) { fresh = Without(fresh, argument); }
+                            else {
+                                kept := KeepValue(managed, member, argument, slot + 1 + extra);
+                                slots.extend(kept.slot_types);
+                                body.extend(kept.code);
+                                extra += length(kept.slot_types);
+                                argument = kept.value;
+                            }
+                            imported := ImportValue(value_layout, array, argument, slot + 1 + extra);
+                            slots.extend(imported.slot_types);
+                            body.extend(imported.code);
+                            extra += length(imported.slot_types);
+                            argument = imported.value;
+                            pending.append(argument);
+                        } else if (Holds(fresh, argument)) { pending.append(argument); }
+                    }
+                    body.extend(publication_prefix);
+                    publication_prefix = [];
+                    // The logical place and arguments are captured already;
+                    // resolve current backing only after their ownership work.
                     address := root;
                     current := slot + 1 + extra;
                     if (nested) {
@@ -5547,7 +5631,6 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 body.append(Op(native.Local, native.PointerType, slot, places[row.value], 0, 0));
                 address := Op(native.ManagedAddress, native.RefType + type, slot + 1, slot, 0, 0);
                 address.literal = pointer_boxes.tags[row.value];
-                body.append(address);
                 if (OptionalPayloadType(rows, declared, row.type) == facts.StringType) {
                     locals.append(type);
                     kept := ManagedOptionalTextCopy(type, value, slot + 2, local, length(body));
@@ -5555,6 +5638,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     slots.extend(kept.slot_types);
                     body.extend(kept.code);
                     body.extend(DropValue(managed, row.type, value).code);
+                    body.append(address);
                     previous := slot + 2 + length(kept.slot_types);
                     slots.append(type);
                     body.extend([Op(native.Deref, type, previous, slot + 1, 0, 0),
@@ -5564,6 +5648,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 } else if (type == abi.TextStorage) {
                     slots.extend([type, type]);
                     body.extend([Op(native.ValueCopy, type, slot + 2, value, 0, 0), Giving(type, value),
+                        address,
                         Op(native.Deref, type, slot + 3, slot + 1, 0, 0), Giving(type, slot + 3),
                         Op(native.Poke, type, 0, slot + 1, slot + 2, 0)]);
                     slot += 4;
@@ -5577,19 +5662,25 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         incoming = next;
                         next += 1;
                     }
+                    imported := ImportValue(value_layout, type, incoming, next);
+                    slots.extend(imported.slot_types);
+                    body.extend(imported.code);
+                    next += length(imported.slot_types);
+                    incoming = imported.value;
+                    body.append(address);
                     slots.append(type);
                     body.extend([Op(native.Deref, type, next, slot + 1, 0, 0), Giving(type, next),
                         Op(native.Poke, type, 0, slot + 1, incoming, 0)]);
                     slot = next + 1;
                 } else {
-                    body.append(Op(native.Poke, type, 0, slot + 1, value, 0));
+                    body.extend([address, Op(native.Poke, type, 0, slot + 1, value, 0)]);
                     slot += 2;
                 }
             } else if (row.kind == facts.AssignRow && Referenced(rows, head, row.value)) {
                 // The value goes where the reference points.
                 type := NativeType(row.type);
                 slots.append(native.RefType + type);
-                body.append(Op(native.Local, native.RefType + type, slot, places[row.value], 0, 0));
+                address := Op(native.Local, native.RefType + type, slot, places[row.value], 0, 0);
                 if (TrackedRecord(managed, type)) {
                     pointer := slot;
                     if (OptionalPayloadType(rows, declared, row.type) == facts.StringType) {
@@ -5602,6 +5693,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         value = kept.value;
                         slot += length(kept.slot_types);
                     }
+                    imported := ImportValue(value_layout, type, value, slot + 1);
+                    slots.extend(imported.slot_types);
+                    body.extend(imported.code);
+                    value = imported.value;
+                    slot += length(imported.slot_types);
+                    body.append(address);
                     slots.append(type);
                     body.append(Op(native.Deref, type, slot + 1, pointer, 0, 0));
                     dropped := DropValue(managed, row.type, slot + 1);
@@ -5614,6 +5711,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     // Import borrowed literal bytes before publishing there.
                     slots.extend([type, type]);
                     body.extend([Op(native.ValueCopy, type, slot + 1, value, 0, 0), Giving(type, value),
+                        address,
                         Op(native.Deref, type, slot + 2, slot, 0, 0), Giving(type, slot + 2),
                         Op(native.Poke, type, 0, slot, slot + 1, 0)]);
                     slot += 3;
@@ -5623,12 +5721,19 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     // In-place MapSet/Delete results are consumed descriptors,
                     // not fresh allocations, and already release their growth.
                     if (type != abi.TextStorage) { fresh = Without(fresh, value); }
+                    pointer := slot;
+                    imported := ImportValue(value_layout, type, value, slot + 1);
+                    slots.extend(imported.slot_types);
+                    body.extend(imported.code);
+                    value = imported.value;
+                    slot += length(imported.slot_types);
+                    body.append(address);
                     slots.append(type);
-                    body.extend([Op(native.Deref, type, slot + 1, slot, 0, 0), Giving(type, slot + 1)]);
-                    body.append(Op(native.Poke, type, 0, slot, value, 0));
+                    body.extend([Op(native.Deref, type, slot + 1, pointer, 0, 0), Giving(type, slot + 1)]);
+                    body.append(Op(native.Poke, type, 0, pointer, value, 0));
                     slot += 2;
                 } else {
-                    body.append(Op(native.Poke, type, 0, slot, value, 0));
+                    body.extend([address, Op(native.Poke, type, 0, slot, value, 0)]);
                     slot += 1;
                 }
             } else if (row.kind == facts.AssignRow) {

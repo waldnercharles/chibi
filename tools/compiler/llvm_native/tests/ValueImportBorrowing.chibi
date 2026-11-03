@@ -1,0 +1,40 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+
+// These lifetime tables are validated only; no generated pointer is executed.
+PublicationBorrowModule :: (acquired: bool, reuse: bool) -> native.Result {
+    outer := native.ArrayType + native.RecordType;
+    code := [Code(native.Constant, abi.IntStorage, 0, 0, 0, 0, 0),
+        Code(native.Publish, abi.IntStorage, 0, 0, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    worker := [Code(native.Constant, outer, 0, 0, 0, 0, 0), Code(native.Save, outer, 0, 0, 0, 0, 0),
+        Code(native.LocalAddress, native.RefType + outer, 1, 0, 0, 0, 0),
+        Code(native.Constant, abi.IntStorage, 2, 0, 0, 0, 0),
+        Code(native.ArrayValueAddress, native.RefType + native.RecordType, 3, 1, 2, outer, 0),
+        Code(native.Deref, native.RecordType, 4, 3, 0, 0, 0)];
+    source := 4;
+    if (acquired) { worker.append(Code(native.ValueCopy, native.RecordType, 6, 4, 0, 0, 0)); source = 6; }
+    worker.append(Code(native.ValueCopy, native.RecordType, 5, source, 0, native.ValueImport, 0));
+    if (reuse) { worker.append(Code(native.Deref, native.RecordType, 8, 3, 0, 0, 0)); }
+    worker.extend([Code(native.ValueDrop, native.RecordType, 0, 5, 0, 0, 0),
+        Code(native.Suspend, 0, 0, 0, 0, 0, 0), Code(native.Constant, abi.IntStorage, 7, 0, 0, 0, 0),
+        Code(native.Publish, abi.IntStorage, 0, 7, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)]);
+    functions := [Function(abi.IntStorage, 0, 0, 1, 0, 3, 0, 0),
+        Function(abi.IntStorage, 0, 1, 9, 3, length(worker), 0, 0)];
+    function := functions[1]; function.locals = 1; functions[1] = function;
+    code.extend(worker);
+    return native.EmitProgram(abi.LinuxX64(), functions, [],
+        [abi.IntStorage, outer, native.RefType + outer, abi.IntStorage, native.RefType + native.RecordType,
+         native.RecordType, native.RecordType, native.RecordType, abi.IntStorage, native.RecordType],
+        [outer], code, [], [{first: 0, count: 1, identity: 0}], [abi.TextStorage], [],
+        {file: "", directory: ""}, [], [], []);
+}
+
+@test
+PublicationRequiresAcquisitionBeforeConsumingABackingBorrow :: () {
+    failure := "native waiting backing references require immediate canonical access";
+    Rejects(PublicationBorrowModule(false, false), failure);
+    Emitted(PublicationBorrowModule(true, false));
+    Rejects(PublicationBorrowModule(true, true), failure);
+}

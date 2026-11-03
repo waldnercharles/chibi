@@ -1,0 +1,72 @@
+package boundary_text_graphs
+
+// The metadata gate admits at most 16 record levels, including Leaf.
+// Finite, already-rootless types; no recursive type or collector admission.
+Leaf :: struct { label: string; }
+Layer1 :: struct { items: Leaf[]; }
+Layer2 :: struct { items: Layer1[]; }
+Layer3 :: struct { items: Layer2[]; }
+Layer4 :: struct { items: Layer3[]; }
+Layer5 :: struct { items: Layer4[]; }
+Layer6 :: struct { items: Layer5[]; }
+Layer7 :: struct { items: Layer6[]; }
+Layer8 :: struct { items: Layer7[]; }
+Layer9 :: struct { items: Layer8[]; }
+Layer10 :: struct { items: Layer9[]; }
+Layer11 :: struct { items: Layer10[]; }
+Layer12 :: struct { items: Layer11[]; }
+Layer13 :: struct { items: Layer12[]; }
+Layer14 :: struct { items: Layer13[]; }
+Layer15 :: struct { items: Layer14[]; }
+
+DAG :: () -> int {
+    leaf: Leaf = {label: "writer literal"};
+    level1: Layer1 = {items: [leaf, leaf]};
+    level2: Layer2 = {items: [level1, level1]};
+    level3: Layer3 = {items: [level2, level2]};
+    level4: Layer4 = {items: [level3, level3]};
+    level5: Layer5 = {items: [level4, level4]};
+    level6: Layer6 = {items: [level5, level5]};
+    level7: Layer7 = {items: [level6, level6]};
+    level8: Layer8 = {items: [level7, level7]};
+    level9: Layer9 = {items: [level8, level8]};
+    level10: Layer10 = {items: [level9, level9]};
+    level11: Layer11 = {items: [level10, level10]};
+    level12: Layer12 = {items: [level11, level11]};
+    level13: Layer13 = {items: [level12, level12]};
+    level14: Layer14 = {items: [level13, level13]};
+    level15: Layer15 = {items: [level14, level14]};
+    rows := [level15];
+    snapshot := rows;
+    pointer := &rows;
+    assert(pointer^[0].items[0].items[0].items[0].items[0].items[0].items[0].items[0].items[0].items[0].items[0].items[0].items[0].items[0].items[0].items[0].label == "writer literal");
+    pointer^ = pointer^;
+    assert(length(snapshot[0].items) == 2);
+    return 0;
+}
+
+Deep :: () -> int {
+    leaf: Leaf = {label: "writer literal"};
+    level1: Layer1 = {items: [leaf]};
+    level2: Layer2 = {items: [level1]};
+    level3: Layer3 = {items: [level2]};
+    level4: Layer4 = {items: [level3]};
+    level5: Layer5 = {items: [level4]};
+    level6: Layer6 = {items: [level5]};
+    level7: Layer7 = {items: [level6]};
+    level8: Layer8 = {items: [level7]};
+    level9: Layer9 = {items: [level8]};
+    level10: Layer10 = {items: [level9]};
+    level11: Layer11 = {items: [level10]};
+    level12: Layer12 = {items: [level11]};
+    level13: Layer13 = {items: [level12]};
+    level14: Layer14 = {items: [level13]};
+    level15: Layer15 = {items: [level14]};
+    rows := [level15];
+    snapshot := rows;
+    pointer := &rows;
+    assert(pointer^[0].items[0].items[0].items[0].items[0].items[0].items[0].items[0].items[0].items[0].items[0].items[0].items[0].items[0].items[0].items[0].label == "writer literal");
+    pointer^ = pointer^;
+    assert(length(snapshot[0].items) == 1);
+    return 0;
+}

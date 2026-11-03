@@ -1,0 +1,198 @@
+package llvm_native
+
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Publication consumes an acquired value. Ordinary copies still share counted
+// backing; only this closed operation imports borrowed Text before publication.
+// Map-bearing shapes retain their existing admissions and ordinary lifecycle,
+// but are not this operation's domain until their own traversal is implemented.
+ValueImportUse :: struct { roots: int[]; types: int[]; }
+ValueImportUses :: (code: Instruction[], records: Record[], fields: int[], layout: ValueLayout) -> ValueImportUse {
+    found: ValueImportUse = {roots: [], types: []};
+    roots: bool[] = [];
+    used: bool[] = [];
+    for (item in code) {
+        type := 0;
+        if (item.op == ValueCopy && item.target == ValueImport) { type = item.type; }
+        if (item.op == ManagedNew && item.right >= ArrayType && item.right < MapType) { type = item.right; }
+        if (!ValueImportable(layout, type) || !ValueHasText(layout, type)) { continue; }
+        if (length(used) == 0) { roots = resize([false], MapType); used = resize([false], MapType); }
+        if (!roots[type]) { roots[type] = true; found.roots.append(type); }
+        if (!used[type]) { used[type] = true; found.types.append(type); }
+    }
+    at := 0;
+    while (at < length(found.types)) {
+        type := found.types[at];
+        if (type >= ArrayType) {
+            element := type - ArrayType;
+            if (!used[element]) { used[element] = true; found.types.append(element); }
+        } else if (type >= RecordType) {
+            record := records[type - RecordType];
+            for (field in record.first..<record.first + record.count) {
+                member := fields[field];
+                if (ValueHasText(layout, member) && !used[member]) {
+                    used[member] = true;
+                    found.types.append(member);
+                }
+            }
+        }
+        at += 1;
+    }
+    return found;
+}
+
+// A scalar Text publication needs no graph session or reference increment.
+// The existing copy helper preserves exact byte lengths, including NUL bytes.
+ValueImportText :: () -> string {
+    text := abi.TextType();
+    return strings.Concatenate([
+        format_text("define internal void @chibi_value.{}.import(ptr %ctx, ptr %value) {{\nentry:\n", abi.TextStorage),
+        format_text("  %incoming = load {}, ptr %value\n  %owner = extractvalue {} %incoming, 2\n", text, text),
+        "  %counted = icmp ne ptr %owner, null\n  br i1 %counted, label %done, label %copy\ncopy:\n",
+        format_text("  %data = extractvalue {} %incoming, 0\n  %length = extractvalue {} %incoming, 1\n", text, text),
+        format_text("  %copied = call {} @chibi_text.copy(ptr %ctx, ptr %data, i32 %length)\n  store {} %copied, ptr %value\n", text, text),
+        "  br label %done\ndone:\n  ret void\n}\n"
+    ]);
+}
+ValueImportTextVisit :: () -> string {
+    text := abi.TextType();
+    return strings.Concatenate([
+        format_text("define internal void @chibi_import.visit.{}(ptr %ctx, ptr %session, ptr %value) {{\nentry:\n", abi.TextStorage),
+        format_text("  %incoming = load {}, ptr %value\n  %owner = extractvalue {} %incoming, 2\n", text, text),
+        "  %counted = icmp ne ptr %owner, null\n  br i1 %counted, label %done, label %borrowed\nborrowed:\n",
+        format_text("  %data = extractvalue {} %incoming, 0\n  %length = extractvalue {} %incoming, 1\n", text, text),
+        "  %empty = icmp eq i32 %length, 0\n  br i1 %empty, label %zero, label %find\nzero:\n",
+        format_text("  store {} zeroinitializer, ptr %value\n  br label %done\nfind:\n", text),
+        "  %memo = getelementptr %chibi.value.import, ptr %session, i32 0, i32 0\n",
+        SnapshotKey(abi.TextStorage),
+        "  %known = call ptr @chibi_snapshot.memo.find(ptr %memo, ptr %data, i64 %key)\n  %present = icmp ne ptr %known, null\n  br i1 %present, label %reuse, label %copy\nreuse:\n",
+        "  %known.at = getelementptr %chibi.snapshot.entry, ptr %known, i32 0, i32 2\n  %word = load i64, ptr %known.at\n  %canonical = inttoptr i64 %word to ptr\n",
+        format_text("  %reused = load {}, ptr %canonical\n  %reused.owner = extractvalue {} %reused, 2\n", text, text),
+        "  call void @chibi_scalar.retain(ptr %reused.owner)\n",
+        format_text("  store {} %reused, ptr %value\n  br label %done\ncopy:\n", text),
+        format_text("  %copied = call {} @chibi_text.copy(ptr %ctx, ptr %data, i32 %length)\n  store {} %copied, ptr %value\n", text, text),
+        "  %destination = ptrtoint ptr %value to i64\n  call void @chibi_snapshot.memo.put(ptr %ctx, ptr %memo, ptr %data, i64 %key, i64 %destination)\n  br label %done\ndone:\n  ret void\n}\n"
+    ]);
+}
+
+// Each queued retirement owns one consumed source edge, without an extra
+// retain or per-edge allocation. Typed array drop ignores descriptor capacity.
+ValueImportRetire :: (type: int) -> string {
+    array := abi.ArrayType();
+    return strings.Concatenate([
+        format_text("define internal i1 @chibi_import.retire.{}(ptr %ctx, ptr %session, ptr %owner, ptr %data, i32 %length) {{\nentry:\n", type),
+        format_text("  %sized = insertvalue {} zeroinitializer, i32 %length, 0\n  %pointed = insertvalue {} %sized, ptr %data, 2\n", array, array),
+        format_text("  %value = insertvalue {} %pointed, ptr %owner, 3\n  call void @chibi_array.{}.drop(ptr %ctx, {} %value)\n", array, type, array),
+        "  ret i1 true\n}\n"
+    ]);
+}
+ValueImportArray :: (type: int) -> string {
+    array := abi.ArrayType();
+    return strings.Concatenate([
+        format_text("define internal void @chibi_import.visit.{}(ptr %ctx, ptr %session, ptr %value) {{\nentry:\n", type),
+        format_text("  %incoming = load {}, ptr %value\n  %length = extractvalue {} %incoming, 0\n  %capacity = extractvalue {} %incoming, 1\n", array, array, array),
+        format_text("  %data = extractvalue {} %incoming, 2\n  %owner = extractvalue {} %incoming, 3\n", array, array),
+        "  %empty = icmp eq i32 %length, 0\n  br i1 %empty, label %done, label %find\nfind:\n",
+        "  %memo = getelementptr %chibi.value.import, ptr %session, i32 0, i32 0\n",
+        SnapshotKey(type),
+        "  %known = call ptr @chibi_snapshot.memo.find(ptr %memo, ptr %data, i64 %key)\n  %present = icmp ne ptr %known, null\n  br i1 %present, label %reuse, label %detach\nreuse:\n",
+        "  %known.at = getelementptr %chibi.snapshot.entry, ptr %known, i32 0, i32 2\n  %word = load i64, ptr %known.at\n  %canonical = inttoptr i64 %word to ptr\n",
+        format_text("  %reused = load {}, ptr %canonical\n  %reused.owner = extractvalue {} %reused, 3\n  %reused.data = extractvalue {} %reused, 2\n", array, array, array),
+        format_text("  %reused.capacity = extractvalue {} %reused, 1\n  %reused.length = extractvalue {} %reused, 0\n", array, array),
+        "  %same.owner = icmp eq ptr %owner, %reused.owner\n  %same.data = icmp eq ptr %data, %reused.data\n  %same.capacity = icmp eq i32 %capacity, %reused.capacity\n  %same.length = icmp eq i32 %length, %reused.length\n  %same.storage = and i1 %same.owner, %same.data\n  %same.size = and i1 %same.capacity, %same.length\n  %same = and i1 %same.storage, %same.size\n  br i1 %same, label %done, label %replace\nreplace:\n",
+        format_text("  %kept = call {} @chibi_array.{}.copy(ptr %ctx, {} %reused)\n  store {} %kept, ptr %value\n  br label %retire\ndetach:\n", array, type, array, array),
+        // Never consume the old owner here: pending jobs and memo keys can
+        // still name it. A unique, sufficiently large backing stays in place.
+        format_text("  %unique = call {} @chibi_array.{}.unique(ptr %ctx, {} %incoming, i32 %length, i1 false)\n  store {} %unique, ptr %value\n", array, type, array, array),
+        "  %destination = ptrtoint ptr %value to i64\n  call void @chibi_snapshot.memo.put(ptr %ctx, ptr %memo, ptr %data, i64 %key, i64 %destination)\n",
+        format_text("  %unique.data = extractvalue {} %unique, 2\n  %unique.owner = extractvalue {} %unique, 3\n", array, array),
+        "  %queue = getelementptr %chibi.value.import, ptr %session, i32 0, i32 1\n",
+        format_text("  call void @chibi_snapshot.queue.put(ptr %ctx, ptr %queue, ptr null, ptr %unique.data, ptr @chibi_import.range.{}, i32 %length)\n", type - ArrayType),
+        "  %changed = icmp ne ptr %owner, %unique.owner\n  br i1 %changed, label %retire, label %done\nretire:\n  %owned = icmp ne ptr %owner, null\n  br i1 %owned, label %defer, label %done\ndefer:\n",
+        "  %retired = getelementptr %chibi.value.import, ptr %session, i32 0, i32 2\n",
+        format_text("  call void @chibi_snapshot.queue.put(ptr %ctx, ptr %retired, ptr %owner, ptr %data, ptr @chibi_import.retire.{}, i32 %length)\n", type),
+        "  br label %done\ndone:\n  ret void\n}\n"
+    ]);
+}
+ValueImportRecord :: (type: int, records: Record[], fields: int[], used: bool[]) -> string {
+    out := [format_text("define internal void @chibi_import.visit.{}(ptr %ctx, ptr %session, ptr %value) {{\nentry:\n", type)];
+    record := records[type - RecordType];
+    queued := false;
+    for (field in record.first..<record.first + record.count) {
+        member := fields[field];
+        queued = queued || (member != abi.TextStorage && used[member]);
+    }
+    if (queued) { out.append("  %queue = getelementptr %chibi.value.import, ptr %session, i32 0, i32 1\n"); }
+    for (index in 0..<record.count) {
+        member := fields[record.first + index];
+        if (!used[member]) { continue; }
+        out.append(format_text("  %field{} = getelementptr {}, ptr %value, i32 0, i32 {}\n", index, TypeName(type), index));
+        if (member == abi.TextStorage) {
+            out.append(format_text("  call void @chibi_import.visit.{}(ptr %ctx, ptr %session, ptr %field{})\n", member, index));
+        } else {
+            out.append(format_text("  call void @chibi_snapshot.queue.put(ptr %ctx, ptr %queue, ptr null, ptr %field{}, ptr @chibi_import.range.{}, i32 1)\n", index, member));
+        }
+    }
+    out.append("  ret void\n}\n");
+    return strings.Join(out, "");
+}
+ValueImportRange :: (type: int) -> string {
+    return strings.Concatenate([
+        format_text("define internal i1 @chibi_import.range.{}(ptr %ctx, ptr %session, ptr %source, ptr %destination, i32 %count) {{\nentry:\n  br label %head\n", type),
+        "head:\n  %index = phi i32 [ 0, %entry ], [ %next, %body ]\n  %done = icmp eq i32 %index, %count\n  br i1 %done, label %exit, label %body\nbody:\n",
+        format_text("  %at = getelementptr {}, ptr %destination, i32 %index\n  call void @chibi_import.visit.{}(ptr %ctx, ptr %session, ptr %at)\n", TypeName(type), type),
+        "  %next = add i32 %index, 1\n  br label %head\nexit:\n  ret i1 true\n}\n"
+    ]);
+}
+ValueImportRoot :: (type: int) -> string {
+    return strings.Concatenate([
+        format_text("define internal void @chibi_value.{}.import(ptr %ctx, ptr %value) {{\nentry:\n", type),
+        "  %session = alloca %chibi.value.import\n  store %chibi.value.import zeroinitializer, ptr %session\n",
+        "  %memo = getelementptr %chibi.value.import, ptr %session, i32 0, i32 0\n  %queue = getelementptr %chibi.value.import, ptr %session, i32 0, i32 1\n  %retired = getelementptr %chibi.value.import, ptr %session, i32 0, i32 2\n",
+        format_text("  call void @chibi_import.visit.{}(ptr %ctx, ptr %session, ptr %value)\n", type),
+        "  %imported = call i1 @chibi_snapshot.queue.drain(ptr %ctx, ptr %queue, ptr %session)\n",
+        // No memo lookup follows retirement. Old backing remains owned until
+        // the complete traversal ends, including every alias discovered late.
+        "  call void @chibi_snapshot.memo.release(ptr %ctx, ptr %memo)\n  %released = call i1 @chibi_snapshot.queue.drain(ptr %ctx, ptr %retired, ptr %session)\n",
+        "  call void @chibi_snapshot.queue.release(ptr %ctx, ptr %queue)\n  call void @chibi_snapshot.queue.release(ptr %ctx, ptr %retired)\n  ret void\n}\n"
+    ]);
+}
+
+// The private root slot and every detached backing remain stable until both
+// queues drain. Canonical memo values point to those descriptor locations,
+// never into a growable queue, memo bucket, or per-element temporary alloca.
+// There are no safepoints here: guarded allocation/release helpers only defer
+// callback collection; callers install the owning output before their next poll.
+ValueImportModule :: (uses: ValueImportUse, records: Record[], fields: int[]) -> string {
+    if (length(uses.roots) == 0) { return ""; }
+    graph := false;
+    out: string[] = [];
+    for (type in uses.roots) {
+        if (type == abi.TextStorage) { out.append(ValueImportText()); }
+        else { graph = true; }
+    }
+    if (!graph) { return strings.Join(out, ""); }
+    used := resize([false], MapType);
+    ranged := resize([false], MapType);
+    for (type in uses.types) { used[type] = true; }
+    out.append("%chibi.value.import = type { %chibi.snapshot.memo, %chibi.snapshot.queue, %chibi.snapshot.queue }\n");
+    for (type in uses.types) {
+        if (type == abi.TextStorage) { out.append(ValueImportTextVisit()); }
+        else if (type >= ArrayType) {
+            out.append(ValueImportArray(type));
+            out.append(ValueImportRetire(type));
+            ranged[type - ArrayType] = true;
+        } else {
+            out.append(ValueImportRecord(type, records, fields, used));
+            record := records[type - RecordType];
+            for (field in record.first..<record.first + record.count) {
+                member := fields[field];
+                if (member != abi.TextStorage && used[member]) { ranged[member] = true; }
+            }
+        }
+    }
+    for (type in uses.types) { if (ranged[type]) { out.append(ValueImportRange(type)); } }
+    for (type in uses.roots) { if (type != abi.TextStorage) { out.append(ValueImportRoot(type)); } }
+    return strings.Join(out, "");
+}

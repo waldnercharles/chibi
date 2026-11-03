@@ -147,7 +147,7 @@ ScalarMapCarriers :: (types: TypeDecl[]) -> TypeDecl[] {
             name := format_text("__native_map_{}", inner);
             carrier: TypeDecl = {name: name, type_name: name, package: declared.package, node: -1,
                                   kind: CollectionDecl, first: 0, count: 0, size: 0, parent: -1, storage: UnionStorage,
-                                  id: 0, layout: 0, component: 0, key: 0, value_storage: UnionStorage,
+                                  id: 0, layout: 0, native_schema: 0, component: 0, key: 0, value_storage: UnionStorage,
                                   value_container: MapContainer, value_record: inner, error: false};
             wrapper = length(records);
             records.append(carrier);

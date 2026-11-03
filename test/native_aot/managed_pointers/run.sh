@@ -34,6 +34,29 @@ done
 "$work/source-probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
     "$work/Cells.ll" "$work/ScopedAliases.ll" "$work/Transfer.ll" "$work/Nullable.ll" "$work/Tasks.ll" "$work/Records.ll" "$work/WholeArrays.ll" "$work/WholeArrayForeign.ll" "$work/StringArrays.ll" "$work/OptionalCells.ll" "$work/Views.ll" "$work/ViewUnions.ll" "$work/ViewStrings.ll" "$work/TextSequences.ll" "$work/TextSpan.ll" "$work/TextBorrowed.ll" "$work/ViewAppend.ll"
 "$work/source-probe" --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/TaskFailure.ll"
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_aot/managed_pointers/source/AssertionCleanup.chibi" --entry Main \
+    --output "$work/AssertionCleanup.ll" --emit-llvm --target "$triple"
+"$work/source-probe" --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/AssertionCleanup.ll"
+
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_aot/managed_pointers/source/Callbacks.chibi" --entry Main \
+    --output "$work/Callbacks.ll" --emit-llvm --target "$triple"
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_aot/managed_pointers/source/Callbacks.chibi" --entry Progress \
+    --output "$work/CallbackPointerless.ll" --emit-llvm --target "$triple"
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_aot/managed_pointers/source/Callbacks.chibi" --entry Failure \
+    --output "$work/CallbackFailure.ll" --emit-llvm --target "$triple"
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_aot/managed_pointers/PatternRows.chibi" --entry Main \
+    --output "$work/pattern-rows" --llvm "$llvm" --target "$triple" --jobs 1
+"$work/pattern-rows" "$work/PatternRows.ll"
+"$work/source-probe" --callbacks "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
+    "$work/Callbacks.ll" "$work/CallbackPointerless.ll" "$work/Tasks.ll" "$work/PatternRows.ll"
+"$work/source-probe" --callbacks --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
+    "$work/CallbackFailure.ll"
+
 for entry in LengthShrunk ReadShrunk CloneShrunk IndexOutside SetIndexBeforeRight SetShrunkBeforeRight SetShrunkDuringRight SetValidBeforeRight; do
     case "$entry" in
         LengthShrunk|ReadShrunk|CloneShrunk) kind=ViewOutOfRange ;;
@@ -61,6 +84,11 @@ grep -F 'Assertion failed: waiting task assertion preserves cleanup' "$work/task
     --output "$work/native-probe" --llvm "$llvm" --target "$triple" --jobs 1
 "$work/native-probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/Runtime.ll" \
     "$root/test/native_aot/managed_pointers/SourceAudit.ll"
+"$work/native-probe" --weak-null "$work/poll-weak-null.ll"
+if [ "$(uname -s)-$(uname -m)" = Linux-x86_64 ]; then
+    sh "$root/test/native_aot/managed_pointers/weak.sh" "$llvm" "$work/poll-weak-null.ll" \
+        "$root/test/native_aot/managed_pointers/PollWeak.ll" "$work/weak-null"
+fi
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$root/test/native_aot/managed_pointers/ViewProbe.chibi" --entry Main \
     --output "$work/view-probe" --llvm "$llvm" --target "$triple" --jobs 1
@@ -89,4 +117,5 @@ for source in "$root"/test/native_aot/managed_pointers/source/rejected/*.chibi; 
     grep -F 'native: rejected' "$work/rejected-$name.log" >/dev/null
     cmp "$work/sentinel" "$work/rejected"
 done
+sh "$root/test/native_aot/managed_pointers/growth.sh" "$compiler" "$work/growth"
 echo 'native managed pointer source, collector and boundary proofs passed'

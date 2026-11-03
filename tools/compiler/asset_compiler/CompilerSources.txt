@@ -24,6 +24,7 @@ package_compiler/ScalarPatterns.chibi
 package_compiler/ScalarPointers.chibi
 package_compiler/ScalarViews.chibi
 package_compiler/ScalarTextSequences.chibi
+package_compiler/ScalarNativeSchemas.chibi
 package_compiler/ScalarCollections.chibi
 package_compiler/ScalarEffects.chibi
 package_compiler/ScalarGenerations.chibi
@@ -55,3 +56,5 @@ prepared_writer/Writer.chibi
 math_types/Types.chibi
 math_types/Functions.chibi
 scalar_facts/Facts.chibi
+native_abi/Abi.chibi
+native_schema/Schema.chibi

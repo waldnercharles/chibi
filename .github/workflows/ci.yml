@@ -1,7 +1,10 @@
 # Explicit platform jobs call the existing build/test recipes. Full/Graph modes add clean-machine proofs.
 # The core45 + native90 phase bounds are enforced separately; job135 is only their sum.
 name: CI
-run-name: "CI · ${{ inputs.mode || github.event_name }} · ${{ github.ref_name }}"
+run-name: >-
+  CI · ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'ci' &&
+  inputs.windows_bootstrap_run != '' && inputs.windows_bootstrap_commit != '' &&
+  inputs.windows_bootstrap_sha256 != '' && 'Windows proof' || inputs.mode || github.event_name }} · ${{ github.ref_name }}
 'on':
   pull_request:
     branches:
@@ -14,7 +17,7 @@ run-name: "CI · ${{ inputs.mode || github.event_name }} · ${{ github.ref_name 
   workflow_dispatch:
     inputs:
       mode:
-        description: 'ci: Linux/macOS and native targets; full: recovery/SDK/no-C; graph: isolated Graph parity'
+        description: 'ci: Linux/macOS/native targets, or Windows proof with all bootstrap pins; full: recovery/SDK/no-C; graph: isolated Graph parity'
         type: choice
         default: ci
         options:
@@ -22,7 +25,7 @@ run-name: "CI · ${{ inputs.mode || github.event_name }} · ${{ github.ref_name 
         - full
         - graph
       windows_bootstrap_run:
-        description: Reuse this run's verified Linux cross-build for Windows in ci/full mode
+        description: Reuse a verified Linux cross-build; all three pins select only Windows in ci mode
         type: string
         default: ''
       windows_bootstrap_commit:
@@ -54,9 +57,12 @@ env:
   CHIBI_COMPILER_CACHE: ${{ github.workspace }}/.chibi/compiler-cache
   CHIBI_ASSET_COMPILER_CACHE: ${{ github.workspace }}/.chibi/asset-compiler-cache
 jobs:
+  # Only fully pinned manual ci skips other platforms; full mode keeps all proofs.
   native:
     name: Engine build and native tests
-    if: github.event_name != 'workflow_dispatch' || inputs.mode == 'ci' || inputs.mode == 'full'
+    if: (github.event_name != 'workflow_dispatch' || inputs.mode == 'ci' || inputs.mode == 'full') &&
+      !(github.event_name == 'workflow_dispatch' && inputs.mode == 'ci' && inputs.windows_bootstrap_run != '' &&
+      inputs.windows_bootstrap_commit != '' && inputs.windows_bootstrap_sha256 != '')
     runs-on: ubuntu-24.04
     timeout-minutes: 135
     steps:
@@ -183,7 +189,9 @@ jobs:
         key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
   native-macos:
     name: Engine build and native tests (macOS)
-    if: github.event_name != 'workflow_dispatch' || inputs.mode == 'ci' || inputs.mode == 'full'
+    if: (github.event_name != 'workflow_dispatch' || inputs.mode == 'ci' || inputs.mode == 'full') &&
+      !(github.event_name == 'workflow_dispatch' && inputs.mode == 'ci' && inputs.windows_bootstrap_run != '' &&
+      inputs.windows_bootstrap_commit != '' && inputs.windows_bootstrap_sha256 != '')
     runs-on: macos-15
     timeout-minutes: 45
     env:
@@ -603,9 +611,13 @@ jobs:
             if ([IO.File]::ReadAllText($output) -ne 'preserved') { throw 'Windows rejected remove_item replaced the prior output' }
             "PASS native Windows remove_item rejection O$level" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
           }
+          exit 0
       - name: Check native Windows host clocks
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: ./test/native_aot/host_clock/Run.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -LLVM $env:CHIBI_WINDOWS_LLVM
+      - name: Check native Windows directory errors and source inventories
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
+        run: ./test/native_aot/directories/Run.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
       - name: Check native Windows built-in math
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |

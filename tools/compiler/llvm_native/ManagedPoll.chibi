@@ -1,0 +1,140 @@
+package llvm_native
+
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Ownership events update stable addresses once when a value enters or leaves
+// the live owner set. Polls reuse that table; they never rebuild live roots.
+ManagedOwnerLayout :: struct { slots: int[]; locals: int[]; count: int; }
+ManagedOwnerLocations :: (shape: Function, code: Instruction[]) -> ManagedOwnerLayout {
+    found: ManagedOwnerLayout = {slots: [], locals: [], count: 0};
+    needed := false;
+    for (pc in shape.first_code..<shape.first_code + shape.code) {
+        if (code[pc].op == ManagedTrack) { needed = true; break; }
+    }
+    if (!needed) { return found; }
+    found.slots = resize([int(0)], shape.slots);
+    found.locals = resize([int(0)], shape.locals);
+    for (pc in shape.first_code..<shape.first_code + shape.code) {
+        item := code[pc];
+        if (item.op != ManagedTrack) { continue; }
+        local := (item.target & ManagedTrackLocal) != 0;
+        previous := 0;
+        if (local) { previous = found.locals[item.left]; }
+        else { previous = found.slots[item.left]; }
+        if (previous > 0) { continue; }
+        found.count += 1;
+        if (local) { found.locals[item.left] = found.count; }
+        else { found.slots[item.left] = found.count; }
+    }
+    return found;
+}
+ManagedPollValid :: (item: Instruction, slots: int[], locals: int[]) -> bool {
+    if (item.op == ManagedPending) {
+        return item.type == abi.BoolStorage && item.left == 0 && item.right == 0 && item.target == 0 && item.literal == 0;
+    }
+    if (item.op == ManagedPoll) {
+        return item.type == 0 && item.output == 0 && item.left == 0 && item.right == 0 && item.target == 0 && item.literal == 0;
+    }
+    array := ArrayType + PointerType;
+    if (item.target < ManagedTrackSlot || item.target > ManagedClearLocal || item.output != 0 || item.right != 0 || item.literal != 0) { return false; }
+    if ((item.target & ManagedTrackLocal) != 0) {
+        return (item.type == array || item.type == RefType + array) && Typed(locals, item.left, item.type);
+    }
+    return item.type == array && Typed(slots, item.left, array);
+}
+// Root table storage follows the same coroutine lifetime as ordinary frame
+// roots. Empty functions allocate/register nothing. Initialize before
+// registration, after coro.begin chooses persistent frame addresses.
+ManagedOwnerRoots :: (count: int, persistent: bool) -> ManagedFrameRoots {
+    found: ManagedFrameRoots = {prologue: "", attach: "", cleanup: ""};
+    if (count == 0) { return found; }
+    root := "%chibi.managed.root";
+    operation := "push";
+    if (persistent) { root = "%chibi.managed.persistent"; operation = "hold"; }
+    out: string[] = [format_text("  %managed.owner.refs = alloca [{} x ptr]\n", count),
+        "  %managed.owner.payload = alloca %chibi.managed.owners\n",
+        format_text("  %managed.owner.root = alloca {}\n", root)];
+    initialize := strings.Join([
+        format_text("  call void @llvm.memset.p0.i64(ptr %managed.owner.refs, i8 0, i64 {}, i1 false)\n", i64(count) * 8),
+        "  store ptr %managed.owner.refs, ptr %managed.owner.payload\n",
+        "  %managed.owner.count = getelementptr %chibi.managed.owners, ptr %managed.owner.payload, i32 0, i32 1\n",
+        format_text("  store i32 {}, ptr %managed.owner.count\n", count),
+        format_text("  store {} zeroinitializer, ptr %managed.owner.root\n", root)], "");
+    register := format_text("  call void @chibi_managed.{}(ptr %managed.heap, ptr %managed.owner.root, ptr %managed.owner.payload, ptr @chibi_managed.trace.owners)\n", operation);
+    if (persistent) {
+        // Store frame-relative addresses only after coro.begin has selected
+        // the stable frame. A pointer embedded in ramp storage is not relocated.
+        found.attach = strings.Concatenate([initialize, register]);
+        found.cleanup = "  call void @chibi_managed.unhold(ptr %managed.owner.root)\n";
+    } else { out.append(initialize); out.append(register); }
+    found.prologue = strings.Join(out, "");
+    return found;
+}
+ManagedPollInstruction :: (item: Instruction, pc: int, owners: ManagedOwnerLayout) -> string {
+    out: string[] = [format_text("p{}:\n", pc)];
+    if (item.op == ManagedPending) {
+        out.append(format_text("  %pending.at{} = getelementptr %chibi.managed.heap, ptr %managed.heap, i32 0, i32 {}\n", pc, abi.ManagedRequestedField));
+        out.append(format_text("  %pending{} = load i1, ptr %pending.at{}\n", pc, pc));
+        out.append(Store(format_text("%pending{}", pc), abi.BoolStorage, "s", item.output));
+    } else if (item.op == ManagedPoll) {
+        out.append("  call void @chibi_managed.poll(ptr %ctx, ptr %managed.heap)\n");
+    } else {
+        local := (item.target & ManagedTrackLocal) != 0;
+        id := 0;
+        address := "null";
+        if (local) { id = owners.locals[item.left] - 1; }
+        else { id = owners.slots[item.left] - 1; }
+        if (item.target < ManagedClearSlot) {
+            prefix := "s";
+            if (local) { prefix = "l"; }
+            address = format_text("%{}{}", prefix, item.left);
+            if (item.type >= RefType) {
+                out.append(Load(format_text("owner.place{}", pc), item.type, prefix, item.left));
+                address = format_text("%owner.place{}", pc);
+            }
+        }
+        out.append(format_text("  %owner.at{} = getelementptr ptr, ptr %managed.owner.refs, i32 {}\n  store ptr {}, ptr %owner.at{}\n", pc, id, address, pc));
+    }
+    out.append(format_text("  br label %p{}\n", pc + 1));
+    return strings.Join(out, "");
+}
+ManagedPollRuntime :: (target: abi.Target, foreign_declarations: string) -> string {
+    declarations: string[] = [];
+    collection := "";
+    if (abi.Same(target, abi.WindowsX64())) {
+        if (!strings.Contains(foreign_declarations, " @GetLastError(")) { declarations.append("declare dllimport i32 @GetLastError()\n"); }
+        if (!strings.Contains(foreign_declarations, " @SetLastError(")) { declarations.append("declare dllimport void @SetLastError(i32)\n"); }
+        declarations.append("; chibi-import system:kernel32 GetLastError\n; chibi-import system:kernel32 SetLastError\n");
+        collection = "  %error = call i32 @GetLastError()\n  call void @chibi_managed.collect(ptr %ctx, ptr %heap)\n  call void @SetLastError(i32 %error)\n  br label %done\n";
+    } else {
+        accessor := "__errno_location";
+        if (abi.Same(target, abi.MacOSArm64())) { accessor = "__error"; }
+        if (!strings.Contains(foreign_declarations, format_text(" @{}(", accessor))) {
+            // Static freestanding programs have no libc TLS error state.
+            // An embedding libc or an explicit source import supplies it.
+            declarations.append(format_text("declare extern_weak ptr @{}()\n", accessor));
+        }
+        if (abi.Same(target, abi.MacOSArm64())) { declarations.append("; chibi-import system:System __error\n"); }
+        collection = format_text("  %available = icmp ne ptr @{}, null\n  br i1 %available, label %preserve, label %unavailable\npreserve:\n  %error.at = call ptr @{}()\n  %error = load i32, ptr %error.at\n  call void @chibi_managed.collect(ptr %ctx, ptr %heap)\n  store i32 %error, ptr %error.at\n  br label %done\nunavailable:\n  call void @chibi_managed.collect(ptr %ctx, ptr %heap)\n  br label %done\n", accessor, accessor);
+    }
+    declarations.append(strings.Join([
+        "%chibi.managed.owners = type { ptr, i32 }\n",
+        "define internal void @chibi_managed.trace.owners(ptr %heap, ptr %payload) {\nentry:\n",
+        "  %refs = load ptr, ptr %payload\n  %count.at = getelementptr %chibi.managed.owners, ptr %payload, i32 0, i32 1\n  %count = load i32, ptr %count.at\n  br label %test\ntest:\n",
+        "  %index = phi i32 [ 0, %entry ], [ %next, %step ]\n  %more = icmp ult i32 %index, %count\n  br i1 %more, label %read, label %done\nread:\n",
+        "  %at = getelementptr ptr, ptr %refs, i32 %index\n  %slot = load ptr, ptr %at\n  %live = icmp ne ptr %slot, null\n  br i1 %live, label %trace, label %step\ntrace:\n",
+        "  call void @chibi_managed.trace.array(ptr %heap, ptr %slot)\n  br label %step\nstep:\n  %next = add i32 %index, 1\n  br label %test\ndone:\n  ret void\n}\n",
+        // Raw polls invoked from callbacks leave the request pending. Root
+        // membership is already complete when source execution reaches a poll.
+        "define internal void @chibi_managed.poll(ptr %ctx, ptr %heap) {\nentry:\n",
+        format_text("  %pending.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 {}\n", abi.ManagedRequestedField),
+        "  %pending = load i1, ptr %pending.at\n",
+        format_text("  %depth.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 {}\n", abi.ManagedCallbackField),
+        "  %depth = load i32, ptr %depth.at\n  %idle = icmp eq i32 %depth, 0\n",
+        format_text("  %collecting.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 {}\n", abi.ManagedCollectingField),
+        "  %collecting = load i1, ptr %collecting.at\n  %quiet = xor i1 %collecting, true\n  %safe = and i1 %idle, %quiet\n  %wanted = and i1 %pending, %safe\n  br i1 %wanted, label %collect, label %done\ncollect:\n",
+        collection, "done:\n  ret void\n}\n"
+    ], ""));
+    return strings.Join(declarations, "");
+}

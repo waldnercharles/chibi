@@ -309,6 +309,8 @@ pub RefRow: int : 39;
 // a foreign function that takes a function: `name` is the function's, `count`
 // is 0 and `type` is the word. The function's parameters and result are
 // numbers or bools and none of its parameters is a reference.
+// `literal` is native_abi.CallbackValue or CallbackVoid; the latter discards
+// the function's internal IntType result and returns void to C.
 pub FunctionAddressRow: int : 40;
 // Tasks. A function that holds a Yield, an Await, or a Call whose `literal` is
 // CallAwaited is a coroutine. A Call row's `literal` is CallPlain (0) for an
@@ -526,6 +528,8 @@ pub Complement: int : 2;
 pub Not: int : 3;
 // The scalar f32 built-in, with the same precision as ordinary math lowering.
 pub SquareRoot: int : 4;
+// Clears the IEEE sign bit of f32 or f64, including zero and NaN.
+pub FloatAbsolute: int : 5;
 
 // Logical operators: the source's && and ||.
 pub LogicalAnd: int : 1;
@@ -619,6 +623,9 @@ pub ArrayPlaceCheck: int : 25;
 // A functional value with its first structurally equal element removed.
 // An absent element returns an independent array value. Inputs are array,item.
 pub ArrayWithoutItem: int : 27;
+// A strict half-open copy: array,start,end -> optional array. Invalid bounds
+// produce Nil without allocation; an empty valid range produces Some(empty).
+pub ArrayRange: int : 28;
 // An immediate nested-array place adds its saved outer index after the
 // canonical RefRow. Existing mutating operators still end the root assignment.
 pub NestedArrayPlace: int : -1;

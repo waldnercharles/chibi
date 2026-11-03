@@ -6,14 +6,14 @@ import strings "core:strings"
 // A native backing has one reference count before its aligned elements.
 // A null owner is borrowed storage. Importing it makes an owned allocation;
 // releasing it never returns the external pointer to the context.
-ArrayAllocate :: (type: int, prefix: int) -> string {
+ArrayAllocate :: (type: int, prefix: int, guarded: bool = false) -> string {
     array := abi.ArrayType();
     out := [format_text("define internal {} @chibi_array.{}.allocate(ptr %ctx, i32 %length, i32 %capacity) {{\nentry:\n", array, type)];
     out.append("  %empty = icmp eq i32 %capacity, 0\n  br i1 %empty, label %none, label %make\nnone:\n");
     out.append(format_text("  ret {} zeroinitializer\nmake:\n", array));
     out.append(Sized("width", type - ArrayType));
     out.append(format_text("  %count = zext i32 %capacity to i64\n  %bytes = mul i64 %count, %width\n  %total = add i64 %bytes, {}\n", prefix));
-    out.append(Allocated("owner", "%total"));
+    out.append(Allocated("owner", "%total", guarded));
     out.append(format_text("  store i64 1, ptr %owner\n  %data = getelementptr inbounds i8, ptr %owner, i64 {}\n", prefix));
     if (type == ArrayType + PointerType) {
         out.append(format_text("  %epoch.at = getelementptr i8, ptr %owner, i64 {}\n  store i64 0, ptr %epoch.at\n", abi.ManagedArrayEpochOffset));
@@ -41,8 +41,8 @@ ArrayClone :: (type: int, owners: bool[]) -> string {
     out.append(format_text("  ret {} %result\n}}\n", array));
     return strings.Join(out, "");
 }
-ArrayDropHelper :: (type: int, owners: bool[], backed: bool[]) -> string {
-    if (ArrayBacked(type, backed)) { return ArrayQueuedDrop(type); }
+ArrayDropHelper :: (type: int, owners: bool[], backed: bool[], guarded: bool = false) -> string {
+    if (ArrayBacked(type, backed)) { return ArrayQueuedDrop(type, guarded); }
     array := abi.ArrayType();
     out := [format_text("define internal void @chibi_array.{}.drop(ptr %ctx, {} %value) {{\nentry:\n", type, array)];
     out.append(format_text("  %owner = extractvalue {} %value, 3\n", array));
@@ -51,7 +51,7 @@ ArrayDropHelper :: (type: int, owners: bool[], backed: bool[]) -> string {
     out.append("  %before = atomicrmw sub ptr %owner, i64 1 acq_rel\n  %last = icmp eq i64 %before, 1\n  br i1 %last, label %release, label %done\nrelease:\n");
     out.append(format_text("  %length = extractvalue {} %value, 0\n  %data = extractvalue {} %value, 2\n", array, array));
     out.append(ArrayRefs(owners, type, "%data", "%length", false));
-    out.append(ContextCall("give", 4));
+    out.append(ContextCall("give", 4, guarded));
     out.append("  call void %give(ptr %ctx, ptr %owner)\n  br label %done\ndone:\n  ret void\n}\n");
     return strings.Join(out, "");
 }
@@ -72,7 +72,7 @@ ArrayShare :: (type: int) -> string {
 // A consumed unique backing moves its initialized elements when it grows.
 // Shared or borrowed inputs copy their elements and acquire their ownership.
 // The caller may then replace/remove an element or publish a longer length.
-ArrayUnique :: (type: int) -> string {
+ArrayUnique :: (type: int, guarded: bool = false) -> string {
     array := abi.ArrayType();
     out := [format_text("define internal {} @chibi_array.{}.unique(ptr %ctx, {} %value, i32 %needed, i1 %consume) {{\nentry:\n", array, type, array)];
     out.append(format_text("  %owner = extractvalue {} %value, 3\n  %capacity = extractvalue {} %value, 1\n", array, array));
@@ -87,7 +87,7 @@ ArrayUnique :: (type: int) -> string {
     out.append(format_text("  %data = extractvalue {} %moved, 2\n", array));
     out.append(Sized("width", type - ArrayType));
     out.append("  %extent = zext i32 %length to i64\n  %bytes = mul i64 %extent, %width\n  call void @chibi_scalar.copy(ptr %data, ptr %source, i64 %bytes)\n");
-    out.append(ContextCall("give", 4));
+    out.append(ContextCall("give", 4, guarded));
     out.append(format_text("  call void %give(ptr %ctx, ptr %owner)\n  ret {} %moved\nclone:\n", array));
     // The all-zero descriptor is also C's null optional buffer. Requiring
     // writable zero elements must not turn it into a nonnull allocation.
@@ -200,7 +200,7 @@ ArrayUses :: (code: Instruction[], promises: int[]) -> int[] {
     }
     return used;
 }
-ArrayModule :: (used: int[], owners: bool[], backed: bool[]) -> string {
+ArrayModule :: (used: int[], owners: bool[], backed: bool[], guarded: bool = false) -> string {
     out: string[] = [];
     for (index in 0..<length(used)) {
         flags := used[index];
@@ -209,25 +209,25 @@ ArrayModule :: (used: int[], owners: bool[], backed: bool[]) -> string {
         prefix := 8;
         if (ArrayBacked(type, backed)) { prefix = 32; }
         if (type == ArrayType + PointerType) { prefix = abi.ManagedArrayPrefix; }
-        if ((flags & ArrayAllocation) != 0) { out.append(ArrayAllocate(type, prefix)); }
+        if ((flags & ArrayAllocation) != 0) { out.append(ArrayAllocate(type, prefix, guarded)); }
         if ((flags & ArrayCloning) != 0) { out.append(ArrayClone(type, owners)); }
-        if ((flags & ArrayDropping) != 0) { out.append(ArrayDropHelper(type, owners, backed)); }
+        if ((flags & ArrayDropping) != 0) { out.append(ArrayDropHelper(type, owners, backed, guarded)); }
         if ((flags & ArraySharing) != 0) { out.append(ArrayShare(type)); }
-        if ((flags & ArrayMutation) != 0) { out.append(ArrayUnique(type)); }
+        if ((flags & ArrayMutation) != 0) { out.append(ArrayUnique(type, guarded)); }
     }
     return strings.Join(out, "");
 }
 
 // A recursive element release only enqueues children. Its caller drains one
 // stack-owned queue, so runtime nesting does not become native call depth.
-ArrayQueuedDrop :: (type: int) -> string {
+ArrayQueuedDrop :: (type: int, guarded: bool = false) -> string {
     array := abi.ArrayType();
     element := type - ArrayType;
     return strings.Concatenate([
         format_text("define internal void @chibi_array.{}.release_owned(ptr %ctx, ptr %owner, i32 %length, ptr %pending) {{\nentry:\n", type),
         "  %data = getelementptr inbounds i8, ptr %owner, i64 32\n",
         format_text("  call void @chibi_value.{}.drop_range_into(ptr %ctx, ptr %data, i32 %length, ptr %pending)\n", element),
-        ContextCall("give", 4),
+        ContextCall("give", 4, guarded),
         "  call void %give(ptr %ctx, ptr %owner)\n  ret void\n}\n",
         format_text("define internal void @chibi_array.{}.drop_into(ptr %ctx, {} %value, ptr %pending) {{\nentry:\n", type, array),
         format_text("  %owner = extractvalue {} %value, 3\n", array),

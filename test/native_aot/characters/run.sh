@@ -16,6 +16,11 @@ case "$(uname -s)-$(uname -m)" in
     Linux-x86_64) target=x86_64-unknown-linux-gnu ;;
     *) echo 'native characters: unsupported test host' >&2; exit 2 ;;
 esac
+mkdir "$work/callback"
+cp "$repo/test/native_aot/characters/callback/Main.chibi" "$work/callback/Main.chibi"
+"$llvm/llc" -mtriple="$target" -filetype=obj -relocation-model=pic -O2 \
+    "$repo/test/native_aot/characters/callback/Runtime.ll" -o "$work/callback/runtime.o"
+"$llvm/llvm-ar" rcs "$work/callback/libcallbacks.a" "$work/callback/runtime.o"
 for level in 0 2; do
     CHIBI_CORE="$repo/packages/core" "$compiler" test "$work/project" --llvm "$llvm" -O"$level" > "$work/native.log" 2>&1 || { cat "$work/native.log"; exit 1; }
     awk '/^(PASS|FAIL) (characters|shadow|foreign_character|procedure_character)[.]/ { print }' "$work/native.log" | LC_ALL=C sort > "$work/native.results"
@@ -25,6 +30,10 @@ for level in 0 2; do
         --source "$repo/test/native_aot/characters/foreign/Foreign.chibi" --entry Main \
         --output "$work/foreign-$level" --llvm "$llvm" --target "$target" --level "$level" --jobs 1
     "$work/foreign-$level"
+    "$compiler" --compiler "$repo/tools/compiler" --core "$repo/packages/core" \
+        --source "$work/callback/Main.chibi" --entry Main --output "$work/callback-$level" \
+        --llvm "$llvm" --target "$target" --level "$level" --jobs 1
+    "$work/callback-$level"
     printf 'PASS native characters and real UTF-8 tests O%s\n' "$level"
 done
 if [ -n "$reference" ]; then

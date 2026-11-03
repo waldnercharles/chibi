@@ -16,6 +16,10 @@ foreign probes {
     SetEnvironmentVariableW :: (name: u16[], value: u16[]) -> i32
 }
 
+// A legal ExitProcess DWORD whose high bit distinguishes wrap from clamping.
+HighExitBits: u32 : 3221225785; // STATUS_ENTRYPOINT_NOT_FOUND, 0xC0000139.
+HighExitStatus: int : -1073741511;
+
 // Exercise the native filesystem, process API and real opt/llc commands.
 // Invoke with LLVM_BIN WORK_DIR.
 Main :: () -> int {
@@ -64,6 +68,7 @@ Main :: () -> int {
 
 Child :: (arguments: string[]) -> int {
     mode := arguments[0];
+    if mode == "child-high-exit" { return int(wrap: HighExitBits); }
     if mode == "child-exit7" {
         return 7;
     }
@@ -177,6 +182,15 @@ Environment :: () {
 Processes :: (work: string) {
     program := os.ProgramPath();
     before := Handles();
+    high := os.Run([program, "child-high-exit"]);
+    assert(high == HighExitStatus, "synchronous Run preserves high-bit Windows exit codes");
+    high_capture := os.Capture([program, "child-high-exit"]);
+    assert(high_capture.status == HighExitStatus && high_capture.stdout == "" && high_capture.stderr == "",
+           "Capture preserves the exact same exit bits without adding output");
+    high_process := os.Start([program, "child-high-exit"], os.Inherited);
+    assert(high_process > 0, "start the same high-bit exit child asynchronously");
+    high_wait := os.Wait(high_process, -1);
+    assert(high_wait == HighExitStatus, "synchronous and asynchronous waits agree on all exit bits");
     passed := os.Start([program, "child-arguments", "", "a b", "$x;\"'", "ü\\", "trailing space "], os.Inherited);
     assert(passed > 0, "start with arguments");
     status := os.Wait(passed, -1);

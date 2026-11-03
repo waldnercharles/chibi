@@ -148,7 +148,7 @@ EnsureSequenceCollection :: (table: ^(TypeDecl[]), element: ValueType, package: 
     id := binding.ID("collection-type", format_text("1:{}:{}", zero, OptionalTag(table^, element)));
     declared: TypeDecl = {name: "", type_name: format_text("__collection_{}", id), package: package,
                           node: -1, kind: CollectionDecl, first: 0, count: 0, size: 0, parent: -1,
-                          storage: element.storage, id: id, layout: 0, component: 0, key: 0,
+                          storage: element.storage, id: id, layout: 0, native_schema: 0, component: 0, key: 0,
                           value_storage: element.storage, value_container: element.container, value_record: element.record,
                           error: false};
     table.append(declared);
@@ -284,7 +284,7 @@ EnsureOptional :: (table: ^(TypeDecl[]), value: ValueType, package: int) -> int 
 AddOptional :: (table: ^(TypeDecl[]), value: ValueType, package: int) -> int {
     declared: TypeDecl = {name: "", type_name: "", package: package, node: -1, kind: OptionalDecl,
                           first: 0, count: 0, size: 0, parent: -1, storage: UnionStorage,
-                          id: OptionalTag(table^, value), layout: 0, component: 0, key: 0,
+                          id: OptionalTag(table^, value), layout: 0, native_schema: 0, component: 0, key: 0,
                           value_storage: value.storage, value_container: value.container,
                           value_record: value.record, error: false};
     table.append(declared);

@@ -9,6 +9,14 @@ then reverses the result. A second execution uses the existing allocator audit
 to poison released storage and require zero live allocations. Native unit tests
 reject mismatched operands and reserved instruction metadata.
 
+`Ranges.chibi` checks strict bracket and method copies. Valid half-open ranges
+return an optional owning array, including empty ranges; negative, reversed or
+oversized bounds return Nil. Receiver, start and end run once in source order,
+with the receiver protected from a bound callback that replaces it. Optional
+array coalescing evaluates its fallback only for Nil and gives the selected
+array its own owner. The source runs normally and under the poisoned allocator
+at O0/O2, and the optional reference argument checks the ordinary runtime.
+
 Resize preserves the ordinary source policy. Authored struct arrays can shrink
 or retain their length, but growth fails before allocation. Union arrays grow
 with the zero variant, including zero payloads. The synthetic records for

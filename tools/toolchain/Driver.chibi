@@ -784,13 +784,19 @@ NativeCompile :: (stage: string, llvm: string, folder: string, target: string, n
     return built.status
 }
 
-// Proves the native build runner: stage one compiles this driver and the graph
-// program (`Graph.chibi Libraries`, which reads the `graph` collection) to native
-// executables, and each prints what the VM-hosted program prints: the driver its
-// dry-run commands, the graph its compile and link commands.
+// The fixed compiler proves exact Driver streams and complete Graph command
+// tables against independent fixtures. The historical VM comparator is opt-in.
 NativeRunner :: (stage: string, llvm: string, work: string, target: string, host: string, compare_vm: bool) -> int {
+    contract := programs.Build(os.Root(), stage, llvm, "test/graph/CommandTests.chibi", "Run", ["graph=tools/graph"])
+    if (contract == "") {
+        return 1
+    }
+    status := Step("native command contract", [contract, stage, llvm], false)
+    if (status != 0 || !compare_vm) {
+        return status
+    }
     folder := Join([work, "/runner"])
-    status := Step("runner-folder", ["sh", "-c", Join(["rm -rf '", folder, "' && mkdir -p '", folder, "'"])], false)
+    status = Step("runner-folder", ["sh", "-c", Join(["rm -rf '", folder, "' && mkdir -p '", folder, "'"])], false)
     if (status != 0) {
         return status
     }
@@ -802,9 +808,6 @@ NativeRunner :: (stage: string, llvm: string, work: string, target: string, host
     }
     dry := ["build", "--release", "--dry-run", "--target", "chibi-compiler-host", "--build", Join([folder, "/dry-build"]),
             "--native-driver", stage, "--llvm", llvm]
-    if (!compare_vm) {
-        return Step("native runner", extend([Join([folder, "/driver"])], dry), false)
-    }
     vm := os.Capture(extend(HostProgram(host, "tools/toolchain/Driver.chibi", "Main", ["graph=tools/graph"], "600000"), dry))
     native := os.Capture(extend([Join([folder, "/driver"])], dry))
     if (vm.status != 0 || vm.status != native.status || vm.stdout != native.stdout || vm.stderr != native.stderr) {
@@ -957,9 +960,10 @@ NativeVendorSample :: (arguments: string[]) -> int {
 // two, stage two compiles it to stage three, and the two are byte-identical.
 // Prints each stage's wall time and, for item 9, the VM-hosted self-build's
 // (the recovery's seed to stage one to stage two) only with --compare-vm,
-// unless --skip-vm-comparison omits that timing while retaining both command
-// parity checks. Stage one is the selected native compiler, optionally
-// overridden by --stage-one.
+// unless --skip-vm-comparison omits that timing. Independent Driver/Graph
+// command contracts always run; --compare-vm also selects the legacy command
+// comparison. Stage one is the selected native compiler, optionally overridden
+// by --stage-one.
 NativeSelfHost :: (arguments: string[]) -> int {
     dry := Flag(arguments, "--dry-run")
     compare_vm := Flag(arguments, "--compare-vm") && !Flag(arguments, "--skip-vm")

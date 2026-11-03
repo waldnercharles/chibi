@@ -39,11 +39,11 @@ adaptation, not identical Zig coverage.
 
 ## Canonical build and tests
 
-Linux builds the Release native CLI and explicit C comparison helpers once,
+Linux builds the Release native CLI and retained C helpers once,
 then the selected Debug products/test drivers. The core suite uses those paths.
-Native self-host receives the comparison hosts without another Release build;
-the native build entry remains the ordinary route. The native phase then runs
-19 direct checks covering the driver, cache, minimum version, formatting,
+Native self-host uses the native build entry and fixed compiler for its command
+contracts. Legacy VM comparison remains an explicit opt-in. The native phase then
+runs direct checks covering the driver, cache, minimum version, formatting,
 output, diagnostics, generations, test attributes, failures, Busy, optionals,
 build entry, runner, tasks, scalar math, managed values, maps, CLI and reload.
 macOS retains its Release-helper/Debug-product recipe and test selection.
@@ -60,17 +60,25 @@ The canonical coverage includes:
   selector deadlines, exclusivity and worker limits;
 - native scalar execution and cross-target object generation, then real
   macOS/Windows linking and execution of the generated bundle;
-- native compiler fixed point, native/VM driver command parity **and native/VM
-  graph compile/link command parity**, diagnostics and test attributes.
+- native compiler fixed point, exact Driver streams and complete Graph
+  compile/link command contracts, diagnostics and test attributes.
 
 The native fixed point remains stage 2 equals stage 3; an older pinned seed may
 require exactly one additional stage, which must prove stage 3 equals stage 4.
-There is no retry loop or relaxed comparison. VM comparison is opt-in through
-`--compare-vm`. Ordinary CI passes `--compare-vm --skip-vm-comparison`; full
-proofs pass `--compare-vm`. `--skip-vm-comparison` omits only
-the extra VM-hosted compiler comparison on ordinary runs; unlike legacy
-`--skip-vm`, it **does not omit graph parity**. Scheduled/manual-full runs retain
-that VM comparison.
+There is no retry loop or relaxed comparison. After the fixed-point comparison,
+both ordinary and full CI run the independent native command fixture. It compares successful
+and invalid Driver exit statuses, complete stdout and stderr, and every ordered
+compile/link entry for five selected Graph targets in two private build roots.
+Only the observed build-root spelling is normalized. A changed-tool negative
+control must change both complete tables. The expected recipes are checked-in
+data; they are not generated from the observed planner. This deliberately moves
+the command contract from the retired C compiler-host product to the current
+native products. It does not claim VM/native execution equality.
+
+The historical command comparator and VM compiler self-build remain opt-in
+through `--compare-vm`, using explicit Release comparison hosts.
+`--skip-vm-comparison` omits only that extra VM compiler self-build. The mandatory
+native Driver/Graph contract runs regardless of these comparison options.
 
 The VM/C behavioral suites are not replaced by a compiler compiling itself.
 The Release native `chibi test` compiles one executable per package and runs

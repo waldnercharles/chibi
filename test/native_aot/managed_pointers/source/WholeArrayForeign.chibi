@@ -1,0 +1,16 @@
+package whole_array_foreign
+
+foreign import libc "system:c"
+foreign libc { memset :: (memory: u8[], value: i32, bytes: u64) -> rawptr }
+
+Main :: () -> int {
+    bytes: u8[] = [u8(253)];
+    pointer := &bytes;
+    previous := bytes;
+    written := memset(bytes, 17, 1);
+    assert(written != 0 && pointer^[0] == 17 && previous[0] == 253);
+    bytes = [u8(49)];
+    written = memset(bytes, 19, 1);
+    assert(written != 0 && pointer^[0] == 19 && previous[0] == 253);
+    return 0;
+}

@@ -23,7 +23,10 @@ TaskFrameValue :: (records: Record[], layout: ValueLayout, type: int, observer: 
         (abi.ScalarType(type - RefType) != "" || type == RefType + PointerType || type == RefType + ArrayType + PointerType)) { return true; }
     return TaskFramePlain(layout, type);
 }
-TaskResultValid :: (records: Record[], fields: int[], slots: int[], layout: ValueLayout, item: Instruction) -> bool {
+TaskPromiseValue :: (records: Record[], layout: ValueLayout, type: int, owned: bool) -> bool {
+    return TaskFramePlain(layout, type) || (owned && TaskOwnedType(records, layout, type));
+}
+TaskResultValid :: (records: Record[], fields: int[], slots: int[], layout: ValueLayout, owned: bool, item: Instruction) -> bool {
     record := item.type - RecordType;
     if (!Typed(slots, item.left, TaskType) || record < 0 || record >= length(records) ||
         item.literal != 0 || item.target < 0 || item.target > 1) { return false; }
@@ -31,12 +34,12 @@ TaskResultValid :: (records: Record[], fields: int[], slots: int[], layout: Valu
     count := 1;
     if (item.right != 0) { count = 2; }
     return shape.count == count && fields[shape.first] == abi.IntStorage &&
-           (item.right == 0 || (TaskFramePlain(layout, item.right) &&
+           (item.right == 0 || (TaskPromiseValue(records, layout, item.right, owned) &&
                                fields[shape.first + 1] == item.right));
 }
 // The pending wait owns an observer until the scheduler has resumed this
 // continuation, so a successful promise remains live throughout its read.
-TaskResultInstruction :: (item: Instruction, pc: int, testing: bool) -> string {
+TaskResultInstruction :: (item: Instruction, pc: int, testing: bool, owners: bool[]) -> string {
     type := TypeName(item.type);
     out := format_text("p{}:\n{}", pc, TaskTestGuard(testing, TaskWaitEffect));
     out = format_text("{}{}", out, Load(format_text("h{}", pc), TaskType, "s", item.left));
@@ -54,10 +57,27 @@ TaskResultInstruction :: (item: Instruction, pc: int, testing: bool) -> string {
     if (item.right != 0) {
         out = format_text("{}  %promise{} = call ptr @llvm.coro.promise(ptr %frame{}, i32 8, i1 false)\n", out, pc, pc);
         out = format_text("{}  %payload{} = load {}, ptr %promise{}\n", out, pc, TypeName(item.right), pc);
-        out = format_text("{}  %joined{} = insertvalue {} %tagged{}, {} %payload{}, 1\n", out, pc, type, pc, TypeName(item.right), pc);
+        payload := format_text("%payload{}", pc);
+        if (item.right == abi.TextStorage) {
+            out = format_text("{}  %payload.owner{} = extractvalue {} {}, 2\n  call void @chibi_scalar.retain(ptr %payload.owner{})\n", out, pc, TypeName(item.right), payload, pc);
+        } else if (ValueOwned(item.right, owners)) {
+            helper := "chibi_value";
+            if (item.right >= ArrayType) { helper = "chibi_array"; }
+            out = format_text("{}  %payload.copy{} = call {} @{}.{}.copy(ptr %ctx, {} {})\n", out, pc, TypeName(item.right), helper, item.right, TypeName(item.right), payload);
+            payload = format_text("%payload.copy{}", pc);
+        }
+        out = format_text("{}  %joined{} = insertvalue {} %tagged{}, {} {}, 1\n", out, pc, type, pc, TypeName(item.right), payload);
         value = format_text("%joined{}", pc);
     }
     return format_text("{}{}  br label %p{}\n", out, Store(value, item.type, "s", item.output), pc + 1);
+}
+// Final suspension keeps the promise owned by its frame. Destroy, whether
+// after completion or cancellation, clears that slot before releasing it.
+TaskPromiseCleanup :: (type: int, owned: bool) -> string {
+    if (!owned) { return ""; }
+    return strings.Concatenate([
+        format_text("  %promise.value = load {}, ptr %result0\n  store {} zeroinitializer, ptr %result0\n", TypeName(type), TypeName(type)),
+        TaskDropValue(type, "promise", "%promise.value")]);
 }
 // All owning observer locations are initialized to zero. Moving or dropping
 // one clears it, making the same cleanup safe on normal and cancelled exits.

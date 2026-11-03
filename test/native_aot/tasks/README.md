@@ -56,11 +56,12 @@ NaN or infinity returns 1 and leaves time and tasks unchanged. Without explicit
 host time, the scheduler uses the platform monotonic clock. These optional
 exports preserve the existing no-argument polling ABI.
 
-Plain record promises contain only numeric and bool leaves. Each successful join
-copies the typed record by value; its observer keeps the completed frame alive
-until that read finishes. Strings, arrays, and records containing owners still
-need promise-copy and promise-drop support. Pointer-free owned frame values have
-separate cancellation and reload coverage in `task_owners/run.sh`.
+Promises contain pointer-free numeric, bool, string, array or record values.
+Each successful join acquires a value copy through the existing ownership
+helpers. Its observer keeps the completed frame alive until that read finishes.
+Inline awaits move the value and clear the child promise before destruction.
+Destroying a frame drops its owned promise once, including completion without
+observers. `task_owners/run.sh` covers cancellation, failure and reload balance.
 
 This is a tested subset, not the VM deletion gate. Task-valued parameters and
 task-observer arrays remain closed. The source producer

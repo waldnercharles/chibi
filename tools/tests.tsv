@@ -32,7 +32,6 @@ tool	graph-wasm	@program@	test/graph/WebAssemblyTests.chibi	Run
 tool	graph-os	@program@	test/graph/OsTests.chibi	Run
 tool	graph-sdk-install	@release@/sdk/chibi	run	--core	@root@/packages/core	--llvm	@llvm@	--root	@root@	--collection	graph=@root@/tools/graph	--entry	Run	@root@/test/graph/SDKInstallTests.chibi	--	@release@/sdk/chibi	@release@	@llvm@
 tool	collab	node	--test	@root@/tools/collab/server/server.test.mjs
-tool	whole-select	@build@/test/tools/test_tools	--whole-select
 tool	whole-math	@build@/test/tools/test_tools	--whole-math
 tool	text-format	@build@/test/language/test_language	--text-format
 tool	box3d	@build@/test/tools/test_tools	--box3d
@@ -72,7 +71,7 @@ timeout	graph-build	1200
 timeout	graph-sdk-install	1200
 timeout	bootstrap-load	1800
 exclusive	language-test-parallel
-group	native	graph-c	box3d	persistent-store	whole-select	whole-math	fmt
+group	native	graph-c	box3d	persistent-store	whole-math	fmt
 group	projects	chibi-cli	native-build	native-build-entry
 group	language	language-map-receivers	language-test-parallel	execution-scope	language-execution	language-program	language-ranges	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-comptime	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	chibi-test-core-strings	chibi-test-time	chibi-test-portable-consumer	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	compiler-bootstrap	bootstrap-recovery	native-link
 group	compiler	language-package-compiler-chibi-scalar

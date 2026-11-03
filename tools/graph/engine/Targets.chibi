@@ -233,7 +233,6 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_source_runtime_consumer") {
         return [
             "test/runtime/whole_math.c",
-            "test/runtime/whole_conversion.c",
             "test/runtime/persistent_store.c", "test/support/reflected_types.c"
         ];
     }

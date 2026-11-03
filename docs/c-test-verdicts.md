@@ -36,7 +36,7 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/runtime/reference_cave.c`, `reference_cave.h` (retired 2026-11-02) | 0 | a helper with no live caller | retired with its unused test-driver source entry |
 | `test/support/arena.c`, `asset_value.c` (retired 2026-11-02) | 5, 3 | C allocator internals and `av_doc` ownership, cloning and JSON representation | retired; production support and asset libraries remain for their live C consumers |
 | `test/support/reflected_types.c` | 0 | C reflected type hooks used by the source-runtime tests | goes with its remaining consumers |
-| `test/support/fmt.c` | 2 | `third_party/fmt` behind `src/runtime/text_format.c` | goes; `{}` holes are covered by `FormatsTextWithoutTheVM` |
+| `test/support/fmt.c` (retired 2026-11-02) | 2 | `third_party/fmt` behind `src/runtime/text_format.c` | retired; native `text-format` covers positional, typed and aligned arguments, escaped braces and empty/missing placeholders; the vendored C library remains for its live runtime callers |
 | `test/host/process.c`, `state_file.c`, `concurrent.c`, `main.c` (retired 2026-11-02) | 1, 1, 0, 0 | `src/host` | unselected utilities retired with their graph targets; unused `src/host/state_file.c/.h` retired with its only test caller |
 | `test/parallel.c` | 0 | the pico_unit scheduler | goes |
 | `test/native_aot/targets/run.c` | 2 | LLVM-built bundles on macOS and Windows | survives, since no VM is in it; it is first-party C, so it becomes a native Chibi runner later |

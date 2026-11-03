@@ -62,40 +62,6 @@ bool test_source_runtime_active()
 #ifdef CHIBI_TEST_BOX3D
 void test_box3d();
 #endif
-#ifdef CHIBI_TEST_FMT
-void test_fmt();
-#endif
-
-/* Selectors of documents, files and runtime pieces with one suite each. */
-static const char *const document_selectors[] = { "--fmt" };
-
-static bool selected(int argc, char **argv, const char *name)
-{
-    return argc == 2 && !strcmp(argv[1], name);
-}
-
-static bool document_selector(int argc, char **argv)
-{
-    for (size_t i = 0; i < sizeof document_selectors / sizeof *document_selectors; i++) {
-        if (selected(argc, argv, document_selectors[i])) {
-            return true;
-        }
-    }
-    return false;
-}
-
-/* Runs the suites of a document selector; false when none is built. */
-static bool run_document_suites(int argc, char **argv)
-{
-#ifdef CHIBI_TEST_FMT
-    if (selected(argc, argv, "--fmt")) {
-        test_fmt();
-        return true;
-    }
-#endif
-    return false;
-}
-
 void test_tool_case_timings(const char *self);
 int tool_case_timing_probe(const char *mode);
 
@@ -157,16 +123,6 @@ int main(int argc, char **argv)
         return 2;
 #endif
     }
-    if (document_selector(argc, argv)) {
-        tool_init();
-        pu_display_time(true);
-        if (!run_document_suites(argc, argv)) {
-            fprintf(stderr, "%s is not built in this configuration\n", argv[1]);
-            return 2;
-        }
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-    }
     bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
     bool types = argc == 2 && !strcmp(argv[1], "--types");
     bool box3d = false;
@@ -183,7 +139,7 @@ int main(int argc, char **argv)
         fprintf(
             stderr,
             "Usage: %s [--web-storage | --types | --box3d | "
-            "--persistent-store | --whole-math | --fmt]\n",
+            "--persistent-store | --whole-math]\n",
             argv[0]
         );
         return 2;

@@ -298,10 +298,9 @@ C consumers. Admitted integer behavior remains in
 does not admit exact integer `abs`, `min`, `max` or `clamp` overloads. Source
 math converts integer operands to `number`.
 
-`fmt` runs two cases on the vendored fmt library: positional, typed and
-aligned arguments with escaped braces, and the runtime specifier path Format
-Text takes, where an out-of-range placeholder renders empty. 12 assertions in
-0.05 seconds with ASan/UBSan.
+The C `fmt` selector is retired. Its language behavior is covered by
+`text-format`, including ten positional inputs and empty arguments or missing
+placeholders. The vendored C library remains for its live runtime callers.
 
 The `text-format` selector compiles and runs the authored formatter fixtures at
 O0/O2, including scalar conversions, raw/NUL text, modifier rejection, bounded

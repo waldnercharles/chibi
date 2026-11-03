@@ -247,7 +247,7 @@ Files :: (target: string) -> string[] {
             "test/tools/web_storage.c",
             "src/host/process.c", "third_party/yyjson/yyjson.c",
             "test/tools/compiler_bootstrap.c",
-            "src/host/native_libraries.c", "test/support/fmt.c", "test/tools/box3d.c"
+            "src/host/native_libraries.c", "test/tools/box3d.c"
         ];
     }
     return [];
@@ -893,7 +893,7 @@ pub Defines :: (target: string) -> string[] {
             "CF_RUNTIME_SHADER_COMPILATION", "CF_STATIC",
             "CHIBI_SOURCE_ROOT=\"{source_root}\"",
             "CHIBI_TEST_BOX3D=1", "CHIBI_TEST_COMPILER_ARTIFACT=1",
-            "CHIBI_TEST_FMT=1", "CHIBI_TEST_PROGRAM=1",
+            "CHIBI_TEST_PROGRAM=1",
             "CHIBI_TEST_SOURCE_RUNTIME=1",
             "IMGUI_USE_WCHAR32", "ImDrawIdx=unsigned int", "_DARWIN_C_SOURCE", "_DEFAULT_SOURCE",
             "_POSIX_C_SOURCE=200809L"

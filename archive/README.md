@@ -18,7 +18,7 @@ Editing, rename, completion/hover/highlighting and prototype-source editing for 
 
 ## Asset source compiler services (authoring, compiler)
 
-The asset-source reader and writer, parameter and prototype editing, and the cost-explanation report ran on the packaged compiler's asset entry points, which only archived games and Studio called. The packaged compiler itself stays: `tools/compiler/asset_compiler/Compile.chibi` still holds `CompilePackages` and `RejectPackages`, which `chibi test`, `chibi run` and `chibi-compile` take every package closure from, and `src/authoring/asset_compiler_host.c` still runs it (`asset_compiler_compile_closure[_cached]`). The packaged resource no longer carries a copy of the SDK's core and game sources.
+The asset-source reader and writer, parameter and prototype editing, and the cost-explanation report ran on the packaged compiler's asset entry points. These editor operations remain archived. The public compile-only C API now links authored `asset_desktop` or `asset_wasm` policy and shared `asset_store` caching through LLVM ABI modules. Desktop compilation invokes the native `chibi-asset-compiler` service. Native CLI `run` and `test` compile directly. The archived host below records its earlier implementation.
 
 - `tools/compiler/asset_source/`, `tools/compiler/asset_packaging/`, `tools/compiler/cost_explanations/`, `tools/compiler/asset_compiler/Cache.chibi`: the Chibi sides, and the asset entry points of `tools/compiler/asset_compiler/Compile.chibi` (the archived copy is the whole file before they were cut).
 - `src/authoring/asset_compiler_host*`: the whole host before it was reduced to the closure compile (`asset_source_read`, `asset_source_write`, the asset cache and the packaged library snapshot).

@@ -20,7 +20,7 @@ chmod +x "$work/llvm/opt" "$work/llvm/llc"
 ln -s "$llvm/$linker" "$work/llvm/$linker"
 export CHIBI_TASK_OWNER_LLVM=$llvm CHIBI_TASK_OWNER_AUDIT=$root/test/native_aot/task_owners
 for level in 0 2; do
-    for source in Main Patterns Failure Mixed Promises PromiseFailure NamedPromises; do
+    for source in Main Patterns Failure Mixed Promises PromiseFailure NamedPromises MapPromises MapPromiseFailure MapJoinAllocations; do
         input=$root/test/native_aot/task_owners/$source.chibi
         if [ "$source" = Patterns ]; then input=$root/test/native_aot/patterns/OwnedWaiting.chibi; fi
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
@@ -29,7 +29,7 @@ for level in 0 2; do
         result=0
         "$work/program" > "$work/result.log" 2>&1 || result=$?
         expected=0
-        if [ "$source" = Failure ] || [ "$source" = PromiseFailure ]; then expected=134; fi
+        if [ "$source" = Failure ] || [ "$source" = PromiseFailure ] || [ "$source" = MapPromiseFailure ]; then expected=134; fi
         if [ "$result" -ne "$expected" ]; then cat "$work/result.log"; echo "$source O$level status$result"; exit 1; fi
         printf 'PASS owned task %s O%s, poisoned frees and live0\n' "$source" "$level"
     done

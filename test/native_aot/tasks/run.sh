@@ -105,7 +105,7 @@ for level in 0 2; do
 done
 for folder in "$root"/test/native_aot/tasks/rejected/*; do
     name=$(basename "$folder")
-    if [ "$name" = unguarded_record ] || [ "$name" = unguarded_pointer ]; then printf prior > "$work/rejected"; fi
+    if [ "$name" = unguarded_record ] || [ "$name" = unguarded_pointer ] || [ "$name" = unguarded_map ]; then printf prior > "$work/rejected"; fi
     if "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
         --source "$folder/Main.chibi" --entry Main --output "$work/rejected" \
         --llvm "$llvm" --target "$target" --jobs 1 > "$work/rejection" 2>&1; then
@@ -114,6 +114,7 @@ for folder in "$root"/test/native_aot/tasks/rejected/*; do
     fi
     case "$name" in
         unguarded_pointer) grep -Fq 'dereference requires a pointer' "$work/rejection" ;;
+        unguarded_map) grep -Fq 'indexing needs an array' "$work/rejection" ;;
         unguarded_record) grep -Fq "Unknown field 'value'" "$work/rejection" ;;
         unguarded_argument) grep -Fq 'argument differs from its parameter type' "$work/rejection" ;;
         task_array) grep -q "array item differs from the array's type" "$work/rejection" ;;
@@ -122,7 +123,7 @@ for folder in "$root"/test/native_aot/tasks/rejected/*; do
         task_parameter) grep -Fq 'await needs a task handle or authored call' "$work/rejection" ;;
         different_result_producers|void_result) grep -q 'assigned value differs from its local' "$work/rejection" ;;
     esac
-    if [ "$name" = unguarded_record ] || [ "$name" = unguarded_pointer ]; then
+    if [ "$name" = unguarded_record ] || [ "$name" = unguarded_pointer ] || [ "$name" = unguarded_map ]; then
         test "$(cat "$work/rejected")" = prior
         rm "$work/rejected"
     else

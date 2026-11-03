@@ -38,14 +38,24 @@ ScalarMapType :: (types: TypeDecl[], record: int) -> int {
 ScalarMapShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[],
                    names: Name[], types: TypeDecl[], members: TypeMember[], package: int, operand: int) -> int {
     node := Unparenthesized(forest, operand);
+    if (Is(forest, node, syntax.AwaitExpression)) {
+        return ScalarMapShape(forest, text, callables, names, types, members, package,
+                              Field(forest, node, syntax.FieldValue));
+    }
     if (Is(forest, node, syntax.Identifier)) {
         found := Lookup(names, Text(forest, text, node));
         if (found >= 0 && names[found].container == MapContainer && ScalarMapType(types, names[found].record) != 0) {
             return names[found].record;
         }
+        if (found >= 0 && names[found].storage == UnionStorage && names[found].container == 0 &&
+            names[found].record >= 0 && types[names[found].record].kind == TaskResultDecl &&
+            TaskResultPresent(forest, text, names[found], node)) {
+            shape := TaskResultSuccess(types, names[found].record);
+            if (shape.container == MapContainer && ScalarMapType(types, shape.record) != 0) { return shape.record; }
+        }
     } else if (Is(forest, node, syntax.CallExpression)) {
         callee := CalledFunction(forest, text, callables, [], names, package, node);
-        if (callee >= 0 && callables[callee].result_container == MapContainer &&
+        if (callee >= 0 && (!callables[callee].waits || ImmediatelyAwaited(forest, node)) && callables[callee].result_container == MapContainer &&
             ScalarMapType(types, callables[callee].result_record) != 0) {
             return callables[callee].result_record;
         }
@@ -157,7 +167,11 @@ ScalarMapValue :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
         return ScalarOperands.Built(output);
     }
     if (Is(forest, node, syntax.Identifier)) {
-        output.append(ScalarAt(forest, node, facts.ReadRow, mapped, ScalarVariable(names, Text(forest, text, node)).index, 0, ""));
+        binding := ScalarVariable(names, Text(forest, text, node));
+        type := mapped;
+        if (binding.container == 0) { type = ScalarRecordType(types, binding.record); }
+        output.append(ScalarAt(forest, node, facts.ReadRow, type, binding.index, 0, ""));
+        if (type != mapped) { output.append(ScalarAt(forest, node, facts.PayloadRow, mapped, 0, 1, "")); }
         if (copied) {
             output.append(ScalarAt(forest, node, facts.MapRow, mapped, facts.MapCopy, 1, ""));
         }

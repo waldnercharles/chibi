@@ -1,0 +1,4 @@
+package rejected_pointer_view_record_target
+Row :: struct { number: int; }
+Ignore :: (window: view (^Row)[]) -> int { return 0; }
+Main :: () -> int { return 0; }

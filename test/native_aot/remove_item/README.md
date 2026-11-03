@@ -7,6 +7,16 @@ pointer array during composite comparison. Scalar and string search do not
 allocate equality scratch. Composite searches reuse a queue and pair table
 across candidate elements, then release both.
 
+Array `.remove_item(needle)` uses that same search and consuming removal.
+It evaluates the receiver place and needle once, then resolves the current
+receiver after argument effects. Only the first match is removed; misses keep
+the backing unchanged. `Methods.chibi` checks late receiver replacement, aliases,
+fresh and self-aliased needles, nested/inline string fields and structural map
+values. `MethodReentry.chibi` collects unrelated pointer-array owners during the
+comparison's scratch allocation. Task-observer methods compare handle identity
+and use the same copy-on-write backing as indexed mutation; their completed
+promise, allocation and reload controls live in `task_owners/run.sh`.
+
 The Windows workflow executes `Values`, `Ordering`, `Shadow` and `Maps` at O0/O2
 with the fresh stage4 compiler. Its type-rejection control preserves an
 existing output. The raw borrowed-descriptor and poisoned allocator probes

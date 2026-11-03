@@ -65,6 +65,32 @@ Main :: () -> int {
     assert(length(trimmed) == 2 && trimmed.contains(held));
     dropped = [];
     trimmed = [];
+    methods := [first, Child(67), first];
+    old_methods := methods;
+    yield; yield;
+    methods.remove_item(first);
+    assert(length(methods) == 2 && length(old_methods) == 3);
+    method_head := await methods[0];
+    if method_head is Cancelled { return 6; }
+    else { assert(text_byte_length(method_head) == 67); }
+    methods.remove_item(methods[1]);
+    methods.remove_item(first);
+    assert(length(methods) == 1);
+    // A fresh missing observer is dropped normally; its child stays
+    // program-owned and is allowed to complete.
+    methods.remove_item(Child(71));
+    assert(length(methods) == 1 && length(old_methods) == 3);
+    methods.remove_item(methods[0]);
+    methods.remove_item(first);
+    assert(length(methods) == 0);
+    old_result := await old_methods[1];
+    if old_result is Cancelled { return 7; }
+    else { assert(text_byte_length(old_result) == 67); }
+    cancelled_item := Child(73);
+    cancelled_items := [cancelled_item];
+    cancel cancelled_item;
+    cancelled_items.remove_item(cancelled_item);
+    assert(length(cancelled_items) == 0);
     cancelled := Hold();
     yield;
     cancel cancelled;

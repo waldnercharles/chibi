@@ -37,7 +37,7 @@ for level in 0 2; do
 done
 # Inferred observer arrays do not add source parameter, record-field or result
 # syntax. Rejection must leave an existing program untouched.
-for source in ObserverParameter ObserverField ObserverResult; do
+for source in ObserverParameter ObserverField ObserverResult ObserverMethod; do
     printf 'prior observer-array output\n' > "$work/program"
     cp "$work/program" "$work/prior"
     if "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
@@ -49,6 +49,7 @@ for source in ObserverParameter ObserverField ObserverResult; do
         ObserverParameter) message='parameter type is not supported yet' ;;
         ObserverField) message='record fields require a scalar, pointer, record, union or array of those types' ;;
         ObserverResult) message='result type is not supported yet' ;;
+        ObserverMethod) message="argument differs from the mutating method's parameter type" ;;
     esac
     grep -F "$message" "$work/rejected.log" > /dev/null
     cmp "$work/program" "$work/prior"

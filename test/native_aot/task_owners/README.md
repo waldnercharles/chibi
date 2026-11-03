@@ -84,7 +84,10 @@ Physical backing copies acquire observers; last backing release drops them.
 Sharing a descriptor counts its backing and does not visit task elements.
 `TaskObserverAllocations.chibi` requires 128 copies of 256 completed observers
 to allocate nothing, then one backing detach for the first mutation and none
-for the next. Invalid forgiving replacements must release all completed
+for the next. The method removal control requires 128 misses to allocate
+nothing, one detach on its first shared match, and none for the next unique
+match. First-match, fresh/self-aliased and cancelled needles preserve completed
+payloads in the remaining aliases. Invalid forgiving replacements must release all completed
 payloads at shutdown. Original-generation completed observers survive reload
 and close with a balanced allocator. `TaskObserverFailure.chibi` covers failure
 after transferring an indexed observer out of its array.

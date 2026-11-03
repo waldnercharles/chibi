@@ -76,6 +76,11 @@ Worker :: () -> int {
     repeated_observer := await shared_observers[0];
     if repeated_observer is Cancelled { return 1; }
     else { assert(text_byte_length(repeated_observer) == 23); }
+    shared_observers.remove_item(shared_observers[0]);
+    assert(length(shared_observers) == 1);
+    after_removal := await shared_observers[0];
+    if after_removal is Cancelled { return 1; }
+    else { assert(text_byte_length(after_removal) == 29); }
     if Exists("failure-case") { Broken(&payload); }
     Finish(payload);
     return 0;

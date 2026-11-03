@@ -281,10 +281,10 @@ ScalarRetainedCharacterMetadataIsChecked :: () {
         assert(scalar.Validate(Changed(rows, 6, LiteralValue, invalid)) == "native character state initial value is not a Unicode scalar");
     }
 }
-ScalarArrayWithoutOperandsAreValidated :: () {
+ScalarArrayWithoutRows :: () -> facts.Row[] {
     source := Accepted();
     array := facts.ArrayType + facts.IntType;
-    rows := [source[0], source[1], source[2],
+    return [source[0], source[1], source[2],
              Row(facts.LocalRow, array, 0, 5, "values", 35, 56, 2, 21),
              Literal(facts.IntType, 1, 35, 36, 2, 21),
              Literal(facts.IntType, 2, 35, 36, 2, 21),
@@ -294,6 +294,9 @@ ScalarArrayWithoutOperandsAreValidated :: () {
              Row(facts.ReturnRow, 0, 0, 2, "", 56, 57, 2, 42),
              Row(facts.ReadRow, array, 0, 0, "", 56, 57, 2, 42),
              Row(facts.ArrayRow, facts.IntType, facts.ArrayLength, 1, "", 56, 57, 2, 42)];
+}
+ScalarArrayWithoutOperandsAreValidated :: () {
+    rows := ScalarArrayWithoutRows();
     assert(scalar.Validate(rows) == "");
     expected := "scalar array operation differs from its operands";
     assert(scalar.Validate(Changed(rows, 7, Type, facts.BoolType)) == expected);
@@ -393,6 +396,11 @@ ScalarArrayFieldPlacesAreValidated :: () {
              TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 22, 23)];
     assert(scalar.Validate(rows) == "");
     assert(scalar.Validate(Changed(rows, 10, Value, facts.ArrayResize)) == "");
+    removal := Changed(rows, 10, Value, facts.ArrayWithoutItem);
+    assert(scalar.Validate(removal) == "");
+    assert(Invalid(Changed(removal, 9, Type, facts.BoolType)));
+    assert(Invalid(Changed(removal, 8, Kind, facts.ReadRow)));
+    assert(scalar.Validate(Changed(ScalarArrayWithoutRows(), 8, Value, facts.ArrayWithoutItem)) == "");
     for (ordinal in [int(-1), 2]) { assert(Invalid(Changed(rows, 10, LiteralValue, ordinal))); }
     assert(Invalid(Changed(rows, 10, Type, array)));
     assert(Invalid(Changed(rows, 10, Count, 1)));

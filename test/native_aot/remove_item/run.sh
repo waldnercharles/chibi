@@ -19,7 +19,7 @@ for level in 0 2; do
     CHIBI_CORE="$root/packages/core" "$compiler" test --llvm "$llvm" -O"$level" \
         --root "$root/test/compiler/samples/types" \
         "$root/test/compiler/samples/types/record_array_fields_survive_set_and_remove/facts"
-    for source in Values Ordering Shadow Maps; do
+    for source in Values Ordering Shadow Maps Methods; do
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$root/test/native_aot/remove_item/$source.chibi" --entry Main \
             --output "$work/$source" --llvm "$llvm" --target "$target" --level "$level" --jobs 2
@@ -44,26 +44,26 @@ for source in Rejected MapsRejected; do
     test "$(cat "$work/rejected")" = preserved
     grep -F 'argument differs from its parameter type' "$work/rejected.log" >/dev/null
 done
-for source in Values Ordering Maps Reentry ContainsReentry; do
+for source in Values Ordering Maps Methods Reentry ContainsReentry MethodReentry; do
     "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
         --source "$root/test/native_aot/remove_item/$source.chibi" --entry Main \
         --output "$work/$source.ll" --emit-llvm --target "$target"
 done
-for source in Reentry ContainsReentry; do
+for source in Reentry ContainsReentry MethodReentry; do
     sed '/^declare i32 @chibi_value_equal_test_arm()$/d' "$work/$source.ll" > "$work/reentry-defined.ll"
     mv "$work/reentry-defined.ll" "$work/$source.ll"
 done
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$root/test/native_aot/managed_pointers/SourceProbe.chibi" --entry Main \
     --output "$work/source-probe" --llvm "$llvm" --target "$target" --level 2 --jobs 2
-"$work/source-probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/Values.ll" "$work/Ordering.ll" "$work/Maps.ll"
+"$work/source-probe" "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" "$work/Values.ll" "$work/Ordering.ll" "$work/Maps.ll" "$work/Methods.ll"
 # Keep the real execution-family owner. Only the next equality scratch
 # allocation reenters collect, and the final check proves that it happened.
 sed -e 's/define internal ptr @managed_source.allocate(/define internal ptr @managed_source.allocate_base(/' \
     -e 's/%valid = and i1 %balanced, %bounded/%collected = load i32, ptr @value_equal_test.collected\n  %once = icmp eq i32 %collected, 1\n  %balanced.bound = and i1 %balanced, %bounded\n  %valid = and i1 %balanced.bound, %once/' \
     "$root/test/native_aot/managed_pointers/SourceAudit.ll" > "$work/reentry-audit.ll"
 cat "$root/test/native_aot/remove_item/Reentry.ll" >> "$work/reentry-audit.ll"
-"$work/source-probe" "$work" "$llvm" "$work/reentry-audit.ll" "$work/Reentry.ll" "$work/ContainsReentry.ll"
+"$work/source-probe" "$work" "$llvm" "$work/reentry-audit.ll" "$work/Reentry.ll" "$work/ContainsReentry.ll" "$work/MethodReentry.ll"
 if [ -n "$reference" ]; then
     mkdir "$work/reference"
     cp "$root/test/native_aot/remove_item/Ordering.chibi" "$work/reference/Main.chibi"

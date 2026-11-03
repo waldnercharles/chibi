@@ -1044,7 +1044,7 @@ ArrayOperands :: (operand: facts.Row) -> int {
     if (operand.value == facts.ArrayInsert || operand.value == facts.ArrayInserted ||
         operand.value == facts.ArrayReplace || operand.value == facts.ArrayReplaced) { return 3 + extra; }
     if (operand.value == facts.ArrayReverse || operand.value == facts.ArrayReversed) { return 1 + extra; }
-    if (operand.value == facts.ArrayPlaceGet || operand.value == facts.ArrayPlaceCheck || operand.value == facts.ArrayWithoutItem) { return 2; }
+    if (operand.value == facts.ArrayPlaceGet || operand.value == facts.ArrayPlaceCheck || operand.value == facts.ArrayWithoutItem) { return 2 + extra; }
     if (operand.value == facts.ArrayNew) { return operand.count; }
     consumed: int[] = [0, 0, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2, 2, 2, 1, 1, 2, 1];
     if (operand.value < facts.ArrayNew || operand.value > facts.ArrayLoan) { return 0; }
@@ -1066,7 +1066,7 @@ NestedArrayMember :: (rows: facts.Row[], records: int[], type: int) -> int {
 ArrayChanges :: (operator: int) -> bool {
     return operator == facts.ArraySet || operator == facts.ArrayPush || operator == facts.ArrayExtend ||
            operator == facts.ArrayRemove || operator == facts.ArrayInsert || operator == facts.ArrayReverse ||
-           operator == facts.ArrayReplace || operator == facts.ArrayAssign;
+           operator == facts.ArrayReplace || operator == facts.ArrayAssign || operator == facts.ArrayWithoutItem;
 }
 MappedArrayChange :: (value: int) -> bool {
     return value >= facts.MapArrayPush && value <= facts.MapArrayResize;
@@ -1369,8 +1369,9 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
             argument += 1;
         }
         if (operator == facts.ArrayReverse) { return ""; }
+        if (operator == facts.ArrayWithoutItem && element != facts.TaskType && !Comparable(rows, records, element)) { return mismatch; }
         wanted := facts.IntType;
-        if (operator == facts.ArrayPush) { wanted = element; }
+        if (operator == facts.ArrayPush || operator == facts.ArrayWithoutItem) { wanted = element; }
         if (operator == facts.ArrayExtend || operator == facts.ArrayAssign) { wanted = field; }
         if (stack[argument] != wanted ||
             ((operator == facts.ArraySet || operator == facts.ArrayInsert || operator == facts.ArrayReplace) && stack[argument + 1] != element)) { return mismatch; }
@@ -1464,7 +1465,7 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
             return mismatch;
         }
     }
-    if (!ArrayChanges(operator)) {
+    if (!ArrayChanges(operator) || operator == facts.ArrayWithoutItem) {
         return "";
     }
     first := rows[at + 1];
@@ -4402,6 +4403,36 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     mutation.literal = 1;
                     if (op == facts.ArrayExtend) { mutation.op = native.ArrayExtend; }
                     if (op == facts.ArrayRemove) { mutation.op = native.ArrayRemove; mutation.literal = 0; }
+                    if (op == facts.ArrayWithoutItem) {
+                        // Arguments have finished. Search the current canonical
+                        // descriptor once, then remove its first match.
+                        matched := current + reserved;
+                        slots.append(integer);
+                        reserved += 1;
+                        searched := NativeType(element);
+                        found := Op(native.ArrayContains, integer, matched, current, argument, 0);
+                        found.literal = i64(searched);
+                        if (searched >= native.RecordType) {
+                            if (length(comparison_types) == 0) { comparison_types = resize([false], native.ArrayType); }
+                            comparison_types[searched] = true;
+                        }
+                        if (searched >= native.RecordType && pointer_program) {
+                            glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
+                                fresh, slots, shape.first_slot, frames, current + reserved, next_root, false, records, value_layout);
+                            next_root = glue.next;
+                            slots.extend(glue.types);
+                            reserved += length(glue.types);
+                            body.extend(glue.before);
+                            comparison_sites.append(shape.first_code + length(body));
+                            body.append(found);
+                            body.extend(glue.after);
+                        } else {
+                            if (searched >= native.RecordType) { comparison_sites.append(shape.first_code + length(body)); }
+                            body.append(found);
+                        }
+                        if (Holds(fresh, argument)) { pending.append(argument); }
+                        mutation = Op(native.ArrayRemove, array, changed, current, matched, 0);
+                    }
                     if (op == facts.ArrayResize) { mutation.op = native.ArrayResize; mutation.literal = ArrayResizePolicy(rows, declared, member); }
                     if (op == facts.ArraySet) {
                         mutation = Op(native.ArraySet, array, changed, current, stack[first_argument], argument);

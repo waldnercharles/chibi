@@ -509,6 +509,7 @@ ScalarChangeKind :: (forest: snapshot.SnapshotNode[], text: string, statement: i
     if (NameMatches(method, "remove_index")) {
         return facts.ArrayRemove;
     }
+    if (NameMatches(method, "remove_item")) { return facts.ArrayWithoutItem; }
     if (NameMatches(method, "resize")) { return facts.ArrayResize; }
     if (NameMatches(method, "insert")) { return facts.ArrayInsert; }
     if (NameMatches(method, "set_array_elem")) { return facts.ArrayReplace; }
@@ -1200,7 +1201,8 @@ ScalarInlineArrayAssigned :: (forest: snapshot.SnapshotNode[], text: string, cal
             type := facts.IntType;
             prepared := ScalarOperands.Built([]);
             if (operator == facts.ArrayExtend) { type = array; }
-            if (operator == facts.ArrayPush || ((operator == facts.ArrayInsert || operator == facts.ArrayReplace) && ordinal == 1)) {
+            if (operator == facts.ArrayPush || operator == facts.ArrayWithoutItem ||
+                ((operator == facts.ArrayInsert || operator == facts.ArrayReplace) && ordinal == 1)) {
                 type = element;
                 prepared = ScalarArrayElementValue(forest, text, callables, params, callable, names, types, members, constants,
                                                    value, shape, []);

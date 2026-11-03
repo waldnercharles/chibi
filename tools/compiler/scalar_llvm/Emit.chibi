@@ -224,12 +224,12 @@ Span :: (rows: facts.Row[], at: int, kind: int) -> int {
 // Whether `kind` is a statement row with operands of its own.
 Statement :: (kind: int) -> bool {
     return kind == facts.LocalRow || kind == facts.AssignRow || kind == facts.IfRow || kind == facts.ReturnRow ||
-           kind == facts.WhileRow || kind == facts.ForRow || kind == facts.SwitchRow || kind == facts.AssertRow;
+           kind == facts.WhileRow || kind == facts.ForRow || kind == facts.SwitchRow || kind == facts.AssertRow || kind == facts.ScopeRow;
 }
 // Whether `kind` is an if statement's, a switch's or a loop's row, which an
 // End row closes.
 Opens :: (kind: int) -> bool {
-    return kind == facts.IfRow || kind == facts.SwitchRow || Loop(kind);
+    return kind == facts.IfRow || kind == facts.SwitchRow || kind == facts.ScopeRow || Loop(kind);
 }
 // Whether `kind` is a loop's row.
 Loop :: (kind: int) -> bool {
@@ -491,6 +491,13 @@ Heads :: (rows: facts.Row[], start: int) -> int[] {
             if (!Statement(kind)) {
                 return empty;
             }
+            if (kind == facts.ScopeRow) {
+                if (rows[at].count != 0) { return empty; }
+                statements += 1;
+                open.append(kind);
+                at += 1;
+                continue;
+            }
             next := Span(rows, at, kind);
             if (next < 0) {
                 return empty;
@@ -676,6 +683,7 @@ Touches :: (rows: facts.Row[], records: int[], from: int, to: int, v: int, neste
 Inside :: (rows: facts.Row[], records: int[], at: int, v: int, nested: bool) -> int {
     end := Closed(rows, at);
     body := Following(rows, at);
+    if (rows[at].kind == facts.ScopeRow) { return Touches(rows, records, body, end, v, nested); }
     if (Loop(rows[at].kind)) {
         if (Touches(rows, records, body, end, v, true) == 1) {
             return 1;
@@ -1772,7 +1780,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
                 ends = alternatives[top] >= 0 && consequences[top] && ends;
             } else if (opened.kind == facts.SwitchRow) {
                 ends = defaults[top] && consequences[top] && ends;
-            } else {
+            } else if (opened.kind != facts.ScopeRow) {
                 // Only a while loop on the literal true that nothing breaks
                 // out of ends.
                 condition := rows[opens[top] + 1];
@@ -1834,6 +1842,18 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
             }
             ends = false;
             earliest = row.end;
+            at += 1;
+            continue;
+        }
+        if (row.kind == facts.ScopeRow) {
+            if (row.count != 0) { return "invalid scalar scope row"; }
+            opens.append(at);
+            alternatives.append(-1);
+            consequences.append(false);
+            defaults.append(false);
+            broken.append(false);
+            marks.append(length(visible));
+            earliest = row.start;
             at += 1;
             continue;
         }
@@ -2599,6 +2619,14 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 column = row.column;
             }
             top := length(frames) - 1;
+            if (row.kind == facts.ScopeRow) {
+                frame: Frame = {kind: row.kind, skip: -1, leave: -1, ends: false, head: 0, index: 0,
+                                bound: 0, counted: false, reverse: false, escape: length(jumps), empty: -1,
+                                exits: 0, armed: false, fallback: -1, owned: length(owned_vars), held: -1, held_type: 0};
+                frames.append(frame);
+                at += 1;
+                continue;
+            }
             if (row.kind == facts.ElseRow) {
                 frame := frames[top];
                 if (!ends) {
@@ -2680,6 +2708,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 }
                 owned_vars = slice(owned_vars, 0, frame.owned);
                 owned_types = slice(owned_types, 0, frame.owned);
+                if (frame.kind == facts.ScopeRow) { continue; }
                 if (frame.kind == facts.IfRow) {
                     if (frame.skip >= 0) {
                         body = Patched(body, frame.skip);

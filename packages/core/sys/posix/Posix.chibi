@@ -1145,9 +1145,11 @@ pub ForegroundStart :: (command: string[]) -> Foreground {
     if (scope.input == 0 || scope.output == 0) {
         scope.problem = "cannot make the foreground signal channel";
     } else {
-        saved_interrupt := Block(128);
-        saved_terminate := Block(128);
-        saved_hangup := Block(128);
+        // glibc's action includes a 128-byte signal set: 152 bytes total on
+        // Linux x86-64. The opaque scratch also covers Darwin's smaller action.
+        saved_interrupt := Block(256);
+        saved_terminate := Block(256);
+        saved_hangup := Block(256);
         saved := sigaction(2, empty, saved_interrupt);
         if (saved == 0) { scope.interrupt = saved_interrupt; saved = sigaction(15, empty, saved_terminate); }
         if (saved == 0) { scope.terminate = saved_terminate; saved = sigaction(1, empty, saved_hangup); }

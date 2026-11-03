@@ -55,7 +55,7 @@ entry:
 LIVE
 cat "$root/test/native_aot/managed_values/Audit.ll" "$root/test/native_aot/managed_values/OwnerCalls.ll" > "$work/width-audit.ll"
 for level in 0 2; do
-    for source in Records Foreign ForeignPlaces ForeignRecord ForeignPath DeepArrayFields DeepArrayGrowth DeepArrayWidth Backed Growth Fields Clock Hash ConditionalOptionals NestedMath MathScopes Patterns PatternLeases TextFormat TextFormatMain TextFormatStrings TextFormatFamily TextFormatRecords TextFormatOptionalRecords; do
+    for source in Records Foreign ForeignVoid ForeignPlaces ForeignRecord ForeignPath DeepArrayFields DeepArrayGrowth DeepArrayWidth Backed Growth Fields Clock Hash ConditionalOptionals NestedMath MathScopes Patterns PatternLeases TextFormat TextFormatMain TextFormatStrings TextFormatFamily TextFormatRecords TextFormatOptionalRecords; do
         input=$root/test/native_aot/managed_values/$source.chibi
         project=$root/tools/compiler
         export CHIBI_VALUE_ENTRY=chibi_value_test_entry CHIBI_VALUE_AUDIT=$root/test/native_aot/managed_values/Audit.ll CHIBI_VALUE_OWNER_AUDIT=0

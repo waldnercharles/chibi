@@ -1,11 +1,37 @@
 package procedure_character
-import os "core:os"
+import target "core:target"
 foreign import libc "system:c"
-foreign libc { dlsym :: (handle: rawptr, name: cstring) -> rawptr }
+foreign libc {
+    dlsym :: (handle: rawptr, name: cstring) -> rawptr
+    tmpfile :: () -> rawptr
+    fputc :: (byte: i32, stream: rawptr) -> i32
+    ftell :: (stream: rawptr) -> i64
+    fclose :: (stream: rawptr) -> i32
+    rewind :: (stream: rawptr)
+}
 @test
 ProcedureCharacterName :: () {
     handle: u64 = 0;
-    if (os.Platform() == "Darwin") { handle = 18446744073709551614; }
+    if (target.Os == target.Darwin) { handle = 18446744073709551614; }
     char: fn(value: i32) -> i32 = dlsym(handle, "abs");
     assert(char(-7) == 7);
+}
+@test
+VoidProcedureCallsPreserveTheirEffects :: () {
+    handle: u64 = 0;
+    if (target.Os == target.Darwin) { handle = 18446744073709551614; }
+    stream := tmpfile();
+    assert(stream != 0);
+    wrote := fputc(65, stream);
+    assert(wrote == 65 && ftell(stream) == 1);
+    reset: fn(stream: rawptr) = dlsym(handle, "rewind");
+    reset(stream);
+    assert(ftell(stream) == 0);
+    wrote = fputc(66, stream);
+    assert(wrote == 66 && ftell(stream) == 1);
+    rewind(stream);
+    assert(ftell(stream) == 0);
+    // A discarded scalar procedure call keeps its existing non-void ABI.
+    close: fn(stream: rawptr) -> i32 = dlsym(handle, "fclose");
+    close(stream);
 }

@@ -1629,9 +1629,10 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.ForeignRow) {
             base := length(stack) - operand.count;
-            indirect := operand.value == 1;
+            indirect := abi.ForeignIsIndirect(operand.value);
             if ((operand.literal != 0 && (operand.literal != i64(facts.ForeignReversed) || indirect || operand.count != 2)) ||
-                (operand.value != 0 && !indirect) || (indirect && (operand.name != "" || operand.text != "" || operand.count < 1)) ||
+                !abi.ForeignCallMode(operand.value) || (abi.ForeignIsVoid(operand.value) && operand.type != facts.IntType) ||
+                (indirect && (operand.name != "" || operand.text != "" || operand.count < 1)) ||
                 (!indirect && operand.name == "") || !Scalar(operand.type) ||
                 operand.count < 0 || base < floor) {
                 return "scalar foreign call differs from its operands";

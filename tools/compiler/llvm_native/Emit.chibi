@@ -193,8 +193,9 @@ pub ArrayBytes: int : 48;
 // the instruction's type. It passes no context and never fails. A small
 // integer or bool carries the extension the C ABI asks of its caller. An
 // argument may be a string, passed as the pointer to its NUL-ended bytes. With
-// `left` 1 it calls the address in its first argument instead, and its symbol
-// text is empty.
+// `left` selects native_abi.ForeignDirect/Indirect or their Void modes.
+// An indirect call consumes its first argument as the address and has empty
+// symbol text. Void calls emit the true C ABI and produce an internal zero int.
 pub ForeignCall: int : 49;
 // A module's retained states: scalars that outlive a call, which a host that
 // replaces the module reads out and sets in the new one. StateLoad declares
@@ -1247,7 +1248,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             if (foreign_abi == InvalidForeignABI) {
                 return Result.Rejected(base + pc, "native foreign call differs from its operands");
             }
-            if (!ProgramMode(mode) && item.left == 0 && ClockFactorySymbol(texts[int(item.literal)])) {
+            if (!ProgramMode(mode) && !abi.ForeignIsIndirect(item.left) && ClockFactorySymbol(texts[int(item.literal)])) {
                 return Result.Rejected(base + pc, "native clock grant factories belong to the embedding executable");
             }
         }
@@ -2376,7 +2377,7 @@ RuntimeScopeTest: int : 2;
 ProgramScope :: (code: Instruction[], texts: string[]) -> int {
     found := RuntimeScopeNone;
     for (item in code) {
-        if (item.op != ForeignCall || item.left != 0) { continue; }
+        if (item.op != ForeignCall || abi.ForeignIsIndirect(item.left)) { continue; }
         name := texts[int(item.literal)];
         if (name == "chibi_native_test_begin") { return RuntimeScopeTest; }
         if (name == "chibi_native_scope_begin") { found = RuntimeScopeBudget; }
@@ -2462,8 +2463,8 @@ ForeignABI :: (slots: int[], arguments: int[], texts: string[], item: Instructio
         return InvalidForeignABI;
     }
     symbol := texts[int(item.literal)];
-    indirect := item.left == 1;
-    if (item.left != 0 && !indirect) {
+    indirect := abi.ForeignIsIndirect(item.left);
+    if (!abi.ForeignCallMode(item.left) || (abi.ForeignIsVoid(item.left) && item.type != abi.IntStorage)) {
         return InvalidForeignABI;
     }
     if (indirect && symbol != "") {
@@ -2481,8 +2482,21 @@ ForeignABI :: (slots: int[], arguments: int[], texts: string[], item: Instructio
     // These program-owned helpers have a fixed ABI, regardless of the caller's
     // frame. A source declaration cannot change their result or add arguments.
     if (!indirect && (symbol == "chibi_native_test_index" || symbol == "chibi_native_test_begin" ||
-                      symbol == "chibi_native_test_end") && (item.type != abi.IntStorage || item.target != 0)) {
+                      symbol == "chibi_native_test_end" || symbol == "chibi_native_scope_end") &&
+        (abi.ForeignIsVoid(item.left) || item.type != abi.IntStorage || item.target != 0)) {
         return InvalidForeignABI;
+    }
+    if (!indirect && (symbol == "chibi_native_scope_begin" || symbol == "chibi_native_test_expect")) {
+        parameter := abi.IntStorage;
+        if (symbol == "chibi_native_scope_begin") { parameter = abi.WordStorage; }
+        if (abi.ForeignIsVoid(item.left) || item.type != abi.IntStorage || item.target != 1 ||
+            !Typed(slots, arguments[item.right], parameter)) { return InvalidForeignABI; }
+    }
+    if (!indirect && (symbol == "chibi_native_test_busy" || symbol == "chibi_native_step")) {
+        count := 0;
+        if (symbol == "chibi_native_test_busy") { count = 1; }
+        if (!abi.ForeignIsVoid(item.left) || item.target != count ||
+            (count == 1 && !Typed(slots, arguments[item.right], abi.IntStorage))) { return InvalidForeignABI; }
     }
     capability := ScalarForeignABI;
     for (index in 0..<item.target) {
@@ -2502,14 +2516,17 @@ ForeignDeclarations :: (functions: Function[], first: int, last: int, slots: int
         shape := functions[function];
         for (pc in 0..<shape.code) {
             item := code[shape.first_code + pc];
-            if (item.op != ForeignCall || item.left == 1) {
+            if (item.op != ForeignCall || abi.ForeignIsIndirect(item.left)) {
                 continue;
             }
             listed: string[] = [];
             for (index in 0..<item.target) {
                 listed.append(ForeignType(slots[shape.first_slot + arguments[shape.first_argument + item.right + index]]));
             }
-            declaration := format_text("declare{} {} @{}({})\n", CExtension(item.type), TypeName(item.type),
+            result := TypeName(item.type);
+            extension := CExtension(item.type);
+            if (abi.ForeignIsVoid(item.left)) { result = "void"; extension = ""; }
+            declaration := format_text("declare{} {} @{}({})\n", extension, result,
                                        texts[int(item.literal)], strings.Join(listed, ", "));
             if (!out.contains(declaration)) {
                 out.append(declaration);
@@ -2576,7 +2593,7 @@ ForeignInstruction :: (slots: int[], arguments: int[], texts: string[], code: In
         type := slots[slot];
         name := format_text("c{}_{}", pc, index);
         out = format_text("{}{}", out, Load(name, type, "s", slot));
-        if (item.left == 1 && index == 0) {
+        if (abi.ForeignIsIndirect(item.left) && index == 0) {
             callee = format_text("%callee{}", pc);
             out = format_text("{}  {} = inttoptr i64 %{} to ptr\n", out, callee, name);
             // A missing symbol is a null address, which traps instead of jumping to 0.
@@ -2603,9 +2620,14 @@ ForeignInstruction :: (slots: int[], arguments: int[], texts: string[], code: In
         }
         listed.append(format_text("{}{} %{}", TypeName(type), CExtension(type), name));
     }
-    out = format_text("{}  %v{} = call{} {} {}({})\n", out, pc, CExtension(item.type), TypeName(item.type), callee,
-                      strings.Join(listed, ", "));
-    out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    if (abi.ForeignIsVoid(item.left)) {
+        out = format_text("{}  call void {}({})\n{}", out, callee, strings.Join(listed, ", "),
+                          Store("0", abi.IntStorage, "s", item.output));
+    } else {
+        out = format_text("{}  %v{} = call{} {} {}({})\n", out, pc, CExtension(item.type), TypeName(item.type), callee,
+                          strings.Join(listed, ", "));
+        out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    }
     return format_text("{}  br label %p{}\n", out, pc + 1);
 }
 // Fail names its failure in the context, then the function fails.

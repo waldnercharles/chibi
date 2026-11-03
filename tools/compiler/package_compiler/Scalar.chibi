@@ -1,6 +1,7 @@
 package package_compiler
 
 import facts "project:scalar_facts"
+import abi "project:native_abi"
 import snapshot "project:source_snapshot"
 import raw "project:compiler_syntax"
 import parser "project:source_parser"
@@ -195,9 +196,10 @@ ScalarForeignRows :: (forest: snapshot.SnapshotNode[], text: string, callables: 
     }
     result := ScalarForeignResult(forest, text, declaration);
     archive := ScalarForeignLibrary(forest, text, declaration);
-    if (result == 0 || !ScalarForeignKnown(forest, text, declaration)) {
+    void_call := Field(forest, declaration, syntax.FieldResults) < 0;
+    if ((!void_call && result == 0) || !ScalarForeignKnown(forest, text, declaration)) {
         return ScalarOperands.Failed(Diagnose(forest, declaration, 0,
-                                              "scalar proof requires a foreign function with a number or bool result and an import"));
+                                              "native foreign calls require a scalar result or no result and an import"));
     }
     output := rows;
     for (index in 0..<length(arguments)) {
@@ -231,7 +233,9 @@ ScalarForeignRows :: (forest: snapshot.SnapshotNode[], text: string, callables: 
                 output = built;
         }
     }
-    row := ScalarAt(forest, node, facts.ForeignRow, ScalarTypeOf(result), 0, length(arguments),
+    mode := abi.ForeignDirect;
+    if (void_call) { mode = abi.ForeignDirectVoid; result = IntStorage; }
+    row := ScalarAt(forest, node, facts.ForeignRow, ScalarTypeOf(result), mode, length(arguments),
                     Text(forest, text, Field(forest, declaration, syntax.FieldName)));
     row.text = archive;
     output.append(row);
@@ -280,9 +284,9 @@ ScalarProcRows :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     if (length(arguments) != length(shape) - 1) {
         return ScalarOperands.Failed(Diagnose(forest, node, 0, "call has the wrong number of arguments"));
     }
-    if (result <= 0) {
+    if (result < 0) {
         return ScalarOperands.Failed(Diagnose(forest, node, 0,
-                                              "scalar proof requires a procedure with a number or bool result"));
+                                              "native procedures require a scalar result or no result"));
     }
     output := rows;
     switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants,
@@ -301,7 +305,9 @@ ScalarProcRows :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
                 output = built;
         }
     }
-    output.append(ScalarAt(forest, node, facts.ForeignRow, ScalarTypeOf(result), 1, length(arguments) + 1, ""));
+    mode := abi.ForeignIndirect;
+    if (result == 0) { mode = abi.ForeignIndirectVoid; result = IntStorage; }
+    output.append(ScalarAt(forest, node, facts.ForeignRow, ScalarTypeOf(result), mode, length(arguments) + 1, ""));
     return ScalarOperands.Built(output);
 }
 ScalarSource :: (path: string, text: string) -> facts.Row {
@@ -1037,11 +1043,13 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         callee_proc := ScalarProcCallee(forest, text, names, node);
         if (callee_proc >= 0) {
             shape := ProcShape(forest, text, callee_proc);
+            if (shape[length(shape) - 1] == 0) { return IntStorage; }
             return shape[length(shape) - 1];
         }
         if (ScalarCharacter(forest, text, node)) { return IntStorage; }
         callee_foreign := ScalarForeignDeclaration(forest, text, node);
         if (callee_foreign >= 0) {
+            if (Field(forest, callee_foreign, syntax.FieldResults) < 0) { return IntStorage; }
             return ScalarForeignResult(forest, text, callee_foreign);
         }
         if (ScalarBuiltinCall(forest, text, callables, names, callable.package, node) != 0) {
@@ -3117,6 +3125,16 @@ ScalarDiscarded :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
         return {storage: IntStorage, container: 0, record: -1};
     }
     imported := ScalarForeignDeclaration(forest, text, call);
+    if (imported >= 0 && Field(forest, imported, syntax.FieldResults) < 0) {
+        return {storage: IntStorage, container: 0, record: -1};
+    }
+    proc := ScalarProcCallee(forest, text, names, call);
+    if (proc >= 0) {
+        shape := ProcShape(forest, text, proc);
+        result := shape[length(shape) - 1];
+        if (result == 0) { result = IntStorage; }
+        if (ScalarTypeOf(result) != 0) { return {storage: result, container: 0, record: -1}; }
+    }
     if (imported < 0 || ScalarTypeOf(ScalarForeignResult(forest, text, imported)) == 0) {
         return none;
     }

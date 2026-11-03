@@ -296,6 +296,8 @@ pub ArrayReferencePlace: int : -3;
 // to ForeignReversed: evaluation stays in source order, then the two consumed
 // argument slots are passed in reverse order. All other foreign calls use 0.
 pub ForeignRow: int : 38;
+// Value uses native_abi's direct/indirect scalar/void call modes. A void
+// action's internal IntType zero is only statement plumbing, not its C ABI.
 pub ForeignReversed: int : 1;
 // A call operand that passes the variable `value`, of its `type`, by
 // reference: the callee's reference parameter reads and writes that variable.

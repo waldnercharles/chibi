@@ -362,6 +362,18 @@ pub OperandBindRow: int : 58;
 pub ScopeRow: int : 59;
 // One private clock transport value: zero operands and metadata, exact i64/u64/int/int record.
 pub ClockSampleRow: int : 60;
+// A numeric/bool view operation. Value packs operation * 16 + scalar type;
+// type is the result (make/slice use the ordinary optional record). Count is
+// operand arity; only make carries the full array-cell identity in literal.
+pub ViewRow: int : 61;
+pub ViewMake: int : 1;
+pub ViewLength: int : 2;
+pub ViewGet: int : 3;
+pub ViewSet: int : 4;
+pub ViewClone: int : 5;
+pub ViewSlice: int : 6;
+pub ViewOperation :: (value: int) -> int { return value / 16; }
+pub ViewElement :: (value: int) -> int { return value % 16; }
 pub PatternStorage: int : 16;
 // A While immediately after PatternStorage declarations in a Scope. Its
 // captures are released/cleared after each pass, before its next test.
@@ -422,6 +434,8 @@ pub TaskType: int : 13;
 // An identity-preserving managed cell descriptor, distinct from a scoped
 // ReferenceType. Its exact semantic pointee identity travels in the value.
 pub PointerType: int : 14;
+// A fixed window into the current array of a traced managed cell.
+pub ViewType: int : 15;
 // The d-th record or union of the module is type RecordType + d.
 pub RecordType: int : 32;
 // An array of type T is ArrayType + T.
@@ -631,7 +645,7 @@ pub Floating :: (type: int) -> bool {
 // integer type, any bits for a word or double, 32 bits for a float and 0 for
 // a string, whose value is its text.
 pub Fits :: (literal: i64, type: int) -> bool {
-    if (type == TaskType || type == PointerType) { return literal == 0; }
+    if (type == TaskType || type == PointerType || type == ViewType) { return literal == 0; }
     if (type == StringType) {
         return literal == 0;
     }

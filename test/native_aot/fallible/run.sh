@@ -106,6 +106,10 @@ done
     --source "$root/test/native_aot/optional_projection/Rows.chibi" --entry Main --output "$work/optional-rows" \
     --llvm "$llvm" --target "$target" --level 0
 "$work/optional-rows"
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_aot/scalar_scope/Rows.chibi" --entry Main --output "$work/scope-rows" \
+    --llvm "$llvm" --target "$target" --level 0
+"$work/scope-rows"
 if [ -n "$reference" ]; then
     for name in $booleans; do
         "$reference" --project-root "$samples/$name/facts" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }

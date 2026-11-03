@@ -43,11 +43,11 @@ Range :: (program: ^Program, first: int, last: int) -> int {
 }
 Set :: (program: ^Program, view: int, index: int, value: int) {
     arguments := Range(program, Number(program, index), Number(program, value));
-    Void(program, native.ViewSet, abi.IntStorage, view, arguments, 0, 1);
+    Void(program, native.ViewSet, abi.IntStorage, view, arguments, 1, -880);
 }
 Get :: (program: ^Program, view: int, index: int) -> int {
     position := Number(program, index);
-    return Put(program, native.ViewGet, abi.IntStorage, view, position, 0, 0);
+    return Put(program, native.ViewGet, abi.IntStorage, view, position, 0, -880);
 }
 Replace :: (program: ^Program, cell: int, replacement: int) {
     array := native.ArrayType + abi.IntStorage;
@@ -86,7 +86,7 @@ Build :: (mode: int) -> Program {
     before := Put(&program, native.ArrayGet, abi.IntStorage, snapshot, first, 0, 0);
     Check(&program, before, 2);
     Void(&program, native.ArrayDrop, array, snapshot, 0, 0, 0);
-    cloned := Put(&program, native.ViewClone, array, view, 0, 0, 0);
+    cloned := Put(&program, native.ViewClone, array, view, 0, 0, -880);
     zero := Number(&program, 0);
     copied := Put(&program, native.ArrayGet, abi.IntStorage, cloned, zero, 0, 0);
     Check(&program, copied, 8);
@@ -96,9 +96,9 @@ Build :: (mode: int) -> Program {
     Set(&program, view, 1, 9);
     Check(&program, Get(&program, view, 0), 5);
     Check(&program, Get(&program, view, 1), 9);
-    length := Put(&program, native.ViewLength, abi.IntStorage, view, abi.IntStorage, 0, 0);
+    length := Put(&program, native.ViewLength, abi.IntStorage, view, abi.IntStorage, 0, -880);
     Check(&program, length, 2);
-    sliced := Put(&program, native.ViewSlice, native.RecordType + 1, view, Range(&program, zero, first), abi.IntStorage, 0);
+    sliced := Put(&program, native.ViewSlice, native.RecordType + 1, view, Range(&program, zero, first), abi.IntStorage, -880);
     slice_tag := Put(&program, native.Extract, abi.IntStorage, sliced, native.RecordType + 1, 0, 0);
     Check(&program, slice_tag, 1);
     selected := Put(&program, native.Extract, array, sliced, native.RecordType + 1, 0, 1);
@@ -113,23 +113,23 @@ Build :: (mode: int) -> Program {
     missing_tag := Put(&program, native.Extract, abi.IntStorage, missing, native.RecordType, 0, 0);
     Check(&program, missing_tag, 0);
     if (mode == 4) {
-        ignored := Put(&program, native.ViewGet, abi.DoubleStorage, view, zero, 0, 0);
+        ignored := Put(&program, native.ViewGet, abi.DoubleStorage, view, zero, 0, -880);
     }
     if (mode == 5) {
-        ignored := Put(&program, native.ViewLength, abi.IntStorage, view, abi.DoubleStorage, 0, 0);
+        ignored := Put(&program, native.ViewLength, abi.IntStorage, view, abi.DoubleStorage, 0, -880);
     }
     if (mode == 6) {
-        ignored := Put(&program, native.ViewGet, abi.TextStorage, view, zero, 0, 0);
+        ignored := Put(&program, native.ViewGet, abi.TextStorage, view, zero, 0, -880);
     }
     if (mode == 7) {
         ignored := Put(&program, native.ViewMake, native.RecordType, cell, Range(&program, zero, first), abi.TextStorage, -880);
     }
     shorter := Array(&program, [9]);
     Replace(&program, cell, shorter);
-    absent := Put(&program, native.ViewSlice, native.RecordType + 1, view, Range(&program, zero, first), abi.IntStorage, 0);
+    absent := Put(&program, native.ViewSlice, native.RecordType + 1, view, Range(&program, zero, first), abi.IntStorage, -880);
     absent_tag := Put(&program, native.Extract, abi.IntStorage, absent, native.RecordType + 1, 0, 0);
     Check(&program, absent_tag, 0);
-    if (mode == 1) { ignored := Put(&program, native.ViewLength, abi.IntStorage, view, abi.IntStorage, 0, 0); }
+    if (mode == 1) { ignored := Put(&program, native.ViewLength, abi.IntStorage, view, abi.IntStorage, 0, -880); }
     if (mode == 2) { ignored := Get(&program, view, 0); }
     if (mode == 3) { Set(&program, view, 0, 7); }
     Void(&program, native.Publish, abi.IntStorage, zero, 0, 0, 0);
@@ -147,7 +147,7 @@ Main :: () -> int {
     if (os.Platform() != "Darwin") { target = abi.LinuxX64(); }
     start := format_text("{}/view-start.ll", work);
     if (os.WriteText(start, link.ManagedProgramContext(link.ProgramStart(target.triple, false, true, false)))) { return 2; }
-    for (invalid in 0..<4) {
+    for (invalid in 0..<5) {
         program := Build(0);
         for (index in 0..<length(program.code)) {
             item := program.code[index];
@@ -156,6 +156,7 @@ Main :: () -> int {
             if (invalid == 1) { item.target = 0; }
             if (invalid == 2) { item.left = 0; }
             if (invalid == 3) { item.type += 1; program.slots[item.output] = item.type; }
+            if (invalid == 4) { item.literal = 0; }
             program.code[index] = item;
             break;
         }

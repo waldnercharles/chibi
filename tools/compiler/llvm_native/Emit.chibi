@@ -325,10 +325,11 @@ pub ArrayLoanValue: int : 2;
 // default. No entry address survives later arguments. String keys own one
 // reference until the call resolves the entry.
 pub ArrayLoanMap: int : 3;
-// Borrows an existing array entry at left map/right key; literal is its map
-// type. Target 0 observes a map value; target 1 takes a RefMap and detaches
-// and publishes its canonical owner before borrowing the entry. Resolve after
-// callbacks and immediately update the descriptor. Map mutation invalidates it.
+// Borrows an existing descriptor entry at left map/right key; literal is its
+// map type. Target 0 observes an array entry. Target 1 takes a RefMap, detaches
+// and publishes its canonical owner, then returns an array descriptor or the
+// immediate map field of a one-field carrier. Resolve after callbacks and
+// immediately update the descriptor. Map mutation invalidates the address.
 pub MapValueAddress: int : 75;
 // A new scalar managed cell initialized from left, whose value type is right.
 // The result is PointerType, literal its stable semantic pointee identity.
@@ -386,7 +387,7 @@ pub ArrayReverse: int : 96;
 // Sample the explicitly owned clock grant once, into an i64/u64/int/int record.
 pub ClockSample: int : 97;
 // Make/Slice use argument slots [right,right+2) for first/end; target is the
-// numeric/bool element type. Make's literal is its array-cell semantic tag.
+// element type. Every operation's literal is its full expected array-cell tag.
 // They produce an ordinary optional record with tag0 and payload1 fields.
 pub ViewMake: int : 98;
 // Length's right is element metadata. Get reads right's int index. Set reads
@@ -1153,12 +1154,12 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
                 return Result.Rejected(base + pc, "native managed pointer identity is invalid");
             }
             if (item.op == ManagedNew &&
-                (item.type != PointerType || !ManagedPayload(records, managed_records, item.right, item.literal) ||
+                (item.type != PointerType || !ManagedPayload(records, managed_records, lifecycle, item.right, item.literal) ||
                  !Typed(slots, item.left, item.right))) {
                 return Result.Rejected(base + pc, "native managed cell initializer differs from its scalar type");
             }
             if (item.op == ManagedAddress &&
-                (item.type < RefType || !ManagedTarget(records, managed_records, item.type - RefType, item.literal) ||
+                (item.type < RefType || !ManagedTarget(records, managed_records, lifecycle, item.type - RefType, item.literal) ||
                  !Typed(slots, item.left, PointerType) || item.right != 0)) {
                 return Result.Rejected(base + pc, "native managed pointer resolution differs from its scalar target");
             }
@@ -1302,10 +1303,10 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (((item.op >= ArrayLength && item.op <= ArrayBytes) || item.op == ArrayText || item.op == ArrayInsert || item.op == ArrayReverse) && !ArrayValid(records, slots, item, value_shapes.nodes)) {
             return Result.Rejected(base + pc, "native array operation differs from its operands");
         }
-        if (MapOperation(item.op) && !MapValid(records, lifecycle, slots, item)) {
+        if (MapOperation(item.op) && !MapValid(records, fields, lifecycle, slots, item)) {
             return Result.Rejected(base + pc, "native map operation differs from its operands");
         }
-        if (ViewOperation(item.op) && !ViewValid(records, fields, slots, arguments, item)) {
+        if (ViewOperation(item.op) && !ViewValid(records, fields, lifecycle, slots, arguments, item)) {
             return Result.Rejected(base + pc, "native view operation differs from its operands");
         }
         if (TextSequenceOperation(item.op) && !TextSequenceValid(records, fields, slots, item)) {
@@ -3024,7 +3025,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         } else if ((item.op >= ManagedNew && item.op <= ManagedUnpin) || item.op == ManagedProject) {
             out.append(ManagedInstruction(item, pc, records, coroutine));
         } else if (ViewOperation(item.op)) {
-            out.append(ViewInstruction(item, pc, own));
+            out.append(ViewInstruction(item, pc, own, record_owners));
         } else if (managed && (item.op == Return || item.op == End) && !coroutine) {
             returned := EmitInstruction(item, pc, result, records, fields, texts, coroutine, ProgramMode(mode), scoped, record_owners, guarded);
             out.append(strings.ReplaceAll(returned, "  ret ", strings.Concatenate([ManagedUnroots(function == 0 && mode == ProgramEntry), "  ret "])));
@@ -3846,7 +3847,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             // the same freestanding helper as array operations.
             for (retained in states) { copies = copies || retained.type == abi.TextStorage; }
         }
-        map_helpers := MapModule(value_uses.maps, ProgramMode(mode), record_owners, lifecycle.backed, guarded);
+        map_helpers := MapModule(value_uses.maps, records, fields, ProgramMode(mode), record_owners, lifecycle.backed, guarded);
         out.append(map_helpers);
         out.append(TextSequenceModule(held, guarded));
         if (copies) {
@@ -5070,9 +5071,19 @@ MapPayloadValid :: (records: Record[], lifecycle: ValueLayout, type: int) -> boo
     if (MapArrayValue(element)) { element -= ArrayType; }
     return ValueValid(lifecycle, element);
 }
+// The first field of a physical collection carrier is the immediate map.
+// Other record payloads do not need canonical descriptor-address helpers.
+MapCarrierElement :: (records: Record[], fields: int[], type: int) -> int {
+    if (type < RecordType || type >= ArrayType || !Index(type - RecordType, length(records))) { return 0; }
+    record := records[type - RecordType];
+    if (record.count != 1) { return 0; }
+    member := fields[record.first];
+    if (!MapShaped(records, member)) { return 0; }
+    return member;
+}
 // Whether a map instruction reads the operands of its type: the map in the left
 // slot, a key or an index in the right, and MapSet's value in slot `target`.
-MapValid :: (records: Record[], lifecycle: ValueLayout, slots: int[], item: Instruction) -> bool {
+MapValid :: (records: Record[], fields: int[], lifecycle: ValueLayout, slots: int[], item: Instruction) -> bool {
     used := MapUsed(item);
     input := used;
     if (item.op == MapValueAddress && item.target == 1) { input += RefType; }
@@ -5089,7 +5100,12 @@ MapValid :: (records: Record[], lifecycle: ValueLayout, slots: int[], item: Inst
                (item.target == 0 || (item.target == MapGetZero && value >= RecordType && value < ArrayType));
     }
     if (item.op == MapValueAddress) {
-        return MapArrayValue(value) && item.type == RefType + value && Typed(slots, item.right, key) &&
+        projected := value;
+        if (item.target == 1 && value >= RecordType && value < ArrayType) {
+            projected = MapCarrierElement(records, fields, value);
+            if (projected == 0) { return false; }
+        } else if (!MapArrayValue(value)) { return false; }
+        return item.type == RefType + projected && Typed(slots, item.right, key) &&
                (item.target == 0 || item.target == 1);
     }
     if (item.op == MapHas) {
@@ -5132,6 +5148,8 @@ MapRead :: (item: Instruction, pc: int) -> string {
     if (item.op == MapValueAddress && item.target == 1) {
         out = Load(format_text("owner{}", pc), RefType + used, "s", item.left);
         out = format_text("{}{}", out, Load(format_text("k{}", pc), key, "s", item.right));
+        // A one-map-field carrier begins with that descriptor at offset zero.
+        // Validation admits this projection only for canonical target 1.
         out = format_text("{}  %v{} = call ptr @chibi_map.{}.reference(ptr %ctx, ptr %owner{}, {} %k{})\n", out, pc, used, pc, TypeName(key), pc);
         return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
     }
@@ -5400,7 +5418,7 @@ MapShared :: (guarded: bool = false) -> string {
 
 // The helpers of map type `type`, named `@chibi_map.<type>.<helper>`: hash,
 // same, find, get, has, set, delete, copy and drop.
-MapHelpers :: (type: int, native_program: bool, owners: bool[], backed: bool[]) -> string {
+MapHelpers :: (type: int, native_program: bool, owners: bool[], backed: bool[], carrier: bool) -> string {
     key := MapKey(type);
     value := MapValue(type);
     keyed := key == abi.TextStorage;
@@ -5435,7 +5453,7 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[], backed: bool[]) 
                                    MapOwner("release", "%dkv", "dk", key)));
     }
     address := "";
-    if (MapArrayValue(value)) {
+    if (MapArrayValue(value) || carrier) {
         unavailable := "  call void @llvm.trap()\n  unreachable";
         if (native_program) { unavailable = "  call void @chibi_native_failure(i32 0)\n  unreachable"; }
         address = strings.Join([
@@ -5881,7 +5899,7 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[], backed: bool[]) 
     ], "\n");
     released := MapEach("release", "%entries", "x", key, value, owners, backed, true);
     text = strings.Concatenate([text, "\n", MapOwnedDrop(type, released), "\n", MapUnique(type)]);
-    if (MapArrayValue(value)) { text = strings.Concatenate([text, "\n", MapReference(type)]); }
+    if (MapArrayValue(value) || carrier) { text = strings.Concatenate([text, "\n", MapReference(type)]); }
     text = strings.ReplaceAll(text, "$ADDRESS", address);
     text = strings.ReplaceAll(text, "$SCANNED", format_text("{}", MapScanned));
     text = strings.ReplaceAll(text, "$LIMIT", format_text("{}", MapLimit));
@@ -5899,13 +5917,13 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[], backed: bool[]) 
     return format_text("{}\n", strings.ReplaceAll(text, "$N", format_text("{}", type)));
 }
 // The typed map helpers in the shared ownership dependency closure, once each.
-MapModule :: (types: int[], native_program: bool, owners: bool[], backed: bool[], guarded: bool = false) -> string {
+MapModule :: (types: int[], records: Record[], fields: int[], native_program: bool, owners: bool[], backed: bool[], guarded: bool = false) -> string {
     if (length(types) == 0) {
         return "";
     }
     out: string[] = [MapShared(guarded), MapOwnersRuntime(), ValueDrain()];
     for (type in types) {
-        out.append(MapHelpers(type, native_program, owners, backed));
+        out.append(MapHelpers(type, native_program, owners, backed, MapCarrierElement(records, fields, MapValue(type)) != 0));
     }
     return format_text("\n{}", strings.Join(out, "\n"));
 }

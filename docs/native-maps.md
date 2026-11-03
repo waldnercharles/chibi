@@ -92,7 +92,7 @@ value is released), `MapDelete` releases the entry's strings, `MapCopy` retains 
 A read of a missing scalar or string key gives the value type's zero; a native int[] read gives an empty array. A missing record key fails with `MapKeyAbsent`.
 Reads borrow. Writing through a missing key (`m[a][b] = v`) ends the call.
 
-Native `MapValueAddress` (75) borrows an existing array entry. Target 0 observes its map value. Target 1 requires a reference
+Native `MapValueAddress` (75) borrows an existing descriptor entry. Target 0 observes an array entry. Target 1 also projects a one-map-field carrier and requires a reference
 to the canonical map descriptor, makes shared entries unique and publishes that descriptor before returning the entry
 address. Resolve it after argument callbacks and immediately update the array descriptor with `Poke`; replacing,
 growing or dropping the map invalidates the address. A missing entry produces an unnamed failure, matching the ordinary
@@ -117,8 +117,17 @@ Numeric mapped-array compound assignments save the key, index and old leaf befor
 `NestedContainers` covers nested literals, value reads, arguments and returns
 with poisoned frees and zero outstanding allocations. `NestedMapCopies` requires
 4,096 nested copies and payload reads to allocate nothing; changing one leaf
-detaches each shared map once. Direct nested owner writes remain a separate gate.
+detaches each shared map once. Canonical nested set/delete and numeric compound writes capture their keys and
+old leaf before the RHS, then resolve and publish the current owner.
 An inner map read from a missing key can be changed independently without adding
 an outer key, following the zero-map rule in `docs/code-language.md`. The recovered
 ordinary runtime instead fails that mutation with `Cannot retain Map update`;
 that discrepancy is recorded rather than used as the expected native result.
+
+`NestedPlaces` checks index/key/RHS order, root replacement by any of them,
+missing-owner repair, scoped aliases, deletion and independently owned text,
+array, record, optional and map payloads. Its unchanged assertions also pass the
+recovered ordinary compiler. Six abrupt-failure controls distinguish RHS
+assertions from a missing final owner and preserve the unclassified category.
+`NestedMapCopies` additionally requires exactly two detach allocations for the
+first shared nested write and zero allocations for 4,096 further unique writes.

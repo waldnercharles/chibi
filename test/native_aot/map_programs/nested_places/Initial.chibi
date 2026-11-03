@@ -1,0 +1,3 @@
+package nested_map_failure
+Value :: () -> int { assert(false,"RHS ran"); return 9; }
+Main :: () -> int { rows: [string:int][] = []; rows[0]["a"] = Value(); return 0; }

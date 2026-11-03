@@ -7,7 +7,123 @@ following CI merge `a76ea8005`. Further work is composed on
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
-## Current checkpoint, 2 November
+## Current composition: 2ec95de3f
+
+Source map copies now share counted backing, with canonical mapped-array
+mutation and foreign-buffer loans. Nested map ownership helpers and array-held
+map descriptors are integrated; the nested-map source projection and indexed
+record-array field writes remain in progress. The exact source at `240d47d52`
+reproduces between macOS stages three and four, SHA-256
+`7b60b3ef3f556f8621b09ed85deb202091c60e022bc3aa6bc062052588e11d38`.
+Its 485 compiler tests pass in 23.82 seconds, map ownership checks at O0/O2
+with poisoned frees in 73.00, and character/UTF-8/callback checks in 10.41.
+The directory fixture then needed its scope ID corrected from `i64` to `u64`
+and an explicit working directory; the corrected suite passes in 7.75 seconds.
+Evidence is in `/private/tmp/chibi-240d-proof/receipt.json`.
+
+The intermediate seed candidate uses exact source `14f7a46a0`, including those
+fixture corrections. macOS stages two and three match byte for byte after
+19.09 and 21.93 seconds; all 485 compiler tests pass in 24.64. Linux's
+consecutive builds with the canonical `chibi` basename match after 53.67 and
+53.80 seconds, and all 485 tests pass in 71.73. Earlier Linux builds named
+`stage3` and `stage4` differed in ELF source-file basename records and are not
+the accepted fixed-point pair. Both platforms build with CC/CXX disabled.
+`/private/tmp/chibi-native-seed-14f7-proof` holds the exact source, builders,
+commands and logs. This package is being prepared; it is not published and the
+approved c5 seed pins have not advanced to it.
+
+The composition also fixes Windows synchronous process exit-code bit
+preservation and the successful compiler-proof step's final PowerShell status.
+A fully pinned manual CI dispatch can now schedule Windows without waiting for
+another Linux bootstrap. Actual hosted acceptance of these changes, the private
+generation fixture correction and the LLVM float-absolute lowering remains
+required.
+
+The newer composition adds counted map backing with canonical writable entries,
+strict array ranges and lazy optional-array fallbacks, synchronous assertion
+cleanup, checked directory enumeration, optional snapshot callback guards, and
+true void C callback adapters. The callback source and raw-facts boundaries pass;
+an actual C caller passes at O0/O2 in 1.26 seconds, the character/UTF-8 suite in
+11.63, and the composed map suite with poisoned frees in 66.30. The compiler
+passes 483 tests in 35.52 seconds before the final callback literal-validator
+correction; focused source and malformed-facts checks pass after that correction.
+Evidence is in `/private/tmp/chibi-void-callback-proof/receipt.json`.
+
+The exact nine-family sample audit passes 455 of 456 cases with no runtime
+failures and preserves all 441 original passing names. All sample source Git
+blobs are unchanged. Only `collections/view_element_lending/facts.Calls` remains
+uncompiled; aggregate view ownership is in progress. The inventory and original
+foreign/font setup receipts are in `/private/tmp/chibi-original-nine-matrix`.
+Checked directory enumeration still needs the pending GC poll's OS-error
+preservation proof and hosted Windows execution. Full callback routing,
+safe-point polls and managed task promises are being proved together before
+integration.
+
+### Published-seed chain at 72598f131
+
+The current compiler includes optional and union map values, owned task results,
+string-array views, deep inline array places, ordinary record-array resize
+failures, record formatting, immutable text sequences and true void foreign
+calls. It builds in 20.69 seconds and passes all 480 compiler tests in 24.45
+seconds. The coupled task suite passes in 42.91 seconds. Managed-pointer/text
+checks ran for 67.80 seconds before an outdated fixture asserted the former
+56-byte heap size. `56af95c23` updates that assertion to 64 bytes; the remaining
+native, view, optional and rejection checks pass in 49.95 seconds. Evidence is
+in `/private/tmp/chibi-200b-proof`. `72598f131` also preserves the independently
+verified dynamic named task-result fixture. A fresh build from the published
+macOS seed takes 1194.70 seconds because that seed retains the older type-lookup
+cost. The next stages take 29.34 and 20.11 seconds and reproduce byte for byte:
+SHA-256 `c387cc619e0afd01d1a2f958040845f9a9782cbd8daa4da6cb2c7b4c777e0841`.
+That binary also matches the compiler used for these 480-test and managed/task
+proofs. `/private/tmp/chibi-published-seed-current-proof/receipt.json` records the
+seed identity, source, all stage hashes and timings. This establishes the chain
+for `72598f131`, not a fixed point for the later composition above.
+
+The preceding `ce3adf842` composition reproduces between macOS stages three and
+four, SHA-256 `7cdad0bf57e64ebfbab323345a731dce39b333708c43c921e7e38110d7bd0f9a`.
+Its three builds took 19.12, 19.62 and 19.81 seconds; the older producer's stage
+two differs. All 474 compiler tests passed in 23.34 seconds. Composed managed
+values passed in 45.80 seconds, tasks including image-unload ownership in 38.63,
+formatting in 10.93 and array operations in 26.73. Evidence is in
+`/private/tmp/chibi-ce3a-proof`.
+
+That source's product build passes with CC/CXX disabled in 62.61 seconds, and
+full SDK installation/relocation passes in 85.10. The C consumer then exposed
+missing logical-place failure adapters in the authored archive. `0cfff8230`
+adds them to the desktop and Wasm runtime templates. The unchanged C consumer
+passes in 7.00 seconds against the rebuilt archive; Wasm resource cleanup and
+successful-call recovery pass at O0/O2 in 2.19. Hosted macOS job `125743532364`
+of run `41583508859` has the same missing-symbol failure at published `6b46f9261`.
+That run completed with failures. Linux reproduced its compiler, but its core
+phase hit the existing deadline and its obsolete VM Driver comparison failed
+before Graph parity. Windows passed native products and public watch at O0/O2;
+it failed the C facade's same missing helper, a private generation fixture's
+missing managed context, process exit-code interpretation, an unavailable
+`fabsf` import, and the final PowerShell status after successful checks. These
+are distinct failures, with fixes integrated or under focused validation.
+A separate dispatch, `41589954388`, validates `72598f131` on
+`codex/native-platform-validation-20261102-v2` without cancelling that run. It
+reuses the byte-verified Windows bootstrap from successful Linux producer job
+`125487999272` in run `41506782159`; the new Windows job must establish that
+the older bootstrap builds this source. These are separate revision-specific
+results, not platform acceptance.
+
+The parity audit at `a0a7ae3c5` preserves all 255 previously passing names and
+passes 263 tests in the four affected sample families. Seven cases remain
+uncompiled; all are accepted by the ordinary compiler. Strict array ranges and
+aggregate views have active owners. Nested map ownership, mapped foreign
+buffers, managed task results and void C callback adapters are also in progress.
+The collector callback foundation is composed: the heap is 64 bytes and its
+family ABI is 3. Complete callback routing and safe-point polls are still in
+progress; the foundation alone does not fix the reproduced collection-reentry
+failure. Native instruction IDs 107/108 remain reserved for those polls.
+
+The C/VM/recovery deletion candidate remains held until these native behavior
+replacements and supported-platform products pass. Its independent Driver and
+Graph command fixtures preserve the comparison obligations; removing an old
+comparison is not a parity pass. PR #1331 remains open and is not ready to merge.
+
+## Earlier checkpoint, 2 November
 
 The composition at `95ec7d976` includes the bounded constructor fix, authored
 asset-compiler facade and archive builder, native host clock projection and

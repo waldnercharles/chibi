@@ -1,0 +1,5 @@
+package deep_late
+Inner :: struct { values: int[]; }
+Root :: struct { inner: Inner; }
+Erase :: (root: ^Root) -> int { root^ = {inner: {values: []}}; return 9; }
+Main :: () -> int { value: Root = {inner: {values: [int(1)]}}; value.inner.values[0] = Erase(&value); return 0; }

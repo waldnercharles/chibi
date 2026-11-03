@@ -16,6 +16,13 @@ The promoted pattern fixture preserves a dynamic union payload after replacing
 its source and yielding. `Failure.chibi` mutates a canonical record through a
 scoped reference before propagating an assertion. `Mixed.chibi` combines the new
 owners with existing collector pointer-array roots and real formatting.
+`Promises.chibi` exercises owned string, array and record results, repeated
+observed joins, independent result mutation, returned parameters, inline-await
+moves, discarded results and cancellation with a completed promise still held.
+`PromiseFailure.chibi` checks propagated failure after copying and changing an
+owned result. Generation tests keep a completed owned promise across the edit
+and read it again through its original image.
+`NamedPromises.chibi` preserves direct async named outputs with a dynamic string.
 
 The standalone allocator audit preserves the real context and formatter, poisons
 freed storage and requires zero outstanding allocations at return. An imbalance
@@ -32,6 +39,9 @@ is injected there; program bodies pass through `opt`.
 
 The new owner path does not admit maps, views, borrowed waiting parameters or
 collector-bearing inline aggregates. Existing direct pointer and pointer-array
-roots remain separate. Task results still require numeric or bool values, and
-task-handle parameters remain unsupported. These are functionality gates, not
+roots remain separate. Task promises can own the same pointer-free values as
+frames. Joins acquire copies, inline awaits move and zero the child promise,
+and frame destruction clears the promise before dropping it once. Collector
+pointers, views, maps, multiple results and task-handle parameters remain
+unsupported. These are functionality gates, not
 evidence that VM parity is complete.

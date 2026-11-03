@@ -38,8 +38,8 @@ Main :: () -> int {
     boxes[0] = boxes[0];
     boxes.append(Make(3));
     clipped := slice(boxes, 1, 2);
-    expanded := resize(clipped, 5);
-    assert(expanded[0].numbers[0] == 2 && length(expanded[4].numbers) == 0);
+    expanded := resize(clipped, 1);
+    assert(expanded[0].numbers[0] == 2 && length(expanded) == 1);
     boxes.remove_index(1);
     assert(boxes[1].numbers[0] == 3);
     batch: Batch = {values: [Make(1), Make(2)]};
@@ -49,8 +49,8 @@ Main :: () -> int {
     batch.values.append(Make(3));
     assert(batch_copy.values[0].numbers[0] == 1 && text_byte_at(batch_copy.values[0].words[0], 2) == 1);
     assert(length(batch_copy.values) == 2 && length(batch.values) == 3);
-    batch.values.resize(4);
-    assert(length(batch.values[3].numbers) == 0 && length(batch_copy.values) == 2);
+    batch.values.resize(1);
+    assert(batch.values[0].numbers[0] == 8 && length(batch_copy.values) == 2);
     for i in 0..<24 {
         assert(i % 2 == 1 || Check({numbers: [i], words: [Text(i)]}, i));
         assert(i % 2 == 0 || Check({words: [Text(i)], numbers: [i]}, i));

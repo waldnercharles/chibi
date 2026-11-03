@@ -1,0 +1,3 @@
+package mapped_place_late
+Rhs :: (values: ^[int:int[]]) -> int { values^ = [1:[]]; return 9; }
+Main :: () -> int { values: [int:int[]] = [1:[1]]; values[1][0] = Rhs(&values); return 0; }

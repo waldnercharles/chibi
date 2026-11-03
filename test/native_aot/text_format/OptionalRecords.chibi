@@ -1,0 +1,12 @@
+package optional_record_summary
+
+Box :: struct { text: string; numbers: int[]; }
+Make :: () -> Box? { return {text: text_from_bytes([u8(120)]), numbers: [int(11), 37]}; }
+Main :: () -> int {
+    optional := Make();
+    for (index in 0..<64) {
+        assert(format_text("{}", optional!) == "optional_record_summary.Box", "borrowed optional payload");
+        assert(format_text("{}", Make()!) == "optional_record_summary.Box", "fresh optional payload");
+    }
+    return 0;
+}

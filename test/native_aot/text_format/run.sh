@@ -3,6 +3,7 @@
 set -eu
 driver=${1:?usage: run.sh DRIVER LLVM_BIN}
 llvm=${2:?usage: run.sh DRIVER LLVM_BIN}
+reference=${3:-}
 root=$(cd "$(dirname "$0")/../../.." && pwd -P)
 work=$(mktemp -d "${TMPDIR:-/tmp}/chibi-native-format.XXXXXX")
 trap 'rm -rf "$work"' EXIT
@@ -12,15 +13,17 @@ case $(uname -s)-$(uname -m) in
     *) echo 'native format: unsupported test host' >&2; exit 2 ;;
 esac
 for level in 0 2; do
-    for source in Main Strings Aggregates Family; do
-    env PATH= CC=false CXX=false "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
-        --source "$root/test/native_aot/text_format/$source.chibi" --entry Main --output "$work/program" --llvm "$llvm" \
-        --target "$triple" --level "$level" --jobs 2
-    env PATH= CC=false CXX=false "$work/program"
+    for source in Main Strings Aggregates Family Records OptionalRecords; do
+        project=$root/tools/compiler
+        if [ "$source" = Records ]; then project=$root/test/native_aot/text_format; fi
+        env PATH= CC=false CXX=false "$driver" --compiler "$project" --core "$root/packages/core" \
+            --source "$root/test/native_aot/text_format/$source.chibi" --entry Main --output "$work/program" --llvm "$llvm" \
+            --target "$triple" --level "$level" --jobs 2
+        env PATH= CC=false CXX=false "$work/program"
     done
 done
 # Keep the ordinary native-call restriction on managed pointer arguments.
-for source in RejectedPointers RejectedRecordPointers RejectedUnionPointers RejectedUnionPayload; do
+for source in RejectedPointers RejectedRecordPointers RejectedUnionPointers RejectedUnionPayload RejectedDirectRecord; do
     printf 'preserved\n' > "$work/rejected"
     result=0
     "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
@@ -41,14 +44,25 @@ env PATH= CC=false CXX=false "$driver" --compiler "$root/tools/compiler" --core 
     --source "$root/apps/host/Host.chibi" --entry Main --output "$work/host" --llvm "$llvm" \
     --target "$triple" --level 2 --jobs 2
 for level in 0 2; do
-    mkdir "$work/family-$level"
-    env PATH= CC=false CXX=false "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
-        --source "$root/test/native_aot/text_format/Family.chibi" --shared --output "$work/family-$level/live-0.so" \
-        --llvm "$llvm" --target "$triple" --level "$level" --jobs 2
-    result=0
-    (cd "$work/family-$level" && timeout 30 env PATH= CC=false CXX=false "$work/host") || result=$?
-    test "$result" -eq 42
+    for source in Family Records; do
+        project=$root/tools/compiler
+        if [ "$source" = Records ]; then project=$root/test/native_aot/text_format; fi
+        mkdir "$work/$source-$level"
+        env PATH= CC=false CXX=false "$driver" --compiler "$project" --core "$root/packages/core" \
+            --source "$root/test/native_aot/text_format/$source.chibi" --shared --output "$work/$source-$level/live-0.so" \
+            --llvm "$llvm" --target "$triple" --level "$level" --jobs 2
+        result=0
+        (cd "$work/$source-$level" && timeout 30 env PATH= CC=false CXX=false "$work/host") || result=$?
+        test "$result" -eq 42
+    done
 done
+if [ -n "$reference" ]; then
+    mkdir "$work/reference"
+    cp "$root/test/native_aot/text_format/Records.chibi" "$work/reference/Records.chibi"
+    cp -R "$root/test/native_aot/text_format/record_summary_import" "$work/reference/record_summary_import"
+    printf '%s\n' 'package record_summary' '@test' 'Calls :: () { assert(Main() == 0); }' > "$work/reference/Tests.chibi"
+    "$reference" --project-root "$work/reference" --test
+fi
 # Exercise the existing start-import assertions through their native entry.
 env PATH= CC=false CXX=false "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$root/tools/compiler/native_link/tests/Tests.chibi" --entry Run --output "$work/imports" --llvm "$llvm" \
@@ -57,8 +71,10 @@ env PATH= CC=false CXX=false "$work/imports"
 printf 'native format: scalars, collection snapshots and shared family passed at O0/O2\n'
 
 # Check the destination-specific import contract in a real linked image.
-for source in Main Strings Aggregates Family; do
-    env PATH= CC=false CXX=false "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+for source in Main Strings Aggregates Family Records; do
+    project=$root/tools/compiler
+    if [ "$source" = Records ]; then project=$root/test/native_aot/text_format; fi
+    env PATH= CC=false CXX=false "$driver" --compiler "$project" --core "$root/packages/core" \
         --source "$root/test/native_aot/text_format/$source.chibi" --entry Main --output "$work/$source.exe" --llvm "$llvm" \
         --target x86_64-pc-windows-msvc --level 0 --jobs 1
     if [ "$source" = Main ]; then
@@ -70,13 +86,14 @@ for source in Main Strings Aggregates Family; do
     fi
 done
 if [ -n "${3:-}" ]; then
-    for source in Main Strings Aggregates Family; do
+    for source in Main Strings Aggregates Family OptionalRecords; do
         mkdir "$work/reference-$source"
         cp "$root/test/native_aot/text_format/$source.chibi" "$work/reference-$source/Main.chibi"
         package=text_format
         if [ "$source" = Strings ]; then package=text_format_strings; fi
         if [ "$source" = Aggregates ]; then package=text_format_aggregates; fi
         if [ "$source" = Family ]; then package=text_format_family; fi
+        if [ "$source" = OptionalRecords ]; then package=optional_record_summary; fi
         printf 'package %s\n@test\nValues :: () { result := Main(); assert(result == 0); }\n' "$package" > "$work/reference-$source/Tests.chibi"
         "$3" --project-root "$work/reference-$source" --test
     done

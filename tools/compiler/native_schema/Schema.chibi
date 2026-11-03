@@ -1,0 +1,91 @@
+package native_schema
+
+// The caller hashes each type's own representation, including ordered field
+// names/types and referenced semantic keys, into body. Edges identify the
+// referenced nodes whose complete definitions also belong to that schema.
+// Keys are stable semantic identities, never indices in a generation's table.
+pub Node :: struct { key: u64; body: u64; first: int; count: int; supported: bool; }
+pub Result :: union { Ready(values: u64[]) | Rejected(message: string) }
+// Native facts reserve fewer than 1024 record/union types. This also bounds
+// the closure matrix to 128 KiB, independent of declaration order or cycles.
+pub NodeLimit: int : 1024;
+
+Word :: (hash: u64, value: u64) -> u64 {
+    out := hash;
+    rest := value;
+    for (byte in 0..<8) { out = (out ^ (rest & 255)) * 1099511628211; rest = rest >> 8; }
+    return out;
+}
+
+// Hash each root's sorted reachable definitions. A changed child affects all
+// its parents; unrelated definitions do not. Shared children and cycles need
+// no recursive expansion. Unsupported children leave that root's hash zero.
+pub Fingerprints :: (nodes: Node[], edges: int[]) -> Result {
+    count := length(nodes);
+    if (count > NodeLimit) { return Result.Rejected("native schema has too many type nodes"); }
+    next := 0;
+    order: int[] = [];
+    for (node, index in nodes) {
+        if (node.first != next || node.count < 0 || node.count > length(edges) - next ||
+            (node.supported && node.key == 0)) { return Result.Rejected("native schema node differs from its edges or key"); }
+        next += node.count;
+        if (!node.supported) { continue; }
+        order.append(index);
+        position := length(order) - 1;
+        while (position > 0 && nodes[order[position - 1]].key > node.key) {
+            order[position] = order[position - 1];
+            position -= 1;
+        }
+        order[position] = index;
+    }
+    if (next != length(edges)) { return Result.Rejected("native schema edges have no owning node"); }
+    for (edge in edges) {
+        if (edge < 0 || edge >= count) { return Result.Rejected("native schema edge has no target node"); }
+    }
+    for (index in 1..<length(order)) {
+        if (nodes[order[index - 1]].key == nodes[order[index]].key) {
+            return Result.Rejected("native schema semantic keys are not unique");
+        }
+    }
+    words := (count + 63) / 64;
+    reach := resize([u64(0)], count * words);
+    unsupported := resize([u64(0)], words);
+    for (node, index in nodes) {
+        base := index * words;
+        reach[base + index / 64] |= u64(1) << u32(index % 64);
+        if (!node.supported) { unsupported[index / 64] |= u64(1) << u32(index % 64); }
+        for (at in node.first..<node.first + node.count) {
+            edge := edges[at];
+            reach[base + edge / 64] |= u64(1) << u32(edge % 64);
+        }
+    }
+    // Warshall's closure combines whole rows. At the representation limit it
+    // uses at most 2^24 word unions, rather than revisiting every dense edge
+    // independently from every root. The input graph remains unchanged.
+    for (through in 0..<count) {
+        from := through * words;
+        mask := u64(1) << u32(through % 64);
+        for (root in 0..<count) {
+            base := root * words;
+            if ((reach[base + through / 64] & mask) == 0) { continue; }
+            for (word in 0..<words) { reach[base + word] |= reach[from + word]; }
+        }
+    }
+    hashes := resize([u64(0)], count);
+    for (root in 0..<count) {
+        base := root * words;
+        supported := true;
+        for (word in 0..<words) {
+            if ((reach[base + word] & unsupported[word]) != 0) { supported = false; break; }
+        }
+        if (!supported) { continue; }
+        hash := Word(u64(1469598103934665603), nodes[root].key);
+        for (index in order) {
+            if ((reach[base + index / 64] & (u64(1) << u32(index % 64))) == 0) { continue; }
+            hash = Word(Word(hash, nodes[index].key), nodes[index].body);
+        }
+        if (hash == 0) { hash = 1; }
+        hashes[root] = hash;
+    }
+    return Result.Ready(hashes);
+}

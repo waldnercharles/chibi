@@ -46,7 +46,7 @@ Main :: () -> int {
     assert(text_byte_at(alias[0].message, 2) == 1);
     values.append(Make(3));
     clipped := slice(values, 1, 2);
-    expanded := resize(clipped, 4);
+    expanded := resize(clipped, 1);
     assert(text_byte_at(expanded[0].message, 2) == 2);
     values.remove_index(1);
     assert(text_byte_at(values[1].message, 2) == 3);

@@ -143,12 +143,21 @@ RecordPayloadMap :: (field: int, array: bool) -> native.Result {
 RecordMapPayloadsShareTheValueLifecycleDomain :: () {
     Emitted(RecordPayloadMap(native.ArrayType + abi.IntStorage, false));
     Rejects(RecordPayloadMap(native.TaskType, false), "native records differ from their field table");
-    Rejects(RecordPayloadMap(native.MapOf(abi.IntStorage, abi.IntStorage), false), MapOperands());
+    Emitted(RecordPayloadMap(native.MapOf(abi.IntStorage, abi.IntStorage), false));
+    Rejects(RecordPayloadMap(native.MapOf(abi.IntStorage, native.ArrayType + native.PointerType), false), MapOperands());
 }
 
 @test
 ArrayRecordMapPayloadsUseTheSameClosedLifecycle :: () {
     Emitted(RecordPayloadMap(native.ArrayType + abi.TextStorage, true));
     Rejects(RecordPayloadMap(native.PointerType, true), "native managed pointer aggregate roots require typed flat records");
-    Rejects(RecordPayloadMap(native.MapOf(abi.IntStorage, abi.IntStorage), true), MapOperands());
+    Emitted(RecordPayloadMap(native.MapOf(abi.IntStorage, abi.IntStorage), true));
+    Rejects(RecordPayloadMap(native.MapOf(abi.IntStorage, native.ArrayType + native.PointerType), true), MapOperands());
+}
+
+@test
+MapGetsRejectUnknownOrScalarZeroDefaultModes :: () {
+    for (mode in [int(-1), native.MapGetZero, 2]) {
+        ChangedMap(6, Code(native.MapGet, 6, 5, 4, 1, mode, 2150));
+    }
 }

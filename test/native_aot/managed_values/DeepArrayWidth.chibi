@@ -1,0 +1,13 @@
+package deep_array_width
+foreign { chibi_value_test_owner_calls :: () -> i64 }
+Inner :: struct { values: int[]; }
+Root :: struct { inner: Inner; side0: int[]; side1: int[]; side2: int[]; side3: int[]; side4: int[]; side5: int[]; side6: int[]; side7: int[]; side8: int[]; side9: int[]; side10: int[]; side11: int[]; side12: int[]; side13: int[]; side14: int[]; side15: int[]; side16: int[]; side17: int[]; side18: int[]; side19: int[]; side20: int[]; side21: int[]; side22: int[]; side23: int[]; side24: int[]; side25: int[]; side26: int[]; side27: int[]; side28: int[]; side29: int[]; side30: int[]; side31: int[]; side32: int[]; side33: int[]; side34: int[]; side35: int[]; side36: int[]; side37: int[]; side38: int[]; side39: int[]; side40: int[]; side41: int[]; side42: int[]; side43: int[]; side44: int[]; side45: int[]; side46: int[]; side47: int[]; side48: int[]; side49: int[]; side50: int[]; side51: int[]; side52: int[]; side53: int[]; side54: int[]; side55: int[]; side56: int[]; side57: int[]; side58: int[]; side59: int[]; side60: int[]; side61: int[]; side62: int[]; side63: int[]; }
+Main :: () -> int {
+    value: Root = {inner: {values: []}, side0: [int(0)], side1: [int(1)], side2: [int(2)], side3: [int(3)], side4: [int(4)], side5: [int(5)], side6: [int(6)], side7: [int(7)], side8: [int(8)], side9: [int(9)], side10: [int(10)], side11: [int(11)], side12: [int(12)], side13: [int(13)], side14: [int(14)], side15: [int(15)], side16: [int(16)], side17: [int(17)], side18: [int(18)], side19: [int(19)], side20: [int(20)], side21: [int(21)], side22: [int(22)], side23: [int(23)], side24: [int(24)], side25: [int(25)], side26: [int(26)], side27: [int(27)], side28: [int(28)], side29: [int(29)], side30: [int(30)], side31: [int(31)], side32: [int(32)], side33: [int(33)], side34: [int(34)], side35: [int(35)], side36: [int(36)], side37: [int(37)], side38: [int(38)], side39: [int(39)], side40: [int(40)], side41: [int(41)], side42: [int(42)], side43: [int(43)], side44: [int(44)], side45: [int(45)], side46: [int(46)], side47: [int(47)], side48: [int(48)], side49: [int(49)], side50: [int(50)], side51: [int(51)], side52: [int(52)], side53: [int(53)], side54: [int(54)], side55: [int(55)], side56: [int(56)], side57: [int(57)], side58: [int(58)], side59: [int(59)], side60: [int(60)], side61: [int(61)], side62: [int(62)], side63: [int(63)]};
+    before := chibi_value_test_owner_calls();
+    for index in 0..<4096 { value.inner.values.append(index); }
+    completed := chibi_value_test_owner_calls();
+    assert(completed - before <= 64, "leaf append must not traverse 64 sibling owners each turn");
+    assert(length(value.inner.values) == 4096 && value.side0[0] == 0 && value.side63[0] == 63);
+    return 0;
+}

@@ -1182,7 +1182,7 @@ InstantiateRecords :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                                               package: package, node: types[template].node, kind: RecordDecl,
                                               first: length(members), count: 0, size: 0, parent: -1, storage: 0,
                                               id: binding.ID("package-symbol", format_text("{}:{}:{}", identity, TypeKind, canonical)),
-                                              layout: 0, component: 0, key: 0, value_storage: 0, value_container: 0,
+                                              layout: 0, native_schema: 0, component: 0, key: 0, value_storage: 0, value_container: 0,
                                               value_record: -1, error: false};
                         body := Field(forest, types[template].node, syntax.FieldBody);
                         template_document := DocumentOf(documents, types[template].node);

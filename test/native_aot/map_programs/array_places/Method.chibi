@@ -1,0 +1,3 @@
+package map_array_place_method
+Rhs :: () -> int { assert(false, "method argument ran"); return 9; }
+Main :: () -> int { values: [int: int[]] = [:]; values[1].append(Rhs()); return 0; }

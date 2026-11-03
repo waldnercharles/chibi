@@ -132,3 +132,69 @@ ForeignPlacesProjection :: () {
     assert(retained[1].kind == facts.RejectionRow);
     assert(retained[1].text == "native foreign record buffer needs a writable inline record array field");
 }
+
+InlineArrayPlacesProjection :: () {
+    rows := Produced("package places\nInner::struct{values:int[];}Root::struct{inner:Inner;}Main::()->int{value:Root={inner:{values:[int(1)]}};other:Root={inner:{values:[int(8)]}};value.inner.values.append(3);value.inner.values[0]+=2;return value.inner.values[0];}");
+    ValidateRows(rows, "");
+    change := -1;
+    for (row, index in rows) {
+        if (row.kind == facts.ArrayRow && row.literal == i64(facts.ArrayReferencePlace) && row.value == facts.ArrayPush) { change = index; }
+    }
+    assert(change >= 4 && rows[change - 4].kind == facts.RefRow && rows[change - 4].value == 0);
+    mismatch := "scalar array operation differs from its operands";
+    RejectChanged(rows, [Changed(change, CountField, 1)], mismatch);
+    RejectChanged(rows, [Changed(change, CountField, 3)], mismatch);
+    RejectChanged(rows, [Changed(change, LiteralField, 0)], mismatch);
+    RejectChanged(rows, [Changed(change - 4, ValueField, 1)], mismatch);
+    RejectChanged(rows, [Changed(change - 1, KindField, i64(facts.LiteralRow)), Changed(change - 1, ValueField, 0)], mismatch);
+}
+
+ArrayResizeProjection :: () {
+    rows := Produced("package resize\nItem::struct{x:int;}\nMain::()->int{items:Item[]=[];items.resize(0);nested:int[][]=[];nested.resize(1);return length(items);}");
+    ValidateRows(rows, "");
+    authored := 0;
+    synthetic := 0;
+    for (row in rows) {
+        if (row.kind != facts.RecordRow) { continue; }
+        if (row.name == "Item") { assert(row.value == 0); authored += 1; }
+        else { assert(row.value == facts.ZeroArrayGrowth); synthetic += 1; }
+    }
+    // The ordinary catalog interns other primitive nested collections too.
+    assert(authored == 1 && synthetic > 0);
+}
+
+MapForeignPlacesProjection :: () {
+    rows := Produced("package places\nforeign import libc \"system:c\"\nforeign libc {memset::(data:u8[],value:i32,count:u64)->rawptr}\nMain::()->int{values:[int:u8[]]=[1:[u8(65)]];written:=memset(values[1],9,1);return 0;}");
+    ValidateRows(rows, "");
+    loan := -1;
+    for (row, index in rows) { if (row.kind == facts.MapRow && row.value == facts.MapArrayLoan) { loan = index; } }
+    assert(loan >= 3 && rows[loan - 3].kind == facts.RefRow);
+    mismatch := "scalar map operation differs from its operands";
+    RejectChanged(rows, [Changed(loan, CountField, 2)], mismatch);
+    RejectChanged(rows, [Changed(loan, CountField, 4)], mismatch);
+    RejectChanged(rows, [Changed(loan, LiteralField, 0)], mismatch);
+    RejectChanged(rows, [Changed(loan, TypeField, i64(facts.ArrayType + facts.BoolType))], mismatch);
+    RejectChanged(rows, [Changed(loan - 2, KindField, i64(facts.RefRow))], mismatch);
+}
+
+MapArrayPlacesProjection :: () {
+    rows := Produced("package places\nMain::()->int{other:[int:int[]]=[1:[8]];values:[int:int[]]=[1:[1]];values[1][0]+=2;return values[1][0];}");
+    ValidateRows(rows, "");
+    change := -1;
+    assignment := -1;
+    for (row, index in rows) {
+        if (row.kind == facts.MapRow && row.value == facts.MapArraySet) { change = index; }
+    }
+    for (row, index in rows) {
+        if (row.kind == facts.AssignRow && index + row.count == change) { assignment = index; }
+    }
+    assert(change >= 0 && assignment >= 0 && rows[assignment + 1].kind == facts.RefRow);
+    mismatch := "scalar map operation differs from its operands";
+    RejectChanged(rows, [Changed(change, CountField, 3)], mismatch);
+    RejectChanged(rows, [Changed(change, CountField, 5)], mismatch);
+    RejectChanged(rows, [Changed(change, TypeField, i64(facts.BoolType))], mismatch);
+    RejectChanged(rows, [Changed(assignment + 1, ValueField, 0)], "scalar map change is not the assignment of its map");
+    previous := ArrayEditOperation(rows, facts.ArrayPlaceGet);
+    RejectChanged(rows, [Changed(previous, CountField, 1)], "scalar array operation differs from its operands");
+    RejectChanged(rows, [Changed(previous, TypeField, i64(facts.BoolType))], "scalar array operation differs from its operands");
+}

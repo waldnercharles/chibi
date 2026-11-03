@@ -19,16 +19,14 @@ ScalarMapType :: (types: TypeDecl[], record: int) -> int {
     declared := types[record];
     key := ScalarTypeOf(declared.key);
     value := ScalarTypeOf(declared.value_storage);
-    // Authored unions require a present key. Optional values need a nil
-    // default on a missing key, which the aggregate MapGet does not supply.
-    authored_union := declared.value_storage == UnionStorage && declared.value_record >= 0 &&
-                      types[declared.value_record].kind == UnionDecl;
-    if (declared.value_storage == StructStorage || authored_union) { value = ScalarRecordType(types, declared.value_record); }
+    union_value := declared.value_storage == UnionStorage && declared.value_record >= 0 &&
+                   (types[declared.value_record].kind == UnionDecl || ScalarOptional(types, declared.value_record));
+    if (declared.value_storage == StructStorage || union_value) { value = ScalarRecordType(types, declared.value_record); }
     array := ScalarMapArrayValue(types, record);
     if (array) { value = ScalarArrayType(types, declared.value_storage, declared.value_record); }
     if ((facts.Bits(key) == 0 && key != facts.BoolType && key != facts.StringType) ||
         value == 0 || declared.value_storage == TaskStorage || (declared.value_container != 0 && !array) ||
-        (declared.value_record >= 0 && declared.value_storage != StructStorage && !authored_union && !array)) {
+        (declared.value_record >= 0 && declared.value_storage != StructStorage && !union_value && !array)) {
         return 0;
     }
     return facts.MapType + value * 16 + key;
@@ -209,6 +207,8 @@ ScalarMapReadRows :: (forest: snapshot.SnapshotNode[], text: string, callables: 
                                types[record].value_record);
     }
     row := ScalarAt(forest, node, facts.MapRow, type, read.operator, count, "");
+    if (read.operator == facts.MapGet && types[record].value_container == 0 &&
+        ScalarOptional(types, types[record].value_record)) { row.value = facts.MapGetOptional; }
     row.literal = i64(ScalarMapType(types, record));
     output.append(row);
     if (Operator(forest, node) == syntax.NotIn) {
@@ -267,9 +267,6 @@ ScalarMapChange :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
 ScalarMapChanged :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                      callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
                      constants: ConstDecl[], statement: int, change: ScalarMapCall, rows: facts.Row[]) -> ScalarOperands {
-    if (change.operator == facts.MapArraySet && Operator(forest, statement) != tk.Eq) {
-        return ScalarOperands.Failed(Diagnose(forest, statement, 0, "native mapped array elements currently assign only by ="));
-    }
     object := Unparenthesized(forest, change.object);
     if (!Is(forest, object, syntax.Identifier)) {
         return ScalarOperands.Failed(Diagnose(forest, object, 0, "native map changes require a map variable"));
@@ -287,19 +284,7 @@ ScalarMapChanged :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     }
     count := 2;
     if (change.operator >= facts.MapArrayPush && change.operator <= facts.MapArrayResize) {
-        if (change.operator == facts.MapArraySet) {
-            index := Field(forest, Field(forest, statement, syntax.FieldTarget), syntax.FieldIndex);
-            switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
-                                 index, index, IntStorage, IntStorage, facts.Clamp, output) {
-                case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
-                case .Built(built): output = built;
-            }
-            count += 1;
-        }
-        value := Field(forest, statement, syntax.FieldValue);
-        if (change.operator != facts.MapArraySet) {
-            value = FirstMember(forest, Field(forest, FirstMember(forest, statement), syntax.FieldArguments));
-        }
+        value := FirstMember(forest, Field(forest, FirstMember(forest, statement), syntax.FieldArguments));
         if (change.operator == facts.MapArrayExtend) {
             shape: ValueType = {storage: types[record].value_storage, container: ArrayContainer,
                                 record: types[record].value_record};
@@ -308,7 +293,7 @@ ScalarMapChanged :: (forest: snapshot.SnapshotNode[], text: string, callables: C
                 case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
                 case .Built(built): output = built;
             }
-        } else if (change.operator == facts.MapArrayPush || change.operator == facts.MapArraySet) {
+        } else if (change.operator == facts.MapArrayPush) {
             shape: ValueType = {storage: types[record].value_storage, container: 0,
                                 record: types[record].value_record};
             switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants,
@@ -338,6 +323,71 @@ ScalarMapChanged :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     }
     output.append(ScalarAt(forest, statement, facts.MapRow, ScalarMapType(types, record), change.operator, count, ""));
     return ScalarOperands.Built(output);
+}
+
+// Save the key and index once, then check the complete logical place before
+// the RHS. The initial array temporary dies with that check; only a compound
+// numeric leaf survives. The final store resolves the current map again.
+ScalarMapArrayAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                           callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                           constants: ConstDecl[], statement: int, change: ScalarMapCall, variables: ^int) -> ScalarOperands {
+    object := Unparenthesized(forest, change.object);
+    if (!Is(forest, object, syntax.Identifier)) {
+        return ScalarOperands.Failed(Diagnose(forest, object, 0, "native map changes require a map variable"));
+    }
+    record := ScalarMapShape(forest, text, callables, names, types, callable.package, object);
+    declared := types[record];
+    shape: ValueType = {storage: declared.value_storage, container: ArrayContainer, record: declared.value_record};
+    stored := SequenceElement(types, shape);
+    operator := ScalarArithmetic(CompoundOperator(Operator(forest, statement)));
+    if (operator != 0 && (!Numeric(stored.storage) || stored.container != 0 || stored.record >= 0)) {
+        return ScalarOperands.Failed(Diagnose(forest, statement, 0, "native array compound assignment requires a numeric value"));
+    }
+    mapped := ScalarMapType(types, record);
+    array := ScalarArrayType(types, shape.storage, shape.record);
+    element := ScalarElementType(types, shape);
+    binding := ScalarVariable(names, Text(forest, text, object)).index;
+    key_type := ScalarTypeOf(declared.key);
+    key := variables^;
+    index := key + 1;
+    previous := key + 2;
+    rows := [ScalarAt(forest, statement, facts.ScopeRow, 0, 0, 0, "")];
+    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                         change.key, change.key, declared.key, declared.key, facts.Clamp, []) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): rows.extend(ScalarCapture(forest, statement, key_type, key, built));
+    }
+    target := Unparenthesized(forest, Field(forest, statement, syntax.FieldTarget));
+    index_node := Field(forest, target, syntax.FieldIndex);
+    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                         index_node, index_node, IntStorage, IntStorage, facts.Clamp, []) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): rows.extend(ScalarCapture(forest, statement, facts.IntType, index, built));
+    }
+    read_key := ScalarAt(forest, statement, facts.ReadRow, key_type, key, 0, "");
+    read_index := ScalarAt(forest, statement, facts.ReadRow, facts.IntType, index, 0, "");
+    get := ScalarAt(forest, statement, facts.MapRow, array, facts.MapGet, 2, "");
+    get.literal = i64(mapped);
+    initial := [ScalarAt(forest, object, facts.ReadRow, mapped, binding, 0, ""), read_key, get, read_index];
+    checked := facts.BoolType;
+    operation := facts.ArrayPlaceCheck;
+    if (operator != 0) { checked = element; operation = facts.ArrayPlaceGet; }
+    initial.append(ScalarAt(forest, target, facts.ArrayRow, checked, operation, 2, ""));
+    rows.extend(ScalarCapture(forest, statement, checked, previous, initial));
+    incoming := [ScalarAt(forest, object, facts.RefRow, mapped, binding, 0, ""), read_key, read_index];
+    if (operator != 0) { incoming.append(ScalarAt(forest, statement, facts.ReadRow, element, previous, 0, "")); }
+    switch ScalarArrayElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                                   Field(forest, statement, syntax.FieldValue), shape, incoming) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): incoming = built;
+    }
+    if (operator != 0) { incoming.append(ScalarAt(forest, statement, facts.ArithmeticRow, element, operator, 2, "")); }
+    incoming.append(ScalarAt(forest, statement, facts.MapRow, mapped, facts.MapArraySet, 4, ""));
+    rows.append(ScalarAt(forest, statement, facts.AssignRow, mapped, binding, length(incoming), ""));
+    rows.extend(incoming);
+    rows.append(ScalarAt(forest, statement, facts.EndRow, 0, 0, 0, ""));
+    variables^ += 3;
+    return ScalarOperands.Built(rows);
 }
 
 // Read the old numeric value after evaluating the key, before the RHS. The

@@ -78,20 +78,25 @@ TaskOwnerCleanup :: (locations: TaskOwnerLocation[], prefix: string) -> string {
         out.append(format_text("  %{}.place = load ptr, ptr %{}\n  %{}.active = icmp ne ptr %{}.place, null\n", stem, name, stem, stem));
         out.append(format_text("  br i1 %{}.active, label %{}.drop, label %{}.next\n{}.drop:\n", stem, stem, stem, stem));
         out.append(format_text("  %{}.value = load {}, ptr %{}.place\n  store {} zeroinitializer, ptr %{}.place\n  store ptr null, ptr %{}\n", stem, type, stem, type, stem, name));
-        if (location.type == abi.TextStorage) {
-            out.append(format_text("  %{}.backing = extractvalue {} %{}.value, 2\n  call void @chibi_scalar.free(ptr %ctx, ptr %{}.backing)\n", stem, type, stem, stem));
-        } else if (location.type >= ArrayType) {
-            out.append(format_text("  call void @chibi_array.{}.drop(ptr %ctx, {} %{}.value)\n", location.type, type, stem));
-        } else {
-            out.append(format_text("  call void @chibi_value.{}.drop(ptr %ctx, {} %{}.value)\n", location.type, type, stem));
-        }
+        out.append(TaskDropValue(location.type, stem, format_text("%{}.value", stem)));
         out.append(format_text("  br label %{}.next\n{}.next:\n", stem, stem));
     }
     return strings.Join(out, "");
 }
+// A frame location and its promise use the same specialized owner release.
+TaskDropValue :: (type: int, prefix: string, value: string) -> string {
+    if (type == abi.TextStorage) {
+        return format_text("  %{}.backing = extractvalue {} {}, 2\n  call void @chibi_scalar.free(ptr %ctx, ptr %{}.backing)\n", prefix, TypeName(type), value, prefix);
+    }
+    if (type >= ArrayType) {
+        return format_text("  call void @chibi_array.{}.drop(ptr %ctx, {} {})\n", type, TypeName(type), value);
+    }
+    return format_text("  call void @chibi_value.{}.drop(ptr %ctx, {} {})\n", type, TypeName(type), value);
+}
 
-TaskOwnerBoundary :: (op: int) -> bool {
-    return op == ClockSample || op == Call || op == ForeignCall || op == ManagedNew || op == Format ||
+TaskOwnerBoundary :: (item: Instruction) -> bool {
+    op := item.op;
+    return (op == ArrayResize && item.literal == i64(ArrayResizeInitialized)) || op == ClockSample || op == Call || op == ForeignCall || op == ManagedNew || op == Format ||
            op == Suspend || op == Delay || op == AwaitHandle || op == AwaitResult || op == Fail;
 }
 TaskOwnersValid :: (code: Instruction[], slots: int[], locals: int[], records: Record[], layout: ValueLayout) -> string {
@@ -142,7 +147,7 @@ TaskOwnersValid :: (code: Instruction[], slots: int[], locals: int[], records: R
                 if (last == 0) { called = false; }
             }
         } else if (active_count > 0) {
-            if (called || !TaskOwnerBoundary(item.op)) { return "native frame owners must bracket one fallible or waiting call"; }
+            if (called || !TaskOwnerBoundary(item)) { return "native frame owners must bracket one fallible or waiting call"; }
             called = true;
         }
     }

@@ -1,0 +1,16 @@
+package failed_owned_promise
+Payload :: struct { text: string; words: string[]; }
+Text :: (count: int) -> string { return text_from_bytes(resize([u8(120)], count)); }
+Worker :: () -> Payload { yield; return {text: Text(11), words: [Text(13)]}; }
+Broken :: (value: Payload) { assert(false, "owned promise failure"); }
+Main :: () -> int {
+    pending := Worker();
+    joined := await pending;
+    if joined is Cancelled { return 1; }
+    else {
+        value := joined;
+        value.words[0] = Text(17);
+        Broken(value);
+    }
+    return 0;
+}

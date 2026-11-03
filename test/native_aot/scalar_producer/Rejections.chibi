@@ -9,7 +9,12 @@ SourceBoundaries :: () {
     ValidateRows(patterns, "");
     RejectedSource("package scalar\nNamed :: union { Tag(items: [int: int]) }\nMain :: () -> int { return 1; }\n", "native map payloads require union ownership support", "items: [int: int]");
     RejectedSource("package scalar\nWrapped :: union { Of(p: ^int) }\nMain :: () -> int { return 1; }\n", "native pointer payloads require union tracing support", "p: ^int");
-    RejectedSource("package scalar\nPoint :: struct { x: int; }\nMain :: () -> int { p: Point = {x: 1}; return text_byte_length(format_text(\"{}\", p)); }\n", "scalar proof formats only numbers, bools, strings, arrays and maps", "p");
+    summary := Produced("package scalar\nPoint :: struct { x: int; }\nMain :: () -> int { p: Point = {x: 1}; return text_byte_length(format_text(\"{}\", p)); }\n");
+    assert(scalar.Validate(summary) == "");
+    switch scalar.EmitProgramFor(abi.LinuxX64(), summary, "") {
+        case .Emitted(text): assert(text != "");
+        case: assert(false, "record summaries lower with a native program context");
+    }
     RejectedSource("package scalar\nMain :: () -> int { return text_byte_length(format_text(\"{}\", 7)); }\n", "a number needs an integer type here", "7");
 }
 

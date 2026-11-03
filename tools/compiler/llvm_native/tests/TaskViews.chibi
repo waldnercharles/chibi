@@ -33,7 +33,7 @@ WaitingWindowsUseOnlyTheClosedFrameRootShapes :: () {
     Rejects(WindowFrame(native.RefType + native.ViewType),
             "native waiting parameters need scalar values; managed values and dependencies are not supported yet");
     Rejects(WindowFrame(native.RecordType + 1),
-            "native managed pointer aggregate roots require scalar or pointer-only inline records");
+            "native managed pointer aggregate roots require collector-copyable inline records or optional views");
 }
 @test
 WindowFramesDoNotAdmitWindowPromises :: () {

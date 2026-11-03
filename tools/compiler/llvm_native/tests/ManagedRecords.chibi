@@ -51,7 +51,7 @@ InlineBackingRecordsUseActiveOwnersRatherThanSnapshotRoots :: () {
         assert(!strings.Contains(text, "ptr @chibi_managed.trace.record0)"), "a borrowed owner snapshot must not remain a frame root");
     }
     Rejects(InlineRootModule(records, [native.RecordType + 1, native.PointerType, native.ViewType]),
-        "native managed pointer aggregate roots require scalar or pointer-only inline records");
+        "native managed pointer aggregate roots require collector-copyable inline records or optional views");
     // Existing direct optional views retain their own separately traced rule.
     Emitted(InlineRootModule([{first: 0, count: 2, identity: 0}], [abi.IntStorage, native.ViewType]));
 }
@@ -67,7 +67,7 @@ InlineRootValidationPrecedesEveryChildIndex :: () {
         [native.RecordType + 1, native.RecordType, native.PointerType]), RecordLayout());
     // Arrays break by-value cycles, but cannot turn a GC graph into an inline root.
     Rejects(InlineRootModule([{first: 0, count: 2, identity: 0}], [native.ArrayType + native.RecordType, native.PointerType]),
-        "native managed pointer aggregate roots require scalar or pointer-only inline records");
+        "native managed pointer aggregate roots require collector-copyable inline records or optional views");
 }
 
 @test

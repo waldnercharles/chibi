@@ -127,7 +127,7 @@ CollectorArrayMetadataKeepsRootlessContainersClosed :: () {
 CollectorArraysDoNotBorrowOptionalWindowRootAdmission :: () {
     records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 2, identity: 0}];
     Rejects(InlineRootModule(records, [native.ArrayType + native.RecordType + 1, abi.IntStorage, native.ViewType]),
-        "native managed pointer aggregate roots require scalar or pointer-only inline records");
+        "native managed pointer aggregate roots require collector-copyable inline records or optional views");
     // A standalone optional window is allowed, so test its array slot directly.
     records = [{first: 0, count: 2, identity: 0}];
     array := native.ArrayType + native.RecordType;

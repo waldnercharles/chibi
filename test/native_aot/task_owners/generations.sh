@@ -20,17 +20,17 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 for level in 0 2; do
-    for source in Generation Edited ResizeGeneration TypedGeneration; do
+    for source in Generation Edited ResizeGeneration TypedGeneration NestedPointers; do
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$root/test/native_aot/task_owners/$source.chibi" --shared \
             --output "$work/$source-$level.so" --llvm "$audit_llvm" --target "$target" --level "$level" --jobs 1
     done
-    for mode in complete cancel failure resize resize-functional unwrap unwrap-await unwrap-immediate; do
+    for mode in complete cancel failure resize resize-functional unwrap unwrap-await unwrap-immediate nested-pointers; do
         run="$work/$mode-O$level"
         mkdir "$run"
         if [ "$mode" != complete ]; then touch "$run/$mode-case"; fi
         source=Generation
-        case "$mode" in resize*) source=ResizeGeneration ;; unwrap*) source=TypedGeneration ;; esac
+        case "$mode" in resize*) source=ResizeGeneration ;; unwrap*) source=TypedGeneration ;; nested-pointers) source=NestedPointers ;; esac
         cp "$work/$source-$level.so" "$run/live-0.so"
         (cd "$run" && exec timeout 90 "$work/host") > "$run/host.log" 2>&1 &
         child=$!
@@ -50,6 +50,7 @@ for level in 0 2; do
         case "$mode" in failure|resize*|unwrap*) expected=134 ;; esac
         if [ "$result" -ne "$expected" ]; then cat "$run/host.log"; echo "owned generation $mode O$level status$result"; exit 1; fi
         if [ "$mode" = complete ]; then [ "$(cat "$run/old-done")" = old:48 ]; fi
+        if [ "$mode" = nested-pointers ]; then test -e "$run/old-done"; fi
         case "$mode" in unwrap*)
             grep -Fx 'native failure: UnwrappedNil' "$run/host.log"
             test ! -e "$run/after-unwrap"

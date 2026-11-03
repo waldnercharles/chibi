@@ -1,0 +1,5 @@
+package rejected_nested_pointer_schema
+
+Row :: struct { pointer: ^int; }
+Keep :: (value: ^^(Row[])) -> ^^(Row[]) { return value; }
+Main :: () -> int { return 0; }

@@ -144,7 +144,7 @@ ManagedOptionalText :: (records: Record[], fields: int[], type: int) -> bool {
     return ViewOptional(records, fields, type, abi.TextStorage);
 }
 ManagedPayload :: (records: Record[], fields: int[], layout: ManagedRecordLayout, values: ValueLayout, type: int, tag: i64) -> bool {
-    return abi.ScalarType(type) != "" || type == abi.TextStorage || type == ArrayType + PointerType ||
+    return abi.ScalarType(type) != "" || type == abi.TextStorage || type == PointerType || type == ArrayType + PointerType ||
            (ManagedArray(type) && ElementType(records, type) != 0 && ValueValid(values, type - ArrayType)) ||
            ((ManagedCellRecord(records, layout, type) || ManagedOptionalText(records, fields, type)) &&
             records[type - RecordType].identity != 0 && records[type - RecordType].identity == tag);
@@ -202,6 +202,22 @@ ManagedTextModule :: (code: Instruction[], counter: string) -> string {
 }
 ManagedTarget :: (records: Record[], fields: int[], layout: ManagedRecordLayout, values: ValueLayout, type: int, tag: i64) -> bool {
     return type == PointerType || ManagedPayload(records, fields, layout, values, type, tag);
+}
+// Descriptor cells add one collector edge, no counted owner. Their metadata
+// remains leased until the last cell using this image's callbacks is released.
+ManagedPointerModule :: (code: Instruction[], counter: string) -> string {
+    out: string[] = [];
+    seen: [i64: bool] = [:];
+    for item in code {
+        if (item.op != ManagedNew || item.right != PointerType || seen.has(item.literal)) { continue; }
+        seen[item.literal] = true;
+        out.append(format_text("@chibi_managed.layout.pointer{} = private constant %chibi.managed.layout {{ ptr @chibi_managed.trace.pointer, ptr @chibi_managed.validate.pointer{}, ptr {} }}\n", item.literal, item.literal, counter));
+        out.append(format_text("define internal i1 @chibi_managed.validate.pointer{}(i64 %offset, i64 %tag, i64 %bytes, i32 %storage) {{\nentry:\n", item.literal));
+        out.append(format_text("  %tag.ok = icmp eq i64 %tag, {}\n  %storage.ok = icmp eq i32 %storage, {}\n", item.literal, PointerType));
+        out.append(format_text("  %bytes.ok = icmp eq i64 %bytes, ptrtoint (ptr getelementptr ({}, ptr null, i32 1) to i64)\n", abi.ManagedPointerType()));
+        out.append("  %offset.ok = icmp eq i64 %offset, 0\n  %type.ok = and i1 %tag.ok, %storage.ok\n  %range.ok = and i1 %bytes.ok, %offset.ok\n  %valid = and i1 %type.ok, %range.ok\n  ret i1 %valid\n}\n");
+    }
+    return strings.Join(out, "");
 }
 ManagedRootTypes :: (types: int[], traced: bool[]) -> bool {
     if (ManagedTypes(types)) { return true; }

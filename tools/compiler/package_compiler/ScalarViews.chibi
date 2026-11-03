@@ -40,7 +40,17 @@ ScalarViewSignature :: (types: TypeDecl[], storage: int, container: int, record:
         declared := types[record];
         shape = {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
     }
-    if (storage == PointerStorage && container == 0) { shape = ScalarPointerElement(types, record); }
+    if (storage == PointerStorage && container == 0) {
+        shape = ScalarPointerElement(types, record);
+        if (shape.storage == 0) { return false; }
+        // Element validation bounds the chain. Read each remaining declaration
+        // once, so nesting cannot hide a rejected terminal array schema.
+        for depth in 0..<length(types) {
+            if (shape.storage != PointerStorage || shape.container != 0) { break; }
+            declared := types[shape.record];
+            shape = {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
+        }
+    }
     if ((shape.container == ViewContainer || (storage == PointerStorage && container == 0 && shape.container == ArrayContainer)) && ScalarViewSchemaElement(types, shape.storage, shape.record)) {
         return types[shape.record].native_schema != 0;
     }

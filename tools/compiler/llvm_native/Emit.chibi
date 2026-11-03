@@ -3860,6 +3860,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             counter := "null";
             if (family) { counter = strings.Concatenate(["@", abi.ManagedImageCounter()]); }
             out.append(ManagedArrayModule(held, counter));
+            out.append(ManagedPointerModule(held, counter));
             out.append(ManagedTextModule(held, counter));
             out.append(ViewModule(held));
         }

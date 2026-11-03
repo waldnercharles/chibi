@@ -108,10 +108,10 @@ ManagedPinOwners :: (vars: int[], owned: int[], places: int[], locals: int[], fi
                      fresh: int[], slots: int[], first_slot: int, frames: Frame[], next_slot: int, next_root: int, frame_owners: bool, records: native.Record[], layout: native.ValueLayout) -> ManagedPins {
     output: ManagedPins = {before: [], after: [], types: [], next: next_root};
     // Canonical record owners are already tracked for their full lifetime.
-    // Fresh record copies need membership only across this collecting call.
+    // Fresh record and array owners join only across this collecting call.
     for (slot in fresh) {
         type := slots[first_slot + slot];
-        if (type >= native.RecordType && type < native.ArrayType && native.ValueCollectorOwner(layout, type)) {
+        if (native.ValueCollectorOwner(layout, type) && type != native.ArrayType + native.PointerType) {
             output.before.append(Op(native.ManagedTrack, type, 0, slot, 0, native.ManagedTrackSlot));
         }
     }
@@ -164,7 +164,7 @@ ManagedPinOwners :: (vars: int[], owned: int[], places: int[], locals: int[], fi
     }
     for (slot in fresh) {
         type := slots[first_slot + slot];
-        if (type >= native.RecordType && type < native.ArrayType && native.ValueCollectorOwner(layout, type)) {
+        if (native.ValueCollectorOwner(layout, type) && type != native.ArrayType + native.PointerType) {
             output.after.append(Op(native.ManagedTrack, type, 0, slot, 0, native.ManagedClearSlot));
         }
     }

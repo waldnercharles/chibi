@@ -12,7 +12,7 @@ pub TaskOwnedType :: (records: Record[], layout: ValueLayout, type: int) -> bool
     if (type >= MapType && type < RefType) { return MapPayloadValid(records, layout, type); }
     if (type >= ArrayType && type < MapType) {
         element := ElementType(records, type);
-        return element != 0 && ValueValid(layout, element);
+        return element != 0 && element != PointerType && ValueCollectorCopyable(layout, element);
     }
     return type >= RecordType && type < ArrayType && type - RecordType < length(layout.collector_owned) &&
            layout.collector_copyable[type - RecordType] && layout.collector_owned[type - RecordType];

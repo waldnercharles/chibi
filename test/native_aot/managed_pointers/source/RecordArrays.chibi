@@ -1,0 +1,112 @@
+package managed_record_arrays
+
+Holder :: struct { pointer: ^int; }
+Owned :: struct { holder: Holder; label: string; values: int[]; }
+Link :: struct { value: int; next: ^Link?; }
+Linked :: struct { pointer: ^Link?; }
+Batch :: struct { rows: Holder[]; }
+
+Make :: (value: int) -> Holder { return {pointer: &value}; }
+MakeOwned :: (value: int) -> Owned {
+    return {holder: Make(value), label: text_from_bytes([u8(65), u8(value), u8(0)]), values: [value, value + 1]};
+}
+Churn :: () {
+    for (index in 0..<2500) { value := index; pointer := &value; pointer^ += 1; }
+}
+Read :: (rows: Holder[]) -> int { Churn(); return rows[0].pointer^; }
+Replace :: (rows: ^(Holder[]), value: int) { rows^[0] = Make(value); }
+Copies :: () -> int {
+    rows := [Make(7), Make(11)];
+    copied := rows;
+    Replace(&copied, 19);
+    first := Read(rows);
+    second := Read(copied);
+    selected := copied[0].pointer;
+    rows = [];
+    copied = [];
+    Churn();
+    selected^ += 4;
+    return first + second + selected^;
+}
+OwnedCopies :: () -> int {
+    rows := [MakeOwned(5), MakeOwned(9)];
+    copied := rows;
+    copied[0] = MakeOwned(13);
+    Churn();
+    first := rows[0];
+    other := copied[0];
+    rows = [];
+    copied = [];
+    Churn();
+    return first.holder.pointer^ + other.holder.pointer^ + first.values[1] + other.values[1] + first.label.length() + other.label.length();
+}
+Historical :: (rows: Holder[], changed: ^(Holder[])) -> int {
+    changed^ = [Make(23)];
+    Churn();
+    return rows[0].pointer^;
+}
+Iteration :: () -> int {
+    rows: Holder[] = [];
+    for (index in 0..<20) { rows.append(Make(index)); }
+    total := 0;
+    for (row, index in rows) {
+        if (index == 0) { rows = []; }
+        Churn();
+        if (index == 2) { continue; }
+        total += row.pointer^;
+        if (index == 9) { break; }
+    }
+    return total;
+}
+Nested :: () -> int {
+    batches: Batch[] = [{rows: [Make(31)]}];
+    copied := batches;
+    copied[0] = {rows: [Make(37)]};
+    Churn();
+    old := batches[0].rows;
+    current := copied[0].rows;
+    batches = [];
+    copied = [];
+    Churn();
+    return old[0].pointer^ + current[0].pointer^;
+}
+Chain :: () -> int {
+    tail: ^Link? = nil;
+    for (index in 0..<10000) {
+        node: Link = {value: 1, next: tail};
+        tail = &node;
+    }
+    if (tail == nil) { return 0; }
+    rows: Linked[] = [{pointer: tail}];
+    Churn();
+    current: ^Link? = rows[0].pointer;
+    total := 0;
+    while (current != nil) { total += current.value; current = current.next; }
+    return total;
+}
+Synchronous :: () -> int {
+    copies := Copies();
+    owned := OwnedCopies();
+    rows := [Make(17)];
+    historical := Historical(rows, &rows);
+    current := rows[0].pointer^;
+    iteration := Iteration();
+    nested := Nested();
+    chain := Chain();
+    assert(nested == 68);
+    assert(copies == 49);
+    assert(owned == 44);
+    assert(historical == 17 && current == 23);
+    assert(iteration == 43);
+    assert(chain == 10000);
+    for (index in 0..<5000) { discarded := [Make(index)]; }
+    return 0;
+}
+Worker :: () -> Holder[] { value := 7; yield; return [{pointer: &value}]; }
+Main :: () -> int {
+    result := Synchronous();
+    pending := Worker(); value := await pending;
+    if (value is Cancelled) { return 1; }
+    else { assert(value[0].pointer^ == 7); }
+    return result;
+}

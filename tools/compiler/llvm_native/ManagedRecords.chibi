@@ -31,7 +31,7 @@ ManagedRecordLayouts :: (records: Record[], fields: int[]) -> ManagedRecordLayou
             if (type == PointerType || type == ViewType || type == ArrayType + PointerType) {
                 if (!found.traced[parent]) { found.traced[parent] = true; pending.append(parent); }
             }
-            if (abi.ScalarType(type) == "" && type != PointerType) { found.flat[parent] = false; }
+            if (abi.ScalarType(type) == "" && type != PointerType && type != abi.TextStorage) { found.flat[parent] = false; }
             if (abi.ScalarType(type) == "" && (type < RecordType || type >= ArrayType) && found.plain[parent]) {
                 found.plain[parent] = false;
                 nonplain.append(parent);
@@ -140,13 +140,22 @@ ManagedStorageClass :: (type: int) -> int {
 }
 // The optional Text layout exposes only the whole value. Its tag and payload
 // retain the existing physical optional representation; no field projections.
-ManagedOptionalText :: (records: Record[], fields: int[], type: int) -> bool {
-    return ViewOptional(records, fields, type, abi.TextStorage);
+ManagedOptionalText :: (records: Record[], fields: int[], tags: i64[], type: int) -> bool {
+    if (!ViewOptional(records, fields, type, abi.TextStorage) || length(tags) != length(fields)) { return false; }
+    first := records[type - RecordType].first;
+    return tags[first] == 0 && tags[first + 1] == 0;
 }
-ManagedPayload :: (records: Record[], fields: int[], layout: ManagedRecordLayout, values: ValueLayout, type: int, tag: i64) -> bool {
+// Constructor acquisition precedes this consuming publication. Optional Text
+// retains its tag-aware active-payload path instead of visiting inactive bytes.
+ManagedImportsText :: (records: Record[], fields: int[], tags: i64[], values: ValueLayout, type: int) -> bool {
+    return ValueHasText(values, type) && ValueImportable(values, type) &&
+           (ManagedArray(type) || (type >= RecordType && type < ArrayType &&
+            !ManagedOptionalText(records, fields, tags, type)));
+}
+ManagedPayload :: (records: Record[], layout: ManagedRecordLayout, values: ValueLayout, type: int, tag: i64) -> bool {
     return abi.ScalarType(type) != "" || type == abi.TextStorage || type == PointerType || type == ArrayType + PointerType ||
            (ManagedArray(type) && ElementType(records, type) != 0 && ValueValid(values, type - ArrayType)) ||
-           ((ManagedCellRecord(records, layout, type) || ManagedOptionalText(records, fields, type)) &&
+           (ManagedCellRecord(records, layout, type) &&
             records[type - RecordType].identity != 0 && records[type - RecordType].identity == tag);
 }
 ManagedArray :: (type: int) -> bool {
@@ -200,8 +209,8 @@ ManagedTextModule :: (code: Instruction[], counter: string) -> string {
     }
     return strings.Join(out, "");
 }
-ManagedTarget :: (records: Record[], fields: int[], layout: ManagedRecordLayout, values: ValueLayout, type: int, tag: i64) -> bool {
-    return type == PointerType || ManagedPayload(records, fields, layout, values, type, tag);
+ManagedTarget :: (records: Record[], layout: ManagedRecordLayout, values: ValueLayout, type: int, tag: i64) -> bool {
+    return type == PointerType || ManagedPayload(records, layout, values, type, tag);
 }
 // Descriptor cells add one collector edge, no counted owner. Their metadata
 // remains leased until the last cell using this image's callbacks is released.
@@ -283,8 +292,8 @@ ManagedRecordModule :: (records: Record[], fields: int[], tags: i64[], layout: M
             out.append("  ret void\n}\n");
         }
         if (array_traces[index]) { out.append(ManagedArrayTraceRuntime(ArrayType + type)); }
-        optional_text := ManagedOptionalText(records, fields, type);
-        if (!wanted[index] || record.identity == 0 || (!layout.flat[index] && !layout.plain[index] && !optional_text)) { continue; }
+        optional_text := ManagedOptionalText(records, fields, tags, type);
+        if (!wanted[index] || record.identity == 0 || (!layout.flat[index] && !layout.plain[index])) { continue; }
         if (optional_text) {
             out.append(format_text("define internal {} @chibi_managed.copy.record{}(ptr %ctx, {} %value) {{\nentry:\n", name, index, name));
             out.append(format_text("  %tag = extractvalue {} %value, 0\n  switch i32 %tag, label %bad [ i32 0, label %none i32 1, label %some ]\nnone:\n  ret {} zeroinitializer\nsome:\n", name, name));

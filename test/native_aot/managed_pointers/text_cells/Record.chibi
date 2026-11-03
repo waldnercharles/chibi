@@ -1,0 +1,23 @@
+package record_text_cell_writer
+Value :: struct { pointer: ^Number; label: string; other: string; empty: string; }
+Number :: struct { value: int; }
+Literal :: (pointer: ^Number) -> Value {
+    return {pointer: pointer, label: "new image literal", other: "second image literal", empty: ""};
+}
+Write :: (pointer: ^Value) -> ^Value {
+    alias := pointer;
+    alias^ = Literal(pointer.pointer);
+    return alias;
+}
+// The image runner extracts the prefix above this marker.
+MakeNumber :: (value: int) -> ^Number { number: Number = {value: value}; return &number; }
+Constructor :: () -> ^Value {
+    value: Value = {pointer: MakeNumber(7), label: "old", other: "", empty: ""};
+    return &value;
+}
+Main :: () -> int {
+    pointer := Constructor();
+    changed := Write(pointer);
+    assert(changed.pointer.value == 7 && changed.other == "second image literal" && changed.empty == "");
+    return text_byte_length(changed.label);
+}

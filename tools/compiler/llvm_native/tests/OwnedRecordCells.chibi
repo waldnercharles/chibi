@@ -1,0 +1,74 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+@test
+OwnedFlatCellAcquiresOnceThenUsesTheSharedTextImporter :: () {
+    text := Emitted(OptionalTextCellModule([native.PointerType, abi.TextStorage], [i64(-901), -902], -900, -900));
+    assert(strings.Count(text, "define internal %record0 @chibi_value.32.copy(") == 1);
+    assert(strings.Count(text, "call %record0 @chibi_value.32.copy(") == 1);
+    assert(strings.Count(text, "define internal void @chibi_value.32.import(") == 1);
+    assert(strings.Count(text, "call void @chibi_value.32.import(ptr %ctx, ptr %import1)") == 1);
+    assert(!strings.Contains(text, "@chibi_managed.copy.record0"), "authored records must not introduce another Text copy path");
+    acquired := strings.Index(text, "%owned1 = call %record0 @chibi_value.32.copy(");
+    imported := strings.Index(text, "call void @chibi_value.32.import(ptr %ctx, ptr %import1)");
+    published := strings.Index(text, "%cell1 = call ptr @chibi_managed.new(");
+    assert(acquired >= 0 && imported > acquired && published > imported);
+    assert(strings.Contains(text, "ptr @chibi_managed.trace.record0, ptr @chibi_managed.validate.record0"));
+    assert(strings.Contains(text, "ptr @chibi_value.32.drop_at, i32 32"));
+    assert(strings.Count(text, "define internal void @chibi_value.32.drop_at(") == 1);
+    assert(strings.Contains(text, "call void @chibi_managed.trace.pointer(ptr %heap, ptr %field0)"));
+    assert(!strings.Contains(text, "switch i32 %tag"), "all authored fields remain active independently of their values");
+    assert(strings.Contains(text, "%tag1 = icmp eq i64 %tag, -902"));
+    assert(strings.Contains(text, "%storage1 = icmp eq i32 %storage, 13"));
+    visitor := PublicationFunction(text, "define internal void @chibi_import.visit.32(");
+    assert(strings.Contains(visitor, "call void @chibi_import.visit.13("));
+    assert(!strings.Contains(visitor, "@chibi_managed.address("), "normalization does not follow managed pointer fields");
+}
+
+@test
+AuthoredIntTextCellsRemainDistinctFromOptionalText :: () {
+    text := Emitted(OptionalTextCellModule([abi.IntStorage, abi.TextStorage], [i64(-901), -902], -900, -900));
+    assert(!strings.Contains(text, "switch i32 %tag"));
+    assert(!strings.Contains(text, "@chibi_managed.copy.record0"));
+    assert(strings.Contains(text, "find0.2:"), "authored fields keep their independently checked addresses");
+    for tags in [[i64(0), 0], [i64(-901), 0], [i64(0), -902]] {
+        Rejects(OptionalTextCellModule([native.PointerType, abi.TextStorage], tags, -900, -900),
+            "native managed field identity is invalid");
+    }
+    Emitted(OptionalTextCellModule([abi.BoolStorage, abi.TextStorage, abi.IntStorage], [i64(-901), -902, -903], -900, -900));
+}
+
+@test
+OwnedRecordWritersDemandTheirImporterWithoutConstructors :: () {
+    record := native.RecordType;
+    code := PublicationCode(record, native.ValueImport);
+    for item in code { assert(item.op != native.ManagedNew); }
+    text := Emitted(native.EmitFamilyLibraryStates(abi.LinuxX64(), "OwnedWriter", ["Write"], [i64(1)],
+        [Function(abi.IntStorage, 0, 0, 3, 0, length(code), 0, 0)], [], [record, record, abi.IntStorage], [], code, [],
+        [{first: 0, count: 2, identity: -900}], [native.PointerType, abi.TextStorage], [i64(-901), -902], ["text"], 1, [], -1, []));
+    for helper in ["define internal void @chibi_value.32.import(", "define internal void @chibi_import.visit.32(",
+                   "define internal void @chibi_import.visit.13(", "define internal void @chibi_value.32.drop_at(",
+                   "define internal ptr @chibi_managed.allocate(", "define internal void @chibi_managed.release("] {
+        assert(strings.Count(text, helper) == 1);
+    }
+    assert(!strings.Contains(text, "call ptr @chibi_managed.new("));
+    assert(!strings.Contains(text, "@chibi_managed.copy.record0"));
+}
+
+@test
+OwnedFlatAdmissionDoesNotAdmitBackedOrNestedCells :: () {
+    diagnostic := "native managed record metadata requires scalar, text or pointer fields";
+    for field in [native.ArrayType + abi.TextStorage, native.ArrayType + native.PointerType,
+                  native.MapOf(abi.TextStorage, abi.TextStorage)] {
+        Rejects(OptionalTextCellModule([field, abi.TextStorage], [i64(-901), -902], -900, -900), diagnostic);
+    }
+    records: native.Record[] = [{first: 0, count: 2, identity: -900}, {first: 2, count: 1, identity: 0}];
+    code := PublicationCode(native.RecordType, 0);
+    Rejects(native.EmitProgramTyped(abi.LinuxX64(), [Function(abi.IntStorage, 0, 0, 3, 0, length(code), 0, 0)],
+        [], [native.RecordType, native.RecordType, abi.IntStorage], [], code, [], records,
+        [native.RecordType + 1, abi.TextStorage, abi.TextStorage], [i64(-901), -902, 0], ["text"],
+        {file: "", directory: ""}, [], [], []), diagnostic);
+}

@@ -91,7 +91,7 @@ InlineRootTracingDoesNotGrantCellOrProjectionIdentity :: () {
     // The nested wrapper is a stack root, not a newly projectable cell layout.
     records = [{first: 0, count: 1, identity: -900}, {first: 1, count: 1, identity: -700}];
     Rejects(InlineRootModule(records, [native.RecordType + 1, native.PointerType]),
-        "native managed record metadata requires scalar or pointer fields");
+        "native managed record metadata requires scalar, text or pointer fields");
 }
 
 @test

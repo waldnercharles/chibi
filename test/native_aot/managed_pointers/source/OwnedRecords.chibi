@@ -1,0 +1,108 @@
+package owned_record_cells
+
+Entry :: struct { pointer: ^int; label: string; }
+Tagged :: struct { code: int; label: string; }
+Flagged :: struct { enabled: bool; wide: i64; label: string; }
+Link :: struct { next: ^Link?; label: string; }
+Text :: (value: int) -> string { return text_from_bytes([u8(65), u8(0), u8(wrap: value)]); }
+Number :: (value: int) -> ^int { return &value; }
+Build :: (value: int) -> Entry { return {pointer: Number(value), label: Text(value)}; }
+Owner :: (value: int) -> ^Entry { saved := Build(value); return &saved; }
+Parameter :: (value: Entry) -> ^Entry { return &value; }
+Literal :: () -> Entry { return {pointer: Number(31), label: "returned record literal"}; }
+Scoped :: (value: ^Entry) { value.label = "scoped record literal"; }
+ScopedText :: (value: ^string, text: string) { value^ = text; }
+Replace :: (value: ^Entry, next: int) -> int { value^ = Build(next); return next; }
+First :: (value: Entry, ignored: int) -> int { return value.pointer^ + int(text_byte_at(value.label, 2)); }
+Counted :: (calls: ^int) -> Entry { calls^ += 1; return Build(23); }
+Constructor :: () -> int {
+    calls := 0;
+    value := Counted(&calls);
+    pointer := &value;
+    assert(calls == 1 && pointer.pointer^ == 23 && text_byte_at(pointer.label, 2) == 23);
+    return calls;
+}
+WordLength :: () -> int {
+    number := 7;
+    value: Entry = {pointer: &number, label: "word"};
+    pointer := &value;
+    return text_byte_length(pointer.label);
+}
+Cycle :: () -> ^Link {
+    left: Link = {next: nil, label: Text(41)};
+    first := &left;
+    right: Link = {next: first, label: Text(43)};
+    second := &right;
+    first.next = second;
+    return first;
+}
+Main :: () -> int {
+    word := WordLength();
+    assert(word == 4);
+    calls := Constructor();
+    assert(calls == 1);
+    value := Build(7);
+    pointer := &value;
+    alias := pointer;
+    snapshot := pointer^;
+    alias.label = Text(9);
+    assert(snapshot.pointer^ == 7 && text_byte_at(snapshot.label, 2) == 7);
+    assert(text_byte_length(snapshot.label) == 3 && text_byte_at(snapshot.label, 1) == 0);
+    assert(text_byte_at(value.label, 2) == 9);
+    field := &pointer.label;
+    ScopedText(field, Text(11));
+    assert(text_byte_at(value.label, 2) == 11);
+    before := First(pointer^, Replace(alias, 13));
+    assert(before == 18 && value.pointer^ == 13);
+    before = First(value, Replace(pointer, 17));
+    assert(before == 26 && value.pointer^ == 17);
+    value = Literal();
+    assert(pointer.pointer^ == 31 && pointer.label == "returned record literal");
+    value = value;
+    pointer^ = pointer^;
+    Scoped(alias);
+    assert(value.label == "scoped record literal");
+    empty_field := &value.label;
+    ScopedText(empty_field, "");
+    assert(text_byte_length(pointer.label) == 0 && pointer.pointer^ == 31);
+    pointer^ = Build(29);
+    assert(value.pointer^ == 29 && text_byte_at(value.label, 2) == 29);
+    returned := Owner(17);
+    parameter := Parameter(Build(19));
+    tagged: Tagged = {code: 37, label: "an authored record is not an optional"};
+    tagged_pointer := &tagged;
+    tagged_pointer.code += 5;
+    assert(tagged.code == 42 && tagged_pointer.label == "an authored record is not an optional");
+    flagged: Flagged = {enabled: true, wide: i64(257), label: Text(47)};
+    flag_pointer := &flagged;
+    flag_pointer.enabled = false;
+    flag_pointer.wide += 2;
+    assert(!flagged.enabled && flagged.wide == 259 && text_byte_at(flag_pointer.label, 2) == 47);
+    for index in 0..<2000 { discarded := Owner(index % 127); }
+    assert(returned.pointer^ == 17 && text_byte_at(returned.label, 2) == 17);
+    assert(parameter.pointer^ == 19 && text_byte_at(parameter.label, 2) == 19);
+    assert(snapshot.pointer^ == 7 && text_byte_at(snapshot.label, 2) == 7);
+    cycle := Cycle();
+    for index in 0..<1000 { discarded := Cycle(); }
+    assert(text_byte_at(cycle.label, 2) == 41);
+    selected := cycle.next;
+    if selected { assert(text_byte_at(selected.label, 2) == 43); } else { assert(false); }
+    return 0;
+}
+CountedCopies :: () -> int {
+    value := Build(7);
+    pointer := &value;
+    for index in 0..<4096 {
+        saved := pointer^;
+        pointer^ = saved;
+        assert(saved.pointer == pointer.pointer && text_byte_at(saved.label, 2) == 7);
+    }
+    return 0;
+}
+Failure :: () -> int {
+    value := Build(7);
+    pointer := &value;
+    pointer^ = Literal();
+    assert(false, "owned record cell failure releases text and graph roots");
+    return 0;
+}

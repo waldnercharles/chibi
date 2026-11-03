@@ -1,0 +1,144 @@
+package owned_record_images
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import link "project:native_link"
+import host "project:native_link_host"
+import driver "project:native_driver"
+import route "project:driver_paths"
+import os "core:os"
+import strings "core:strings"
+foreign import libc "system:c"
+foreign libc { strtoll :: (text: cstring, end: rawptr, base: i32) -> i64 }
+
+Symbol :: (source: string, name: string) -> string {
+    found := "";
+    for (line in strings.SplitLines(source)) {
+        if (!strings.HasPrefix(line, "; chibi-function ")) { continue; }
+        words := strings.Split(line, " ");
+        if (length(words) != 4 || words[3] != name) { continue; }
+        assert(found == "", "source function must be unambiguous");
+        found = strings.Concatenate(["@chibi_scalar.", words[2]]);
+    }
+    assert(found != "", "source function metadata is required");
+    return found;
+}
+Shape :: struct { row: int; number: int; tag: i64; }
+Schema :: (source: string) -> Shape {
+    row := -1; number := -1;
+    record_shape := format_text(" = type {{ {}, {}, {}, {} }}", abi.ManagedPointerType(), abi.TextType(), abi.TextType(), abi.TextType());
+    for (line in strings.SplitLines(source)) {
+        if (!strings.HasPrefix(line, "%record")) { continue; }
+        boundary := strings.Index(line, " = type ");
+        if (boundary < 7) { continue; }
+        word := strings.Slice(line, 7, boundary - 7);
+        index := strtoll(word, 0, 10);
+        assert(index >= 0 && index < i64(native.ArrayType - native.RecordType) && format_text("{}", index) == word);
+        if (strings.HasSuffix(line, record_shape)) { assert(row == -1); row = int(index); }
+        if (strings.HasSuffix(line, " = type { i32 }")) { assert(number == -1); number = int(index); }
+    }
+    assert(row >= 0 && number >= 0, "the observer covers every direct Text field and the typed Number pointee");
+    active := false; tag: i64 = 0;
+    for (line in strings.SplitLines(source)) {
+        if (strings.HasPrefix(line, "define ")) { active = strings.Contains(line, format_text(" @chibi_managed.validate.record{}(", row)); }
+        prefix := "  %whole.tag = icmp eq i64 %tag, ";
+        if (active && strings.HasPrefix(line, prefix)) {
+            word := strings.Slice(line, strings.ByteLength(prefix), strings.ByteLength(line) - strings.ByteLength(prefix));
+            value := strtoll(word, 0, 10);
+            assert(value != 0 && tag == 0 && format_text("{}", value) == word);
+            tag = value;
+        }
+        if (line == "}") { active = false; }
+    }
+    assert(tag != 0, "the actual source supplies its complete record identity");
+    return {row: row, number: number, tag: tag};
+}
+BypassWrite :: (source: string) -> string {
+    symbol := Symbol(source, "Write");
+    lines: string[] = []; active := false; skipped := 0;
+    for (line in strings.SplitLines(source)) {
+        if (strings.HasPrefix(line, "define ")) { active = strings.Contains(line, strings.Concatenate([" ", symbol, "("])); }
+        if (active && strings.HasPrefix(line, "  call void @chibi_value.") &&
+            strings.Contains(line, ".import(ptr %ctx, ptr %s") && strings.HasSuffix(line, ")")) {
+            skipped += 1;
+            lines.append("  ; negative control: omit only this source publication import");
+        } else { lines.append(line); }
+        if (line == "}") { active = false; }
+    }
+    assert(skipped == 1, "negative control must bypass exactly one actual record publication import");
+    return strings.Join(lines, "\n");
+}
+Shared :: (source: string, visible: string, target_source: string, triple: string) -> string {
+    switch driver.ModuleShared(["core"], [visible], ["Main.chibi", strings.Concatenate([visible, "/target/Target.chibi"])],
+        [source, target_source], triple, "", "") {
+        case .Rejected(message): os.Print(message); return "";
+        case .Emitted(text): return text;
+    }
+}
+Main :: () -> int {
+    args := os.Arguments();
+    if (length(args) != 8 || (args[2] != "borrowed" && args[2] != "owned")) { return 2; }
+    work := args[0]; llvm := args[1]; owns_pointee := args[2] == "owned";
+    old := os.ReadText(args[3]); if (old.error) { return 2; }
+    writer := os.ReadText(args[4]); if (writer.error) { return 2; }
+    template := os.ReadText(args[5]); if (template.error) { return 2; }
+    allocations := os.ReadText(args[6]); if (allocations.error) { return 2; }
+    target_source := os.ReadText(strings.Concatenate([args[7], "/target/Target.chibi"]));
+    if (target_source.error) { return 2; }
+    target := abi.LinuxX64(); if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
+    visible := route.Visible(args[7]);
+    old.text = Shared(old.text, visible, target_source.text, target.triple);
+    writer.text = Shared(writer.text, visible, target_source.text, target.triple);
+    if (old.text == "" || writer.text == "") { return 1; }
+    if (os.WriteText(strings.Concatenate([work, "/old-source.ll"]), old.text) ||
+        os.WriteText(strings.Concatenate([work, "/writer-source.ll"]), writer.text)) { return 2; }
+    shape := Schema(old.text); writer_shape := Schema(writer.text); assert(shape.tag == writer_shape.tag);
+    assert(strings.Contains(writer.text, "; chibi-family\n"));
+    assert(strings.Contains(writer.text, format_text("define internal void @chibi_value.{}.import(", native.RecordType + writer_shape.row)));
+    if (!owns_pointee) {
+        assert(!strings.Contains(writer.text, "call ptr @chibi_managed.new("), "unload-positive writer cannot create a leased cell");
+    } else { assert(strings.Contains(writer.text, format_text("ptr @chibi_managed.layout{}", writer_shape.number))); }
+    constructor := Symbol(old.text, "Constructor"); write := Symbol(writer.text, "Write");
+    pointer := abi.ManagedPointerType();
+    assert(strings.Contains(old.text, format_text("{} {}(ptr %ctx)", pointer, constructor)));
+    assert(strings.Contains(writer.text, format_text("{} {}(ptr %ctx, {} %arg0)", pointer, write, pointer)));
+    adapter := strings.ReplaceAll(template.text, "$CTOR", constructor);
+    adapter = strings.ReplaceAll(adapter, "$CTX", abi.ManagedContextType());
+    adapter = strings.ReplaceAll(adapter, "$HEAP", format_text("{}", abi.ManagedOwnerField));
+    adapter = strings.ReplaceAll(adapter, "$TAG", format_text("{}", shape.tag));
+    adapter = strings.ReplaceAll(adapter, "$ROW", format_text("%record{}", shape.row));
+    adapter = strings.ReplaceAll(adapter, "$NUMBER", format_text("%record{}", shape.number));
+    adapter = strings.ReplaceAll(adapter, "$STORAGE", format_text("{}", native.RecordType));
+    adapter = strings.ReplaceAll(adapter, "$P", pointer);
+    writer_adapter := format_text("define i32 @owned_record_write(ptr %out) {{\n  %value = load {}, ptr %out\n  %changed = call {} {}(ptr @chibi_context, {} %value)\n  store {} %changed, ptr %out\n  ret i32 0\n}}\n", pointer, pointer, write, pointer, pointer);
+    old_module := strings.Concatenate([old.text, adapter]);
+    writer_module := strings.Concatenate([writer.text, writer_adapter]);
+    broken_module := strings.Concatenate([BypassWrite(writer.text), writer_adapter]);
+    start := strings.Concatenate([work, "/owned-record-start.ll"]);
+    context := strings.SplitLines(link.ManagedFamilyContext(link.SharedContext(target.triple, true), true));
+    contexts := 0;
+    for (index in 0..<length(context)) {
+        if (!strings.HasPrefix(context[index], "@chibi_context = hidden global ")) { continue; }
+        assert(strings.Contains(context[index], "ptr @chibi_allocate") && strings.Contains(context[index], "ptr @chibi_release"));
+        context[index] = strings.ReplaceAll(context[index], "ptr @chibi_allocate", "ptr @boundary.allocate");
+        context[index] = strings.ReplaceAll(context[index], "ptr @chibi_release", "ptr @boundary.release");
+        contexts += 1;
+    }
+    assert(contexts == 1, "one real context owns the reused allocation audit callbacks");
+    if (os.WriteText(start, strings.Concatenate([strings.Join(context, "\n"), "\n", allocations.text]))) { return 2; }
+    for (name in ["old", "writer", "broken"]) {
+        module := old_module; if (name == "writer") { module = writer_module; } if (name == "broken") { module = broken_module; }
+        path := format_text("{}/owned-record-{}.ll", work, name);
+        if (os.WriteText(path, module)) { return 2; }
+        for (level in [int(0), 2]) {
+            output := format_text("{}/owned-record-{}-O{}.so", work, name, level);
+            objects := [strings.Concatenate([output, ".o"]), strings.Concatenate([output, "-start.o"])];
+            if (host.Objects(llvm, [path, start], objects, level, 1)) { return 1; }
+            plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", false); plan.shared = true;
+            if (os.Platform() == "Darwin") { plan.imports = [{name: "System", symbols: ["malloc", "calloc", "free", "write", "abort", "memcpy", "memset", "__error"]}]; }
+            else { plan.libraries = ["c"]; }
+            if (host.Link(plan)) { return 1; }
+        }
+    }
+    return 0;
+}

@@ -552,7 +552,7 @@ ManagedUnroots :: (is_entry: bool) -> string {
     if (is_entry) { output = strings.Concatenate([output, "  call void @chibi_managed.collect(ptr %ctx, ptr %managed.heap)\n"]); }
     return output;
 }
-ManagedInstruction :: (item: Instruction, pc: int, records: Record[], fields: int[], values: ValueLayout, persistent: bool) -> string {
+ManagedInstruction :: (item: Instruction, pc: int, records: Record[], fields: int[], tags: i64[], values: ValueLayout, persistent: bool) -> string {
     out := format_text("p{}:\n", pc);
     if (item.op == ManagedNew) {
         out = format_text("{}  call void @chibi_managed.safepoint(ptr %ctx, ptr %managed.heap)\n", out);
@@ -576,14 +576,18 @@ ManagedInstruction :: (item: Instruction, pc: int, records: Record[], fields: in
         } else if (item.right >= RecordType) {
             index := item.right - RecordType;
             layout = format_text("@chibi_managed.layout{}", index);
-            if (ManagedOptionalText(records, fields, item.right)) {
+            if (ValueOwned(item.right, values.collector_owned)) {
                 drop = format_text("@chibi_value.{}.drop_at", item.right);
-                out = format_text("{}  %owned{} = call {} @chibi_managed.copy.record{}(ptr %ctx, {} %a{})\n", out, pc, TypeName(item.right), index, TypeName(item.right), pc);
+                if (ManagedOptionalText(records, fields, tags, item.right)) {
+                    out = format_text("{}  %owned{} = call {} @chibi_managed.copy.record{}(ptr %ctx, {} %a{})\n", out, pc, TypeName(item.right), index, TypeName(item.right), pc);
+                } else {
+                    out = format_text("{}  %owned{} = call {} @chibi_value.{}.copy(ptr %ctx, {} %a{})\n", out, pc, TypeName(item.right), item.right, TypeName(item.right), pc);
+                }
                 value = format_text("%owned{}", pc);
             }
         }
-        if (ManagedArray(item.right) && ValueHasText(values, item.right) && ValueImportable(values, item.right)) {
-            // Acquisition above owns one array edge. Normalize its nested Text
+        if (ManagedImportsText(records, fields, tags, values, item.right)) {
+            // Acquisition above owns the value. Normalize its reachable Text
             // before the cell publishes it; allocator callbacks defer GC until
             // the next spilled-root safe point.
             out = format_text("{}  store {} {}, ptr %import{}\n", out, TypeName(item.right), value, pc);

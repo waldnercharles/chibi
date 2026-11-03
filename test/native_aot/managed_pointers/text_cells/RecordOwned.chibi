@@ -1,0 +1,8 @@
+package record_text_cell_writer
+Value :: struct { pointer: ^Number; label: string; other: string; empty: string; }
+Number :: struct { value: int; }
+MakeNumber :: (value: int) -> ^Number { number: Number = {value: value}; return &number; }
+Literal :: () -> Value {
+    return {pointer: MakeNumber(31), label: "new image literal", other: "second image literal", empty: ""};
+}
+Write :: (pointer: ^Value) -> ^Value { alias := pointer; alias^ = Literal(); return alias; }

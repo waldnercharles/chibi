@@ -141,6 +141,7 @@ fi
 sh "$root/test/native_aot/managed_pointers/view-schema.sh" "$compiler" "$llvm" "$work"
 sh "$root/test/native_aot/managed_pointers/text-cell-images.sh" "$compiler" "$llvm" "$work"
 sh "$root/test/native_aot/managed_pointers/text-cell-images.sh" "$compiler" "$llvm" "$work" optional
+sh "$root/test/native_aot/managed_pointers/owned-records.sh" "$compiler" "$llvm" "$work"
 for level in 0 2; do
     for name in fallible_correlated_pointers_retain_valid_error_handling \
                 fallible_joined_pointers_keep_unchanged_pointees \

@@ -1,8 +1,0 @@
-package owned_record_cell
-Owned :: struct { pointer: ^int; label: string; }
-Main :: () -> int {
-    number := 7;
-    value: Owned = {pointer: &number, label: "word"};
-    pointer := &value;
-    return text_byte_length(pointer.label);
-}

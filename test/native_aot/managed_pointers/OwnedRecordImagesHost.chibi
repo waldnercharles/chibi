@@ -1,0 +1,81 @@
+package owned_record_images_host
+import os "core:os"
+import target "core:target"
+foreign import libc "system:c"
+foreign libc {
+    dlopen :: (path: cstring, flags: i32) -> rawptr
+    dlsym :: (image: rawptr, name: cstring) -> rawptr
+    dlclose :: (image: rawptr) -> i32
+    calloc :: (count: u64, width: u64) -> rawptr
+    free :: (memory: rawptr)
+}
+Required :: (image: rawptr, name: string) -> rawptr { address := dlsym(image, name); assert(address != 0); return address; }
+when target.Os == target.Darwin { Open :: (path: string) -> rawptr { return dlopen(path, 262); } }
+else { Open :: (path: string) -> rawptr { return dlopen(path, 2); } }
+Main :: () -> int {
+    args := os.Arguments();
+    if (length(args) != 3 || (args[2] != "borrowed" && args[2] != "owned")) { return 2; }
+    owns_pointee := args[2] == "owned";
+    old := Open(args[0]); writer := Open(args[1]); assert(old != 0 && writer != 0);
+    size: fn() -> i64 = Required(old, "chibi_host_family_size");
+    size_new: fn() -> i64 = Required(writer, "chibi_host_family_size");
+    adopt_old: fn(heap: rawptr) -> i32 = Required(old, "chibi_host_set_family");
+    adopt_new: fn(heap: rawptr) -> i32 = Required(writer, "chibi_host_set_family");
+    counter_old: fn(counter: rawptr) -> i32 = Required(old, "boundary_set_counter");
+    counter_new: fn(counter: rawptr) -> i32 = Required(writer, "boundary_set_counter");
+    allocations: fn() -> i64 = Required(old, "boundary_live");
+    create: fn(pointer: rawptr) -> i32 = Required(old, "owned_record_create");
+    check: fn(number: i32) -> i32 = Required(old, "owned_record_check");
+    write: fn(pointer: rawptr) -> i32 = Required(writer, "owned_record_write");
+    release: fn() -> i32 = Required(old, "owned_record_release");
+    pending: fn() -> i64 = Required(old, "chibi_host_cells_pending");
+    pending_new: fn() -> i64 = Required(writer, "chibi_host_cells_pending");
+    collect: fn() -> i32 = Required(old, "chibi_host_family_collect");
+    bytes := size(); new_bytes := size_new(); assert(bytes > 0 && bytes <= 4096 && bytes == new_bytes);
+    heap := calloc(1, u64(bytes)); address := calloc(1, 24); counter := calloc(1, 8);
+    assert(heap != 0 && address != 0 && counter != 0);
+    configured_old := counter_old(counter); configured_new := counter_new(counter);
+    assert(configured_old == 0 && configured_new == 0);
+    adopted_old := adopt_old(heap); adopted_new := adopt_new(heap); assert(adopted_old == 0 && adopted_new == 0);
+    created := create(address); assert(created == 0);
+    before := pending(); assert(before == 2, "the old image owns the record and its pointee");
+    written := write(address); assert(written == 0);
+    number: i32 = 7; if (owns_pointee) { number = 31; }
+    imported := check(number);
+    // A missing owner is detected with both images mapped. Release the whole
+    // graph before process exit, without calling dlclose on either image.
+    if (imported < 0) {
+        released := release(); assert(released == 0);
+        collected := collect(); assert(collected == 0);
+        old_cells := pending(); writer_cells := pending_new(); live := allocations();
+        assert(old_cells == 0 && writer_cells == 0 && live == 0);
+        free(address); free(heap); free(counter);
+        if (imported == -33) { os.Print("owned record Text owner missing before unload"); return 33; }
+        os.Print("owned record contents differ before unload"); return 34;
+    }
+    assert(imported == 37, "both nonempty Text owners and all bytes are checked before unload");
+    collected := collect(); assert(collected == 0);
+    old_cells := pending(); writer_cells := pending_new();
+    if (owns_pointee) {
+        assert(old_cells == 1 && writer_cells == 1, "the reachable writer-created pointee keeps its image leased");
+        collected = collect(); assert(collected == 0);
+        still_leased := pending_new(); assert(still_leased == 1);
+        still_valid := check(number); assert(still_valid == 37);
+    } else {
+        assert(old_cells == 2 && writer_cells == 0, "the writer only reused the old-image pointee");
+        closed_writer := dlclose(writer); assert(closed_writer == 0);
+        after_close := check(number); assert(after_close == 37, "owned Text survives writer unload");
+        collected = collect(); assert(collected == 0);
+        rooted := pending(); assert(rooted == 2);
+    }
+    released := release(); assert(released == 0);
+    collected = collect(); assert(collected == 0);
+    remaining := pending(); live := allocations(); assert(remaining == 0 && live == 0);
+    if (owns_pointee) {
+        writer_remaining := pending_new(); assert(writer_remaining == 0, "release ends the writer metadata lease before unload");
+        closed_writer := dlclose(writer); assert(closed_writer == 0);
+    }
+    closed_old := dlclose(old); assert(closed_old == 0);
+    free(address); free(heap); free(counter);
+    return 0;
+}

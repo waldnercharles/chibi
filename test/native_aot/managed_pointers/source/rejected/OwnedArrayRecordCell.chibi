@@ -1,0 +1,8 @@
+package owned_array_record_cell
+Owned :: struct { pointer: ^int; label: string; values: ^int[]; }
+Main :: () -> int {
+    number := 7;
+    value: Owned = {pointer: &number, label: "word", values: [&number]};
+    pointer := &value;
+    return text_byte_length(pointer.label);
+}

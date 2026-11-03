@@ -8,14 +8,14 @@ import strings "core:strings"
 // Map-bearing shapes retain their existing admissions and ordinary lifecycle,
 // but are not this operation's domain until their own traversal is implemented.
 ValueImportUse :: struct { roots: int[]; types: int[]; }
-ValueImportUses :: (code: Instruction[], records: Record[], fields: int[], layout: ValueLayout) -> ValueImportUse {
+ValueImportUses :: (code: Instruction[], records: Record[], fields: int[], tags: i64[], layout: ValueLayout) -> ValueImportUse {
     found: ValueImportUse = {roots: [], types: []};
     roots: bool[] = [];
     used: bool[] = [];
     for (item in code) {
         type := 0;
         if (item.op == ValueCopy && item.target == ValueImport) { type = item.type; }
-        if (item.op == ManagedNew && item.right >= ArrayType && item.right < MapType) { type = item.right; }
+        if (item.op == ManagedNew && ManagedImportsText(records, fields, tags, layout, item.right)) { type = item.right; }
         if (!ValueImportable(layout, type) || !ValueHasText(layout, type)) { continue; }
         if (length(used) == 0) { roots = resize([false], MapType); used = resize([false], MapType); }
         if (!roots[type]) { roots[type] = true; found.roots.append(type); }

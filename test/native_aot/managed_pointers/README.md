@@ -10,7 +10,7 @@ allocation during 100,000 discarded cycles, and iterative traversal of a
 10,000-cell chain. Cross-owner marks and unmatched root pops trap.
 
 Standalone desktop programs admit numeric/bool scalar cells, flat authored
-record cells with numeric/bool or pointer fields, and arrays of those pointers.
+record cells with direct numeric/bool, Text or pointer fields, and arrays of those pointers.
 Cells can escape creator returns; array copies
 retain cell identity while detaching on entry replacement. A cell descriptor
 contains its nonmoving root, byte offset and stable semantic pointee tag.
@@ -287,5 +287,25 @@ view promises remain separate.
 Value-only records may combine direct pointer fields with pointer-array and
 text owners. Their structural root metadata does not make them cell layouts.
 `InlineOwners.chibi` checks synchronous copies, repeated promise joins, by-value
-waiting parameters and cancellation under collection. Taking the address of an
-owned record remains rejected until its cell layout owns and traces those fields.
+waiting parameters and cancellation under collection. Direct flat Text/pointer
+record cells use the existing typed owner and tracer paths. The pointer-array-
+bearing `Envelope` in `source/InlineOwners.chibi` remains outside cell admission.
+Nested aggregates and map or array fields are not admitted by the flat extension.
+
+The focused `owned-records.sh` inventory covers flat owned-record cells without
+selecting the broader managed/task suites. `source/OwnedRecords.chibi` exercises
+nominal code37 versus Optional Text, direct scalar/bool/Text/pointer fields,
+NUL and empty Text, snapshots, scoped and boxed writes, whole replacements,
+constructor calls, copied owners, escaped parameters and pointer-linked cycles.
+Its separate assertion entry checks cleanup and its counted-copy entry bounds
+4096 replacements to 32 allocations. SourceProbe supplies O0/O2, normal/forced
+and allocator/release callback modes. See `owned-records.md` for the inventory
+and acceptance limits; authored fixtures alone do not establish runtime parity.
+
+The owned-record image harness compiles both the old constructor and incoming
+writer from source. Its unload-positive writer reuses the old typed pointee;
+a separate writer creates a typed Number cell whose live metadata lease must
+remain until the graph is released. Both nonempty Text fields and the empty
+field are inspected while both images are mapped. The negative omits exactly
+one consuming publication import, cleans up to zero live allocations and zero
+image leases, then returns 33 before either image is explicitly unloaded.

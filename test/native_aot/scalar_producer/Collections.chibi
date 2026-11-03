@@ -61,4 +61,18 @@ CollectionProjection :: () {
         loops += 1;
     }
     assert(loops == 1);
+    nested := Produced("package scalar\nMain::()->int{xs:int[][]=[[1]];xs[0].append(2);return xs[0][1];}\n");
+    ValidateRows(nested, "");
+    places := 0;
+    for (row, index in nested) {
+        if (row.kind != facts.ArrayRow || row.literal != i64(facts.NestedArrayPlace)) { continue; }
+        assert(row.value == facts.ArrayPush && row.count == 3);
+        RejectChanged(nested, [Changed(index, CountField, 2)], "scalar array operation differs from its operands");
+        RejectChanged(nested, [Changed(index, TypeField, i64(facts.ArrayType + facts.IntType))], "scalar array operation differs from its operands");
+        RejectChanged(nested, [Changed(index - 2, KindField, i64(facts.LiteralRow)),
+            Changed(index - 2, TypeField, i64(facts.BoolType)), Changed(index - 2, ValueField, 0)],
+            "scalar array operation differs from its operands");
+        places += 1;
+    }
+    assert(places == 1);
 }

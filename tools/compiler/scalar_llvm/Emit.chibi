@@ -994,18 +994,31 @@ Holds :: (values: int[], wanted: int) -> bool {
 // array, an array and an index, an element or another array, or an array and
 // two ints or an index and an element; 0 for no operator.
 ArrayOperands :: (operand: facts.Row) -> int {
+    extra := 0;
+    if (operand.literal == i64(facts.NestedArrayPlace)) {
+        if (!ArrayChanges(operand.value) && operand.value != facts.ArrayResize) { return 0; }
+        extra = 1;
+    }
     if (operand.value == facts.ArrayInsert || operand.value == facts.ArrayInserted ||
-        operand.value == facts.ArrayReplace || operand.value == facts.ArrayReplaced) { return 3; }
-    if (operand.value == facts.ArrayReverse || operand.value == facts.ArrayReversed) { return 1; }
+        operand.value == facts.ArrayReplace || operand.value == facts.ArrayReplaced) { return 3 + extra; }
+    if (operand.value == facts.ArrayReverse || operand.value == facts.ArrayReversed) { return 1 + extra; }
     if (operand.value == facts.ArrayPlaceGet || operand.value == facts.ArrayPlaceCheck) { return 2; }
-    if (operand.value == facts.ArrayNew) {
-        return operand.count;
-    }
+    if (operand.value == facts.ArrayNew) { return operand.count; }
     consumed: int[] = [0, 0, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2, 2, 2, 1, 1, 2, 1];
-    if (operand.value < facts.ArrayNew || operand.value > facts.ArrayLoan) {
-        return 0;
-    }
-    return consumed[operand.value];
+    if (operand.value < facts.ArrayNew || operand.value > facts.ArrayLoan) { return 0; }
+    return consumed[operand.value] + extra;
+}
+// The one-field physical wrapper carries exactly one immediate primitive
+// array. It never carries a managed cell or another aggregate to trace.
+NestedArrayMember :: (rows: facts.Row[], records: int[], type: int) -> int {
+    wrapper := Element(records, type);
+    if (wrapper < facts.RecordType || wrapper >= facts.ArrayType || wrapper - facts.RecordType >= length(records)) { return 0; }
+    head := records[wrapper - facts.RecordType];
+    if (rows[head].kind != facts.RecordRow || rows[head].count != 1) { return 0; }
+    inner := rows[head + 1].type;
+    if (inner < facts.ArrayType || inner >= facts.MapType ||
+        (!Scalar(inner - facts.ArrayType) && inner - facts.ArrayType != facts.StringType)) { return 0; }
+    return inner;
 }
 // Whether the operator changes the elements of the array it consumes.
 ArrayChanges :: (operator: int) -> bool {
@@ -1123,6 +1136,7 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
 // variable its first operand reads, or the second last, before the Update of
 // the array's field of that variable's record.
 ArrayPlaceMember :: (rows: facts.Row[], records: int[], operand: facts.Row) -> int {
+    if (operand.literal == i64(facts.NestedArrayPlace)) { return NestedArrayMember(rows, records, operand.type); }
     if (operand.literal == i64(facts.OptionalArrayPlace)) { return OptionalPayloadType(rows, records, operand.type); }
     if (operand.literal != 0) { return MemberType(rows, records, operand.type, int(operand.literal) - 1); }
     return operand.type;
@@ -1141,7 +1155,8 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
               stack[base] == facts.ReferenceType + operand.type);
     if (placed) {
         optional := operand.literal == i64(facts.OptionalArrayPlace);
-        if (operand.literal != 0) {
+        nested := operand.literal == i64(facts.NestedArrayPlace);
+        if (operand.literal != 0 && !nested) {
             mismatch = format_text("{} at {}..{} (parent {}, field {}, operator {}): {}", mismatch,
                 operand.start, operand.end, operand.type, operand.literal - 1, operator,
                 strings.Slice(rows[0].text, operand.start, operand.end - operand.start));
@@ -1163,12 +1178,17 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         if ((!ArrayChanges(operator) && operator != facts.ArrayResize) || element == 0 ||
             stack[base] != facts.ReferenceType + operand.type || base != 0 || row != last - 1 ||
             (!assigned && !borrowed)) { return mismatch; }
+        argument := base + 1;
+        if (nested) {
+            if (stack[argument] != facts.IntType) { return mismatch; }
+            argument += 1;
+        }
         if (operator == facts.ArrayReverse) { return ""; }
         wanted := facts.IntType;
         if (operator == facts.ArrayPush) { wanted = element; }
         if (operator == facts.ArrayExtend) { wanted = field; }
-        if (stack[base + 1] != wanted ||
-            ((operator == facts.ArraySet || operator == facts.ArrayInsert || operator == facts.ArrayReplace) && stack[base + 2] != element)) { return mismatch; }
+        if (stack[argument] != wanted ||
+            ((operator == facts.ArraySet || operator == facts.ArrayInsert || operator == facts.ArrayReplace) && stack[argument + 1] != element)) { return mismatch; }
         return "";
     }
     if (operator == facts.ArrayLength) {
@@ -3638,15 +3658,18 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     array_place = true;
                     base := length(stack) - ArrayOperands(operand);
                     root := stack[base];
-                    fielded := operand.literal != 0;
+                    nested := operand.literal == i64(facts.NestedArrayPlace);
+                    fielded := operand.literal != 0 && !nested;
                     member := ArrayPlaceMember(rows, declared, operand);
                     array := NativeType(member);
                     element := member - facts.ArrayType;
                     op := operand.value;
                     // Appended/replaced elements transfer one owned value.
+                    first_argument := base + 1;
+                    if (nested) { first_argument += 1; }
                     argument := root;
-                    if (operand.count > 1) { argument = stack[base + 1]; }
-                    if (op == facts.ArraySet || op == facts.ArrayInsert || op == facts.ArrayReplace) { argument = stack[base + 2]; }
+                    if (operand.count > first_argument - base) { argument = stack[first_argument]; }
+                    if (op == facts.ArraySet || op == facts.ArrayInsert || op == facts.ArrayReplace) { argument = stack[first_argument + 1]; }
                     if (op == facts.ArrayPush || op == facts.ArraySet || op == facts.ArrayInsert || op == facts.ArrayReplace) {
                         if (Holds(fresh, argument)) { fresh = Without(fresh, argument); }
                         else {
@@ -3662,7 +3685,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     // resolve its current descriptor after all their effects.
                     address := root;
                     current := slot + 1 + extra;
-                    if (fielded) {
+                    if (nested) {
+                        address = current;
+                        slots.append(native.RefType + array);
+                        selected := Op(native.ArrayValueAddress, native.RefType + array, address, root, stack[base + 1], type);
+                        selected.literal = i64(native.ArrayAddressMethod);
+                        if (op == facts.ArraySet) { selected.literal = i64(native.ArrayAddressBracket); }
+                        body.append(selected);
+                        current += 1;
+                        extra += 1;
+                    } else if (fielded) {
                         locals.append(native.RefType + type);
                         body.append(Op(native.Save, native.RefType + type, 0, root, 0, local));
                         address = current;
@@ -3684,14 +3716,14 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     if (op == facts.ArrayRemove) { mutation.op = native.ArrayRemove; mutation.literal = 0; }
                     if (op == facts.ArrayResize) { mutation.op = native.ArrayResize; mutation.literal = 0; }
                     if (op == facts.ArraySet) {
-                        mutation = Op(native.ArraySet, array, changed, current, stack[base + 1], argument);
+                        mutation = Op(native.ArraySet, array, changed, current, stack[first_argument], argument);
                         mutation.literal = i64(native.ArraySetPlace);
                     }
                     if (op == facts.ArrayReplace) {
-                        mutation = Op(native.ArraySet, array, changed, current, stack[base + 1], argument);
+                        mutation = Op(native.ArraySet, array, changed, current, stack[first_argument], argument);
                         mutation.literal = i64(native.ArraySetUnchanged);
                     }
-                    if (op == facts.ArrayInsert) { mutation = Op(native.ArrayInsert, array, changed, current, stack[base + 1], argument); }
+                    if (op == facts.ArrayInsert) { mutation = Op(native.ArrayInsert, array, changed, current, stack[first_argument], argument); }
                     if (op == facts.ArrayReverse) { mutation = Op(native.ArrayReverse, array, changed, current, 0, 0); }
                     state_index := RetainedArrayState(retained_array_variables, retained_array_fields, retained_array_states,
                         rows[at].value, int(operand.literal) - 1);

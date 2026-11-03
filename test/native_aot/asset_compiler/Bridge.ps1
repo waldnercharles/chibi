@@ -78,8 +78,7 @@ try {
     }
     $arguments = @('/nologo', '/TC', '/std:c11', '/MT', '/W4', '/WX', '/D_CRT_SECURE_NO_WARNINGS',
         '/D_CRT_NONSTDC_NO_DEPRECATE', "/I$root/src", "/Fo$Work/objects/", "/Fe$consumer",
-        "$root/test/native_aot/asset_compiler/Bridge.c", "$root/src/support/file_io.c",
-        "$root/src/support/sha256.c", "$root/src/support/xalloc.c", $FacadeArchive, '/link', '/MANIFEST:EMBED',
+        "$root/test/native_aot/asset_compiler/Bridge.c", $FacadeArchive, '/link', '/MANIFEST:EMBED',
         "/MANIFESTINPUT:$root/src/host/windows/chibi.manifest")
     foreach ($argument in $arguments) { $compile.ArgumentList.Add($argument) }
     Write-Host 'Build the C consumer without compiler-host or VM objects'
@@ -108,7 +107,7 @@ try {
         Write-Host 'Run the relocated native service and C consumer without runtime build tools'
         & "$Work/verify.exe" $asset "$root/test/native_aot/asset_compiler/catalog.json" $Work
         if ($LASTEXITCODE) { throw "The native service verifier failed ($LASTEXITCODE)" }
-        & $consumer $asset "$Work/simple.json" "$Work/source-error.json" "$Work/cache" "$Work/crash.exe"
+        & $consumer $asset "$Work/simple.json" "$Work/source-error.json" "$Work/cache" "$Work/crash.exe" "$Work/simple.chibip"
         if ($LASTEXITCODE) { throw "The C asset consumer failed ($LASTEXITCODE)" }
         if (@(Get-ChildItem -LiteralPath "$Work/temp" -Force).Count) { throw 'The native compiler left temporary files' }
     } finally {

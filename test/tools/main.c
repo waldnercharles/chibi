@@ -45,7 +45,6 @@ void test_tool_compiler_bootstrap(const char *host);
 void test_tool_bootstrap_recovery(const char *host, const char *artifact);
 void test_tool_bootstrap_load(const char *artifact);
 #endif
-void test_tool_web_storage();
 void test_tool_types();
 #ifdef CHIBI_TEST_PROGRAM
 void test_program_sdk();
@@ -122,7 +121,6 @@ int main(int argc, char **argv)
         return 2;
 #endif
     }
-    bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
     bool types = argc == 2 && !strcmp(argv[1], "--types");
     bool box3d = false;
     bool persistent_store = false;
@@ -132,10 +130,10 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_BOX3D
     box3d = argc == 2 && !strcmp(argv[1], "--box3d");
 #endif
-    if (argc != 1 && !web_storage && !types && !box3d && !persistent_store) {
+    if (argc != 1 && !types && !box3d && !persistent_store) {
         fprintf(
             stderr,
-            "Usage: %s [--web-storage | --types | --box3d | "
+            "Usage: %s [--types | --box3d | "
             "--persistent-store]\n",
             argv[0]
         );
@@ -158,11 +156,7 @@ int main(int argc, char **argv)
         return pu_test_failed() ? 1 : 0;
     }
 #endif
-    if (web_storage) {
-        test_tool_web_storage();
-    } else {
-        test_tool_types();
-    }
+    test_tool_types();
     pu_print_stats();
     return pu_test_failed() ? 1 : 0;
 }

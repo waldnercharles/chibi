@@ -86,7 +86,9 @@ Main :: () -> int {
             "--source", "main with spaces.chibi", "--entry", "Main", "--emit-llvm", "--output", output]);
         assert(relative.status == 1 && strings.Contains(relative.stderr,
             strings.Concatenate([os.RealPath(source), ":2:28: Unknown function 'Missing'"])), "relative low-level source paths report their physical origin");
-        assert(os.ReadText(output).text == "original output", "relative source rejection preserves the output");
+        preserved := os.ReadText(output);
+        assert(preserved.error == nil, "read the preserved output");
+        assert(preserved.text == "original output", "relative source rejection preserves the output");
     }
     os.Print("native CLI: run, build cache, arguments, assertions and rejections passed");
     return 0;
@@ -154,13 +156,17 @@ ScopedRuns :: (chibi: string, llvm: string, scratch: string) {
         "--package", "facts", "--entry", "Value", "--output", output, "--llvm", llvm]);
     assert(bad_package.status == 1 && strings.Contains(bad_package.stderr,
         strings.Concatenate([os.RealPath(local), ":2:33: Unknown function 'Missing'"])), "a package diagnostic does not repeat its package directory");
-    assert(os.ReadText(output).text == "original output", "a rejected package preserves the existing output");
+    preserved := os.ReadText(output);
+    assert(preserved.error == nil, "read the preserved package output");
+    assert(preserved.text == "original output", "a rejected package preserves the existing output");
     if (os.Platform() != "Windows") {
         relative := InFolder(root, [chibi, "--compiler", ".", "--core", os.Getenv("CHIBI_CORE"),
             "--package", "facts", "--entry", "Value", "--output", output, "--llvm", llvm]);
         assert(relative.status == 1 && strings.Contains(relative.stderr,
             strings.Concatenate([os.RealPath(local), ":2:33: Unknown function 'Missing'"])), "relative low-level package roots report physical paths");
-        assert(os.ReadText(output).text == "original output", "relative package rejection preserves the output");
+        relative_preserved := os.ReadText(output);
+        assert(relative_preserved.error == nil, "read the relative package output");
+        assert(relative_preserved.text == "original output", "relative package rejection preserves the output");
     }
     Write(source, "package scoped\nHelper :: () -> int { return 42; }\n");
     absent := os.Capture([chibi, "run", "--llvm", llvm, "--entry", "Run", source]);

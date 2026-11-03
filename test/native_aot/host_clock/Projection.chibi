@@ -27,6 +27,11 @@ Rejected :: (rows: facts.Row[]) {
     assert(length(rows) == 2 && rows[1].kind == facts.RejectionRow);
     assert(CountSamples(rows) == 0);
 }
+PermissionRejected :: (rows: facts.Row[], message: string) {
+    Rejected(rows);
+    if (!strings.Contains(rows[1].text, message)) { os.Print(rows[1].text); }
+    assert(strings.Contains(rows[1].text, message));
+}
 OwnerRejected :: (result: scalar.Result) {
     switch result {
         case .Invalid(message): assert(strings.Contains(message, "seven-slot clock owner"));
@@ -44,12 +49,41 @@ Main :: () -> int {
     assert(unused[1].kind == facts.DocumentRow && CountSamples(unused) == 1, "an unused result still samples");
     ambient := strings.Concatenate([RootSource(), "Sample :: () -> int { return 17; }\nRawSample :: () -> int { return 19; }\n"]);
     assert(CountSamples(Rows(host, ambient, natives, ports, identities)) == 1);
+    ambient_native := natives[length(natives) - 1];
+    ambient_native.name = "RawSample";
+    mixed := natives; mixed.append(ambient_native);
+    mixed_ids := identities; mixed_ids.extend([u64(17), u64(19)]);
+    private_rows := Rows(host, RootSource(), mixed, ports, mixed_ids);
+    assert(private_rows[1].kind == facts.DocumentRow && CountSamples(private_rows) == 1,
+        "the owning kernel takes precedence over a same-named ambient native");
     shadow := strings.Concatenate([HostSource("raw := RawSample(); return raw.status;"),
         "RawSample :: () -> NativeClockSample { return {nanoseconds: 1, domain: 2, status: 0, platform_error: 0}; }\n"]);
     shadowed := Rows(shadow, RootSource(), natives, ports, identities);
     assert(shadowed[1].kind == facts.DocumentRow && CountSamples(shadowed) == 0, "authored calls retain their identity");
-    Rejected(Rows(host, "package main\nMain :: () -> int { raw := RawSample(); return raw.status; }\n", natives, ports, identities));
+    PermissionRejected(Rows(host, "package main\nMain :: () -> int { raw := RawSample(); return raw.status; }\n", natives, ports, identities),
+        "Unknown function 'RawSample'");
     Rejected(Rows(HostSource("return RawSample().status;"), RootSource(), natives, ports, identities));
+    // Import permissions remain ordinary package lookup. Neither the private
+    // authored normalizer nor its raw kernel is exported by importing clock.
+    PermissionRejected(Rows(host, "package main\nMain :: () -> int { return clock.Read(); }\n", natives, ports, identities),
+        "Unknown function 'clock.Read'");
+    PermissionRejected(Rows(host, "package main\nimport clock \"host:clock\"\nMain :: () -> int { raw := clock.RawSample(); return raw.status; }\n", natives, ports, identities),
+        "Unknown function 'RawSample'");
+    private_sample := strings.Concatenate([host, "Sample :: () -> int { return 17; }\n"]);
+    PermissionRejected(Rows(private_sample, "package main\nimport clock \"host:clock\"\nMain :: () -> int { return clock.Sample(); }\n", natives, ports, identities),
+        "'clock.Sample' is private: declare it pub to use it from another package");
+    PermissionRejected(Rows(HostSource("raw := rawsample(); return raw.status;"), RootSource(), natives, ports, identities),
+        "Unknown function 'rawsample'");
+    other := compiler.CollectScalarProgram("/project", ["core", "host"], ["/sdk/core", "/sdk/host"],
+        ["Main.chibi", "/sdk/host/other/Other.chibi"],
+        ["package main\nimport other \"host:other\"\nMain :: () -> int { return other.Read(); }\n",
+         "package other\npub Read :: () -> int { raw := RawSample(); return raw.status; }\n"],
+        TargetFacts(), Names(), natives, ports, identities, 1, 1, "Main");
+    PermissionRejected(other, "Host package is unavailable for this target");
+    without_clock := slice(natives, 0, length(natives) - 1);
+    without_ids := slice(identities, 0, length(identities) - 2);
+    PermissionRejected(Rows(host, RootSource(), without_clock, ports, without_ids),
+        "Host package is unavailable for this target");
     for variant in 0..<8 {
         changed := natives;
         changed_ports := ports;

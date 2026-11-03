@@ -10,6 +10,11 @@ Main :: () -> int {
     args := os.Arguments();
     assertion := length(args) > 0 && args[0] == "--assertion";
     if (assertion) { args = slice(args, 1, length(args)); }
+    failure := "";
+    if (length(args) > 1 && args[0] == "--failure") {
+        failure = args[1];
+        args = slice(args, 2, length(args));
+    }
     if (length(args) < 4) { return 2; }
     work := args[0];
     llvm := args[1];
@@ -44,6 +49,11 @@ Main :: () -> int {
             if (strings.HasSuffix(args[index], "/Records.ll")) {
                 checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %peak, 30000");
             }
+            if (strings.HasSuffix(args[index], "/ViewAppend.ll")) {
+                // One cell plus geometric backing growth for 4096 appends;
+                // a snapshot copy on each append exceeds this by two orders.
+                checked_audit = strings.ReplaceAll(checked_audit, "icmp ule i64 %peak, 2048", "icmp ule i64 %total, 32");
+            }
             if (os.WriteText(module, strings.Concatenate([current, checked_audit]))) { return 2; }
             for (level in [int(0), 2]) {
                 output := format_text("{}/source-audit-{}-{}-O{}", work, index, forced, level);
@@ -61,12 +71,21 @@ Main :: () -> int {
                     valid = result.status == 134 && strings.Contains(result.stderr, "native failure: AssertionFailed") &&
                             strings.HasPrefix(result.stdout, "managed source live 0 peak ");
                 }
+                if (failure != "") {
+                    // A fatal helper aborts the process rather than returning
+                    // through the audit wrapper. Poison still checks all frees
+                    // reached before the precise failure category is reported.
+                    valid = result.status == 134 && strings.Contains(result.stderr,
+                        strings.Concatenate(["native failure: ", failure]));
+                }
                 if (!valid) {
                     os.Print(format_text("managed source {} force={} O{} status={} {}{}", args[index], forced, level,
                         result.status, result.stdout, result.stderr));
                     return 1;
                 }
-                os.Print(format_text("PASS managed source {} force={} O{} poisoned balance", args[index], forced, level));
+                checked := "poisoned balance";
+                if (failure != "") { checked = "poisoned failure category"; }
+                os.Print(format_text("PASS managed source {} force={} O{} {}", args[index], forced, level, checked));
                 os.Print(result.stdout);
             }
         }

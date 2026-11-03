@@ -528,8 +528,8 @@ prior=$(output "$project")
 cp "$prior" "$work/prior.so"
 printf 'package rejected\nFrame :: () -> int { values: retain int[] = [1]; return 0; }\n' > "$project/Main.chibi"
 rejected 'native retained initializers require constant values and empty arrays'
-printf 'package rejected\nFrame :: () -> int { values: retain string[] = []; return 0; }\n' > "$project/Main.chibi"
-rejected 'native retained arrays require'
+printf 'package rejected\nFrame :: () -> int { values: retain ^int[] = []; return 0; }\n' > "$project/Main.chibi"
+rejected 'native retained values require'
 printf 'package rejected\nFrame :: () -> int { values: retain char[] = []; return 0; }\n' > "$project/Main.chibi"
 rejected 'scalar proof supports only number, bool and string values'
 printf 'package rejected\nInner :: struct { values: char[]; }\nOuter :: struct { inner: Inner; }\nFrame :: () -> int { value: retain Outer = {inner: {values: []}}; return 0; }\n' > "$project/Main.chibi"

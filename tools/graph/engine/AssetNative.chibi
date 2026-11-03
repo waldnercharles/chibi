@@ -47,6 +47,13 @@ pub NativeArchiveRecordedCommands :: (build_dir: string) -> string {
     return Join(["[\n", c.LinkEntry(command, output), "\n]\n"]);
 }
 pub BuildNativeArchives :: (llvm: string, root: string, build_dir: string) -> int {
+    templates: string[] = [];
+    for (relative in ["tools/graph/asset_native_runtime/Runtime.ll", "tools/graph/asset_native_runtime/Windows.ll",
+                      "tools/graph/asset_io_runtime/Files.ll"]) {
+        path := Join([root, "/", relative]);
+        if (os.Kind(path) != os.KindFile) { os.Print(Join(["graph: missing native archive template ", path])); return -1; }
+        templates.append(path);
+    }
     compiler := Executable(build_dir, "chibi");
     builder := programs.BuildWithProject(root, Join([root, "/tools/compiler"]), compiler, llvm,
                                          "tools/graph/asset_native/Build.chibi", "Main", ["graph=tools/graph"]);
@@ -59,8 +66,8 @@ pub BuildNativeArchives :: (llvm: string, root: string, build_dir: string) -> in
     }
     inputs.extend(core);
     inputs.extend(graph);
+    inputs.extend(templates);
     inputs.extend([builder, compiler, Join([root, "/src/authoring/asset_compiler_host.h"]),
-                   Join([root, "/tools/graph/asset_native_runtime/Runtime.ll"]), Join([root, "/tools/graph/asset_io_runtime/Files.ll"]),
                    Join([AssetCompilerArchive(build_dir), ".json"])]);
     archive_tool := "llvm-ar";
     if (os.Platform() == "Windows") { archive_tool = "llvm-lib"; }

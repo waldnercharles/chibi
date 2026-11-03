@@ -172,6 +172,7 @@ Main :: () -> int {
     ForeignPlacesProjection();
     InlineArrayPlacesProjection();
     MapForeignPlacesProjection();
+    MapArrayPlacesProjection();
     SynchronousProjection();
     Corpus();
     os.Print("PASS real producer rows, 169 malformed variants, packages and library contracts");

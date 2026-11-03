@@ -1,0 +1,66 @@
+package native_text_cells
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import os "core:os"
+import strings "core:strings"
+
+Op :: (op: int, type: int, output: int, left: int, right: int, literal: i64) -> native.Instruction {
+    return {op: op, type: type, output: output, left: left, right: right, target: 0, literal: literal};
+}
+Emission :: (target: abi.Target, mode: int) -> native.Result {
+    text := abi.TextStorage;
+    number := abi.IntStorage;
+    resolved := text;
+    tag: i64 = -880;
+    if (mode == 1) { tag = -881; }
+    if (mode == 2) { resolved = number; }
+    slots := [text, text, native.PointerType, number, native.RefType + resolved, resolved,
+              number, number, number, number, number, number, number, number];
+    code := [Op(native.Constant, text, 0, 0, 0, 0), Op(native.ValueCopy, text, 1, 0, 0, 0),
+        Op(native.ManagedNew, native.PointerType, 2, 0, text, -880),
+        Op(native.ForeignCall, number, 3, abi.ForeignDirect, 0, 1),
+        Op(native.ManagedPoll, 0, 0, 0, 0, 0),
+        Op(native.ManagedAddress, native.RefType + resolved, 4, 2, 0, tag),
+        Op(native.Deref, resolved, 5, 4, 0, 0)];
+    if (mode == 2) {
+        code.extend([Op(native.ValueDrop, text, 0, 1, 0, 0),
+            Op(native.Publish, number, 0, 5, 0, 0), Op(native.Return, 0, 0, 0, 0, 0)]);
+    } else {
+        code.extend([Op(native.Constant, number, 6, 0, 0, 0),
+            Op(native.TextByte, number, 7, 1, 6, 0), Op(native.TextByte, number, 8, 5, 6, 0),
+            Op(native.Constant, number, 9, 0, 0, 65), Op(native.Sub, number, 10, 7, 9, 0),
+            Op(native.Sub, number, 11, 8, 9, 0), Op(native.Add, number, 12, 10, 11, 0),
+            Op(native.ValueDrop, text, 0, 1, 0, 0),
+            Op(native.Publish, number, 0, 12, 0, 0), Op(native.Return, 0, 0, 0, 0, 0)]);
+    }
+    shape: native.Function = {result: number, first_parameter: 0, parameters: 0, first_slot: 0, slots: length(slots),
+        first_local: 0, locals: 0, first_code: 0, code: length(code), first_argument: 0, arguments: 0};
+    source: native.Source = {file: "", directory: ""};
+    return native.EmitProgramTyped(target, [shape], [], slots, [], code, [], [], [], [],
+        [text_from_bytes([u8(65), u8(0), u8(90)]), "text_cell_clobber"], source, [], [], []);
+}
+Main :: () -> int {
+    args := os.Arguments();
+    if (length(args) < 1 || length(args) > 2) { return 2; }
+    mode := 0;
+    if (length(args) == 2 && args[1] == "tag") { mode = 1; }
+    else if (length(args) == 2 && args[1] == "storage") { mode = 2; }
+    else if (length(args) == 2) { return 2; }
+    target := abi.LinuxX64();
+    if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
+    switch Emission(target, mode) {
+        case .Rejected(instruction, message): os.Print(message); return 1;
+        case .Emitted(text):
+            current := text;
+            // The raw ABI lends mutable bytes. Clobber them after both copy
+            // boundaries, so a retained null owner cannot pass this probe.
+            current = strings.ReplaceAll(current, "@chibi_scalar.text.0 = private unnamed_addr constant",
+                "@chibi_scalar.text.0 = internal global");
+            current = strings.ReplaceAll(current, "declare i32 @text_cell_clobber()\n", "");
+            current = strings.Concatenate([current,
+                "\ndefine i32 @text_cell_clobber() {\nentry:\n  store i8 90, ptr @chibi_scalar.text.0\n  ret i32 0\n}\n"]);
+            if (os.WriteText(args[0], current)) { return 2; }
+    }
+    return 0;
+}

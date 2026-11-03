@@ -91,3 +91,23 @@ InferredGenericAddressCompiles :: () {
     assert(compiled.error == nil, "inferred optional generic value has an addressable type");
     assert(length(compiled.bytes) > 0, "generic address demand emits prepared module bytes");
 }
+
+InlineGcRecordsKeepStructuralIdentity :: () {
+    source := "package probe\nFlat :: struct { value:int; pointer:^int; }\nInline :: struct { values:^int[]; label:string; pointer:^int; }\nMain :: () -> int { number:=7; flat:Flat={value:3,pointer:&number}; cell:=&flat; value:Inline={values:[&number],label:\"held\",pointer:&number}; return cell.value+value.pointer^; }\n";
+    rows := Produced(source);
+    inline := -1; flat := -1;
+    for index in 0..<length(rows) {
+        row := rows[index];
+        if (row.kind != facts.RecordRow) { continue; }
+        if (row.name == "Inline") { inline = index; }
+        if (row.name == "Flat") { flat = index; }
+    }
+    assert(inline >= 0 && flat >= 0, "both authored records project");
+    assert(rows[inline].literal == 0, "value-only GC records carry structural root identity");
+    for field in inline + 1..<inline + 1 + rows[inline].count { assert(rows[field].literal == 0); }
+    assert(rows[flat].literal != 0, "the actual cell keeps a nominal layout identity");
+    for field in flat + 1..<flat + 1 + rows[flat].count { assert(rows[field].literal != 0); }
+    assert(scalar.Validate(rows) == "", "structural and nominal metadata remain distinct valid facts");
+    invalid := ChangedRows(rows, [Changed(inline + 1, LiteralField, i64(1))]);
+    assert(scalar.Validate(invalid) == "invalid scalar record member row", "structural members cannot carry cell tags");
+}

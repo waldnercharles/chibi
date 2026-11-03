@@ -2808,6 +2808,10 @@ ScalarFieldPlaceAssigned :: (forest: snapshot.SnapshotNode[], text: string, call
         nodes.append(variable);
         variable = Unparenthesized(forest, Field(forest, variable, syntax.FieldObject));
     }
+    if (Is(forest, variable, syntax.IndexExpression)) {
+        return ScalarIndexedFieldAssigned(forest, text, callables, params, callable, names, types, members, constants,
+                                          statement, destination, next_variable);
+    }
     if (!Is(forest, variable, syntax.Identifier)) {
         return ScalarOperands.Failed(Diagnose(forest, destination, 0, "native record writes require an authored record variable"));
     }

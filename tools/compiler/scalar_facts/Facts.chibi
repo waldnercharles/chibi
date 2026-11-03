@@ -493,7 +493,10 @@ pub MapValueAt: int : 11;
 pub MapArrayPush: int : 12;
 pub MapArrayExtend: int : 13;
 pub MapArrayRemove: int : 14;
-// The producer checks the initial logical place before RHS effects. Missing
+// A mapped array bracket write: RefRoot, all path keys, then the incoming
+// element, count at least 4. A deeper path may start at an array but must cross
+// a map and end at an array. The producer checks the complete initial place
+// before RHS effects, then resolves its current canonical owner again. Missing
 // final keys or indices report an unclassified unavailable-place failure.
 pub MapArraySet: int : 15;
 pub MapArrayResize: int : 16;
@@ -651,6 +654,9 @@ pub ArrayWithoutItem: int : 27;
 // A strict half-open copy: array,start,end -> optional array. Invalid bounds
 // produce Nil without allocation; an empty valid range produces Some(empty).
 pub ArrayRange: int : 28;
+// Replace one canonical inline array descriptor. Only ArrayReferencePlace
+// uses this operation; inputs are RefArray and the new owning array value.
+pub ArrayAssign: int : 29;
 // An immediate nested-array place adds its saved outer index after the
 // canonical RefRow. Existing mutating operators still end the root assignment.
 pub NestedArrayPlace: int : -1;

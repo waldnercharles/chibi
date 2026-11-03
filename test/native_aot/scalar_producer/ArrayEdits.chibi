@@ -248,3 +248,28 @@ IndexedForeignLoansProjection :: () {
     RejectChanged(rows,[Changed(selected + 3,CountField,2)],"scalar indexed buffer path is not consumed by one loan");
     ValidateRows(rows, "");
 }
+
+IndexedFieldReplacementProjection :: () {
+    source := "package places\nInner::struct{values:int[];}Entry::struct{inner:Inner;}Main::()->int{other:Entry[]=[{inner:{values:[8]}}];items:Entry[]=[{inner:{values:[1]}}];incoming:int[]=[2];flag:=false;items[0].inner.values=incoming;return items[0].inner.values[0];}";
+    rows := Produced(source);
+    ValidateRows(rows, "");
+    assigned := ArrayEditOperation(rows, facts.ArrayAssign);
+    selected := -1;
+    for (row,index in rows) { if (row.kind == facts.ArrayElementReferenceRow) { selected = index; break; } }
+    assert(selected >= 2 && assigned > selected);
+    mismatch := "scalar array operation differs from its operands";
+    RejectChanged(rows,[Changed(assigned,CountField,1)],"scalar array element reference is not its canonical mutation");
+    RejectChanged(rows,[Changed(assigned,CountField,3)],"scalar array element reference is not its canonical mutation");
+    RejectChanged(rows,[Changed(assigned,TypeField,i64(facts.BoolType))],mismatch);
+    RejectChanged(rows,[Changed(assigned,ValueField,i64(facts.ArrayAssign + 1))],mismatch);
+    RejectChanged(rows,[Changed(assigned - 1,TypeField,i64(facts.BoolType)),Changed(assigned - 1,ValueField,3)],mismatch);
+    RejectChanged(rows,[Changed(assigned,LiteralField,0)],mismatch);
+    RejectChanged(rows,[Changed(assigned,LiteralField,1)],mismatch);
+    RejectChanged(rows,[Changed(selected - 2,ValueField,0)],"scalar array element reference is not its canonical mutation");
+    RejectChanged(rows,[Changed(assigned - 2,ValueField,1)],"scalar array element reference is not its canonical mutation");
+    // The one-field dispatch must use the same canonical path as deep fields.
+    direct := Produced("package places\nEntry::struct{values:int[];}Main::()->int{items:Entry[]=[{values:[1]}];items[0].values=[int(2)];return 0;}");
+    assert(ArrayEditOperation(direct,facts.ArrayAssign) >= 0);
+    ValidateRows(direct, "");
+    ValidateRows(rows, "");
+}

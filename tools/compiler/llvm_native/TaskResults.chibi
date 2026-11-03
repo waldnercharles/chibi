@@ -70,6 +70,145 @@ TaskReferencesValid :: (layout: ValueLayout, slots: int[], code: Instruction[], 
     }
     return "";
 }
+// Canonical frame/cell addresses are stable. An address into array/map backing
+// instead belongs to one linear projection/check/mutation region. Scratch
+// reference locals transfer that address; they do not acquire its backing.
+// Retired slots may keep unused bits. Only later reads are rejected.
+TaskBackingReferencesValid :: (slots: int[], locals: int[], code: Instruction[], arguments: int[], owners: bool[]) -> string {
+    failure := "native waiting backing references require immediate canonical access";
+    refs := resize([int(0)], length(slots));
+    borrowed := resize([int(0)], length(slots));
+    local_refs := resize([int(0)], length(locals));
+    writes := resize([int(0)], length(locals));
+    saved := resize([int(-1)], length(locals));
+    for (item, pc in code) {
+        if (item.op == Save && item.type >= RefType) { writes[item.target] += 1; saved[item.target] = pc; }
+    }
+    starts: int[] = [];
+    ends: int[] = [];
+    region := -1;
+    active := -1;
+    token := 0;
+    changed := false;
+    for (item, pc in code) {
+        left := ReadsLeft(item.op) || (item.op == OwnerPin && item.target == 0);
+        right := ReadsRight(item.op);
+        target := ReadsTarget(item.op);
+        if ((left && refs[item.left] != 0 && active != item.left) ||
+            (right && refs[item.right] != 0 && active != item.right) ||
+            (target && refs[item.target] != 0 && active != item.target)) { return failure; }
+        value := 0;
+        if (left) { value = borrowed[item.left]; }
+        if (item.op == StateLoad && item.left > 0) { value = borrowed[item.left - 1]; }
+        if ((value != 0 && value != token) ||
+            (right && borrowed[item.right] != 0 && borrowed[item.right] != token) ||
+            (target && borrowed[item.target] != 0 && borrowed[item.target] != token)) { return failure; }
+        if (changed && item.op != Poke && (value != 0 ||
+            (right && borrowed[item.right] != 0) || (target && borrowed[item.target] != 0))) { return failure; }
+        local := -1;
+        if (item.op == Local || (item.op == FieldAddress && item.target == 1)) { local = item.left; }
+        if (local >= 0 && local_refs[local] != 0 && active != length(slots) + local) { return failure; }
+        if (item.op == OwnerPin && item.target == 1 && local_refs[item.left] != 0) { return failure; }
+        // A loan/pin would save the address for hidden reads at a later call
+        // or cancellation. Indexed loans carry a stable logical root instead.
+        if ((item.op == ArrayLoan && refs[item.right] != 0) ||
+            (item.op == ManagedPin && refs[item.left] != 0)) { return failure; }
+        if (item.op == ArrayLoan && item.target == ArrayLoanMove && value != 0) { return failure; }
+        if (item.op == ManagedTrack && item.target < ManagedClearSlot) {
+            if ((item.target == ManagedTrackLocal && local_refs[item.left] != 0) ||
+                (item.target == ManagedTrackSlot && (refs[item.left] != 0 || borrowed[item.left] != 0))) { return failure; }
+        }
+        used := (left && refs[item.left] != 0) || value != 0 ||
+                (right && (refs[item.right] != 0 || borrowed[item.right] != 0)) ||
+                (target && (refs[item.target] != 0 || borrowed[item.target] != 0)) ||
+                (local >= 0 && local_refs[local] != 0);
+        if (used) { ends[region] = pc; }
+        if (item.op == ArrayValueAddress || item.op == MapValueAddress) {
+            if (changed) { return failure; }
+            if (refs[item.left] == 0) {
+                region = length(starts); starts.append(pc); ends.append(pc);
+            }
+            active = item.output; token = item.output + 1; refs[item.output] = token;
+            continue;
+        }
+        if (item.op == Save && item.type >= RefType && refs[item.left] != 0) {
+            if (changed || writes[item.target] != 1) { return failure; }
+            local_refs[item.target] = token;
+            active = length(slots) + item.target;
+            continue;
+        }
+        if (local >= 0 && local_refs[local] != 0) {
+            if (changed) { return failure; }
+            active = item.output; token = item.output + 1; refs[item.output] = token;
+            continue;
+        }
+        if (item.op == Deref && refs[item.left] != 0) {
+            if (changed) { return failure; }
+            if (ValueOwned(item.type, owners)) { borrowed[item.output] = token; }
+            continue;
+        }
+        if (item.op == Poke && refs[item.left] != 0) {
+            active = -1; token = 0; region = -1; changed = false;
+            continue;
+        }
+        if ((right && borrowed[item.right] != 0) || (target && borrowed[item.target] != 0)) {
+            // Prepared elements own their values before borrowing a place.
+            // Self-extension alone supplies its own source lease in the helper.
+            if (item.op != ArrayExtend || value == 0 || item.left != item.right) { return failure; }
+        }
+        if ((item.op == Save || item.op == Publish || item.op == OwnerPin) && value != 0) { return failure; }
+        mutation := item.op == ArraySet || item.op == ArrayPush || item.op == ArrayExtend ||
+                    item.op == ArrayRemove || item.op == ArrayInsert || item.op == ArrayReverse ||
+                    item.op == MapSet || item.op == MapDelete;
+        if (value != 0 && (mutation || item.op == ArrayDrop || item.op == ValueDrop || item.op == MapDrop)) {
+            changed = true;
+            if (Produces(item.op)) { borrowed[item.output] = token; }
+            continue;
+        }
+        if (item.op == TextRetain && value != 0) { borrowed[item.left] = 0; }
+        copied := item.op == ValueCopy || item.op == ArrayCopy || item.op == ArraySlice ||
+                  item.op == ArrayResize || item.op == ArrayText || item.op == MapCopy || item.op == TextClone ||
+                  (item.op == ArrayLoan && item.target != ArrayLoanMove);
+        if (value != 0 && Produces(item.op) && ValueOwned(item.type, owners) && !copied) { borrowed[item.output] = token; }
+        // These operations cannot replace an enclosing owner. Copies acquire
+        // independently owned values; resize leaves the old child for its drop.
+        safe := item.op == Check || item.op == Constant || item.op == Local || item.op == LocalAddress ||
+                item.op == FieldAddress || item.op == Deref || item.op == Extract ||
+                (item.op >= Add && item.op <= Ne) || item.op == Convert || item.op == Select ||
+                item.op == ValueCopy || item.op == ArrayCopy || item.op == ArraySlice || item.op == ArrayResize ||
+                item.op == ArrayLength || item.op == ArrayGet || item.op == ArrayContains || item.op == ArrayBytes ||
+                item.op == ArrayText || item.op == MapCopy || item.op == MapGet || item.op == MapHas ||
+                item.op == MapLength || item.op == MapSpan || item.op == MapLiveAt || item.op == MapKeyAt ||
+                item.op == MapValueAt || item.op == TextRetain || item.op == TextRelease ||
+                (item.op >= TextLength && item.op <= TextTake) || item.op == TextClone ||
+                item.op == OwnerPin || item.op == OwnerUnpin || item.op == ManagedPin || item.op == ManagedUnpin;
+        if (!safe) { active = -1; token = 0; region = -1; changed = false; }
+    }
+    // Regions are disjoint, so marking their used spans visits at most code
+    // instructions in total. Unused trailing reference storage has no span.
+    interior := resize([false], length(code));
+    for (region in 0..<length(starts)) {
+        for (pc in starts[region] + 1..<ends[region] + 1) { interior[pc] = true; }
+    }
+    // Arguments may share spans. One prefix table avoids rescanning a wide
+    // argument list for every call. Indexed-loan metadata is not an SSA read.
+    passed := [int(0)];
+    for (slot in arguments) {
+        count := passed[length(passed) - 1];
+        if (Index(slot, length(slots)) && (refs[slot] != 0 || borrowed[slot] != 0)) { count += 1; }
+        passed.append(count);
+    }
+    for (item, pc in code) {
+        if ((item.op == Branch || item.op == Jump) && interior[item.target]) { return failure; }
+        if (ReadsArguments(item.op) && passed[item.right + ArgumentCount(item)] != passed[item.right]) { return failure; }
+        // A backward edge must not turn an earlier, apparently stable local
+        // read into a read of this iteration's retired scratch address.
+        if ((item.op == Local || (item.op == FieldAddress && item.target == 1)) &&
+            local_refs[item.left] != 0 && pc < saved[item.left]) { return failure; }
+        if (item.op == ManagedTrack && item.target == ManagedTrackLocal && local_refs[item.left] != 0) { return failure; }
+    }
+    return "";
+}
 TaskPromiseValue :: (records: Record[], fields: int[], layout: ValueLayout, managed: ManagedRecordLayout, type: int, owned: bool) -> bool {
     return TaskFramePlain(layout, type) || (owned && (type == ArrayType + PointerType ||
            TaskOwnedType(records, layout, type) || TaskFrameRoot(records, fields, managed, type)));

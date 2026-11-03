@@ -7,7 +7,7 @@ const test = require('node:test');
 const source = path.resolve(__dirname, '../..');
 
 for (const [full, bootstrapRun] of [['false', ''], ['false', '123'], ['true', ''], ['true', '123']]) {
-  test(`native proof uses the native entry and explicit Release comparison hosts (full=${full}, pinned=${bootstrapRun !== ''})`, () => {
+  test(`native proof uses mandatory native contracts without VM comparison (full=${full}, pinned=${bootstrapRun !== ''})`, () => {
     const scratch = fs.realpathSync(fs.mkdtempSync(path.join(tmpdir(), 'chibi-ci-native-host-')));
     const root = path.join(scratch, 'repo');
     const logs = path.join(scratch, 'logs');
@@ -83,12 +83,11 @@ exit 93
       const selected = fs.readFileSync(path.join(logs, 'selected'), 'utf8').trim().split('\n');
       assert.deepEqual(selected, full === 'true' ? ['native', 'native', 'native'] : ['native']);
       const commands = fs.readFileSync(path.join(logs, 'commands'), 'utf8').trim().split('\n');
-      assert.ok(commands[0].includes(`--build-host ${root}/build-release/sdk/chibi-build-host`));
-      assert.ok(commands[0].includes(`--compiler-host ${root}/build-release/sdk/chibi-compiler-host`));
-      assert.ok(commands[0].includes('--compare-vm'));
+      assert.ok(commands[0].startsWith(`build native-self-host --llvm ${root}/llvm `));
+      for (const option of ['--build-host', '--compiler-host', '--compare-vm', '--skip-vm-comparison', '--skip-vm']) {
+        assert.equal(commands[0].split(' ').includes(option), false, option);
+      }
       assert.equal(commands[0].includes(`--windows ${logs}/windows`), bootstrapRun === '');
-      assert.equal(commands[0].includes('--skip-vm-comparison'), full !== 'true');
-      assert.equal(commands[0].includes(' --skip-vm '), false);
       if (full === 'true') {
         assert.ok(commands[1].includes('build --release --target chibi --target chibi-asset-compiler'));
         assert.ok(commands[2].includes('graph-sdk-install'));

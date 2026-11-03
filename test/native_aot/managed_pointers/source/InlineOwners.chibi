@@ -1,0 +1,37 @@
+package inline_gc_owners
+Envelope :: struct { values: ^int[]; label: string; marker: ^int; }
+Make :: (value: int) -> ^int { return &value; }
+Churn :: () { for index in 0..<2000 { unused := Make(index); } }
+Build :: (value: int) -> Envelope {
+    return {values: [Make(value)], label: format_text("batch{}", value), marker: Make(value + 1)};
+}
+Packed :: (value: int) -> Envelope { saved := Build(value); yield; return saved; }
+Pass :: (value: Envelope) -> Envelope { yield; Churn(); return value; }
+Hold :: (value: Envelope) { while true { yield } }
+Main :: () -> int {
+    value := Build(7);
+    saved := value;
+    value = Build(11);
+    Churn();
+    assert(saved.values[0]^ == 7 && saved.marker^ == 8 && saved.label == "batch7");
+    assert(value.values[0]^ == 11 && value.marker^ == 12);
+    pending := Packed(19);
+    alias := pending;
+    joined := await pending;
+    if joined is Cancelled { return 1; }
+    else { held := joined; Churn(); assert(held.values[0]^ == 19 && held.marker^ == 20 && held.label == "batch19"); }
+    repeated := await alias;
+    if repeated is Cancelled { return 2; }
+    else { held := repeated; assert(held.values[0]^ == 19 && held.marker^ == 20); }
+    forwarded := Pass(value);
+    value = Build(23);
+    result := await forwarded;
+    if result is Cancelled { return 3; }
+    else { held := result; assert(held.values[0]^ == 11 && held.marker^ == 12); }
+    waiting := Hold(saved);
+    yield;
+    cancel waiting;
+    Churn();
+    assert(saved.values[0]^ == 7 && value.values[0]^ == 23);
+    return 0;
+}

@@ -7,7 +7,7 @@ pointer array during composite comparison. Scalar and string search do not
 allocate equality scratch. Composite searches reuse a queue and pair table
 across candidate elements, then release both.
 
-The Windows workflow executes `Values`, `Ordering` and `Shadow` at O0/O2
+The Windows workflow executes `Values`, `Ordering`, `Shadow` and `Maps` at O0/O2
 with the fresh stage4 compiler. Its type-rejection control preserves an
 existing output. The raw borrowed-descriptor and poisoned allocator probes
 currently run on POSIX; Windows execution is established by the hosted run,
@@ -33,9 +33,9 @@ the union post-removal result is a native semantic regression.
 
 Composite equality accepts only the existing validated snapshot value kinds.
 Pointers, tasks and views remain outside that structural comparison domain.
-Map shapes have one key and one payload edge and are currently available only
-through the explicit raw equality API. Source search admission is a separate
-follow-on. Retained snapshot roots still reject map-bearing values; comparison
+Map shapes have one key and one payload edge. Source `contains` and functional
+`remove_item` use the same graph for map-valued elements through their existing
+collection carriers. Retained snapshot roots still reject map-bearing values; comparison
 nodes outside those roots do not emit snapshot copy helpers. Generic native entries reject erased composite search metadata;
 explicit value entries validate the shared shape graph before emitting code.
 The new collector pins cover live pointer-array owners around composite
@@ -48,3 +48,19 @@ when both operands share their backing; signed zeros compare equal. Comparison
 borrows canonical runtime map descriptors, whose cached key hashes and index
 follow the existing map lookup contract. Scratch allocation stays at the two
 reused session buffers across these controls.
+
+`Maps.chibi` checks association order, replacement/duplicate keys, nested values,
+IEEE values, first-match removal, surviving ownership and named-argument effects.
+`MapsOracle.chibi` executes ordinary equality and an explicit entry-copy removal
+loop. The recovered ordinary runtime has a separate map-array copy defect:
+`remove_item` selects the correct row but zeroes surviving map payloads. Native
+post-removal assertions preserve the documented values instead of that defect.
+The shared-family fixture mixes retained `Box[]` roots and comparison-only map
+nodes, keeping snapshot ownership closed. `ContainsReentry` covers unrelated
+live collector roots during the new composite-membership callback path.
+
+The source graph interns immediate map types once through a zero-sentinel
+128KiB index, allocated only for graphs that reach maps. Retained admission
+keeps its existing map-free query; structural comparison uses the same bounded
+value traversal with counted map edges enabled. Task identity operations keep
+their separate exact storage case and never enter this structural graph.

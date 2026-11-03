@@ -70,6 +70,9 @@ ScalarLiteralShape :: (forest: snapshot.SnapshotNode[], text: string, callables:
         if (callee >= 0 && callables[callee].waits && !ImmediatelyAwaited(forest, first)) {
             storage = TaskStorage;
             record = callee;
+        } else if (callee >= 0 && callables[callee].result_container == MapContainer &&
+                   ScalarMapType(types, callables[callee].result_record) != 0) {
+            return SequenceArrayType(types, {storage: UnionStorage, container: MapContainer, record: callables[callee].result_record});
         } else if (callee >= 0 && callables[callee].result_container == 0) {
             storage = callables[callee].result;
             record = callables[callee].result_record;
@@ -78,6 +81,9 @@ ScalarLiteralShape :: (forest: snapshot.SnapshotNode[], text: string, callables:
         }
     } else if (Is(forest, first, syntax.Identifier)) {
         found := Lookup(names, Text(forest, text, first));
+        if (found >= 0 && names[found].container == MapContainer && ScalarMapType(types, names[found].record) != 0) {
+            return SequenceArrayType(types, {storage: UnionStorage, container: MapContainer, record: names[found].record});
+        }
         if (found >= 0 && names[found].container == 0) {
             storage = names[found].storage;
             record = names[found].record;
@@ -95,6 +101,10 @@ ScalarLiteralShape :: (forest: snapshot.SnapshotNode[], text: string, callables:
             storage = held.storage;
             record = held.record;
         }
+    }
+    if (storage == 0 && (Is(forest, first, syntax.IndexExpression) || Is(forest, first, syntax.AwaitExpression))) {
+        mapped := ScalarMapShape(forest, text, callables, names, types, members, package, first);
+        if (mapped >= 0) { return SequenceArrayType(types, {storage: UnionStorage, container: MapContainer, record: mapped}); }
     }
     if (!ScalarArrayElement(storage)) {
         return {storage: 0, container: 0, record: -1};
@@ -992,7 +1002,8 @@ ScalarNativeRows :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     }
     shape := ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, native.array);
     array := ScalarArrayType(types, shape.storage, shape.record);
-    if (array == 0 || (native.operator == facts.ArrayContains && ScalarTypeOf(shape.storage) == 0)) {
+    if (array == 0 || (native.operator == facts.ArrayContains && ScalarTypeOf(shape.storage) == 0 &&
+                      shape.storage != StructStorage && shape.storage != UnionStorage)) {
         return ScalarOperands.Failed(Diagnose(forest, node, 0, "scalar proof supports only arrays of numbers, bool, strings, records and unions"));
     }
     // Only arguments after the receiver can invalidate its evaluated value.

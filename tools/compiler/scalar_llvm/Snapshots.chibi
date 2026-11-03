@@ -13,17 +13,25 @@ ValueShapes :: struct {
     types: int[];
     heads: int[];
     canonical: int[];
+    // Immediate map payload/key pairs have 32768 possible IDs. Zero is absent;
+    // the lazy 128KiB index is allocated only when a graph actually reaches maps.
+    maps: int[];
 }
 ValueShapeNode :: (build: ^ValueShapes, rows: facts.Row[], records: int[], type: int, character: bool) -> int {
     storage := type;
     key := storage;
     if (character) { key = native.MapType; }
-    known := build^.canonical[key];
+    mapped := type >= native.MapType;
+    if (mapped && length(build^.maps) == 0) { build^.maps = resize([int(0)], native.MapType * 16); }
+    known := -1;
+    if (mapped) { known = build^.maps[type - native.MapType] - 1; }
+    else { known = build^.canonical[key]; }
     if (known >= 0) { return known; }
     kind := native.SnapshotScalar;
     extra := abi.ValueTag(storage);
     head := -1;
     if (character) { extra = 14; }
+    else if (mapped) { kind = native.SnapshotMap; extra = 0; }
     else if (type >= native.ArrayType) { kind = native.SnapshotArray; extra = 0; }
     else if (type >= native.RecordType) {
         head = records[type - native.RecordType];
@@ -32,7 +40,8 @@ ValueShapeNode :: (build: ^ValueShapes, rows: facts.Row[], records: int[], type:
         extra = 0;
     }
     index := length(build^.nodes);
-    build^.canonical[key] = index;
+    if (mapped) { build^.maps[type - native.MapType] = index + 1; }
+    else { build^.canonical[key] = index; }
     build^.nodes.append({kind: kind, type: storage, extra: extra, first: 0, count: 0});
     build^.types.append(type);
     build^.heads.append(head);
@@ -48,7 +57,7 @@ RetainedShapeGraph :: (rows: facts.Row[], records: int[], code: native.Instructi
     return ValueShapeGraph(rows, records, types, characters);
 }
 ValueShapeGraph :: (rows: facts.Row[], records: int[], roots: int[], characters: bool[]) -> native.SnapshotShapes {
-    build: ValueShapes = {nodes: [], edges: [], roots: [], types: [], heads: [], canonical: []};
+    build: ValueShapes = {nodes: [], edges: [], roots: [], types: [], heads: [], canonical: [], maps: []};
     for (type, index in roots) {
         opaque := type >= native.RecordType && type < native.ArrayType;
         if (type >= native.ArrayType && type < native.MapType) {
@@ -69,7 +78,11 @@ ValueShapeGraph :: (rows: facts.Row[], records: int[], roots: int[], characters:
         type := build.types[at];
         head := build.heads[at];
         node.first = length(build.edges);
-        if (node.kind == native.SnapshotArray) {
+        if (node.kind == native.SnapshotMap) {
+            key := ValueShapeNode(&build, rows, records, (type - native.MapType) % 16, false);
+            value := ValueShapeNode(&build, rows, records, (type - native.MapType) / 16, false);
+            build.edges.extend([{name: "", target: key}, {name: "", target: value}]);
+        } else if (node.kind == native.SnapshotArray) {
             child := ValueShapeNode(&build, rows, records, type - native.ArrayType, false);
             build.edges.append({name: "", target: child});
         } else if (node.kind == native.SnapshotUnion) {

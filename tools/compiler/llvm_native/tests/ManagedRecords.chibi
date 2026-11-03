@@ -43,13 +43,15 @@ InlineRootTracingSharesChildCodeRatherThanExpandingADag :: () {
     assert(strings.ByteLength(text) < 60000, "shared type edges must not expand all inline leaf paths");
 }
 @test
-InlineRootsKeepBackingAndViewDomainsClosed :: () {
+InlineBackingRecordsUseActiveOwnersRatherThanSnapshotRoots :: () {
     records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 2, identity: 0}];
-    for unsupported in [abi.TextStorage, native.ArrayType + abi.IntStorage, native.ArrayType + native.PointerType,
-                        native.ViewType, native.MapOf(abi.IntStorage, abi.IntStorage)] {
-        Rejects(InlineRootModule(records, [native.RecordType + 1, native.PointerType, unsupported]),
-            "native managed pointer aggregate roots require scalar or pointer-only inline records");
+    for supported in [abi.TextStorage, native.ArrayType + abi.IntStorage, native.ArrayType + native.PointerType,
+                      native.MapOf(abi.IntStorage, abi.IntStorage)] {
+        text := Emitted(InlineRootModule(records, [native.RecordType + 1, native.PointerType, supported]));
+        assert(!strings.Contains(text, "ptr @chibi_managed.trace.record0)"), "a borrowed owner snapshot must not remain a frame root");
     }
+    Rejects(InlineRootModule(records, [native.RecordType + 1, native.PointerType, native.ViewType]),
+        "native managed pointer aggregate roots require scalar or pointer-only inline records");
     // Existing direct optional views retain their own separately traced rule.
     Emitted(InlineRootModule([{first: 0, count: 2, identity: 0}], [abi.IntStorage, native.ViewType]));
 }

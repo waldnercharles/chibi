@@ -1,0 +1,26 @@
+package managed_view_tasks
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fclose :: (stream: rawptr) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+}
+// New image ordinals and the owned element schema differ. The suspended
+// worker must continue through the old image's code, cell and view helpers.
+Unrelated :: struct { number: f64; }
+Pair :: union { Row(label: string, xs: int[], extra: int) | None }
+Owner :: (number: int) -> view Pair[]? {
+    values: Pair[] = [Pair.Row("new", [number, 9], 11)]; pointer := &values;
+    return pointer.view(0..<1);
+}
+Churn :: () { for index in 0..<6000 { discarded := Owner(index); } }
+Main :: () -> int { return 99; }
+Frame :: () -> int {
+    Churn();
+    if access("allow-managed-view", 0) != 0 {
+        stream := fopen("allow-managed-view", "wb"); assert(stream != 0);
+        closed := fclose(stream); assert(closed == 0);
+    }
+    if access("managed-view-done", 0) == 0 { return 7; }
+    return 0;
+}

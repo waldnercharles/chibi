@@ -139,6 +139,14 @@ pub ValueCollectorCopyable :: (layout: ValueLayout, type: int) -> bool {
     index := type - RecordType;
     return type < ArrayType && Index(index, length(layout.collector_copyable)) && layout.collector_copyable[index];
 }
+// These values own backing that a collector trace may read. Register actual
+// owning locations, not borrowed snapshots whose backing can be replaced.
+pub ValueCollectorOwner :: (layout: ValueLayout, type: int) -> bool {
+    if (type == ArrayType + PointerType) { return true; }
+    index := type - RecordType;
+    return type < ArrayType && Index(index, length(layout.valid)) && !layout.valid[index] &&
+           layout.collector_copyable[index] && layout.collector_owned[index];
+}
 // Reuse the same field lifecycle with collector-aware ownership after its
 // caller establishes roots. Rootless admission remains unchanged in valid.
 pub ValueRootedOwners :: (layout: ValueLayout) -> ValueLayout {

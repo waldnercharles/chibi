@@ -53,6 +53,15 @@ OwnedPromisesRequireTheProgramOwner :: () {
     Rejects(RecordPromise([abi.TextStorage, abi.IntStorage, native.RecordType], RecordPromiseCode(), false),
             "native waiting frames cannot own managed values or pointers yet");
 }
+@test
+CollectorArrayRecordPromisesCopyAndTraceTheirBacking :: () {
+    text := Emitted(RecordPromise([native.ArrayType + native.PointerType, abi.IntStorage, native.RecordType], RecordPromiseCode()));
+    assert(strings.Contains(text, "%payload.copy2 = call %record0 @chibi_value.32.copy"));
+    assert(strings.Contains(text, "call void @chibi_managed.trace.array(ptr %heap, ptr %field0)"));
+    assert(strings.Contains(text, "ptr %managed.promise, ptr %result0, ptr @chibi_managed.trace.record0"));
+    assert(strings.Contains(text, "store %record0 zeroinitializer, ptr %result0\n  call void @chibi_value.32.drop"));
+    assert(!strings.Contains(text, "@chibi_managed.layout0 ="));
+}
 // The promise root is independent of live local roots: normal final
 // suspension unlinks locals, while only destruction unlinks result0.
 @test
@@ -113,6 +122,18 @@ WaitingParametersCannotBorrowCallerStackReferences :: () {
             {file: "", directory: ""}, texts, empty, empty),
             "native waiting parameters need scalar values; managed values and dependencies are not supported yet");
     }
+    reference := native.RefType + native.RecordType;
+    Rejects(native.EmitProgram(abi.LinuxX64(), functions, [reference],
+        [abi.IntStorage, abi.IntStorage], empty, code, empty,
+        [{first: 0, count: 1, identity: 0}], [native.ArrayType + native.PointerType], texts,
+        {file: "", directory: ""}, texts, empty, empty),
+        "native waiting parameters need scalar values; managed values and dependencies are not supported yet");
+    worker := functions[1]; worker.parameters = 0; worker.locals = 1; functions[1] = worker;
+    Rejects(native.EmitProgram(abi.LinuxX64(), functions, empty,
+        [abi.IntStorage, abi.IntStorage], [reference], code, empty,
+        [{first: 0, count: 1, identity: 0}], [native.ArrayType + native.PointerType], texts,
+        {file: "", directory: ""}, texts, empty, empty),
+        "native waiting frames cannot own managed values or pointers yet");
 }
 @test
 SharedRecordResultGraphDoesNotExpandItsPaths :: () {

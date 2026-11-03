@@ -19,7 +19,7 @@ try {
     $env:CXX = 'Z:/no-cxx-compiler.exe'
     $env:CHIBI_BUILD_HOST = 'Z:/no-build-host.exe'
     $env:CHIBI_COMPILER_HOST = 'Z:/no-compiler-host.exe'
-    [Environment]::SetEnvironmentVariable('CHIBI_CORE', $null, 'Process')
+    [Environment]::SetEnvironmentVariable('CHIBI_CORE', [NullString]::Value, 'Process')
     $fixtures = @(
         @{ name = 'Directories'; arguments = @("$work/current directory Ω") },
         @{ name = 'Checkout'; arguments = @($Compiler, $Llvm, $work) }
@@ -51,6 +51,10 @@ try {
     Write-Host 'PASS native Windows checkout build, default products and packaged CLI without host tools'
 } finally {
     Set-Location -LiteralPath $previous
-    foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
+    foreach ($name in $names) {
+        $restored = $saved[$name]
+        if ($null -eq $restored) { $restored = [NullString]::Value }
+        [Environment]::SetEnvironmentVariable($name, $restored, 'Process')
+    }
     Remove-Item -LiteralPath $work -Recurse -Force
 }

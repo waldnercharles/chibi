@@ -386,12 +386,16 @@ pub ViewRow: int : 61;
 // address stays valid only while its enclosing canonical variable is live.
 pub FieldReferenceRow: int : 62;
 // Borrow the exact record element from RefArray and an int index. Value is
-// zero, count is two. Unique/Method detach and publish; Observe only checks.
+// zero, count is two except for Loan below. Unique/Method detach and publish;
+// Observe only checks.
 // Consume the address before any call or change to the parent array.
 pub ArrayElementReferenceRow: int : 63;
 pub ArrayElementUnique: int : 0;
 pub ArrayElementMethod: int : 1;
 pub ArrayElementObserve: int : 2;
+// Logical loan path: RefOuter, evaluated Outer, index. Only field references
+// and one ArrayLoan may consume it; lowering emits no intermediate address.
+pub ArrayElementLoan: int : 3;
 pub ViewMake: int : 1;
 pub ViewLength: int : 2;
 pub ViewGet: int : 3;
@@ -502,12 +506,14 @@ pub MapGetOptional: int : 18;
 // A missing nested-map key gives an empty descriptor in its one-field carrier.
 // Generic record MapGet keeps its absent-key failure.
 pub MapGetWrapped: int : 19;
-// Canonical changes in an array's one-map-field collection carrier: RefArray,
-// index, key and (for set) value. Type is the assigned outer array.
+// Canonical map changes through an array root: RefArray, all path keys in
+// source order and (for set) the incoming value. Each intermediate collection
+// descriptor follows its checked array or map carrier; the final owner is a map.
+// count is at least 4 for set, 3 for delete. Type is the assigned outer array.
 pub ArrayMapSet: int : 20;
 pub ArrayMapDelete: int : 21;
-// The same changes through a map-valued map payload: RefMap, outer key,
-// inner key and (for set) value. Type is the assigned outer map.
+// The same captured-key path through a map root, starting with RefMap.
+// Type is the assigned outer map; count has the same set/delete minima.
 pub NestedMapSet: int : 22;
 pub NestedMapDelete: int : 23;
 
@@ -645,6 +651,9 @@ pub ArrayWithoutItem: int : 27;
 // A strict half-open copy: array,start,end -> optional array. Invalid bounds
 // produce Nil without allocation; an empty valid range produces Some(empty).
 pub ArrayRange: int : 28;
+// Replace one canonical inline array descriptor. Only ArrayReferencePlace
+// uses this operation; inputs are RefArray and the new owning array value.
+pub ArrayAssign: int : 29;
 // An immediate nested-array place adds its saved outer index after the
 // canonical RefRow. Existing mutating operators still end the root assignment.
 pub NestedArrayPlace: int : -1;

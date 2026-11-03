@@ -1,0 +1,23 @@
+package deep_map_copies
+foreign { chibi_value_test_allocations :: () -> i64 }
+Main :: () -> int {
+    values: [int:[int:[int:[int:int]]]] = [1:[2:[3:[4:0]]]];
+    copy := values;
+    before := chibi_value_test_allocations();
+    values[1][2][3][4] += 1;
+    detached := chibi_value_test_allocations();
+    assert(detached - before == 4, "each shared immediate map owner detaches exactly once");
+    for (index in 0..<4096) { values[1][2][3][4] += 1; }
+    completed := chibi_value_test_allocations();
+    assert(completed == detached && values[1][2][3][4] == 4097 && copy[1][2][3][4] == 0);
+    mixed: [int:[int:int][]][] = [[1:[[2:0]]]];
+    old_mixed := mixed;
+    mixed_before := chibi_value_test_allocations();
+    mixed[0][1][0][2] += 1;
+    mixed_detached := chibi_value_test_allocations();
+    assert(mixed_detached - mixed_before == 4, "mixed path shares and detaches descriptors without whole-root copies");
+    for (index in 0..<4096) { mixed[0][1][0][2] += 1; }
+    mixed_completed := chibi_value_test_allocations();
+    assert(mixed_completed == mixed_detached && mixed[0][1][0][2] == 4097 && old_mixed[0][1][0][2] == 0);
+    return 0;
+}

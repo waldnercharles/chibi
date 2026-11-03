@@ -19,8 +19,10 @@ Mark :: (path: string, text: string) {
 Allowed :: () -> bool { return access("allow-managed-task", 0) == 0; }
 Done :: () { Mark("managed-task-done", "old42"); }
 Promise :: () -> ^int { if false { yield } return Make(31); }
+ArrayPromise :: () -> ^int[] { if false { yield } return [Make(11), Make(13)]; }
 Worker :: () -> int {
     promised := Promise();
+    array_promised := ArrayPromise();
     pointer := Make(37);
     values := [Make(2), Make(3)];
     while !Allowed() { yield }
@@ -28,6 +30,17 @@ Worker :: () -> int {
     joined := await promised;
     if joined is Cancelled { return 1; }
     else { assert(joined^ == 31, "completed old promise survives incoming-generation collection"); }
+    array_joined := await array_promised;
+    if array_joined is Cancelled { return 2; }
+    else {
+        saved := array_joined;
+        saved[0] = Make(99);
+        Churn();
+        assert(saved[0]^ == 99 && saved[1]^ == 13);
+    }
+    array_again := await array_promised;
+    if array_again is Cancelled { return 3; }
+    else { saved := array_again; assert(saved[0]^ == 11, "joins copy the old generation's GC-array promise"); }
     assert(pointer^ + values[0]^ + values[1]^ == 42, "old generation keeps its suspended collector roots");
     Done();
     return 0;
@@ -38,6 +51,7 @@ Child :: (values: ^int[]) -> int {
     return values[0]^;
 }
 Cancelled :: () -> int {
+    completed := ArrayPromise();
     values := [Make(19)];
     return await Child(values);
 }

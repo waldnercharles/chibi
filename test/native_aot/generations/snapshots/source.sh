@@ -20,7 +20,10 @@ set -eu
 for source do
     case "$source" in *.ll)
         if grep -q 'define i32 @chibi_host_call_Frame()' "$source"; then
-            sed '/^declare i64 @chibi_value_test_allocations()$/d' "$source" > "$source.audit"
+            # The appended poison oracle supplies this same declaration.
+            # Shared collector modules already declare it for their heap.
+            sed -e '/^declare i64 @chibi_value_test_allocations()$/d' \
+                -e '/^declare void @llvm\.memset\.p0\.i64(ptr, i8, i64, i1)$/d' "$source" > "$source.audit"
             cat "$CHIBI_SNAPSHOT_ROOT/test/native_aot/managed_values/Audit.ll" \
                 "$CHIBI_SNAPSHOT_ROOT/test/native_aot/generations/snapshots/SourceAudit.ll" >> "$source.audit"
             mv "$source.audit" "$source"

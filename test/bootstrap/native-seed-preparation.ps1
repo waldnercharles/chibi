@@ -115,7 +115,11 @@ cat "$CHIBI_SEED_API_FIXTURE/$file"
     }
     Write-Host 'PASS native Windows seed artifact identity, digests, fixed point and source restoration controls'
 } finally {
-    foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
+    foreach ($name in $names) {
+        $restored = $saved[$name]
+        if ($null -eq $restored) { $restored = [NullString]::Value }
+        [Environment]::SetEnvironmentVariable($name, $restored, 'Process')
+    }
     if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
 }
 exit 0

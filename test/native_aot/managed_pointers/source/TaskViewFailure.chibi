@@ -1,0 +1,13 @@
+package waiting_view_failure
+Owner :: () -> view int[]? { values: int[] = [7]; pointer := &values; return pointer.view(0..<1); }
+Fail :: (window: view int[]) -> int {
+    yield
+    assert(window[0] == 7);
+    assert(false, "waiting view failure preserves frame cleanup");
+    return 0;
+}
+Main :: () -> int {
+    selected := Owner();
+    if selected { return await Fail(selected); }
+    return -1;
+}

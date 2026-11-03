@@ -1,0 +1,109 @@
+package graph_command_tests
+
+import json "core:encoding/json"
+import os "core:os"
+import paths "graph:install"
+import process "project:test/graph/native_process"
+import programs "graph:programs"
+import strings "core:strings"
+
+// Static expected recipes live beside the test. Only known invocation inputs
+// substitute their tokens; observed output is normalized solely by build root.
+Inputs :: struct { root: string; compiler: string; llvm: string; graph: string; third_party: string; }
+
+JsonInput :: (value: string) -> string {
+    quoted := json.JsonQuote(value);
+    return strings.Slice(quoted, 1, strings.ByteLength(quoted) - 2);
+}
+Expected :: (inputs: Inputs, name: string, encoded: bool) -> string {
+    read := os.ReadText(strings.Concatenate([inputs.root, "/test/graph/fixtures/commands/", name]));
+    assert(read.error == nil, "the reviewed command fixture reads");
+    text := read.text;
+    names := ["@ROOT@", "@COMPILER@", "@LLVM@", "@GRAPH@", "@THIRD_PARTY@"];
+    values := [inputs.root, inputs.compiler, inputs.llvm, inputs.graph, inputs.third_party];
+    for (index in 0..<length(names)) {
+        value := values[index];
+        if (encoded) { value = JsonInput(value); }
+        text = strings.ReplaceAll(text, names[index], value);
+    }
+    return text;
+}
+Read :: (path: string) -> string {
+    read := os.ReadText(path);
+    assert(read.error == nil, "the complete command inventory exists");
+    return read.text;
+}
+Streams :: (actual: os.Result, status: int, stdout: string, stderr: string) {
+    if (actual.status != status || actual.stdout != stdout || actual.stderr != stderr) {
+        os.Print(format_text("command status {}, expected {}\nstdout:\n{}stderr:\n{}",
+                             actual.status, status, actual.stdout, actual.stderr));
+    }
+    assert(actual.status == status, "the command has its exact exit status");
+    assert(actual.stdout == stdout, "the complete stdout agrees");
+    assert(actual.stderr == stderr, "the complete stderr agrees separately");
+}
+Driver :: (inputs: Inputs, driver: string, build: string) {
+    command := [driver, "build", "--release", "--dry-run", "--jobs", "2", "--build", build,
+                "--native-driver", inputs.compiler, "--llvm", inputs.llvm];
+    result := process.Capture(command, 30000);
+    result.stdout = strings.ReplaceAll(result.stdout, build, "/BUILD");
+    result.stderr = strings.ReplaceAll(result.stderr, build, "/BUILD");
+    Streams(result, 0, "", Expected(inputs, "driver.stderr", false));
+    // This route fails before preparing or running a graph child.
+    command = [driver, "build", "--release", "--dry-run", "--jobs", "2", "--build", build,
+               "--native-driver", "", "--llvm", inputs.llvm];
+    Streams(process.Capture(command, 30000), 1, "", Expected(inputs, "driver-invalid.stderr", false));
+}
+Graph :: (inputs: Inputs, build: string, compiler: string) {
+    command := [inputs.graph, "--build", build, "--profile", "explicit", "--build-type", "Release",
+                "--compiler", compiler, "--cxx-compiler", "/fixture cxx", "--compiler-id", "Clang",
+                "--archiver", "/fixture ar", "--ranlib", "/fixture ranlib", "--launcher", "/fixture cache",
+                "--warnings", "on", "--jobs", "2", "--commands-only", "on",
+                "--native-driver", inputs.compiler, "--llvm", inputs.llvm,
+                "--target", "chibi", "--target", "chibi-asset-compiler", "--target", "chibi_asset_compiler_host",
+                "--target", "chibi_graph_fixture", "--target", "graph_headerless"];
+    Streams(process.Capture(command, 30000), 0, "", "");
+}
+pub Run :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 2, "the native compiler and LLVM directory");
+    root := os.Root();
+    compiler := os.RealPath(arguments[0]);
+    llvm := os.RealPath(arguments[1]);
+    assert(compiler != "" && llvm != "", "the explicit native toolchain exists");
+    platform := "linux-x64";
+    if (os.Platform() == "Darwin") { platform = "macos-arm64"; }
+    else { assert(os.Platform() == "Linux", "the generic C command contract runs on POSIX"); }
+    graph := programs.Build(root, compiler, llvm, "tools/toolchain/Graph.chibi", "Libraries", ["graph=tools/graph"]);
+    third_party := programs.Build(root, compiler, llvm, "tools/toolchain/Build.chibi", "Build", []);
+    driver := programs.Build(root, compiler, llvm, "tools/toolchain/Driver.chibi", "Main", ["graph=tools/graph"]);
+    assert(graph != "" && third_party != "" && driver != "", "the real native entry programs compile");
+    inputs: Inputs = {root: root, compiler: compiler, llvm: llvm, graph: graph, third_party: third_party};
+    parent := strings.Concatenate([root, "/.chibi/graph-command-contract"]);
+    made := os.MakeDirectory(parent);
+    assert(made == nil, "the command fixture parent exists");
+    scratch := os.TemporaryDirectory(parent);
+    assert(scratch.error == nil && scratch.path != "", "the fixture owns a private directory");
+    compile := Expected(inputs, "compile.json", true);
+    link := Expected(inputs, strings.Concatenate(["link-", platform, ".json"]), true);
+    for (name in ["first build", "second build"]) {
+        build := strings.Concatenate([scratch.path, "/", name]);
+        Driver(inputs, driver, build);
+        Graph(inputs, build, "/fixture clang");
+        actual_compile := strings.ReplaceAll(Read(strings.Concatenate([build, "/compile_commands.json"])), JsonInput(build), "/BUILD");
+        actual_link := strings.ReplaceAll(Read(strings.Concatenate([build, "/link_commands.json"])), JsonInput(build), "/BUILD");
+        if (actual_compile != compile || actual_link != link) { os.Print(strings.Concatenate(["command evidence retained in ", build])); }
+        assert(actual_compile == compile, "every compile entry and argument agrees in order");
+        assert(actual_link == link, "every native, archive and C program entry agrees in order");
+    }
+    // A real changed tool must stay visible after the same root-only rewrite.
+    changed := strings.Concatenate([scratch.path, "/different tool"]);
+    Graph(inputs, changed, "/different clang");
+    changed_compile := strings.ReplaceAll(Read(strings.Concatenate([changed, "/compile_commands.json"])), JsonInput(changed), "/BUILD");
+    changed_link := strings.ReplaceAll(Read(strings.Concatenate([changed, "/link_commands.json"])), JsonInput(changed), "/BUILD");
+    assert(changed_compile != compile && changed_link != link, "normalization preserves tool changes");
+    removed := paths.RemoveTree(scratch.path);
+    assert(removed, "the owned command fixture is removed");
+    os.Print("PASS exact Driver streams and complete Graph command inventories");
+    return 0;
+}

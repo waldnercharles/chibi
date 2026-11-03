@@ -1,0 +1,7 @@
+package record_field_order
+Inner :: struct { values:int[]; }
+Entry :: struct { inner:Inner; sibling:int; }
+Never :: () -> int[] { assert(false,"RHS evaluated"); values:int[]=[7]; return values; }
+Erase :: (rows: ^(Entry[])) -> int[] { empty:Entry[]=[]; rows^ = empty; values:int[]=[7]; return values; }
+ReplaceIndex :: (rows: ^(Entry[])) -> int { next:Entry[]=[{inner:{values:[8]},sibling:80}]; rows^ = next; return 0; }
+Main :: () -> int { rows:Entry[]=[]; rows[0].inner.values=Never(); return 0; }

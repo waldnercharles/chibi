@@ -1,0 +1,5 @@
+package foreign_element_retained
+foreign import libc "system:c"
+foreign libc { memset :: (data:u8[],value:i32,count:u64) -> rawptr }
+Entry :: struct { values:u8[]; }
+Main :: () -> int { rows:retain Entry[]=[{values:[u8(1)]}]; written:=memset(rows[0].values,9,1); return 0; }

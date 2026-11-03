@@ -167,14 +167,14 @@ ManagedRootTypes :: (types: int[], traced: bool[]) -> bool {
 }
 // The same nominal type may have different versions in mapped generations.
 // Only its complete identity plus actual LLVM byte layout permits resolution.
-ManagedRecordModule :: (records: Record[], fields: int[], tags: i64[], layout: ManagedRecordLayout,
+ManagedRecordModule :: (records: Record[], fields: int[], tags: i64[], layout: ManagedRecordLayout, values: ValueLayout,
                         wanted: bool[], counter: string) -> string {
     out: string[] = [];
     traces := resize([false], length(records));
     pending: int[] = [];
     for (index in 0..<length(records)) {
         if (wanted[index] && layout.traced[index] &&
-            (layout.traceable[index] || ViewOptional(records, fields, RecordType + index, ViewType))) {
+            (ValueCollectorCopyable(values, RecordType + index) || ViewOptional(records, fields, RecordType + index, ViewType))) {
             traces[index] = true;
             pending.append(index);
         }
@@ -185,7 +185,7 @@ ManagedRecordModule :: (records: Record[], fields: int[], tags: i64[], layout: M
         for (field in record.first..<record.first + record.count) {
             child := fields[field] - RecordType;
             if (fields[field] >= RecordType && fields[field] < ArrayType &&
-                layout.traced[child] && layout.traceable[child] && !traces[child]) {
+                layout.traced[child] && ValueCollectorCopyable(values, fields[field]) && !traces[child]) {
                 traces[child] = true;
                 pending.append(child);
             }
@@ -204,10 +204,11 @@ ManagedRecordModule :: (records: Record[], fields: int[], tags: i64[], layout: M
             for (field in 0..<record.count) {
                 held := fields[record.first + field];
                 child := ManagedTraced(held, layout.traced);
-                if (held != PointerType && held != ViewType && !child) { continue; }
+                if (held != PointerType && held != ViewType && held != ArrayType + PointerType && !child) { continue; }
                 out.append(format_text("  %field{} = getelementptr inbounds {}, ptr %value, i32 0, i32 {}\n", field, name, field));
                 target := "pointer";
                 if (held == ViewType) { target = "view"; }
+                else if (held == ArrayType + PointerType) { target = "array"; }
                 else if (child) { target = format_text("record{}", held - RecordType); }
                 out.append(format_text("  call void @chibi_managed.trace.{}(ptr %heap, ptr %field{})\n", target, field));
             }

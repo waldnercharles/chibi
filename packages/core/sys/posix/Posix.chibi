@@ -94,6 +94,9 @@ when target.Os == target.Darwin {
     WriteNew: int : 1537;
     // Renames without replacing: RENAME_EXCL.
     RenameNew :: (source: string, destination: string) -> bool {
+        // Darwin accepts renaming a directory to itself, even with RENAME_EXCL.
+        // Reject occupied names first; the kernel still excludes racing creates.
+        if Kind(destination) != KindNone { return false; }
         return renamex_np(source, destination, 4) == 0;
     }
     pub Platform :: () -> string {

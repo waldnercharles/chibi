@@ -39,12 +39,24 @@ linker=ld.lld
 if [ "$target" = aarch64-apple-darwin ]; then linker=ld64.lld; fi
 ln -s "$llvm/$linker" "$work/llvm/$linker"
 export CHIBI_VALUE_LLVM=$llvm CHIBI_VALUE_AUDIT=$root/test/native_aot/managed_values/Audit.ll
+mkdir "$work/checked"
+cp "$root/test/native_aot/array_operations/checked/Main.chibi" "$work/checked/Main.chibi"
+check_brackets() {
+    for name in BracketNegative BracketPastEnd PlainBeforeRhs CompoundBeforeRhs FieldBeforeRhs WrongIndexCategory LateUnavailable; do
+        grep -F "FAIL project.$name" "$1" > /dev/null || return 1
+    done
+    grep -F 'PASS project.ExpressionBounds' "$1" > /dev/null || return 1
+    grep -F '8 tests, 7 failed' "$1" > /dev/null || return 1
+    count=$(grep -Ec 'Referenced (array element|storage) is unavailable' "$1")
+    [ "$count" -eq 7 ] || return 1
+    if grep -F 'RHS evaluated' "$1" > /dev/null; then return 1; fi
+}
 for level in 0 2; do
     CHIBI_CORE="$root/packages/core" "$compiler" test --llvm "$llvm" -O"$level" \
         --root "$root/test/compiler/samples/imports" "$root/test/compiler/samples/imports/array_methods/facts" \
         > "$work/original.log" 2>&1 || { cat "$work/original.log"; exit 1; }
     grep -F 'PASS project.Calls' "$work/original.log" > /dev/null
-    for source in Values Places; do
+    for source in Values Places Replace Assignments; do
         for mode in ordinary audited; do
             tools=$llvm
             if [ "$mode" = audited ]; then tools=$work/llvm; fi
@@ -54,12 +66,24 @@ for level in 0 2; do
             "$work/$source-$mode"
         done
     done
+    result=0
+    CHIBI_CORE="$root/packages/core" "$compiler" test --llvm "$llvm" -O"$level" "$work/checked" > "$work/checked.log" 2>&1 || result=$?
+    [ "$result" -eq 1 ] || { cat "$work/checked.log"; exit 1; }
+    check_brackets "$work/checked.log" || { cat "$work/checked.log"; exit 1; }
     printf 'PASS array source values, canonical places and balanced ownership O%s\n' "$level"
 done
 if [ -n "$reference" ]; then
-    mkdir "$work/reference"
-    cp "$root/test/native_aot/array_operations/Values.chibi" "$work/reference/Main.chibi"
-    printf '%s\n' 'package array_operation_values' '@test' 'Values :: () { result := Main(); assert(result == 0); }' > "$work/reference/Tests.chibi"
-    "$reference" --project-root "$work/reference" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
-    cat "$work/reference.log"
+    for source in Values Replace Assignments; do
+        project=$work/reference-$source
+        mkdir "$project"
+        cp "$root/test/native_aot/array_operations/$source.chibi" "$project/Main.chibi"
+        head -n 1 "$project/Main.chibi" > "$project/Tests.chibi"
+        printf '%s\n' '@test' 'Check :: () { result := Main(); assert(result == 0); }' >> "$project/Tests.chibi"
+        "$reference" --project-root "$project" --test > "$project/reference.log" 2>&1 || { cat "$project/reference.log"; exit 1; }
+        cat "$project/reference.log"
+    done
+    result=0
+    "$reference" --project-root "$work/checked" --test > "$work/checked-reference.log" 2>&1 || result=$?
+    [ "$result" -eq 1 ] || { cat "$work/checked-reference.log"; exit 1; }
+    check_brackets "$work/checked-reference.log" || { cat "$work/checked-reference.log"; exit 1; }
 fi

@@ -30,3 +30,28 @@ ArrayEditsRejectReservedMetadata :: () {
     Rejects(EditedArrayModule(Changed(EditedArray(), 5, Code(native.ArrayReverse, 1030, 4, 3, 0, 1, 0))), ArrayOperands());
     Rejects(EditedArrayModule(Changed(EditedArray(), 5, Code(native.ArrayReverse, 1030, 4, 3, 0, 0, 1))), ArrayOperands());
 }
+
+@test
+ArrayReplacementChecksItsBoundsMode :: () {
+    code := Changed(EditedArray(), 4, Code(native.ArraySet, 1030, 3, 0, 1, 2, 0));
+    Emitted(EditedArrayModule(code));
+    Emitted(EditedArrayModule(Changed(code, 4, Code(native.ArraySet, 1030, 3, 0, 1, 2, i64(native.ArraySetUnchanged)))));
+    Emitted(EditedArrayModule(Changed(code, 4, Code(native.ArraySet, 1030, 3, 0, 1, 2, i64(native.ArraySetPlace)))));
+    Rejects(EditedArrayModule(Changed(code, 4, Code(native.ArraySet, 1030, 3, 0, 1, 2, 3))), ArrayOperands());
+}
+
+ArrayPlaceModule :: (item: native.Instruction) -> native.Result {
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0),
+        Code(native.Constant, 1030, 0, 0, 0, 0, 0), Code(native.Constant, 6, 1, 0, 0, 0, 0), item,
+        Code(native.Constant, 6, 3, 0, 0, 0, 0), Code(native.Publish, 6, 0, 3, 0, 0, 0),
+        Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    return Emit([Function(6, 0, 0, 4, 0, length(code), 0, 0)], [], [1030, 6, 1, 6], code, []);
+}
+@test
+ArrayPlaceCheckProducesOnlyBool :: () {
+    Emitted(ArrayPlaceModule(Code(native.ArrayGet, 1, 2, 0, 1, 0, i64(native.ArrayGetPlaceCheck))));
+    Rejects(ArrayPlaceModule(Code(native.ArrayGet, 1, 2, 0, 1, 0, 0)), ArrayOperands());
+    Rejects(ArrayPlaceModule(Code(native.ArrayGet, 1, 2, 0, 1, 0, 3)), ArrayOperands());
+    Rejects(ArrayPlaceModule(Code(native.ArrayGet, 1, 2, 1, 1, 0, i64(native.ArrayGetPlaceCheck))), ArrayOperands());
+    Rejects(ArrayPlaceModule(Code(native.ArrayGet, 1, 2, 0, 0, 0, i64(native.ArrayGetPlaceCheck))), ArrayOperands());
+}

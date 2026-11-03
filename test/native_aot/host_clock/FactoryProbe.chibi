@@ -1,0 +1,61 @@
+package clock_factory_probe
+
+import abi "project:native_abi"
+import link "project:native_link"
+import host "project:native_link_host"
+import os "core:os"
+import strings "core:strings"
+
+Main :: () -> int {
+    args := os.Arguments();
+    if length(args) != 3 { return 2; }
+    fixture := os.ReadText(args[2]);
+    if fixture.error != nil { return 2; }
+    work := args[0];
+    llvm := args[1];
+    for (target, index in [abi.LinuxX64(), abi.MacOSArm64(), abi.WindowsX64(), abi.WebAssembly32()]) {
+        expected := 0;
+        if index >= 2 { expected = 1; }
+        body := strings.ReplaceAll(fixture.text, "@STATUS@", format_text("{}", expected));
+        body = strings.ReplaceAll(body, "@WORD@", format_text("{}", target.pointer_bits));
+        for mode in 0..<3 {
+            module := format_text("target triple = \"{}\"\n{}{}", target.triple,
+                link.ClockHostRuntime(target.triple), strings.ReplaceAll(body, "@MODE@", format_text("{}", mode)));
+            source := format_text("{}/factory-{}-{}.ll", work, index, mode);
+            if os.WriteText(source, module) != nil { return 2; }
+            if os.Run([strings.Concatenate([llvm, "/opt"]), "-passes=verify", "-disable-output", source]) != 0 { return 1; }
+            object := strings.Concatenate([source, ".o"]);
+            if host.Object(llvm, source, object, 2) != nil { return 1; }
+        }
+    }
+    target := abi.LinuxX64();
+    index := 0;
+    if os.Platform() == "Darwin" { target = abi.MacOSArm64(); index = 1; }
+    else if os.Platform() == "Windows" { target = abi.WindowsX64(); index = 2; }
+    start := strings.Concatenate([work, "/factory-start.ll"]);
+    static := index == 2;
+    if os.WriteText(start, link.ProgramStart(target.triple, static, false, false)) != nil { return 2; }
+    for level in [int(0), 2] {
+        for mode in 0..<3 {
+            source := format_text("{}/factory-{}-{}.ll", work, index, mode);
+            output := format_text("{}/factory-{}-O{}", work, mode, level);
+            objects := [strings.Concatenate([output, ".o"]), strings.Concatenate([output, "-start.o"])];
+            if host.Objects(llvm, [source, start], objects, level, 1) != nil { return 1; }
+            plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", static);
+            if index == 1 {
+                plan.imports = [{name: "System", symbols: ["write", "_exit", "clock_gettime", "__error"]}];
+            }
+            if host.Link(plan) != nil { return 1; }
+            result := os.Capture([output]);
+            if mode == 0 {
+                if result.status != 0 { os.Print(format_text("factory status{} {}{}", result.status, result.stdout, result.stderr)); return 1; }
+            } else {
+                trapped := result.status == -4 || result.status == -5 || result.status == 132 || result.status == 133 ||
+                    (index == 2 && result.status == -1073741795);
+                if !trapped { os.Print(format_text("factory guard mode{} status{}", mode, result.status)); return 1; }
+            }
+            os.Print(format_text("PASS clock factory mode{} O{}", mode, level));
+        }
+    }
+    return 0;
+}

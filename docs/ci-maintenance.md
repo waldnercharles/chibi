@@ -2,7 +2,7 @@
 
 Routine validation lives in the single `.github/workflows/ci.yml`. Preparing
 replacement bootstrap inputs is **not** routine CI. The scripts below replace
-four retired workflows without a release job, token with write permissions,
+the retired workflows without a release job, token with write permissions,
 automatic pin commit, or dispatch. They only prepare local files. Nothing here
 authorizes a seed refresh or publication; obtain explicit approval for those
 operations and respect current holds before running them.
@@ -11,7 +11,7 @@ Run from a clean checkout of the exact reviewed commit. Use a **new directory
 outside the checkout** for each output. Keep each output and its logs when a
 command fails; do not publish partial results. Dependencies must already be
 installed. The existing CI watchdog caps the whole preparation command at the
-old host (30 minutes), runtime (45 minutes), native (180 minutes), and source
+runtime (45 minutes), native (180 minutes), and source
 bundle (5 minutes) limits. Runtime comparison and packaging share a hard five-minute cap; the old
 ten-minute publication job no longer exists. The scripts do not extend compiler fixed-point
 iterations or any compiler-internal deadline.
@@ -47,22 +47,9 @@ The Windows native-seed preparation below instead needs PowerShell 7, Git and
 the GitHub CLI. It downloads an existing completed CI proof and does not run a
 compiler or require Bash, Node or a C toolchain.
 
-## First build host
-
-```sh
-bash .github/maintenance/bootstrap-host.sh /absolute/new/host-linux-x64
-# Run separately on macOS, with a different output directory.
-```
-
-This retains `tools/build.sh build --release --target chibi-build-host`, checks
-`--protocol-version` is exactly **15**, and saves `chibi-build-host-PLATFORM`,
-`SHA256SUMS`, `build.log`, source commit/tree/platform evidence and the proposed
-`hosts.tsv` row. The build entry consumes the existing verified native seed;
-the C build host is an explicit maintenance target.
-Prepare both platforms from the same clean commit before considering publication.
-The tag convention remains `bootstrap-host-COMMIT`. Update
-`tools/bootstrap/hosts.tsv` only in a separately reviewed change after verifying
-the published binaries.
+The unused first-build-host downloader, pin table and publisher preparation
+script have been removed. Native seeds own the default build entry. Explicit
+VM recovery still uses the runtime procedure below until its consumers retire.
 
 ## Native compiler seed
 
@@ -209,7 +196,7 @@ dispatch are deliberately gone.
 
 | Retired workflow | Preserved capability | New owner/trigger |
 | --- | --- | --- |
-| `bootstrap-host.yml` | Linux/macOS protocol-15 host, hashes and pins | `bootstrap-host.sh`, explicit local preparation |
+| `bootstrap-host.yml` | Default native build entry | Retired with its unused host downloader and pin table |
 | `compiler-runtime-seed.yml` | Runtime build, clean-room recovery, equality, import/provenance/source/notices material | `runtime-seed.sh` + `runtime-seed.ps1`, then `package-runtime.sh` + `package-runtime.js`, explicit local preparation |
 | `native-seed.yml` | Native seeded fixed point, logs, hashes and pins | `native-seed.sh`, explicit local preparation |
 | `source-bundle.yml` | Self-contained exact-source history and verification | `source-bundle.sh`, optional local transfer |

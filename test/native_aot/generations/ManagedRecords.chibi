@@ -1,0 +1,53 @@
+package managed_record_tasks
+
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fwrite :: (data: cstring, size: u64, count: u64, stream: rawptr) -> u64
+    fclose :: (stream: rawptr) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+}
+Link :: struct { value: int; next: ^Link?; }
+Cycle :: (value: int) -> ^Link {
+    first: Link = {value: value, next: nil};
+    second: Link = {value: 5, next: nil};
+    left := &first;
+    right := &second;
+    left.next = right;
+    right.next = left;
+    return left;
+}
+Churn :: () { for index in 0..<3000 { discarded := Cycle(index); } }
+Mark :: (path: string, text: string) {
+    stream := fopen(path, "wb");
+    assert(stream != 0);
+    written := fwrite(text, 1, u64(text_byte_length(text)), stream);
+    closed := fclose(stream);
+    assert(written == u64(text_byte_length(text)) && closed == 0);
+}
+Allowed :: () -> bool { return access("allow-managed-record", 0) == 0; }
+Done :: () { Mark("managed-record-done", "old42"); }
+Worker :: () -> int {
+    pointer := Cycle(37);
+    while !Allowed() { yield }
+    Churn();
+    next := pointer.next;
+    if next != nil {
+        total := pointer.value + next.value;
+        assert(total == 42, "old generation keeps its typed cyclic record payload");
+    } else { assert(false, "old generation loses no record links"); }
+    Done();
+    return 0;
+}
+Cancelled :: () -> int {
+    pointer := Cycle(19);
+    while true { yield }
+}
+Main :: () -> int {
+    worker := Worker();
+    cancelled := Cancelled();
+    cancel cancelled
+    Mark("managed-record-ready", "ready");
+    return 0;
+}
+Frame :: () -> int { Churn(); return 0; }

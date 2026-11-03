@@ -8,7 +8,7 @@ ArrayEditOperation :: (rows: facts.Row[], operator: int) -> int {
     return -1;
 }
 ArrayEditsProjection :: () {
-    source := "package arrays\nMain::()->int{other:int[]=[9];values:int[]=[1,2];values.insert(0,3);values.reverse();fresh:=insert(values,0,int(4));flipped:=reverse(fresh);return length(flipped);}";
+    source := "package arrays\nMain::()->int{other:int[]=[9];values:int[]=[1,2];values.insert(0,3);values.reverse();values.set_array_elem(0,4);fresh:=insert(values,0,int(4));replaced:=set_array_elem(fresh,0,int(6));flipped:=reverse(replaced);return length(flipped);}";
     rows := Produced(source);
     assert(rows[1].kind == facts.DocumentRow);
     ValidateRows(rows, "");
@@ -16,7 +16,17 @@ ArrayEditsProjection :: () {
     reversed := ArrayEditOperation(rows, facts.ArrayReverse);
     fresh_insert := ArrayEditOperation(rows, facts.ArrayInserted);
     fresh_reverse := ArrayEditOperation(rows, facts.ArrayReversed);
+    mutable_set := ArrayEditOperation(rows, facts.ArrayReplace);
+    replaced := ArrayEditOperation(rows, facts.ArrayReplaced);
     mismatch := "scalar array operation differs from its operands";
+    RejectChanged(rows, [Changed(mutable_set, CountField, 2)], mismatch);
+    RejectChanged(rows, [Changed(mutable_set, CountField, 4)], mismatch);
+    RejectChanged(rows, [Changed(replaced, CountField, 2)], mismatch);
+    RejectChanged(rows, [Changed(replaced, CountField, 4)], mismatch);
+    RejectChanged(rows, [Changed(mutable_set - 3, ValueField, 0)], mismatch);
+    RejectChanged(rows, [Changed(mutable_set - 2, TypeField, i64(facts.BoolType))], mismatch);
+    RejectChanged(rows, [Changed(mutable_set - 1, TypeField, i64(facts.BoolType)), Changed(mutable_set - 1, LiteralField, 0)], mismatch);
+    RejectChanged(rows, [Changed(replaced, ValueField, i64(facts.ArrayReplace))], "scalar array change is not the assignment of its array");
     RejectChanged(rows, [Changed(inserted, CountField, 2)], mismatch);
     RejectChanged(rows, [Changed(inserted, CountField, 4)], mismatch);
     RejectChanged(rows, [Changed(reversed, CountField, 0)], mismatch);
@@ -56,4 +66,16 @@ ArrayEditsProjection :: () {
     assert(method[1].kind == facts.DocumentRow && scalar.Validate(method) == "");
     shadow := CollectionRows("Main::()->int{return insert(2);}insert::(n:int)->int{return n;}", natives, ports);
     assert(shadow[1].kind == facts.DocumentRow && scalar.Validate(shadow) == "");
+}
+
+ArrayPlacesProjection :: () {
+    rows := Produced("package places\nMain::()->int{values:int[]=[1];values[0]=2;return values[0];}");
+    ValidateRows(rows, "");
+    check := ArrayEditOperation(rows, facts.ArrayPlaceCheck);
+    mismatch := "scalar array operation differs from its operands";
+    RejectChanged(rows, [Changed(check, CountField, 1)], mismatch);
+    RejectChanged(rows, [Changed(check, CountField, 3)], mismatch);
+    RejectChanged(rows, [Changed(check, TypeField, i64(facts.IntType))], mismatch);
+    RejectChanged(rows, [Changed(check - 1, TypeField, i64(facts.BoolType))], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(check, ValueField, i64(facts.ArrayPlaceCheck + 1))], mismatch);
 }

@@ -40,16 +40,10 @@ int main(int argc, char **argv)
     return pu_test_failed() ? 1 : 0;
 }
 #else
-void test_native_workload_benchmark(const char *binary);
 #ifdef CHIBI_TEST_COMPILER_ARTIFACT
 void test_tool_compiler_bootstrap(const char *host);
 void test_tool_bootstrap_recovery(const char *host, const char *artifact);
 void test_tool_bootstrap_load(const char *artifact);
-#endif
-#ifdef CHIBI_TEST_BUILD_PROCESS
-void test_tool_build_process(const char *worker, const char *host);
-void test_tool_build_process_files(const char *worker, const char *host);
-void test_tool_build_timings(const char *worker, const char *host);
 #endif
 void test_tool_web_storage();
 void test_tool_types();
@@ -168,26 +162,6 @@ int main(int argc, char **argv)
         return 2;
 #endif
     }
-    if (argc == 4 && (!strcmp(argv[1], "--build-process") ||
-                      !strcmp(argv[1], "--build-process-files") ||
-                      !strcmp(argv[1], "--build-timings"))) {
-#ifdef CHIBI_TEST_BUILD_PROCESS
-        tool_init();
-        pu_display_time(true);
-        if (!strcmp(argv[1], "--build-process-files")) {
-            test_tool_build_process_files(argv[2], argv[3]);
-        } else if (!strcmp(argv[1], "--build-timings")) {
-            test_tool_build_timings(argv[2], argv[3]);
-        } else {
-            test_tool_build_process(argv[2], argv[3]);
-        }
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-#else
-        fprintf(stderr, "%s requires the private native build host\n", argv[1]);
-        return 2;
-#endif
-    }
     if (argc == 2 && !strcmp(argv[1], "--program-sdk")) {
 #ifdef CHIBI_TEST_PROGRAM
         pu_display_time(true);
@@ -198,13 +172,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "%s requires Chibi::program\n", argv[1]);
         return 2;
 #endif
-    }
-    if (argc == 3 && !strcmp(argv[1], "--native-workload-benchmark")) {
-        tool_init();
-        pu_display_time(true);
-        test_native_workload_benchmark(argv[2]);
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
     }
     if (document_selector(argc, argv)) {
         tool_init();

@@ -1,6 +1,7 @@
 package package_compiler
 
 import facts "project:scalar_facts"
+import binding "project:lexical_binding"
 import snapshot "project:source_snapshot"
 import syntax "project:syntax_diagnostics"
 
@@ -11,9 +12,14 @@ ScalarPointerElement :: (types: TypeDecl[], record: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
     if (record < 0 || record >= length(types)) { return none; }
     declared := types[record];
-    if (declared.kind != PointerDecl || declared.value_container != 0 || declared.value_record != -1) {
+    if (declared.kind != PointerDecl || declared.value_container != 0) {
         return none;
     }
+    if (declared.value_storage == StructStorage && declared.value_record >= 0 &&
+        types[declared.value_record].kind == RecordDecl) {
+        return {storage: StructStorage, container: 0, record: declared.value_record};
+    }
+    if (declared.value_record != -1) { return none; }
     type := ScalarTypeOf(declared.value_storage);
     if (type < facts.IntType || type > facts.DoubleType) { return none; }
     return {storage: declared.value_storage, container: 0, record: -1};
@@ -21,6 +27,65 @@ ScalarPointerElement :: (types: TypeDecl[], record: int) -> ValueType {
 ScalarPointerType :: (types: TypeDecl[], record: int) -> int {
     if (ScalarPointerElement(types, record).storage == 0) { return 0; }
     return facts.PointerType;
+}
+// Primitive tags retain the established semantic identity. A record adds its
+// full layout and the native payload ABI version; neither a local ordinal nor
+// a nominal-only tag can permit a changed generation's layout.
+ScalarPointerTag :: (types: TypeDecl[], value: ValueType) -> i64 {
+    nominal := SemanticTag(types, value);
+    if (value.storage == StructStorage && value.container == 0 && value.record >= 0) {
+        return i64(wrap: binding.ID("native-managed-record-v1", format_text("{}:{}", nominal, types[value.record].layout)));
+    }
+    return i64(wrap: nominal);
+}
+// Automatic field dereference and explicit p^ share the same managed root.
+// A rewritten scoped parameter remains an ordinary borrowed record place.
+ScalarPointerObject :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                        names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> int {
+    object := Unparenthesized(forest, node);
+    if (Is(forest, object, syntax.DereferenceExpression)) {
+        if (ScalarScopedDereference(forest, text, names, object)) { return -1; }
+        object = Field(forest, object, syntax.FieldOperand);
+    }
+    pointer := ScalarPointerRecord(forest, text, callables, params, names, types, members, package, object);
+    if (pointer < 0 || ScalarPointerElement(types, pointer).storage != StructStorage) { return -1; }
+    return pointer;
+}
+ScalarPointerFieldRows :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                          callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                          constants: ConstDecl[], node: int, rows: facts.Row[]) -> ScalarOperands {
+    object := Unparenthesized(forest, Field(forest, node, syntax.FieldObject));
+    pointer := ScalarPointerObject(forest, text, callables, params, names, types, members, callable.package, object);
+    record := ScalarMemberRecordOf(forest, text, callables, params, names, types, members, callable.package, object);
+    field := ScalarMember(forest, text, callables, params, names, types, members, callable.package, node);
+    if (record < 0 || field < 0) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native managed field requires a flat authored record"));
+    }
+    output := rows;
+    if (pointer >= 0) {
+        if (Is(forest, object, syntax.DereferenceExpression)) { object = Field(forest, object, syntax.FieldOperand); }
+        switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, object,
+                              PointerStorage, output) {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): output = built;
+        }
+    } else {
+        if (!Is(forest, object, syntax.Identifier)) {
+            return ScalarOperands.Failed(Diagnose(forest, node, 0, "native managed field address requires an owned record variable"));
+        }
+        found := Lookup(names, Text(forest, text, object));
+        if (found < 0 || names[found].place == ReferencePlace) {
+            return ScalarOperands.Failed(Diagnose(forest, node, 0, "native managed pointers cannot capture a borrowed reference"));
+        }
+        address := ScalarAt(forest, object, facts.ManagedAddressRow, facts.PointerType, names[found].index,
+                            ScalarRecordType(types, record), "");
+        address.literal = ScalarPointerTag(types, {storage: StructStorage, container: 0, record: record});
+        output.append(address);
+    }
+    projected := ScalarAt(forest, node, facts.ManagedFieldRow, ScalarRecordType(types, record), field - types[record].first, 1, "");
+    projected.literal = ScalarPointerTag(types, ScalarMemberShape(members, field));
+    output.append(projected);
+    return ScalarOperands.Built(output);
 }
 // A scoped reference already names the caller's target. Its explicit first
 // dereference reads that logical value, which may itself be a descriptor.
@@ -44,12 +109,18 @@ ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables
             return ScalarPointerRecord(forest, text, callables, params, names, types, members, package,
                                         Field(forest, held, syntax.FieldOperand));
         }
+        if (Is(forest, held, syntax.MemberExpression)) {
+            field := ScalarMember(forest, text, callables, params, names, types, members, package, held);
+            if (field < 0) { return -1; }
+            return FindPointer(types, ScalarMemberShape(members, field), false);
+        }
         if (!Is(forest, held, syntax.Identifier)) { return -1; }
         found := Lookup(names, Text(forest, text, held));
         if (found < 0) { return -1; }
         binding := names[found];
-        if (binding.place == ReferencePlace || binding.container != 0 || binding.record != -1 ||
-            ScalarTypeOf(binding.storage) < facts.IntType || ScalarTypeOf(binding.storage) > facts.DoubleType) { return -1; }
+        scalar := binding.record == -1 && ScalarTypeOf(binding.storage) >= facts.IntType && ScalarTypeOf(binding.storage) <= facts.DoubleType;
+        record := binding.storage == StructStorage && binding.record >= 0 && types[binding.record].kind == RecordDecl;
+        if (binding.place == ReferencePlace || binding.container != 0 || (!scalar && !record)) { return -1; }
         pointed: ValueType = {storage: binding.storage, container: binding.container, record: binding.record};
         return FindPointer(types, pointed, false);
     }
@@ -63,6 +134,13 @@ ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables
         found := Lookup(names, Text(forest, text, node));
         if (found >= 0 && names[found].storage == PointerStorage && names[found].container == 0) {
             return names[found].record;
+        }
+        return -1;
+    }
+    if (Is(forest, node, syntax.MemberExpression)) {
+        field := ScalarMember(forest, text, callables, params, names, types, members, package, node);
+        if (field >= 0 && members[field].storage == PointerStorage && members[field].container == 0) {
+            return members[field].record;
         }
         return -1;
     }
@@ -84,7 +162,7 @@ ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables
 ScalarManagedRow :: (forest: snapshot.SnapshotNode[], node: int, type: int, operator: int, count: int,
                      types: TypeDecl[], record: int) -> facts.Row {
     row := ScalarAt(forest, node, facts.ManagedRow, type, operator, count, "");
-    row.literal = i64(wrap: SemanticTag(types, ScalarPointerElement(types, record)));
+    row.literal = ScalarPointerTag(types, ScalarPointerElement(types, record));
     return row;
 }
 ScalarPointerAddress :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
@@ -95,6 +173,9 @@ ScalarPointerAddress :: (forest: snapshot.SnapshotNode[], text: string, callable
         return ScalarOperands.Failed(Diagnose(forest, node, 0, "native managed pointers require a non-null numeric or bool local"));
     }
     held := Unparenthesized(forest, Field(forest, node, syntax.FieldOperand));
+    if (Is(forest, held, syntax.MemberExpression)) {
+        return ScalarPointerFieldRows(forest, text, callables, params, callable, names, types, members, constants, held, rows);
+    }
     if (Is(forest, held, syntax.DereferenceExpression)) {
         return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants,
                               Field(forest, held, syntax.FieldOperand), PointerStorage, rows);
@@ -105,7 +186,9 @@ ScalarPointerAddress :: (forest: snapshot.SnapshotNode[], text: string, callable
     }
     output := rows;
     address := ScalarAt(forest, node, facts.ManagedAddressRow, facts.PointerType, names[found].index, 0, "");
-    address.literal = i64(wrap: SemanticTag(types, ScalarPointerElement(types, record)));
+    shape := ScalarPointerElement(types, record);
+    if (shape.storage == StructStorage) { address.count = ScalarRecordType(types, shape.record); }
+    address.literal = ScalarPointerTag(types, shape);
     output.append(address);
     return ScalarOperands.Built(output);
 }
@@ -126,7 +209,7 @@ ScalarPointerAccess :: (forest: snapshot.SnapshotNode[], text: string, callables
         case .Built(built): output = built;
     }
     operator := facts.ManagedRead;
-    type := ScalarTypeOf(shape.storage);
+    type := ScalarValueType(types, shape.storage, shape.container, shape.record);
     if (borrowed) { operator = facts.ManagedBorrow; type += facts.ReferenceType; }
     output.append(ScalarManagedRow(forest, operand, type, operator, 1, types, record));
     return ScalarOperands.Built(output);
@@ -136,10 +219,9 @@ ScalarPointerAccess :: (forest: snapshot.SnapshotNode[], text: string, callables
 // reads the old pointee once before evaluating its right-hand side.
 ScalarPointerAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                           callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
-                          constants: ConstDecl[], statement: int, temporary: int, record: int) -> ScalarOperands {
+                          constants: ConstDecl[], statement: int, temporary: int, shape: ValueType) -> ScalarOperands {
     value := Field(forest, statement, syntax.FieldValue);
-    shape := ScalarPointerElement(types, record);
-    type := ScalarTypeOf(shape.storage);
+    type := ScalarValueType(types, shape.storage, shape.container, shape.record);
     // These reads refer to the compiler's saved target, not a second source
     // evaluation. The second hidden statement occupies the RHS expression.
     output := [ScalarAt(forest, value, facts.ReadRow, facts.PointerType, temporary, 0, "")];
@@ -149,15 +231,19 @@ ScalarPointerAssigned :: (forest: snapshot.SnapshotNode[], text: string, callabl
             return ScalarOperands.Failed(Diagnose(forest, statement, 0, "native pointer compound assignment requires a numeric operator"));
         }
         output.append(ScalarAt(forest, value, facts.ReadRow, facts.PointerType, temporary, 0, ""));
-        output.append(ScalarManagedRow(forest, value, type, facts.ManagedRead, 1, types, record));
+        read := ScalarAt(forest, value, facts.ManagedRow, type, facts.ManagedRead, 1, "");
+        read.literal = ScalarPointerTag(types, shape);
+        output.append(read);
     }
-    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
-                          value, value, shape.storage, shape.storage, facts.Clamp, output) {
+    switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                               value, shape, output) {
         case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
         case .Built(built): output = built;
     }
     if (operator != 0) { output.append(ScalarAt(forest, value, facts.ArithmeticRow, type, operator, 2, "")); }
-    output.append(ScalarManagedRow(forest, value, type, facts.ManagedWrite, 2, types, record));
+    changed := ScalarAt(forest, value, facts.ManagedRow, type, facts.ManagedWrite, 2, "");
+    changed.literal = ScalarPointerTag(types, shape);
+    output.append(changed);
     return ScalarOperands.Built(output);
 }
 
@@ -172,4 +258,71 @@ ScalarPointerEffects :: (hosts: Host[]) -> int {
         if (intrinsic == PointerWriteIntrinsic) { effects |= WriteEffect; }
     }
     return effects;
+}
+
+// Tag only records whose managed address or inline pointer fields are used.
+// Ordinary record facts keep their existing literals, including char flags.
+// The pass is linear in rows, type declarations and the selected fields.
+ScalarManagedRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: TypeMember[],
+                         rows: facts.Row[]) -> ScalarOperands {
+    managed := false;
+    for (at in 0..<length(rows)) {
+        kind := rows[at].kind;
+        managed = kind == facts.ManagedAddressRow || kind == facts.ManagedFieldRow ||
+                  kind == facts.ManagedRow || (kind == facts.MemberRow && rows[at].type == facts.PointerType);
+        if (managed) { break; }
+    }
+    if (!managed) { return ScalarOperands.Built(rows); }
+    heads: int[] = [];
+    for (at in 0..<length(rows)) {
+        if (rows[at].kind == facts.RecordRow || rows[at].kind == facts.UnionRow) { heads.append(at); }
+    }
+    declarations := resize([int(-1)], length(heads));
+    wanted := resize([false], length(heads));
+    for (index in 0..<length(heads)) { declarations[index] = -1; }
+    ordinal := 0;
+    for (index in 0..<length(types)) {
+        if (!ScalarDeclares(types, types[index])) { continue; }
+        assert(ordinal < length(heads));
+        declarations[ordinal] = index;
+        ordinal += 1;
+    }
+    owner := -1;
+    for (row in rows) {
+        if (row.kind == facts.RecordRow || row.kind == facts.UnionRow) { owner += 1; }
+        if (row.kind == facts.FunctionRow) { owner = -1; }
+        type := 0;
+        if (row.kind == facts.MemberRow && row.type == facts.PointerType && owner >= 0) { wanted[owner] = true; }
+        if (row.kind == facts.ManagedAddressRow) { type = row.count; }
+        if (row.kind == facts.ManagedFieldRow || row.kind == facts.ManagedRow) { type = row.type; }
+        if (type >= facts.ReferenceType) { type -= facts.ReferenceType; }
+        if (type >= facts.RecordType && type < facts.ArrayType && type - facts.RecordType < length(wanted)) {
+            wanted[type - facts.RecordType] = true;
+        }
+    }
+    output := rows;
+    for (index in 0..<length(heads)) {
+        if (!wanted[index]) { continue; }
+        record := declarations[index];
+        if (record < 0 || types[record].kind != RecordDecl || types[record].layout == 0) {
+            return ScalarOperands.Failed(Diagnose(forest, 0, 0, "native managed records require a stable authored layout"));
+        }
+        declared := types[record];
+        header := output[heads[index]];
+        header.literal = ScalarPointerTag(types, {storage: StructStorage, container: 0, record: record});
+        output[heads[index]] = header;
+        for (ordinal in 0..<declared.count) {
+            field := members[declared.first + ordinal];
+            scalar := field.record == -1 && (Numeric(field.storage) || field.storage == BoolStorage);
+            pointer := field.storage == PointerStorage && ScalarPointerType(types, field.record) != 0;
+            if (field.container != 0 || (!scalar && !pointer) || CharType(types, field.storage, field.container, field.record)) {
+                return ScalarOperands.Failed(Diagnose(forest, declared.node, 0,
+                    "native managed record cells require flat numeric, bool or pointer fields"));
+            }
+            member := output[heads[index] + 1 + ordinal];
+            member.literal = ScalarPointerTag(types, {storage: field.storage, container: 0, record: field.record});
+            output[heads[index] + 1 + ordinal] = member;
+        }
+    }
+    return ScalarOperands.Built(output);
 }

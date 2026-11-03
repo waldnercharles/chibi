@@ -101,8 +101,8 @@ run
 test "$(cat native-ran)" = ok
 printf 'native runner: execution, reuse, rejection, cleanup and in-flight edits passed\n'
 
-# Legacy consumers prepare their bytecode seed explicitly. Native selectors,
-# native build programs and native-only recovery never request it.
+# Explicit recovery and VM comparison prepare their bytecode seed. Ordinary
+# native builds and test selectors never request it.
 mkdir -p tools/bootstrap
 cat > tools/bootstrap/seed.sh <<'SEED'
 #!/bin/sh
@@ -118,30 +118,14 @@ cat > "$scratch/legacy-host" <<'HOST'
 printf 'host\n' >> "$SEED_EVENTS"
 HOST
 chmod +x "$scratch/legacy-host"
-printf 'tool\tnative\tsh\t%s\ntool\tlegacy\t@host@\ngroup\tmixed\tnative\tlegacy\n' "$scratch/native-tool" > tools/tests.tsv
+printf 'tool\tnative\tsh\t%s\n' "$scratch/native-tool" > tools/tests.tsv
 export SEED_EVENTS="$scratch/seed-events" LEGACY_SEED_STATUS=23
 : > "$SEED_EVENTS"
 run
 test ! -s "$SEED_EVENTS"
-"$scratch/driver" build test --build-host "$scratch/legacy-host" native
+"$scratch/driver" build test native
 printf 'native\n' > "$scratch/expected-events"
 cmp "$scratch/expected-events" "$SEED_EVENTS"
-: > "$SEED_EVENTS"
-if "$scratch/driver" build test --build-host "$scratch/legacy-host" legacy; then exit 1; else test "$?" = 23; fi
-printf 'seed tools/compiler/bootstrap\n' > "$scratch/expected-events"
-cmp "$scratch/expected-events" "$SEED_EVENTS"
-: > "$SEED_EVENTS"
-"$scratch/driver" build test --dry-run --build-host "$scratch/legacy-host" legacy > "$scratch/seed-plan" 2>&1
-grep -q 'legacy-seed: sh tools/bootstrap/seed.sh' "$scratch/seed-plan"
-test ! -s "$SEED_EVENTS"
-export LEGACY_SEED_STATUS=0
-"$scratch/driver" build test --build-host "$scratch/legacy-host" --jobs 2 mixed
-# The native and host tools may finish in either order, but seed comes first once.
-test "$(sed -n '1p' "$SEED_EVENTS")" = 'seed tools/compiler/bootstrap'
-test "$(wc -l < "$SEED_EVENTS" | tr -d ' ')" = 3
-test "$(grep -c '^seed ' "$SEED_EVENTS")" = 1
-grep -q '^native$' "$SEED_EVENTS"
-grep -q '^host$' "$SEED_EVENTS"
 
 # Bootstrap recovery prepares its selected artifact before invoking the host.
 mkdir -p "$scratch/releases/sdk"

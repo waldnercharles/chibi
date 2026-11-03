@@ -1,0 +1,59 @@
+package record_cells_probe
+
+import target "core:target"
+
+foreign import libc "system:c"
+foreign libc {
+    dlopen :: (path: cstring, flags: i32) -> rawptr
+    dlsym :: (handle: rawptr, name: cstring) -> rawptr
+    dlclose :: (handle: rawptr) -> i32
+    memchr :: (memory: u8[], value: i32, bytes: u64) -> rawptr
+}
+Required :: (handle: rawptr, name: string) -> rawptr {
+    address := dlsym(handle, name);
+    assert(address != 0, "required family record hook is present");
+    return address;
+}
+when target.Os == target.Darwin {
+    Open :: (path: string) -> rawptr { return dlopen(path, 262); }
+} else {
+    Open :: (path: string) -> rawptr { return dlopen(path, 2); }
+}
+Main :: () -> int {
+    image := Open("../records.so");
+    if image == 0 { return 2; }
+    size: fn() -> i64 = Required(image, "chibi_host_family_size");
+    adopt: fn(heap: rawptr) -> i32 = Required(image, "chibi_host_set_family");
+    pending: fn() -> i64 = Required(image, "chibi_host_cells_pending");
+    collect: fn() -> i32 = Required(image, "chibi_host_family_collect");
+    main: fn() -> i32 = Required(image, "chibi_host_call_Main");
+    cancel_tasks: fn() -> i32 = Required(image, "chibi_host_tasks_cancel_all");
+    release: fn() -> i32 = Required(image, "chibi_host_retained_release");
+    bytes := size();
+    assert(bytes > 0 && bytes <= 4096);
+    // One owned byte backing keeps this same aligned heap address stable
+    // through cancellation, collection and the final image close.
+    storage := resize([u8(0)], int(bytes));
+    heap: rawptr = memchr(storage, 0, 1);
+    assert(heap != 0);
+    adopted := adopt(heap);
+    assert(adopted == 0);
+    called := main();
+    assert(called == 0);
+    counted := pending();
+    assert(counted >= 2, "generated record metadata pins its image");
+    collected := collect();
+    assert(collected == 0);
+    rooted := pending();
+    assert(rooted >= 2, "suspended frames keep their record cells reachable");
+    cancelled := cancel_tasks();
+    released := release();
+    assert(cancelled == 0 && released == 0);
+    collected = collect();
+    assert(collected == 0);
+    remaining := pending();
+    assert(remaining == 0, "cancelled cyclic records release their image leases");
+    closed := dlclose(image);
+    assert(closed == 0);
+    return 0;
+}

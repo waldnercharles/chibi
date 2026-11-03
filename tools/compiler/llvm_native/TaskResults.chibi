@@ -15,7 +15,7 @@ TaskFramePlain :: (layout: ValueLayout, type: int) -> bool {
     return type < ArrayType && Index(index, length(layout.valid)) && layout.valid[index] && !layout.owned[index];
 }
 TaskFrameTraced :: (layout: ManagedRecordLayout, type: int) -> bool {
-    return type == PointerType || (ManagedTraced(type, layout.traced) && layout.flat[type - RecordType]);
+    return type == PointerType || (ManagedTraced(type, layout.traced) && layout.traceable[type - RecordType]);
 }
 TaskFrameValue :: (records: Record[], layout: ValueLayout, managed: ManagedRecordLayout, type: int, observer: bool, owned: bool) -> bool {
     if (owned && TaskFrameTraced(managed, type)) { return true; }

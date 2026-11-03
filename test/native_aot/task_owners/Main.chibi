@@ -1,0 +1,115 @@
+package task_owners
+
+Payload :: struct { title: string; words: string[]; numbers: int[]; }
+Choice :: union { Nothing | Word(text: string) | Bag(value: Payload) }
+Text :: (count: int) -> string { return text_from_bytes(resize([u8(120)], count)); }
+PayloadOf :: (count: int) -> Payload {
+    return {title: Text(count), words: [Text(2), Text(3)], numbers: [int(11), 37]};
+}
+Length :: (value: Payload) -> int { return text_byte_length(value.title) + text_byte_length(value.words[0]) + value.numbers[1]; }
+TextWorker :: (text: string) -> int {
+    yield;
+    size := text_byte_length(text);
+    yield;
+    return size;
+}
+RecordWorker :: (value: Payload) -> int {
+    yield;
+    total := Length(value);
+    value.title = Text(9);
+    yield;
+    return total + Length(value);
+}
+ArrayWorker :: (values: string[]) -> int {
+    yield;
+    total := 0;
+    for value in values { total += text_byte_length(value); }
+    yield;
+    return total;
+}
+Reassigned :: () -> int {
+    text := Text(1);
+    values := [Text(2), Text(3)];
+    yield;
+    text = Text(7);
+    values = [Text(11)];
+    yield;
+    return text_byte_length(text) + text_byte_length(values[0]);
+}
+Traversal :: () -> int {
+    values := [Text(3), Text(5)];
+    total := 0;
+    for value in values {
+        values = [];
+        yield;
+        total += text_byte_length(value);
+    }
+    return total;
+}
+Inline :: () -> int {
+    saved := PayloadOf(6);
+    length := await TextWorker(saved.title);
+    return length + Length(saved);
+}
+Parent :: () -> int {
+    saved := PayloadOf(8);
+    child := TextWorker(saved.title);
+    yield;
+    joined := await child;
+    if joined is Cancelled { return -1; }
+    else { return joined + Length(saved); }
+}
+Detached :: () -> int {
+    saved := PayloadOf(4);
+    yield;
+    assert(Length(saved) == 43);
+    return 0;
+}
+Delayed :: (text: string) -> int {
+    await Delay(1000000.0);
+    return text_byte_length(text);
+}
+Main :: () -> int {
+    original := Text(4);
+    text := TextWorker(original);
+    original = Text(12);
+    read := await text;
+    if read is Cancelled { return 1; }
+    else { assert(read == 4); }
+    payload := PayloadOf(5);
+    record := RecordWorker(payload);
+    payload = PayloadOf(13);
+    result := await record;
+    if result is Cancelled { return 2; }
+    else { assert(result == 92); }
+    values := [Text(3), Text(5)];
+    array := ArrayWorker(values);
+    values = [];
+    count := await array;
+    if count is Cancelled { return 3; }
+    else { assert(count == 8); }
+    replaced := await Reassigned();
+    walked := await Traversal();
+    assert(replaced == 18 && walked == 8);
+    joined := await Inline();
+    assert(joined == 51);
+    if true { detached := Detached(); }
+    yield;
+    for index in 0..<64 {
+        replacing := Reassigned();
+        yield;
+        cancel replacing;
+        parent := Parent();
+        inline := Inline();
+        delayed := Delayed(Text(23));
+        cancel parent;
+        cancel inline;
+        cancel delayed;
+        cancelled := await replacing;
+        cancelled_parent := await parent;
+        cancelled_inline := await inline;
+        cancelled_delayed := await delayed;
+        assert(cancelled is Cancelled && cancelled_parent is Cancelled && cancelled_inline is Cancelled && cancelled_delayed is Cancelled);
+    }
+    return 0;
+}

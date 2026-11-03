@@ -1,0 +1,12 @@
+package task_managed_frame
+Worker :: () -> int {
+    values: int[] = [1, 2];
+    yield
+    return values[0];
+}
+
+Main :: () -> int {
+    result := await Worker();
+    assert(result == 1);
+    return 0;
+}

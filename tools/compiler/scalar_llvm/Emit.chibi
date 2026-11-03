@@ -2507,7 +2507,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         record.count = length(fields) - record.first;
         records.append(record);
     }
-    managed := native.ValueLayouts(records, fields).owned;
+    value_layout := native.ValueLayouts(records, fields);
+    managed := value_layout.owned;
     heads := Heads(rows, Start(rows, declared));
     // The open statement an End, Else or Case row belongs to, plus one; 0 for
     // any other row.
@@ -2564,9 +2565,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         // The row of each local variable's declaration.
         decl_vars: int[] = [];
         decl_rows: int[] = [];
-        // A by-value string parameter is borrowed until its address can be
-        // passed to a mutating callee. Promote those parameters once at entry,
-        // so reference assignment may replace/release their local descriptor.
+        // Synchronous values can borrow until a scoped call changes them.
+        // Waiting values acquire independent owners at entry: their caller
+        // may finish after the first suspension.
         addressed_parameters := resize([false], declaration.count);
         waiting_function := false;
         for (index in head + declaration.count + 1..<Last(rows, heads, function)) {
@@ -2593,7 +2594,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 deferred_values.append(slot);
             } else { body.append(Op(native.Save, type, 0, slot, 0, local)); }
             places.append(local);
-            if ((type == abi.TextStorage || TrackedRecord(managed, type)) && addressed_parameters[index]) {
+            if ((type == abi.TextStorage || TrackedRecord(managed, type)) && (addressed_parameters[index] || waiting_function)) {
                 if (type == abi.TextStorage) { body.append(Op(native.TextRetain, type, 0, slot, 0, 0)); }
                 else {
                     glue := KeepValue(managed, type, slot, slot + 1);
@@ -2605,7 +2606,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 owned_vars.append(index);
                 owned_types.append(type);
             }
-            if (waiting_function && type == native.ArrayType + native.PointerType &&
+            if (waiting_function && (type == native.ArrayType + native.PointerType ||
+                (ArrayTyped(type) && native.TaskOwnedType(records, value_layout, type))) &&
                 rows[head + 1 + index].literal != i64(facts.ParameterOwnedArray)) {
                 // A suspended callee owns its value parameter independently of
                 // the caller's lifetime, including discarded task observers.
@@ -2632,7 +2634,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             value := deferred_values[index];
             slots.append(native.PointerType);
             glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
-                fresh, slots, shape.first_slot, [], slot + 1, next_root);
+                fresh, slots, shape.first_slot, [], slot + 1, next_root, waiting_function, records, value_layout);
             next_root = glue.next;
             slots.extend(glue.types);
             body.extend(glue.before);
@@ -3235,9 +3237,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     item = Op(native.FunctionAddress, type, slot, operand.value, 0, 0);
                 } else if (operand.kind == facts.YieldRow) {
                     // The turn is given up first; the row gives int 0, the constant.
-                    if (pointer_program) {
+                    if (pointer_program || waiting_function) {
                         glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
-                            fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root);
+                            fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root, waiting_function, records, value_layout);
                         next_root = glue.next;
                         slots.extend(glue.types);
                         extra += length(glue.types);
@@ -3251,9 +3253,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.DelayRow) {
                     base := length(stack) - 1;
-                    if (pointer_program) {
+                    if (pointer_program || waiting_function) {
                         glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
-                            fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root);
+                            fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root, waiting_function, records, value_layout);
                         next_root = glue.next;
                         slots.extend(glue.types);
                         extra += length(glue.types);
@@ -3268,9 +3270,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     if (operand.kind == facts.AwaitRow) {
                         task_op = native.AwaitHandle;
                     }
-                    if (pointer_program && task_op == native.AwaitHandle) {
+                    if ((pointer_program || waiting_function) && task_op == native.AwaitHandle) {
                         glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
-                            fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root);
+                            fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root, waiting_function, records, value_layout);
                         next_root = glue.next;
                         slots.extend(glue.types);
                         extra += length(glue.types);
@@ -3932,9 +3934,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                 }
                 stored = [];
-                if (pointer_program && (item.op == native.ClockSample || item.op == native.Call || item.op == native.ForeignCall || item.op == native.AwaitResult)) {
+                if ((pointer_program || waiting_function) && (item.op == native.ClockSample || item.op == native.Call || item.op == native.ForeignCall || item.op == native.AwaitResult || item.op == native.Format)) {
                     glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
-                        fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root);
+                        fresh, slots, shape.first_slot, frames, slot + 1 + extra, next_root, waiting_function, records, value_layout);
                     next_root = glue.next;
                     slots.extend(glue.types);
                     extra += length(glue.types);
@@ -4357,9 +4359,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     texts.append(row.text);
                     fail.target = length(texts);
                 }
-                if (pointer_program && waiting_function) {
+                if (waiting_function) {
                     glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
-                        fresh, slots, shape.first_slot, frames, slot, next_root);
+                        fresh, slots, shape.first_slot, frames, slot, next_root, waiting_function, records, value_layout);
                     next_root = glue.next;
                     slots.extend(glue.types);
                     slot += length(glue.types);
@@ -4428,7 +4430,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 if (boxed) {
                     slots.append(native.PointerType);
                     glue := ManagedPinOwners(owned_vars, owned_types, places, locals, shape.first_local,
-                        fresh, slots, shape.first_slot, frames, slot + 1, next_root);
+                        fresh, slots, shape.first_slot, frames, slot + 1, next_root, waiting_function, records, value_layout);
                     next_root = glue.next;
                     slots.extend(glue.types);
                     body.extend(glue.before);

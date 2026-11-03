@@ -1,7 +1,6 @@
 package waiting_patterns
 
-// Ordinary accepted behavior, temporarily gated by the native task frame's
-// managed-value domain. The task owner must promote this case when that opens.
+// Pattern payload owners remain live after their source changes and yields.
 
 Value :: union { Nothing | Count(number: int) }
 TextValue :: union { Nothing | Word(text: string) }

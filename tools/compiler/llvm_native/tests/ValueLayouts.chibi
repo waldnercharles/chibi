@@ -30,20 +30,20 @@ CollectorCopiesPreserveExistingValueOwners :: () {
     }
 }
 @test
-CollectorCopiesDoNotAdmitGcContainerPayloads :: () {
+CollectorCopiesKeepMapPayloadsRootless :: () {
     records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 1, identity: 0}];
-    for container in [native.ArrayType + native.RecordType + 1,
-                      native.MapOf(abi.IntStorage, native.RecordType + 1),
+    for container in [native.MapOf(abi.IntStorage, native.RecordType + 1),
                       native.MapOf(abi.IntStorage, native.ArrayType + native.PointerType)] {
         layout := native.ValueLayouts(records, [container, native.PointerType]);
         assert(!layout.collector_copyable[0] && !layout.collector_owned[0] && !layout.collector_backed[0]);
         assert(layout.collector_copyable[1] && !layout.collector_owned[1]);
     }
-    // An array can break an inline cycle, but its GC payload still needs its
-    // own tracing protocol rather than inheriting the inline-copy domain.
-    records = [{first: 0, count: 2, identity: 0}];
-    layout := native.ValueLayouts(records, [native.ArrayType + native.RecordType, native.ArrayType + native.PointerType]);
-    assert(!layout.collector_copyable[0]);
+    layout := native.ValueLayouts(records, [native.ArrayType + native.RecordType + 1, native.PointerType]);
+    assert(layout.collector_copyable[0] && layout.collector_owned[0] && layout.collector_backed[0]);
+    assert(!layout.valid[0] && !layout.valid[1]);
+    assert(native.ValueCollectorArray(layout, native.ArrayType + native.RecordType + 1));
+    assert(native.ValueCollectorOwner(layout, native.ArrayType + native.RecordType + 1));
+
 }
 @test
 CollectorCopyInvalidityReachesEveryInlineParent :: () {

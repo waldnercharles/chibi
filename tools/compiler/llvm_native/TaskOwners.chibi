@@ -12,7 +12,7 @@ pub TaskOwnedType :: (records: Record[], layout: ValueLayout, type: int) -> bool
     if (type >= MapType && type < RefType) { return MapPayloadValid(records, layout, type); }
     if (type >= ArrayType && type < MapType) {
         element := ElementType(records, type);
-        return element != 0 && ValueValid(layout, element);
+        return element != 0 && element != PointerType && ValueCollectorCopyable(layout, element);
     }
     return type >= RecordType && type < ArrayType && type - RecordType < length(layout.collector_owned) &&
            layout.collector_copyable[type - RecordType] && layout.collector_owned[type - RecordType];
@@ -103,7 +103,7 @@ TaskDropValue :: (type: int, prefix: string, value: string) -> string {
 TaskOwnerBoundary :: (item: Instruction) -> bool {
     op := item.op;
     return (op == ArrayResize && item.literal == i64(ArrayResizeInitialized)) || op == ClockSample || op == Call || op == ForeignCall || op == ManagedNew || op == Format ||
-           op == Suspend || op == Delay || op == AwaitHandle || op == AwaitResult || op == Fail;
+           op == Suspend || op == Delay || op == AwaitHandle || op == AwaitResult || op == Fail || op == TypedFail;
 }
 TaskOwnersValid :: (code: Instruction[], slots: int[], locals: int[], records: Record[], layout: ValueLayout) -> string {
     active_kinds: int[] = [];

@@ -1128,7 +1128,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             }
         }
         if ((item.op == OwnerPin || item.op == OwnerUnpin) &&
-            (!waiting[function] || (!ProgramMode(mode) && !family))) {
+            ((!waiting[function] && !family) || (!ProgramMode(mode) && !family))) {
             return Result.Rejected(base + pc, "native owned frames require a program-owned waiting function");
         }
         if (Produces(item.op)) {
@@ -1160,12 +1160,12 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
                 return Result.Rejected(base + pc, "native managed pointer identity is invalid");
             }
             if (item.op == ManagedNew &&
-                (item.type != PointerType || !ManagedPayload(records, managed_records, lifecycle, item.right, item.literal) ||
+                (item.type != PointerType || !ManagedPayload(records, fields, managed_records, lifecycle, item.right, item.literal) ||
                  !Typed(slots, item.left, item.right))) {
                 return Result.Rejected(base + pc, "native managed cell initializer differs from its scalar type");
             }
             if (item.op == ManagedAddress &&
-                (item.type < RefType || !ManagedTarget(records, managed_records, lifecycle, item.type - RefType, item.literal) ||
+                (item.type < RefType || !ManagedTarget(records, fields, managed_records, lifecycle, item.type - RefType, item.literal) ||
                  !Typed(slots, item.left, PointerType) || item.right != 0)) {
                 return Result.Rejected(base + pc, "native managed pointer resolution differs from its scalar target");
             }
@@ -1303,7 +1303,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if ((item.op == ValueCopy || item.op == ValueDrop) &&
             (!Typed(slots, item.left, item.type) ||
-             (ElementType(records, item.type) != 0 && item.type != ArrayType + PointerType && !ValueValid(lifecycle, item.type - ArrayType)) ||
+             (ElementType(records, item.type) != 0 && !ValueCollectorCopyable(lifecycle, item.type - ArrayType)) ||
              (item.type != abi.TextStorage && ElementType(records, item.type) == 0 &&
               !MapPayloadValid(records, lifecycle, item.type) &&
               (item.type < RecordType || item.type >= ArrayType || !ValueCollectorCopyable(lifecycle, item.type) ||
@@ -1411,7 +1411,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             return Result.Rejected(base + pc, "native assertion has invalid diagnostic metadata");
         }
         if (item.op == TypedFail) {
-            if (!ProgramMode(mode)) {
+            if (!ProgramMode(mode) && !family) {
                 return Result.Rejected(base + pc, "typed failures require a standalone native program");
             }
             if (item.type != 0 || item.output != 0 || item.left != 0 || item.right != 0 || item.target != 0 ||
@@ -2078,7 +2078,7 @@ ValueUses :: (code: Instruction[], records: Record[], fields: int[], owners: boo
         if (mapped != 0) { ValueReach(&build, mapped, false, false); continue; }
         type := 0;
         if (item.op == OwnerPin || item.op == ValueCopy || item.op == ValueDrop || item.op == StateLoad || item.op == StateStore) { type = item.type; }
-        if (item.op == AwaitResult) { type = item.right; }
+        if (item.op == AwaitResult || (item.op == ManagedNew && ManagedOptionalText(records, fields, item.right))) { type = item.right; }
         if (type >= RecordType && type < ArrayType) {
             ValueReach(&build, type, false, item.op == OwnerPin || item.op == AwaitResult);
         }
@@ -2891,7 +2891,7 @@ RampCall :: (functions: Function[], parameters: int[], arguments: int[], item: I
 // caller waits for it, resuming it each time it is resumed itself. Destroying
 // the caller destroys F's frame first.
 AwaitedCallInstruction :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int,
-                           mode: int, testing: bool, owners: bool[]) -> string {
+                           mode: int, testing: bool, owners: bool[], checked: bool) -> string {
     out := RampCall(functions, parameters, arguments, item, pc, mode, false, testing);
     out = format_text("{}  br label %p{}.test\np{}.test:\n", out, pc, pc);
     out = format_text("{}  %done{} = call i1 @llvm.coro.done(ptr %v{})\n", out, pc, pc);
@@ -2902,7 +2902,14 @@ AwaitedCallInstruction :: (functions: Function[], parameters: int[], arguments: 
                       out, pc, pc, pc);
     out = format_text("{}p{}.resume:\n  call void @llvm.coro.resume(ptr %v{})\n  br label %p{}.test\n", out, pc, pc, pc);
     out = format_text("{}p{}.destroy:\n  call void @llvm.coro.destroy(ptr %v{})\n  br label %coro.cleanup\n", out, pc, pc);
-    out = format_text("{}p{}.finished:\n  %promise{} = call ptr @llvm.coro.promise(ptr %v{}, i32 8, i1 false)\n", out, pc, pc, pc);
+    out = format_text("{}p{}.finished:\n", out, pc);
+    if (checked) {
+        out = format_text("{}  %failure{}.at = getelementptr inbounds {}, ptr %ctx, i32 0, i32 1\n", out, pc, abi.ContextType());
+        out = format_text("{}  %failure{} = load ptr, ptr %failure{}.at\n  %failed{} = icmp ne ptr %failure{}, null\n", out, pc, pc, pc, pc);
+        out = format_text("{}  br i1 %failed{}, label %p{}.failed, label %p{}.result\np{}.failed:\n", out, pc, pc, pc, pc);
+        out = format_text("{}  call void @llvm.coro.destroy(ptr %v{})\n  br label %failed\np{}.result:\n", out, pc, pc);
+    }
+    out = format_text("{}  %promise{} = call ptr @llvm.coro.promise(ptr %v{}, i32 8, i1 false)\n", out, pc, pc);
     out = format_text("{}  %result{} = load {}, ptr %promise{}\n", out, pc, TypeName(item.type), pc);
     if (ValueOwned(item.type, owners) || item.type == PointerType) {
         out = format_text("{}  store {} zeroinitializer, ptr %promise{}\n", out, TypeName(item.type), pc);
@@ -2914,9 +2921,15 @@ AwaitedCallInstruction :: (functions: Function[], parameters: int[], arguments: 
 // `F(arguments)` of a waiting F, not awaited: F runs to its first suspension and
 // is added to the scheduler; the task's handle is the result.
 SpawnedCallInstruction :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int,
-                           mode: int, testing: bool) -> string {
+                           mode: int, testing: bool, checked: bool) -> string {
     out := RampCall(functions, parameters, arguments, item, pc, mode, true, testing);
     out = format_text("{}  call void @chibi_tasks.attach(i64 %task{}, ptr %v{})\n  store i64 %parent{}, ptr @chibi_tasks.current\n", out, pc, pc, pc);
+    if (checked) {
+        out = format_text("{}  %failure{}.at = getelementptr inbounds {}, ptr %ctx, i32 0, i32 1\n", out, pc, abi.ContextType());
+        out = format_text("{}  %failure{} = load ptr, ptr %failure{}.at\n  %failed{} = icmp ne ptr %failure{}, null\n", out, pc, pc, pc, pc);
+        out = format_text("{}  br i1 %failed{}, label %p{}.failed, label %p{}.result\np{}.failed:\n", out, pc, pc, pc, pc);
+        out = format_text("{}  call void @chibi_tasks.release(i64 %task{})\n  br label %failed\np{}.result:\n", out, pc, pc);
+    }
     out = format_text("{}{}", out, Store(format_text("%task{}", pc), item.type, "s", item.output));
     return format_text("{}  br label %p{}\n", out, pc + 1);
 }
@@ -2979,7 +2992,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     out.append(format_text("  %result0 = alloca {}\n", TypeName(result)));
     out.append(Store(Zero(result), result, "result", 0));
     owner_locations: TaskOwnerLocation[] = [];
-    if (coroutine) {
+    if (coroutine || (mode == NoEntry && guarded)) {
         owner_locations = TaskOwnerLocations(shape, code);
         out.append(TaskOwnerPrologue(owner_locations));
     }
@@ -3056,16 +3069,18 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         if (item.op == ManagedPending || item.op == ManagedPoll || item.op == ManagedTrack) {
             out.append(ManagedPollInstruction(item, pc, gc_owners));
         } else if ((item.op >= ManagedNew && item.op <= ManagedUnpin) || item.op == ManagedProject) {
-            out.append(ManagedInstruction(item, pc, records, coroutine));
+            out.append(ManagedInstruction(item, pc, records, fields, coroutine));
         } else if (ViewOperation(item.op)) {
             out.append(ViewInstruction(item, pc, own, record_owners));
         } else if (managed && (item.op == Return || item.op == End) && !coroutine) {
             returned := EmitInstruction(item, pc, result, records, fields, texts, coroutine, ProgramMode(mode), scoped, record_owners, guarded);
             out.append(strings.ReplaceAll(returned, "  ret ", strings.Concatenate([ManagedUnroots(function == 0 && mode == ProgramEntry), "  ret "])));
         } else if (item.op == Call && item.literal == i64(CallAwaited)) {
-            out.append(AwaitedCallInstruction(functions, parameters, own, item, pc, mode, testing, record_owners));
+            out.append(AwaitedCallInstruction(functions, parameters, own, item, pc, mode, testing, record_owners,
+                mode == NoEntry && guarded && fallible[item.left]));
         } else if (item.op == Call && (item.literal == i64(CallSpawned) || item.literal == i64(CallSpawnedVoid))) {
-            out.append(SpawnedCallInstruction(functions, parameters, own, item, pc, mode, testing));
+            out.append(SpawnedCallInstruction(functions, parameters, own, item, pc, mode, testing,
+                mode == NoEntry && guarded && fallible[item.left]));
         } else if (item.op == Suspend) {
             out.append(SuspendInstruction(pc, testing));
         } else if (item.op == AwaitResult) {
@@ -3115,6 +3130,10 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
             out.append(format_text("  br label %p{}\n", pc + 1));
         } else if (item.op == OwnerPin || item.op == OwnerUnpin) {
             out.append(TaskOwnerInstruction(item, pc, locals, shape.first_local));
+        } else if (item.op == TypedFail && !ProgramMode(mode)) {
+            out.append(format_text("p{}:\n  call void @chibi_native_failure_report(i32 {})\n", pc, item.literal));
+            out.append(format_text("  %fail{}.at = getelementptr inbounds {}, ptr %ctx, i32 0, i32 1\n", pc, abi.ContextType()));
+            out.append(format_text("  store ptr @{}, ptr %fail{}.at\n  br label %failed\n", FailureSymbol(function, pc), pc));
         } else if (item.op == Fail) {
             out.append(FailInstruction(function, pc));
         } else if (item.op == Format) {
@@ -3129,6 +3148,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         out.append("failed:\n  br label %coro.final\n");
     } else if (fallible[function]) {
         out.append("failed:\n");
+        out.append(TaskOwnerCleanup(owner_locations, "failed"));
         if (managed) { out.append(ManagedUnroots(function == 0 && mode == ProgramEntry)); }
         out.append(format_text("  ret {} {}\n", TypeName(result), Zero(result)));
     }
@@ -3182,12 +3202,12 @@ FormatInstruction :: (slots: int[], arguments: int[], item: Instruction, pc: int
     return format_text("{}  br label %p{}\n", out, pc + 1);
 }
 // Whether `code` calls the runtime.
-pub Runtime :: (code: Instruction[]) -> bool {
+pub Runtime :: (code: Instruction[], family: bool = false) -> bool {
     if (Tasks(code)) {
         return true;
     }
     for (item in code) {
-        if (item.op == ManagedPending || item.op == ManagedPoll || item.op == ManagedTrack || item.op == OwnerPin || item.op == ClockSample || item.op == ManagedProject || item.op == ManagedNew || item.op == ManagedAddress || item.op == ManagedPin || item.op == ManagedUnpin || item.op == Print || item.op == Format || item.op == Fail || item.op == ValueCopy || item.op == ValueDrop || ArrayCalls(item.op) || MapCalls(item) ||
+        if (item.op == ManagedPending || item.op == ManagedPoll || item.op == ManagedTrack || item.op == OwnerPin || item.op == ClockSample || item.op == ManagedProject || item.op == ManagedNew || item.op == ManagedAddress || item.op == ManagedPin || item.op == ManagedUnpin || item.op == Print || item.op == Format || item.op == Fail || (family && item.op == TypedFail) || item.op == ValueCopy || item.op == ValueDrop || ArrayCalls(item.op) || MapCalls(item) ||
             ((item.op == StateLoad || item.op == StateStore) && (item.type == abi.TextStorage || item.type >= RecordType))) {
             return true;
         }
@@ -3196,7 +3216,7 @@ pub Runtime :: (code: Instruction[]) -> bool {
 }
 // Whether each function can fail: it has a Fail, or calls a function that
 // can.
-Fallible :: (functions: Function[], code: Instruction[]) -> bool[] {
+Fallible :: (functions: Function[], code: Instruction[], family: bool) -> bool[] {
     fallible: bool[] = [];
     for (shape in functions) {
         fallible.append(false);
@@ -3207,8 +3227,8 @@ Fallible :: (functions: Function[], code: Instruction[]) -> bool[] {
         for (function in 0..<length(functions)) {
             shape := functions[function];
             for (item in Codes(code, shape.first_code, shape.code)) {
-                if (!fallible[function] && (item.op == Fail || (item.op == ArrayResize && item.literal == i64(ArrayResizeInitialized)) ||
-                    (item.op == Call && item.literal == i64(CallPlain) && fallible[item.left]))) {
+                if (!fallible[function] && (item.op == Fail || (family && item.op == TypedFail) || (item.op == ArrayResize && item.literal == i64(ArrayResizeInitialized)) ||
+                    (item.op == Call && (item.literal == i64(CallPlain) || family) && fallible[item.left]))) {
                     fallible[function] = true;
                     changed = true;
                 }
@@ -3226,6 +3246,9 @@ Failures :: (functions: Function[], code: Instruction[], texts: string[], first:
         shape := functions[function];
         for (pc in 0..<shape.code) {
             item := code[shape.first_code + pc];
+            if (!program && item.op == TypedFail) {
+                out.append(format_text("@{} = private constant {} zeroinitializer\n", FailureSymbol(function, pc), abi.FailureType()));
+            }
             if (!program && item.op == ArrayResize && item.literal == i64(ArrayResizeInitialized)) { resize_failure = true; }
             if (item.op == Fail) {
                 type := abi.FailureType();
@@ -3551,6 +3574,9 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     }
     managed_records := ManagedRecordLayouts(records, fields);
     lifecycle := ValueLayouts(records, fields);
+    if (!ManagedCollectorShapesValid(records, fields, lifecycle)) {
+        return Result.Rejected(-1, "native collector values require an acyclic inline and array layout");
+    }
     for (index in 0..<length(records)) {
         record := records[index];
         if (ManagedTraced(RecordType + index, managed_records.traced) &&
@@ -3563,8 +3589,12 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         if (!ProgramMode(mode) && !family) {
             return Result.Rejected(-1, "native managed record layouts require a standalone or execution-family owner");
         }
-        if ((!managed_records.flat[index] && !managed_records.plain[index]) || length(field_tags) == 0) {
+        optional_text := ManagedOptionalText(records, fields, RecordType + index);
+        if ((!managed_records.flat[index] && !managed_records.plain[index] && !optional_text) || length(field_tags) == 0) {
             return Result.Rejected(-1, "native managed record metadata requires scalar or pointer fields");
+        }
+        if (optional_text && (field_tags[record.first] != 0 || field_tags[record.first + 1] != 0)) {
+            return Result.Rejected(-1, "native managed field identity is invalid");
         }
         whole := managed_records.plain[index] && field_tags[record.first] == 0;
         if (managed_records.flat[index]) {
@@ -3575,6 +3605,8 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     }
     managed := ManagedRootTypes(parameters, managed_records.traced) || ManagedRootTypes(slots, managed_records.traced) ||
                ManagedRootTypes(locals, managed_records.traced);
+    // Optional-view carriers have their own frame tracer, but no general
+    // collector-array ownership. Keep that separate domain closed here.
     for (part in 0..<4) {
         types := parameters;
         if (part == 1) { types = slots; }
@@ -3583,12 +3615,21 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         for (type in types) {
             held := type;
             if (held >= RefType) { held -= RefType; }
-            if (held >= ArrayType && held < MapType && ManagedTraced(held - ArrayType, managed_records.traced)) {
-                return Result.Rejected(-1, "native pointer-record array roots are not implemented yet");
+            if (held >= ArrayType && held < MapType && ManagedTraced(held - ArrayType, managed_records.traced) &&
+                !ValueCollectorCopyable(lifecycle, held - ArrayType)) {
+                return Result.Rejected(-1, "native collector array elements require a supported traced value");
             }
         }
     }
-    for (shape in functions) { managed = managed || ManagedStorage(shape.result) || ManagedTraced(shape.result, managed_records.traced); }
+    for (shape in functions) {
+        held := shape.result;
+        if (held >= ArrayType && held < MapType) { held -= ArrayType; }
+        if (shape.result >= ArrayType && shape.result < MapType && ManagedTraced(held, managed_records.traced) &&
+            !ValueCollectorCopyable(lifecycle, held)) {
+            return Result.Rejected(-1, "native collector array elements require a supported traced value");
+        }
+        managed = managed || ManagedStorage(shape.result) || ManagedTraced(held, managed_records.traced);
+    }
     polling := false;
     for (item in code) { polling = polling || item.op == ManagedPending || item.op == ManagedPoll || item.op == ManagedTrack; }
     managed = managed || polling;
@@ -3598,7 +3639,8 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     if (managed && !ProgramMode(mode) && !family) {
         return Result.Rejected(-1, "native managed pointers require a standalone collector owner");
     }
-    if (managed && !family && (ManagedStorage(functions[0].result) || ManagedTraced(functions[0].result, managed_records.traced))) {
+    if (managed && !family && (ManagedStorage(functions[0].result) || ManagedTraced(functions[0].result, managed_records.traced) ||
+        ValueCollectorArray(lifecycle, functions[0].result))) {
         return Result.Rejected(-1, "a standalone entry cannot export managed pointers");
     }
     if (source.file != "" && abi.DebugFormat(target) == "") {
@@ -3628,7 +3670,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         return Result.Rejected(-1, "native retained states differ from their loads");
     }
     // A program's main has no context to pass.
-    runtime := Runtime(code) || managed || snapshots || clock_owner;
+    runtime := Runtime(code, family) || managed || snapshots || clock_owner;
     guarded := managed || (family && runtime);
     if (runtime && mode == MainEntry) {
         return Result.Rejected(-1, "a native program cannot call the runtime yet");
@@ -3676,7 +3718,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         }
     }
     compares := Compares(code);
-    fallible := Fallible(functions, code);
+    fallible := Fallible(functions, code, family);
     // A program splits into pieces that opt and llc compile at once; a
     // library's manifests and line tables' metadata name every function, so
     // those stay one piece.
@@ -3741,14 +3783,19 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             }
             out.append(format_text("%record{} = type { {} }\n", index, strings.Join(types, ", ")));
         }
+        cell_text := false;
         if (managed && length(managed_records.flat) > 0) {
             // Each object emits only the metadata its constructors and local
             // inline roots use. Other pieces' cells carry their own callbacks.
             record_roots := resize([false], length(records));
+            array_roots := resize([false], length(records));
             for (function in first..<last) {
                 shape := functions[function];
-                if (ManagedTraced(shape.result, managed_records.traced)) {
-                    record_roots[shape.result - RecordType] = true;
+                result := shape.result;
+                if (result >= ArrayType && result < MapType) { result -= ArrayType; }
+                if (ManagedTraced(result, managed_records.traced)) {
+                    record_roots[result - RecordType] = true;
+                    if (shape.result >= ArrayType && shape.result < MapType) { array_roots[result - RecordType] = true; }
                 }
                 for (part in 0..<2) {
                     types := slots;
@@ -3756,12 +3803,22 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
                     count := shape.slots;
                     if (part == 1) { types = locals; begin = shape.first_local; count = shape.locals; }
                     for (at in begin..<begin + count) {
-                        if (ManagedTraced(types[at], managed_records.traced)) { record_roots[types[at] - RecordType] = true; }
+                        type := types[at];
+                        if (type >= RefType) { type -= RefType; }
+                        held_type := type;
+                        if (type >= ArrayType && type < MapType) { held_type -= ArrayType; }
+                        if (ManagedTraced(held_type, managed_records.traced)) {
+                            record_roots[held_type - RecordType] = true;
+                            if (type >= ArrayType && type < MapType) { array_roots[held_type - RecordType] = true; }
+                        }
                     }
                 }
             }
             for (item in held) {
-                if (item.op == ManagedNew && item.right >= RecordType && item.right < ArrayType) { record_roots[item.right - RecordType] = true; }
+                if (item.op == ManagedNew && item.right >= RecordType && item.right < ArrayType) {
+                    record_roots[item.right - RecordType] = true;
+                    cell_text = cell_text || ManagedOptionalText(records, fields, item.right);
+                }
                 if (item.op == ManagedTrack) {
                     type := item.type;
                     if (type >= RefType) { type -= RefType; }
@@ -3770,7 +3827,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             }
             counter := "null";
             if (family) { counter = strings.Concatenate(["@", abi.ManagedImageCounter()]); }
-            out.append(ManagedRecordModule(records, fields, field_tags, managed_records, lifecycle, record_roots, counter));
+            out.append(ManagedRecordModule(records, fields, field_tags, managed_records, lifecycle, record_roots, counter, array_roots));
         }
         if (managed) {
             counter := "null";
@@ -3808,7 +3865,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         if (ProgramMode(mode)) {
             out.append("declare void @chibi_native_step()\ndeclare void @chibi_native_failure(i32) noreturn\ndeclare void @chibi_native_reference_unavailable() noreturn\ndeclare void @chibi_native_map_owner_unavailable() noreturn\ndeclare void @chibi_native_array_mutation_unavailable() noreturn\n");
         } else if (family && guarded) {
-            out.append("declare void @chibi_native_failure(i32) noreturn\n");
+            out.append("declare void @chibi_native_failure(i32) noreturn\ndeclare void @chibi_native_failure_report(i32)\n");
         }
         if (HasClockSample(held)) { out.append("; chibi-clock\n"); out.append(ClockRuntime()); }
         out.append(MathImports(target, held));
@@ -3883,14 +3940,14 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
                 loan.instruction < functions[last - 1].first_code + functions[last - 1].code) { loan_arrays.append(loan.type); }
         }
         value_uses := ValueUses(held, records, fields, record_owners, promises, loan_arrays);
-        array_helpers := ArrayModule(value_uses.arrays, record_owners, rooted_lifecycle.backed, guarded);
+        array_helpers := ArrayModule(value_uses.arrays, record_owners, rooted_lifecycle.backed, managed_records.traced, guarded);
         out.append(array_helpers);
         value_comparisons := piece == 0 && length(comparison_roots) > 0;
         if (value_comparisons) {
             if (!snapshots) { out.append(SnapshotQueueRuntime(guarded)); }
             out.append(ValueEqualityModule(value_shapes, comparison_roots, guarded));
         }
-        copies := Copies(held) || array_helpers != "" || length(value_uses.maps) != 0 || snapshots || value_comparisons;
+        copies := Copies(held) || cell_text || array_helpers != "" || length(value_uses.maps) != 0 || snapshots || value_comparisons;
         if (mode == NoEntry) {
             // The library's retained-text migration also copies bytes, using
             // the same freestanding helper as array operations.
@@ -3898,7 +3955,7 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
         }
         map_helpers := MapModule(value_uses.maps, records, fields, ProgramMode(mode), record_owners, rooted_lifecycle.backed, guarded);
         out.append(map_helpers);
-        out.append(TextSequenceModule(held, guarded));
+        out.append(TextSequenceModule(held, guarded, cell_text));
         if (copies) {
             out.append(format_text("\n{}", ArrayCopyHelper()));
         }
@@ -4939,7 +4996,7 @@ LibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[],
         case .Emitted(text):
             module = text;
     }
-    runtime := Runtime(code) || snapshots;
+    runtime := Runtime(code, family) || snapshots;
     retained_text := false;
     for (item in RetainedStates(code)) {
         retained_text = retained_text || item.type == abi.TextStorage;

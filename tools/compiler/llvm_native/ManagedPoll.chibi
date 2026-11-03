@@ -23,10 +23,10 @@ ManagedOwnerLocations :: (shape: Function, code: Instruction[], records: int) ->
     if (!needed) { return found; }
     found.slots = resize([int(0)], shape.slots);
     found.locals = resize([int(0)], shape.locals);
-    // Record ordinals plus one PArray entry bound this cold lookup by the
+    // Inline and array record ordinals plus one PArray entry bound this lookup by the
     // canonical type table. The common PArray-only case needs no ranges.
     groups: int[] = [];
-    if (mixed) { groups = resize([int(0)], records + 1); }
+    if (mixed) { groups = resize([int(0)], records * 2 + 1); }
     for (pc in shape.first_code..<shape.first_code + shape.code) {
         item := code[pc];
         if (item.op != ManagedTrack) { continue; }
@@ -39,8 +39,9 @@ ManagedOwnerLocations :: (shape: Function, code: Instruction[], records: int) ->
         if (mixed) {
             type := item.type;
             if (type >= RefType) { type -= RefType; }
-            key := records;
-            if (type != ArrayType + PointerType) { key = type - RecordType; }
+            key := records * 2;
+            if (type >= ArrayType && type < MapType && type != ArrayType + PointerType) { key = records + type - ArrayType - RecordType; }
+            else if (type != ArrayType + PointerType) { key = type - RecordType; }
             group := groups[key] - 1;
             if (group < 0) {
                 group = length(found.ranges);
@@ -135,8 +136,7 @@ ManagedOwnerTrace :: (owners: ManagedOwnerLayout, function: int) -> string {
         range := owners.ranges[group];
         previous := "entry";
         if (group > 0) { previous = format_text("g{}.done", group - 1); }
-        trace := "array";
-        if (range.type != ArrayType + PointerType) { trace = format_text("record{}", range.type - RecordType); }
+        trace := ManagedTraceName(range.type);
         out.append(format_text("g{}.test:\n  %g{}.index = phi i32 [ {}, %{} ], [ %g{}.next, %g{}.step ]\n", group, group, range.first, previous, group, group));
         out.append(format_text("  %g{}.more = icmp ult i32 %g{}.index, {}\n  br i1 %g{}.more, label %g{}.read, label %g{}.done\ng{}.read:\n", group, group, range.first + range.count, group, group, group, group));
         out.append(format_text("  %g{}.at = getelementptr ptr, ptr %refs, i32 %g{}.index\n  %g{}.slot = load ptr, ptr %g{}.at\n  %g{}.live = icmp ne ptr %g{}.slot, null\n", group, group, group, group, group, group));

@@ -3861,19 +3861,29 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                     names.append(index);
                     variables += 1;
                 }
+                projected := binding_position;
+                projected_type := row.type;
+                projected_variable := row.value;
+                if (map_iterated >= 0 && types[map_iterated].value_container == MapContainer) {
+                    map := types[map_iterated];
+                    nested = {storage: map.value_storage, container: map.value_container, record: map.value_record};
+                    projected_type = ScalarRecordType(types, map.parent);
+                    if (keyed) { projected += 1; projected_variable += 1; }
+                }
                 if (nested.storage != 0) {
                     // The For row binds the physical wrapper. Its source
                     // binding owns the immediate descriptor for this turn.
                     type := ScalarValueType(types, nested.storage, nested.container, nested.record);
                     body := Field(forest, statement, syntax.FieldBody);
                     projection = ScalarCapture(forest, body, type, variables,
-                        [ScalarAt(forest, body, facts.ReadRow, row.type, row.value, 0, ""),
+                        [ScalarAt(forest, body, facts.ReadRow, projected_type, projected_variable, 0, ""),
                          ScalarAt(forest, body, facts.FieldRow, type, 0, 1, "")]);
-                    binding.index = variables;
-                    binding.storage = nested.storage;
-                    binding.container = nested.container;
-                    binding.record = nested.record;
-                    names[binding_position] = binding;
+                    logical := names[projected];
+                    logical.index = variables;
+                    logical.storage = nested.storage;
+                    logical.container = nested.container;
+                    logical.record = nested.record;
+                    names[projected] = logical;
                     variables += 1;
                 }
             }

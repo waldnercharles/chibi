@@ -6,6 +6,38 @@ import host "project:native_link_host"
 import os "core:os"
 import strings "core:strings"
 
+// Inspect the emitted control flow without executing a fabricated inactive
+// pointer. Each optional write's Nil edge must skip its Text payload import.
+OptionalWriteBranches :: (text: string) -> bool {
+    blocks: string[] = [];
+    lines: string[] = [];
+    active := false;
+    checked := 0;
+    for line in strings.SplitLines(text) {
+        if (strings.HasPrefix(line, "define ")) {
+            active = strings.Contains(line, " @chibi_scalar");
+            blocks = [];
+            lines = [];
+        }
+        if (!active) { continue; }
+        if (line == format_text("p{}:", length(blocks))) {
+            if (length(blocks) > 0) { blocks[length(blocks) - 1] = strings.Join(lines, "\n"); }
+            blocks.append("");
+            lines = [];
+        }
+        lines.append(line);
+        if (!strings.Contains(line, " = call ") || !strings.Contains(line, "@chibi_text.share(")) { continue; }
+        pc := length(blocks) - 1;
+        if (pc < 7 || !strings.Contains(blocks[pc - 5], "extractvalue") ||
+            !strings.Contains(blocks[pc - 5], ", 0\n") || !strings.Contains(blocks[pc - 4], "store i32 0") ||
+            !strings.Contains(blocks[pc - 3], "icmp eq i32") ||
+            !strings.Contains(blocks[pc - 2], format_text("label %p{}, label %p{}", pc + 3, pc - 1)) ||
+            !strings.Contains(blocks[pc - 1], "extractvalue") || !strings.Contains(blocks[pc - 1], ", 1\n")) { return false; }
+        checked += 1;
+    }
+    return checked >= 3;
+}
+
 Main :: () -> int {
     args := os.Arguments();
     callbacks := length(args) > 0 && args[0] == "--callbacks";
@@ -49,6 +81,10 @@ Main :: () -> int {
     for (index in 3..<length(args)) {
         source := os.ReadText(args[index]);
         if (source.error) { return 2; }
+        if (strings.HasSuffix(args[index], "/OptionalStrings.ll") && !OptionalWriteBranches(source.text)) {
+            os.Print("optional text writes inspect their payload without a Nil edge");
+            return 1;
+        }
         // Match the emitted module's actual context callbacks. Formatting
         // fixtures need the same owned-text runtime as public native programs.
         formatting := strings.Contains(source.text, "; chibi-format\n");

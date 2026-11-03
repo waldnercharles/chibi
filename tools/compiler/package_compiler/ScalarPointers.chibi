@@ -5,13 +5,15 @@ import binding "project:lexical_binding"
 import snapshot "project:source_snapshot"
 import syntax "project:syntax_diagnostics"
 
-// Optional cells initially contain plain values only. Their tag and payload
-// move together; owned backing and managed graph edges need a separate layout.
+// Optional cells move their tag and payload together. Text uses a whole-cell
+// import/drop layout; other backing owners and collector edges stay separate.
 ScalarPointerOptional :: (types: TypeDecl[], record: int) -> bool {
     if (!ScalarOptional(types, record)) { return false; }
     declared := types[record];
     if (declared.value_container != 0) { return false; }
-    if (declared.value_record < 0) { return Numeric(declared.value_storage) || declared.value_storage == BoolStorage; }
+    if (declared.value_record < 0) {
+        return Numeric(declared.value_storage) || declared.value_storage == BoolStorage || declared.value_storage == TextStorage;
+    }
     return declared.value_storage == StructStorage && types[declared.value_record].kind == RecordDecl;
 }
 // Managed cells keep their pointee's complete identity; storage alone is not

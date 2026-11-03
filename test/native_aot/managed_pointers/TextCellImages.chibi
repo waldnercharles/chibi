@@ -8,8 +8,15 @@ import strings "core:strings"
 foreign import libc "system:c"
 foreign libc { strtoll :: (text: cstring, end: rawptr, base: i32) -> i64 }
 
-Old :: (target: abi.Target, tag: i64) -> string {
+Old :: (target: abi.Target, tag: i64, optional: bool) -> string {
     text := abi.TextStorage; pointer := native.PointerType;
+    records: native.Record[] = []; fields: int[] = []; tags: i64[] = [];
+    if (optional) {
+        text = native.RecordType;
+        records = [{first: 0, count: 2, identity: tag}];
+        fields = [abi.IntStorage, abi.TextStorage];
+        tags = [i64(0), 0];
+    }
     code: native.Instruction[] = [
         {op: native.Constant, type: text, output: 0, left: 0, right: 0, target: 0, literal: 0},
         {op: native.ManagedNew, type: pointer, output: 1, left: 0, right: text, target: 0, literal: tag},
@@ -19,11 +26,15 @@ Old :: (target: abi.Target, tag: i64) -> string {
         first_local: 0, locals: 0, first_code: 0, code: length(code), first_argument: 0, arguments: 0};
     module := "";
     switch native.EmitFamilyLibraryStates(target, "TextCell", ["Create"], [i64(1)], [shape], [], [text, pointer], [],
-        code, [], [], [], [], ["old"], 1, [], -1, []) {
+        code, [], records, fields, tags, ["old"], 1, [], -1, []) {
         case .Rejected(pc, message): os.Print(message); return "";
         case .Emitted(output): module = output;
     }
     owner := format_text("  %heap.at = getelementptr {}, ptr @chibi_context, i32 0, i32 {}\n  %heap = load ptr, ptr %heap.at\n", abi.ManagedContextType(), abi.ManagedOwnerField);
+    payload := abi.TextType();
+    if (optional) { payload = "%record0"; }
+    load := format_text("  %text = load {}, ptr %address\n", abi.TextType());
+    if (optional) { load = "  %optional = load %record0, ptr %address\n  %text = extractvalue %record0 %optional, 1\n"; }
     return strings.Concatenate([module,
         "@text_cell.root = internal global %chibi.managed.root zeroinitializer\n",
         format_text("@text_cell.value = internal global {} zeroinitializer\n", abi.ManagedPointerType()),
@@ -32,15 +43,17 @@ Old :: (target: abi.Target, tag: i64) -> string {
         "  call void @chibi_managed.push(ptr %heap, ptr @text_cell.root, ptr @text_cell.value, ptr @chibi_managed.trace.pointer)\n  ret i32 0\n}\n",
         "define i32 @text_cell_read() {\nentry:\n", owner,
         format_text("  %value = load {}, ptr @text_cell.value\n", abi.ManagedPointerType()),
-        format_text("  %address = call ptr @chibi_managed.address(ptr %heap, {} %value, i64 {}, i64 ptrtoint (ptr getelementptr ({}, ptr null, i32 1) to i64), i32 {})\n", abi.ManagedPointerType(), tag, abi.TextType(), abi.TextStorage),
-        format_text("  %text = load {}, ptr %address\n  %data = extractvalue {} %text, 0\n", abi.TextType(), abi.TextType()),
+        format_text("  %address = call ptr @chibi_managed.address(ptr %heap, {} %value, i64 {}, i64 ptrtoint (ptr getelementptr ({}, ptr null, i32 1) to i64), i32 {})\n", abi.ManagedPointerType(), tag, payload, text),
+        load, format_text("  %data = extractvalue {} %text, 0\n", abi.TextType()),
         "  %byte = load i8, ptr %data\n  %number = zext i8 %byte to i32\n  ret i32 %number\n}\n",
         "define i32 @text_cell_release() {\nentry:\n", owner,
         "  call void @chibi_managed.pop(ptr %heap, ptr @text_cell.root)\n",
         format_text("  store {} zeroinitializer, ptr @text_cell.value\n  ret i32 0\n}}\n", abi.ManagedPointerType())]);
 }
 Main :: () -> int {
-    args := os.Arguments(); if (length(args) != 4) { return 2; }
+    args := os.Arguments(); if (length(args) < 4 || length(args) > 5) { return 2; }
+    optional := length(args) == 5;
+    if (optional && args[4] != "optional") { return 2; }
     work := args[0]; llvm := args[1];
     read := os.ReadText(args[2]); if (read.error) { return 2; }
     tag := strtoll(args[3], 0, 10); if (tag == 0 || format_text("{}", tag) != args[3]) { return 2; }
@@ -81,7 +94,7 @@ Main :: () -> int {
     if (skipped != 1) { return 2; }
     negative := strings.ReplaceAll(source, body, strings.Join(broken, "\n"));
     target := abi.LinuxX64(); if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
-    old := Old(target, tag); if (old == "") { return 1; }
+    old := Old(target, tag, optional); if (old == "") { return 1; }
     start := strings.Concatenate([work, "/text-cell-start.ll"]);
     if (os.WriteText(start, link.ManagedFamilyContext(link.SharedContext(target.triple, true), true))) { return 2; }
     for (name in ["old", "writer", "broken"]) {

@@ -16,6 +16,13 @@ by copied maps. The allocator counts all outstanding allocations after the maps,
 temporary arrays and strings are dropped. Freed bytes are poisoned to expose
 borrowed string reads after their temporary map has been dropped.
 
+Raw nested payloads use the existing record layout as a one-field descriptor
+carrier. The ownership graph closes map, record and array dependencies once,
+including empty containers whose child helpers have no direct instruction use.
+Copies share their counted children; final release drains nested owners without
+recursive map teardown. The positive program drops shared originals before
+checking physical copies of map-valued payloads and arrays of map carriers.
+
 A second program lowers canonical `scalar_facts` rows through `scalar_llvm` for
 map literals, copies, mutation, missing keys and owned strings, including nested
 short-circuit paths. Six malformed

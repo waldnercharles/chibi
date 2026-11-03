@@ -1954,51 +1954,76 @@ ArrayRefs :: (record_owners: bool[], type: int, data: string, count: string, kee
 }
 // A piece's helper closure: ownership instructions, container payloads and
 // recursively owned fields. One worklist serves both value and array modules.
-ValueUse :: struct { records: bool[]; ranges: bool[]; by_value: bool[]; arrays: int[]; }
+ValueUse :: struct { records: bool[]; ranges: bool[]; by_value: bool[]; arrays: int[]; maps: int[]; }
+ValueClosure :: struct { used: ValueUse; owners: bool[]; pending: int[]; maps: u32[]; }
+// Map payloads are immediate storage types below MapType, never recursively
+// packed map encodings. Their key/value pair indexes a fixed 4KiB bitset.
+ValueReach :: (build: ^ValueClosure, held: int, range: bool, by_value: bool) {
+    type := held;
+    if (type >= MapType && type < RefType) {
+        if (length(build^.maps) == 0) { build^.maps = resize([u32(0)], MapType / 2); }
+        index := type - MapType;
+        word := index / 32;
+        bit := u32(1) << u32(index % 32);
+        if ((build^.maps[word] & bit) == 0) {
+            build^.maps[word] = build^.maps[word] | bit;
+            build^.used.maps.append(type);
+            build^.pending.append(type);
+        }
+        return;
+    }
+    ranged := range;
+    if (type >= ArrayType && type < MapType) {
+        build^.used.arrays[type - ArrayType] = build^.used.arrays[type - ArrayType] | ArrayAllocation | ArrayCloning | ArrayDropping | ArraySharing;
+        type -= ArrayType;
+        ranged = true;
+    }
+    if (type < RecordType || type >= ArrayType || !build^.owners[type - RecordType]) { return; }
+    index := type - RecordType;
+    if (ranged) { build^.used.ranges[index] = true; }
+    if (by_value) { build^.used.by_value[index] = true; }
+    if (!build^.used.records[index]) {
+        build^.used.records[index] = true;
+        build^.pending.append(type);
+    }
+}
 ValueUses :: (code: Instruction[], records: Record[], fields: int[], owners: bool[], promises: int[]) -> ValueUse {
-    used: ValueUse = {records: resize([false], length(records)), ranges: resize([false], length(records)),
-                      by_value: resize([false], length(records)), arrays: ArrayUses(code, promises)};
-    pending: int[] = [];
+    build: ValueClosure = {used: {records: resize([false], length(records)), ranges: resize([false], length(records)),
+                                  by_value: resize([false], length(records)), arrays: ArrayUses(code, promises), maps: []},
+                           owners: owners, pending: [], maps: []};
     for (type in promises) {
-        if (type < RecordType || type >= ArrayType || !owners[type - RecordType]) { continue; }
-        index := type - RecordType;
-        used.by_value[index] = true;
-        if (!used.records[index]) { used.records[index] = true; pending.append(index); }
+        if (type >= RecordType && type < ArrayType) { ValueReach(&build, type, false, true); }
     }
     for (item in code) {
+        mapped := MapInstructionType(item);
+        if (mapped != 0) { ValueReach(&build, mapped, false, false); continue; }
         type := 0;
         if (item.op == OwnerPin || item.op == ValueCopy || item.op == ValueDrop || item.op == StateLoad || item.op == StateStore) { type = item.type; }
         if (item.op == AwaitResult) { type = item.right; }
-        mapped := MapInstructionType(item);
-        if (mapped != 0) { type = MapValue(mapped); }
-        if (type < RecordType || type >= ArrayType || !owners[type - RecordType]) { continue; }
-        index := type - RecordType;
-        if (item.op == OwnerPin || item.op == AwaitResult || mapped != 0) { used.by_value[index] = true; }
-        if (!used.records[index]) { used.records[index] = true; pending.append(index); }
+        if (type >= RecordType && type < ArrayType) {
+            ValueReach(&build, type, false, item.op == OwnerPin || item.op == AwaitResult);
+        }
     }
-    for (index in 0..<length(used.arrays)) {
-        if (used.arrays[index] == 0 || index < RecordType || index >= ArrayType || !owners[index - RecordType]) { continue; }
-        record := index - RecordType;
-        used.ranges[record] = true;
-        if (!used.records[record]) { used.records[record] = true; pending.append(record); }
+    for (index in 0..<length(build.used.arrays)) {
+        if (build.used.arrays[index] != 0 && index >= RecordType && index < ArrayType) {
+            ValueReach(&build, index, true, false);
+        }
     }
     at := 0;
-    while (at < length(pending)) {
-        record := records[pending[at]];
-        for (field in record.first..<record.first + record.count) {
-            type := fields[field];
-            if (type >= ArrayType && type < MapType) {
-                used.arrays[type - ArrayType] |= ArrayAllocation | ArrayCloning | ArrayDropping | ArraySharing;
-                type -= ArrayType;
-                if (type >= RecordType && type < ArrayType) { used.ranges[type - RecordType] = true; }
+    while (at < length(build.pending)) {
+        type := build.pending[at];
+        if (type >= MapType) {
+            value := MapValue(type);
+            ValueReach(&build, value, false, value >= RecordType && value < ArrayType);
+        } else {
+            record := records[type - RecordType];
+            for (field in record.first..<record.first + record.count) {
+                ValueReach(&build, fields[field], false, false);
             }
-            if (type < RecordType || type >= ArrayType || !owners[type - RecordType]) { continue; }
-            index := type - RecordType;
-            if (!used.records[index]) { used.records[index] = true; pending.append(index); }
         }
         at += 1;
     }
-    return used;
+    return build.used;
 }
 ValueModule :: (used: ValueUse, records: Record[], fields: int[], layout: ValueLayout, drain: bool = true) -> string {
     out: string[] = [];
@@ -3742,19 +3767,19 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
             if (!snapshots) { out.append(SnapshotQueueRuntime()); }
             out.append(ValueEqualityModule(value_shapes, comparison_roots));
         }
-        copies := Copies(held) || array_helpers != "" || snapshots || value_comparisons;
+        copies := Copies(held) || array_helpers != "" || length(value_uses.maps) != 0 || snapshots || value_comparisons;
         if (mode == NoEntry) {
             // The library's retained-text migration also copies bytes, using
             // the same freestanding helper as array operations.
             for (retained in states) { copies = copies || retained.type == abi.TextStorage; }
         }
-        map_helpers := MapModule(held, ProgramMode(mode), record_owners, lifecycle.backed);
+        map_helpers := MapModule(value_uses.maps, ProgramMode(mode), record_owners, lifecycle.backed);
         out.append(map_helpers);
         out.append(TextSequenceModule(held));
         if (copies) {
             out.append(format_text("\n{}", ArrayCopyHelper()));
         }
-        if (Zeroes(held) || value_comparisons) {
+        if (Zeroes(held) || value_comparisons || length(value_uses.maps) != 0) {
             out.append(format_text("\n{}", ArrayZeroHelper()));
         }
         value_helpers := ValueModule(value_uses, records, fields, lifecycle, map_helpers == "");
@@ -5014,15 +5039,6 @@ MapValid :: (records: Record[], lifecycle: ValueLayout, slots: int[], item: Inst
     }
     return true;
 }
-// The map types `code` works on, once each, in order of first use.
-MapTypes :: (code: Instruction[]) -> int[] {
-    used: int[] = [];
-    for (item in code) {
-        type := MapInstructionType(item);
-        if (type != 0 && !used.contains(type)) { used.append(type); }
-    }
-    return used;
-}
 // Whether a map of `type` holds strings, which each hold a reference.
 MapHolds :: (type: int) -> bool {
     return MapKey(type) == abi.TextStorage || MapValue(type) == abi.TextStorage;
@@ -5805,9 +5821,8 @@ MapHelpers :: (type: int, native_program: bool, owners: bool[], backed: bool[]) 
     text = strings.ReplaceAll(text, "$V", TypeName(value));
     return format_text("{}\n", strings.ReplaceAll(text, "$N", format_text("{}", type)));
 }
-// The helpers of the map types `code` works on, once each.
-MapModule :: (code: Instruction[], native_program: bool, owners: bool[], backed: bool[]) -> string {
-    types := MapTypes(code);
+// The typed map helpers in the shared ownership dependency closure, once each.
+MapModule :: (types: int[], native_program: bool, owners: bool[], backed: bool[]) -> string {
     if (length(types) == 0) {
         return "";
     }

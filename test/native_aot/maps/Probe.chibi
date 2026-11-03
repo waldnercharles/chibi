@@ -43,6 +43,7 @@ Main :: () -> int {
         ArrayPayloads(&test);
         SharedMaps(&test);
         RecordPayloads(&test);
+        NestedPayloads(&test);
     } else if (mode == "tombstone-key" || mode == "tombstone-value") {
         expected_index = "true";
         Tombstone(&test, mode == "tombstone-value");
@@ -62,6 +63,17 @@ Main :: () -> int {
         texts_type := native.MapOf(abi.IntStorage, native.ArrayType + abi.TextStorage);
         texts_map := Constant(&test, texts_type, 0);
         returned = Read(&test, native.MapLength, abi.IntStorage, texts_map, 0, texts_type);
+    } else if (mode == "nested-readonly") {
+        // Only the enclosing type roots the inner map helpers, even though
+        // neither map contains runtime entries here.
+        integer_map := native.MapOf(abi.IntStorage, abi.IntStorage);
+        Read(&test, native.MapLength, abi.IntStorage, Constant(&test, integer_map, 0), 0, integer_map);
+        wrapped := native.RecordType + 1;
+        mapped := native.MapOf(abi.IntStorage, wrapped);
+        returned = Read(&test, native.MapLength, abi.IntStorage, Constant(&test, mapped, 0), 0, mapped);
+        array := native.ArrayType + wrapped;
+        copied := Value(&test, native.ValueCopy, array, Constant(&test, array, 0), 0, 0, 0);
+        Emit(&test, native.ValueDrop, array, 0, copied, 0, 0, 0);
     } else if (missing_kind != 0) {
         array := native.ArrayType + abi.IntStorage;
         type := native.MapOf(abi.IntStorage, array);
@@ -102,9 +114,9 @@ Main :: () -> int {
     empty: int[] = [];
     records: native.Record[] = [];
     fields: int[] = [];
-    if (mode == "positive") {
-        records = [{first: 0, count: 2, identity: 0}];
-        fields = [native.ArrayType + abi.IntStorage, abi.TextStorage];
+    if (mode == "positive" || mode == "nested-readonly") {
+        records = [{first: 0, count: 2, identity: 0}, {first: 2, count: 1, identity: 0}];
+        fields = [native.ArrayType + abi.IntStorage, abi.TextStorage, native.MapOf(abi.IntStorage, abi.TextStorage)];
     }
     names: string[] = [];
     source: native.Source = {file: "", directory: ""};
@@ -519,6 +531,39 @@ RecordPayloads :: (test: ^Test) {
     word := Value(test, native.Extract, abi.TextStorage, borrowed, native.RecordType, 0, 1);
     Equal(test, word, Text(test, "record child"), abi.TextStorage);
     Drop(test, copy, mapped);
+}
+
+// One-field records are the same physical carriers used by nested arrays.
+// Their map field shares in O(1); physical outer-map clones acquire that one
+// child owner without recursively cloning the child's entries.
+NestedPayloads :: (test: ^Test) {
+    wrapped := native.RecordType + 1;
+    inner := native.MapOf(abi.IntStorage, abi.TextStorage);
+    outer := native.MapOf(abi.IntStorage, wrapped);
+    array := native.ArrayType + wrapped;
+    zero := Constant(test, abi.IntStorage, 0);
+    one := Constant(test, abi.IntStorage, 1);
+    map := Set(test, Constant(test, inner, 0), one, OwnedText(test, "original"), inner);
+    wrapper := Value(test, native.Insert, wrapped, Constant(test, wrapped, 0), map, 0, 0);
+    rows := Value(test, native.ArrayPush, array, Constant(test, array, 0), wrapper, 0, 1);
+    borrowed := Value(test, native.ArrayGet, wrapped, rows, zero, 0, 0);
+    owned := Value(test, native.ValueCopy, wrapped, borrowed, 0, 0, 0);
+    groups := Set(test, Constant(test, outer, 0), one, owned, outer);
+    copied := Value(test, native.ValueCopy, outer, groups, 0, 0, 0);
+    observed := Value(test, native.Extract, inner, borrowed, wrapped, 0, 0);
+    changed := Value(test, native.ValueCopy, inner, observed, 0, 0, 0);
+    changed = Set(test, changed, one, OwnedText(test, "changed"), inner);
+    replacement := Value(test, native.Insert, wrapped, Constant(test, wrapped, 0), changed, 0, 0);
+    copied = Set(test, copied, one, replacement, outer);
+    Emit(test, native.ValueDrop, array, 0, rows, 0, 0, 0);
+    original_wrapper := Read(test, native.MapGet, wrapped, groups, one, outer);
+    original := Value(test, native.Extract, inner, original_wrapper, wrapped, 0, 0);
+    Equal(test, Read(test, native.MapGet, abi.TextStorage, original, one, inner), Text(test, "original"), abi.TextStorage);
+    Drop(test, groups, outer);
+    changed_wrapper := Read(test, native.MapGet, wrapped, copied, one, outer);
+    result := Value(test, native.Extract, inner, changed_wrapper, wrapped, 0, 0);
+    Equal(test, Read(test, native.MapGet, abi.TextStorage, result, one, inner), Text(test, "changed"), abi.TextStorage);
+    Drop(test, copied, outer);
 }
 
 // A caller lends stable external storage without an owner. Copying its map

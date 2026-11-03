@@ -45,8 +45,8 @@ discarded two-cell cycles, field aliases, copied pointer fields, readonly/scoped
 aliases and once-only compound assignment through a replaced pointer variable.
 
 Generic embedded modules and Wasm require a collector-owner adapter before
-managed admission. Nominal char, inline-nested and container cells remain
-closed in this slice, as do pointer buffers at the foreign boundary.
+managed admission. Nominal char, inline-nested and non-scalar container cells
+remain closed, as do pointer buffers at the foreign boundary.
 Standalone waiting frames keep scalar pointer roots until completion and pin
 pointer-array owners across each suspension. A by-value array parameter owns
 its descriptor independently of its caller. Cancellation and failed assertions
@@ -66,6 +66,15 @@ semantic identity and range checks. A counted cell pins its image before
 publication and releases that pin after its drop callback and last metadata
 access. The host must keep images mapped until execution is quiescent and
 both task and cell counts reach zero. Counter overflow/underflow traps.
-Record metadata remains standalone-only until the shared family emitter wires
-its per-image counter. Arrays of pointer-bearing records and array-backed cell
-payloads require owning-place roots and payload drops before admission.
+The explicit shared-family emitter attaches its per-image counter to generated
+record metadata. The generations suite keeps old cyclic record cells alive
+across a layout-changing edit, then checks cancellation and collection release
+their image leases before unloading. Generic library emission remains closed.
+Numeric/bool array cells own their backing through typed drop callbacks. Their
+whole-variable and pointer assignments acquire or transfer the incoming value
+before dropping the old one; evaluated reads keep independent value owners.
+The source proof covers escaped array cells, pointer-array owners, scoped
+aliases, value copies, variable element writes/append and canonical foreign
+byte-buffer writes. Inline pointer-bearing record arrays, array-backed record
+cells and pointer-backed views still need their respective tracing and place
+lowering before admission.

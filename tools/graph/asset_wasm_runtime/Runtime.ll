@@ -7,7 +7,7 @@ target triple = "wasm32-unknown-emscripten"
 %context = type { ptr, ptr, ptr, ptr, ptr }
 %options = type { ptr, i64, ptr, ptr }
 ; Zero-length i128 fields align opaque SDK storage and allocation payloads to 16 bytes.
-%call = type { %context, [0 x i128], [@JUMP_BYTES@ x i8], ptr, ptr, i32, ptr, ptr, i64, i1, ptr, i32, ptr, i32, ptr }
+%call = type { %context, [0 x i128], [@JUMP_BYTES@ x i8], ptr, ptr, i32, ptr, ptr, i64, i1, ptr, i32, ptr, i32, ptr, ptr, i64 }
 %allocation = type { ptr, ptr, [0 x i128], [0 x i8] }
 ; Each resource node belongs to this call, independent of authored value roots.
 %resource = type { ptr, i64, i32 }
@@ -28,8 +28,12 @@ declare ptr @malloc(i32)
 declare void @free(ptr)
 declare void @abort() noreturn
 declare i32 @strnlen(ptr, i32)
+declare i32 @strlen(ptr)
 declare i32 @close(i32)
 declare i32 @closedir(ptr)
+declare i32 @unlink(ptr)
+declare i32 @strcmp(ptr, ptr)
+declare void @chibi_asset_publication_release()
 declare ptr @asset_compiler_wasm_identity()
 declare i32 @setjmp(ptr) returns_twice
 declare void @longjmp(ptr, i32) noreturn #0
@@ -340,6 +344,8 @@ initialize:
   store ptr %diagnostic, ptr %diagnostic.at
   %salt.at = getelementptr %call, ptr %call, i32 0, i32 12
   store ptr %salt, ptr %salt.at
+  %salt.length.at = getelementptr %call, ptr %call, i32 0, i32 16
+  store i64 -1, ptr %salt.length.at
   %cached.at = getelementptr %call, ptr %call, i32 0, i32 13
   store i32 %cached, ptr %cached.at
   store ptr %call, ptr @chibi_wasm_active
@@ -430,15 +436,23 @@ define i32 @chibi_asset_cached() {
 }
 define i32 @chibi_asset_option_length(i32 %which) {
 entry:
+  %is.salt = icmp eq i32 %which, 2
+  br i1 %is.salt, label %salt, label %ordinary
+salt:
+  %salt.size = call i64 @chibi_asset_salt_length()
+  %salt.fits = icmp ule i64 %salt.size, 2147483647
+  %salt.narrow = trunc i64 %salt.size to i32
+  %salt.result = select i1 %salt.fits, i32 %salt.narrow, i32 -2
+  %absent = icmp eq i64 %salt.size, -1
+  %effective = select i1 %absent, i32 -1, i32 %salt.result
+  ret i32 %effective
+ordinary:
   %value = call ptr @chibi_wasm_option(i32 %which)
   %present = icmp ne ptr %value, null
   br i1 %present, label %length, label %none
 length:
-  ; Paths have the old 4096-byte bound. Salt retains the public C string domain.
-  %is.salt = icmp eq i32 %which, 2
-  %bound = select i1 %is.salt, i32 2147483647, i32 4097
-  %size = call i32 @strnlen(ptr %value, i32 %bound)
-  %fits = icmp ult i32 %size, %bound
+  %size = call i32 @strnlen(ptr %value, i32 4097)
+  %fits = icmp ule i32 %size, 4096
   %result = select i1 %fits, i32 %size, i32 -2
   ret i32 %result
 none:
@@ -493,17 +507,26 @@ invalid:
 
 ; A node is published before the next authored checkpoint can unwind. The
 ; (value,kind) pair disambiguates an fd from a same-valued directory address.
+define ptr @chibi_asset_call_context() {
+  %call = call ptr @chibi_wasm_call()
+  ret ptr %call
+}
+; Kinds: 0 FD, 1 DIR pointer, 2 publication-lock FD, 3 owned temp-path pointer.
 define i32 @chibi_asset_resource_add(i64 %value, i32 %kind) {
 entry:
   %call = call ptr @chibi_wasm_call()
-  %fd = icmp eq i32 %kind, 0
+  %ordinary.fd = icmp eq i32 %kind, 0
+  %lock.fd = icmp eq i32 %kind, 2
+  %fd = or i1 %ordinary.fd, %lock.fd
   %fd.fits = icmp ule i64 %value, 2147483647
   %directory = icmp eq i32 %kind, 1
+  %temporary = icmp eq i32 %kind, 3
+  %pointer.kind = or i1 %directory, %temporary
   %nonnull = icmp ne i64 %value, 0
   %pointer.fits = icmp ule i64 %value, 4294967295
   %pointer.valid = and i1 %nonnull, %pointer.fits
   %valid.fd = and i1 %fd, %fd.fits
-  %valid.directory = and i1 %directory, %pointer.valid
+  %valid.directory = and i1 %pointer.kind, %pointer.valid
   %valid = or i1 %valid.fd, %valid.directory
   br i1 %valid, label %allocate, label %invalid
 allocate:
@@ -565,17 +588,33 @@ read:
   %kind.at = getelementptr %resource, ptr %node, i32 0, i32 2
   %kind = load i32, ptr %kind.at
   store ptr %following, ptr %head.at
-  %fd = icmp eq i32 %kind, 0
-  br i1 %fd, label %close.fd, label %close.directory
+  switch i32 %kind, label %broken [ i32 0, label %close.fd
+                                        i32 1, label %close.pointer
+                                        i32 2, label %close.fd
+                                        i32 3, label %close.pointer ]
 close.fd:
   %descriptor = trunc i64 %value to i32
   %closed.fd = call i32 @close(i32 %descriptor)
+  %publication = icmp eq i32 %kind, 2
+  br i1 %publication, label %unlock, label %release
+unlock:
+  call void @chibi_asset_publication_release()
   br label %release
-close.directory:
+close.pointer:
   %address = trunc i64 %value to i32
-  %directory = inttoptr i32 %address to ptr
-  %closed.directory = call i32 @closedir(ptr %directory)
+  %pointer = inttoptr i32 %address to ptr
+  %directory = icmp eq i32 %kind, 1
+  br i1 %directory, label %close.directory, label %remove.temporary
+close.directory:
+  %closed.directory = call i32 @closedir(ptr %pointer)
   br label %release
+remove.temporary:
+  %unlinked = call i32 @unlink(ptr %pointer)
+  call void @chibi_wasm_release(ptr %call, ptr %pointer)
+  br label %release
+broken:
+  call void @llvm.trap()
+  unreachable
 release:
   call void @chibi_wasm_release(ptr %call, ptr %node)
   br label %next
@@ -585,3 +624,123 @@ done:
 
 ; The target feature must remain on longjmp-containing functions through LTO.
 attributes #0 = { "target-features"="+exception-handling" }
+
+; Finish a published/removed temporary inside the same uninstrumented boundary.
+define i32 @chibi_asset_temp_remove(ptr %path) {
+entry:
+  %call = call ptr @chibi_wasm_call()
+  %head.at = getelementptr %call, ptr %call, i32 0, i32 14
+  br label %next
+next:
+  %node = phi ptr [ null, %entry ], [ %following, %advance ]
+  %first = icmp eq ptr %node, null
+  %head = load ptr, ptr %head.at
+  %current = select i1 %first, ptr %head, ptr %node
+  %present = icmp ne ptr %current, null
+  br i1 %present, label %check, label %missing
+check:
+  %kind.at = getelementptr %resource, ptr %current, i32 0, i32 2
+  %kind = load i32, ptr %kind.at
+  %temporary = icmp eq i32 %kind, 3
+  br i1 %temporary, label %compare, label %advance
+compare:
+  %value.at = getelementptr %resource, ptr %current, i32 0, i32 1
+  %value = load i64, ptr %value.at
+  %address = trunc i64 %value to i32
+  %saved = inttoptr i32 %address to ptr
+  %compared = call i32 @strcmp(ptr %saved, ptr %path)
+  %same = icmp eq i32 %compared, 0
+  br i1 %same, label %remove, label %advance
+advance:
+  %following = load ptr, ptr %current
+  %more = icmp ne ptr %following, null
+  br i1 %more, label %next, label %missing
+remove:
+  %removed = call i32 @chibi_asset_resource_remove(i64 %value, i32 3)
+  call void @chibi_wasm_release(ptr %call, ptr %saved)
+  ret i32 %removed
+missing:
+  ret i32 0
+}
+
+declare ptr @getenv(ptr)
+define i32 @chibi_asset_environment_length(ptr %name) {
+  %value = call ptr @getenv(ptr %name)
+  %present = icmp ne ptr %value, null
+  br i1 %present, label %length, label %absent
+length:
+  %count = call i32 @strnlen(ptr %value, i32 4097)
+  %valid = icmp ule i32 %count, 4096
+  %result = select i1 %valid, i32 %count, i32 -2
+  ret i32 %result
+absent:
+  ret i32 -1
+}
+define i32 @chibi_asset_environment_copy(ptr %name, ptr %buffer, i32 %count) {
+  %size = call i32 @chibi_asset_environment_length(ptr %name)
+  %same = icmp eq i32 %size, %count
+  %valid = icmp sge i32 %size, 0
+  %safe = and i1 %same, %valid
+  br i1 %safe, label %copy, label %failure
+copy:
+  %value = call ptr @getenv(ptr %name)
+  call void @llvm.memcpy.p0.p0.i32(ptr %buffer, ptr %value, i32 %count, i1 false)
+  ret i32 0
+failure:
+  ret i32 -1
+}
+; The public SDK entry points share exactly the same per-call owner.
+define ptr @asset_compiler_compile_closure(ptr %request, i32 %request_length, ptr %length, ptr %options, ptr %diagnostic) #0 {
+  %output = call ptr @asset_compiler_wasm_compile(ptr %request, i32 %request_length, ptr %length, ptr %options, ptr %diagnostic)
+  ret ptr %output
+}
+define ptr @asset_compiler_compile_closure_cached(ptr %request, i32 %request_length, ptr %salt, ptr %length, ptr %options, ptr %diagnostic) #0 {
+  %output = call ptr @asset_compiler_wasm_compile_cached(ptr %request, i32 %request_length, ptr %salt, ptr %length, ptr %options, ptr %diagnostic)
+  ret ptr %output
+}
+
+; The borrowed salt is scanned once and streamed without an owned whole-string
+; copy. -1 means NULL; a valid C object cannot have UINT64_MAX bytes.
+define i64 @chibi_asset_salt_length() {
+entry:
+  %call = call ptr @chibi_wasm_call()
+  %salt.at = getelementptr %call, ptr %call, i32 0, i32 12
+  %salt = load ptr, ptr %salt.at
+  %present = icmp ne ptr %salt, null
+  br i1 %present, label %cached, label %absent
+cached:
+  %at = getelementptr %call, ptr %call, i32 0, i32 16
+  %previous = load i64, ptr %at
+  %known = icmp ne i64 %previous, -1
+  br i1 %known, label %reuse, label %measure
+reuse:
+  ret i64 %previous
+measure:
+  %native.length = call i32 @strlen(ptr %salt)
+  %length = zext i32 %native.length to i64
+  store i64 %length, ptr %at
+  ret i64 %length
+absent:
+  ret i64 -1
+}
+define i32 @chibi_asset_salt_read(i64 %first, ptr %buffer, i32 %count) {
+entry:
+  %size = call i64 @chibi_asset_salt_length()
+  %present = icmp ne i64 %size, -1
+  %within = icmp ule i64 %first, %size
+  %remaining = sub i64 %size, %first
+  %positive = icmp sge i32 %count, 0
+  %wide.count = zext i32 %count to i64
+  %bounded = icmp ule i64 %wide.count, %remaining
+  %range = and i1 %within, %bounded
+  %admitted = and i1 %present, %positive
+  %valid = and i1 %range, %admitted
+  br i1 %valid, label %copy, label %invalid
+copy:
+  %salt = call ptr @chibi_wasm_option(i32 2)
+  %source = getelementptr i8, ptr %salt, i64 %first
+  call void @llvm.memcpy.p0.p0.i32(ptr %buffer, ptr %source, i32 %count, i1 false)
+  ret i32 0
+invalid:
+  ret i32 -1
+}

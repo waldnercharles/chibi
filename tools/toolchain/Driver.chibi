@@ -170,11 +170,13 @@ Build :: (arguments: string[]) -> int {
     directory := Option(arguments, "--build", DefaultDirectory(profile))
     jobs := Jobs(arguments)
     targets := Values(arguments, "--target")
-    if (length(targets) == 0) { targets = engine.NativeProducts() }
+    if (length(targets) == 0) { targets = engine.NativeToolchain() }
     needs_archive := engine.NeedsThirdParty(targets)
     native_only := true
+    native_archives := engine.NativeArchives()
+    web_products := engine.WebAssemblyProducts()
     for (target in targets) {
-        native_only = native_only && (length(engine.NativeArguments(target)) != 0 || engine.WebAssemblyProducts().contains(target))
+        native_only = native_only && (length(engine.NativeArguments(target)) != 0 || native_archives.contains(target) || web_products.contains(target))
         for (resource in engine.Resources(target)) {
             needs_archive = needs_archive || strings.HasPrefix(strings.Partition(resource, "=").tail, "third-party/")
         }
@@ -307,7 +309,7 @@ Positionals :: (arguments: string[]) -> string[] {
         if (skip) {
             skip = false
         } else if (argument == "--build" || argument == "--release-build" || argument == "--jobs" ||
-            argument == "--build-host" || argument == "--timeout" || argument == "--native-driver" || argument == "--llvm") {
+            argument == "--timeout" || argument == "--native-driver" || argument == "--llvm") {
             skip = true
         } else if (!strings.HasPrefix(argument, "--")) {
             names = extend(names, [argument])
@@ -338,11 +340,10 @@ Deadline :: (rows: string[], name: string, fallback: string) -> string {
 
 // The command one selector runs: its row's words with the build directories
 // filled in, under the environment the test drivers read.
-TestCommand :: (row: string, directory: string, releases: string, host: string, native: string, llvm: string, prepared: string, current: string) -> string[] {
+TestCommand :: (row: string, directory: string, releases: string, native: string, llvm: string, prepared: string, current: string) -> string[] {
     fields := Fields(row)
     build_directory := Absolute(directory)
     release_directory := Absolute(releases)
-    host_path := Absolute(host)
     native_path := Absolute(native)
     llvm_directory := Absolute(llvm)
     root := os.Root()
@@ -350,7 +351,6 @@ TestCommand :: (row: string, directory: string, releases: string, host: string, 
         "env",
         Join(["CHIBI_TOOLS_BUILD_DIR=", build_directory, "/test/tools"]),
         Join(["CHIBI_LANGUAGE_BUILD_DIR=", build_directory, "/test/language"]),
-        Join(["CHIBI_BUILD_HOST=", host_path]),
         Join(["CHIBI_CLI=", release_directory, "/sdk/chibi"]),
         Join(["CHIBI_COMPILE=", release_directory, "/sdk/chibi-compile"]),
         Join(["CHIBI_RELEASE_COMPILER_HOST=", release_directory, "/sdk/chibi-compiler-host"]),
@@ -369,7 +369,7 @@ TestCommand :: (row: string, directory: string, releases: string, host: string, 
         first = 5
     }
     for (i in first..<length(fields)) {
-        word := strings.ReplaceAll(strings.ReplaceAll(fields[i], "@host@", host_path), "@root@", root)
+        word := strings.ReplaceAll(fields[i], "@root@", root)
         word = strings.ReplaceAll(strings.ReplaceAll(word, "@build@", build_directory), "@release@", release_directory)
         word = strings.ReplaceAll(strings.ReplaceAll(word, "@native@", native_path), "@llvm@", llvm_directory)
         word = strings.ReplaceAll(word, "@compiler@", Absolute(current))
@@ -398,7 +398,7 @@ Exclusive :: (rows: string[], name: string) -> bool {
 // Runs the named selectors or groups of tools/tests.tsv against the built test
 // drivers, up to --jobs at a time (an `exclusive` row runs one alone), and fails
 // when any fails.
-//   build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--timeout SECONDS] [--list] [--dry-run] NAME...
+//   build test [--build DIR] [--release-build DIR] [--jobs N] [--timeout SECONDS] [--list] [--dry-run] NAME...
 // Each selector gets --timeout seconds (600 by default; a `timeout NAME SECONDS` row of tools/tests.tsv sets one selector's); a hung one is killed
 // and reported as timed out, and the rest still run.
 Test :: (arguments: string[]) -> int {
@@ -412,7 +412,6 @@ Test :: (arguments: string[]) -> int {
     }
     directory := Option(arguments, "--build", "build")
     releases := Option(arguments, "--release-build", "build-release")
-    host := Option(arguments, "--build-host", Join([directory, "/sdk/chibi-build-host"]))
     native := Option(arguments, "--native-driver", "")
     llvm := Option(arguments, "--llvm", "")
     jobs := Count(Option(arguments, "--jobs", "1"))
@@ -460,15 +459,6 @@ Test :: (arguments: string[]) -> int {
             return 2
         }
     }
-    for (name in selected) {
-        if (strings.Contains(Row(rows, "tool", name), "@host@")) {
-            status := LegacySeed("tools/compiler/bootstrap", Flag(arguments, "--dry-run"))
-            if (status != 0) {
-                return status
-            }
-            break
-        }
-    }
     if (Flag(arguments, "--dry-run")) {
         preview_compiler := native
         if (needs_current) {
@@ -477,7 +467,7 @@ Test :: (arguments: string[]) -> int {
             os.Print(Join(["native compiler (cached): ", strings.Join(plan, " ")]))
         }
         for (name in selected) {
-            command := TestCommand(Row(rows, "tool", name), directory, releases, host, native, llvm, "", preview_compiler)
+            command := TestCommand(Row(rows, "tool", name), directory, releases, native, llvm, "", preview_compiler)
             os.Print(format_text("{} ({}s): {}", name, Deadline(rows, name, seconds), strings.Join(command, " ")))
         }
         return 0
@@ -530,7 +520,7 @@ Test :: (arguments: string[]) -> int {
                 break
             }
             os.Print(format_text("RUN {}", selected[next]))
-            command := TestCommand(Row(rows, "tool", selected[next]), directory, releases, host, native, llvm, prepared[next], current)
+            command := TestCommand(Row(rows, "tool", selected[next]), directory, releases, native, llvm, prepared[next], current)
             job: Running = {index: next, process: os.Start(command, stdio), waited: 0}
             running.append(job)
             started[next] = true
@@ -638,7 +628,7 @@ ReleaseBuild :: (arguments: string[], targets: string[], dry: bool) -> int {
 Install :: (arguments: string[]) -> int {
     dry := Flag(arguments, "--dry-run")
     releases := Absolute(Option(arguments, "--release-build", "build-release"))
-    targets := engine.NativeProducts()
+    targets := engine.NativeToolchain()
     with_wasm := Flag(arguments, "--with-wasm")
     if (with_wasm) { targets = extend(targets, engine.WebAssemblyProducts()) }
     status := ReleaseBuild(arguments, targets, dry)
@@ -1172,7 +1162,7 @@ Census :: () -> int {
 
 Usage :: () -> int {
     os.Print("usage: build [--release|--debug|--profile NAME] [--build DIR] [--target NAME]... [--jobs N] [--dry-run]")
-    os.Print("       build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--timeout SECONDS] [--list] [--dry-run] NAME...")
+    os.Print("       build test [--build DIR] [--release-build DIR] [--jobs N] [--timeout SECONDS] [--list] [--dry-run] NAME...")
     os.Print("       build install [--prefix DIR] [--release-build DIR]")
     os.Print("       build format [--check] | clean | census | publish-seed | native-evidence --build DIR --output DIR --nm PATH --sha SHA --sanitizers ON|OFF ...")
     os.Print("       build native-self-host --llvm DIR [--stage-one PROGRAM] [--windows DIR] [--work DIR] [--release-build DIR] [--build-host PATH --compiler-host PATH] [--stage-two-only] [--compare-vm [--skip-vm-comparison]] [--dry-run]")

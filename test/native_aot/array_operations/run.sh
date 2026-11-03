@@ -56,7 +56,11 @@ for level in 0 2; do
         --root "$root/test/compiler/samples/imports" "$root/test/compiler/samples/imports/array_methods/facts" \
         > "$work/original.log" 2>&1 || { cat "$work/original.log"; exit 1; }
     grep -F 'PASS project.Calls' "$work/original.log" > /dev/null
-    for source in Values Places Replace Assignments; do
+    CHIBI_CORE="$root/packages/core" "$compiler" test --llvm "$llvm" -O"$level" \
+        --root "$root/test/compiler/samples/comptime" "$root/test/compiler/samples/comptime/comptime_records_nest_and_hold_arrays/facts" \
+        > "$work/original-records.log" 2>&1 || { cat "$work/original-records.log"; exit 1; }
+    grep -F 'PASS project.Calls' "$work/original-records.log" > /dev/null
+    for source in Values Places Replace Assignments RecordFields RetainedFields; do
         for mode in ordinary audited; do
             tools=$llvm
             if [ "$mode" = audited ]; then tools=$work/llvm; fi
@@ -73,7 +77,7 @@ for level in 0 2; do
     printf 'PASS array source values, canonical places and balanced ownership O%s\n' "$level"
 done
 if [ -n "$reference" ]; then
-    for source in Values Replace Assignments; do
+    for source in Values Replace Assignments RecordFields; do
         project=$work/reference-$source
         mkdir "$project"
         cp "$root/test/native_aot/array_operations/$source.chibi" "$project/Main.chibi"

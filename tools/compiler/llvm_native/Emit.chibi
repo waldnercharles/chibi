@@ -789,8 +789,14 @@ Layout :: (functions: Function[], parameters: int[], slots: int[], locals: int[]
            at.first_local == length(locals) && at.first_code == length(code) &&
            at.first_argument == length(arguments);
 }
-// A format reads a string format, then numbers, bools and strings, from its
-// argument slots, to give a string.
+// Collection descriptors keep their count by value when each argument is
+// evaluated. Formatting never reads their backing storage.
+FormatTag :: (type: int) -> int {
+    if (type >= ArrayType && type < MapType) { return abi.FormatArrayTag; }
+    if (type >= MapType && type < RefType) { return abi.FormatMapTag; }
+    return abi.ValueTag(type);
+}
+// A format reads a string format, then scalar/text values or collection counts.
 FormatValid :: (slots: int[], arguments: int[], item: Instruction) -> bool {
     if (item.type != abi.TextStorage || item.left != 0 || item.target < 1 || item.right < 0 ||
         item.right > length(arguments) - item.target ||
@@ -799,7 +805,7 @@ FormatValid :: (slots: int[], arguments: int[], item: Instruction) -> bool {
     }
     for (index in 1..<item.target) {
         slot := arguments[item.right + index];
-        if (!Index(slot, length(slots)) || abi.ValueTag(slots[slot]) == 0) {
+        if (!Index(slot, length(slots)) || FormatTag(slots[slot]) == 0) {
             return false;
         }
     }
@@ -811,8 +817,14 @@ StateArray :: (type: int) -> bool {
     return type >= ArrayType && type < MapType && abi.ScalarType(type - ArrayType) != "";
 }
 // A load names a retained state and its initializer; a store owns a copy.
-StateValid :: (slots: int[], texts: string[], item: Instruction) -> bool {
-    if ((abi.ScalarType(item.type) == "" && item.type != abi.TextStorage && !StateArray(item.type)) || item.target < 0) {
+StateValid :: (slots: int[], texts: string[], item: Instruction, layout: ValueLayout, snapshots: bool) -> bool {
+    aggregate := false;
+    if (snapshots && item.type >= RecordType && item.type < MapType) {
+        held := item.type;
+        if (held >= ArrayType) { held -= ArrayType; }
+        aggregate = ValueValid(layout, held);
+    }
+    if ((abi.ScalarType(item.type) == "" && item.type != abi.TextStorage && !StateArray(item.type) && !aggregate) || item.target < 0) {
         return false;
     }
     if (item.op == StateStore) {
@@ -933,7 +945,7 @@ CallValid :: (functions: Function[], parameters: int[], slots: int[], arguments:
 Validate :: (functions: Function[], function: int, module_parameters: int[], module_slots: int[],
              module_locals: int[], module_code: Instruction[], module_arguments: int[], records: Record[],
              fields: int[], field_tags: i64[], texts: string[], mode: int, waiting: bool[], lifecycle: ValueLayout,
-             managed_records: ManagedRecordLayout, family: bool, clock_owner: bool) -> Result {
+             managed_records: ManagedRecordLayout, family: bool, snapshots: bool, clock_owner: bool) -> Result {
     shape := functions[function];
     parameters := Part(module_parameters, shape.first_parameter, shape.parameters);
     slots := Part(module_slots, shape.first_slot, shape.slots);
@@ -1149,7 +1161,14 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (item.op == Format && !FormatValid(slots, arguments, item)) {
             return Result.Rejected(base + pc, "native format differs from its operands");
         }
-        if ((item.op == StateLoad || item.op == StateStore) && !StateValid(slots, texts, item)) {
+        if (item.op == Format && !ProgramMode(mode) && !family) {
+            for (argument in 1..<item.target) {
+                if (FormatTag(slots[arguments[item.right + argument]]) >= abi.FormatArrayTag) {
+                    return Result.Rejected(base + pc, "aggregate formatting requires a standalone or execution-family context");
+                }
+            }
+        }
+        if ((item.op == StateLoad || item.op == StateStore) && !StateValid(slots, texts, item, lifecycle, snapshots)) {
             return Result.Rejected(base + pc, "native retained state differs from its operands");
         }
         foreign_abi := InvalidForeignABI;
@@ -1642,9 +1661,9 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, Load(format_text("b{}", pc), item.type, "s", item.right));
         out = format_text("{}  store {} %b{}, ptr %a{}\n", out, type, pc, pc);
     } else if (item.op == StateLoad) {
-        out = format_text("{}{}", out, StateRead(item, pc));
+        out = format_text("{}{}", out, StateRead(item, pc, record_owners));
     } else if (item.op == StateStore) {
-        out = format_text("{}{}", out, StateWrite(item, pc));
+        out = format_text("{}{}", out, StateWrite(item, pc, record_owners));
     } else if (item.op == ArrayDrop) {
         out = format_text("{}{}", out, ArrayDropped(item, pc));
     } else if (item.op == TextRetain || item.op == TextRelease) {
@@ -1792,7 +1811,7 @@ ValueUses :: (code: Instruction[], records: Record[], fields: int[], owners: boo
     pending: int[] = [];
     for (item in code) {
         type := 0;
-        if (item.op == ValueCopy || item.op == ValueDrop) { type = item.type; }
+        if (item.op == ValueCopy || item.op == ValueDrop || item.op == StateLoad || item.op == StateStore) { type = item.type; }
         if (MapOperation(item.op)) { type = MapValue(MapUsed(item)); }
         if (type < RecordType || type >= ArrayType || !owners[type - RecordType]) { continue; }
         index := type - RecordType;
@@ -1872,7 +1891,7 @@ TextHelpers :: () -> string {
 Counts :: (code: Instruction[]) -> bool {
     for (item in code) {
         if (item.op == TextRetain || item.op == TextRelease || item.op == ValueCopy || item.op == ValueDrop || item.op == ArrayDrop || Holding(item.type) ||
-            ((item.op == StateLoad || item.op == StateStore) && (item.type == abi.TextStorage || StateArray(item.type)))) {
+            ((item.op == StateLoad || item.op == StateStore) && (item.type == abi.TextStorage || item.type >= RecordType))) {
             return true;
         }
         if (MapOperation(item.op) && MapHolds(MapUsed(item))) {
@@ -2684,6 +2703,9 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
             out.append(format_text("  %values{} = alloca [{} x {}]\n  %text{} = alloca {}\n", pc, item.target,
                                    abi.ValueType(), pc, abi.TextType()));
         }
+        if (item.op == StateStore && item.type >= RecordType && item.type < ArrayType && record_owners[item.type - RecordType]) {
+            out.append(format_text("  %state.owned{} = alloca {}\n", pc, TypeName(item.type)));
+        }
     }
     // A foreign call's string arguments are copied into buffers of the entry
     // block, shared by the function's calls.
@@ -2807,8 +2829,12 @@ FormatInstruction :: (slots: int[], arguments: int[], item: Instruction, pc: int
         type := slots[slot];
         name := format_text("f{}_{}", pc, index);
         out = format_text("{}{}", out, Load(name, type, "s", slot));
-        empty := format_text("{ i32 {}, i32 0, i64 0, ptr null }", abi.ValueTag(type));
-        if (type == abi.TextStorage) {
+        tag := FormatTag(type);
+        empty := format_text("{ i32 {}, i32 0, i64 0, ptr null }", tag);
+        if (tag == abi.FormatArrayTag || tag == abi.FormatMapTag) {
+            out = format_text("{}  %{}.count = extractvalue {} %{}, 0\n", out, name, TypeName(type), name);
+            out = format_text("{}  %{}.value = insertvalue {} {}, i32 %{}.count, 1\n", out, name, value, empty, name);
+        } else if (type == abi.TextStorage) {
             out = format_text("{}  %{}.bytes = extractvalue {} %{}, 0\n  %{}.length = extractvalue {} %{}, 1\n", out,
                               name, text, name, name, text, name);
             out = format_text("{}  %{}.sized = insertvalue {} {}, i32 %{}.length, 1\n", out, name, value, empty, name);
@@ -2838,7 +2864,7 @@ pub Runtime :: (code: Instruction[]) -> bool {
     }
     for (item in code) {
         if (item.op == ClockSample || item.op == ManagedProject || item.op == ManagedNew || item.op == ManagedAddress || item.op == ManagedPin || item.op == ManagedUnpin || item.op == Print || item.op == Format || item.op == Fail || item.op == ValueCopy || item.op == ValueDrop || ArrayCalls(item.op) || MapCalls(item.op) ||
-            ((item.op == StateLoad || item.op == StateStore) && (item.type == abi.TextStorage || StateArray(item.type)))) {
+            ((item.op == StateLoad || item.op == StateStore) && (item.type == abi.TextStorage || item.type >= RecordType))) {
             return true;
         }
     }
@@ -2913,7 +2939,7 @@ StateStorage :: (type: int) -> string {
 // The value of retained state `item.target`, as a `type` value `name`.
 StateValue :: (name: string, item: Instruction) -> string {
     out := format_text("  %{}.stored = load {}, ptr @{}\n", name, StateStorage(item.type), StateSymbol(item.target));
-    if (item.type == abi.TextStorage || StateArray(item.type)) {
+    if (item.type == abi.TextStorage || item.type >= RecordType) {
         return format_text("  %{} = load {}, ptr @{}\n", name, TypeName(item.type), StateSymbol(item.target));
     }
     if (abi.Floating(item.type)) {
@@ -2922,7 +2948,7 @@ StateValue :: (name: string, item: Instruction) -> string {
     }
     return format_text("{}  %{} = add {} %{}.stored, 0\n", out, name, abi.ScalarType(item.type), name);
 }
-StateRead :: (item: Instruction, pc: int) -> string {
+StateRead :: (item: Instruction, pc: int, owners: bool[]) -> string {
     out := "";
     if (item.left > 0) {
         symbol := StateSymbol(item.target);
@@ -2930,7 +2956,7 @@ StateRead :: (item: Instruction, pc: int) -> string {
                           pc, symbol, pc, pc, pc, pc);
         out = format_text("{}{}", out, Load(format_text("initial.value{}", pc), item.type, "s", item.left - 1));
         value := format_text("%initial.value{}", pc);
-        if (StateArray(item.type)) {
+        if (item.type >= ArrayType) {
             out = format_text("{}  %initial.owned{} = call {} @chibi_array.{}.copy(ptr %ctx, {} {})\n",
                 out, pc, abi.ArrayType(), item.type, abi.ArrayType(), value);
             value = format_text("%initial.owned{}", pc);
@@ -2939,13 +2965,16 @@ StateRead :: (item: Instruction, pc: int) -> string {
             out = format_text("{}  %bits{} = bitcast {} {} to {}\n", out, pc, TypeName(item.type), value, StateStorage(item.type));
             value = format_text("%bits{}", pc);
         }
-        out = format_text("{}  store {} {}, ptr @{}\n  store i1 true, ptr @{}.ready\n  br label %state{}\nstate{}:\n",
-                          out, StateStorage(item.type), value, symbol, symbol, pc, pc);
+        out = format_text("{}  store {} {}, ptr @{}\n", out, StateStorage(item.type), value, symbol);
+        if (item.type >= RecordType && item.type < ArrayType && owners[item.type - RecordType]) {
+            out = format_text("{}  call void @chibi_value.{}.keep_at(ptr %ctx, ptr @{})\n", out, item.type, symbol);
+        }
+        out = format_text("{}  store i1 true, ptr @{}.ready\n  br label %state{}\nstate{}:\n", out, symbol, pc, pc);
     }
     out = format_text("{}{}", out, StateValue(format_text("v{}", pc), item));
     return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
 }
-StateWrite :: (item: Instruction, pc: int) -> string {
+StateWrite :: (item: Instruction, pc: int, owners: bool[]) -> string {
     out := Load(format_text("a{}", pc), item.type, "s", item.left);
     value := format_text("%a{}", pc);
     if (abi.Floating(item.type)) {
@@ -2960,12 +2989,19 @@ StateWrite :: (item: Instruction, pc: int) -> string {
         out = format_text("{}  %previous{} = load {}, ptr @{}\n  %released{} = extractvalue {} %previous{}, 2\n", out,
                           pc, abi.TextType(), symbol, pc, abi.TextType(), pc);
         out = format_text("{}  call void @chibi_scalar.free(ptr %ctx, ptr %released{})\n", out, pc);
-    } else if (StateArray(item.type)) {
+    } else if (item.type >= ArrayType) {
         out = format_text("{}  %owned{} = call {} @chibi_array.{}.copy(ptr %ctx, {} {})\n", out, pc,
             abi.ArrayType(), item.type, abi.ArrayType(), value);
         out = format_text("{}  %previous{} = load {}, ptr @{}\n  call void @chibi_array.{}.drop(ptr %ctx, {} %previous{})\n",
             out, pc, abi.ArrayType(), StateSymbol(item.target), item.type, abi.ArrayType(), pc);
         value = format_text("%owned{}", pc);
+    } else if (item.type >= RecordType && owners[item.type - RecordType]) {
+        name := TypeName(item.type);
+        out = format_text("{}  store {} {}, ptr %state.owned{}\n", out, name, value, pc);
+        out = format_text("{}  call void @chibi_value.{}.keep_at(ptr %ctx, ptr %state.owned{})\n", out, item.type, pc);
+        out = format_text("{}  call void @chibi_value.{}.drop_at(ptr %ctx, ptr @{})\n", out, item.type, StateSymbol(item.target));
+        out = format_text("{}  %next{} = load {}, ptr %state.owned{}\n", out, pc, name, pc);
+        value = format_text("%next{}", pc);
     }
     return format_text("{}  store {} {}, ptr @{}\n  store i1 true, ptr @{}.ready\n", out, StateStorage(item.type), value,
                       StateSymbol(item.target), StateSymbol(item.target));
@@ -2993,7 +3029,7 @@ StateGlobals :: (code: Instruction[], linkage: string) -> string {
             initial = Spelled(initial, item.type);
         }
         value := format_text("{}", initial);
-        if (item.type == abi.TextStorage || StateArray(item.type)) {
+        if (item.type == abi.TextStorage || item.type >= RecordType) {
             value = "zeroinitializer";
         }
         out.append(format_text("@{} = {} global {} {}\n", StateSymbol(item.target), linkage, StateStorage(item.type), value));
@@ -3143,7 +3179,7 @@ Declarations :: (code: Instruction[]) -> string {
 }
 Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
            code: Instruction[], arguments: int[], records: Record[], fields: int[], field_tags: i64[], texts: string[], source: Source,
-           names: string[], lines: int[], columns: int[], mode: int, step_budget: int, family: bool = false, clock_owner: bool = false) -> Result {
+           names: string[], lines: int[], columns: int[], mode: int, step_budget: int, family: bool = false, snapshots: bool = false, clock_owner: bool = false) -> Result {
     if (step_budget <= 0) {
         return Result.Rejected(-1, "native CHECK budget must be positive");
     }
@@ -3170,10 +3206,10 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             return Result.Rejected(-1, "native managed pointer aggregate roots require typed flat records");
         }
         if (record.identity == 0) { continue; }
-        // Family scalar cells have no callbacks. Record metadata belongs to
-        // this image and needs its explicit image counter before shared use.
-        if (!ProgramMode(mode)) {
-            return Result.Rejected(-1, "native managed record layouts require standalone execution until family code leases are wired");
+        // The explicit family adapter supplies a program owner and pins the
+        // image while its immutable typed callbacks remain in live cells.
+        if (!ProgramMode(mode) && !family) {
+            return Result.Rejected(-1, "native managed record layouts require a standalone or execution-family owner");
         }
         if (!managed_records.flat[index] || length(field_tags) == 0) {
             return Result.Rejected(-1, "native managed record metadata requires scalar or pointer fields");
@@ -3217,7 +3253,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     lifecycle := ValueLayouts(records, fields);
     for (function in 0..<length(functions)) {
         switch Validate(functions, function, parameters, slots, locals, code, arguments, records, fields, field_tags, texts,
-                        mode, waiting, lifecycle, managed_records, family, clock_owner || !abi.Same(target, abi.WebAssembly32())) {
+                        mode, waiting, lifecycle, managed_records, family, snapshots, clock_owner || !abi.Same(target, abi.WebAssembly32())) {
             case .Rejected(instruction, message):
                 return Result.Rejected(instruction, message);
             case .Emitted(text):
@@ -3228,7 +3264,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         return Result.Rejected(-1, "native retained states differ from their loads");
     }
     // A program's main has no context to pass.
-    runtime := Runtime(code) || managed || clock_owner;
+    runtime := Runtime(code) || managed || snapshots || clock_owner;
     if (runtime && mode == MainEntry) {
         return Result.Rejected(-1, "a native program cannot call the runtime yet");
     }
@@ -3250,11 +3286,12 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             if (item.op == ClockSample) { clocked = true; }
             if (item.op != Format) { continue; }
             formatting = true;
-            // A bool can use numeric modifiers too. Only string-only calls
-            // can omit the number renderer and its C runtime dependency.
+            // A bool can use numeric modifiers too. Text and collection
+            // summaries omit the number renderer and its CRT dependency.
             for (index in 1..<item.target) {
                 slot := arguments[shape.first_argument + item.right + index];
-                if (slots[shape.first_slot + slot] != abi.TextStorage) { numeric_formatting = true; }
+                type := slots[shape.first_slot + slot];
+                if (type != abi.TextStorage && abi.ValueTag(type) != 0) { numeric_formatting = true; }
             }
         }
     }
@@ -3335,9 +3372,16 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
                 }
             }
             for (item in held) {
-                if (item.op == ManagedNew && item.right >= RecordType) { record_roots[item.right - RecordType] = true; }
+                if (item.op == ManagedNew && item.right >= RecordType && item.right < ArrayType) { record_roots[item.right - RecordType] = true; }
             }
-            out.append(ManagedRecordModule(records, fields, field_tags, managed_records, record_roots, "null"));
+            counter := "null";
+            if (family) { counter = strings.Concatenate(["@", abi.ManagedImageCounter()]); }
+            out.append(ManagedRecordModule(records, fields, field_tags, managed_records, record_roots, counter));
+        }
+        if (managed) {
+            counter := "null";
+            if (family) { counter = strings.Concatenate(["@", abi.ManagedImageCounter()]); }
+            out.append(ManagedArrayModule(held, counter));
         }
         // One piece holds every text; each of several, the ones it reads.
         wanted := resize([false], length(texts));
@@ -3430,7 +3474,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         value_uses := ValueUses(held, records, fields, record_owners);
         array_helpers := ArrayModule(value_uses.arrays, record_owners, lifecycle.backed);
         out.append(array_helpers);
-        copies := Copies(held) || array_helpers != "";
+        copies := Copies(held) || array_helpers != "" || snapshots;
         if (mode == NoEntry) {
             // The library's retained-text migration also copies bytes, using
             // the same freestanding helper as array operations.
@@ -3695,7 +3739,7 @@ pub EmitClockProgramTyped :: (target: abi.Target, functions: Function[], paramet
              code: Instruction[], arguments: int[], records: Record[], fields: int[], field_tags: i64[], texts: string[],
              source: Source, names: string[], lines: int[], columns: int[]) -> Result {
     return Module(target, functions, parameters, slots, locals, code, arguments, records, fields, field_tags, texts, source,
-                  names, lines, columns, ProgramEntry, 1, false, true);
+                  names, lines, columns, ProgramEntry, 1, false, false, true);
 }
 
 // Whether `name` can end a C symbol: an ASCII letter or `_`, then letters,
@@ -4174,7 +4218,7 @@ ConvertDeclarations :: () -> string {
 RetainedArrayTag: int : 13;
 RetainedCharTag: int : 14;
 HostSymbols :: (names: string[], functions: Function[], parameters: int[], code: Instruction[], texts: string[],
-                runtime: bool, waiting: bool[], characters: bool[]) -> string {
+                runtime: bool, waiting: bool[], characters: bool[], roots: int[], layout: ValueLayout) -> string {
     out: string[] = [];
     for (function in 0..<length(functions)) {
         shape := functions[function];
@@ -4203,9 +4247,11 @@ HostSymbols :: (names: string[], functions: Function[], parameters: int[], code:
     hashes: string[] = [];
     schemas: string[] = [];
     for (item, index in states) {
-        tag := abi.ValueTag(item.type);
+        tag := SnapshotStateTag(item, index, roots, characters);
         schema: i64 = 0;
-        if (StateArray(item.type)) {
+        if (tag == RetainedSnapshotTag) {
+            schema = NameHash("chibi.retained.snapshot.v2");
+        } else if (StateArray(item.type)) {
             tag = RetainedArrayTag;
             schema = NameHash(format_text("chibi.retained.array.v1.{}", abi.ExportType(item.type - ArrayType)));
         } else if (index < length(characters) && characters[index]) {
@@ -4221,9 +4267,14 @@ HostSymbols :: (names: string[], functions: Function[], parameters: int[], code:
         if (item.type == abi.TextStorage) {
             released.append(format_text("  %text{} = load {}, ptr @{}\n  %owner{} = extractvalue {} %text{}, 2\n", item.target, abi.TextType(), StateSymbol(item.target), item.target, abi.TextType(), item.target));
             released.append(format_text("  call void @chibi_scalar.free(ptr @chibi_context, ptr %owner{})\n  store {} zeroinitializer, ptr @{}\n", item.target, abi.TextType(), StateSymbol(item.target)));
-        } else if (StateArray(item.type)) {
+        } else if (item.type >= ArrayType) {
             released.append(format_text("  %array{} = load {}, ptr @{}\n  call void @chibi_array.{}.drop(ptr @chibi_context, {} %array{})\n  store {} zeroinitializer, ptr @{}\n",
                 item.target, abi.ArrayType(), StateSymbol(item.target), item.type, abi.ArrayType(), item.target, abi.ArrayType(), StateSymbol(item.target)));
+        } else if (item.type >= RecordType) {
+            if (layout.owned[item.type - RecordType]) {
+                released.append(format_text("  call void @chibi_value.{}.drop_at(ptr @chibi_context, ptr @{})\n", item.type, StateSymbol(item.target)));
+            }
+            released.append(format_text("  store {} zeroinitializer, ptr @{}\n", TypeName(item.type), StateSymbol(item.target)));
         }
     }
     released.append("  ret i32 0\n}\n");
@@ -4252,7 +4303,13 @@ HostSymbols :: (names: string[], functions: Function[], parameters: int[], code:
         ready.append(format_text("c{}:\n  %v{} = load i1, ptr @{}.ready\n  %r{} = zext i1 %v{} to i32\n  ret i32 %r{}\n", index, index, StateSymbol(index), index, index, index));
         read.append(format_text("c{}:\n", index));
         write.append(format_text("c{}:\n", index));
-        if (item.type == abi.TextStorage) {
+        if (index < length(roots) && roots[index] >= 0) {
+            read.append(format_text("  ret i64 ptrtoint (ptr @chibi_snapshot.view.{} to i64)\n", index));
+            // Older per-key hosts lack a whole-transaction schema contract.
+            // They reject this image instead of accepting an opaque handle.
+            write.append("  ret i32 0\n");
+            continue;
+        } else if (item.type == abi.TextStorage) {
             read.append(format_text("  %w{} = ptrtoint ptr @{} to i64\n  ret i64 %w{}\n", index, StateSymbol(index), index));
             write.append(format_text("  %source{} = inttoptr i64 %v to ptr\n  call void @chibi_scalar.retained.copy(ptr @chibi_context, ptr @{}, ptr %source{})\n", index, StateSymbol(index), index));
         } else if (StateArray(item.type)) {
@@ -4319,6 +4376,15 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
     return EmitLibraryStates(target, name, names, ids, functions, parameters, slots, locals, code, arguments,
         records, fields, texts, step_budget, field_names, entries, characters);
 }
+// Managed value snapshots require complete structural metadata. Existing
+// library/family APIs retain their prior closed retained-value contracts.
+pub EmitSnapshotLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
+                           parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
+                           records: Record[], fields: int[], texts: string[], step_budget: int, field_names: string[], entries: int,
+                           state_characters: bool[], shapes: SnapshotShapes) -> Result {
+    return LibraryStates(target, name, names, ids, functions, parameters, slots, locals, code, arguments,
+        records, fields, [], texts, step_budget, field_names, entries, state_characters, false, true, shapes);
+}
 // The source compiler preserves nominal retained char leaves here. Keep the
 // older entry usable by raw native clients without array-valued defaults,
 // which the verified bootstrap compiler cannot lower.
@@ -4328,21 +4394,23 @@ pub EmitLibraryStates :: (target: abi.Target, name: string, names: string[], ids
                           parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
                           records: Record[], fields: int[], texts: string[], step_budget: int, field_names: string[], entries: int,
                           state_characters: bool[]) -> Result {
+    empty: SnapshotShapes = {nodes: [], edges: [], roots: []};
     return LibraryStates(target, name, names, ids, functions, parameters, slots, locals, code, arguments,
-        records, fields, [], texts, step_budget, field_names, entries, state_characters, false);
+        records, fields, [], texts, step_budget, field_names, entries, state_characters, false, false, empty);
 }
 // A shared program supplies one execution-family owner before calling exports.
 pub EmitFamilyLibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
                                 parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
                                 records: Record[], fields: int[], field_tags: i64[], texts: string[], step_budget: int, field_names: string[], entries: int,
                                 state_characters: bool[]) -> Result {
+    empty: SnapshotShapes = {nodes: [], edges: [], roots: []};
     return LibraryStates(target, name, names, ids, functions, parameters, slots, locals, code, arguments,
-        records, fields, field_tags, texts, step_budget, field_names, entries, state_characters, true);
+        records, fields, field_tags, texts, step_budget, field_names, entries, state_characters, true, false, empty);
 }
 LibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
                           parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
                           records: Record[], fields: int[], field_tags: i64[], texts: string[], step_budget: int, field_names: string[], entries: int,
-                          state_characters: bool[], family: bool) -> Result {
+                          state_characters: bool[], family: bool, snapshots: bool, shapes: SnapshotShapes) -> Result {
     windows := abi.Same(target, abi.WindowsX64());
     if (!abi.Same(target, abi.LinuxX64()) && !abi.Same(target, abi.MacOSArm64()) && !windows) {
         return Result.Rejected(-1, "native libraries require Linux x86-64, macOS arm64 or Windows x86-64");
@@ -4351,10 +4419,23 @@ LibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[],
         return Result.Rejected(-1, "native library needs an identifier and a name and ID for each function");
     }
     states := RetainedStates(code);
+    if (snapshots) {
+        error := SnapshotShapesValid(records, fields, field_names, states, shapes);
+        if (error != "") { return Result.Rejected(-1, error); }
+    }
     if (length(state_characters) != 0 && length(state_characters) != length(states)) {
         return Result.Rejected(-1, "native character state metadata differs from retained state");
     }
     for (character, index in state_characters) {
+        // Full shapes own nominal identity. A supplied legacy vector must
+        // agree rather than silently overriding or losing that identity.
+        if (snapshots && shapes.roots[index] >= 0) {
+            root := shapes.nodes[shapes.roots[index]];
+            nominal := root.kind == SnapshotScalar && root.extra == RetainedCharTag;
+            if (character != nominal) {
+                return Result.Rejected(-1, "native character state metadata differs from snapshot shape");
+            }
+        }
         if (character && states[index].type != abi.IntStorage) {
             return Result.Rejected(-1, "native character state requires int storage");
         }
@@ -4392,13 +4473,13 @@ LibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[],
     source: Source = {file: "", directory: ""};
     no_positions: int[] = [];
     switch Module(target, functions, parameters, slots, locals, code, arguments, records, fields, field_tags, texts, source,
-                  names, no_positions, no_positions, NoEntry, step_budget, family) {
+                  names, no_positions, no_positions, NoEntry, step_budget, family, snapshots) {
         case .Rejected(instruction, message):
             return Result.Rejected(instruction, message);
         case .Emitted(text):
             module = text;
     }
-    runtime := Runtime(code);
+    runtime := Runtime(code) || snapshots;
     retained_text := false;
     for (item in RetainedStates(code)) {
         retained_text = retained_text || item.type == abi.TextStorage;
@@ -4465,7 +4546,8 @@ LibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[],
     if (retained_text) {
         out.append(RetainedTextCopy());
     }
-    retained_manifest := RetainedManifest(name, code, texts, state_characters);
+    retained_manifest := "";
+    if (!snapshots) { retained_manifest = RetainedManifest(name, code, texts, state_characters); }
     out.append(retained_manifest);
     if (windows && retained_manifest != "") { dll_exports.append(format_text("chibi_retained_{},data", name)); }
     if (runtime && !strings.Contains(module, "@chibi_context = external global")) {
@@ -4485,7 +4567,17 @@ LibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[],
                                 "chibi_host_cells_pending", "chibi_host_family_collect"]);
         }
     }
-    out.append(HostSymbols(names, functions, parameters, code, texts, runtime, waiting, state_characters));
+    layout := ValueLayouts(records, fields);
+    out.append(HostSymbols(names, functions, parameters, code, texts, runtime, waiting, state_characters, shapes.roots, layout));
+    if (snapshots) {
+        out.append(strings.Concatenate([SnapshotMemoRuntime(), SnapshotQueueRuntime(), SnapshotSchemaRuntime(),
+            SnapshotValuesModule(records, fields, shapes, states), SnapshotTransactionRuntime(), SnapshotTables(shapes)]));
+        out.append(SnapshotViews(shapes.roots));
+        out.append(SnapshotHost(states, shapes, state_characters, layout));
+        if (windows) {
+            dll_exports.extend(["chibi_host_retained_begin", "chibi_host_retained_accept", "chibi_host_retained_stage", "chibi_host_retained_finish"]);
+        }
+    }
     if (windows) { out.append(WindowsLibraryExports(dll_exports)); }
     return Result.Emitted(format_text("{}{}", module, strings.Join(out, "")));
 }

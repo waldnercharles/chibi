@@ -191,11 +191,19 @@ Cached :: (root: string, compiler: string, llvm_directory: string, inputs: strin
 // bind their own source/helper tree. Empty reports a failed compilation.
 pub Build :: (root: string, compiler: string, llvm: string, source: string, function: string,
               collections: string[]) -> string {
+    return BuildWithProject(root, root, compiler, llvm, source, function, collections)
+}
+
+// Runtime generators share compiler packages through project: imports, while
+// their entry and graph collection remain rooted at the repository.
+pub BuildWithProject :: (root: string, project: string, compiler: string, llvm: string, source: string, function: string,
+                         collections: string[]) -> string {
     folders := ["tools/toolchain", "tools/graph", "packages/core"]
+    if (project != root) { folders.append(project) }
     if (strings.HasPrefix(source, "test/graph/")) { folders.append("test/graph") }
     base := strings.Slice(source, strings.LastIndex(source, "/") + 1, strings.ByteLength(source))
     name := Join([strings.Slice(base, 0, strings.LastIndex(base, ".")), "-", function])
-    return Cached(root, compiler, llvm, ["--compiler", root, "--source", Absolute(root, source)],
+    return Cached(root, compiler, llvm, ["--compiler", project, "--source", Absolute(root, source)],
                   folders, source, function, collections, name)
 }
 

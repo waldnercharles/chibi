@@ -155,6 +155,20 @@ publish it before subsequent source code runs. The allocation regression bounds
 assigned back; direct nested array mutation remains unsupported. The host checks
 all shared leaf types and array schemas before copying any incoming state.
 
+The backend also exposes `llvm_native.EmitSnapshotLibrary` for explicit native
+clients that supply a complete structural graph. This API stages all retained
+roots in one transaction, clones arrays and strings into the incoming allocator,
+and preserves sharing across roots with the same source descriptor and target
+type. It validates every matched root before copying, then publishes all staged
+values together. An aborted transaction leaves the running generation intact.
+The snapshot graph supports records, unions and arrays of owned values; it rejects
+changed field or variant order, incompatible layouts, and type splitting or
+merging. Native type ordinals may change. Managed pointers, views, tasks, maps and
+external resources remain outside this contract. Source `retain` admission still
+uses the narrower forms described above; this backend API does not widen it.
+`test/native_aot/generations/snapshots.sh` checks the emitted callbacks and a real
+host swap, including access after the old image unloads.
+
 The legacy `library` form keeps its scalar-literal retained-state ABI: its bulk word
 manifest exposes initialized numbers and bools before any function runs. Records,
 strings and arrays use ordinary package generations and the per-key native host

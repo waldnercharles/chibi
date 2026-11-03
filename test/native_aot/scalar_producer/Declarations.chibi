@@ -1,0 +1,93 @@
+package native_driver
+
+import compiler "project:package_compiler"
+import snapshot "project:source_snapshot"
+import routes "project:package_routes"
+import strings "core:strings"
+import os "core:os"
+
+DeclarationInput :: (path: string, text: string) -> snapshot.Input {
+    return {path: path, text: text, has_path: true, has_text: true};
+}
+
+// Declare the same address-taking body in separate imported packages. This
+// checks table growth without compiling the bodies or depending on type kinds.
+DeclarationTypeCount :: (count: int) -> int {
+    names := ["p01", "p02", "p03", "p04"];
+    root := "package app\n";
+    for (index in 0..<count) {
+        root = strings.Concatenate([root, "import ", names[index], " \"../", names[index], "\"\n"]);
+    }
+    root = strings.Concatenate([root, "Main :: () -> int { return 0; }\n"]);
+    inputs := [DeclarationInput("app/Main.chibi", root)];
+    for (index in 0..<count) {
+        source := strings.Concatenate(["package ", names[index], "\npub Touch :: () -> int { value: int = 1; pointer := &value; return pointer^; }\n"]);
+        inputs.append(DeclarationInput(strings.Concatenate([names[index], "/Main.chibi"]), source));
+    }
+    sizes: u64[] = [];
+    for (input in inputs) { sizes.append(u64(strings.ByteLength(input.text))); }
+    collections: routes.Collection[] = [];
+    options: snapshot.Options = {project: "/probe", has_project: true, has_options: true,
+        has_files: true, has_collections: false, file_count: length(inputs), collection_count: 0};
+    switch snapshot.Build(options, collections, inputs, sizes) {
+        case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
+            os.Print(diagnostic.message);
+            assert(false, "declaration growth fixture snapshot is valid");
+        case .Accepted(roots, documents, nodes, imports, built):
+            assert(length(documents) == count + 1 && length(imports) == count);
+            switch built {
+                case .Rejected(error, cycle):
+                    assert(false, "declaration growth fixture graph is valid");
+                case .Accepted(packages, files_of, file_packages, order, edges, links):
+                    assert(length(packages) == count + 1 && length(files_of) == count + 1);
+                    assert(length(file_packages) == count + 1 && length(order) == count + 1);
+                    assert(length(edges) == count && length(links) == count);
+                    for (index in 0..<length(packages)) {
+                        expected := "app";
+                        if (index > 0) { expected = names[index - 1]; }
+                        assert(packages[index].name == expected && packages[index].member_count == 1);
+                        assert(files_of[packages[index].member_start] == index && file_packages[index] == index);
+                    }
+                    switch compiler.Declare(nodes, documents, packages, files_of, order, edges, file_packages[0], imports, links, TargetFacts()) {
+                        case .Failed(diagnostic):
+                            os.Print(diagnostic.message);
+                            assert(false, "declaration growth fixture declares successfully");
+                        case .Declared(callables, params, types, members, constants, active_order, bound, kept):
+                            assert(length(callables) == count + 1 && length(params) == 0);
+                            assert(length(members) == 0 && length(constants) == 0);
+                            assert(length(active_order) == count + 1 && length(bound) == count && length(kept) == count);
+                            declared := resize([false], length(packages));
+                            for (callable in callables) {
+                                package := callable.package;
+                                assert(package >= 0 && package < length(packages) && !declared[package]);
+                                expected := "Touch";
+                                if (package == file_packages[0]) { expected = "Main"; }
+                                assert(callable.name == expected && callable.count == 0);
+                                declared[package] = true;
+                            }
+                            for (package in active_order) { assert(declared[package]); }
+                            return length(types);
+                    }
+            }
+    }
+    return 0;
+}
+
+BoundedDeclarationConstructors :: () {
+    one := DeclarationTypeCount(1);
+    four := DeclarationTypeCount(4);
+    assert(one > 0 && four > 0 && four <= 4 * one, "declaration type constructors grow at most with source package count");
+}
+
+InferredGenericAddressCompiles :: () {
+    paths := ["Main.chibi", "lib/Lib.chibi"];
+    sources := ["package probe\nimport lib \"project:lib\"\n\nMain :: () -> int {\n    original := [int(7)][0..<1];\n    return lib.Read(original);\n}\n",
+                "package lib\n\npub Read :: (value: $T) -> int {\n    pointer := &value;\n    return 77;\n}\n"];
+    collections: string[] = [];
+    // Compilation only: the nonzero ABI stamp is serialized unchanged and
+    // makes no claim about artifact admission or runtime execution.
+    compiled := compiler.Compile("/project", collections, collections, paths, sources, false,
+                                 TargetFacts(), u64(1), Names(), Natives(), Ports(), Identities());
+    assert(compiled.error == nil, "inferred optional generic value has an addressable type");
+    assert(length(compiled.bytes) > 0, "generic address demand emits prepared module bytes");
+}

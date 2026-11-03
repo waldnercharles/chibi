@@ -84,10 +84,8 @@ pub BuildWebAssembly :: (driver: string, native_llvm: string, emcc: string, wasm
     }
     inputs.append(configuration);
     inputs.append(Join([root, "/tools/graph/asset_wasm_runtime/Runtime.ll"]));
-    for (path in ["authoring/asset_compiler_wasm.h",
-                  "authoring/asset_compiler_host.c", "authoring/asset_compiler_host.h",
-                  "support/binary_cache.c", "support/binary_cache.h", "support/file_io.c", "support/file_io.h",
-                  "support/sha256.c", "support/sha256.h", "support/xalloc.c", "support/xalloc.h"]) {
+    inputs.append(Join([root, "/tools/graph/asset_io_runtime/Files.ll"]));
+    for (path in ["authoring/asset_compiler_wasm.h", "authoring/asset_compiler_host.h"]) {
         inputs.append(Join([root, "/src/", path]));
     }
     files := WebAssemblyFiles();

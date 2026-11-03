@@ -1,0 +1,9 @@
+package text_format_record_pointers
+
+Box :: struct { pointer: ^int; }
+Main :: () -> int {
+    value := 7;
+    boxes: Box[] = [{pointer: &value}];
+    result := format_text("{}", boxes);
+    return text_byte_length(result);
+}

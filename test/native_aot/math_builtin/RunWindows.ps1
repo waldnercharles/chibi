@@ -37,7 +37,7 @@ function Invoke-MathTests([string]$Project, [string]$Level) {
 $completed = $false
 try {
     foreach ($level in 0, 2) {
-        foreach ($source in 'Deterministic', 'Nested') {
+        foreach ($source in 'Deterministic', 'Nested', 'Edges') {
             $program = Join-Path $work "$source-$level.exe"
             & $compilerPath --compiler "$root/tools/compiler" --core "$root/packages/core" `
                 --source "$root/test/native_aot/math_builtin/$source.chibi" --entry Main --output $program `

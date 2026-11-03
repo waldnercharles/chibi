@@ -1,0 +1,55 @@
+package nested_iteration
+
+Text :: (n: int) -> string { return text_from_bytes([u8(65), u8(n)]); }
+Rows :: () -> int[][] { return [[1, 2], [3], [4, 5]]; }
+First :: (rows: int[][]) -> int[] {
+    for (row in rows) { return row; }
+    return [];
+}
+Main :: () -> int {
+    rows := Rows();
+    total := 0;
+    for (row, index in rows) { total += length(row) * 10 + index; }
+    assert(total == 53);
+    total = 0;
+    for (row in Rows()) { total += row[0]; }
+    assert(total == 8);
+    total = 0;
+    for (row in rows) {
+        if (row[0] == 1) { continue; }
+        total += row[0];
+        if (row[0] == 3) { break; }
+    }
+    assert(total == 3);
+    first := First(Rows());
+    first[0] = 9;
+    assert(first[0] == 9 && rows[0][0] == 1);
+    for (row in rows) {
+        copied := row;
+        copied.append(10);
+        assert(length(copied) == length(row) + 1);
+    }
+    assert(length(rows[0]) == 2 && rows[0][1] == 2);
+    words: string[][] = [[Text(1)], [Text(2)], [Text(3)]];
+    total = 0;
+    for (row in words) {
+        words = [[Text(20)]];
+        total += text_byte_at(row[0], 1);
+    }
+    assert(total == 6 && text_byte_at(words[0][0], 1) == 20);
+    cube: int[][][] = [[[1, 2], [3]], [[4]]];
+    total = 0;
+    for (plane in cube) {
+        for (row in plane) {
+            for (value in row) { total += value; }
+        }
+    }
+    assert(total == 10);
+    flags: bool[][] = [[false, true], [true]];
+    total = 0;
+    for (row in flags) {
+        for (value in row) { if (value) { total += 1; } }
+    }
+    assert(total == 2);
+    return 0;
+}

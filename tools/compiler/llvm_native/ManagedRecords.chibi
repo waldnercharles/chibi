@@ -63,8 +63,36 @@ ManagedStorageClass :: (type: int) -> int {
     return type;
 }
 ManagedPayload :: (records: Record[], layout: ManagedRecordLayout, type: int, tag: i64) -> bool {
-    return abi.ScalarType(type) != "" ||
+    return abi.ScalarType(type) != "" || ManagedArray(type) ||
            (ManagedRecord(records, layout, type) && records[type - RecordType].identity == tag);
+}
+ManagedArray :: (type: int) -> bool {
+    return type >= ArrayType && type < MapType && abi.ScalarType(type - ArrayType) != "";
+}
+// Array cells own one descriptor. Scalar elements have no collector edges;
+// the last cell release drops its backing while its image lease is held.
+ManagedArrayModule :: (code: Instruction[], counter: string) -> string {
+    out: string[] = [];
+    seen: [string: bool] = [:];
+    dropped: [int: bool] = [:];
+    for (item in code) {
+        if (item.op != ManagedNew || !ManagedArray(item.right)) { continue; }
+        type := item.right;
+        key := format_text("{}.{}", type, item.literal);
+        if (seen.has(key)) { continue; }
+        seen[key] = true;
+        if (!dropped.has(type)) {
+            dropped[type] = true;
+            out.append(format_text("define internal void @chibi_managed.drop.array{}(ptr %ctx, ptr %payload) {{\nentry:\n", type));
+            out.append(format_text("  %value = load {}, ptr %payload\n  call void @chibi_array.{}.drop(ptr %ctx, {} %value)\n  ret void\n}}\n", abi.ArrayType(), type, abi.ArrayType()));
+        }
+        out.append(format_text("@chibi_managed.layout.array{} = private constant %chibi.managed.layout {{ ptr null, ptr @chibi_managed.validate.array{}, ptr {} }}\n", key, key, counter));
+        out.append(format_text("define internal i1 @chibi_managed.validate.array{}(i64 %offset, i64 %tag, i64 %bytes, i32 %storage) {{\nentry:\n", key));
+        out.append(format_text("  %tag.ok = icmp eq i64 %tag, {}\n  %storage.ok = icmp eq i32 %storage, {}\n", item.literal, type));
+        out.append(format_text("  %bytes.ok = icmp eq i64 %bytes, ptrtoint (ptr getelementptr ({}, ptr null, i32 1) to i64)\n", abi.ArrayType()));
+        out.append("  %offset.ok = icmp eq i64 %offset, 0\n  %type.ok = and i1 %tag.ok, %storage.ok\n  %range.ok = and i1 %bytes.ok, %offset.ok\n  %valid = and i1 %type.ok, %range.ok\n  ret i1 %valid\n}\n");
+    }
+    return strings.Join(out, "");
 }
 ManagedTarget :: (records: Record[], layout: ManagedRecordLayout, type: int, tag: i64) -> bool {
     return type == PointerType || ManagedPayload(records, layout, type, tag);

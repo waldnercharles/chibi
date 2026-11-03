@@ -1,0 +1,44 @@
+package record_field_places
+
+Inner :: struct { value: int; text: string; numbers: int[]; }
+Outer :: struct { inner: Inner; marker: int; }
+Text :: (n: int) -> string { return text_from_bytes([u8(65), u8(n)]); }
+Make :: (n: int) -> Outer { return {inner: {value: n, text: Text(n), numbers: [n, n + 1]}, marker: n}; }
+Reset :: (value: ^Outer, calls: ^int) -> int { calls^ += 1; value^ = Make(20); return 7; }
+OldText :: (value: ^Outer) -> string { text := value.inner.text; value^ = Make(30); return text; }
+OldNumbers :: (value: ^Outer) -> int[] { numbers := value.inner.numbers; value^ = Make(40); return numbers; }
+Edit :: (value: Outer) -> Outer { value.inner.value += 5; return value; }
+Scoped :: (value: ^Outer) { value.inner.value += 6; }
+Main :: () -> int {
+    value := Make(1);
+    before := value;
+    calls := 0;
+    value.inner.value += Reset(&value, &calls);
+    assert(calls == 1 && value.inner.value == 8 && value.marker == 20);
+    assert(value.inner.numbers[0] == 20 && text_byte_at(value.inner.text, 1) == 20);
+    assert(before.inner.value == 1 && text_byte_at(before.inner.text, 1) == 1);
+    value = Make(2);
+    value.marker += Reset(&value, &calls);
+    assert(calls == 2 && value.marker == 9 && value.inner.value == 20);
+    value = Make(3);
+    value.marker = Reset(&value, &calls);
+    assert(calls == 3 && value.marker == 7 && value.inner.value == 20);
+    value = Make(4);
+    value.inner.text = OldText(&value);
+    assert(value.marker == 30 && value.inner.value == 30 && text_byte_at(value.inner.text, 1) == 4);
+    value = Make(5);
+    value.inner.numbers = OldNumbers(&value);
+    assert(value.marker == 40 && value.inner.value == 40 && value.inner.numbers[0] == 5);
+    copied := Edit(before);
+    assert(copied.inner.value == 6 && before.inner.value == 1);
+    Scoped(&copied);
+    assert(copied.inner.value == 12 && before.inner.value == 1);
+    copied.inner = before.inner;
+    assert(copied.inner.value == 1 && copied.inner.numbers[1] == 2);
+    for (index in 0..<128) {
+        value.inner.text = Text(index);
+        value.inner.numbers = [index, index + 1];
+    }
+    assert(text_byte_at(value.inner.text, 1) == 127 && value.inner.numbers[0] == 127);
+    return 0;
+}

@@ -52,3 +52,12 @@ Shared pointer-bearing frames and retained values still require family-owner
 adoption and generation metadata retention before admission.
 Trace and drop callbacks must outlive their cells. Drop callbacks release
 external value owners without following managed pointer edges.
+
+Raw typed cells now carry immutable layout metadata (trace, address validation,
+and an optional per-image live-cell counter). Address validation follows owner,
+semantic identity and range checks. A counted cell pins its image before
+publication and releases that pin after its drop callback and last metadata
+access. The host must keep images mapped until execution is quiescent and
+both task and cell counts reach zero. Counter overflow/underflow traps.
+This is preparation for record/field source admission and shared-family
+adaptation; those source and generation gates above remain explicit.

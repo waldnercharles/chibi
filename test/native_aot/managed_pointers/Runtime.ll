@@ -1,6 +1,151 @@
 ; These calls exercise the emitted descriptor checks and real pointer-array
 ; helpers, including the owner check before the shared trace epoch shortcut.
 @managed_runtime.visits = internal global i64 0
+%managed_runtime.record = type { i32, { ptr, i64, i64 } }
+@managed_runtime.code_live = internal global i64 0
+@managed_runtime.layout = private constant %chibi.managed.layout { ptr @managed_runtime.trace_record, ptr @managed_runtime.validate_record, ptr @managed_runtime.code_live }
+@managed_runtime.untraced_schema = private constant %chibi.managed.layout { ptr null, ptr @managed_runtime.validate_record, ptr null }
+define internal void @managed_runtime.trace_record(ptr %heap, ptr %payload) {
+entry:
+  %link = getelementptr %managed_runtime.record, ptr %payload, i32 0, i32 1
+  call void @chibi_managed.trace.pointer(ptr %heap, ptr %link)
+  ret void
+}
+define internal i1 @managed_runtime.validate_record(i64 %offset, i64 %tag, i64 %bytes, i32 %storage) {
+entry:
+  %at.root = icmp eq i64 %offset, 0
+  %root.tag = icmp eq i64 %tag, -700
+  %root.bytes = icmp eq i64 %bytes, 32
+  %root.storage = icmp eq i32 %storage, 32
+  %root.identity = and i1 %at.root, %root.tag
+  %root.shape = and i1 %root.bytes, %root.storage
+  %root = and i1 %root.identity, %root.shape
+  %number.tag = icmp eq i64 %tag, -123
+  %number.bytes = icmp eq i64 %bytes, 4
+  %number.storage = icmp eq i32 %storage, 6
+  %number.identity = and i1 %at.root, %number.tag
+  %number.shape = and i1 %number.bytes, %number.storage
+  %number = and i1 %number.identity, %number.shape
+  %at.link = icmp eq i64 %offset, 8
+  %link.tag = icmp eq i64 %tag, -701
+  %link.bytes = icmp eq i64 %bytes, 24
+  %link.storage = icmp eq i32 %storage, 16
+  %link.identity = and i1 %at.link, %link.tag
+  %link.shape = and i1 %link.bytes, %link.storage
+  %link = and i1 %link.identity, %link.shape
+  %scalars = or i1 %root, %number
+  %valid = or i1 %scalars, %link
+  ret i1 %valid
+}
+define internal { ptr, i64, i64 } @managed_runtime.new_record(ptr %ctx) {
+entry:
+  %heap = call ptr @chibi_managed.owner(ptr %ctx)
+  %child = call { ptr, i64, i64 } @managed_runtime.new(ptr %ctx)
+  %cell = call ptr @chibi_managed.new(ptr %ctx, ptr %heap, i64 32, ptr @managed_runtime.layout, ptr null, i32 32)
+  %payload = getelementptr %chibi.managed.cell, ptr %cell, i32 1
+  store i32 11, ptr %payload
+  %link = getelementptr %managed_runtime.record, ptr %payload, i32 0, i32 1
+  store { ptr, i64, i64 } %child, ptr %link
+  %root = insertvalue { ptr, i64, i64 } zeroinitializer, ptr %cell, 0
+  %value = insertvalue { ptr, i64, i64 } %root, i64 -700, 2
+  ret { ptr, i64, i64 } %value
+}
+define internal i32 @managed_runtime.typed_layout(ptr %ctx) {
+entry:
+  %heap = call ptr @chibi_managed.owner(ptr %ctx)
+  %value = call { ptr, i64, i64 } @managed_runtime.new_record(ptr %ctx)
+  %slot = alloca { ptr, i64, i64 }
+  %root = alloca %chibi.managed.root
+  store { ptr, i64, i64 } %value, ptr %slot
+  call void @chibi_managed.push(ptr %heap, ptr %root, ptr %slot, ptr @chibi_managed.trace.pointer)
+  call void @chibi_managed.collect(ptr %ctx, ptr %heap)
+  %whole = call ptr @chibi_managed.address(ptr %heap, { ptr, i64, i64 } %value, i64 -700, i64 32, i32 32)
+  %code.rooted = load atomic i64, ptr @managed_runtime.code_live acquire, align 8
+  %code.pinned = icmp eq i64 %code.rooted, 1
+  %number.value = insertvalue { ptr, i64, i64 } %value, i64 -123, 2
+  %number.address = call ptr @chibi_managed.address(ptr %heap, { ptr, i64, i64 } %number.value, i64 -123, i64 4, i32 6)
+  %number = load i32, ptr %number.address
+  %number.valid = icmp eq i32 %number, 11
+  %offset = insertvalue { ptr, i64, i64 } %value, i64 8, 1
+  %link.value = insertvalue { ptr, i64, i64 } %offset, i64 -701, 2
+  %link = call ptr @chibi_managed.address(ptr %heap, { ptr, i64, i64 } %link.value, i64 -701, i64 24, i32 16)
+  %child = load { ptr, i64, i64 }, ptr %link
+  %child.address = call ptr @chibi_managed.address(ptr %heap, { ptr, i64, i64 } %child, i64 -123, i64 4, i32 6)
+  %child.number = load i32, ptr %child.address
+  %child.valid = icmp eq i32 %child.number, 7
+  %values.valid = and i1 %number.valid, %child.valid
+  call void @chibi_managed.pop(ptr %heap, ptr %root)
+  call void @chibi_managed.collect(ptr %ctx, ptr %heap)
+  %code.final = load atomic i64, ptr @managed_runtime.code_live acquire, align 8
+  %code.released = icmp eq i64 %code.final, 0
+  %code.valid = and i1 %code.pinned, %code.released
+  %valid = and i1 %values.valid, %code.valid
+  %result = select i1 %valid, i32 0, i32 96
+  ret i32 %result
+}
+define internal i32 @managed_runtime.bad_layout_storage(ptr %ctx) {
+entry:
+  %heap = call ptr @chibi_managed.owner(ptr %ctx)
+  %value = call { ptr, i64, i64 } @managed_runtime.new_record(ptr %ctx)
+  %offset = insertvalue { ptr, i64, i64 } %value, i64 8, 1
+  %link = insertvalue { ptr, i64, i64 } %offset, i64 -701, 2
+  %address = call ptr @chibi_managed.address(ptr %heap, { ptr, i64, i64 } %link, i64 -701, i64 4, i32 6)
+  ret i32 0
+}
+define internal i32 @managed_runtime.untraced_layout(ptr %ctx) {
+entry:
+  %heap = call ptr @chibi_managed.owner(ptr %ctx)
+  %cell = call ptr @chibi_managed.new(ptr %ctx, ptr %heap, i64 32, ptr @managed_runtime.untraced_schema, ptr null, i32 32)
+  %payload = getelementptr %chibi.managed.cell, ptr %cell, i32 1
+  store i32 17, ptr %payload
+  %value = insertvalue { ptr, i64, i64 } { ptr null, i64 0, i64 -700 }, ptr %cell, 0
+  %slot = alloca { ptr, i64, i64 }
+  %root = alloca %chibi.managed.root
+  store { ptr, i64, i64 } %value, ptr %slot
+  call void @chibi_managed.push(ptr %heap, ptr %root, ptr %slot, ptr @chibi_managed.trace.pointer)
+  call void @chibi_managed.collect(ptr %ctx, ptr %heap)
+  %field = insertvalue { ptr, i64, i64 } %value, i64 -123, 2
+  %address = call ptr @chibi_managed.address(ptr %heap, { ptr, i64, i64 } %field, i64 -123, i64 4, i32 6)
+  %number = load i32, ptr %address
+  %result = sub i32 %number, 17
+  call void @chibi_managed.pop(ptr %heap, ptr %root)
+  call void @chibi_managed.collect(ptr %ctx, ptr %heap)
+  ret i32 %result
+}
+define internal i32 @managed_runtime.bad_layout_identity(ptr %ctx) {
+entry:
+  %heap = call ptr @chibi_managed.owner(ptr %ctx)
+  %value = call { ptr, i64, i64 } @managed_runtime.new_record(ptr %ctx)
+  %offset = insertvalue { ptr, i64, i64 } %value, i64 8, 1
+  %link = insertvalue { ptr, i64, i64 } %offset, i64 -702, 2
+  %address = call ptr @chibi_managed.address(ptr %heap, { ptr, i64, i64 } %link, i64 -702, i64 24, i32 16)
+  ret i32 0
+}
+define internal i32 @managed_runtime.bad_layout_root(ptr %ctx) {
+entry:
+  %heap = call ptr @chibi_managed.owner(ptr %ctx)
+  %value = call { ptr, i64, i64 } @managed_runtime.new_record(ptr %ctx)
+  %address = call ptr @chibi_managed.address(ptr %heap, { ptr, i64, i64 } %value, i64 -700, i64 4, i32 6)
+  ret i32 0
+}
+define internal i32 @managed_runtime.code_underflow(ptr %ctx) {
+entry:
+  store atomic i64 0, ptr @managed_runtime.code_live release, align 8
+  call void @chibi_managed.code(ptr @managed_runtime.layout, i64 -1)
+  ret i32 0
+}
+define internal i32 @managed_runtime.code_overflow(ptr %ctx) {
+entry:
+  store atomic i64 -1, ptr @managed_runtime.code_live release, align 8
+  call void @chibi_managed.code(ptr @managed_runtime.layout, i64 1)
+  ret i32 0
+}
+define internal i32 @managed_runtime.no_layout_drop(ptr %ctx) {
+entry:
+  %heap = call ptr @chibi_managed.owner(ptr %ctx)
+  %cell = call ptr @chibi_managed.new(ptr %ctx, ptr %heap, i64 32, ptr null, ptr @managed_runtime.trace_record, i32 32)
+  ret i32 0
+}
 define internal void @managed_runtime.visit(ptr %heap, ptr %slot) {
 entry:
   %before = load i64, ptr @managed_runtime.visits

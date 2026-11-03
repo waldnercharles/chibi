@@ -1173,7 +1173,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         // C calls complete synchronously. Scalar arguments/results live in the
         // coroutine's existing scalar slots; borrowed strings/array buffers
         // retain the separate lifetime gate. Typed source effects are unchanged.
-        if (waiting[function] && (item.op == Fail || item.op == Format ||
+        if (waiting[function] && ((item.op == Fail && !ProgramMode(mode)) || item.op == Format ||
             (item.op == ForeignCall && foreign_abi != ScalarForeignABI))) {
             return Result.Rejected(base + pc, "native waiting function cannot fail, format or borrow foreign buffers yet");
         }
@@ -2467,7 +2467,7 @@ CoroutineEntryFunction :: (result: int, waiting: bool, timed: bool) -> string {
 }
 // A coroutine's start, in the entry block: the promise is the result's slot, the
 // frame comes from the context's allocate and goes back to its release.
-CoroutinePrologue :: () -> string {
+CoroutinePrologue :: (roots: string) -> string {
     out := "  %coro.id = call token @llvm.coro.id(i32 8, ptr %result0, ptr null, ptr null)\n";
     out = format_text("{}  %coro.need = call i1 @llvm.coro.alloc(token %coro.id)\n", out);
     out = format_text("{}  br i1 %coro.need, label %coro.alloc, label %coro.begin\ncoro.alloc:\n", out);
@@ -2476,7 +2476,7 @@ CoroutinePrologue :: () -> string {
     out = format_text("{}  br label %coro.begin\ncoro.begin:\n", out);
     out = format_text("{}  %coro.frame = phi ptr [ null, %entry ], [ %coro.mem, %coro.alloc ]\n", out);
     out = format_text("{}  %coro.hdl = call ptr @llvm.coro.begin(token %coro.id, ptr %coro.frame)\n", out);
-    return format_text("{}  br label %p0\n", out);
+    return format_text("{}{}  br label %p0\n", out, roots);
 }
 // A coroutine's end: the final suspension keeps the frame, and so the promise,
 // for whoever reads the result; destroying it comes here to release the frame.
@@ -2603,12 +2603,19 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     }
     out.append(format_text("  %result0 = alloca {}\n", TypeName(result)));
     out.append(Store(Zero(result), result, "result", 0));
-    if (managed && !coroutine) {
-        out.append(ManagedRoots(shape, slots, locals));
+    frame_roots: ManagedFrameRoots = {prologue: "", attach: "", cleanup: ""};
+    if (managed && coroutine) {
+        frame_roots = ManagedFrame(shape, slots, locals);
+        out.append(frame_roots.prologue);
+    }
+    if (managed) {
+        if (!coroutine) { out.append(ManagedRoots(shape, slots, locals)); }
         for (pc in 0..<shape.code) {
             item := code[shape.first_code + pc];
             if (item.op == ManagedPin) {
-                out.append(format_text("  %managed.pin{} = alloca %chibi.managed.root\n", item.right));
+                if (coroutine) {
+                    out.append(format_text("  %managed.pin{} = alloca %chibi.managed.persistent\n  store %chibi.managed.persistent zeroinitializer, ptr %managed.pin{}\n", item.right, item.right));
+                } else { out.append(format_text("  %managed.pin{} = alloca %chibi.managed.root\n", item.right)); }
             }
         }
     }
@@ -2647,14 +2654,14 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         out.append(format_text("  %cstr{} = alloca [{} x i8]\n", index, CstringCapacity + 1));
     }
     if (coroutine) {
-        out.append(CoroutinePrologue());
+        out.append(CoroutinePrologue(frame_roots.attach));
     } else {
         out.append("  br label %p0\n");
     }
     for (pc in 0..<shape.code) {
         item := code[shape.first_code + pc];
         if (item.op >= ManagedNew && item.op <= ManagedUnpin) {
-            out.append(ManagedInstruction(item, pc));
+            out.append(ManagedInstruction(item, pc, coroutine));
         } else if (managed && (item.op == Return || item.op == End) && !coroutine) {
             returned := EmitInstruction(item, pc, result, records, fields, texts, coroutine, scoped, record_owners);
             out.append(strings.ReplaceAll(returned, "  ret ", strings.Concatenate([ManagedUnroots(function == 0 && mode == ProgramEntry), "  ret "])));
@@ -2723,8 +2730,8 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         out.append(format_text("  ret {} {}\n", TypeName(result), Zero(result)));
     }
     if (coroutine) {
-        out.append(CoroutineEpilogue(TaskFrameCleanup(shape, locals, code, "final"),
-                                     TaskFrameCleanup(shape, locals, code, "cancel")));
+        out.append(CoroutineEpilogue(strings.Concatenate([TaskFrameCleanup(shape, locals, code, "final"), ManagedFramePins(shape, code, "final"), frame_roots.cleanup]),
+                                     strings.Concatenate([TaskFrameCleanup(shape, locals, code, "cancel"), ManagedFramePins(shape, code, "cancel"), frame_roots.cleanup])));
     }
     out.append("trap:\n  call void @llvm.trap()\n  unreachable\n}\n");
     return strings.Join(out, "");

@@ -1110,9 +1110,9 @@ CleanupProjectionStep :: (prefix: Step, owner: Value, natives: ResolvedNative[],
     }
 }
 
-// These copied result headers store the complete value in their payload.
-// Aggregate descriptors go through their existing copy/ownership intrinsics.
-ScalarResultCell :: (cell: Cell) -> bool {
+// Plain scalar scratch cells store their complete value in the payload.
+// Aggregate descriptors use their existing copy/ownership intrinsics.
+ScalarValueCell :: (cell: Cell) -> bool {
     return cell.kind == ValueKind && cell.container == 0 && cell.record == -1 &&
            cell.constant == 0 && cell.variant == -1 && (Numeric(cell.storage) || cell.storage == BoolStorage);
 }
@@ -1126,8 +1126,8 @@ CopyResultCellsStep :: (bundle: Value, result_types: Value[], ops: Ops, target: 
         port := result_types[index];
         cell := TypedCell(port.storage, port.container, port.record);
         output_cells.append(cell);
-        if (ScalarResultCell(cell)) {
-            copies.append(RecordSemantic(origin, ResultCopyCellFact, at.cell + index));
+        if (ScalarValueCell(cell)) {
+            copies.append(RecordSemantic(origin, ScalarValueCellFact, at.cell + index));
         }
         index += 1;
     }

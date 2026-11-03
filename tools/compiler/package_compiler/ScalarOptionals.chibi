@@ -1,0 +1,89 @@
+package package_compiler
+
+import facts "project:scalar_facts"
+import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
+
+// The plain primitive payload of an optional, or storage 0 for other shapes.
+ScalarOptionalPrimitive :: (types: TypeDecl[], optional: int) -> ValueType {
+    absent: ValueType = {storage: 0, container: 0, record: -1};
+    if (!ScalarOptional(types, optional)) { return absent; }
+    payload: ValueType = {storage: types[optional].value_storage, container: types[optional].value_container,
+                          record: types[optional].value_record};
+    if (payload.container != 0 || payload.record != -1 ||
+        (!Numeric(payload.storage) && payload.storage != BoolStorage)) { return absent; }
+    return payload;
+}
+
+// The declared plain primitive field selected by `optional?.field`, or -1.
+ScalarOptionalField :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                        names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> int {
+    optional := ScalarHeldUnion(forest, text, callables, params, names, types, members, package,
+                                Field(forest, node, syntax.FieldOperand));
+    if (!ScalarOptional(types, optional) || types[optional].value_storage != StructStorage ||
+        types[optional].value_container != 0) { return -1; }
+    record := types[optional].value_record;
+    if (record < 0 || types[record].kind != RecordDecl) { return -1; }
+    field := FindField(types, members, record, Text(forest, text, Field(forest, node, syntax.FieldMember)));
+    if (field < 0 || members[field].container != 0 || members[field].record != -1 ||
+        (!Numeric(members[field].storage) && members[field].storage != BoolStorage)) { return -1; }
+    return field;
+}
+
+ScalarOptionalFieldRecord :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                              names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> int {
+    field := ScalarOptionalField(forest, text, callables, params, names, types, members, package, node);
+    if (field < 0) { return -1; }
+    return FindOptional(types, {storage: members[field].storage, container: 0, record: -1});
+}
+
+// A coalesce consumes its optional once. Its Logical row owns the lazy
+// fallback span, so no call or failure on that path runs when Some is present.
+ScalarCoalesce :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
+                   node: int, rows: facts.Row[]) -> ScalarOperands {
+    left := Field(forest, node, syntax.FieldLeft);
+    payload := ScalarOptionalPrimitive(types,
+        ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, left));
+    if (payload.storage == 0) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native coalescing requires a number or bool optional"));
+    }
+    output := rows;
+    switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, left, UnionStorage, output) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): output = built;
+    }
+    at := length(output);
+    output.append(ScalarAt(forest, node, facts.LogicalRow, ScalarTypeOf(payload.storage), facts.LogicalCoalesce, 0, ""));
+    right := Field(forest, node, syntax.FieldRight);
+    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants, right, right,
+                          payload.storage, payload.storage, facts.Clamp, output) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): output = built;
+    }
+    coalesced := output[at];
+    coalesced.count = length(output) - at - 1;
+    output[at] = coalesced;
+    return ScalarOperands.Built(output);
+}
+
+ScalarOptionalFieldRows :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                            callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
+                            node: int, rows: facts.Row[]) -> ScalarOperands {
+    field := ScalarOptionalField(forest, text, callables, params, names, types, members, callable.package, node);
+    record := ScalarOptionalFieldRecord(forest, text, callables, params, names, types, members, callable.package, node);
+    if (field < 0 || record < 0) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native optional member reads require a number or bool field"));
+    }
+    object := Field(forest, node, syntax.FieldOperand);
+    optional := ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, object);
+    holder := types[optional].value_record;
+    switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, object, UnionStorage, rows) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built):
+            output := built;
+            output.append(ScalarAt(forest, node, facts.OptionalFieldRow, ScalarRecordType(types, record),
+                                    field - types[holder].first, 1, ""));
+            return ScalarOperands.Built(output);
+    }
+}

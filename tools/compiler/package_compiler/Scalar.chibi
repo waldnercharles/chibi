@@ -896,6 +896,14 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (record >= 0) { return ScalarPointerElement(types, record).storage; }
     }
     node := ScalarTarget(forest, operand);
+    if (Is(forest, node, syntax.OptionalMemberExpression)) {
+        if (ScalarOptionalFieldRecord(forest, text, callables, params, names, types, members, callable.package, node) >= 0) { return UnionStorage; }
+        return 0;
+    }
+    if (Is(forest, node, syntax.BinaryExpression) && Operator(forest, node) == tk.Coalesce) {
+        return ScalarOptionalPrimitive(types, ScalarHeldUnion(forest, text, callables, params, names, types, members,
+            callable.package, Field(forest, node, syntax.FieldLeft))).storage;
+    }
     if (Is(forest, node, syntax.ForceUnwrapExpression)) {
         payload := ScalarUnwrappedType(forest, text, callables, params, names, types, members, callable.package, node);
         if (payload.container == 0) { return payload.storage; }
@@ -1093,6 +1101,12 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         }
     }
     node := ScalarTarget(forest, operand);
+    if (Is(forest, node, syntax.OptionalMemberExpression)) {
+        return ScalarOptionalFieldRows(forest, text, callables, params, callable, names, types, members, constants, node, rows);
+    }
+    if (Is(forest, node, syntax.BinaryExpression) && Operator(forest, node) == tk.Coalesce) {
+        return ScalarCoalesce(forest, text, callables, params, callable, names, types, members, constants, node, rows);
+    }
     if (Is(forest, node, syntax.ForceUnwrapExpression)) {
         return ScalarUnwrapRows(forest, text, callables, params, callable, names, types, members, constants, node, rows);
     }
@@ -1256,8 +1270,14 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     // A constant expression is the one constant EmitBody folds it to
     // exactly, not rows that would wrap, and a package constant alone is its
     // folded value.
-    named := ConstantOf(forest, text, constants, names, callable.package, node) >= 0;
-    if ((named || Folds(forest, text, constants, names, callable.package, node, storage)) &&
+    named := ConstantOf(forest, text, constants, names, callable.package, node);
+    // Specialized bool parameters already carry the checker's folded value;
+    // the numeric constant evaluator does not accept boolean storage.
+    if (named >= 0 && storage == BoolStorage && constants[named].folded) {
+        output.append(ScalarLiteral(forest, node, type, constants[named].bits));
+        return ScalarOperands.Built(output);
+    }
+    if ((named >= 0 || Folds(forest, text, constants, names, callable.package, node, storage)) &&
         !ShadowedConversion(forest, text, callables, callable.package, node)) {
         switch FoldConstant(forest, text, callable.document, constants, names, callable.package, node, storage) {
             case .Failed(diagnostic):
@@ -1382,6 +1402,8 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     }
     target := callables[callee];
     count: int = 0;
+    position: int = 0;
+    order: int[] = [];
     argument_changes: string[] = [];
     argument_changes_read := false;
     // A float argument widens to a double parameter, as the call step widens
@@ -1393,16 +1415,23 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             continue;
         }
         argument := supplied;
+        parameter := position;
         if (Is(forest, supplied, syntax.NamedArgument)) {
             signature := GenericCallbackSignature(forest, text, names, node);
-            if ((signature < 0 && !GenericResolvedCall(names, node)) ||
-                GenericCallParameter(forest, text, callables, params, names, callee, node, supplied, count) != count) {
+            if (signature < 0 && !GenericResolvedCall(names, node)) {
                 return ScalarOperands.Failed(Diagnose(forest, supplied, 0,
-                                                      "scalar proof passes callable arguments in order"));
+                                                      "scalar proof names arguments only for resolved callable signatures"));
             }
+            parameter = GenericCallParameter(forest, text, callables, params, names, callee, node, supplied, position);
             argument = Field(forest, supplied, syntax.FieldValue);
+        } else { position += 1; }
+        assert(parameter >= 0 && parameter < target.count, "checked call argument has a parameter");
+        // Positional and already ordered calls need no permutation storage.
+        if (parameter != count && length(order) == 0) {
+            for previous in 0..<count { order.append(previous); }
         }
-        param := params[target.first + count];
+        if (parameter != count || length(order) > 0) { order.append(parameter); }
+        param := params[target.first + parameter];
         if (param.reference) {
             switch ScalarReferenceArgument(forest, text, callables, params, callable, names, types, members, constants, argument, param, output) {
                 case .Failed(diagnostic):
@@ -1498,12 +1527,34 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     }
     // An omitted argument is its parameter's default, a literal of the
     // parameter's type at the call, as the call step fills it in.
-    while (count < target.count) {
-        param := params[target.first + count];
-        omitted := ScalarLiteral(forest, node, ScalarTypeOf(param.storage), param.default_bits);
-        omitted.text = param.default_text;
-        output.append(omitted);
-        count += 1;
+    if (length(order) == 0) {
+        while (count < target.count) {
+            param := params[target.first + count];
+            omitted := ScalarLiteral(forest, node, ScalarTypeOf(param.storage), param.default_bits);
+            omitted.text = param.default_text;
+            output.append(omitted);
+            count += 1;
+        }
+    } else {
+        // Labeled calls supply the complete signature. A one-based inverse
+        // checks uniqueness, then places each value with at most one exchange.
+        assert(count == target.count, "checked labeled call supplies every parameter");
+        positions := resize([int(0)], target.count);
+        for index in 0..<length(order) {
+            assert(positions[order[index]] == 0, "checked call arguments are unique");
+            positions[order[index]] = index + 1;
+        }
+        for index in 0..<target.count {
+            other := positions[index] - 1;
+            if (other == index) { continue; }
+            output.append(ScalarAt(forest, node, facts.OperandSwapRow, 0,
+                                   count - 1 - other, count - 1 - index, ""));
+            moved := order[index];
+            order[index] = index;
+            order[other] = moved;
+            positions[moved] = other + 1;
+            positions[index] = index + 1;
+        }
     }
     call := ScalarAt(forest, node, facts.CallRow, type, callee, count, target.name);
     if (target.waits) {
@@ -1811,6 +1862,9 @@ ScalarIs :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[
 ScalarHeldUnion :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                     names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> int {
     value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.OptionalMemberExpression)) {
+        return ScalarOptionalFieldRecord(forest, text, callables, params, names, types, members, package, value);
+    }
     if (Is(forest, value, syntax.ForceUnwrapExpression)) {
         payload := ScalarUnwrappedType(forest, text, callables, params, names, types, members, package, value);
         if (payload.storage == UnionStorage && payload.container == 0) { return payload.record; }
@@ -3489,7 +3543,7 @@ ScalarClaimCells :: (claimed: ^(bool[]), first: int, end: int) {
 }
 
 // Each cell belongs to an admitted value, invocation or host, or was copied
-// into a result bank by the ordinary typed copier. Index ownership once;
+// into a result bank or conditional by the ordinary checker. Index ownership once;
 // scanning every call/host for every cell would multiply their table sizes.
 ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], semantic: SemanticFact[], lent: bool) -> bool {
     claimed := resize([false], length(cells));
@@ -3509,8 +3563,8 @@ ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], semantic: Sem
         ScalarClaimCells(&claimed, host.first, host.result_first + host.result_count);
     }
     for (fact in semantic) {
-        if (fact.kind == ResultCopyCellFact) {
-            if (fact.target < 0 || fact.target >= length(cells) || !ScalarResultCell(cells[fact.target])) { return false; }
+        if (fact.kind == ScalarValueCellFact) {
+            if (fact.target < 0 || fact.target >= length(cells) || !ScalarValueCell(cells[fact.target])) { return false; }
             claimed[fact.target] = true;
         }
     }

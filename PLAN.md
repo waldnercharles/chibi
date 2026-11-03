@@ -39,11 +39,33 @@ verified seed is required before the next normal checkout build. The existing
 `c5c0a1ac2` source now also reproduces on macOS: stages three and four match
 `0a19d74d70c5f406bb08768a9167ab099e3cb6b034c7454d225f6142149b3cfc`.
 Its 429 compiler tests pass on Linux (40.58 seconds in Docker) and macOS
-(13.25 seconds). These compilers and their exact source are being prepared
-for the seed upgrade.
+(13.25 seconds). The owner approved publication of these exact Linux/macOS
+assets, corresponding source and two pins. The
+[native seed release](https://github.com/waldnercharles/chibi/releases/tag/native-seed-c5c0a1ac2e065b5e57feec0de6dd453c12fa267d)
+is published. Its tag resolves to that commit; all 19 published files were
+downloaded into a new directory and checked against the reviewed package and
+checksums. `7ab1c84ac` advances the two pins. Windows remains unpinned.
+The published macOS compiler builds the composed `143655b19` compiler directly
+in 105.07 seconds; its 436 compiler tests pass in 24.08 seconds. The normal
+checkout build entry also fetches and uses the new pin successfully.
 Local Linux self-build attempts were killed by Docker's memory limit, including
 one worker (`OOMKilled=true`); other running services were left untouched.
-No seed publication or pin change has occurred.
+
+The earlier composed `2ed86e078` compiler reproduces between stages two and
+three: `d5c343e4f68b6ba02c47c320be0ef8df337b5565b22702c8b0729be7753f98d3`.
+Those stages take 109.40 and 69.30 seconds. Its 436 compiler tests, nullable
+managed-pointer tests and nested-array tests pass. Its generation suite exposes
+a retained-record scoped-reference reentry regression (exit 2 instead of 3),
+which remains under investigation; this is not complete runtime acceptance.
+
+The next composition includes primitive optional payload reads, source-ordered
+named text calls, persistent collector roots, and the VM decoder ownership split.
+At `143655b19`, optional/fallible tests plus ordinary comparisons pass in 28.68
+seconds, text arguments in 8.62 seconds and the managed-pointer suite in 28.54
+seconds. The obsolete C CLI, orphan host test utilities, Wasm C wrapper and
+unused subprocess benchmark are deleted. The shared Windows generation now
+cross-links a real watch package, and CI includes actual public watch execution;
+Windows runtime acceptance remains pending.
 
 All seventeen CLI survivor cases pass through the public native compiler,
 together with four parent-signal and six terminal cases (43.02 seconds).
@@ -65,16 +87,19 @@ checks pass in 17.63 seconds, including 1,025 clock samples without allocation.
 spelled type of deferred constant-expression comparison operands. The expanded
 fixture passes O0/O2 and the installed-CLI arithmetic smoke compiles and runs.
 All 432 compiler tests pass in 12.98 seconds. The full types category retains
-four known admission gaps (payload patterns, set_array_elem, nullable pointers
-and optional descriptor growth); its arithmetic/shift/range diagnostics pass.
+four then-known admission gaps (payload patterns, set_array_elem, nullable
+pointers and optional descriptor growth); its arithmetic/shift/range diagnostics
+pass. Nullable pointers and primitive optional descriptor growth are now covered
+by the newer composition above; the other two remain in their implementation lanes.
 
 `c50650f50` integrates scoped-reference alias preservation, native scalar managed
 cells and pointer arrays. Its source/runtime proof passes in 26.66 seconds:
 normal and forced collection, poisoned frees, bounded peak allocation, zero
 final live allocations, malformed descriptors, cross-owner rejection and shared
-array tracing once per collection epoch. Nullable/aggregate pointers, suspended
-frames and retained/Wasm owners remain implementation work. The combined root
-compiler still needs reproduction and platform acceptance after this batch.
+array tracing once per collection epoch. Nullable pointers and retained primitive
+arrays are integrated. Aggregate pointers, suspended collector frames, shared
+execution-family heaps and deep retained snapshots remain active work. Each new
+composition still needs its matching runtime and platform checks.
 
 Remaining ownership is explicit:
 
@@ -82,11 +107,12 @@ Remaining ownership is explicit:
   facade. Replace desktop/browser C orchestration, cache and generated identity
   C with authored code and LLVM ABI adapters while preserving diagnostics,
   quotas, cancellation, thread isolation and caller-owned outputs.
-- Producer and collector lanes: source pointers and precise ownership roots;
-  reload lane: retained arrays and nominal retained schemas.
+- Producer and collector lanes: remaining array operations, aggregate pointers
+  and precise ownership roots; reload lane: deep retained snapshots and schemas.
 - Driver lane: remaining authored language samples and error-result handling.
-- Tasks lane: browser compile-only facade and generated identity, preserving
-  request isolation, quota/cancellation and published output ownership.
+- Tasks lane: suspended collector roots and shared execution-family ownership;
+  the browser facade already uses LLVM, and its final authored compile/cache
+  integration shares the CLI lane's request and resource contracts.
 - Cutover lane: final host/VM consumer inventory and proven obsolete target deletion.
 - Root: graph fixtures that depend on retired C targets, final host/VM deletion,
   recovery-command and CI retirement, combined review and platform acceptance.

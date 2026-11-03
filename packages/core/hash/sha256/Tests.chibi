@@ -91,3 +91,35 @@ HexOfMatchesHexOfTheSameBytes :: () {
     assert(HexOf(abc) == Hex("abc"));
     assert(HexOf(empty) == Hex(""));
 }
+
+@test
+IncrementalChunksMatchPublishedVectorAtEverySplit :: () {
+    data := Ascii("abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu");
+    expected := "cf5b16a778af8380036ce59e7b0492370b249b11e8f07a51afac45037afee9d1";
+    for (split in 0..length(data)) {
+        stream := Begin();
+        first := Update(&stream, data, 0, split);
+        second := Update(&stream, data, split);
+        assert(first && second && FinishHex(stream) == expected, "chunk boundaries preserve the published digest");
+    }
+}
+
+@test
+DigestSnapshotDoesNotConsumeTheStream :: () {
+    stream := Begin();
+    first := Update(&stream, Ascii("a"));
+    assert(first && FinishHex(stream) == "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb");
+    second := Update(&stream, Ascii("bc"));
+    assert(second && FinishHex(stream) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+}
+
+@test
+InvalidChunkCountsLeaveTheStreamUnchanged :: () {
+    stream := Begin();
+    added := Update(&stream, Ascii("a"));
+    assert(added);
+    beyond := Update(&stream, Ascii("bc"), 0, 3);
+    negative := Update(&stream, Ascii("bc"), 0, -2);
+    assert(!beyond && !negative);
+    assert(FinishHex(stream) == "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb");
+}

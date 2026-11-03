@@ -23,7 +23,7 @@ FrameLibrary :: (names: string[]) -> native.Result {
     texts: string[] = [];
     ids: i64[] = [5];
     return native.EmitLibrary(abi.LinuxX64(), "State", ["Frame"], ids, [Function(32, 2, 0, 5, 0, 8, 0, 0)],
-                              [32, 6], [32, 6, 6, 6, 32], locals, Frame(), empty, [{first: 0, count: 2}], [6, 11],
+                              [32, 6], [32, 6, 6, 6, 32], locals, Frame(), empty, [{first: 0, count: 2, identity: 0}], [6, 11],
                               texts, 1, names);
 }
 // A state function leaves the player's export manifest alone and has a

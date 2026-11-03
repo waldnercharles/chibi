@@ -44,7 +44,7 @@ for level in 0 2; do
         --root "$root/test/compiler/samples/imports" "$root/test/compiler/samples/imports/array_methods/facts" \
         > "$work/original.log" 2>&1 || { cat "$work/original.log"; exit 1; }
     grep -F 'PASS project.Calls' "$work/original.log" > /dev/null
-    for source in Values Places; do
+    for source in Values Places Replace; do
         for mode in ordinary audited; do
             tools=$llvm
             if [ "$mode" = audited ]; then tools=$work/llvm; fi
@@ -57,9 +57,13 @@ for level in 0 2; do
     printf 'PASS array source values, canonical places and balanced ownership O%s\n' "$level"
 done
 if [ -n "$reference" ]; then
-    mkdir "$work/reference"
-    cp "$root/test/native_aot/array_operations/Values.chibi" "$work/reference/Main.chibi"
-    printf '%s\n' 'package array_operation_values' '@test' 'Values :: () { result := Main(); assert(result == 0); }' > "$work/reference/Tests.chibi"
-    "$reference" --project-root "$work/reference" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
-    cat "$work/reference.log"
+    for source in Values Replace; do
+        project=$work/reference-$source
+        mkdir "$project"
+        cp "$root/test/native_aot/array_operations/$source.chibi" "$project/Main.chibi"
+        head -n 1 "$project/Main.chibi" > "$project/Tests.chibi"
+        printf '%s\n' '@test' 'Check :: () { result := Main(); assert(result == 0); }' >> "$project/Tests.chibi"
+        "$reference" --project-root "$project" --test > "$project/reference.log" 2>&1 || { cat "$project/reference.log"; exit 1; }
+        cat "$project/reference.log"
+    done
 fi

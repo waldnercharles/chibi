@@ -143,8 +143,10 @@ pub ArrayLength: int : 38;
 pub ArrayGet: int : 39;
 // output = the left slot's array with its element at the right slot's int
 // index replaced by the value in slot `target`; type is the array type. An
-// index outside the array ends the program.
+// index outside the array ends the program, unless literal is ArraySetUnchanged.
+// Both modes consume the incoming element owner, including an ignored value.
 pub ArraySet: int : 40;
+pub ArraySetUnchanged: int : 1;
 // output = the left slot's array with the right slot's value appended; type
 // is the array type. The elements move to a larger allocation when they are
 // full.
@@ -1297,7 +1299,8 @@ ArrayValid :: (records: Record[], slots: int[], item: Instruction) -> bool {
     }
     if (item.op == ArrayReverse) { return item.literal == 0 && item.right == 0 && item.target == 0; }
     if (item.op == ArraySet) {
-        return Typed(slots, item.right, abi.IntStorage) && Typed(slots, item.target, element);
+        return (item.literal == 0 || item.literal == i64(ArraySetUnchanged)) &&
+               Typed(slots, item.right, abi.IntStorage) && Typed(slots, item.target, element);
     }
     if (item.op == ArrayPush) {
         return Typed(slots, item.right, element);
@@ -1906,7 +1909,13 @@ ArrayRead :: (item: Instruction, pc: int, record_owners: bool[], program: bool) 
     out = format_text("{}{}", out, Load(format_text("b{}", pc), abi.IntStorage, "s", item.right));
     out = format_text("{}  %in{} = icmp ult i32 %b{}, %length{}\n", out, pc, pc, pc);
     out = format_text("{}  br i1 %in{}, label %inside{}, label %outside{}\noutside{}:\n", out, pc, pc, pc, pc);
-    if (item.op == ArrayGet && item.literal == 1) {
+    forgiving := item.op == ArraySet && item.literal == i64(ArraySetUnchanged);
+    if (forgiving) {
+        // The prepared item owns its leaves even when no element is replaced.
+        out = format_text("{}{}", out, ArrayRefs(record_owners, item.type, format_text("%s{}", item.target), "1", false));
+        out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "s", item.output));
+        out = format_text("{}  br label %array_done{}\ninside{}:\n", out, pc, pc);
+    } else if (item.op == ArrayGet && item.literal == 1) {
         if (program) { out = format_text("{}  call void @chibi_native_reference_unavailable()\n", out); }
         else { out = format_text("{}  call void @llvm.trap()\n", out); }
         out = format_text("{}  unreachable\ninside{}:\n", out, pc);
@@ -1931,7 +1940,9 @@ ArrayRead :: (item: Instruction, pc: int, record_owners: bool[], program: bool) 
     }
     out = format_text("{}{}", out, Load(format_text("c{}", pc), element, "s", item.target));
     out = format_text("{}  store {} %c{}, ptr %at{}\n", out, type, pc, pc);
-    return format_text("{}{}", out, Store(writable, item.type, "s", item.output));
+    out = format_text("{}{}", out, Store(writable, item.type, "s", item.output));
+    if (forgiving) { out = format_text("{}  br label %array_done{}\narray_done{}:\n", out, pc, pc); }
+    return out;
 }
 // The array of the elements of the array loaded as %a<pc> with the value in
 // the right slot after them, in the allocation the elements already have

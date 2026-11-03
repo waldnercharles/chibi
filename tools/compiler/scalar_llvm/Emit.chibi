@@ -565,7 +565,7 @@ FreshArray :: (operand: facts.Row) -> bool {
     value := operand.value;
     return value == facts.ArrayNew || value == facts.ArrayCopy || value == facts.ArrayWith || value == facts.ArrayJoin ||
            value == facts.ArraySlice || value == facts.ArrayResize || value == facts.ArrayBytes || value == facts.ArrayText ||
-           value == facts.ArrayWithout || value == facts.ArrayLoan || value == facts.ArrayInserted || value == facts.ArrayReversed;
+           value == facts.ArrayWithout || value == facts.ArrayLoan || value == facts.ArrayInserted || value == facts.ArrayReversed || value == facts.ArrayReplaced;
 }
 // Whether the native `type` is owned by whoever holds it: an array, or a string.
 Owning :: (type: int) -> bool {
@@ -978,7 +978,8 @@ Holds :: (values: int[], wanted: int) -> bool {
 // two ints or an index and an element; 0 for no operator.
 ArrayOperands :: (operand: facts.Row) -> int {
     if (operand.value == facts.ArrayPlaceGet) { return 2; }
-    if (operand.value == facts.ArrayInsert || operand.value == facts.ArrayInserted) { return 3; }
+    if (operand.value == facts.ArrayInsert || operand.value == facts.ArrayInserted ||
+        operand.value == facts.ArrayReplace || operand.value == facts.ArrayReplaced) { return 3; }
     if (operand.value == facts.ArrayReverse || operand.value == facts.ArrayReversed) { return 1; }
     if (operand.value == facts.ArrayNew) {
         return operand.count;
@@ -992,7 +993,8 @@ ArrayOperands :: (operand: facts.Row) -> int {
 // Whether the operator changes the elements of the array it consumes.
 ArrayChanges :: (operator: int) -> bool {
     return operator == facts.ArraySet || operator == facts.ArrayPush || operator == facts.ArrayExtend ||
-           operator == facts.ArrayRemove || operator == facts.ArrayInsert || operator == facts.ArrayReverse;
+           operator == facts.ArrayRemove || operator == facts.ArrayInsert || operator == facts.ArrayReverse ||
+           operator == facts.ArrayReplace;
 }
 MappedArrayChange :: (value: int) -> bool {
     return value >= facts.MapArrayPush && value <= facts.MapArrayResize;
@@ -1134,7 +1136,7 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         if (operator == facts.ArrayPush) { wanted = element; }
         if (operator == facts.ArrayExtend) { wanted = field; }
         if (stack[base + 1] != wanted ||
-            ((operator == facts.ArraySet || operator == facts.ArrayInsert) && stack[base + 2] != element)) { return mismatch; }
+            ((operator == facts.ArraySet || operator == facts.ArrayInsert || operator == facts.ArrayReplace) && stack[base + 2] != element)) { return mismatch; }
         return "";
     }
     if (operator == facts.ArrayLength) {
@@ -1196,7 +1198,8 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         if (stack[base + 1] != facts.IntType || stack[base + 2] != facts.IntType) {
             return mismatch;
         }
-    } else if (operator == facts.ArraySet || operator == facts.ArrayInsert || operator == facts.ArrayInserted) {
+    } else if (operator == facts.ArraySet || operator == facts.ArrayInsert || operator == facts.ArrayInserted ||
+               operator == facts.ArrayReplace || operator == facts.ArrayReplaced) {
         if (stack[base + 1] != facts.IntType || stack[base + 2] != element) {
             return mismatch;
         }
@@ -2245,8 +2248,10 @@ ArrayLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: i
         if (operand.value == facts.ArrayPlaceGet) { item.literal = 1; }
         return item;
     }
-    if (operand.value == facts.ArraySet) {
-        return Op(native.ArraySet, type, slot, stack[base], stack[base + 1], stack[base + 2]);
+    if (operand.value == facts.ArraySet || operand.value == facts.ArrayReplace || operand.value == facts.ArrayReplaced) {
+        item := Op(native.ArraySet, type, slot, stack[base], stack[base + 1], stack[base + 2]);
+        if (operand.value != facts.ArraySet) { item.literal = i64(native.ArraySetUnchanged); }
+        return item;
     }
     if (operand.value == facts.ArrayInsert || operand.value == facts.ArrayInserted) {
         return Op(native.ArrayInsert, type, slot, stack[base], stack[base + 1], stack[base + 2]);
@@ -3446,8 +3451,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     // Appended/replaced elements transfer one owned value.
                     argument := root;
                     if (operand.count > 1) { argument = stack[base + 1]; }
-                    if (op == facts.ArraySet || op == facts.ArrayInsert) { argument = stack[base + 2]; }
-                    if (op == facts.ArrayPush || op == facts.ArraySet || op == facts.ArrayInsert) {
+                    if (op == facts.ArraySet || op == facts.ArrayInsert || op == facts.ArrayReplace) { argument = stack[base + 2]; }
+                    if (op == facts.ArrayPush || op == facts.ArraySet || op == facts.ArrayInsert || op == facts.ArrayReplace) {
                         if (Holds(fresh, argument)) { fresh = Without(fresh, argument); }
                         else {
                             kept := KeepValue(managed, element, argument, slot + 1 + extra);
@@ -3483,6 +3488,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     if (op == facts.ArrayRemove) { mutation.op = native.ArrayRemove; mutation.literal = 0; }
                     if (op == facts.ArrayResize) { mutation.op = native.ArrayResize; mutation.literal = 0; }
                     if (op == facts.ArraySet) { mutation = Op(native.ArraySet, array, changed, current, stack[base + 1], argument); }
+                    if (op == facts.ArrayReplace) {
+                        mutation = Op(native.ArraySet, array, changed, current, stack[base + 1], argument);
+                        mutation.literal = i64(native.ArraySetUnchanged);
+                    }
                     if (op == facts.ArrayInsert) { mutation = Op(native.ArrayInsert, array, changed, current, stack[base + 1], argument); }
                     if (op == facts.ArrayReverse) { mutation = Op(native.ArrayReverse, array, changed, current, 0, 0); }
                     state_index := RetainedArrayState(retained_array_variables, retained_array_fields, retained_array_states,
@@ -3581,7 +3590,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                             stack[base + 1] = kept.value;
                         }
                     }
-                    if ((op == facts.ArraySet || op == facts.ArrayInsert || op == facts.ArrayInserted) &&
+                    if ((op == facts.ArraySet || op == facts.ArrayInsert || op == facts.ArrayInserted ||
+                         op == facts.ArrayReplaced || op == facts.ArrayReplace) &&
                         slots[shape.first_slot + stack[base + 2]] == abi.TextStorage) {
                         stored.append(stack[base + 2]);
                     }
@@ -3618,12 +3628,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         }
                     } else if (operand.value == facts.ArrayWith || operand.value == facts.ArrayJoin ||
                                operand.value == facts.ArrayWithout || operand.value == facts.ArrayInserted ||
-                               operand.value == facts.ArrayReversed) {
+                               operand.value == facts.ArrayReversed || operand.value == facts.ArrayReplaced) {
                         // Functional changes acquire one owning descriptor;
                         // a fresh input can transfer that owner directly.
                         input := stack[base];
                         if ((operand.value == facts.ArrayWithout || operand.value == facts.ArrayInserted ||
-                             operand.value == facts.ArrayReversed) && Holds(fresh, input)) {
+                             operand.value == facts.ArrayReversed || operand.value == facts.ArrayReplaced) && Holds(fresh, input)) {
                             fresh = Without(fresh, input);
                         } else {
                             body.append(Op(native.ValueCopy, type, slot, input, 0, 0));
@@ -3640,8 +3650,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         if (operand.value == facts.ArrayWithout) { change = native.ArrayRemove; }
                         if (operand.value == facts.ArrayInserted) { change = native.ArrayInsert; target = stack[base + 2]; }
                         if (operand.value == facts.ArrayReversed) { change = native.ArrayReverse; }
+                        if (operand.value == facts.ArrayReplaced) { change = native.ArraySet; target = stack[base + 2]; }
                         item = Op(change, type, slot, input, right, target);
                         if (change == native.ArrayPush || change == native.ArrayExtend) { item.literal = 1; }
+                        if (operand.value == facts.ArrayReplaced) { item.literal = i64(native.ArraySetUnchanged); }
                     } else {
                         if ((op == facts.ArrayPush || op == facts.ArrayExtend || op == facts.ArraySet || op == facts.ArrayRemove) &&
                             base == 0 && index == first + row.count - 1 && length(retained_array_variables) > 0) {
@@ -3717,7 +3729,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     stack = slice(stack, 0, base);
                 }
                 if (operand.kind == facts.ArrayRow && !array_place && operand.literal == 0 &&
-                    (operand.value == facts.ArraySet || operand.value == facts.ArrayInsert || operand.value == facts.ArrayInserted) &&
+                    (operand.value == facts.ArraySet || operand.value == facts.ArrayInsert || operand.value == facts.ArrayInserted ||
+                     operand.value == facts.ArrayReplaced || operand.value == facts.ArrayReplace) &&
                     TrackedRecord(managed, slots[shape.first_slot + item.target])) {
                     // The replaced element may be the incoming value itself.
                     if (Holds(fresh, item.target)) { fresh = Without(fresh, item.target); }

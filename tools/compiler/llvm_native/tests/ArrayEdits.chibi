@@ -30,3 +30,11 @@ ArrayEditsRejectReservedMetadata :: () {
     Rejects(EditedArrayModule(Changed(EditedArray(), 5, Code(native.ArrayReverse, 1030, 4, 3, 0, 1, 0))), ArrayOperands());
     Rejects(EditedArrayModule(Changed(EditedArray(), 5, Code(native.ArrayReverse, 1030, 4, 3, 0, 0, 1))), ArrayOperands());
 }
+
+@test
+ArrayReplacementChecksItsBoundsMode :: () {
+    code := Changed(EditedArray(), 4, Code(native.ArraySet, 1030, 3, 0, 1, 2, 0));
+    Emitted(EditedArrayModule(code));
+    Emitted(EditedArrayModule(Changed(code, 4, Code(native.ArraySet, 1030, 3, 0, 1, 2, i64(native.ArraySetUnchanged)))));
+    Rejects(EditedArrayModule(Changed(code, 4, Code(native.ArraySet, 1030, 3, 0, 1, 2, 2))), ArrayOperands());
+}

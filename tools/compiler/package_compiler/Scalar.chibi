@@ -3675,6 +3675,7 @@ ScalarTextNative :: (native: ResolvedNative) -> bool {
            NativeNameMatches(native, "extend") || NativeNameMatches(native, "slice") ||
            NativeNameMatches(native, "resize") || NativeNameMatches(native, "contains") ||
            NativeNameMatches(native, "insert") || NativeNameMatches(native, "reverse") ||
+           NativeNameMatches(native, "set_array_elem") ||
            NativeNameMatches(native, "remove_index") ||
            NativeNameMatches(native, "text_bytes") || NativeNameMatches(native, "text_from_bytes");
 }

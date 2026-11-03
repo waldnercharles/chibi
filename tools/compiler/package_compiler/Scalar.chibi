@@ -3966,7 +3966,7 @@ ScalarTextNative :: (native: ResolvedNative) -> bool {
            NativeNameMatches(native, "resize") || NativeNameMatches(native, "contains") ||
            NativeNameMatches(native, "insert") || NativeNameMatches(native, "reverse") ||
            NativeNameMatches(native, "set_array_elem") ||
-           NativeNameMatches(native, "remove_index") ||
+           NativeNameMatches(native, "remove_index") || NativeNameMatches(native, "remove_item") ||
            NativeNameMatches(native, "text_bytes") || NativeNameMatches(native, "text_from_bytes");
 }
 // The text natives of `natives`, each with its ports at their place among

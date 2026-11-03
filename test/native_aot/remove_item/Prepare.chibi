@@ -1,0 +1,92 @@
+package equality_prepare
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import os "core:os"
+import strings "core:strings"
+
+Main :: () -> int {
+    args := os.Arguments();
+    if length(args) != 2 { return 2; }
+    template := os.ReadText(args[1]);
+    if template.error != nil { os.Print(strings.Concatenate(["cannot read equality template ", args[1]])); return 2; }
+    records: native.Record[] = [{first: 0, count: 2, identity: 0}, {first: 2, count: 3, identity: 0}, {first: 5, count: 3, identity: 0}];
+    fields := [native.ArrayType + abi.FloatStorage, abi.TextStorage, abi.IntStorage, abi.FloatStorage, native.ArrayType + native.RecordType, abi.IntStorage, abi.IntStorage, native.ArrayType + native.RecordType + 2];
+    labels := ["values", "label", "", "value", "values", "", "value", "children"];
+    nodes: native.SnapshotShapeNode[] = [
+        {kind: native.SnapshotScalar, type: abi.FloatStorage, extra: abi.ValueTag(abi.FloatStorage), first: 0, count: 0},
+        {kind: native.SnapshotScalar, type: abi.TextStorage, extra: abi.ValueTag(abi.TextStorage), first: 0, count: 0},
+        {kind: native.SnapshotArray, type: native.ArrayType + abi.FloatStorage, extra: 0, first: 0, count: 1},
+        {kind: native.SnapshotRecord, type: native.RecordType, extra: 0, first: 1, count: 2},
+        {kind: native.SnapshotArray, type: native.ArrayType + native.RecordType, extra: 0, first: 3, count: 1},
+        {kind: native.SnapshotUnion, type: native.RecordType + 1, extra: 0, first: 4, count: 3},
+        {kind: native.SnapshotVariant, type: 0, extra: 0, first: 0, count: 0},
+        {kind: native.SnapshotVariant, type: 0, extra: 0, first: 7, count: 1},
+        {kind: native.SnapshotVariant, type: 0, extra: 0, first: 8, count: 1},
+        {kind: native.SnapshotUnion, type: native.RecordType + 2, extra: 0, first: 9, count: 2},
+        {kind: native.SnapshotVariant, type: 0, extra: 0, first: 11, count: 1},
+        {kind: native.SnapshotVariant, type: 0, extra: 0, first: 12, count: 1},
+        {kind: native.SnapshotArray, type: native.ArrayType + native.RecordType + 2, extra: 0, first: 13, count: 1},
+        {kind: native.SnapshotScalar, type: abi.IntStorage, extra: abi.ValueTag(abi.IntStorage), first: 0, count: 0}];
+    edges: native.SnapshotShapeEdge[] = [
+        {name: "", target: 0}, {name: "values", target: 2}, {name: "label", target: 1}, {name: "", target: 3},
+        {name: "Empty", target: 6}, {name: "Value", target: 7}, {name: "Boxes", target: 8},
+        {name: "value", target: 0}, {name: "values", target: 4},
+        {name: "Leaf", target: 10}, {name: "Next", target: 11}, {name: "value", target: 13},
+        {name: "children", target: 12}, {name: "", target: 9}];
+    // The explicit metadata boundary admits aggregate find, while the
+    // established generic entry cannot authenticate an erased union layout.
+    code: native.Instruction[] = [
+        {op: native.Check, type: 0, output: 0, left: 0, right: 0, target: 0, literal: 0},
+        {op: native.Constant, type: native.ArrayType + native.RecordType, output: 0, left: 0, right: 0, target: 0, literal: 0},
+        {op: native.Constant, type: native.RecordType, output: 1, left: 0, right: 0, target: 0, literal: 0},
+        {op: native.ArrayContains, type: abi.IntStorage, output: 2, left: 0, right: 1, target: 4, literal: i64(native.RecordType)},
+        {op: native.Publish, type: abi.IntStorage, output: 0, left: 2, right: 0, target: 0, literal: 0},
+        {op: native.Return, type: 0, output: 0, left: 0, right: 0, target: 0, literal: 0}];
+    functions: native.Function[] = [{result: abi.IntStorage, first_parameter: 0, parameters: 0, first_slot: 0, slots: 3,
+        first_local: 0, locals: 0, first_code: 0, code: length(code), first_argument: 0, arguments: 0}];
+    slots := [native.ArrayType + native.RecordType, native.RecordType, abi.IntStorage];
+    tags := resize([i64(0)], length(fields));
+    source: native.Source = {file: "", directory: ""};
+    shapes: native.SnapshotShapes = {nodes: nodes, edges: edges, roots: []};
+    Rejected(native.EmitProgramTyped(abi.LinuxX64(), functions, [], slots, [], code, [], records, fields, tags, [],
+        source, [], [], []), "native array operation differs from its operands");
+    switch native.EmitValuesTyped(abi.LinuxX64(), functions, [], slots, [], code, [], records, fields, tags, [],
+        source, [], [], [], labels, shapes, true, false) {
+        case .Emitted(text): assert(text != "");
+        case .Rejected(instruction, message): os.Print(message); return 1;
+    }
+    for (variant in 0..<7) {
+        changed := code; search := changed[3]; changed_slots := slots;
+        if (variant == 0) { search.target = 0; }
+        if (variant == 1) { search.target = length(nodes) + 1; }
+        if (variant == 2) { search.target = 1; }
+        if (variant == 3) { search.literal = i64(abi.TextStorage); }
+        if (variant == 4) { search.type = abi.FloatStorage; changed_slots[2] = abi.FloatStorage; }
+        if (variant == 5) { search.right = 0; }
+        if (variant == 6) { search.target = 7; }
+        changed[3] = search;
+        Rejected(native.EmitValuesTyped(abi.LinuxX64(), functions, [], changed_slots, [], changed, [], records, fields, tags, [],
+            source, [], [], [], labels, shapes, true, false), "native array operation differs from its operands");
+    }
+    bad_edges := edges; bad := bad_edges[0]; bad.target = length(nodes); bad_edges[0] = bad;
+    Rejected(native.EmitValueEqualityRuntime(records, fields, labels, nodes, bad_edges, [3]), "snapshot edge has no target node");
+    Rejected(native.EmitValueEqualityRuntime(records, fields, labels, nodes, edges, [6]), "value equality root has no value shape");
+    switch native.EmitValueEqualityRuntime(records, fields, labels, nodes, edges, [3, 4, 5, 9]) {
+        case .Rejected(instruction, message): os.Print(message); return 1;
+        case .Emitted(text):
+            prefix := "%record0 = type { { i32, i32, ptr, ptr }, { ptr, i32, ptr } }\n%record1 = type { i32, float, { i32, i32, ptr, ptr } }\n%record2 = type { i32, i32, { i32, i32, ptr, ptr } }\n";
+            written := os.WriteText(args[0], strings.Concatenate([prefix, text, template.text]));
+            if written != nil { os.Print(strings.Concatenate(["cannot write equality module ", args[0]])); return 2; }
+    }
+    return 0;
+}
+
+Rejected :: (result: native.Result, expected: string) {
+    switch result {
+        case .Rejected(instruction, message):
+            if (message != expected) { os.Print(message); }
+            assert(message == expected);
+        case: assert(false, "malformed comparison metadata must not emit LLVM");
+    }
+}

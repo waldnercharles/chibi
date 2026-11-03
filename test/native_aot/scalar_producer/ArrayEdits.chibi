@@ -66,6 +66,26 @@ ArrayEditsProjection :: () {
     assert(method[1].kind == facts.DocumentRow && scalar.Validate(method) == "");
     shadow := CollectionRows("Main::()->int{return insert(2);}insert::(n:int)->int{return n;}", natives, ports);
     assert(shadow[1].kind == facts.DocumentRow && scalar.Validate(shadow) == "");
+
+    removed := Produced("package removed\nMain::()->int{values:int[]=[1,2,1];other:=remove_item(values,int(1));return length(other);}");
+    assert(removed[1].kind == facts.DocumentRow);
+    ValidateRows(removed, "");
+    without := ArrayEditOperation(removed, facts.ArrayWithoutItem);
+    RejectChanged(removed, [Changed(without, CountField, 1)], mismatch);
+    RejectChanged(removed, [Changed(without, CountField, 3)], mismatch);
+    RejectChanged(removed, [Changed(without - 1, TypeField, i64(facts.BoolType))], mismatch);
+    remove_ports := Ports();
+    for (native in natives) {
+        if (native.name == "remove_item") {
+            argument := remove_ports[native.first + 1]; argument.name = "Different"; remove_ports[native.first + 1] = argument;
+        }
+    }
+    bad_remove := CollectionRows("Main::()->int{a:int[]=[1];b:=remove_item(a,int(1));return length(b);}", natives, remove_ports);
+    assert(bad_remove[1].kind == facts.RejectionRow);
+    unused_remove := CollectionRows("Main::()->int{return 0;}", natives, remove_ports);
+    assert(unused_remove[1].kind == facts.DocumentRow && scalar.Validate(unused_remove) == "");
+    shadow_remove := CollectionRows("Main::()->int{return remove_item(2);}remove_item::(n:int)->int{return n;}", natives, remove_ports);
+    assert(shadow_remove[1].kind == facts.DocumentRow && scalar.Validate(shadow_remove) == "");
 }
 
 ArrayPlacesProjection :: () {

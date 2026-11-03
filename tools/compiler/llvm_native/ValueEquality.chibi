@@ -1,0 +1,146 @@
+package llvm_native
+
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Borrowed values stay alive and unchanged until the queue drains. One session
+// belongs to a single find operation; its scratch capacity is reused for every
+// candidate, then released. No compared value acquires an owner.
+ValueEqualityStorage :: () -> string {
+    return "{ { ptr, i32, i32, i32 }, { ptr, i32, i32, i32 } }";
+}
+ValueEqualitySession :: () -> string {
+    return strings.Concatenate([
+        "%chibi.value.equal = type ", ValueEqualityStorage(), "\n",
+        "define hidden void @chibi_value_equal.release(ptr %ctx, ptr %session) {\nentry:\n",
+        "  %pairs = getelementptr %chibi.value.equal, ptr %session, i32 0, i32 1\n",
+        "  call void @chibi_snapshot.queue.release(ptr %ctx, ptr %session)\n",
+        "  call void @chibi_value_pairs.release(ptr %ctx, ptr %pairs)\n  ret void\n}\n"
+    ]);
+}
+ValueEqualityScalar :: (node: SnapshotShapeNode, suffix: string, left: string, right: string,
+                        next: string) -> string {
+    type := TypeName(node.type);
+    out := [format_text("  %left.{} = load {}, ptr {}\n  %right.{} = load {}, ptr {}\n", suffix, type, left, suffix, type, right)];
+    if (node.type == abi.TextStorage) {
+        out.append(format_text("  %equal.{} = call i1 @chibi_value_equal.text({} %left.{}, {} %right.{})\n",
+                               suffix, type, suffix, type, suffix));
+    } else {
+        operation := "icmp eq";
+        if (abi.Floating(node.type)) { operation = "fcmp oeq"; }
+        out.append(format_text("  %equal.{} = {} {} %left.{}, %right.{}\n", suffix, operation, type, suffix, suffix));
+    }
+    out.append(format_text("  br i1 %equal.{}, label %{}, label %different\n{}:\n", suffix, next, next));
+    return strings.Join(out, "");
+}
+ValueEqualityField :: (shapes: SnapshotShapes, record: int, field: int, edge: SnapshotShapeEdge,
+                       suffix: string) -> string {
+    type := TypeName(record);
+    left := format_text("%left.place.{}", suffix);
+    right := format_text("%right.place.{}", suffix);
+    out := [format_text("  {} = getelementptr {}, ptr %left.at, i32 0, i32 {}\n", left, type, field),
+            format_text("  {} = getelementptr {}, ptr %right.at, i32 0, i32 {}\n", right, type, field)];
+    node := shapes.nodes[edge.target];
+    if (node.kind == SnapshotScalar) {
+        out.append(ValueEqualityScalar(node, suffix, left, right, strings.Concatenate(["after.", suffix])));
+    } else {
+        out.append(format_text("  call void @chibi_snapshot.queue.put(ptr %ctx, ptr %session, ptr {}, ptr {}, ptr @chibi_value_equal.step.{}, i32 1)\n",
+                               left, right, edge.target));
+    }
+    return strings.Join(out, "");
+}
+ValueEqualityStep :: (shapes: SnapshotShapes, index: int) -> string {
+    node := shapes.nodes[index];
+    type := TypeName(node.type);
+    out := [format_text("define internal i1 @chibi_value_equal.step.{}(ptr %ctx, ptr %session, ptr %left, ptr %right, i32 %count) {{\nentry:\n  br label %head\n", index),
+        "head:\n  %index = phi i32 [ 0, %entry ], [ %next, %step ]\n  %done = icmp eq i32 %index, %count\n  br i1 %done, label %equal, label %body\nbody:\n",
+        format_text("  %left.at = getelementptr {}, ptr %left, i32 %index\n  %right.at = getelementptr {}, ptr %right, i32 %index\n", type, type)];
+    if (node.kind == SnapshotScalar) {
+        out.append(ValueEqualityScalar(node, "value", "%left.at", "%right.at", "checked"));
+        out.append("  br label %step\n");
+    } else if (node.kind == SnapshotArray) {
+        array := abi.ArrayType();
+        out.append(format_text("  %left.value = load {}, ptr %left.at\n  %right.value = load {}, ptr %right.at\n", array, array));
+        out.append(format_text("  %left.length = extractvalue {} %left.value, 0\n  %right.length = extractvalue {} %right.value, 0\n", array, array));
+        out.append("  %same.length = icmp eq i32 %left.length, %right.length\n  br i1 %same.length, label %length, label %different\nlength:\n  %empty = icmp eq i32 %left.length, 0\n  br i1 %empty, label %step, label %find\nfind:\n");
+        out.append(format_text("  %left.data = extractvalue {} %left.value, 2\n  %right.data = extractvalue {} %right.value, 2\n", array, array));
+        out.append("  %pairs = getelementptr %chibi.value.equal, ptr %session, i32 0, i32 1\n");
+        out.append(format_text("  %seen = call i1 @chibi_value_pairs.seen(ptr %ctx, ptr %pairs, ptr %left.data, ptr %right.data, i32 {}, i32 %left.length)\n", index));
+        out.append("  br i1 %seen, label %step, label %queue\nqueue:\n");
+        out.append(format_text("  call void @chibi_snapshot.queue.put(ptr %ctx, ptr %session, ptr %left.data, ptr %right.data, ptr @chibi_value_equal.step.{}, i32 %left.length)\n  br label %step\n", shapes.edges[node.first].target));
+    } else if (node.kind == SnapshotRecord) {
+        for (field in 0..<node.count) {
+            out.append(ValueEqualityField(shapes, node.type, field, shapes.edges[node.first + field], format_text("field{}", field)));
+        }
+        out.append("  br label %step\n");
+    } else if (node.kind == SnapshotUnion) {
+        out.append(format_text("  %left.tag.at = getelementptr {}, ptr %left.at, i32 0, i32 0\n  %right.tag.at = getelementptr {}, ptr %right.at, i32 0, i32 0\n", type, type));
+        out.append("  %left.tag = load i32, ptr %left.tag.at\n  %right.tag = load i32, ptr %right.tag.at\n  %same.tag = icmp eq i32 %left.tag, %right.tag\n  br i1 %same.tag, label %variant, label %different\nvariant:\n  switch i32 %left.tag, label %invalid [\n");
+        for (variant in 0..<node.count) { out.append(format_text("    i32 {}, label %variant{}\n", variant, variant)); }
+        out.append("  ]\n");
+        field := 1;
+        for (ordinal in 0..<node.count) {
+            variant := shapes.nodes[shapes.edges[node.first + ordinal].target];
+            out.append(format_text("variant{}:\n", ordinal));
+            for (part in 0..<variant.count) {
+                out.append(ValueEqualityField(shapes, node.type, field, shapes.edges[variant.first + part], format_text("payload{}", field)));
+                field += 1;
+            }
+            out.append("  br label %step\n");
+        }
+        out.append("invalid:\n  call void @llvm.trap()\n  unreachable\n");
+    } else { assert(false, "variant groups are not independent comparison values"); }
+    out.append("step:\n  %next = add i32 %index, 1\n  br label %head\nequal:\n  ret i1 true\ndifferent:\n  ret i1 false\n}\n");
+    return strings.Join(out, "");
+}
+ValueEqualityRoot :: (index: int) -> string {
+    return strings.Concatenate([
+        format_text("define hidden i1 @chibi_value_equal.{}(ptr %ctx, ptr %session, ptr %left, ptr %right) {{\nentry:\n", index),
+        "  %pairs = getelementptr %chibi.value.equal, ptr %session, i32 0, i32 1\n",
+        "  call void @chibi_value_pairs.reset(ptr %pairs)\n",
+        format_text("  call void @chibi_snapshot.queue.put(ptr %ctx, ptr %session, ptr %left, ptr %right, ptr @chibi_value_equal.step.{}, i32 1)\n", index),
+        "  %equal = call i1 @chibi_snapshot.queue.drain(ptr %ctx, ptr %session, ptr %session)\n  ret i1 %equal\n}\n"
+    ]);
+}
+ValueEqualityModule :: (shapes: SnapshotShapes, roots: int[]) -> string {
+    wanted := resize([false], length(shapes.nodes));
+    exported := resize([false], length(shapes.nodes));
+    pending: int[] = [];
+    for (root in roots) {
+        exported[root] = true;
+        if (!wanted[root]) { wanted[root] = true; pending.append(root); }
+    }
+    at := 0;
+    while (at < length(pending)) {
+        node := shapes.nodes[pending[at]];
+        for (edge in node.first..<node.first + node.count) {
+            child := shapes.edges[edge].target;
+            if (!wanted[child]) { wanted[child] = true; pending.append(child); }
+        }
+        at += 1;
+    }
+    text := strings.ReplaceAll(TextEqual(), "@chibi_scalar.text_equal", "@chibi_value_equal.text");
+    out := [ValuePairsRuntime(), ValueEqualitySession(), text];
+    for (node, index in shapes.nodes) {
+        if (!wanted[index] || node.kind == SnapshotVariant) { continue; }
+        out.append(ValueEqualityStep(shapes, index));
+        if (exported[index]) { out.append(ValueEqualityRoot(index)); }
+    }
+    return strings.Join(out, "");
+}
+// The existing shape kinds and validator retain union alternatives through
+// native layout erasure. Roots select complete value nodes in this graph;
+// this fragment never reads or migrates retained state.
+pub EmitValueEqualityRuntime :: (records: Record[], fields: int[], labels: string[],
+                                 nodes: SnapshotShapeNode[], edges: SnapshotShapeEdge[], roots: int[]) -> Result {
+    shapes: SnapshotShapes = {nodes: nodes, edges: edges, roots: []};
+    error := SnapshotShapesValid(records, fields, labels, [], shapes);
+    if (error != "") { return Result.Rejected(-1, error); }
+    for (root in roots) {
+        if (!Index(root, length(nodes)) || nodes[root].kind == SnapshotVariant) {
+            return Result.Rejected(-1, "value equality root has no value shape");
+        }
+    }
+    if (length(roots) == 0) { return Result.Emitted(""); }
+    return Result.Emitted(strings.Concatenate([SnapshotQueueRuntime(), ValueEqualityModule(shapes, roots)]));
+}

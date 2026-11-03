@@ -1,0 +1,22 @@
+package equality_runtime
+foreign import comparison "@ARCHIVE@"
+foreign import libc "system:c"
+foreign comparison {
+    equality_probe :: (memory: rawptr) -> i32
+    equality_growth :: (count: i32) -> u64
+}
+foreign libc {
+    malloc :: (bytes: u64) -> rawptr
+}
+Main :: () -> int {
+    memory := malloc(1);
+    assert(memory != 0);
+    // The probe takes this allocation and releases it through its honest void ABI.
+    result := equality_probe(memory);
+    assert(result == 0, "structural equality preserves active values, IEEE rules and scratch lifetime");
+    small := equality_growth(2500);
+    large := equality_growth(10000);
+    assert(small > 0 && large >= small && large <= small * 5,
+        "four times deeper recursive values retain linear scratch growth and release it");
+    return 0;
+}

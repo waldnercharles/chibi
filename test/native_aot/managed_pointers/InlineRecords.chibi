@@ -1,0 +1,67 @@
+package managed_inline_records
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import os "core:os"
+
+Op :: (op: int, type: int, output: int, left: int, right: int, literal: i64) -> native.Instruction {
+    return {op: op, type: type, output: output, left: left, right: right, target: 0, literal: literal};
+}
+Emission :: (target: abi.Target) -> native.Result {
+    number := abi.IntStorage;
+    pointer := native.PointerType;
+    leaf := native.RecordType;
+    wrapper := leaf + 1;
+    reference := native.RefType + number;
+    // Make's pointer and leaf slots disappear on return. Before Main extracts
+    // either field, only its wrapper result can trace the cell through Leaf.
+    code := [Op(native.Check, 0, 0, 0, 0, 0),
+        Op(native.Call, wrapper, 0, 1, 0, 0),
+        Op(native.ManagedPoll, 0, 0, 0, 0, 0),
+        Op(native.Extract, leaf, 1, 0, wrapper, 1),
+        Op(native.Extract, pointer, 2, 1, leaf, 1),
+        Op(native.ManagedAddress, reference, 3, 2, 0, -123),
+        Op(native.Deref, number, 4, 3, 0, 0),
+        Op(native.Constant, number, 5, 0, 0, 7),
+        Op(native.Eq, number, 6, 4, 5, 0),
+        {op: native.Branch, type: 0, output: 0, left: 6, right: 0, target: 11, literal: 0},
+        Op(native.TypedFail, 0, 0, 0, 0, 4),
+        Op(native.Constant, number, 7, 0, 0, 0),
+        Op(native.Publish, number, 0, 7, 0, 0),
+        Op(native.Return, 0, 0, 0, 0, 0),
+        Op(native.Check, 0, 0, 0, 0, 0),
+        Op(native.Constant, number, 0, 0, 0, 7),
+        Op(native.ManagedNew, pointer, 1, 0, number, -123),
+        Op(native.Constant, leaf, 2, 0, 0, 0),
+        Op(native.Insert, leaf, 3, 2, 0, 0),
+        Op(native.Insert, leaf, 4, 3, 1, 1),
+        Op(native.Constant, wrapper, 5, 0, 0, 0),
+        Op(native.Constant, number, 6, 0, 0, 91),
+        Op(native.Insert, wrapper, 7, 5, 6, 0),
+        Op(native.Insert, wrapper, 8, 7, 4, 1),
+        Op(native.Publish, wrapper, 0, 8, 0, 0),
+        Op(native.Return, 0, 0, 0, 0, 0)];
+    functions: native.Function[] = [
+        {result: number, first_parameter: 0, parameters: 0, first_slot: 0, slots: 8,
+         first_local: 0, locals: 0, first_code: 0, code: 14, first_argument: 0, arguments: 0},
+        {result: wrapper, first_parameter: 0, parameters: 0, first_slot: 8, slots: 9,
+         first_local: 0, locals: 0, first_code: 14, code: 12, first_argument: 0, arguments: 0}];
+    slots := [wrapper, leaf, pointer, reference, number, number, abi.BoolStorage, number,
+              number, pointer, leaf, leaf, leaf, wrapper, number, wrapper, wrapper];
+    records: native.Record[] = [{first: 0, count: 2, identity: -700}, {first: 2, count: 2, identity: 0}];
+    source: native.Source = {file: "", directory: ""};
+    return native.EmitProgramTyped(target, functions, [], slots, [], code, [], records,
+        [number, pointer, number, leaf], [i64(-123), -124, 0, 0], [], source, [], [], []);
+}
+Main :: () -> int {
+    args := os.Arguments();
+    if (length(args) != 1) { return 2; }
+    target := abi.LinuxX64();
+    if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
+    switch Emission(target) {
+        case .Rejected(instruction, message): os.Print(message); return 1;
+        case .Emitted(text):
+            if (os.WriteText(args[0], text)) { return 2; }
+    }
+    return 0;
+}

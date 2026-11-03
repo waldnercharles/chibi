@@ -1,0 +1,93 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+InlineRootModule :: (records: native.Record[], fields: int[]) -> native.Result {
+    tags := resize([i64(0)], length(fields));
+    for record in records {
+        if (record.identity == 0) { continue; }
+        if (record.first < 0 || record.count < 0 || record.first > length(fields) || record.count > length(fields) - record.first) { continue; }
+        for field in record.first..<record.first + record.count { tags[field] = i64(field + 1); }
+    }
+    code := [Code(native.Constant, native.RecordType, 0, 0, 0, 0, 0),
+        Code(native.Constant, abi.IntStorage, 1, 0, 0, 0, 0),
+        Code(native.Publish, abi.IntStorage, 0, 1, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    source: native.Source = {file: "", directory: ""};
+    return native.EmitProgramTyped(abi.LinuxX64(), [Function(abi.IntStorage, 0, 0, 2, 0, length(code), 0, 0)],
+        [], [native.RecordType, abi.IntStorage], [], code, [], records, fields, tags, [], source, [], [], []);
+}
+@test
+InlineRootTracingClosesForwardChildDependencies :: () {
+    records: native.Record[] = [{first: 0, count: 2, identity: 0}, {first: 2, count: 1, identity: -700}];
+    text := Emitted(InlineRootModule(records, [abi.IntStorage, native.RecordType + 1, native.PointerType]));
+    assert(strings.Contains(text, "define internal void @chibi_managed.trace.record0("));
+    assert(strings.Contains(text, "define internal void @chibi_managed.trace.record1("));
+    assert(strings.Contains(text, "call void @chibi_managed.trace.record1(ptr %heap, ptr %field1)"));
+    assert(!strings.Contains(text, "@chibi_managed.layout1 ="), "a trace-only child needs no cell address validator");
+}
+@test
+InlineRootTracingSharesChildCodeRatherThanExpandingADag :: () {
+    records: native.Record[] = [];
+    fields: int[] = [];
+    for index in 0..<24 {
+        count := 2;
+        if (index == 23) { count = 1; }
+        records.append({first: length(fields), count: count, identity: 0});
+        if (count == 1) { fields.append(native.PointerType); }
+        else { fields.extend([native.RecordType + index + 1, native.RecordType + index + 1]); }
+    }
+    text := Emitted(InlineRootModule(records, fields));
+    assert(strings.Count(text, "define internal void @chibi_managed.trace.record") == 24);
+    assert(strings.ByteLength(text) < 60000, "shared type edges must not expand all inline leaf paths");
+}
+@test
+InlineRootsKeepBackingAndViewDomainsClosed :: () {
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 2, identity: 0}];
+    for unsupported in [abi.TextStorage, native.ArrayType + abi.IntStorage, native.ArrayType + native.PointerType,
+                        native.ViewType, native.MapOf(abi.IntStorage, abi.IntStorage)] {
+        Rejects(InlineRootModule(records, [native.RecordType + 1, native.PointerType, unsupported]),
+            "native managed pointer aggregate roots require scalar or pointer-only inline records");
+    }
+    // Existing direct optional views retain their own separately traced rule.
+    Emitted(InlineRootModule([{first: 0, count: 2, identity: 0}], [abi.IntStorage, native.ViewType]));
+}
+@test
+InlineRootValidationPrecedesEveryChildIndex :: () {
+    malformed_records: native.Record[] = [{first: -1, count: 1, identity: 0}, {first: 0, count: -1, identity: 0},
+                                         {first: 0, count: 2147483647, identity: 0}];
+    for malformed in malformed_records {
+        Rejects(InlineRootModule([malformed], [native.PointerType]), RecordLayout());
+    }
+    Rejects(InlineRootModule([{first: 0, count: 1, identity: 0}], [native.RecordType + 1]), RecordLayout());
+    Rejects(InlineRootModule([{first: 0, count: 1, identity: 0}, {first: 1, count: 2, identity: 0}],
+        [native.RecordType + 1, native.RecordType, native.PointerType]), RecordLayout());
+    // Arrays break by-value cycles, but cannot turn a GC graph into an inline root.
+    Rejects(InlineRootModule([{first: 0, count: 2, identity: 0}], [native.ArrayType + native.RecordType, native.PointerType]),
+        "native managed pointer aggregate roots require scalar or pointer-only inline records");
+}
+
+@test
+InlineRootTracingDoesNotGrantCellOrProjectionIdentity :: () {
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}];
+    fields := [native.PointerType];
+    operations := [Code(native.ManagedNew, native.PointerType, 2, 0, native.RecordType, 0, 17),
+                   Code(native.ManagedProject, native.PointerType, 2, 1, native.RecordType, 0, 17)];
+    errors := ["native managed cell initializer differs from its scalar type",
+               "native managed projection differs from its typed record field"];
+    for index in 0..<length(operations) {
+        code := [Code(native.Constant, native.RecordType, 0, 0, 0, 0, 0),
+            Code(native.Constant, native.PointerType, 1, 0, 0, 0, 0), operations[index],
+            Code(native.Constant, abi.IntStorage, 3, 0, 0, 0, 0),
+            Code(native.Publish, abi.IntStorage, 0, 3, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+        source: native.Source = {file: "", directory: ""};
+        Rejects(native.EmitProgramTyped(abi.LinuxX64(), [Function(abi.IntStorage, 0, 0, 4, 0, length(code), 0, 0)],
+            [], [native.RecordType, native.PointerType, native.PointerType, abi.IntStorage], [], code, [],
+            records, fields, [i64(0)], [], source, [], [], []), errors[index]);
+    }
+    // The nested wrapper is a stack root, not a newly projectable cell layout.
+    records = [{first: 0, count: 1, identity: -900}, {first: 1, count: 1, identity: -700}];
+    Rejects(InlineRootModule(records, [native.RecordType + 1, native.PointerType]),
+        "native managed record metadata requires scalar or pointer fields");
+}

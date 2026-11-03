@@ -48,12 +48,14 @@ done
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$root/test/native_aot/managed_pointers/source/Callbacks.chibi" --entry Failure \
     --output "$work/CallbackFailure.ll" --emit-llvm --target "$triple"
-"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
-    --source "$root/test/native_aot/managed_pointers/PatternRows.chibi" --entry Main \
-    --output "$work/pattern-rows" --llvm "$llvm" --target "$triple" --jobs 1
-"$work/pattern-rows" "$work/PatternRows.ll"
+for name in PatternRows InlineRecords; do
+    "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+        --source "$root/test/native_aot/managed_pointers/$name.chibi" --entry Main \
+        --output "$work/$name-emitter" --llvm "$llvm" --target "$triple" --jobs 1
+    "$work/$name-emitter" "$work/$name.ll"
+done
 "$work/source-probe" --callbacks "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
-    "$work/Callbacks.ll" "$work/CallbackPointerless.ll" "$work/Tasks.ll" "$work/PatternRows.ll"
+    "$work/Callbacks.ll" "$work/CallbackPointerless.ll" "$work/Tasks.ll" "$work/PatternRows.ll" "$work/InlineRecords.ll"
 "$work/source-probe" --callbacks --assertion "$work" "$llvm" "$root/test/native_aot/managed_pointers/SourceAudit.ll" \
     "$work/CallbackFailure.ll"
 

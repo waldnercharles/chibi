@@ -120,7 +120,9 @@ Main :: () -> int {
         "call void @managed_runtime.visit(ptr %heap, ptr %at)");
     start := strings.Concatenate([work, "/native-start.ll"]);
     if (os.WriteText(start, link.ManagedProgramContext(link.ProgramStart(target.triple, false, true, false)))) { return 2; }
-    for (mode in ["positive", "persistent", "wrong_tag", "wrong_storage", "wrong_range", "nil", "wrong_owner", "array_owner", "epoch_wrap"]) {
+    for (mode in ["positive", "persistent", "typed_layout", "untraced_layout", "bad_layout_storage", "bad_layout_identity", "bad_layout_root",
+                  "wrong_tag", "wrong_storage", "wrong_range", "nil", "wrong_owner", "array_owner", "epoch_wrap",
+                  "code_underflow", "code_overflow", "no_layout_drop"]) {
         module := format_text("{}/native-{}.ll", work, mode);
         body := format_text("\ndefine i32 @managed_source.entry(ptr %ctx) {{\n  %native = call i32 @managed_native.entry(ptr %ctx)\n  %runtime = call i32 @managed_runtime.{}(ptr %ctx)\n  %result = or i32 %native, %runtime\n  ret i32 %result\n}}\n", mode);
         if (os.WriteText(module, strings.Concatenate([text, fixture.text, body, audit.text]))) { return 2; }
@@ -136,10 +138,13 @@ Main :: () -> int {
             if (host.Link(plan)) { return 1; }
             result := os.Capture([output]);
             valid := result.status == 0;
-            if (mode != "positive" && mode != "persistent" && mode != "epoch_wrap") {
+            trapped := mode == "epoch_wrap" || mode == "code_underflow" || mode == "code_overflow" || mode == "no_layout_drop";
+            if (mode != "positive" && mode != "persistent" && mode != "typed_layout" && mode != "untraced_layout" && !trapped) {
                 valid = result.status == 134 && strings.Contains(result.stderr, "native failure: another failure");
             }
-            if (mode == "epoch_wrap") { valid = result.status != 0; }
+            // Capture preserves negative signals; some runners encode 128+sig.
+            // LLVM trap is SIGILL/SIGTRAP, distinct from audit99 or failure134.
+            if (trapped) { valid = result.status == -4 || result.status == -5 || result.status == 132 || result.status == 133; }
             if (!valid) { os.Print(format_text("managed native {} O{} status{} {}{}", mode, level, result.status, result.stdout, result.stderr)); return 1; }
             os.Print(format_text("PASS managed native {} O{}", mode, level));
             if (mode == "positive") { os.Print(result.stdout); }

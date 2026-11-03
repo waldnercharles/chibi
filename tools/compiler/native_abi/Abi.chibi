@@ -164,6 +164,11 @@ pub ValueType :: () -> string {
 // EXECUTION_NATIVE_TEXT, the type of a string the runtime is passed, after
 // ExportType's.
 TextTag: int : 12;
+// Native formatter-only summaries use length as an element/entry count.
+// They keep the 24-byte value layout, carry no backing pointer, and are not
+// accepted by the legacy C context or by an exported scalar signature.
+pub FormatArrayTag: int : 13;
+pub FormatMapTag: int : 14;
 // The type a runtime value of this storage records: ExportType's, or a
 // string's, or 0 when none carries it.
 pub ValueTag :: (storage: int) -> int {

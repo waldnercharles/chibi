@@ -1,0 +1,137 @@
+package asset_native_build
+
+import os "core:os"
+import strings "core:strings"
+import runtime "graph:asset_native_runtime"
+import paths "graph:install"
+import inputs "graph:asset_native_inputs"
+
+Join :: (parts: string[]) -> string { return strings.Concatenate(parts); }
+Tool :: (llvm: string, name: string) -> string {
+    suffix := "";
+    if (os.Platform() == "Windows") { suffix = ".exe"; }
+    return Join([llvm, "/", name, suffix]);
+}
+Run :: (command: string[]) -> bool {
+    status := os.Run(command);
+    if (status != 0) { os.Print(format_text("asset native: {} failed with status {}", command[0], status)); }
+    return status == 0;
+}
+
+// Include tool bytes in the before/after fence, but keep them out of the SDK
+// source receipt: consumers can install without the build machine's tools.
+InputDigest :: (root: string, driver: string, llvm: string, triple: string, sources: string) -> string {
+    chunks := [triple, sources];
+    inputs := [os.ProgramPath(), driver, Join([root, "/src/authoring/asset_compiler_host.h"])];
+    archive_tool := "llvm-ar";
+    if (strings.HasPrefix(triple, "x86_64-pc-windows-")) { archive_tool = "llvm-lib"; }
+    for (tool in ["opt", "llc", "llvm-link", archive_tool]) { inputs.append(Tool(llvm, tool)); }
+    for (path in inputs) {
+        canonical := os.RealPath(path);
+        if (canonical == "") { return ""; }
+        digest := os.HashFile(canonical);
+        if (digest.error != nil) { return ""; }
+        chunks.append(format_text("{}:{}{}", strings.ByteLength(path), path, digest.digest));
+    }
+    return os.HashText(Join(chunks));
+}
+
+Prepare :: (root: string, driver: string, llvm: string, triple: string, work: string) -> bool {
+    bundle := Join([work, "/compiler.ll"]);
+    if (!Run([driver, "--compiler", Join([root, "/tools/compiler"]), "--core", Join([root, "/packages/core"]),
+              "--source", Join([root, "/tools/compiler/asset_desktop/Compile.chibi"]), "--entry", "Compile",
+              "--target", triple, "--emit-llvm", "--output", bundle])) { return false; }
+    read := os.ReadText(bundle);
+    if (read.error != nil) { os.Print(Join(["asset native: cannot read ", bundle])); return false; }
+    pieces := strings.Split(read.text, "\n; chibi-piece\n");
+    modules: string[] = [];
+    for (piece, index in pieces) {
+        source := format_text("{}/piece-{}.ll", work, index);
+        optimized := format_text("{}/piece-{}.bc", work, index);
+        if (os.WriteText(source, piece) != nil ||
+            !Run([Tool(llvm, "opt"), "-passes=default<O2>,verify", source, "-o", optimized])) { return false; }
+        modules.append(optimized);
+    }
+    runtime_source := Join([work, "/runtime.ll"]);
+    runtime_object := Join([work, "/runtime.bc"]);
+    text := runtime.Module(root, triple);
+    if (text == "" || os.WriteText(runtime_source, text) != nil ||
+        !Run([Tool(llvm, "opt"), "-passes=default<O2>,verify", runtime_source, "-o", runtime_object])) { return false; }
+    modules.append(runtime_object);
+    combined := Join([work, "/combined.bc"]);
+    linked := [Tool(llvm, "llvm-link")];
+    linked.extend(modules);
+    linked.extend(["-o", combined]);
+    if (!Run(linked)) { return false; }
+    private := Join([work, "/private.bc"]);
+    if (!Run([Tool(llvm, "opt"), "-passes=internalize,globaldce,verify",
+              "-internalize-public-api-list=asset_compiler_compile_closure,asset_compiler_compile_closure_cached",
+              combined, "-o", private])) { return false; }
+    object := Join([work, "/compiler.o"]);
+    if (!Run([Tool(llvm, "llc"), "-O2", "-filetype=obj", "-relocation-model=pic", private, "-o", object])) { return false; }
+    archive := Join([work, "/compiler.a"]);
+    if (strings.HasPrefix(triple, "x86_64-pc-windows-")) {
+        return Run([Tool(llvm, "llvm-lib"), Join(["/OUT:", archive]), object]);
+    }
+    return Run([Tool(llvm, "llvm-ar"), "rcs", archive, object]);
+}
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 5) {
+        os.Print("usage: asset-native-build SOURCE_ROOT NATIVE_DRIVER LLVM_BIN TRIPLE OUTPUT_ARCHIVE");
+        return 2;
+    }
+    root := os.RealPath(arguments[0]);
+    driver := os.RealPath(arguments[1]);
+    llvm := os.RealPath(arguments[2]);
+    triple := arguments[3];
+    if (triple == "arm64-apple-macosx11.0.0") { triple = "aarch64-apple-darwin"; }
+    output := arguments[4];
+    parent := paths.Parent(output);
+    kind := os.Kind(output);
+    if (!os.IsDirectory(root) || !os.IsFile(driver) || !os.IsDirectory(llvm) || !paths.IsAbsolute(output) ||
+        (kind != os.KindNone && kind != os.KindFile) ||
+        (triple != "aarch64-apple-darwin" && triple != "x86_64-unknown-linux-gnu" && triple != "x86_64-pc-windows-msvc")) {
+        os.Print("asset native: expected existing tools and source root, supported triple, and absolute archive path");
+        return 2;
+    }
+    if (os.MakeDirectory(parent) != nil) { return 1; }
+    lock := Join([output, ".prepare"]);
+    if (os.Reserve(lock) != nil) {
+        os.Print(Join(["asset native: output is reserved; inspect ", lock, " before retrying"])); return 1;
+    }
+    sources := inputs.Sources(root);
+    before := "";
+    if (sources != "") { before = InputDigest(root, driver, llvm, triple, sources); }
+    temporary := os.TemporaryDirectory(lock);
+    written := false;
+    if (before != "" && temporary.error == nil) {
+        written = Prepare(root, driver, llvm, triple, temporary.path);
+        // The temporary directory is beside the output. One rename replaces
+        // the archive atomically; a failed build leaves the prior file intact.
+        if (written) {
+            archive := os.HashFile(Join([temporary.path, "/compiler.a"]));
+            header := os.HashFile(Join([root, "/src/authoring/asset_compiler_host.h"]));
+            if (archive.error != nil) { written = false; }
+            if (header.error != nil) { written = false; }
+            if (written) {
+                receipt := format_text("{{\"format\":1,\"target\":\"{}\",\"archive_sha256\":\"{}\",\"host_header_sha256\":\"{}\",\"source_sha256\":\"{}\"}}\n",
+                                       triple, archive.digest, header.digest, sources);
+                written = os.WriteText(Join([temporary.path, "/archive.json"]), receipt) == nil;
+            }
+            if (written && InputDigest(root, driver, llvm, triple, inputs.Sources(root)) != before) {
+                os.Print("asset native: compiler inputs changed during preparation"); written = false;
+            }
+            if (written) { written = os.Rename(Join([temporary.path, "/compiler.a"]), output) == nil; }
+            // A receipt publication failure leaves a mismatched pair. SDK
+            // admission checks both hashes before writing any destination.
+            if (written) { written = os.Rename(Join([temporary.path, "/archive.json"]), Join([output, ".json"])) == nil; }
+        }
+    } else { os.Print("asset native: cannot verify inputs or create private build directory"); }
+    cleaned := true;
+    if (temporary.error == nil) { cleaned = paths.RemoveTree(temporary.path); }
+    if (os.Remove(lock) != nil) { cleaned = false; }
+    if (!written || !cleaned) { os.Print("asset native: preparation or cleanup failed"); return 1; }
+    return 0;
+}

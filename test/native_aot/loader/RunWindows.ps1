@@ -48,6 +48,25 @@ try {
         & $watchProof $generationBuilder $root $llvmPath $hostProgram $running x86_64-pc-windows-msvc "$level"
         if ($LASTEXITCODE) { throw "Windows generation watch acceptance failed at O$level" }
         "PASS native Windows rejected source/entry/schema, accepted swaps, retained state, original task generation, cancellation, restart and DLL cleanup O$level"
+        $formatRun = "$work/format-O$level"
+        New-Item -ItemType Directory -Path $formatRun | Out-Null
+        & $compilerPath --compiler "$root/tools/compiler" --core "$root/packages/core" `
+            --source "$root/test/native_aot/text_format/Family.chibi" --shared --output "$formatRun/live-0.so" `
+            --llvm $llvmPath --target x86_64-pc-windows-msvc --level $level --jobs 2
+        if ($LASTEXITCODE) { throw "could not compile Windows family formatting at O$level" }
+        $formatProcess = $null
+        try {
+            $formatProcess = Start-Process -FilePath $hostProgram -WorkingDirectory $formatRun `
+                -RedirectStandardOutput "$formatRun/stdout.txt" -RedirectStandardError "$formatRun/stderr.txt" -PassThru
+            if (-not $formatProcess.WaitForExit(30000)) { throw "Windows family formatting exceeded its deadline at O$level" }
+            if ($formatProcess.ExitCode -ne 42) { throw "Windows family formatting failed at O$level with exit $($formatProcess.ExitCode)" }
+        } finally {
+            if ($null -ne $formatProcess) {
+                if (-not $formatProcess.HasExited) { $formatProcess.Kill($true); [void]$formatProcess.WaitForExit(5000) }
+                $formatProcess.Dispose()
+            }
+        }
+        "PASS native Windows family formatting and owned summaries O$level"
     }
     $completed = $true
 } finally {

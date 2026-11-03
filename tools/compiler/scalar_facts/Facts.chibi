@@ -158,7 +158,7 @@ package scalar_facts
 // then a start and a count, to give the string of those bytes, its start
 // clamped to the string and its count to the bytes after the start; and
 // TextFormat consumes the `count` most recent, at least one, a string format
-// then each argument, a number, bool or string of its own type, to give the
+// then each argument, a scalar/text value or an array/map descriptor, to give the
 // string format_text makes of them, which the runtime allocates. The
 // indexes, starts, counts and byte counts are ints. A fixed text row's
 // `literal` selects its source operand permutation through TextArgument;

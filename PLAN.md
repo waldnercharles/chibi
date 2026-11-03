@@ -9,6 +9,23 @@ independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
 ## Current checkpoint, 2 November
 
+The later composition `3e038edf1` adds explicit clock grant/context support,
+ordered array-place writes, managed-record image leases, and the private
+build-host test retirement. An experimental constructor-growth builder compiles
+that frozen source in 17.40 seconds. The resulting compiler passes 446 compiler
+tests in 24.90 seconds, the generation/family suite in 36.95, and array operations
+at O0/O2 in 14.84. This is a composed runtime check, not a new fixed-point claim;
+the constructor fix and public clock bridge are still being validated separately.
+
+`decffa729` restores binary-copy, nonempty publication and file-identity controls
+in the native OS suite, passing on macOS arm64 and Linux x64. Those controls
+caught Darwin accepting a same-directory exclusive rename; the native Publish
+path now rejects occupied destinations before its kernel-exclusive rename.
+`6a88590b3` retires the 53-case private build-host harness, its authored fixtures,
+selectors, implicit test seeds and test-driver dependency on private host objects.
+Graph/driver, native-runner, CI orchestration and C syntax checks pass. Explicit
+VM comparison and recovery remain, and `policy_worker` remains a graph fixture.
+
 The combined compiler/core source at `813b93875` reproduces between macOS
 stages three and four, SHA-256
 `74af3f632114846c54327550627450ac013da8a8c7befc58ac065d753232af75`.
@@ -22,9 +39,9 @@ product/platform acceptance remains open.
 This composition includes execution-family heaps and code leases, flat managed
 record cells, canonical array places and insert/reverse/replacement, lexical
 cleanup and union condition bindings, nested math writes, and linear inline
-record-layout validation. Shared record cells remain closed until their image
-counters are wired. Owned values across suspension and deep retained snapshots
-are still in progress.
+record-layout validation. The later `3e038edf1` composition wires shared record
+cells to their image counters and tests cyclic task roots across reloads.
+Owned values across suspension and deep retained snapshots are still in progress.
 
 The verified compiler permits retirement of the obsolete C compiler census,
 its VM transport, eleven embedded-source templates and sixty-six source-byte
@@ -41,7 +58,13 @@ failed on an outdated imported-attribute diagnostic expectation, corrected in
 platform module jobs received only cross-runners because the failed core build
 never produced their manifests; the artifact paths are correct. These failures
 do not constitute product acceptance. Windows self-host/product validation is
-still being followed.
+still being followed. Its Windows stages three and four do match at
+`a0b1cc5ec867c125e2b3315d3486c4ef72e6f85b1e87bfede70aff4c74820cfd`
+(114 and 113 seconds). The Windows asset consumer then failed SDK-relative
+service discovery with an unspecified program, although explicit-service and
+authored verifier checks passed. The authored facade replacement must pass that
+same relocation case. The later checkout-product step was cancelled by the next
+push; the job is not platform acceptance. CI `41563501452` is testing `d4451f6be`.
 
 `1a98be6cd` fixes a Linux heap overwrite in foreground process supervision.
 glibc writes a 152-byte signal action into buffers previously sized at 128

@@ -25,16 +25,20 @@ newline, then the message bytes. Status 2 reports a request or environment error
 on stderr and leaves existing outputs alone. The desktop caller owns fresh
 private paths for this protocol.
 
-`bridge.sh ASSET_COMPILER NATIVE_DRIVER LLVM_BIN C_COMPILER` builds a real C
-consumer against the desktop facade, process supervisor and support code.
-The consumer links no compiler host or VM. It moves the SDK prefix before
+`bridge.sh ASSET_COMPILER NATIVE_DRIVER LLVM_BIN C_COMPILER FACADE_ARCHIVE` links a real C
+consumer against the authored desktop facade archive. The C sources are test
+helpers for reading fixtures and checking their digest. The facade uses authored
+cache and process policy with an LLVM C ABI and OS boundary. It moves the SDK prefix before
 checking closure bytes, source diagnostics, shared quota exhaustion, cancellation,
-persistent cache hits and SDK-relative native service discovery. Its runtime
+persistent cache hits, streamed salts, nested callbacks, concurrent calls and
+SDK-relative native service discovery. Its runtime
 has an empty PATH and failing C compiler selections.
 
 On Windows, run `Bridge.ps1 -Compiler STAGE3/chibi.exe -Llvm LLVM_BIN` after
 native self-hosting. It locates clang-cl and the installed Visual Studio SDK
 through vswhere; the SDK environment belongs only to the C compiler process.
+It builds the same authored archive with the current native compiler, or accepts
+an existing archive with `-FacadeArchive`. Failed scratch directories are retained.
 The consumer embeds the SDK UTF-8 manifest and runs from a relocated path
 containing Unicode, with no C compilers or LLVM in its runtime PATH. Windows
 retains its existing behavior of compiling without persistent binary caching.

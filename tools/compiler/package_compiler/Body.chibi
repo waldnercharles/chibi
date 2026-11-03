@@ -2635,6 +2635,17 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     addressed := AddressedNames(forest, text, address_root,
                                 ScopedArguments(forest, text, callables, params, natives, aliases, callable.package,
                                                 address_root));
+    if (length(addressed) > 0) {
+        // Concrete generic parameters may hold inferred optional types that
+        // no source spelling declared. Seed only the values boxing needs.
+        for (index in 0..<callable.count) {
+            param := params[callable.first + index];
+            if (!param.reference && Holds(addressed, param.name)) {
+                EnsurePointer(table, {storage: param.storage, container: param.container, record: param.record},
+                              false, callable.package);
+            }
+        }
+    }
     begun := Prologue(forest, text, params, callable, aliases, key, solid, meaning, referenced, mutated, addressed, ops,
                       target);
     switch begun {

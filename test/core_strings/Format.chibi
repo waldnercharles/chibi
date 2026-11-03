@@ -1,6 +1,6 @@
 package core_strings
 
-// Fixed successful fallbacks from test/language/text_format.c.
+// Fixed successful fallbacks from the retired C formatter boundary cases.
 @test
 TextFormatRejectsWriteCountModifier :: () {
     value: int = 37;

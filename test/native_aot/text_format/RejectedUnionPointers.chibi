@@ -1,0 +1,9 @@
+package text_format_union_pointers
+
+Choice :: union { Empty | Pointer(value: ^int) }
+Main :: () -> int {
+    value := 7;
+    choices: Choice[] = [Choice.Pointer(&value)];
+    result := format_text("{}", choices);
+    return text_byte_length(result);
+}

@@ -6,6 +6,60 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <pthread.h>
+#endif
+
+typedef struct
+{
+    const char *request, *program;
+    unsigned calls;
+} reentrant_call;
+
+static bool nested_compile(void *user)
+{
+    reentrant_call *call = user;
+    if (++call->calls == 3) {
+        asset_compiler_options options = { .program = call->program,
+                                           .cache_directory = "" };
+        asset_compiler_diagnostic diagnostic;
+        size_t length;
+        unsigned char *bytes = asset_compiler_compile_closure(
+            call->request,
+            strlen(call->request),
+            &length,
+            &options,
+            &diagnostic
+        );
+        assert(bytes && length == 329 && !diagnostic.message[0]);
+        free(bytes);
+    }
+    return false;
+}
+
+#ifdef _WIN32
+static DWORD WINAPI parallel_compile(void *user)
+#else
+static void *parallel_compile(void *user)
+#endif
+{
+    reentrant_call *call = user;
+    asset_compiler_options options = { .program = call->program, .cache_directory = "" };
+    asset_compiler_diagnostic diagnostic;
+    size_t length;
+    unsigned char *bytes = asset_compiler_compile_closure(
+        call->request,
+        strlen(call->request),
+        &length,
+        &options,
+        &diagnostic
+    );
+    assert(bytes && length == 329 && !diagnostic.message[0]);
+    free(bytes);
+    return 0;
+}
 
 static bool cancel_after_start(void *user)
 {
@@ -62,7 +116,32 @@ int main(int argc, char **argv)
     options.user = &calls;
     bytes = asset_compiler_compile_closure(request, strlen(request), &length, &options, &diagnostic);
     assert(!bytes && !length && !strcmp(diagnostic.message, "The package compile was cancelled"));
+    reentrant_call nested = { .request = request, .program = argv[1] };
+    options.cancelled = nested_compile;
+    options.user = &nested;
+    bytes = asset_compiler_compile_closure(request, strlen(request), &length, &options, &diagnostic);
+    assert(bytes && length == 329 && !diagnostic.message[0] && nested.calls >= 3);
+    free(bytes);
     options.cancelled = NULL;
+    reentrant_call parallel = { .request = request, .program = argv[1] };
+#ifdef _WIN32
+    HANDLE first = CreateThread(NULL, 0, parallel_compile, &parallel, 0, NULL);
+    HANDLE second = CreateThread(NULL, 0, parallel_compile, &parallel, 0, NULL);
+    assert(first && second);
+    DWORD first_wait = WaitForSingleObject(first, 30000);
+    DWORD second_wait = WaitForSingleObject(second, 30000);
+    assert(first_wait == WAIT_OBJECT_0 && second_wait == WAIT_OBJECT_0);
+    BOOL first_closed = CloseHandle(first), second_closed = CloseHandle(second);
+    assert(first_closed && second_closed);
+#else
+    pthread_t first, second;
+    int first_started = pthread_create(&first, NULL, parallel_compile, &parallel);
+    int second_started = pthread_create(&second, NULL, parallel_compile, &parallel);
+    assert(!first_started && !second_started);
+    int first_joined = pthread_join(first, NULL),
+        second_joined = pthread_join(second, NULL);
+    assert(!first_joined && !second_joined);
+#endif
     bytes = asset_compiler_compile_closure_cached(
         request,
         strlen(request),
@@ -89,6 +168,23 @@ int main(int argc, char **argv)
     );
     assert(bytes && length == 329); /* POSIX hits do no compilation; Windows compiles again. */
     free(bytes);
+#ifndef _WIN32
+    /* The borrowed salt streams across multiple 64-KiB chunks without a
+     * concatenated request or salt allocation in the facade. */
+    char *salt = malloc(131074);
+    assert(salt);
+    memset(salt, 's', 131073);
+    salt[131073] = 0;
+    options.compile_budget = 0;
+    bytes = asset_compiler_compile_closure_cached(request, strlen(request), salt, &length, &options, &diagnostic);
+    assert(bytes && length == 329);
+    free(bytes);
+    options.compile_budget = 1;
+    bytes = asset_compiler_compile_closure_cached(request, strlen(request), salt, &length, &options, &diagnostic);
+    assert(bytes && length == 329);
+    free(bytes);
+    free(salt);
+#endif
     calls = 0;
     options.cancelled = cancel_during_cache_read;
     options.user = &calls;
@@ -133,6 +229,9 @@ int main(int argc, char **argv)
     options.program = NULL;
     bytes = asset_compiler_compile_closure(request, strlen(request), &length, &options, &diagnostic);
     assert(bytes && length == 329); /* SDK-relative service discovery. */
+    free(bytes);
+    bytes = asset_compiler_compile_closure(request, strlen(request), &length, NULL, &diagnostic);
+    assert(bytes && length == 329); /* NULL options use the same discovery. */
     free(bytes);
     options.program = argv[5];
     bytes = asset_compiler_compile_closure(request, strlen(request), &length, &options, &diagnostic);

@@ -12,17 +12,17 @@ ScalarPointerElement :: (types: TypeDecl[], record: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
     if (record < 0 || record >= length(types)) { return none; }
     declared := types[record];
-    if (declared.kind != PointerDecl || declared.value_container != 0) {
+    if (declared.kind != PointerDecl || (declared.value_container != 0 && declared.value_container != ArrayContainer)) {
         return none;
     }
-    if (declared.value_storage == StructStorage && declared.value_record >= 0 &&
+    if (declared.value_container == 0 && declared.value_storage == StructStorage && declared.value_record >= 0 &&
         types[declared.value_record].kind == RecordDecl) {
         return {storage: StructStorage, container: 0, record: declared.value_record};
     }
     if (declared.value_record != -1) { return none; }
     type := ScalarTypeOf(declared.value_storage);
     if (type < facts.IntType || type > facts.DoubleType) { return none; }
-    return {storage: declared.value_storage, container: 0, record: -1};
+    return {storage: declared.value_storage, container: declared.value_container, record: -1};
 }
 ScalarPointerType :: (types: TypeDecl[], record: int) -> int {
     if (ScalarPointerElement(types, record).storage == 0) { return 0; }
@@ -33,6 +33,9 @@ ScalarPointerType :: (types: TypeDecl[], record: int) -> int {
 // a nominal-only tag can permit a changed generation's layout.
 ScalarPointerTag :: (types: TypeDecl[], value: ValueType) -> i64 {
     nominal := SemanticTag(types, value);
+    if (value.container == ArrayContainer) {
+        return i64(wrap: binding.ID("native-managed-array-v1", format_text("{}", nominal)));
+    }
     if (value.storage == StructStorage && value.container == 0 && value.record >= 0) {
         return i64(wrap: binding.ID("native-managed-record-v1", format_text("{}:{}", nominal, types[value.record].layout)));
     }
@@ -120,7 +123,8 @@ ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables
         binding := names[found];
         scalar := binding.record == -1 && ScalarTypeOf(binding.storage) >= facts.IntType && ScalarTypeOf(binding.storage) <= facts.DoubleType;
         record := binding.storage == StructStorage && binding.record >= 0 && types[binding.record].kind == RecordDecl;
-        if (binding.place == ReferencePlace || binding.container != 0 || (!scalar && !record)) { return -1; }
+        array := scalar && binding.container == ArrayContainer;
+        if (binding.place == ReferencePlace || (binding.container != 0 && !array) || (!scalar && !record)) { return -1; }
         pointed: ValueType = {storage: binding.storage, container: binding.container, record: binding.record};
         return FindPointer(types, pointed, false);
     }
@@ -187,7 +191,9 @@ ScalarPointerAddress :: (forest: snapshot.SnapshotNode[], text: string, callable
     output := rows;
     address := ScalarAt(forest, node, facts.ManagedAddressRow, facts.PointerType, names[found].index, 0, "");
     shape := ScalarPointerElement(types, record);
-    if (shape.storage == StructStorage) { address.count = ScalarRecordType(types, shape.record); }
+    if (shape.storage == StructStorage || shape.container == ArrayContainer) {
+        address.count = ScalarValueType(types, shape.storage, shape.container, shape.record);
+    }
     address.literal = ScalarPointerTag(types, shape);
     output.append(address);
     return ScalarOperands.Built(output);
@@ -227,7 +233,7 @@ ScalarPointerAssigned :: (forest: snapshot.SnapshotNode[], text: string, callabl
     output := [ScalarAt(forest, value, facts.ReadRow, facts.PointerType, temporary, 0, "")];
     operator := ScalarArithmetic(CompoundOperator(Operator(forest, statement)));
     if (CompoundOperator(Operator(forest, statement)) != NoOperator) {
-        if (operator == 0 || shape.storage == BoolStorage) {
+        if (operator == 0 || shape.storage == BoolStorage || shape.container != 0) {
             return ScalarOperands.Failed(Diagnose(forest, statement, 0, "native pointer compound assignment requires a numeric operator"));
         }
         output.append(ScalarAt(forest, value, facts.ReadRow, facts.PointerType, temporary, 0, ""));

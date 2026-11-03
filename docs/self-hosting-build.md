@@ -68,6 +68,10 @@ describe those checkpoints. Use the current workflow above for default build,
 installation and recovery. The former first-host downloader and pin table are
 removed; their historical protocol descriptions below do not provide a recovery
 route. Native seeds own the current build entry.
+The private process harness and its `BuildWorkflow`, `BuildProcessFixture` and
+`BuildValueLifetime` sources are also retired. Their descriptions below record
+historical evidence; native OS, CLI and supervisor suites cover the surviving
+contracts described in [C test verdicts](c-test-verdicts.md).
 
 ### Recording proof
 

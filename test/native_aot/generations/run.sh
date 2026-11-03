@@ -550,4 +550,5 @@ rejected 'scalar proof supports only locals, assignments, asserts, if statements
     --emit-llvm --output "$work/array-growth-source.ll" --target "$triple" --jobs 1
 "$work/array-probe" "$work" "$llvm" "$root/test/native_aot/managed_values/Audit.ll" "$work/array-growth-source.ll"
 sh "$root/test/native_aot/generations/family.sh" "$compiler" "$llvm" "$level" "$host" "$work"
+sh "$root/test/native_aot/generations/snapshots.sh" "$compiler" "$llvm" "$level" "$host" "$work"
 echo 'native package generations: passed'

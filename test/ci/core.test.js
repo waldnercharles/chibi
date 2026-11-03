@@ -36,7 +36,7 @@ case "$1:$2" in
       printf '#!/bin/sh\\nexit 0\\n' > "build-release/sdk/$name"; chmod +x "build-release/sdk/$name"
     done ;;
   build:--build)
-    test "$CHIBI_BUILD_HOST" = build-release/sdk/chibi-build-host
+    test -z "\${CHIBI_BUILD_HOST:-}"
     test "$VERBOSE" = 1
     test -n "$CHIBI_BUILD_TIMINGS"
     mkdir -p build/test/tools build/test/language
@@ -45,7 +45,7 @@ case "$1:$2" in
     done ;;
   native-evidence:*) test -z "\${CHIBI_BUILD_TIMINGS:-}" ;;
   test:*)
-    test "$CHIBI_BUILD_HOST" = build-release/sdk/chibi-build-host
+    test -z "\${CHIBI_BUILD_HOST:-}"
     test "$CHIBI_TOOLS_BUILD_DIR" = build/test/tools
     test -z "\${CHIBI_BUILD_TIMINGS:-}"
     for last do :; done

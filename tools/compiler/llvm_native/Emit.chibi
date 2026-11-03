@@ -3505,8 +3505,8 @@ ModuleValues :: (target: abi.Target, functions: Function[], parameters: int[], s
     for (index in 0..<length(records)) {
         record := records[index];
         if (ManagedTraced(RecordType + index, managed_records.traced) &&
-            (!managed_records.flat[index] || record.identity == 0) && !ViewOptional(records, fields, RecordType + index, ViewType)) {
-            return Result.Rejected(-1, "native managed pointer aggregate roots require typed flat records");
+            !managed_records.traceable[index] && !ViewOptional(records, fields, RecordType + index, ViewType)) {
+            return Result.Rejected(-1, "native managed pointer aggregate roots require scalar or pointer-only inline records");
         }
         if (record.identity == 0) { continue; }
         // The explicit family adapter supplies a program owner and pins the

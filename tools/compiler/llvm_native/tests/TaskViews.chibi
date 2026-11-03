@@ -1,0 +1,44 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+
+WindowFrame :: (type: int, promise: bool = false) -> native.Result {
+    result := abi.IntStorage;
+    if (promise) { result = type; }
+    code := [Code(native.Constant, abi.IntStorage, 0, 0, 0, 0, 0),
+             Code(native.Publish, abi.IntStorage, 0, 0, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0),
+             Code(native.Argument, type, 0, 0, 0, 0, 0),
+             Code(native.Suspend, 0, 0, 0, 0, 0, 0),
+             Code(native.Constant, abi.IntStorage, 1, 0, 0, 0, 0),
+             Code(native.Publish, result, 0, 1, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    if (promise) { code[6] = Code(native.Publish, result, 0, 0, 0, 0, 0); }
+    functions := [Function(abi.IntStorage, 0, 0, 1, 0, 3, 0, 0), Function(result, 1, 1, 2, 3, 5, 0, 0)];
+    waiter := functions[1]; waiter.locals = 1; functions[1] = waiter;
+    fields := [abi.IntStorage, native.ViewType];
+    records: native.Record[] = [{first: 0, count: 2, identity: 0}];
+    if (type == native.RecordType + 1) {
+        fields.extend([abi.IntStorage, native.ViewType, abi.IntStorage]);
+        records.append({first: 2, count: 3, identity: 0});
+    }
+    return native.EmitProgram(abi.LinuxX64(), functions, [type], [abi.IntStorage, type, abi.IntStorage], [type], code, [],
+                              records, fields, [], {file: "", directory: ""}, [], [], []);
+}
+@test
+WaitingWindowsUseOnlyTheClosedFrameRootShapes :: () {
+    Emitted(WindowFrame(native.ViewType));
+    Emitted(WindowFrame(native.RecordType));
+    Rejects(WindowFrame(native.RefType + native.ViewType),
+            "native waiting parameters need scalar values; managed values and dependencies are not supported yet");
+    Rejects(WindowFrame(native.RecordType + 1),
+            "native managed pointer aggregate roots require scalar or pointer-only inline records");
+}
+@test
+WindowFramesDoNotAdmitWindowPromises :: () {
+    Rejects(WindowFrame(native.ViewType, true),
+            "native waiting results require a pointer-free value and program-owned cleanup");
+    Rejects(WindowFrame(native.RecordType, true),
+            "native waiting results require a pointer-free value and program-owned cleanup");
+}

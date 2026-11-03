@@ -1080,9 +1080,12 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
     }
     plain_references := false;
+    collector_references := false;
     for (type in slots) {
         plain_references = plain_references || (waiting[function] && TaskPlainReference(lifecycle, type));
-        if (waiting[function] && !TaskFrameValue(records, fields, lifecycle, managed_records, type, true, ProgramMode(mode) || family)) {
+        canonical := waiting[function] && (ProgramMode(mode) || family) && TaskCollectorArrayReference(lifecycle, type);
+        collector_references = collector_references || canonical;
+        if (waiting[function] && !canonical && !TaskFrameValue(records, fields, lifecycle, managed_records, type, true, ProgramMode(mode) || family)) {
             return Result.Rejected(-1, "native waiting frames cannot own managed values or pointers yet");
         }
         if (!Held(records, type)) {
@@ -1448,6 +1451,10 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     }
     if (plain_references) {
         error := TaskReferencesValid(lifecycle, slots, code, arguments, definitions);
+        if (error != "") { return Result.Rejected(base, error); }
+    }
+    if (collector_references) {
+        error := TaskCollectorReferencesValid(lifecycle, slots, code, definitions);
         if (error != "") { return Result.Rejected(base, error); }
     }
     if (waiting[function] && backing_references) {

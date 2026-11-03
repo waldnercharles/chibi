@@ -34,6 +34,22 @@ TaskFrameValue :: (records: Record[], fields: int[], layout: ValueLayout, manage
         (TaskFramePlain(layout, type - RefType) || type == RefType + PointerType || type == RefType + ArrayType + PointerType)) { return true; }
     return TaskFramePlain(layout, type);
 }
+// A canonical coroutine local is relocated with its frame. Only its direct
+// address may enter this new slot domain; backing/field/managed projections
+// and reference parameters/locals retain their separate lifetime rules.
+TaskCollectorArrayReference :: (layout: ValueLayout, type: int) -> bool {
+    return type >= RefType && type != RefType + ArrayType + PointerType &&
+           ValueCollectorArray(layout, type - RefType);
+}
+TaskCollectorReferencesValid :: (layout: ValueLayout, slots: int[], code: Instruction[], definitions: int[]) -> string {
+    for (slot in 0..<length(slots)) {
+        if (!TaskCollectorArrayReference(layout, slots[slot]) || definitions[slot] < 0) { continue; }
+        if (code[definitions[slot]].op != LocalAddress) {
+            return "native waiting collector array references require canonical frame locals";
+        }
+    }
+    return "";
+}
 // This new reference domain is transient: only an immediate managed payload
 // read, or write followed by its readback. No borrowed address survives a
 // callback, suspension, loop edge or replacement of its original owner.

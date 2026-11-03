@@ -535,9 +535,11 @@ pub ArrayPlaceGet: int : 20;
 pub ArrayInserted: int : 21;
 pub ArrayReversed: int : 22;
 // Native set_array_elem ignores an invalid index, for both function and method.
-// Bracket assignment keeps ArraySet and its checked-index failure.
+// Bracket assignment keeps ArraySet and its generic logical-place failure.
 pub ArrayReplaced: int : 23;
 pub ArrayReplace: int : 24;
+// Check a logical array place before RHS evaluation, producing only bool.
+pub ArrayPlaceCheck: int : 25;
 // A Local row whose `literal` is SwitchSubject holds the union a switch is on
 // when the switch is not on a variable, so each arm's bindings can read it
 // again. It has the switch statement's range, a Switch row of the same range

@@ -67,3 +67,15 @@ ArrayEditsProjection :: () {
     shadow := CollectionRows("Main::()->int{return insert(2);}insert::(n:int)->int{return n;}", natives, ports);
     assert(shadow[1].kind == facts.DocumentRow && scalar.Validate(shadow) == "");
 }
+
+ArrayPlacesProjection :: () {
+    rows := Produced("package places\nMain::()->int{values:int[]=[1];values[0]=2;return values[0];}");
+    ValidateRows(rows, "");
+    check := ArrayEditOperation(rows, facts.ArrayPlaceCheck);
+    mismatch := "scalar array operation differs from its operands";
+    RejectChanged(rows, [Changed(check, CountField, 1)], mismatch);
+    RejectChanged(rows, [Changed(check, CountField, 3)], mismatch);
+    RejectChanged(rows, [Changed(check, TypeField, i64(facts.IntType))], mismatch);
+    RejectChanged(rows, [Changed(check - 1, TypeField, i64(facts.BoolType))], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(check, ValueField, i64(facts.ArrayPlaceCheck + 1))], mismatch);
+}

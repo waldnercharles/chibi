@@ -302,6 +302,9 @@ CloneGraph :: (fixture: Fixture, name: string) -> string {
 // A wrong native compiler is rejected after staging, which is then removed.
 FailedStagedCompilerValidationRemovesOwnedStaging :: (fixture: Fixture) {
     clone := CloneGraph(fixture, "corrupt build");
+    // Empty scratch directories can outlive their source-side counterpart.
+    // They must not hide the later compiler identity rejection.
+    Make(Path([clone, "/share/chibi/compiler/removed-test-scratch/nested"]));
     output := Path([fixture.suite, "/corrupt output"]);
     compiler := Path([clone, "/sdk/chibi"]);
     removed := os.Remove(compiler);
@@ -344,13 +347,20 @@ StaleCompilerResourcesFailBeforeStaging :: (fixture: Fixture) {
 }
 
 UnexpectedCompilerResourcesFailBeforeStaging :: (fixture: Fixture) {
-    for (kind in ["directory", "link"]) {
+    for (kind in ["directory", "link", "authored file", "other file"]) {
         clone := CloneGraph(fixture, Path(["unexpected resource ", kind]));
         // This exists in the source tree as a non-authored file. Its name
         // cannot authorize an unrelated directory or an external symlink.
         extra := Path([clone, "/share/chibi/compiler/bootstrap.kdl"]);
         if (kind == "directory") { Make(extra); }
-        else { Link(fixture.checkout, extra); }
+        else if (kind == "link") { Link(fixture.checkout, extra); }
+        else {
+            extra = Path([clone, "/share/chibi/compiler/removed-test-scratch/nested"]);
+            Make(extra);
+            name := "unexpected.txt";
+            if (kind == "authored file") { name = "Unexpected.chibi"; }
+            Write(Path([extra, "/", name]), "unexpected staged input\n");
+        }
         output := Path([fixture.suite, "/unexpected output ", kind]);
         result := Install(fixture, fixture.checkout, clone, output);
         assert(result.status == 1 && Says(result, "sdk: graph compiler/core resources are missing or stale"), "extra resource kinds are refused");

@@ -98,5 +98,12 @@
     "checkpoint": "36506138dab6e97ccd9ebc99cd36e8b5eb96dcb3",
     "base_before_checkpoint": "4e5539676fb9d085b7bec26237114a45df9f9254",
     "status": "Previously pushed temporary producer. Run41627603178 last known active; not consumed."
+  },
+  {
+    "lane": "compile-ci-performance-archive",
+    "checkpoint": "fb6515433e6c26c16c2ce12a764ba04cbb79d6b7",
+    "tree": "27a8b97becea83424918040986bb45227df50223",
+    "branch": "codex/wip-compile-ci-performance-20261103",
+    "status": "Separate completed archival checkpoint;21 investigation tips and43,968 textual evidence files preserved. No new implementation or publication."
   }
 ]

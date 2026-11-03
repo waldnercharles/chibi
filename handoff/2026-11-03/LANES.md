@@ -12,3 +12,4 @@
 | record-array-views | `2efca40ede761c51171053e1e74aac91d9ebf33c` | yes |
 | held-retirement | `d570cf7ba2c9675c55c082399fae6dd123a99ac0` | previously committed |
 | linux-producer | `36506138dab6e97ccd9ebc99cd36e8b5eb96dcb3` | previously committed and pushed |
+| compile-ci-performance-archive | `fb6515433e6c26c16c2ce12a764ba04cbb79d6b7` | separately checkpointed and pushed |

@@ -182,3 +182,22 @@ Source snapshots/build binaries not copied into Git remain at those local paths;
 tracked source is recoverable from exact commits. No unrelated workspace,
 retired standalone examples/game repository or pre-existing untracked product
 proof directory was changed for this handoff.
+
+## Late-arriving performance/CI checkpoint
+
+The coordination chat completed its own checkpoint after the initial root push.
+Its exact commit `fb6515433e6c26c16c2ce12a764ba04cbb79d6b7` is retained as an
+additional archival parent of this branch, without changing root production code.
+Its handoff is available at
+https://github.com/waldnercharles/chibi/tree/codex/wip-compile-ci-performance-20261103/handoffs/2026-11-03-compile-ci-performance
+or via `git show fb6515433e:handoffs/2026-11-03-compile-ci-performance/`.
+
+That archive retains all21 investigation source tips, readable principal reports
+and a SHA-inventoried three-part102.97MB archive of43,968 textual evidence files.
+Large generated binaries/IR/process captures remain locally inventoried under
+`/Users/cwaldner/Personal/chibi/.coordination/compile-ci-costs-20261102/evidence`.
+Its first-parent production source remains bc6d971d. Last saved hosted producer
+snapshot was2026-11-03 12:35:24UTC: run41627603178/job125888813580 in progress.
+No later polling, cancellation, dispatch, release, pin changes or bridge trial
+occurred. The chat reports no work continuing. The14f approval remains recorded
+but unexecuted under the checkpoint-only instruction.

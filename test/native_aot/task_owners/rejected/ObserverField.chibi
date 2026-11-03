@@ -1,0 +1,4 @@
+package task_array_field
+Set :: struct { children: task[]; }
+Child :: () -> int { yield; return 7; }
+Main :: () -> int { saved: Set = {children: [Child()]}; for child in saved.children { cancel child; } return 0; }

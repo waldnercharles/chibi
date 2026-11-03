@@ -1,0 +1,4 @@
+package task_array_result
+Child :: () -> int { yield; return 7; }
+Worker :: () -> task[] { yield; return [Child()]; }
+Main :: () -> int { values := await Worker(); for child in values { cancel child; } return 0; }

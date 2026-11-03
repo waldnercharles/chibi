@@ -5817,6 +5817,9 @@ NativeTakes :: (types: TypeDecl[], expected: Value, value: Value) -> bool {
     if (expected.storage != value.storage || expected.container != value.container) {
         return false;
     }
+    // Task success metadata names a callable, including array elements.
+    // It has no nominal alias in the declaration table.
+    if (value.storage == TaskStorage) { return expected.record == value.record; }
     if ((expected.record >= length(types)) || (value.record >= length(types))) {
         return false;
     }

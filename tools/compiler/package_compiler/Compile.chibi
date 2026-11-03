@@ -3016,7 +3016,7 @@ ScalarValue :: (storage: int, wide: int) -> writer.Value {
 // array of records, like a record, names its type, and so does a handle of a
 // game type, such as an entity. A native type's header lists no fields.
 Header :: (storage: int, container: int, record: int, types: TypeDecl[], layouts: int[]) -> writer.Value {
-    if (record >= 0 && types[record].kind == CollectionDecl) {
+    if (storage != TaskStorage && record >= 0 && types[record].kind == CollectionDecl) {
         return SequenceHeader({storage: storage, container: container, record: record}, types);
     }
     if (container != 0) {

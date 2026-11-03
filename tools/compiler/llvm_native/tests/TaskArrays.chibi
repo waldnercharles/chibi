@@ -1,0 +1,87 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+ObserverArray :: (code: native.Instruction[], web: bool = false) -> native.Result {
+    target := abi.LinuxX64();
+    if (web) { target = abi.WebAssembly32(); }
+    array := native.ArrayType + native.TaskType;
+    return native.EmitProgram(target, [Function(abi.IntStorage, 0, 0, 8, 0, length(code), 0, 0)], [],
+        [array, native.TaskType, array, abi.IntStorage, array, native.TaskType, array, abi.IntStorage], [], code, [], [], [], [],
+        {file: "", directory: ""}, [], [], []);
+}
+ObserverArrayCode :: () -> native.Instruction[] {
+    array := native.ArrayType + native.TaskType;
+    return [Code(native.Constant, array, 0, 0, 0, 0, 0),
+        Code(native.Constant, native.TaskType, 1, 0, 0, 0, 0),
+        Code(native.ArrayPush, array, 2, 0, 1, 0, 1),
+        Code(native.Constant, abi.IntStorage, 3, 0, 0, 0, 0),
+        Code(native.ArraySet, array, 4, 2, 3, 1, 0),
+        Code(native.ArrayGet, native.TaskType, 5, 4, 3, 0, 0),
+        Code(native.ValueCopy, array, 6, 4, 0, 0, 0),
+        Code(native.ValueDrop, array, 0, 6, 0, 0, 0),
+        Code(native.ArrayDrop, array, 0, 4, 0, 0, 0),
+        Code(native.Constant, abi.IntStorage, 7, 0, 0, 0, 0),
+        Code(native.Publish, abi.IntStorage, 0, 7, 0, 0, 0),
+        Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+@test
+ObserverArraysKeepTheSchedulerAndCountPhysicalCopies :: () {
+    text := Emitted(ObserverArray(ObserverArrayCode()));
+    assert(strings.Contains(text, "define internal void @chibi_tasks.retain_range"));
+    assert(strings.Contains(text, "call void @chibi_tasks.retain_range(ptr %data, i32 %length)"));
+    assert(strings.Contains(text, "call void @chibi_tasks.release_range(ptr %data, i32 %length)"));
+    assert(strings.Contains(text, "define i64 @chibi_host_tasks_pending()"));
+    assert(strings.Contains(text, "define internal { i32, i32, ptr, ptr } @chibi_array.1039.copy"));
+    assert(strings.Contains(text, "inside4:\n  %incoming4 = load i64, ptr %s1\n  call void @chibi_tasks.retain(i64 %incoming4)\n  %unique4"));
+    code := ObserverArrayCode();
+    code[4].target = 3;
+    Rejects(ObserverArray(code), "native array operation differs from its operands");
+    code = ObserverArrayCode();
+    code[5] = Code(native.Check, 0, 0, 0, 0, 0, 0);
+    code[6] = Code(native.ValueCopy, native.TaskType, 5, 1, 0, 0, 0);
+    Rejects(ObserverArray(code), "native value lifecycle requires an array or managed aggregate operand");
+}
+@test
+NestedObserverArraysDemandHelpersWithoutDirectTaskInstructions :: () {
+    type := native.RecordType;
+    code := [Code(native.Constant, type, 0, 0, 0, 0, 0), Code(native.ValueCopy, type, 1, 0, 0, 0, 0),
+        Code(native.ValueDrop, type, 0, 1, 0, 0, 0), Code(native.Constant, abi.IntStorage, 2, 0, 0, 0, 0),
+        Code(native.Publish, abi.IntStorage, 0, 2, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}];
+    fields := [native.ArrayType + native.TaskType];
+    layout := native.ValueLayouts(records, fields);
+    assert(layout.valid[0] && layout.owned[0] && layout.backed[0]);
+    assert(!native.ValueLayouts(records, [native.TaskType]).valid[0]);
+    assert(!native.ValueCollectorCopyable(layout, native.TaskType));
+    assert(!native.TaskOwnedType(records, layout, native.MapOf(abi.IntStorage, native.ArrayType + native.TaskType)));
+    result := native.EmitProgram(abi.LinuxX64(), [Function(abi.IntStorage, 0, 0, 3, 0, length(code), 0, 0)], [],
+        [type, type, abi.IntStorage], [], code, [], records, fields, [], {file: "", directory: ""}, [], [], []);
+    text := Emitted(result);
+    assert(strings.Contains(text, "define internal void @chibi_tasks.release_range"));
+    assert(strings.Contains(text, "define i64 @chibi_host_tasks_pending()"));
+    assert(strings.Contains(text, "@chibi_array.1039.drop"));
+}
+@test
+TypedObserverArrayPromisesReuseTheArrayLifecycle :: () {
+    type := native.ArrayType + native.TaskType;
+    text := Emitted(MapPromise(type));
+    assert(strings.Contains(text, "%payload.copy2 = call { i32, i32, ptr, ptr } @chibi_array.1039.copy"));
+    assert(strings.Contains(text, "store { i32, i32, ptr, ptr } zeroinitializer, ptr %result0\n  call void @chibi_array.1039.drop"));
+}
+
+@test
+ObserverArrayRecordPromisesUseTheirExistingCopyDropClosure :: () {
+    type := native.ArrayType + native.TaskType;
+    text := Emitted(RecordPromise([type, abi.IntStorage, native.RecordType], RecordPromiseCode()));
+    assert(strings.Contains(text, "%payload.copy2 = call %record0 @chibi_value.32.copy"));
+    assert(strings.Contains(text, "store %record0 zeroinitializer, ptr %result0\n  call void @chibi_value.32.drop"));
+    assert(strings.Contains(text, "define internal void @chibi_tasks.release_range"));
+}
+
+@test
+ObserverArraysRequireTheExistingDesktopTaskRuntime :: () {
+    Rejects(ObserverArray(ObserverArrayCode(), true), "native WebAssembly tasks have no runtime yet");
+}

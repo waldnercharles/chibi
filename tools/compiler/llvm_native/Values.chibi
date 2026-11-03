@@ -47,7 +47,7 @@ pub ValueLayouts :: (records: Record[], fields: int[]) -> ValueLayout {
                 parents.append(parent);
                 next.append(heads[index]);
                 heads[index] = length(parents) - 1;
-            } else if (child != abi.TextStorage && abi.ScalarType(child) == "" && found.valid[parent]) {
+            } else if (!(type == ArrayType + TaskType) && child != abi.TextStorage && abi.ScalarType(child) == "" && found.valid[parent]) {
                 found.valid[parent] = false;
                 invalid.append(parent);
             }
@@ -94,7 +94,7 @@ pub ValueLayouts :: (records: Record[], fields: int[]) -> ValueLayout {
                         if (MapArrayValue(child)) { child = ElementType(records, child); }
                     }
                 }
-                supported := child == abi.TextStorage || abi.ScalarType(child) != "";
+                supported := type == ArrayType + TaskType || child == abi.TextStorage || abi.ScalarType(child) != "";
                 if (child >= RecordType && child < ArrayType) {
                     // Arrays in a collector-owned value carry typed backing
                     // roots. Map payloads retain their rootless domain.

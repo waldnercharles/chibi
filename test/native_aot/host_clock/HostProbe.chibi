@@ -1,0 +1,178 @@
+package clock_host_probe
+
+import abi "project:native_abi"
+import os "core:os"
+import target "core:target"
+
+foreign import fixture "@PROVIDER@"
+foreign fixture {
+    TestClockProviderAddress :: () -> rawptr
+    TestClockDomain :: (grant: u8[]) -> u64
+    TestClockAddress :: (memory: u8[]) -> rawptr
+    TestClockCalls :: (memory: u8[]) -> i64
+    TestClockCollector :: (memory: u8[], callback: rawptr) -> i32
+    TestClockHeapUsed :: (memory: u8[]) -> i64
+    TestClockConfigure :: (memory: u8[], nanoseconds: i64, increment: i64, status: i32, error: i32) -> i32
+}
+foreign import libc "system:c"
+foreign libc {
+    dlopen :: (path: cstring, flags: i32) -> rawptr
+    dlsym :: (image: rawptr, name: cstring) -> rawptr
+    dlclose :: (image: rawptr) -> i32
+}
+foreign {
+    chibi_clock_grant_init :: (grant: u8[], provider: rawptr, provider_state: rawptr) -> i32
+}
+when target.Os == target.Windows {
+    import windows "core:sys/windows"
+    Open :: (path: string) -> rawptr { return windows.OpenLibrary(path); }
+    Symbol :: (image: rawptr, name: string) -> rawptr { return windows.LibrarySymbol(image, name); }
+    Close :: (image: rawptr) -> bool { return windows.CloseLibrary(image); }
+} else {
+    when target.Os == target.Darwin {
+        Open :: (path: string) -> rawptr { return dlopen(path, 262); }
+    } else {
+        Open :: (path: string) -> rawptr { return dlopen(path, 2); }
+    }
+    Symbol :: (image: rawptr, name: string) -> rawptr { return dlsym(image, name); }
+    Close :: (image: rawptr) -> bool { return dlclose(image) == 0; }
+}
+Required :: (image: rawptr, name: string) -> rawptr {
+    address := Symbol(image, name);
+    assert(address != 0, "clock image exports the native embedding contract");
+    return address;
+}
+Bind :: (image: rawptr, grant: rawptr) -> int {
+    set: fn(grant: rawptr) -> i32 = Required(image, "chibi_host_set_clock");
+    return int(set(grant));
+}
+Read :: (image: rawptr, nanoseconds: i64, domain: u64, kind: int, code: int) -> int {
+    call: fn(nanoseconds: i64, domain: u64, kind: int, code: int) -> i32 = Required(image, "chibi_host_call_Reading");
+    return int(call(nanoseconds, domain, kind, code));
+}
+Zero :: (image: rawptr, name: string) -> int {
+    call: fn() -> i32 = Required(image, name);
+    return int(call());
+}
+Configure :: (memory: ^(u8[]), nanoseconds: i64, increment: i64, status: int, error: int) {
+    configured := TestClockConfigure(memory^, nanoseconds, increment, i32(status), i32(error));
+    assert(configured == 0);
+}
+Main :: () -> int {
+    args := os.Arguments();
+    if length(args) != 3 { return 2; }
+    first := Open(args[0]);
+    assert(first != 0);
+    second := Open(args[1]);
+    assert(second != 0 && second != first, "two images have separate native contexts");
+    provider := TestClockProviderAddress();
+    state_a := resize([u8(0)], 48);
+    state_b := resize([u8(0)], 48);
+    grant_a := resize([u8(0)], 24);
+    grant_b := resize([u8(0)], 24);
+    grant_platform := resize([u8(0)], 24);
+    invalid := resize([u8(0)], 24);
+    // These backings are kept unique and never resized after their addresses
+    // are borrowed. Every image closes before the owners leave this scope.
+    state_a_address := TestClockAddress(state_a);
+    state_b_address := TestClockAddress(state_b);
+    invalid_address := TestClockAddress(invalid);
+    initialized_a := chibi_clock_grant_init(grant_a, provider, state_a_address);
+    initialized_b := chibi_clock_grant_init(grant_b, provider, state_b_address);
+    initialized_platform := chibi_clock_grant_init(grant_platform, 0, 0);
+    assert(initialized_a == 0 && initialized_b == 0 && initialized_platform == 0);
+    domain_a := TestClockDomain(grant_a);
+    domain_b := TestClockDomain(grant_b);
+    assert(domain_a != 0 && domain_b != 0 && domain_a != domain_b);
+    grant_a_address := TestClockAddress(grant_a);
+    grant_b_address := TestClockAddress(grant_b);
+    grant_platform_address := TestClockAddress(grant_platform);
+    size: fn() -> i64 = Required(first, "chibi_host_family_size");
+    heap := resize([u8(0)], int(size()));
+    heap_address := TestClockAddress(heap);
+    for image in [first, second] {
+        version: fn() -> i64 = Required(image, "chibi_host_family_abi");
+        image_version := version();
+        assert(image_version == abi.ManagedFamilyABI);
+        adopt: fn(heap: rawptr) -> i32 = Required(image, "chibi_host_set_family");
+        adopted := adopt(heap_address);
+        assert(adopted == 0);
+        denied := Read(image, 0, 0, 1, 0);
+        mismatch := Zero(image, "chibi_host_call_Mismatch");
+        ambient := Zero(image, "chibi_host_call_Ambient");
+        assert(denied == 0 && mismatch == 0 && ambient == 0);
+        factory := Symbol(image, "chibi_clock_grant_init");
+        assert(factory == 0, "an image cannot own the domain factory");
+    }
+    initial_a := TestClockCalls(state_a);
+    initial_b := TestClockCalls(state_b);
+    assert(initial_a == 0 && initial_b == 0, "denied reads never call a provider");
+    Configure(&state_a, 9007199254740993, 0, 0, 5);
+    Configure(&state_b, 37, 0, 0, 5);
+    bound_a := Bind(first, grant_a_address);
+    read_a := Read(first, 9007199254740993, domain_a, 0, 0);
+    denied_b := Read(second, 0, 0, 1, 0);
+    bound_b := Bind(second, grant_b_address);
+    read_b := Read(second, 37, domain_b, 0, 0);
+    assert(bound_a == 0 && read_a == 0 && denied_b == 0 && bound_b == 0 && read_b == 0);
+    read_a_calls := TestClockCalls(state_a);
+    read_b_calls := TestClockCalls(state_b);
+    assert(read_a_calls == 1 && read_b_calls == 1);
+    if args[2] == "invalid" || args[2] == "negative" {
+        status := 3;
+        if args[2] == "negative" { status = -1; }
+        Configure(&state_a, 1, 0, status, 0);
+        discarded := Read(first, 0, 0, 0, 0);
+        failed := Zero(first, "chibi_host_failed");
+        assert(failed == 1, "invalid provider status asserts instead of manufacturing denial");
+        revoked_a := Bind(first, 0);
+        revoked_b := Bind(second, 0);
+        closed_a := Close(first);
+        closed_b := Close(second);
+        assert(revoked_a == 0 && revoked_b == 0 && closed_a && closed_b);
+        return 134;
+    }
+    bound_platform := Bind(first, grant_platform_address);
+    expected_platform := 0;
+    if target.Os == target.Windows { expected_platform = 2; }
+    platform: fn(expected: i32) -> i32 = Required(first, "chibi_host_call_Platform");
+    platform_result := platform(i32(expected_platform));
+    rebound := Bind(first, grant_a_address);
+    assert(bound_platform == 0 && platform_result == 0 && rebound == 0);
+    for status in [int(2), 1, 0] {
+        value: i64 = 0;
+        kind := 3;
+        code := 5;
+        if status == 1 { kind = 2; code = 0; }
+        else if status == 0 { value = -1; code = 34; }
+        Configure(&state_a, value, 0, status, 5);
+        checked := Read(first, 0, 0, kind, code);
+        assert(checked == 0);
+    }
+    Configure(&state_a, 9007199254740993, 7, 0, 0);
+    elapsed: fn(expected: i64) -> i32 = Required(first, "chibi_host_call_Elapsed");
+    difference := elapsed(7);
+    assert(difference == 0);
+    collector := Required(first, "chibi_host_family_collect");
+    attached := TestClockCollector(state_a, collector);
+    assert(attached == 0);
+    reentered := Zero(first, "chibi_host_call_Reentry");
+    assert(reentered == 0, "a provider may collect while its caller owns pointer arrays");
+    detached := TestClockCollector(state_a, 0);
+    collected := Zero(first, "chibi_host_family_collect");
+    used := TestClockHeapUsed(heap);
+    assert(detached == 0 && collected == 0 && used == 0);
+    revoked := Bind(first, 0);
+    rejected := Bind(second, invalid_address);
+    calls := TestClockCalls(state_a);
+    denied := Read(first, 0, 0, 1, 0);
+    unchanged := Read(second, 37, domain_b, 0, 0);
+    after_denied := TestClockCalls(state_a);
+    assert(revoked == 0 && rejected == 1 && denied == 0 && unchanged == 0 && after_denied == calls);
+    revoke_b := Bind(second, 0);
+    assert(revoke_b == 0);
+    closed_a := Close(first);
+    closed_b := Close(second);
+    assert(closed_a && closed_b);
+    return 0;
+}

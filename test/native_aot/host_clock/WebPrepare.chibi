@@ -1,0 +1,42 @@
+package native_driver
+
+import compiler "project:package_compiler"
+import facts "project:scalar_facts"
+import scalar "project:scalar_llvm"
+import abi "project:native_abi"
+import syntax "project:syntax_diagnostics"
+import route "project:driver_paths"
+import link "project:native_link"
+import os "core:os"
+import strings "core:strings"
+
+Main :: () -> int {
+    args := os.Arguments();
+    if length(args) != 2 { return 2; }
+    root := args[0];
+    work := args[1];
+    files := ["test/native_aot/host_clock/WebGuest.chibi", "packages/host/clock/Clock.chibi",
+              "packages/host/clock/Native.chibi", "packages/core/time/Time.chibi", "packages/core/target/Target.chibi"];
+    sources: string[] = [];
+    for file in files {
+        read := os.ReadText(strings.Concatenate([root, "/", file]));
+        if read.error != nil { return 2; }
+        sources.append(read.text);
+    }
+    paths := ["Main.chibi", "/host/clock/Clock.chibi", "/host/clock/Native.chibi", "/core/time/Time.chibi", "/core/target/Target.chibi"];
+    output := ModuleClock(["core", "host"], ["/core", "/host"], paths, sources,
+                                 "wasm32-unknown-emscripten", "Main", "");
+    switch output {
+        case .Rejected(message): os.Print(message); return 1;
+        case .Emitted(text):
+            pieces := strings.Split(text, "\n; chibi-piece\n");
+            for piece, index in pieces {
+                if os.WriteText(format_text("{}/program-{}.ll", work, index), piece) != nil { return 2; }
+            }
+    }
+    if os.WriteText(strings.Concatenate([work, "/adapter.ll"]), link.ClockWebAssemblyAdapter()) != nil { return 2; }
+    if os.WriteText(strings.Concatenate([work, "/factory.ll"]), strings.Concatenate([
+        "target triple = \"wasm32-unknown-emscripten\"\n", link.ClockHostRuntime("wasm32-unknown-emscripten")])) != nil { return 2; }
+    if os.WriteText(strings.Concatenate([work, "/format.ll"]), link.WebAssemblyContext()) != nil { return 2; }
+    return 0;
+}

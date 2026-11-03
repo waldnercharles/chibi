@@ -1,0 +1,51 @@
+package clock_web_guest
+
+import watch "host:clock"
+import time "core:time"
+
+foreign {
+    TestClockMode :: () -> i32
+    TestClockExpectedDomain :: () -> u64
+}
+
+Main :: () -> int {
+    mode := int(TestClockMode());
+    if mode == 7 {
+        earlier: time.Instant = {nanoseconds: 5, domain: 1};
+        later: time.Instant = {nanoseconds: 9, domain: 2};
+        elapsed := watch.Between(earlier, later);
+        if elapsed.error != nil {
+            kind := elapsed.error.kind;
+            code := elapsed.error.code;
+            assert(kind == watch.DomainMismatch && code == 0);
+            assert(time.Nanoseconds(elapsed.duration) == 0);
+            return 0;
+        }
+        assert(false, "different domains are not comparable");
+        return 1;
+    }
+    if mode == 9 {
+        text := format_text("clock {}", int(42));
+        values := [int(11), 42];
+        assert(text == "clock 42" && values[1] == 42);
+        return values[1];
+    }
+    reading := watch.Now();
+    if reading.error != nil {
+        kind := reading.error.kind;
+        code := reading.error.code;
+        assert(reading.instant.nanoseconds == 0 && reading.instant.domain == 0);
+        expected := watch.Failed;
+        expected_code := 5;
+        if mode == 0 { expected = watch.Denied; expected_code = 0; }
+        else if mode == 3 || mode == 6 { expected = watch.Unavailable; expected_code = 0; }
+        else if mode == 4 { expected_code = 68; }
+        assert(kind == expected && code == expected_code);
+        return 0;
+    }
+    assert(mode == 1, "an invalid provider status must fail before a result");
+    assert(reading.instant.nanoseconds == 9007199254740993);
+    expected_domain := TestClockExpectedDomain();
+    assert(reading.instant.domain == expected_domain);
+    return 0;
+}

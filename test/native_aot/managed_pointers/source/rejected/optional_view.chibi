@@ -1,0 +1,2 @@
+package optional_view
+Main :: () -> int { values: int[] = [1]; pointer := &values; selected := pointer.view(0..<1); cell := &selected; return 0; }

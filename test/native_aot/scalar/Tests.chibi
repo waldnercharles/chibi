@@ -433,7 +433,29 @@ ScalarForeignArgumentOrderIsBounded :: () {
     }
 }
 
+// Validating the first union must not trust a later declaration's count.
+// Records keeps that malformed head so ValidRecords can diagnose it.
+ScalarManagedOptionalChecksForwardPayloadExtent :: () {
+    original := TaskFacts(facts.CallPlain, false);
+    header := TaskFact(facts.UnionRow, 0, 0, 2, "optional", 0, 1);
+    header.literal = -700;
+    rows := [original[0], original[1], header,
+        TaskFact(facts.VariantRow, 0, 0, 0, "Nil", 0, 1),
+        TaskFact(facts.VariantRow, 0, 1, 1, "Some", 0, 1),
+        TaskFact(facts.MemberRow, facts.RecordType + 1, 0, 0, "value", 0, 1),
+        TaskFact(facts.RecordRow, 0, 0, 1, "Value", 0, 1),
+        TaskFact(facts.MemberRow, facts.IntType, 0, 0, "code", 0, 1),
+        TaskFact(facts.FunctionRow, facts.IntType, 0, 0, "Main", 1, 64),
+        TaskFact(facts.ReturnRow, 0, 0, 1, "", 2, 10),
+        TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 3, 4)];
+    assert(scalar.Validate(rows) == "");
+    for count in [int(-1), 0, 2147483647] {
+        assert(scalar.Validate(Changed(rows, 6, Count, count)) == "invalid managed optional cell layout");
+    }
+}
+
 pub Tests :: () -> int {
+    ScalarManagedOptionalChecksForwardPayloadExtent();
     ScalarForeignArgumentOrderIsBounded();
     ScalarReversedRemainderChecksFloatingOperands();
     ScalarPlainCallsCannotUseWaitingFunctions();

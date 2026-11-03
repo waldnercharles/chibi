@@ -88,3 +88,13 @@ entry requires at most 32 allocations; the current implementation uses 13.
 Fatal failure probes check their category with poisoned frees, while successful
 probes also require zero live allocations. Authored view fields, view containers,
 retained views and suspended view frames remain outside this admission.
+
+Optional numeric/bool values and flat numeric/bool record payloads can share
+managed cells. The optional tag and payload move together; nil replacement
+and scoped alias writes are visible through every pointer. The cell keeps the
+same 64-byte header and uses a complete optional nominal/layout identity.
+Its immutable validator exposes the whole payload; inline field projection
+keeps the existing flat-record rule. Backing owners and pointer/view edges
+inside optional cells remain outside this slice. The original four fallible
+pointer cases run at O0/O2, and the poisoned source proof checks escaped cells,
+early returns and forced collection with bounded peak allocation.

@@ -3278,11 +3278,14 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         if (!ProgramMode(mode) && !family) {
             return Result.Rejected(-1, "native managed record layouts require a standalone or execution-family owner");
         }
-        if (!managed_records.flat[index] || length(field_tags) == 0) {
+        if ((!managed_records.flat[index] && !managed_records.plain[index]) || length(field_tags) == 0) {
             return Result.Rejected(-1, "native managed record metadata requires scalar or pointer fields");
         }
-        for (field in record.first..<record.first + record.count) {
-            if (field_tags[field] == 0) { return Result.Rejected(-1, "native managed field identity is invalid"); }
+        whole := managed_records.plain[index] && field_tags[record.first] == 0;
+        if (managed_records.flat[index]) {
+            for (field in record.first..<record.first + record.count) {
+                if ((field_tags[field] == 0) != whole) { return Result.Rejected(-1, "native managed field identity is invalid"); }
+            }
         }
     }
     managed := ManagedRootTypes(parameters, managed_records.traced) || ManagedRootTypes(slots, managed_records.traced) ||
@@ -3792,7 +3795,9 @@ pub EmitProgram :: (target: abi.Target, functions: Function[], parameters: int[]
 }
 
 // Managed record programs retain stable pointee and field identities in a
-// parallel immutable table. Ordinary scalar/record callers need no metadata.
+// parallel immutable table. All-zero field tags on a plain numeric aggregate
+// expose only its whole cell payload; projectable fields require nonzero tags.
+// Ordinary scalar/record callers need no metadata.
 pub EmitProgramTyped :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
              code: Instruction[], arguments: int[], records: Record[], fields: int[], field_tags: i64[], texts: string[],
              source: Source, names: string[], lines: int[], columns: int[]) -> Result {

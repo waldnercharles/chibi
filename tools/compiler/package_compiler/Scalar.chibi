@@ -647,6 +647,8 @@ ScalarVariable :: (names: Name[], name: string) -> Name {
 ScalarRecordOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                    names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> int {
     value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.IndexExpression) &&
+        Is(forest, Field(forest, value, syntax.FieldIndex), syntax.RangeExpression)) { return -1; }
     if (Is(forest, value, syntax.AwaitExpression)) {
         awaited := Unparenthesized(forest, Field(forest, value, syntax.FieldValue));
         if (Is(forest, awaited, syntax.CallExpression)) {
@@ -938,6 +940,8 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
                          callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], operand: int, context: int) -> int {
     original := Unparenthesized(forest, operand);
     if (Is(forest, original, syntax.IndexExpression) || Is(forest, original, syntax.CallExpression)) {
+        range := ScalarArrayRange(forest, text, callables, params, names, types, members, callable.package, original);
+        if (range.operator != 0) { return UnionStorage; }
         view := ScalarViewOperation(forest, text, callables, params, names, types, members, callable.package, original);
         if (view.operation == facts.ViewMake || view.operation == facts.ViewSlice) { return UnionStorage; }
         if (view.operation == facts.ViewLength) { return IntStorage; }
@@ -964,7 +968,7 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         return 0;
     }
     if (Is(forest, node, syntax.BinaryExpression) && Operator(forest, node) == tk.Coalesce) {
-        return ScalarOptionalPrimitive(types, ScalarHeldUnion(forest, text, callables, params, names, types, members,
+        return ScalarCoalesceType(types, ScalarHeldUnion(forest, text, callables, params, names, types, members,
             callable.package, Field(forest, node, syntax.FieldLeft))).storage;
     }
     if (Is(forest, node, syntax.ForceUnwrapExpression)) {
@@ -1252,6 +1256,10 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (text_sequence.operation != 0) {
         return ScalarTextSequenceRows(forest, text, callables, params, callable, names, types, members, constants,
                                        node, text_sequence, rows);
+    }
+    range := ScalarArrayRange(forest, text, callables, params, names, types, members, callable.package, node);
+    if (range.operator != 0) {
+        return ScalarArrayRangeRows(forest, text, callables, params, callable, names, types, members, constants, node, range, rows);
     }
     if (Is(forest, node, syntax.IndexExpression)) {
         return ScalarIndexed(forest, text, callables, params, callable, names, types, members, constants, node, rows);
@@ -2092,6 +2100,10 @@ ScalarHeldUnion :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
     text_sequence := ScalarTextSequenceOf(forest, text, callables, params, names, types, members, package, value);
     optional_text := ScalarTextSequenceOptional(types, text_sequence.operation);
     if (optional_text >= 0) { return optional_text; }
+    range := ScalarArrayRange(forest, text, callables, params, names, types, members, package, value);
+    if (range.operator != 0) {
+        return FindOptional(types, ScalarArrayShape(forest, text, callables, params, names, types, members, package, range.array));
+    }
     if (Is(forest, value, syntax.OptionalMemberExpression)) {
         return ScalarOptionalFieldRecord(forest, text, callables, params, names, types, members, package, value);
     }

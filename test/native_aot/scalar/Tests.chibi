@@ -524,7 +524,59 @@ ScalarBorrowedRecordSummaryDoesNotAcquireFields :: () {
     }
 }
 
+ScalarArrayRangeAndCoalesceValidateTheirPayloads :: () {
+    source := TaskFacts(facts.CallPlain, false);
+    array := facts.ArrayType + facts.IntType;
+    optional := facts.RecordType;
+    rows := [source[0], source[1],
+             TaskFact(facts.UnionRow, 0, 0, 2, "optional", 0, 1),
+             TaskFact(facts.VariantRow, 0, 0, 0, "Nil", 0, 1),
+             TaskFact(facts.VariantRow, 0, 1, 1, "Some", 0, 1),
+             TaskFact(facts.MemberRow, array, 0, 0, "value", 0, 1),
+             TaskFact(facts.FunctionRow, facts.IntType, 0, 0, "Main", 1, 64),
+             TaskFact(facts.LocalRow, optional, 0, 4, "selected", 2, 12),
+             TaskFact(facts.ArrayRow, array, facts.ArrayNew, 0, "", 3, 4),
+             TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 4, 5),
+             TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 5, 6),
+             TaskFact(facts.ArrayRow, optional, facts.ArrayRange, 3, "", 6, 7),
+             TaskFact(facts.ReturnRow, 0, 0, 1, "", 13, 15),
+             TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 14, 15)];
+    assert(scalar.Validate(rows) == "");
+    expected := "scalar array operation differs from its operands";
+    assert(scalar.Validate(Changed(rows, 11, Count, 2)) == expected);
+    assert(scalar.Validate(Changed(rows, 11, LiteralValue, 1)) == expected);
+    assert(scalar.Validate(Changed(rows, 11, Type, facts.IntType)) == expected);
+    assert(scalar.Validate(Changed(rows, 9, Type, facts.DoubleType)) == expected);
+    assert(scalar.Validate(Changed(rows, 5, Type, facts.ArrayType + facts.StringType)) == expected);
+    coalesced := [rows[0], rows[1], rows[2], rows[3], rows[4], rows[5], rows[6],
+                  TaskFact(facts.LocalRow, array, 0, 3, "selected", 2, 12),
+                  TaskFact(facts.MakeRow, optional, 0, 0, "", 3, 4),
+                  TaskFact(facts.LogicalRow, array, facts.LogicalCoalesce, 1, "", 4, 5),
+                  rows[8], rows[12], rows[13]];
+    assert(scalar.Validate(coalesced) == "");
+    assert(scalar.Validate(Changed(coalesced, 9, Type, facts.ArrayType + facts.StringType)) ==
+           "scalar coalescing differs from its optional payload");
+    assert(scalar.Validate(Changed(coalesced, 10, Type, facts.ArrayType + facts.StringType)) ==
+           "scalar coalescing RHS differs from its result");
+    borrowed := [rows[0], rows[1], rows[2], rows[3], rows[4], rows[5], rows[6],
+                 TaskFact(facts.LocalRow, array, 0, 1, "fallback", 2, 4), rows[8],
+                 TaskFact(facts.LocalRow, array, 1, 3, "selected", 5, 12),
+                 TaskFact(facts.MakeRow, optional, 0, 0, "", 6, 7),
+                 TaskFact(facts.LogicalRow, array, facts.LogicalCoalesce, 1, "", 7, 8),
+                 TaskFact(facts.ReadRow, array, 0, 0, "", 8, 9), rows[12], rows[13]];
+    assert(scalar.Validate(borrowed) == "");
+    switch scalar.EmitProgramFor(abi.LinuxX64(), borrowed, "") {
+        case .Emitted(text): assert(strings.Contains(text, "@chibi_array.1030.copy"));
+        case: assert(false, "borrowed fallback retains its native array type");
+    }
+    switch scalar.EmitProgramFor(abi.LinuxX64(), rows, "") {
+        case .Emitted(text): assert(strings.Contains(text, "icmp slt i32"));
+        case: assert(false, "strict ranges lower through existing native operations");
+    }
+}
+
 pub Tests :: () -> int {
+    ScalarArrayRangeAndCoalesceValidateTheirPayloads();
     ScalarBorrowedRecordSummaryDoesNotAcquireFields();
     ScalarRecordSummariesValidateTheirOperands();
     ScalarManagedOptionalChecksForwardPayloadExtent();

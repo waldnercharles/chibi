@@ -611,6 +611,9 @@ pub ArrayPlaceCheck: int : 25;
 // A functional value with its first structurally equal element removed.
 // An absent element returns an independent array value. Inputs are array,item.
 pub ArrayWithoutItem: int : 27;
+// A strict half-open copy: array,start,end -> optional array. Invalid bounds
+// produce Nil without allocation; an empty valid range produces Some(empty).
+pub ArrayRange: int : 28;
 // An immediate nested-array place adds its saved outer index after the
 // canonical RefRow. Existing mutating operators still end the root assignment.
 pub NestedArrayPlace: int : -1;

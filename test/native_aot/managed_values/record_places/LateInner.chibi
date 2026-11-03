@@ -1,0 +1,4 @@
+package record_place_late_inner
+Entry :: struct { values: int[]; }
+Rhs :: (rows: ^(Entry[])) -> int { rows^ = [{values:[]}]; return 9; }
+Main :: () -> int { rows: Entry[] = [{values:[1]}]; rows[0].values[0] = Rhs(&rows); return 0; }

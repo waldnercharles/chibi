@@ -586,6 +586,7 @@ jobs:
             @{ name = 'remove-values'; source = 'test/native_aot/remove_item/Values.chibi' },
             @{ name = 'remove-ordering'; source = 'test/native_aot/remove_item/Ordering.chibi' },
             @{ name = 'remove-shadow'; source = 'test/native_aot/remove_item/Shadow.chibi' },
+            @{ name = 'nested-maps'; source = 'test/native_aot/map_programs/NestedContainers.chibi' },
             @{ name = 'sdk-paths'; source = 'test/bootstrap/fixtures/InstallPaths.chibi' },
             @{ name = 'library-loader'; source = 'test/native_aot/loader/Windows.chibi' }
           )

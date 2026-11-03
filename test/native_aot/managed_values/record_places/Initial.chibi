@@ -1,0 +1,4 @@
+package record_place_initial
+Entry :: struct { values: int[]; }
+Rhs :: () -> int { assert(false,"RHS evaluated"); return 9; }
+Main :: () -> int { rows: Entry[] = []; rows[0].values[0] = Rhs(); return 0; }

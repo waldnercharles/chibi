@@ -14,19 +14,59 @@ TaskFramePlain :: (layout: ValueLayout, type: int) -> bool {
     index := type - RecordType;
     return type < ArrayType && Index(index, length(layout.valid)) && layout.valid[index] && !layout.owned[index];
 }
-TaskFrameValue :: (records: Record[], layout: ValueLayout, type: int, observer: bool, owned: bool) -> bool {
+TaskFrameTraced :: (layout: ManagedRecordLayout, type: int) -> bool {
+    return type == PointerType || (ManagedTraced(type, layout.traced) && layout.flat[type - RecordType]);
+}
+TaskFrameValue :: (records: Record[], layout: ValueLayout, managed: ManagedRecordLayout, type: int, observer: bool, owned: bool) -> bool {
+    if (owned && TaskFrameTraced(managed, type)) { return true; }
     if (owned && TaskOwnedType(records, layout, type)) { return true; }
     if (owned && observer && type >= RefType && TaskOwnedType(records, layout, type - RefType)) { return true; }
     if (type == TaskType) { return observer; }
     if (type == PointerType || type == ArrayType + PointerType) { return true; }
     if (observer && type >= RefType &&
-        (abi.ScalarType(type - RefType) != "" || type == RefType + PointerType || type == RefType + ArrayType + PointerType)) { return true; }
+        (TaskFramePlain(layout, type - RefType) || type == RefType + PointerType || type == RefType + ArrayType + PointerType)) { return true; }
     return TaskFramePlain(layout, type);
 }
-TaskPromiseValue :: (records: Record[], layout: ValueLayout, type: int, owned: bool) -> bool {
-    return TaskFramePlain(layout, type) || (owned && TaskOwnedType(records, layout, type));
+// This new reference domain is transient: only an immediate managed payload
+// read, or write followed by its readback. No borrowed address survives a
+// callback, suspension, loop edge or replacement of its original owner.
+TaskPlainReference :: (layout: ValueLayout, type: int) -> bool {
+    return type >= RefType + RecordType && type < RefType + ArrayType && TaskFramePlain(layout, type - RefType);
 }
-TaskResultValid :: (records: Record[], fields: int[], slots: int[], layout: ValueLayout, owned: bool, item: Instruction) -> bool {
+TaskReferencesValid :: (layout: ValueLayout, slots: int[], code: Instruction[], arguments: int[], definitions: int[]) -> string {
+    failure := "native waiting record references require immediate managed payload access";
+    for (slot in 0..<length(slots)) {
+        if (!TaskPlainReference(layout, slots[slot]) || definitions[slot] < 0) { continue; }
+        first := definitions[slot] + 1;
+        if (code[definitions[slot]].op != ManagedAddress || first >= length(code)) { return failure; }
+        access := code[first];
+        if ((access.op != Deref && access.op != Poke) || access.left != slot) { return failure; }
+    }
+    for (pc in 0..<length(code)) {
+        item := code[pc];
+        if ((item.op == Jump || item.op == Branch) &&
+            (code[item.target].op == Deref || code[item.target].op == Poke) &&
+            TaskPlainReference(layout, slots[code[item.target].left])) { return failure; }
+        if (ReadsLeft(item.op) && TaskPlainReference(layout, slots[item.left])) {
+            first := definitions[item.left] + 1;
+            immediate := pc == first && (item.op == Deref || item.op == Poke);
+            readback := pc == first + 1 && code[first].op == Poke && item.op == Deref;
+            if (!immediate && !readback) { return failure; }
+        }
+        if ((ReadsRight(item.op) && TaskPlainReference(layout, slots[item.right])) ||
+            (ReadsTarget(item.op) && TaskPlainReference(layout, slots[item.target]))) { return failure; }
+        if (ReadsArguments(item.op)) {
+            for (index in 0..<ArgumentCount(item)) {
+                if (TaskPlainReference(layout, slots[arguments[item.right + index]])) { return failure; }
+            }
+        }
+    }
+    return "";
+}
+TaskPromiseValue :: (records: Record[], layout: ValueLayout, managed: ManagedRecordLayout, type: int, owned: bool) -> bool {
+    return TaskFramePlain(layout, type) || (owned && (TaskOwnedType(records, layout, type) || TaskFrameTraced(managed, type)));
+}
+TaskResultValid :: (records: Record[], fields: int[], slots: int[], layout: ValueLayout, managed: ManagedRecordLayout, owned: bool, item: Instruction) -> bool {
     record := item.type - RecordType;
     if (!Typed(slots, item.left, TaskType) || record < 0 || record >= length(records) ||
         item.literal != 0 || item.target < 0 || item.target > 1) { return false; }
@@ -34,7 +74,7 @@ TaskResultValid :: (records: Record[], fields: int[], slots: int[], layout: Valu
     count := 1;
     if (item.right != 0) { count = 2; }
     return shape.count == count && fields[shape.first] == abi.IntStorage &&
-           (item.right == 0 || (TaskPromiseValue(records, layout, item.right, owned) &&
+           (item.right == 0 || (TaskPromiseValue(records, layout, managed, item.right, owned) &&
                                fields[shape.first + 1] == item.right));
 }
 // The pending wait owns an observer until the scheduler has resumed this

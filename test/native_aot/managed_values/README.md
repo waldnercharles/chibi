@@ -85,3 +85,19 @@ starts from a newly shared copy. Source map copies
 share counted entries. Explicit native `MapCopy` retains its physical-clone
 contract; mapped mutation detaches and publishes the canonical map before
 borrowing its current array entry.
+
+`RecordArrayPlaces.chibi` mutates array fields inside authored record arrays
+through saved indices, by-value and scoped parameters, and callbacks replacing
+the outer array. It includes compound old-leaf reads, strings and record leaves.
+The full strict-range consumer in `array_operations/Ranges.chibi` also keeps its
+original `copy[0].values[0]` mutation.
+
+`RecordArrayWidth.chibi` keeps 64 sibling array owners live while making 4,096
+appends to one field. It allows at most 16 backing allocations per loop and
+at most 16 owner-helper entries for unique backing, or 160 after sharing. The
+last bound covers one detach of 65 child owners rather than work per append.
+Facts borrow the complete element only within a captured read or immediate
+mutation; they never keep an interior address across a source call. Retained
+roots, GC-bearing records and indexed foreign buffers remain explicitly gated.
+The `record_places` programs check initial and post-RHS failures, method
+argument order, wrong expected categories and unchanged rejected outputs.

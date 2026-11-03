@@ -10,7 +10,7 @@ case "$(uname -s)-$(uname -m)" in
     Linux-x86_64) triple=x86_64-unknown-linux-gnu ;;
     *) echo 'native map programs: unsupported test host' >&2; exit 2 ;;
 esac
-for name in Values Strings Iteration Records Effects Receivers ManagedRecords StringEffects ArrayPayload ArrayForeign Compound ArrayBacked ArrayValues Unions Optionals ArrayForeignPlace ForeignLoans ArrayCompound ArrayPlaces; do
+for name in Values Strings Iteration Records Effects Receivers ManagedRecords StringEffects ArrayPayload ArrayForeign Compound ArrayBacked ArrayValues Unions Optionals ArrayForeignPlace ForeignLoans ArrayCompound ArrayPlaces NestedContainers; do
     for level in 0 2; do
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$root/test/native_aot/map_programs/$name.chibi" --entry Main \
@@ -32,4 +32,20 @@ for name in MissingRecord UnionMissing ArrayMissing; do
     done
 done
 sh "$root/test/native_aot/map_programs/places.sh" "$compiler" "$llvm" "$work/places"
+for name in RecordMap NestedPointer TaskMaps; do
+    expected='record fields require a scalar, pointer, record, union or array of those types'
+    if [ "$name" = NestedPointer ]; then expected='scalar proof supports only number, bool and string values'; fi
+    if [ "$name" = TaskMaps ]; then expected='native waiting frames cannot own managed values or pointers yet'; fi
+    for level in 0 2; do
+        output=$work/rejected-$name-O$level
+        printf 'preserved' > "$output"
+        result=0
+        "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+            --source "$root/test/native_aot/map_programs/rejected/$name.chibi" --entry Main \
+            --output "$output" --llvm "$llvm" --target "$triple" --level "$level" --jobs 2 > "$output.log" 2>&1 || result=$?
+        test "$result" = 1
+        grep -F "$expected" "$output.log" >/dev/null
+        test "$(cat "$output")" = preserved
+    done
+done
 echo 'native map programs passed'

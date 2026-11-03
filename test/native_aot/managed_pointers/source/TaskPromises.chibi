@@ -1,0 +1,125 @@
+package managed_task_promises
+
+FieldValue :: struct { padding: i64; value: int; }
+Make :: (value: int) -> ^int { return &value; }
+Churn :: () { for index in 0..<3000 { discarded := Make(index); } }
+Original :: () -> ^int { value := 7; yield; return &value; }
+Read :: (value: ^int) -> int { return value^; }
+Ready :: () -> ^int { if false { yield } return Make(31); }
+FieldReady :: () -> ^int { value: FieldValue = {padding: 77, value: 29}; if false { yield } return &value.value; }
+Worker :: (value: int) -> ^int { yield; return Make(value); }
+Pass :: (value: ^int) -> ^int { yield; return value; }
+Nested :: () -> ^int { value := 23; return await Pass(&value); }
+ArrayCell :: () -> ^(int[]) { values: int[] = [4, 5]; yield; return &values; }
+TextCell :: () -> ^(string[]) {
+    bytes: u8[] = [65, 0, 66];
+    values: string[] = [text_from_bytes(bytes)];
+    yield
+    return &values;
+}
+OptionalValue :: () -> ^(int?) { value: int? = 7; return &value; }
+OptionalCell :: () -> ^(int?) { value: int? = 7; yield; return &value; }
+Nullable :: (present: bool) -> ^int? { yield; if present { return Make(9); } return nil; }
+Main :: () -> int {
+    original := Original();
+    await original
+    ready := Ready();
+    Churn();
+    immediate := await ready;
+    if immediate is Cancelled { return 8; }
+    else { assert(immediate^ == 31); }
+
+    projected := FieldReady();
+    Churn();
+    field := await projected;
+    if field is Cancelled { return 9; }
+    else { assert(field^ == 29); }
+
+    pending := Worker(42);
+    alias := pending;
+    yield
+    yield
+    // The worker has completed and unlinked its local roots. Before any join,
+    // its promise is the only root for the published cell.
+    Churn();
+    joined := await pending;
+    if joined is Cancelled { return 1; }
+    else {
+        pointer := joined;
+        Churn();
+        assert(Read(pointer) == 42);
+        pointer^ = 43;
+    }
+    again := await alias;
+    if again is Cancelled { return 2; }
+    else { assert(again^ == 43); }
+    repeated := await pending;
+    if repeated is Cancelled { return 3; }
+    else { assert(repeated^ == 43); }
+
+    direct := await Worker(19);
+    Churn();
+    assert(Read(direct) == 19);
+    nested := await Nested();
+    Churn();
+    assert(nested^ == 23);
+    stopped := Nested();
+    cancel stopped
+    stopped_result := await stopped;
+    assert(stopped_result is Cancelled);
+
+    array_cell := await ArrayCell();
+    text_cell := await TextCell();
+    Churn();
+    assert(length(array_cell^) == 2 && array_cell^[0] == 4);
+    saved := text_cell^[0];
+    text_cell^ = [];
+    Churn();
+    assert(text_byte_length(saved) == 3 && text_byte_at(saved, 2) == 66);
+
+    optional_value := OptionalValue();
+    optional_cell := await OptionalCell();
+    Churn();
+    assert(optional_value^ != nil && optional_cell^ != nil);
+    optional_cell^ = nil;
+    Churn();
+    assert(optional_cell^ == nil);
+
+    nullable := await Nullable(true);
+    Churn();
+    if nullable != nil { assert(nullable^ == 9); }
+    else { return 4; }
+    absent := await Nullable(false);
+    assert(absent == nil);
+
+    empty := Nullable(false);
+    yield
+    yield
+    Churn();
+    successful_nil := await empty;
+    if successful_nil is Cancelled { return 5; }
+    else { assert(successful_nil == nil); }
+    cancelled := Nullable(true);
+    cancel cancelled
+    failed := await cancelled;
+    assert(failed is Cancelled);
+
+    Worker(77);
+    yield
+    yield
+    Churn();
+
+    for index in 0..<64 {
+        // The result must be reclaimed on final observer release without
+        // leaving a persistent node pointing into the destroyed frame.
+        completed := Worker(index);
+        yield
+        yield
+        Churn();
+        result := await completed;
+        if result is Cancelled { return 6; }
+        else { assert(result^ == index); }
+    }
+    Churn();
+    return 0;
+}

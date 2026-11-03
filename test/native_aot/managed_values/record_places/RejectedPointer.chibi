@@ -1,0 +1,3 @@
+package record_place_pointer
+Entry :: struct { values: int[]; pointer: ^int; }
+Main :: () -> int { value:=1; rows: Entry[] = [{values:[1],pointer:&value}]; rows[0].values.append(2); return 0; }

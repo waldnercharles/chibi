@@ -1,0 +1,12 @@
+package nested_task_maps
+Worker :: () -> [string:int][] { yield; return [["a":7]]; }
+Main :: () -> int {
+ direct := await Worker();
+ task := Worker(); joined := await task;
+ if (joined is Cancelled) { return 1; } else {
+  rows := joined;
+  inner := rows[0]; inner["a"] = 9;
+  assert(rows[0]["a"] == 7 && direct[0]["a"] == 7 && inner["a"] == 9);
+ }
+ return 0;
+}

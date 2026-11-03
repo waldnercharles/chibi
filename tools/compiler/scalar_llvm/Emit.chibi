@@ -46,8 +46,8 @@ Scalar :: (type: int) -> bool {
 // Whether a record field or union payload may have `type`: a scalar or a
 // string.
 Stored :: (records: int[], type: int) -> bool {
-    // Nested maps and task observers need recursive ownership before admission.
-    return type != facts.TaskType && type < facts.MapType && Valued(records, type);
+    // Maps use the shared counted value graph; task observers remain closed.
+    return type != facts.TaskType && type < facts.ReferenceType && Valued(records, type);
 }
 // Whether the record or union of type RecordType + `from` holds the one of
 // type RecordType + `wanted` by value, directly or through others it holds by
@@ -845,7 +845,7 @@ KeepValue :: (managed: bool[], type: int, held: int, next: int) -> HeldValue {
     found: HeldValue = {code: [], slot_types: [], value: held};
     if (type == facts.StringType) {
         found.code.append(Op(native.TextRetain, abi.TextStorage, 0, held, 0, 0));
-    } else if (TrackedRecord(managed, type) || (type >= facts.ArrayType && type < facts.MapType)) {
+    } else if (TrackedRecord(managed, type) || (type >= facts.ArrayType && type < facts.ReferenceType)) {
         found.code.append(Op(native.ValueCopy, NativeType(type), next, held, 0, 0));
         found.slot_types.append(NativeType(type));
         found.value = next;
@@ -857,7 +857,7 @@ DropValue :: (managed: bool[], type: int, held: int) -> Drops {
     found: Drops = {code: [], slot_types: []};
     if (type == facts.StringType) {
         found.code.append(Op(native.TextRelease, abi.TextStorage, 0, held, 0, 0));
-    } else if (TrackedRecord(managed, type) || (type >= facts.ArrayType && type < facts.MapType)) {
+    } else if (TrackedRecord(managed, type) || (type >= facts.ArrayType && type < facts.ReferenceType)) {
         found.code.append(Op(native.ValueDrop, NativeType(type), 0, held, 0, 0));
     }
     return found;
@@ -1036,7 +1036,7 @@ MappedArrayChange :: (value: int) -> bool {
     return value >= facts.MapArrayPush && value <= facts.MapArrayResize;
 }
 MapGets :: (value: int) -> bool {
-    return value == facts.MapGet || value == facts.MapGetOptional;
+    return value == facts.MapGet || value == facts.MapGetOptional || value == facts.MapGetWrapped;
 }
 // The postfix operands of one map operator; -1 means no such operator.
 MapOperands :: (operand: facts.Row) -> int {
@@ -1054,7 +1054,7 @@ MapOperands :: (operand: facts.Row) -> int {
         return 3;
     }
     if (operand.value == facts.MapArrayLoan) { return 3; }
-    if ((operand.value >= facts.MapGet && operand.value <= facts.MapValueAt) || operand.value == facts.MapGetOptional) {
+    if ((operand.value >= facts.MapGet && operand.value <= facts.MapValueAt) || MapGets(operand.value)) {
         return 2;
     }
     return -1;
@@ -1115,6 +1115,12 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
     if (operand.value == facts.MapGetOptional && OptionalPayloadType(rows, records, value) == 0) { return mismatch; }
     if (operand.value == facts.MapArrayLoan && (operand.type != value || stack[base + 1] != mapped ||
         !Scalar(Element(records, value)) || Element(records, value) == facts.BoolType)) { return mismatch; }
+    if (operand.value == facts.MapGetWrapped) {
+        if (value < facts.RecordType || value >= facts.ArrayType || value - facts.RecordType >= length(records)) { return mismatch; }
+        head := records[value - facts.RecordType];
+        if (rows[head].kind != facts.RecordRow || rows[head].count != 1 || rows[head + 1].type < facts.MapType ||
+            rows[head + 1].type >= facts.ReferenceType || !Valued(records, rows[head + 1].type)) { return mismatch; }
+    }
     if (operand.value == facts.MapKeyAt && operand.type != key) {
         return mismatch;
     }
@@ -1148,14 +1154,23 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
 }
 
 // The only reference-valued prefix admitted for a projected mutation is its
-// assigned root, followed by inline field references. Arguments are already
-// captured values, so no callback can invalidate that chain before writeback.
+// assigned root, optionally a captured record-element index, then inline
+// field references. Arguments are captured values, so no callback can move
+// backing before this chain is consumed by the mutation.
 ArrayReferenceMember :: (rows: facts.Row[], records: int[], at: int, row: int) -> int {
     if (rows[at].kind != facts.AssignRow || row <= at + 2) { return 0; }
     first := rows[at + 1];
     if (first.kind != facts.RefRow || first.type != rows[at].type || first.value != rows[at].value || first.literal != 0) { return 0; }
     parent := first.type;
     next := at + 2;
+    if (next + 1 < row && rows[next].kind == facts.ReadRow &&
+        rows[next].type == facts.IntType && rows[next + 1].kind == facts.ArrayElementReferenceRow) {
+        selected := rows[next + 1];
+        if (Element(records, parent) != selected.type ||
+            (selected.literal != i64(facts.ArrayElementUnique) && selected.literal != i64(facts.ArrayElementMethod))) { return 0; }
+        parent = selected.type;
+        next += 2;
+    }
     while (next < row && rows[next].kind == facts.FieldReferenceRow) {
         field := rows[next];
         if (RecordMemberType(rows, records, parent, i64(field.value)) != field.type) { return 0; }
@@ -1243,12 +1258,17 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         }
         return "";
     }
+    array := 0;
+    if (operator == facts.ArrayPlaceCheck || operator == facts.ArrayPlaceGet || operator == facts.ArrayGet) {
+        array = stack[base];
+        if (operator != facts.ArrayGet && array >= facts.ReferenceType) { array -= facts.ReferenceType; }
+    }
     if (operator == facts.ArrayPlaceCheck) {
-        if (operand.type != facts.BoolType || Element(records, stack[base]) == 0 || stack[base + 1] != facts.IntType) { return mismatch; }
+        if (operand.type != facts.BoolType || Element(records, array) == 0 || stack[base + 1] != facts.IntType) { return mismatch; }
         return "";
     }
     if (operator == facts.ArrayGet || operator == facts.ArrayPlaceGet) {
-        if (operand.type >= facts.ArrayType || Element(records, stack[base]) != operand.type ||
+        if (operand.type >= facts.ArrayType || Element(records, array) != operand.type ||
             stack[base + 1] != facts.IntType) {
             return mismatch;
         }
@@ -1396,7 +1416,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                           operand.type >= facts.ReferenceType && ManagedValue(rows, records, operand.type - facts.ReferenceType, operand.literal);
         if ((!texted && operand.text != "") || (!Valued(records, operand.type) && !managed_borrow) || !Located(operand, starts, size) ||
             !Within(operand, scope) ||
-            (operand.kind != facts.LiteralRow && operand.kind != facts.RefRow && operand.kind != facts.MapRow && operand.kind != facts.ArrayRow && operand.kind != facts.CallRow && operand.kind != facts.FunctionAddressRow && operand.kind != facts.AwaitResultRow && operand.kind != facts.ForeignRow && operand.kind != facts.ManagedRow && operand.kind != facts.ManagedAddressRow && operand.kind != facts.ManagedFieldRow && operand.kind != facts.TextRow && operand.kind != facts.ViewRow && operand.literal != 0) ||
+            (operand.kind != facts.LiteralRow && operand.kind != facts.RefRow && operand.kind != facts.MapRow && operand.kind != facts.ArrayRow && operand.kind != facts.CallRow && operand.kind != facts.FunctionAddressRow && operand.kind != facts.AwaitResultRow && operand.kind != facts.ForeignRow && operand.kind != facts.ManagedRow && operand.kind != facts.ManagedAddressRow && operand.kind != facts.ManagedFieldRow && operand.kind != facts.ArrayElementReferenceRow && operand.kind != facts.TextRow && operand.kind != facts.ViewRow && operand.literal != 0) ||
             (operand.kind == facts.CallRow && (operand.literal < 0 || operand.literal > i64(facts.CallSpawned)))) {
             return "invalid scalar operand row";
         }
@@ -1468,6 +1488,40 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                   !(Element(records, field) > 0 && Scalar(Element(records, field)) && Element(records, field) != facts.BoolType))))) {
                 return "scalar reference differs from its variable";
             }
+            stack.append(facts.ReferenceType + operand.type);
+            continue;
+        } else if (operand.kind == facts.ArrayElementReferenceRow) {
+            base := length(stack) - 2;
+            array := 0;
+            if (base >= floor && stack[base] >= facts.ReferenceType) { array = stack[base] - facts.ReferenceType; }
+            if (operand.name != "" || operand.count != 2 || operand.value != 0 || base < floor ||
+                Element(records, array) != operand.type || RecordMemberType(rows, records, operand.type, 0) < 0 ||
+                rows[records[operand.type - facts.RecordType]].literal != 0 || stack[base + 1] != facts.IntType ||
+                (operand.literal != i64(facts.ArrayElementUnique) && operand.literal != i64(facts.ArrayElementMethod) &&
+                 operand.literal != i64(facts.ArrayElementObserve))) {
+                return "scalar array element reference differs from its record";
+            }
+            // Every exposed address is consumed inside this statement's
+            // captured-only path. No source call can move the backing first.
+            if (row != at + 3 || rows[at + 1].kind != facts.RefRow || rows[at + 2].kind != facts.ReadRow) {
+                return "scalar array element reference is not a captured place";
+            }
+            if (operand.literal == i64(facts.ArrayElementObserve)) {
+                if (rows[at].kind != facts.LocalRow || rows[at].literal != i64(facts.Captured)) {
+                    return "scalar array observation is not a captured read";
+                }
+                for (later in row + 1..<last) {
+                    held := rows[later];
+                    if (held.kind != facts.FieldReferenceRow && held.kind != facts.ReadRow && held.kind != facts.FieldRow &&
+                        held.kind != facts.UpdateRow &&
+                        !(held.kind == facts.ArrayRow && (held.value == facts.ArrayPlaceCheck || held.value == facts.ArrayPlaceGet))) {
+                        return "scalar array observation outlives its captured read";
+                    }
+                }
+            } else if (ArrayReferenceMember(rows, records, at, last - 1) == 0) {
+                return "scalar array element reference is not its canonical mutation";
+            }
+            stack = slice(stack, 0, base);
             stack.append(facts.ReferenceType + operand.type);
             continue;
         } else if (operand.kind == facts.FieldReferenceRow) {
@@ -2526,7 +2580,7 @@ MapLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: int
     if (operand.value == facts.MapSet) {
         target = stack[base + 2];
     }
-    if (operand.value == facts.MapGetOptional) { target = native.MapGetZero; }
+    if (operand.value == facts.MapGetOptional || operand.value == facts.MapGetWrapped) { target = native.MapGetZero; }
     item := Op(op, type, slot, stack[base], right, target);
     if (operand.literal != 0) {
         item.literal = i64(NativeType(int(operand.literal)));
@@ -3501,6 +3555,19 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     } else {
                         item = Op(native.LocalAddress, native.RefType + type, slot, places[operand.value], 0, 0);
                     }
+                } else if (operand.kind == facts.ArrayElementReferenceRow) {
+                    base := length(stack) - 2;
+                    input := stack[base];
+                    array := slots[shape.first_slot + input] - native.RefType;
+                    slots[length(slots) - 1] = native.RefType + type;
+                    item = Op(native.ArrayValueAddress, native.RefType + type, slot, input, stack[base + 1], array);
+                    item.literal = operand.literal;
+                    origin := SortedIndex(reference_slots, input);
+                    if (origin >= 0) {
+                        reference_slots.append(slot);
+                        reference_variables.append(reference_variables[origin]);
+                    }
+                    stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.FieldReferenceRow) {
                     input := stack[length(stack) - 1];
                     parent := slots[shape.first_slot + input] - native.RefType;
@@ -4082,6 +4149,15 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     base := length(stack) - ArrayOperands(operand);
                     // The arrays this row only reads: a fresh one dies with it.
                     op := operand.value;
+                    if ((op == facts.ArrayPlaceCheck || op == facts.ArrayPlaceGet) &&
+                        slots[shape.first_slot + stack[base]] >= native.RefType) {
+                        array := slots[shape.first_slot + stack[base]] - native.RefType;
+                        borrowed := slot + 1 + extra;
+                        slots.append(array);
+                        body.append(Op(native.Deref, array, borrowed, stack[base], 0, 0));
+                        stack[base] = borrowed;
+                        extra += 1;
+                    }
                     // The copy of an owning variable's array that is the last
                     // thing to read it is that array, moved: the variable is
                     // emptied so that nothing drops it twice.
@@ -4462,8 +4538,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         extra += length(kept.slot_types);
                         produced = kept.value;
                         if (type == abi.TextStorage && length(closes) > 0) { logical_strings.append(produced); }
-                        else if (type == abi.TextStorage || TrackedRecord(managed, type) ||
-                                 (type >= native.ArrayType && type < native.MapType)) { fresh.append(produced); }
+                        else if (type == abi.TextStorage || TrackedRecord(managed, type) || ArrayTyped(type)) { fresh.append(produced); }
                     }
                     if (Holds(fresh, item.left)) {
                         dropped := DropValue(managed, item.right, item.left);

@@ -168,8 +168,8 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         outer := ScalarArrayShape(forest, text, callables, params, names, types, members, package,
                                    Field(forest, value, syntax.FieldObject));
         if (outer.record >= 0 && ScalarNestedCollection(types[outer.record])) { return SequenceElement(types, outer); }
-        read := ScalarMapRead(forest, text, callables, names, types, package, value);
-        record := ScalarMapShape(forest, text, callables, names, types, package, read.object);
+        read := ScalarMapRead(forest, text, callables, names, types, members, package, value);
+        record := ScalarMapShape(forest, text, callables, names, types, members, package, read.object);
         if (read.operator == facts.MapGet && ScalarMapArrayValue(types, record)) {
             return {storage: types[record].value_storage, container: ArrayContainer, record: types[record].value_record};
         }
@@ -469,7 +469,8 @@ ScalarChangeOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     // Ordinary body checking already established an array method. Its field
     // plan is resolved only when lowering, rather than allocating it twice.
     if (Is(forest, object, syntax.MemberExpression) &&
-        Is(forest, Unparenthesized(forest, Field(forest, object, syntax.FieldObject)), syntax.MemberExpression)) { return object; }
+        (Is(forest, Unparenthesized(forest, Field(forest, object, syntax.FieldObject)), syntax.MemberExpression) ||
+         Is(forest, Unparenthesized(forest, Field(forest, object, syntax.FieldObject)), syntax.IndexExpression))) { return object; }
     if (Is(forest, object, syntax.IndexExpression) &&
         ScalarNestedPlaceShape(forest, text, callables, params, names, types, members, package, object).storage != 0) {
         return object;
@@ -680,7 +681,7 @@ ScalarArrayStored :: (forest: snapshot.SnapshotNode[], text: string, callables: 
         case .Built(built):
             output := built;
             node := Unparenthesized(forest, operand);
-            mapped := ScalarMapRead(forest, text, callables, names, types, callable.package, node);
+            mapped := ScalarMapRead(forest, text, callables, names, types, members, callable.package, node);
             // A map array read already owns its evaluated value. Keeping it
             // transfers that reference without copying its backing again.
             if (copied && (ScalarBorrowed(forest, node) || ScalarScopedDereference(forest, text, names, node)) && mapped.operator != facts.MapGet) {
@@ -775,7 +776,8 @@ ScalarElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, callabl
                                      statement, next_variable);
     }
     if (Is(forest, object, syntax.MemberExpression) &&
-        Is(forest, Unparenthesized(forest, Field(forest, object, syntax.FieldObject)), syntax.MemberExpression)) {
+        (Is(forest, Unparenthesized(forest, Field(forest, object, syntax.FieldObject)), syntax.MemberExpression) ||
+         Is(forest, Unparenthesized(forest, Field(forest, object, syntax.FieldObject)), syntax.IndexExpression))) {
         return ScalarInlineArrayAssigned(forest, text, callables, params, callable, names, types, members, constants,
                                           statement, object, next_variable);
     }
@@ -1144,7 +1146,7 @@ ScalarArrayCatalog :: (natives: ResolvedNative[], ports: ^(ResolvedPort[])) {
 ScalarInlineArrayAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                               callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
                               statement: int, object: int, next_variable: ^int) -> ScalarOperands {
-    place := ScalarInlineReference(forest, text, names, types, members, object);
+    place := ScalarInlineReference(forest, text, names, types, members, object, next_variable^);
     if (place.variable < 0 || place.shape.container != ArrayContainer) {
         return ScalarOperands.Failed(Diagnose(forest, object, 0, "native array mutation requires a writable inline record array field"));
     }
@@ -1156,6 +1158,17 @@ ScalarInlineArrayAssigned :: (forest: snapshot.SnapshotNode[], text: string, cal
     rows := [ScalarAt(forest, statement, facts.ScopeRow, 0, 0, 0, "")];
     arguments: facts.Row[] = [];
     variables := next_variable^;
+    if (place.index_node >= 0) {
+        if (method) {
+            selected := place.rows[2]; selected.literal = i64(facts.ArrayElementMethod); place.rows[2] = selected;
+        }
+        switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                              place.index_node, place.index_node, IntStorage, IntStorage, facts.Clamp, []) {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): rows.extend(ScalarCapture(forest, statement, facts.IntType, variables, built));
+        }
+        variables += 1;
+    }
     if (method) {
         operator = ScalarChangeKind(forest, text, statement);
         call := FirstMember(forest, statement);
@@ -1197,8 +1210,12 @@ ScalarInlineArrayAssigned :: (forest: snapshot.SnapshotNode[], text: string, cal
         variables += 1;
         // The same resolved field ordinals read the initial logical value.
         reads := place.rows;
-        read := reads[0]; read.kind = facts.ReadRow; reads[0] = read;
-        for (prefix in 1..<length(reads)) { read = reads[prefix]; read.kind = facts.FieldRow; reads[prefix] = read; }
+        if (place.index_node >= 0) {
+            selected := reads[2]; selected.literal = i64(facts.ArrayElementObserve); reads[2] = selected;
+        } else {
+            read := reads[0]; read.kind = facts.ReadRow; reads[0] = read;
+            for (prefix in 1..<length(reads)) { read = reads[prefix]; read.kind = facts.FieldRow; reads[prefix] = read; }
+        }
         selected := SequenceElement(types, shape);
         field := -1;
         value_type := element;

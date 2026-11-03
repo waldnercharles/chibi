@@ -467,6 +467,8 @@ ScopedParameters :: (forest: snapshot.SnapshotNode[], texts: string[], declarati
     pointers: bool[] = [];
     owners: int[] = [];
     functions: ScopeFunctions = {names: [], texts: [], declarations: [], first: []};
+    suspends: bool[] = [];
+    suspension_nodes: int[] = [];
     previous: int = -1;
     for (at in Ascending(declarations)) {
         declaration := declarations[at];
@@ -487,6 +489,34 @@ ScopedParameters :: (forest: snapshot.SnapshotNode[], texts: string[], declarati
         functions.texts.append(text);
         functions.declarations.append(declaration);
         functions.first.append(length(nodes));
+        // A synchronous borrow cannot survive suspension. Classify a body
+        // once, before the existing parameter-forwarding graph propagates it.
+        waits := false;
+        suspension_count := 0;
+        body := Field(forest, declaration, syntax.FieldBody);
+        if (body >= 0) {
+            if (length(suspension_nodes) == 0) { suspension_nodes.append(body); }
+            else { suspension_nodes[0] = body; }
+            suspension_count = 1;
+        }
+        cursor := 0;
+        while (cursor < suspension_count) {
+            site := suspension_nodes[cursor];
+            cursor += 1;
+            if (CallableDeclaration(forest, site)) { continue; }
+            if (Is(forest, site, syntax.YieldStatement) || Is(forest, site, syntax.AwaitExpression)) {
+                waits = true;
+                break;
+            }
+            child := FirstMember(forest, site);
+            while (child >= 0) {
+                if (suspension_count == length(suspension_nodes)) { suspension_nodes.append(child); }
+                else { suspension_nodes[suspension_count] = child; }
+                suspension_count += 1;
+                child = NextMember(forest, child);
+            }
+        }
+        suspends.append(waits);
         for (parameter in Members(forest, Field(forest, declaration, syntax.FieldParameters))) {
             nodes.append(parameter);
             names.append(Text(forest, text, Field(forest, parameter, syntax.FieldName)));
@@ -498,7 +528,7 @@ ScopedParameters :: (forest: snapshot.SnapshotNode[], texts: string[], declarati
     edge_from: int[] = [];
     edge_to: int[] = [];
     for (index in 0..<length(nodes)) {
-        verdict := pointers[index];
+        verdict := pointers[index] && !suspends[owners[index]];
         if (verdict) {
             owner := owners[index];
             body := Field(forest, functions.declarations[owner], syntax.FieldBody);

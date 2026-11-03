@@ -18,11 +18,16 @@ Mark :: (path: string, text: string) {
 }
 Allowed :: () -> bool { return access("allow-managed-task", 0) == 0; }
 Done :: () { Mark("managed-task-done", "old42"); }
+Promise :: () -> ^int { if false { yield } return Make(31); }
 Worker :: () -> int {
+    promised := Promise();
     pointer := Make(37);
     values := [Make(2), Make(3)];
     while !Allowed() { yield }
     Churn();
+    joined := await promised;
+    if joined is Cancelled { return 1; }
+    else { assert(joined^ == 31, "completed old promise survives incoming-generation collection"); }
     assert(pointer^ + values[0]^ + values[1]^ == 42, "old generation keeps its suspended collector roots");
     Done();
     return 0;

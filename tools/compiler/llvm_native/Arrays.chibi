@@ -139,12 +139,19 @@ ArrayValueReference :: (item: Instruction, pc: int, program: bool) -> string {
         out = format_text("{}  call void @{}()\n", out, failure);
     } else { out = format_text("{}  call void @llvm.trap()\n", out); }
     out = format_text("{}  unreachable\nouter_present{}:\n", out, pc);
-    out = format_text("{}  %outer_unique{} = call {} @chibi_array.{}.unique(ptr %ctx, {} %outer_value{}, i32 %outer_length{}, i1 true)\n",
-        out, pc, array, item.target, array, pc, pc);
-    out = format_text("{}  store {} %outer_unique{}, ptr %outer_ref{}\n", out, array, pc, pc);
-    out = format_text("{}  %outer_data{} = extractvalue {} %outer_unique{}, 2\n", out, pc, array, pc);
+    current := format_text("%outer_value{}", pc);
+    if (item.literal != i64(ArrayAddressObserve)) {
+        out = format_text("{}  %outer_unique{} = call {} @chibi_array.{}.unique(ptr %ctx, {} %outer_value{}, i32 %outer_length{}, i1 true)\n",
+            out, pc, array, item.target, array, pc, pc);
+        out = format_text("{}  store {} %outer_unique{}, ptr %outer_ref{}\n", out, array, pc, pc);
+        current = format_text("%outer_unique{}", pc);
+    }
+    out = format_text("{}  %outer_data{} = extractvalue {} {}, 2\n", out, pc, array, current);
     out = format_text("{}  %outer_offset{} = zext i32 %outer_index{} to i64\n", out, pc, pc);
     out = format_text("{}  %outer_at{} = getelementptr inbounds {}, ptr %outer_data{}, i64 %outer_offset{}\n", out, pc, TypeName(wrapper), pc, pc);
+    if (item.type == RefType + wrapper) {
+        return format_text("{}{}", out, Store(format_text("%outer_at{}", pc), item.type, "s", item.output));
+    }
     out = format_text("{}  %inner_at{} = getelementptr inbounds {}, ptr %outer_at{}, i32 0, i32 0\n", out, pc, TypeName(wrapper), pc);
     return format_text("{}{}", out, Store(format_text("%inner_at{}", pc), item.type, "s", item.output));
 }
@@ -168,7 +175,7 @@ ArrayUses :: (code: Instruction[], promises: int[]) -> int[] {
             if (item.op == ViewSet) { flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation; }
         } else if (item.op == ArrayValueAddress) {
             type = item.target;
-            flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation;
+            if (item.literal != i64(ArrayAddressObserve)) { flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation; }
         }
         if (item.op == ManagedNew && ManagedArray(item.right)) {
             type = item.right;

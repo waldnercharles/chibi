@@ -1,0 +1,4 @@
+package array_end_failure
+Index::()->int{assert(false,"Index ran");return 0;}
+Right::()->int{xs:int[]=[];return xs[0];}
+Main::()->int{values:[int:[int:int[]]]=[:];values[1][2][Index()]=Right();return 0;}

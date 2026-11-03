@@ -1,0 +1,40 @@
+package view_schema_host
+import os "core:os"
+import target "core:target"
+foreign import libc "system:c"
+foreign libc {
+    dlopen :: (path: cstring, flags: i32) -> rawptr
+    dlsym :: (image: rawptr, name: cstring) -> rawptr
+    dlclose :: (image: rawptr) -> i32
+    calloc :: (count: u64, width: u64) -> rawptr
+    free :: (memory: rawptr)
+}
+Required :: (image: rawptr, name: string) -> rawptr { address := dlsym(image, name); assert(address != 0); return address; }
+when target.Os == target.Darwin { Open :: (path: string) -> rawptr { return dlopen(path, 262); } }
+else { Open :: (path: string) -> rawptr { return dlopen(path, 2); } }
+Main :: () -> int {
+    args := os.Arguments(); if (length(args) != 2) { return 2; }
+    old := Open(args[0]); updated := Open(args[1]); assert(old != 0 && updated != 0);
+    size: fn() -> i64 = Required(old, "chibi_host_family_size");
+    adopt_old: fn(heap: rawptr) -> i32 = Required(old, "chibi_host_set_family");
+    adopt_new: fn(heap: rawptr) -> i32 = Required(updated, "chibi_host_set_family");
+    create: fn(window: rawptr) -> i32 = Required(old, "view_schema_create");
+    read: fn(window: rawptr) -> i32 = Required(updated, "view_schema_read");
+    release: fn() -> i32 = Required(old, "view_schema_release");
+    pending: fn() -> i64 = Required(old, "chibi_host_cells_pending");
+    collect: fn() -> i32 = Required(updated, "chibi_host_family_collect");
+    bytes := size(); assert(bytes > 0 && bytes <= 4096);
+    heap := calloc(1, u64(bytes)); address := calloc(1, 32); assert(heap != 0 && address != 0);
+    adopted_old := adopt_old(heap); adopted_new := adopt_new(heap); assert(adopted_old == 0 && adopted_new == 0);
+    created := create(address); assert(created == 0);
+    before := pending(); assert(before == 1, "the array cell leases its original callback image");
+    collected := collect(); assert(collected == 0);
+    result := read(address); assert(result == 7, "compatible reindexed image reads the old cell");
+    rooted := pending(); assert(rooted == 1);
+    released := release(); assert(released == 0);
+    collected = collect(); assert(collected == 0);
+    remaining := pending(); assert(remaining == 0, "typed array drop releases the old callback image");
+    closed_old := dlclose(old); closed_new := dlclose(updated); assert(closed_old == 0 && closed_new == 0);
+    free(address); free(heap);
+    return 0;
+}

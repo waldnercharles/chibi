@@ -1,0 +1,85 @@
+package deep_map_places
+
+Item :: struct { word: string; values: int[]; }
+Replace :: (values: ^([int:[int:[int:int]]])) -> int {
+    fresh: [int:[int:[int:int]]] = [1:[2:[3:10]]]; values^ = fresh; return 9;
+}
+Middle :: (values: ^([int:[int:[int:int]]])) -> int { ignored := Replace(values); return 2; }
+Last :: (values: ^([int:[int:[int:int]]])) -> int { ignored := Replace(values); return 3; }
+Key :: (trace: ^int, key: int) -> int { trace^ = trace^ * 10 + key; return key; }
+Right :: (trace: ^int) -> int { trace^ = trace^ * 10 + 4; return 9; }
+Alias :: (read: ^([int:[int:[int:int]]]), changed: ^([int:[int:[int:int]]])) -> int {
+    read^[1][2][3] += Replace(changed); return read^[1][2][3];
+}
+Word :: (value: u8) -> string { return text_from_bytes([u8(97), 0, value]); }
+ChangeKey :: (key: ^string) -> int { key^ = Word(2); return 9; }
+Main :: () -> int {
+    Depth32();
+    values: [int:[int:[int:int]]] = [1:[2:[3:1]]];
+    copy := values;
+    values[1][2][3] += Replace(&values);
+    assert(values[1][2][3] == 10 && copy[1][2][3] == 1);
+    values[1][Middle(&values)][3] += 9;
+    assert(values[1][2][3] == 19);
+    values[1][2][Last(&values)] += 9;
+    assert(values[1][2][3] == 19);
+    values = [:];
+    values[1][2][3] += Replace(&values);
+    assert(values[1][2][3] == 9);
+    values = [1:[:]];
+    values[1][2][3] += Replace(&values);
+    assert(values[1][2][3] == 9);
+    trace := 0;
+    values[Key(&trace, 1)][Key(&trace, 2)][Key(&trace, 3)] = Right(&trace);
+    assert(trace == 1234 && values[1][2][3] == 9);
+    kept := values;
+    delete values[1][2][3];
+    assert(!values[1][2].has(3) && kept[1][2][3] == 9);
+    joined := Alias(&values, &values);
+    assert(joined == 9 && values[1][2][3] == 9);
+    m: [int:[int:[int:int]]] = [1:[2:[3:1]]];
+    m
+        [1]
+        [2]
+        [3] += 2;
+    assert(m[1][2][3] == 3);
+
+    array: [int:[int:int]][] = [[1:[2:3]]];
+    old_array := array;
+    array[0][1][2] += 4;
+    assert(array[0][1][2] == 7 && old_array[0][1][2] == 3);
+    delete array[0][1][2];
+    assert(!array[0][1].has(2));
+    mixed: [int:[int:int][]] = [1:[[2:3]]];
+    old_mixed := mixed;
+    mixed[1][0][2] = 9;
+    assert(mixed[1][0][2] == 9 && old_mixed[1][0][2] == 3);
+    delete mixed[1][0][2];
+    assert(!mixed[1][0].has(2));
+    arrays: [int:int][][] = [[[1:3]]];
+    old_arrays := arrays;
+    arrays[0][0][1] += 4;
+    assert(arrays[0][0][1] == 7 && old_arrays[0][0][1] == 3);
+
+    for (index in 0..<96) {
+        key := Word(1);
+        words: [int:[string:[int:int]]] = [1:[key:[:]]];
+        words[1][key][2] = ChangeKey(&key);
+        assert(words[1][Word(1)][2] == 9 && !words[1].has(Word(2)));
+        dynamic := text_from_bytes([u8(111), 119, 110, 101, 100]);
+        records: [int:[int:[int:Item]]] = [1:[2:[:]]];
+        records[1][2][3] = {word:dynamic, values:[index,2]};
+        old := records;
+        records[1][2][3] = {word:"changed", values:[3]};
+        delete records[1][2][3];
+        assert(old[1][2][3].word == "owned" && old[1][2][3].values[0] == index && !records[1][2].has(3));
+    }
+    return 0;
+}
+
+Depth32 :: () {
+    values: [int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:[int:int]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]] = [1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:[1:0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]];
+    copy := values;
+    values[1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1] += 1;
+    assert(values[1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1] == 1 && copy[1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1] == 0);
+}

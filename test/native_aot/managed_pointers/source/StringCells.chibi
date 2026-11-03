@@ -1,0 +1,49 @@
+package string_cells
+
+Text :: (value: int) -> string { return text_from_bytes([u8(65), u8(0), u8(wrap: value)]); }
+Owner :: (value: int) -> ^string { text := Text(value); return &text; }
+Parameter :: (value: string) -> ^string { pointer := &value; return pointer; }
+Literal :: () -> string { return "returned literal"; }
+Replace :: (pointer: ^string, value: int) -> string {
+    old := pointer^;
+    pointer^ = Text(value);
+    return old;
+}
+Scoped :: (value: ^string) { value^ = "literal"; }
+Snapshot :: (value: string, pointer: ^string) -> string {
+    pointer^ = Text(17);
+    return value;
+}
+Main :: () -> int {
+    literal := "text";
+    literal_pointer := &literal;
+    assert(text_byte_length(literal_pointer^) == 4);
+    value := Text(1);
+    pointer := &value;
+    alias := pointer;
+    historical := pointer^;
+    alias^ = Text(2);
+    assert(text_byte_at(historical, 2) == 1 && text_byte_at(value, 2) == 2);
+    before := value == Replace(pointer, 3);
+    assert(before && text_byte_at(value, 2) == 3);
+    before = pointer^ == Replace(alias, 4);
+    assert(before && text_byte_at(pointer^, 2) == 4);
+    captured := Snapshot(pointer^, alias);
+    assert(text_byte_at(captured, 2) == 4 && text_byte_at(value, 2) == 17);
+    value = value;
+    alias^ = value;
+    assert(text_byte_at(pointer^, 2) == 17);
+    Scoped(pointer);
+    assert(value == "literal");
+    pointer^ = Literal();
+    assert(value == "returned literal");
+    literal = Text(19);
+    assert(text_byte_at(literal_pointer^, 2) == 19);
+    returned := Owner(21);
+    parameter := Parameter(Text(23));
+    for index in 0..<5000 { discarded := Owner(index % 127); }
+    assert(text_byte_at(returned^, 2) == 21 && text_byte_at(parameter^, 2) == 23);
+    returned^ = "";
+    assert(text_byte_length(returned^) == 0);
+    return 0;
+}

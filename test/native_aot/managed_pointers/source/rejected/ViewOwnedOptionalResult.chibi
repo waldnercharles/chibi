@@ -1,0 +1,4 @@
+package rejected_owned_optional_view_result
+Row :: struct { pointer: ^int; }
+Missing :: () -> view Row[]? { return nil; }
+Main :: () -> int { window := Missing(); return 0; }

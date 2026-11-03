@@ -57,6 +57,10 @@ host time, the scheduler uses the platform monotonic clock. These optional
 exports preserve the existing no-argument polling ABI.
 
 Promises contain pointer-free numeric, bool, string, array or record values.
+Program-owned collector contexts also support pointer and nullable-pointer
+promises, pointer-only nested record promises, pointer-array promises and
+copyable inline records containing pointer-array owners. `managed_pointers/run.sh`
+owns their root, failure, callback and reload proofs.
 Each successful join acquires a value copy through the existing ownership
 helpers. Its observer keeps the completed frame alive until that read finishes.
 Inline awaits move the value and clear the child promise before destruction.

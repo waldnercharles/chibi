@@ -376,10 +376,10 @@ pub OperandBindRow: int : 58;
 pub ScopeRow: int : 59;
 // One private clock transport value: zero operands and metadata, exact i64/u64/int/int record.
 pub ClockSampleRow: int : 60;
-// A numeric/bool/text view operation. Value packs operation * 16 + element type;
+// A view operation. Value packs operation * ViewStride + element type;
 // type is the result (make/slice use the ordinary optional record). Count is
-// operand arity. Make carries the full array-cell identity in literal;
-// Get/Set use literal1 for a mutable place check, otherwise literal0.
+// operand arity. Every operation carries the expected array-cell identity
+// in literal. Place reads/writes have distinct operations.
 pub ViewRow: int : 61;
 // Borrow an inline record field from one reference operand. Type is the
 // selected value type, value is its field ordinal, and count is one. The
@@ -402,8 +402,12 @@ pub ViewGet: int : 3;
 pub ViewSet: int : 4;
 pub ViewClone: int : 5;
 pub ViewSlice: int : 6;
-pub ViewOperation :: (value: int) -> int { return value / 16; }
-pub ViewElement :: (value: int) -> int { return value % 16; }
+pub ViewGetPlace: int : 7;
+pub ViewSetPlace: int : 8;
+// Element storage uses the same bounded domain as array element types.
+pub ViewStride: int : 1024;
+pub ViewOperation :: (value: int) -> int { return value / ViewStride; }
+pub ViewElement :: (value: int) -> int { return value % ViewStride; }
 pub PatternStorage: int : 16;
 // A While immediately after PatternStorage declarations in a Scope. Its
 // captures are released/cleared after each pass, before its next test.
@@ -489,7 +493,10 @@ pub MapValueAt: int : 11;
 pub MapArrayPush: int : 12;
 pub MapArrayExtend: int : 13;
 pub MapArrayRemove: int : 14;
-// The producer checks the initial logical place before RHS effects. Missing
+// A mapped array bracket write: RefRoot, all path keys, then the incoming
+// element, count at least 4. A deeper path may start at an array but must cross
+// a map and end at an array. The producer checks the complete initial place
+// before RHS effects, then resolves its current canonical owner again. Missing
 // final keys or indices report an unclassified unavailable-place failure.
 pub MapArraySet: int : 15;
 pub MapArrayResize: int : 16;
@@ -502,6 +509,16 @@ pub MapGetOptional: int : 18;
 // A missing nested-map key gives an empty descriptor in its one-field carrier.
 // Generic record MapGet keeps its absent-key failure.
 pub MapGetWrapped: int : 19;
+// Canonical map changes through an array root: RefArray, all path keys in
+// source order and (for set) the incoming value. Each intermediate collection
+// descriptor follows its checked array or map carrier; the final owner is a map.
+// count is at least 4 for set, 3 for delete. Type is the assigned outer array.
+pub ArrayMapSet: int : 20;
+pub ArrayMapDelete: int : 21;
+// The same captured-key path through a map root, starting with RefMap.
+// Type is the assigned outer map; count has the same set/delete minima.
+pub NestedMapSet: int : 22;
+pub NestedMapDelete: int : 23;
 
 // Compare operators: the source's <, <=, >, >=, == and !=, signed or
 // unsigned as their operands' type is. On floats, each is false when an

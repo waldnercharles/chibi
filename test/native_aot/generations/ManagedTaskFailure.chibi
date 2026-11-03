@@ -14,10 +14,13 @@ Ready :: () {
     assert(closed == 0);
 }
 Allowed :: () -> bool { return access("allow-managed-task", 0) == 0; }
+Promise :: () -> ^int { if false { yield } return Make(42); }
 Worker :: () -> int {
-    pointer := Make(42);
+    promised := Promise();
     while !Allowed() { yield }
-    assert(pointer^ != 42, "retired managed task fails in its original generation");
+    joined := await promised;
+    if joined is Cancelled { return 1; }
+    else { assert(joined^ != 42, "retired managed task fails in its original generation"); }
     return 0;
 }
 Main :: () -> int { worker := Worker(); Ready(); return 0; }

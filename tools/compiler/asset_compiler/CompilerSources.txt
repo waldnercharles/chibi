@@ -29,6 +29,7 @@ package_compiler/ScalarCollections.chibi
 package_compiler/ScalarEffects.chibi
 package_compiler/ScalarGenerations.chibi
 package_compiler/ScalarMaps.chibi
+package_compiler/ScalarNestedMaps.chibi
 package_compiler/ScalarMath.chibi
 package_compiler/ScalarBuiltinMath.chibi
 package_compiler/ScalarSwizzles.chibi

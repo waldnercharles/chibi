@@ -1,0 +1,3 @@
+package nested_map_failure
+Value :: (groups: ^([string:[string:int]])) -> int { delete groups^["g"]; return 9; }
+Main :: () -> int { groups: [string:[string:int]] = ["g":["a":1]]; groups["g"]["a"] += Value(&groups); return 0; }

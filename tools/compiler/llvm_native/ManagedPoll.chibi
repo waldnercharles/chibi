@@ -5,16 +5,28 @@ import strings "core:strings"
 
 // Ownership events update stable addresses once when a value enters or leaves
 // the live owner set. Polls reuse that table; they never rebuild live roots.
-ManagedOwnerLayout :: struct { slots: int[]; locals: int[]; count: int; }
-ManagedOwnerLocations :: (shape: Function, code: Instruction[]) -> ManagedOwnerLayout {
-    found: ManagedOwnerLayout = {slots: [], locals: [], count: 0};
+// A type range is compiler metadata, never part of the runtime root table.
+// Every live location still costs one pointer, including coroutine frames.
+ManagedOwnerRange :: struct { type: int; first: int; count: int; }
+ManagedOwnerLayout :: struct { slots: int[]; locals: int[]; count: int; ranges: ManagedOwnerRange[]; }
+ManagedOwnerLocations :: (shape: Function, code: Instruction[], records: int) -> ManagedOwnerLayout {
+    found: ManagedOwnerLayout = {slots: [], locals: [], count: 0, ranges: []};
     needed := false;
+    mixed := false;
     for (pc in shape.first_code..<shape.first_code + shape.code) {
-        if (code[pc].op == ManagedTrack) { needed = true; break; }
+        if (code[pc].op != ManagedTrack) { continue; }
+        needed = true;
+        type := code[pc].type;
+        if (type >= RefType) { type -= RefType; }
+        mixed = mixed || type != ArrayType + PointerType;
     }
     if (!needed) { return found; }
     found.slots = resize([int(0)], shape.slots);
     found.locals = resize([int(0)], shape.locals);
+    // Record ordinals plus one PArray entry bound this cold lookup by the
+    // canonical type table. The common PArray-only case needs no ranges.
+    groups: int[] = [];
+    if (mixed) { groups = resize([int(0)], records + 1); }
     for (pc in shape.first_code..<shape.first_code + shape.code) {
         item := code[pc];
         if (item.op != ManagedTrack) { continue; }
@@ -23,31 +35,72 @@ ManagedOwnerLocations :: (shape: Function, code: Instruction[]) -> ManagedOwnerL
         if (local) { previous = found.locals[item.left]; }
         else { previous = found.slots[item.left]; }
         if (previous > 0) { continue; }
+        id := found.count + 1;
+        if (mixed) {
+            type := item.type;
+            if (type >= RefType) { type -= RefType; }
+            key := records;
+            if (type != ArrayType + PointerType) { key = type - RecordType; }
+            group := groups[key] - 1;
+            if (group < 0) {
+                group = length(found.ranges);
+                groups[key] = group + 1;
+                found.ranges.append({type: type, first: 0, count: 0});
+            }
+            range := found.ranges[group];
+            range.count += 1;
+            found.ranges[group] = range;
+            id = group + 1;
+        }
         found.count += 1;
-        if (local) { found.locals[item.left] = found.count; }
-        else { found.slots[item.left] = found.count; }
+        if (local) { found.locals[item.left] = id; }
+        else { found.slots[item.left] = id; }
+    }
+    if (!mixed) { return found; }
+    first := 0;
+    for (group in 0..<length(found.ranges)) {
+        range := found.ranges[group];
+        range.first = first;
+        first += range.count;
+        found.ranges[group] = range;
+        groups[group] = range.first;
+    }
+    // Translate group membership to its final contiguous table index once.
+    for (part in 0..<2) {
+        places := found.slots;
+        if (part == 1) { places = found.locals; }
+        for (place in 0..<length(places)) {
+            if (places[place] == 0) { continue; }
+            group := places[place] - 1;
+            places[place] = groups[group] + 1;
+            groups[group] += 1;
+        }
+        if (part == 0) { found.slots = places; }
+        else { found.locals = places; }
     }
     return found;
 }
-ManagedPollValid :: (item: Instruction, slots: int[], locals: int[]) -> bool {
+ManagedPollValid :: (item: Instruction, slots: int[], locals: int[], layout: ValueLayout) -> bool {
     if (item.op == ManagedPending) {
         return item.type == abi.BoolStorage && item.left == 0 && item.right == 0 && item.target == 0 && item.literal == 0;
     }
     if (item.op == ManagedPoll) {
         return item.type == 0 && item.output == 0 && item.left == 0 && item.right == 0 && item.target == 0 && item.literal == 0;
     }
-    array := ArrayType + PointerType;
     if (item.target < ManagedTrackSlot || item.target > ManagedClearLocal || item.output != 0 || item.right != 0 || item.literal != 0) { return false; }
     if ((item.target & ManagedTrackLocal) != 0) {
-        return (item.type == array || item.type == RefType + array) && Typed(locals, item.left, item.type);
+        type := item.type;
+        if (type >= RefType) { type -= RefType; }
+        return ValueCollectorOwner(layout, type) && Typed(locals, item.left, item.type);
     }
-    return item.type == array && Typed(slots, item.left, array);
+    return ValueCollectorOwner(layout, item.type) && Typed(slots, item.left, item.type);
 }
 // Root table storage follows the same coroutine lifetime as ordinary frame
 // roots. Empty functions allocate/register nothing. Initialize before
 // registration, after coro.begin chooses persistent frame addresses.
-ManagedOwnerRoots :: (count: int, persistent: bool) -> ManagedFrameRoots {
-    found: ManagedFrameRoots = {prologue: "", attach: "", cleanup: ""};
+ManagedOwnerRoots :: (owners: ManagedOwnerLayout, persistent: bool, function: int) -> ManagedFrameRoots {
+    found: ManagedFrameRoots = {prologue: "", attach: "", cleanup: "", destroy: ""};
+    count := owners.count;
     if (count == 0) { return found; }
     root := "%chibi.managed.root";
     operation := "push";
@@ -61,7 +114,9 @@ ManagedOwnerRoots :: (count: int, persistent: bool) -> ManagedFrameRoots {
         "  %managed.owner.count = getelementptr %chibi.managed.owners, ptr %managed.owner.payload, i32 0, i32 1\n",
         format_text("  store i32 {}, ptr %managed.owner.count\n", count),
         format_text("  store {} zeroinitializer, ptr %managed.owner.root\n", root)], "");
-    register := format_text("  call void @chibi_managed.{}(ptr %managed.heap, ptr %managed.owner.root, ptr %managed.owner.payload, ptr @chibi_managed.trace.owners)\n", operation);
+    trace := "@chibi_managed.trace.owners";
+    if (length(owners.ranges) > 0) { trace = format_text("@chibi_managed.trace.owners{}", function); }
+    register := format_text("  call void @chibi_managed.{}(ptr %managed.heap, ptr %managed.owner.root, ptr %managed.owner.payload, ptr {})\n", operation, trace);
     if (persistent) {
         // Store frame-relative addresses only after coro.begin has selected
         // the stable frame. A pointer embedded in ramp storage is not relocated.
@@ -70,6 +125,28 @@ ManagedOwnerRoots :: (count: int, persistent: bool) -> ManagedFrameRoots {
     } else { out.append(initialize); out.append(register); }
     found.prologue = strings.Join(out, "");
     return found;
+}
+// Known types are grouped before emission. Collection walks each constant
+// range with one direct trace call, without an indirect function per owner.
+ManagedOwnerTrace :: (owners: ManagedOwnerLayout, function: int) -> string {
+    if (length(owners.ranges) == 0) { return ""; }
+    out := [format_text("define internal void @chibi_managed.trace.owners{}(ptr %heap, ptr %payload) {{\nentry:\n  %refs = load ptr, ptr %payload\n  br label %g0.test\n", function)];
+    for (group in 0..<length(owners.ranges)) {
+        range := owners.ranges[group];
+        previous := "entry";
+        if (group > 0) { previous = format_text("g{}.done", group - 1); }
+        trace := "array";
+        if (range.type != ArrayType + PointerType) { trace = format_text("record{}", range.type - RecordType); }
+        out.append(format_text("g{}.test:\n  %g{}.index = phi i32 [ {}, %{} ], [ %g{}.next, %g{}.step ]\n", group, group, range.first, previous, group, group));
+        out.append(format_text("  %g{}.more = icmp ult i32 %g{}.index, {}\n  br i1 %g{}.more, label %g{}.read, label %g{}.done\ng{}.read:\n", group, group, range.first + range.count, group, group, group, group));
+        out.append(format_text("  %g{}.at = getelementptr ptr, ptr %refs, i32 %g{}.index\n  %g{}.slot = load ptr, ptr %g{}.at\n  %g{}.live = icmp ne ptr %g{}.slot, null\n", group, group, group, group, group, group));
+        out.append(format_text("  br i1 %g{}.live, label %g{}.trace, label %g{}.step\ng{}.trace:\n  call void @chibi_managed.trace.{}(ptr %heap, ptr %g{}.slot)\n  br label %g{}.step\ng{}.step:\n", group, group, group, group, trace, group, group, group));
+        out.append(format_text("  %g{}.next = add i32 %g{}.index, 1\n  br label %g{}.test\ng{}.done:\n", group, group, group, group));
+        if (group + 1 < length(owners.ranges)) { out.append(format_text("  br label %g{}.test\n", group + 1)); }
+        else { out.append("  ret void\n"); }
+    }
+    out.append("}\n");
+    return strings.Join(out, "");
 }
 ManagedPollInstruction :: (item: Instruction, pc: int, owners: ManagedOwnerLayout) -> string {
     out: string[] = [format_text("p{}:\n", pc)];

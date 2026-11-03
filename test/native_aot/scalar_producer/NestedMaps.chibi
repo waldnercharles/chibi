@@ -11,13 +11,7 @@ NestedMapsProjection :: () {
     assert(get >= 0);
     // Sequence typing can intern unused carriers too. Mutate the exact
     // result record of this get, rather than a different unused declaration.
-    member := -1;
-    type := facts.RecordType;
-    for (row, index in rows) {
-        if (row.kind != facts.RecordRow && row.kind != facts.UnionRow) { continue; }
-        if (type == rows[get].type) { member = index + 1; }
-        type += 1;
-    }
+    member := NestedMapCarrierField(rows, rows[get].type);
     assert(member >= 0 && rows[member].type >= facts.MapType);
     mismatch := "scalar map operation differs from its operands";
     RejectChanged(rows, [Changed(get, TypeField, i64(facts.IntType))], mismatch);
@@ -28,4 +22,118 @@ NestedMapsProjection :: () {
     mapped := int(rows[get].literal);
     wrong_key := mapped - (mapped - facts.MapType) % 16 + facts.BoolType;
     RejectChanged(rows, [Changed(get, LiteralField, i64(wrong_key))], mismatch);
+}
+
+NestedMapPlacesProjection :: () {
+    rows := Produced("package nested_maps\nMain::()->int{rows:[int:int][]=[[:]];rows[0][1]=2;delete rows[0][1];groups:[int:[int:int]]=[1:[:]];groups[1][2]=3;delete groups[1][2];return 0;}\n");
+    assert(rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+    found := 0;
+    mismatch := "scalar map operation differs from its operands";
+    for (row, index in rows) {
+        if (row.kind != facts.MapRow || row.value < facts.ArrayMapSet || row.value > facts.NestedMapDelete) { continue; }
+        found += 1;
+        RejectChanged(rows, [Changed(index, LiteralField, 1)], mismatch);
+        RejectChanged(rows, [Changed(index, CountField, i64(row.count + 1))], mismatch);
+        RejectChanged(rows, [Changed(index, TypeField, i64(facts.IntType))], mismatch);
+        wrong := facts.ArrayMapSet;
+        if (row.value == facts.ArrayMapSet) { wrong = facts.NestedMapSet; }
+        if (row.value == facts.ArrayMapDelete) { wrong = facts.NestedMapDelete; }
+        RejectChanged(rows, [Changed(index, ValueField, i64(wrong))], mismatch);
+    }
+    assert(found == 4);
+}
+
+DeepMapPlacesProjection :: () {
+    rows := Produced("package deep_maps\nMain::()->int{values:[int:[int:[int:int]]]=[1:[2:[:]]];values[1][2][3]=4;delete values[1][2][3];return 0;}\n");
+    assert(rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+    found := 0;
+    mismatch := "scalar map operation differs from its operands";
+    for (row, index in rows) {
+        if (row.kind != facts.MapRow || row.value < facts.ArrayMapSet || row.value > facts.NestedMapDelete) { continue; }
+        found += 1;
+        minimum := 3; if (row.value == facts.NestedMapSet) { minimum = 4; }
+        for (count in [int(-2147483647), 0, minimum - 1, row.count - 1, row.count + 1, 2147483647]) {
+            RejectChanged(rows, [Changed(index, CountField, i64(count))], mismatch);
+        }
+        RejectChanged(rows, [Changed(index, LiteralField, 1)], mismatch);
+        RejectChanged(rows, [Changed(index, TypeField, i64(facts.IntType))], mismatch);
+    }
+    assert(found == 2);
+    // A map's authored one-array-field record is not a map carrier. No source
+    // map read precedes this change, so the malformed path reaches this gate.
+    empty := Produced("package deep_maps\nMain::()->int{values:[int:[int:int]]=[:];values[1][2]=3;return 0;}\n");
+    assert(empty[1].kind == facts.DocumentRow);
+    carrier := -1;
+    for (row in empty) { if (row.kind == facts.MapRow && row.value == facts.NestedMapSet) { carrier = (row.type - facts.MapType) / 16; } }
+    field := NestedMapCarrierField(empty, carrier);
+    assert(field >= 0);
+    RejectChanged(empty, [Changed(field, TypeField, i64(facts.ArrayType + facts.IntType))], mismatch);
+}
+
+DeepMapPlacesGrowth :: () {
+    previous := 0;
+    previous_delta := 0;
+    // These fixed depths stay within one field/type-ID digit width. Each
+    // doubled source path must add twice the work, with a small spelling margin.
+    for (depth in [int(4),8,16,32]) {
+        type := "int";
+        literal := "0";
+        keys := "";
+        for (index in 0..<depth) {
+            type = strings.Concatenate(["[int:", type, "]"]);
+            literal = strings.Concatenate(["[1:", literal, "]"]);
+            keys = strings.Concatenate([keys, "[1]"]);
+        }
+        source := strings.Concatenate(["package deep_growth\nMain::()->int{values:", type, "=", literal,
+            ";values", keys, "+=1;return values", keys, ";}\n"]);
+        rows := Produced(source);
+        assert(rows[1].kind == facts.DocumentRow && scalar.Validate(rows) == "");
+        text := IR(rows);
+        projections := 0;
+        for (line in strings.SplitLines(text)) {
+            if (strings.Contains(line, " = call ptr @chibi_map.") && strings.Contains(line, ".reference(")) { projections += 1; }
+        }
+        assert(projections == depth - 1, "one canonical projection per intermediate owner");
+        bytes := strings.ByteLength(text);
+        delta := bytes - previous;
+        if (previous_delta > 0) { assert(delta * 10 < previous_delta * 23, "emitted helper/code growth is linear in depth"); }
+        os.Print(format_text("deep map depth{}: {} bytes, {} canonical projections", depth, bytes, projections));
+        previous_delta = delta; previous = bytes;
+    }
+}
+
+// Interning can leave unused carrier declarations. Always mutate the exact
+// physical carrier named by the operation under test.
+NestedMapCarrierField :: (rows: facts.Row[], wanted: int) -> int {
+    type := facts.RecordType;
+    for (row, index in rows) {
+        if (row.kind != facts.RecordRow && row.kind != facts.UnionRow) { continue; }
+        if (type == wanted) { return index + 1; }
+        type += 1;
+    }
+    return -1;
+}
+
+DeepMappedArraysProjection :: () {
+    sources := ["package deep_arrays\nMain::()->int{values:[int:[int:int[]]]=[1:[2:[3]]];old:=values;values[1][2][0]=4;return 0;}\n",
+                "package deep_arrays\nMain::()->int{values:[int:int[]][]=[[1:[3]]];old:=values;values[0][1][0]=4;return 0;}\n"];
+    mismatch := "scalar map operation differs from its operands";
+    for (source in sources) {
+        rows := Produced(source);
+        assert(rows[1].kind == facts.DocumentRow);
+        ValidateRows(rows, "");
+        change := -1;
+        for (row, index in rows) { if (row.kind == facts.MapRow && row.value == facts.MapArraySet) { change = index; } }
+        assert(change >= 0 && rows[change].count == 5);
+        for (count in [int(-1),0,3,4,6,2147483647]) { RejectChanged(rows, [Changed(change, CountField, i64(count))], mismatch); }
+        RejectChanged(rows, [Changed(change, LiteralField, 1)], mismatch);
+        RejectChanged(rows, [Changed(change, TypeField, i64(facts.IntType))], mismatch);
+        RejectChanged(rows, [Changed(change, ValueField, i64(facts.NestedMapSet))], mismatch);
+        assign := change - 1;
+        while (rows[assign].kind != facts.AssignRow) { assign -= 1; }
+        assert(rows[assign].value == 0 && rows[assign + 1].kind == facts.RefRow && rows[assign + 1].value == 0);
+        RejectChanged(rows, [Changed(assign, ValueField, 1)], "scalar nested map change is not the assignment of its collection");
+    }
 }

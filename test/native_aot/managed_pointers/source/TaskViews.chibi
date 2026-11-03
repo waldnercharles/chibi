@@ -1,0 +1,75 @@
+package waiting_view_roots
+
+Pair :: union { Row(xs: int[]) | None }
+Window :: union { Missing | Present(window: view int[]) }
+Owner :: (number: int) -> view int[]? {
+    values: int[] = [number, number + 1]; pointer := &values;
+    return pointer.view(0..<2);
+}
+Owned :: (number: int) -> view Pair[]? {
+    values: Pair[] = [Pair.Row([number, number + 1])]; pointer := &values;
+    return pointer.view(0..<1);
+}
+Churn :: () { for index in 0..<3000 { discarded := Owned(index); } }
+DirectLocal :: () -> int {
+    selected := Owner(7);
+    if selected { yield; Churn(); return selected[0] * 10 + selected[1]; }
+    return -1;
+}
+OptionalLocal :: () -> int {
+    selected := Owned(8);
+    yield; Churn();
+    if selected { pair := selected[0]; switch pair { case .Row(xs): return xs[0] * 10 + xs[1]; case: return -2; } }
+    return -1;
+}
+Read :: (window: view int[]) -> int { yield; Churn(); return window[0] * 10 + window[1]; }
+Touch :: (window: view int[]) -> int { yield; Churn(); window[0] = 9; return window[0]; }
+TouchOwned :: (window: view Pair[]) -> int {
+    yield; Churn(); window[0] = Pair.Row([9, 10]);
+    pair := window[0]; switch pair { case .Row(xs): return xs[0] + xs[1]; case: return -2; }
+}
+ReadOwned :: (window: view Pair[]) -> int {
+    yield; Churn();
+    pair := window[0]; switch pair { case .Row(xs): return xs[0] * 10 + xs[1]; case: return -2; }
+}
+ReadOptional :: (window: view int[]?) -> int {
+    yield; Churn(); if window { return window[0]; } return -1;
+}
+UnionOwner :: () -> Window {
+    selected := Owner(4); if selected { return Window.Present(selected); } return Window.Missing;
+}
+ReadUnion :: (value: Window) -> int {
+    yield; Churn(); switch value { case .Present(window): return window[0]; case: return -1; }
+}
+UnionLocal :: () -> int {
+    value := UnionOwner(); yield; Churn();
+    switch value { case .Present(window): return window[1]; case: return -1; }
+}
+Count :: (add: int) -> int { total: retain int = 0; total += add; return total; }
+Detached :: (window: view int[]) -> int { yield; Churn(); Count(window[0]); return 0; }
+Spawn :: () { selected := Owner(3); if selected { child := Detached(selected); } }
+Keep :: (window: view Pair[]) -> int { while true { yield } }
+Parent :: (window: view Pair[]) -> int { child := Keep(window); while true { yield } }
+Main :: () -> int {
+    direct := await DirectLocal(); assert(direct == 78);
+    optional := await OptionalLocal(); assert(optional == 89);
+    selected := Owner(5);
+    if selected { result := await Read(selected); assert(result == 56); changed := await Touch(selected); assert(changed == 9 && selected[0] == 9); }
+    else { assert(false); }
+    pair_window := Owned(6);
+    if pair_window { result := await ReadOwned(pair_window); assert(result == 67); changed := await TouchOwned(pair_window); assert(changed == 19); }
+    else { assert(false); }
+    optional_parameter := await ReadOptional(Owner(2)); assert(optional_parameter == 2);
+    union_local := await UnionLocal(); assert(union_local == 5);
+    union_parameter := await ReadUnion(UnionOwner()); assert(union_parameter == 4);
+    Spawn(); Churn(); yield; yield; counted := Count(0); assert(counted == 3);
+    if pair_window {
+        cancelled := Keep(pair_window); yield; Churn(); cancel cancelled
+        gone := await cancelled; assert(gone is Cancelled);
+        tree := Parent(pair_window); yield; Churn(); cancel tree
+        gone_tree := await tree; assert(gone_tree is Cancelled);
+        for index in 0..<64 { pending := Keep(pair_window); cancel pending }
+    }
+    Churn();
+    return 0;
+}

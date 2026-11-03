@@ -92,7 +92,7 @@ value is released), `MapDelete` releases the entry's strings, `MapCopy` retains 
 A read of a missing scalar or string key gives the value type's zero; a native int[] read gives an empty array. A missing record key fails with `MapKeyAbsent`.
 Reads borrow. Writing through a missing key (`m[a][b] = v`) ends the call.
 
-Native `MapValueAddress` (75) borrows an existing array entry. Target 0 observes its map value. Target 1 requires a reference
+Native `MapValueAddress` (75) borrows an existing descriptor entry. Target 0 observes an array entry. Target 1 also projects a one-map-field carrier and requires a reference
 to the canonical map descriptor, makes shared entries unique and publishes that descriptor before returning the entry
 address. Resolve it after argument callbacks and immediately update the array descriptor with `Poke`; replacing,
 growing or dropping the map invalidates the address. A missing entry produces an unnamed failure, matching the ordinary
@@ -117,8 +117,43 @@ Numeric mapped-array compound assignments save the key, index and old leaf befor
 `NestedContainers` covers nested literals, value reads, arguments and returns
 with poisoned frees and zero outstanding allocations. `NestedMapCopies` requires
 4,096 nested copies and payload reads to allocate nothing; changing one leaf
-detaches each shared map once. Direct nested owner writes remain a separate gate.
+detaches each shared map once. Canonical nested set/delete and numeric compound writes capture their keys and
+old leaf before the RHS, then resolve and publish the current owner.
 An inner map read from a missing key can be changed independently without adding
 an outer key, following the zero-map rule in `docs/code-language.md`. The recovered
 ordinary runtime instead fails that mutation with `Cannot retain Map update`;
 that discrepancy is recorded rather than used as the expected native result.
+
+`NestedPlaces` checks index/key/RHS order, root replacement by any of them,
+missing-owner repair, scoped aliases, deletion and independently owned text,
+array, record, optional and map payloads. Its unchanged assertions also pass the
+recovered ordinary compiler. Six abrupt-failure controls distinguish RHS
+assertions from a missing final owner and preserve the unclassified category.
+`NestedMapCopies` additionally requires exactly two detach allocations for the
+first shared nested write and zero allocations for 4,096 further unique writes.
+
+Canonical map writes also support deeper mixed index paths rooted at a map or
+array variable. Facts 20–23 carry every captured key in source order; validation
+follows the existing descriptor/carrier type graph before lowering any reads.
+Lowering resolves and publishes each current owner through the existing map or
+array address helper, then mutates the leaf map. It copies no whole root and
+retains no interior address across authored callbacks. Intermediate old-value
+reads close before the RHS, including when an absent owner is repaired by it.
+
+`DeepPlaces` covers three-level map and mixed map/array paths, multiline source,
+owned leaves and a 32-level runtime path. `DeepMapCopies` requires exactly four
+allocations for the first shared write through four immediate owners, then zero
+allocations for 4,096 unique compound writes, for both all-map and mixed paths.
+The producer growth check emits 126,910 / 251,046 / 499,786 / 998,374 bytes at map
+depths 4 / 8 / 16 / 32, with exactly depth minus one canonical projections.
+Malformed variable arities and intermediate non-carrier records remain rejected.
+
+Mapped-array bracket writes also follow deeper typed paths through maps and
+arrays. Operator 15 preserves its existing four-operand path and accepts longer
+captured-key paths that cross a map and end at an array. The complete initial
+place is checked before the RHS; unlike a map leaf, a missing array place cannot
+be repaired by that RHS. The final store resolves the current owners again.
+`DeepArrays` checks this distinction, key callbacks, scoped aliases and owned
+record/map elements. `DeepArrayCopies` requires exactly three detach allocations
+for shared map/map/array and array/map/array paths, then zero allocations across
+4,096 further unique writes. Bounds and owner failures remain unclassified.

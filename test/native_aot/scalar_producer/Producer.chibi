@@ -175,6 +175,10 @@ Main :: () -> int {
     InlineArrayPlacesProjection();
     MapForeignPlacesProjection();
     NestedMapsProjection();
+    NestedMapPlacesProjection();
+    DeepMapPlacesProjection();
+    DeepMappedArraysProjection();
+    DeepMapPlacesGrowth();
     MapArrayPlacesProjection();
     RecordElementPlacesProjection();
     IndexedForeignLoansProjection();

@@ -11,12 +11,12 @@ ViewElement :: (item: Instruction) -> int {
     if (item.op == ViewClone) { return item.type - ArrayType; }
     return item.type;
 }
-ViewValid :: (records: Record[], fields: int[], slots: int[], arguments: int[], item: Instruction) -> bool {
+ViewValid :: (records: Record[], fields: int[], layout: ValueLayout, slots: int[], arguments: int[], item: Instruction) -> bool {
     element := ViewElement(item);
-    if (abi.ScalarType(element) == "" && element != abi.TextStorage) { return false; }
+    if (element <= 0 || element >= ArrayType || ElementType(records, ArrayType + element) == 0 || !ValueValid(layout, element)) { return false; }
     left := ViewType;
     if (item.op == ViewMake) { left = PointerType; }
-    if (!Typed(slots, item.left, left)) { return false; }
+    if (item.literal == 0 || !Typed(slots, item.left, left)) { return false; }
     if (ViewArguments(item.op)) {
         if (item.right < 0 || item.right > length(arguments) - 2 ||
             !Typed(slots, arguments[item.right], abi.IntStorage)) { return false; }
@@ -26,12 +26,11 @@ ViewValid :: (records: Record[], fields: int[], slots: int[], arguments: int[], 
     }
     switch item.op {
         case ViewMake: return item.literal != 0 && ViewOptional(records, fields, item.type, ViewType);
-        case ViewLength: return item.type == abi.IntStorage && item.target == 0 && item.literal == 0;
-        case ViewGet: return Typed(slots, item.right, abi.IntStorage) && item.target == 0 &&
-                             (item.literal == 0 || item.literal == 1);
-        case ViewSet: return item.output == 0 && item.target == 0 && (item.literal == 0 || item.literal == 1);
-        case ViewClone: return item.right == 0 && item.target == 0 && item.literal == 0;
-        case ViewSlice: return item.literal == 0 && ViewOptional(records, fields, item.type, ArrayType + element);
+        case ViewLength: return item.type == abi.IntStorage && item.target == 0;
+        case ViewGet: return Typed(slots, item.right, abi.IntStorage) && (item.target == 0 || item.target == 1);
+        case ViewSet: return item.output == 0 && (item.target == 0 || item.target == 1);
+        case ViewClone: return item.right == 0 && item.target == 0;
+        case ViewSlice: return ViewOptional(records, fields, item.type, ArrayType + element);
         case: assert(false, "closed view operation"); return false;
     }
 }
@@ -59,15 +58,14 @@ ViewOptional :: (records: Record[], fields: int[], type: int, payload: int) -> b
 // Views hold no backing owner: their traced cell owns the current array.
 // Resolve only after callbacks and never retain an element address across
 // replacement, growth or collection. Scalar elements need no per-item trace.
-ViewTry :: (array: int) -> string {
+ViewTry :: (array: int, tag: i64) -> string {
     view := abi.ManagedViewType();
     pointer := abi.ManagedPointerType();
     return strings.Concatenate([
-        format_text("define internal ptr @chibi_view.{}.try(ptr %heap, {} %view) {{\nentry:\n", array, view),
+        format_text("define internal ptr @chibi_view.{}.{}.try(ptr %heap, {} %view) {{\nentry:\n", array, tag, view),
         format_text("  %pointer = extractvalue {} %view, 0\n  %cell = extractvalue {} %pointer, 0\n", view, pointer),
         "  %present = icmp ne ptr %cell, null\n  br i1 %present, label %resolve, label %missing\nresolve:\n",
-        format_text("  %tag = extractvalue {} %pointer, 2\n", pointer),
-        format_text("  %array = call ptr @chibi_managed.address(ptr %heap, {} %pointer, i64 %tag, i64 ptrtoint (ptr getelementptr ({}, ptr null, i32 1) to i64), i32 {})\n", pointer, abi.ArrayType(), array),
+        format_text("  %array = call ptr @chibi_managed.address(ptr %heap, {} %pointer, i64 {}, i64 ptrtoint (ptr getelementptr ({}, ptr null, i32 1) to i64), i32 {})\n", pointer, tag, abi.ArrayType(), ManagedStorageClass(array)),
         format_text("  %current = load {}, ptr %array\n  %length = extractvalue {} %current, 0\n", abi.ArrayType(), abi.ArrayType()),
         format_text("  %first = extractvalue {} %view, 1\n  %count = extractvalue {} %view, 2\n", view, view),
         "  %first.nonnegative = icmp sge i32 %first, 0\n  %count.nonnegative = icmp sge i32 %count, 0\n",
@@ -78,12 +76,12 @@ ViewTry :: (array: int) -> string {
 }
 // An initial invalid range is absence. A valid empty window retains its cell
 // and is therefore distinct from that all-zero absent value.
-ViewMakeValue :: (array: int) -> string {
+ViewMakeValue :: (array: int, tag: i64) -> string {
     view := abi.ManagedViewType();
     pointer := abi.ManagedPointerType();
     return strings.Concatenate([
-        format_text("define internal {} @chibi_view.{}.make(ptr %heap, {} %pointer, i32 %first, i32 %last, i64 %tag) {{\nentry:\n", view, array, pointer),
-        format_text("  %array = call ptr @chibi_managed.address(ptr %heap, {} %pointer, i64 %tag, i64 ptrtoint (ptr getelementptr ({}, ptr null, i32 1) to i64), i32 {})\n", pointer, abi.ArrayType(), array),
+        format_text("define internal {} @chibi_view.{}.{}.make(ptr %heap, {} %pointer, i32 %first, i32 %last, i64 %tag) {{\nentry:\n", view, array, tag, pointer),
+        format_text("  %array = call ptr @chibi_managed.address(ptr %heap, {} %pointer, i64 %tag, i64 ptrtoint (ptr getelementptr ({}, ptr null, i32 1) to i64), i32 {})\n", pointer, abi.ArrayType(), ManagedStorageClass(array)),
         format_text("  %current = load {}, ptr %array\n  %length = extractvalue {} %current, 0\n", abi.ArrayType(), abi.ArrayType()),
         "  %nonnegative = icmp sge i32 %first, 0\n  %ordered = icmp sge i32 %last, %first\n  %within = icmp sle i32 %last, %length\n  %range = and i1 %nonnegative, %ordered\n  %valid = and i1 %range, %within\n",
         "  br i1 %valid, label %make, label %missing\nmake:\n  %count = sub i32 %last, %first\n",
@@ -92,30 +90,30 @@ ViewMakeValue :: (array: int) -> string {
         format_text("missing:\n  ret {} zeroinitializer\n}}\n", view)
     ]);
 }
-ViewRequire :: (array: int) -> string {
+ViewRequire :: (array: int, tag: i64) -> string {
     return strings.Concatenate([
-        format_text("define internal ptr @chibi_view.{}.require(ptr %heap, {} %view) {{\nentry:\n", array, abi.ManagedViewType()),
-        format_text("  %array = call ptr @chibi_view.{}.try(ptr %heap, {} %view)\n", array, abi.ManagedViewType()),
+        format_text("define internal ptr @chibi_view.{}.{}.require(ptr %heap, {} %view) {{\nentry:\n", array, tag, abi.ManagedViewType()),
+        format_text("  %array = call ptr @chibi_view.{}.{}.try(ptr %heap, {} %view)\n", array, tag, abi.ManagedViewType()),
         "  %valid = icmp ne ptr %array, null\n  br i1 %valid, label %found, label %missing\nfound:\n  ret ptr %array\nmissing:\n",
         "  call void @chibi_native_failure(i32 3)\n  unreachable\n}\n"
     ]);
 }
 // Reading never acquires a backing. A write detaches the cell's canonical
 // descriptor after all callbacks, then immediately uses the element address.
-ViewElementAddress :: (array: int, write: bool, place: bool) -> string {
+ViewElementAddress :: (array: int, tag: i64, write: bool, place: bool) -> string {
     view := abi.ManagedViewType();
     descriptor := abi.ArrayType();
     suffix := "read";
     if (write) { suffix = "write"; }
     if (place) { suffix = strings.Concatenate(["place.", suffix]); }
-    out := [format_text("define internal ptr @chibi_view.{}.{}(ptr %ctx, ptr %heap, {} %view, i32 %index) {{\nentry:\n", array, suffix, view)];
+    out := [format_text("define internal ptr @chibi_view.{}.{}.{}(ptr %ctx, ptr %heap, {} %view, i32 %index) {{\nentry:\n", array, tag, suffix, view)];
     failure := 1;
     if (place) {
         failure = 0;
-        out.append(format_text("  %array = call ptr @chibi_view.{}.try(ptr %heap, {} %view)\n", array, view));
+        out.append(format_text("  %array = call ptr @chibi_view.{}.{}.try(ptr %heap, {} %view)\n", array, tag, view));
         out.append("  %live = icmp ne ptr %array, null\n  br i1 %live, label %check, label %missing\ncheck:\n");
     } else {
-        out.append(format_text("  %array = call ptr @chibi_view.{}.require(ptr %heap, {} %view)\n", array, view));
+        out.append(format_text("  %array = call ptr @chibi_view.{}.{}.require(ptr %heap, {} %view)\n", array, tag, view));
     }
     out.append(format_text("  %count = extractvalue {} %view, 2\n", view));
     out.append("  %nonnegative = icmp sge i32 %index, 0\n  %within = icmp slt i32 %index, %count\n  %valid = and i1 %nonnegative, %within\n");
@@ -135,12 +133,12 @@ ViewElementAddress :: (array: int, write: bool, place: bool) -> string {
     return strings.Join(out, "");
 }
 // The selected source range is already validated. Lend its descriptor to the
-// normal typed clone so owned text elements acquire their independent owners.
-ViewWindowCopy :: (array: int) -> string {
+// normal typed clone so owned elements acquire their independent owners.
+ViewWindowCopy :: (array: int, tag: i64) -> string {
     descriptor := abi.ArrayType();
     element := array - ArrayType;
     return strings.Concatenate([
-        format_text("define internal {} @chibi_view.{}.copy(ptr %ctx, ptr %array, i32 %first, i32 %count) {{\nentry:\n", descriptor, array),
+        format_text("define internal {} @chibi_view.{}.{}.copy(ptr %ctx, ptr %array, i32 %first, i32 %count) {{\nentry:\n", descriptor, array, tag),
         format_text("  %current = load {}, ptr %array\n  %source = extractvalue {} %current, 2\n", descriptor, descriptor),
         "  %offset = zext i32 %first to i64\n",
         format_text("  %start = getelementptr {}, ptr %source, i64 %offset\n", TypeName(element)),
@@ -151,36 +149,36 @@ ViewWindowCopy :: (array: int) -> string {
         format_text("  ret {} %result\n}}\n", descriptor)
     ]);
 }
-ViewMakeRecord :: (array: int, result: int) -> string {
+ViewMakeRecord :: (array: int, tag: i64, result: int) -> string {
     view := abi.ManagedViewType();
     record := TypeName(result);
     return strings.Concatenate([
-        format_text("define internal {} @chibi_view.{}.make.{}(ptr %heap, {} %pointer, i32 %first, i32 %last, i64 %tag) {{\nentry:\n", record, array, result, abi.ManagedPointerType()),
-        format_text("  %view = call {} @chibi_view.{}.make(ptr %heap, {} %pointer, i32 %first, i32 %last, i64 %tag)\n", view, array, abi.ManagedPointerType()),
+        format_text("define internal {} @chibi_view.{}.{}.make.{}(ptr %heap, {} %pointer, i32 %first, i32 %last, i64 %tag) {{\nentry:\n", record, array, tag, result, abi.ManagedPointerType()),
+        format_text("  %view = call {} @chibi_view.{}.{}.make(ptr %heap, {} %pointer, i32 %first, i32 %last, i64 %tag)\n", view, array, tag, abi.ManagedPointerType()),
         format_text("  %owner = extractvalue {} %view, 0\n  %cell = extractvalue {} %owner, 0\n", view, abi.ManagedPointerType()),
         "  %present = icmp ne ptr %cell, null\n  br i1 %present, label %some, label %none\nsome:\n",
         format_text("  %tagged = insertvalue {} zeroinitializer, i32 1, 0\n  %result = insertvalue {} %tagged, {} %view, 1\n  ret {} %result\n", record, record, view, record),
         format_text("none:\n  ret {} zeroinitializer\n}}\n", record)
     ]);
 }
-ViewSliceRecord :: (array: int, result: int) -> string {
+ViewSliceRecord :: (array: int, tag: i64, result: int) -> string {
     view := abi.ManagedViewType();
     record := TypeName(result);
     return strings.Concatenate([
-        format_text("define internal {} @chibi_view.{}.slice.{}(ptr %ctx, ptr %heap, {} %view, i32 %first, i32 %last) {{\nentry:\n", record, array, result, view),
-        format_text("  %array = call ptr @chibi_view.{}.try(ptr %heap, {} %view)\n", array, view),
+        format_text("define internal {} @chibi_view.{}.{}.slice.{}(ptr %ctx, ptr %heap, {} %view, i32 %first, i32 %last) {{\nentry:\n", record, array, tag, result, view),
+        format_text("  %array = call ptr @chibi_view.{}.{}.try(ptr %heap, {} %view)\n", array, tag, view),
         "  %live = icmp ne ptr %array, null\n  br i1 %live, label %range, label %none\nrange:\n",
         format_text("  %length = extractvalue {} %view, 2\n", view),
         "  %nonnegative = icmp sge i32 %first, 0\n  %ordered = icmp sge i32 %last, %first\n  %within = icmp sle i32 %last, %length\n  %order = and i1 %nonnegative, %ordered\n  %valid = and i1 %order, %within\n",
         "  br i1 %valid, label %copy, label %none\ncopy:\n",
         format_text("  %start = extractvalue {} %view, 1\n", view),
         "  %absolute = add i32 %start, %first\n  %count = sub i32 %last, %first\n",
-        format_text("  %copied = call {} @chibi_view.{}.copy(ptr %ctx, ptr %array, i32 %absolute, i32 %count)\n", abi.ArrayType(), array),
+        format_text("  %copied = call {} @chibi_view.{}.{}.copy(ptr %ctx, ptr %array, i32 %absolute, i32 %count)\n", abi.ArrayType(), array, tag),
         format_text("  %tagged = insertvalue {} zeroinitializer, i32 1, 0\n  %result = insertvalue {} %tagged, {} %copied, 1\n  ret {} %result\n", record, record, abi.ArrayType(), record),
         format_text("none:\n  ret {} zeroinitializer\n}}\n", record)
     ]);
 }
-ViewInstruction :: (item: Instruction, pc: int, arguments: int[]) -> string {
+ViewInstruction :: (item: Instruction, pc: int, arguments: int[], owners: bool[]) -> string {
     element := ViewElement(item);
     array := ArrayType + element;
     input := ViewType;
@@ -194,30 +192,33 @@ ViewInstruction :: (item: Instruction, pc: int, arguments: int[]) -> string {
     }
     suffix := "read";
     if (item.op == ViewSet) { suffix = "write"; }
-    if (item.literal == 1) { suffix = strings.Concatenate(["place.", suffix]); }
+    if (item.target == 1) { suffix = strings.Concatenate(["place.", suffix]); }
     switch item.op {
         case ViewMake:
-            out = format_text("{}  %value{} = call {} @chibi_view.{}.make.{}(ptr %managed.heap, {} %view{}, i32 %first{}, i32 %second{}, i64 {})\n", out, pc, TypeName(item.type), array, item.type, abi.ManagedPointerType(), pc, pc, pc, item.literal);
+            out = format_text("{}  %value{} = call {} @chibi_view.{}.{}.make.{}(ptr %managed.heap, {} %view{}, i32 %first{}, i32 %second{}, i64 {})\n", out, pc, TypeName(item.type), array, item.literal, item.type, abi.ManagedPointerType(), pc, pc, pc, item.literal);
         case ViewLength:
-            out = format_text("{}  %checked{} = call ptr @chibi_view.{}.require(ptr %managed.heap, {} %view{})\n", out, pc, array, abi.ManagedViewType(), pc);
+            out = format_text("{}  %checked{} = call ptr @chibi_view.{}.{}.require(ptr %managed.heap, {} %view{})\n", out, pc, array, item.literal, abi.ManagedViewType(), pc);
             out = format_text("{}  %value{} = extractvalue {} %view{}, 2\n", out, pc, abi.ManagedViewType(), pc);
         case ViewGet:
             out = strings.Concatenate([out, Load(format_text("index{}", pc), abi.IntStorage, "s", item.right)]);
-            out = format_text("{}  %address{} = call ptr @chibi_view.{}.{}(ptr %ctx, ptr %managed.heap, {} %view{}, i32 %index{})\n", out, pc, array, suffix, abi.ManagedViewType(), pc, pc);
+            out = format_text("{}  %address{} = call ptr @chibi_view.{}.{}.{}(ptr %ctx, ptr %managed.heap, {} %view{}, i32 %index{})\n", out, pc, array, item.literal, suffix, abi.ManagedViewType(), pc, pc);
             out = format_text("{}  %value{} = load {}, ptr %address{}\n", out, pc, TypeName(element), pc);
         case ViewSet:
-            out = format_text("{}  %address{} = call ptr @chibi_view.{}.{}(ptr %ctx, ptr %managed.heap, {} %view{}, i32 %first{})\n", out, pc, array, suffix, abi.ManagedViewType(), pc, pc);
+            out = format_text("{}  %address{} = call ptr @chibi_view.{}.{}.{}(ptr %ctx, ptr %managed.heap, {} %view{}, i32 %first{})\n", out, pc, array, item.literal, suffix, abi.ManagedViewType(), pc, pc);
             if (element == abi.TextStorage) {
                 out = format_text("{}  %old{} = load {}, ptr %address{}\n  %old.owner{} = extractvalue {} %old{}, 2\n", out, pc, abi.TextType(), pc, pc, abi.TextType(), pc);
                 out = format_text("{}  call void @chibi_scalar.free(ptr %ctx, ptr %old.owner{})\n", out, pc);
             }
+            if (element >= RecordType && owners[element - RecordType]) {
+                out = format_text("{}  call void @chibi_value.{}.drop_at(ptr %ctx, ptr %address{})\n", out, element, pc);
+            }
             out = format_text("{}  store {} %second{}, ptr %address{}\n", out, TypeName(element), pc, pc);
         case ViewClone:
-            out = format_text("{}  %array{} = call ptr @chibi_view.{}.require(ptr %managed.heap, {} %view{})\n", out, pc, array, abi.ManagedViewType(), pc);
+            out = format_text("{}  %array{} = call ptr @chibi_view.{}.{}.require(ptr %managed.heap, {} %view{})\n", out, pc, array, item.literal, abi.ManagedViewType(), pc);
             out = format_text("{}  %first{} = extractvalue {} %view{}, 1\n  %count{} = extractvalue {} %view{}, 2\n", out, pc, abi.ManagedViewType(), pc, pc, abi.ManagedViewType(), pc);
-            out = format_text("{}  %value{} = call {} @chibi_view.{}.copy(ptr %ctx, ptr %array{}, i32 %first{}, i32 %count{})\n", out, pc, abi.ArrayType(), array, pc, pc, pc);
+            out = format_text("{}  %value{} = call {} @chibi_view.{}.{}.copy(ptr %ctx, ptr %array{}, i32 %first{}, i32 %count{})\n", out, pc, abi.ArrayType(), array, item.literal, pc, pc, pc);
         case ViewSlice:
-            out = format_text("{}  %value{} = call {} @chibi_view.{}.slice.{}(ptr %ctx, ptr %managed.heap, {} %view{}, i32 %first{}, i32 %second{})\n", out, pc, TypeName(item.type), array, item.type, abi.ManagedViewType(), pc, pc, pc);
+            out = format_text("{}  %value{} = call {} @chibi_view.{}.{}.slice.{}(ptr %ctx, ptr %managed.heap, {} %view{}, i32 %first{}, i32 %second{})\n", out, pc, TypeName(item.type), array, item.literal, item.type, abi.ManagedViewType(), pc, pc, pc);
         case: assert(false, "closed view instruction");
     }
     if (item.op != ViewSet) { out = strings.Concatenate([out, Store(format_text("%value{}", pc), item.type, "s", item.output)]); }
@@ -231,48 +232,49 @@ ViewNeedsPlaceRead: int : 16;
 ViewNeedsWrite: int : 32;
 ViewNeedsPlaceWrite: int : 64;
 ViewNeedsCopy: int : 128;
+ViewHelpers :: struct { array: int; tag: i64; flags: int; }
 ViewModule :: (code: Instruction[]) -> string {
-    needed := false;
-    for (item in code) { if (ViewOperation(item.op)) { needed = true; break; } }
-    if (!needed) { return ""; }
-    used := resize([int(0)], abi.TextStorage + 1);
+    used: ViewHelpers[] = [];
+    indices: [string: int] = [:];
     out: string[] = [];
     wrappers: [string: bool] = [:];
     for (item in code) {
         if (!ViewOperation(item.op)) { continue; }
-        element := ViewElement(item);
+        array := ArrayType + ViewElement(item);
         flags := ViewNeedsTry;
         switch item.op {
             case ViewMake: flags = ViewNeedsMake;
             case ViewLength: flags |= ViewNeedsRequire;
             case ViewGet:
-                if (item.literal == 1) { flags |= ViewNeedsPlaceRead; } else { flags |= ViewNeedsRequire | ViewNeedsRead; }
+                if (item.target == 1) { flags |= ViewNeedsPlaceRead; } else { flags |= ViewNeedsRequire | ViewNeedsRead; }
             case ViewSet:
-                if (item.literal == 1) { flags |= ViewNeedsPlaceWrite; } else { flags |= ViewNeedsRequire | ViewNeedsWrite; }
+                if (item.target == 1) { flags |= ViewNeedsPlaceWrite; } else { flags |= ViewNeedsRequire | ViewNeedsWrite; }
             case ViewClone: flags |= ViewNeedsRequire | ViewNeedsCopy;
             case ViewSlice: flags |= ViewNeedsCopy;
             case: assert(false, "closed view helper operation");
         }
-        used[element] |= flags;
+        key := format_text("{}.{}", array, item.literal);
+        if (indices.has(key)) { used[indices[key]].flags |= flags; }
+        else { indices[key] = length(used); used.append({array: array, tag: item.literal, flags: flags}); }
         if (item.op != ViewMake && item.op != ViewSlice) { continue; }
-        key := format_text("{}.{}.{}", item.op, element, item.type);
-        if (wrappers.has(key)) { continue; }
-        wrappers[key] = true;
-        if (item.op == ViewMake) { out.append(ViewMakeRecord(ArrayType + element, item.type)); }
-        else { out.append(ViewSliceRecord(ArrayType + element, item.type)); }
+        wrapper := format_text("{}.{}.{}", item.op, key, item.type);
+        if (wrappers.has(wrapper)) { continue; }
+        wrappers[wrapper] = true;
+        if (item.op == ViewMake) { out.append(ViewMakeRecord(array, item.literal, item.type)); }
+        else { out.append(ViewSliceRecord(array, item.literal, item.type)); }
     }
-    for (element in 0..<length(used)) {
-        flags := used[element];
-        if (flags == 0) { continue; }
-        array := ArrayType + element;
-        if ((flags & ViewNeedsTry) != 0) { out.append(ViewTry(array)); }
-        if ((flags & ViewNeedsMake) != 0) { out.append(ViewMakeValue(array)); }
-        if ((flags & ViewNeedsRequire) != 0) { out.append(ViewRequire(array)); }
-        if ((flags & ViewNeedsRead) != 0) { out.append(ViewElementAddress(array, false, false)); }
-        if ((flags & ViewNeedsPlaceRead) != 0) { out.append(ViewElementAddress(array, false, true)); }
-        if ((flags & ViewNeedsWrite) != 0) { out.append(ViewElementAddress(array, true, false)); }
-        if ((flags & ViewNeedsPlaceWrite) != 0) { out.append(ViewElementAddress(array, true, true)); }
-        if ((flags & ViewNeedsCopy) != 0) { out.append(ViewWindowCopy(array)); }
+    for (helper in used) {
+        array := helper.array;
+        tag := helper.tag;
+        flags := helper.flags;
+        if ((flags & ViewNeedsTry) != 0) { out.append(ViewTry(array, tag)); }
+        if ((flags & ViewNeedsMake) != 0) { out.append(ViewMakeValue(array, tag)); }
+        if ((flags & ViewNeedsRequire) != 0) { out.append(ViewRequire(array, tag)); }
+        if ((flags & ViewNeedsRead) != 0) { out.append(ViewElementAddress(array, tag, false, false)); }
+        if ((flags & ViewNeedsPlaceRead) != 0) { out.append(ViewElementAddress(array, tag, false, true)); }
+        if ((flags & ViewNeedsWrite) != 0) { out.append(ViewElementAddress(array, tag, true, false)); }
+        if ((flags & ViewNeedsPlaceWrite) != 0) { out.append(ViewElementAddress(array, tag, true, true)); }
+        if ((flags & ViewNeedsCopy) != 0) { out.append(ViewWindowCopy(array, tag)); }
     }
     return strings.Join(out, "");
 }

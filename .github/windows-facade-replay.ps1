@@ -152,19 +152,29 @@ finally { $process.Dispose() }
 function Save-Receipt($Results) {
     @{ producer = $producer; producer_run = $run; producer_artifact = $artifactId; artifact_sha256 = $archiveHash;
        diagnostic_commit = (& git rev-parse HEAD); original_source_git_blob = (& git rev-parse "${producer}:test/native_aot/asset_compiler/Bridge.c");
+       powershell = $PSVersionTable.PSVersion.ToString(); framework = [Runtime.InteropServices.RuntimeInformation]::FrameworkDescription;
        wrapper_sha256 = (Hash "$root/.github/windows-facade-replay.c"); rewritten_object_sha256 = (Hash $object); results = $Results;
        scope = 'Diagnostic replay only; individual exit statuses retain all original null-program assertions. No product acceptance or native seed publication.'
     } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath "$work/receipt.json" -Encoding utf8
 }
 $results = @()
 Save-Receipt $results
+foreach ($environmentMode in @('remove', 'original-null-setter', 'explicit-empty', 'null-string-setter')) {
+    # Match the original PowerShell setup exactly, before ProcessStartInfo
+    # takes its environment snapshot. Only this known override is inspected.
+    if ($environmentMode -eq 'original-null-setter') {
+        [Environment]::SetEnvironmentVariable('CHIBI_ASSET_COMPILER', $null, 'Process')
+    }
+    if ($environmentMode -eq 'null-string-setter') {
+        [Environment]::SetEnvironmentVariable('CHIBI_ASSET_COMPILER', [NullString]::Value, 'Process')
+    }
 foreach ($name in @('original', 'probed')) {
     foreach ($extended in @($false, $true)) {
         $binary = $consumer
         if ($name -eq 'probed') { $binary = $output }
         $spelling = $binary
         if ($extended) { $spelling = '\\?\' + $binary.Replace('/', '\') }
-        $label = "$name-$extended"
+        $label = "$environmentMode-$name-$extended"
         $start = [Diagnostics.ProcessStartInfo]::new()
         $start.FileName = $spelling
         $start.UseShellExecute = $false
@@ -177,7 +187,12 @@ foreach ($name in @('original', 'probed')) {
         $start.Environment['PATH'] = ''
         $start.Environment['CC'] = 'Z:/no-c-compiler.exe'
         $start.Environment['CXX'] = 'Z:/no-cxx-compiler.exe'
-        $null = $start.Environment.Remove('CHIBI_ASSET_COMPILER')
+        if ($environmentMode -eq 'remove') { $null = $start.Environment.Remove('CHIBI_ASSET_COMPILER') }
+        if ($environmentMode -eq 'explicit-empty') { $start.Environment['CHIBI_ASSET_COMPILER'] = '' }
+        $overridePresent = $start.Environment.ContainsKey('CHIBI_ASSET_COMPILER')
+        $overrideLength = -1
+        if ($overridePresent) { $overrideLength = $start.Environment['CHIBI_ASSET_COMPILER'].Length }
+        Write-Host "OVERRIDE $label present=$overridePresent length=$overrideLength"
         $temp = Join-Path $work "temp-$label"
         $cache = Join-Path $work "cache-$label"
         New-Item -ItemType Directory -Path $temp, $cache | Out-Null
@@ -198,7 +213,7 @@ foreach ($name in @('original', 'probed')) {
             # deadline. A completed leader does not imply that pipes are closed.
             $remaining = [Math]::Max(0, 115000 - [int]$timer.ElapsedMilliseconds)
             if (!$process.WaitForExit($remaining)) {
-                $results += @{ name = $name; extended = $extended; error = 'leader deadline'; seconds = $timer.Elapsed.TotalSeconds }
+                $results += @{ mode = $environmentMode; name = $name; extended = $extended; error = 'leader deadline'; seconds = $timer.Elapsed.TotalSeconds }
                 Save-Receipt $results
                 throw "The owned $label consumer exceeded its diagnostic deadline"
             }
@@ -206,7 +221,7 @@ foreach ($name in @('original', 'probed')) {
             $draining = [Threading.Tasks.Task]::WhenAll([Threading.Tasks.Task[]]@($stdout, $stderr))
             $remaining = [Math]::Max(0, 115000 - [int]$timer.ElapsedMilliseconds)
             if (!$draining.Wait($remaining)) {
-                $results += @{ name = $name; extended = $extended; status = $status; error = 'stream deadline'; seconds = $timer.Elapsed.TotalSeconds }
+                $results += @{ mode = $environmentMode; name = $name; extended = $extended; status = $status; error = 'stream deadline'; seconds = $timer.Elapsed.TotalSeconds }
                 Save-Receipt $results
                 throw "The owned $label descendants did not close their output streams"
             }
@@ -217,7 +232,8 @@ foreach ($name in @('original', 'probed')) {
             Write-Host "REPLAY $label exit=$status elapsed=$($timer.Elapsed.TotalSeconds)"
             Write-Host $stdoutText
             Write-Host $stderrText
-            $results += @{ name = $name; extended = $extended; status = $status; seconds = $timer.Elapsed.TotalSeconds;
+            $results += @{ mode = $environmentMode; name = $name; extended = $extended; status = $status; seconds = $timer.Elapsed.TotalSeconds;
+                override_present = $overridePresent; override_length = $overrideLength;
                 executable_sha256 = (Hash $binary); stdout_sha256 = (Hash "$work/$label.stdout"); stderr_sha256 = (Hash "$work/$label.stderr") }
             Save-Receipt $results
         } finally {
@@ -229,6 +245,7 @@ foreach ($name in @('original', 'probed')) {
             $process.Dispose()
         }
     }
+}
 }
 Write-Host 'Diagnostic replay complete. Per-consumer results are recorded independently of this script status.'
 exit 0

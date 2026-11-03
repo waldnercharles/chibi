@@ -94,3 +94,21 @@ Ordinary source already rejects view fields in records. Views over strings,
 records, nested arrays or union elements, and immutable `text.view(range)`, are
 working ordinary forms still awaiting native support. View containers, retained
 views and suspended view frames also remain outside this admission.
+
+Optional numeric/bool values and flat numeric/bool record payloads can share
+managed cells. The optional tag and payload move together; nil replacement
+and scoped alias writes are visible through every pointer. The cell keeps the
+same 64-byte header and uses a complete optional nominal/layout identity.
+Its immutable validator exposes the whole payload; inline field projection
+keeps the existing flat-record rule. Backing owners and pointer/view edges
+inside optional cells remain outside this slice. The original four fallible
+pointer cases run at O0/O2, and the poisoned source proof checks escaped cells,
+early returns and forced collection with bounded peak allocation.
+
+String-array cells use the same descriptor and backing lifecycle as numeric
+array cells. Last cell release drops the backing and its owned text values;
+evaluated reads hold independent array owners before later callbacks can
+replace the cell. The source proof uses embedded NUL strings, escaped cells,
+value copies, scoped aliases and replacement during operand evaluation. Its
+normal-threshold peak bound includes backing and text allocations per cell;
+forced-collection runs retain the same zero-live requirement.

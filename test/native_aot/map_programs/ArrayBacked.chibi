@@ -1,7 +1,56 @@
 package map_array_backed_record
 
-Value :: struct { items: int[]; }
+Inner :: struct { words: string[]; }
+Value :: struct { items: int[]; nested: Inner; }
+Text :: (value: int) -> string { return text_from_bytes([u8(65), 0, u8(value)]); }
+Make :: (value: int) -> Value { return {items: [value], nested: {words: [Text(value)]}}; }
+Map :: () -> [int: Value] { values: [int: Value] = [1: Make(1), 2: Make(2)]; return values; }
+First :: () -> Value { for (key, item in Map()) { return item; } return Make(0); }
+Mutate :: (values: [int: Value]) -> int { values[1] = Make(7); return values[1].items[0]; }
+Reset :: (values: ^([int: Value])) -> int { values^ = [9: Make(9)]; return 0; }
+Captured :: (values: [int: Value], ignored: int) -> Value { return values[1]; }
 Main :: () -> int {
-    values: [int: Value] = [1: {items: [int(1)]}];
-    return values[1].items[0];
+    values := Map();
+    copied := values;
+    item := values[1];
+    item.items.append(11);
+    item.nested = {words: [Text(3)]};
+    assert(length(values[1].items) == 1 && values[1].nested.words[0] == Text(1));
+    values[1] = item;
+    values[1] = values[1];
+    assert(length(values[1].items) == 2 && copied[1].nested.words[0] == Text(1));
+    changed := Mutate(copied);
+    assert(changed == 7 && copied[1].items[0] == 1);
+    returned := First();
+    assert(returned.nested.words[0] == Text(1));
+    escaped := Map()[1].nested.words;
+    assert(escaped[0] == Text(1));
+    repeated := Make(5);
+    duplicates: [string: Value] = [Text(5): repeated, Text(5): repeated];
+    repeated.items[0] = 55;
+    assert(duplicates[Text(5)].items[0] == 5);
+    duplicate_copy := duplicates;
+    delete duplicates[Text(5)];
+    assert(duplicate_copy[Text(5)].nested.words[0] == Text(5));
+    visited := 0;
+    for (key, value in copied) {
+        delete copied[key];
+        assert(value.items[0] == key && value.nested.words[0] == Text(key));
+        held := value;
+        held.items.append(90);
+        assert(length(value.items) == 1 && length(held.items) == 2);
+        visited += 1;
+    }
+    assert(visited == 2 && !copied.has(1));
+    for (key, value in Map()) { break; }
+    for (value in Map()) { continue; }
+    growing: [int: Value] = [:];
+    for (index in 0..<192) { growing[index] = Make(index % 128); }
+    saved := growing;
+    for (index in 0..<192) { delete growing[index]; }
+    growing[0] = Make(99);
+    assert(saved[0].nested.words[0] == Text(0) && growing[0].items[0] == 99);
+    captured := Captured(values, Reset(&values));
+    assert(length(captured.items) == 2 && values[9].items[0] == 9);
+    return 0;
 }

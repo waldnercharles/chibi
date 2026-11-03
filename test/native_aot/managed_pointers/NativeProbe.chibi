@@ -38,8 +38,52 @@ RecordEmission :: (target: abi.Target, mode: int) -> native.Result {
     return native.EmitProgramTyped(target, [Shape(slots, code)], [], slots, [], code, [], records,
         [number, number], tags, [], source, [], [], []);
 }
+// An optional's physical tag and nested plain payload are one typed cell.
+// Its whole-only layout cannot be used to project an inline child address.
+OptionalEmission :: (target: abi.Target, mode: int) -> native.Result {
+    number := abi.IntStorage;
+    child := native.RecordType;
+    optional := child + 1;
+    resolved := optional;
+    tag: i64 = -701;
+    if (mode == 1) { resolved = optional + 1; tag = -702; }
+    if (mode == 2) { resolved = number; }
+    slots := [number, child, child, number, optional, optional, optional, native.PointerType,
+              native.RefType + resolved, resolved, child, number, number];
+    code := [Op(native.Constant, number, 0, 0, 0, 7), Op(native.Constant, child, 1, 0, 0, 0),
+        Op(native.Insert, child, 2, 1, 0, 0), Op(native.Constant, number, 3, 0, 0, 1),
+        Op(native.Constant, optional, 4, 0, 0, 0), Op(native.Insert, optional, 5, 4, 3, 0),
+        Op(native.Insert, optional, 6, 5, 2, 1), Op(native.ManagedNew, native.PointerType, 7, 6, optional, -701),
+        Op(native.ManagedAddress, native.RefType + resolved, 8, 7, 0, tag),
+        Op(native.Deref, resolved, 9, 8, 0, 0)];
+    if (mode == 2) {
+        code.extend([Op(native.Publish, number, 0, 9, 0, 0), Op(native.Return, 0, 0, 0, 0, 0)]);
+    } else {
+        code.extend([Op(native.Extract, child, 10, 9, resolved, 1), Op(native.Extract, number, 11, 10, child, 0),
+            Op(native.Sub, number, 12, 11, 0, 0), Op(native.Publish, number, 0, 12, 0, 0),
+            Op(native.Return, 0, 0, 0, 0, 0)]);
+    }
+    if (mode == 3) {
+        code[8] = {op: native.ManagedProject, type: native.PointerType, output: 8, left: 7,
+                   right: optional, target: 1, literal: -700};
+        slots[8] = native.PointerType;
+    }
+    fields := [number, number, child];
+    if (mode == 4) { fields[0] = abi.TextStorage; }
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 2, identity: -701}];
+    tags: i64[] = [0, 0, 0];
+    if (mode == 1) {
+        records.append({first: 3, count: 2, identity: -702});
+        fields.extend([number, child]);
+        tags.extend([i64(0), 0]);
+    }
+    source: native.Source = {file: "", directory: ""};
+    return native.EmitProgramTyped(target, [Shape(slots, code)], [], slots, [], code, [], records,
+                                   fields, tags, [], source, [], [], []);
+}
 ArrayEmission :: (target: abi.Target, mode: int) -> native.Result {
     array := native.ArrayType + abi.IntStorage;
+    if (mode == 3) { array = native.ArrayType + abi.TextStorage; }
     resolved := array;
     tag: i64 = -880;
     if (mode == 1) { tag = -881; }
@@ -106,15 +150,12 @@ Main :: () -> int {
         Op(native.Publish, number, 0, 9, 0, 0), Op(native.Return, 0, 0, 0, 0, 0)];
     no_records: native.Record[] = [];
     empty: int[] = [];
-    for (element in [pointer, abi.TextStorage]) {
-        payload := native.ArrayType + element;
-        payload_code := [Op(native.Constant, payload, 0, 0, 0, 0),
-            Op(native.ManagedNew, pointer, 1, 0, payload, -880),
-            Op(native.Constant, number, 2, 0, 0, 0), Op(native.Publish, number, 0, 2, 0, 0),
-            Op(native.Return, 0, 0, 0, 0, 0)];
-        if (!Rejected(target, [payload, pointer, number], payload_code, false, [], [],
-                      "initializer differs from its scalar type")) { return 1; }
-    }
+    payload_code := [Op(native.Constant, array, 0, 0, 0, 0),
+        Op(native.ManagedNew, pointer, 1, 0, array, -880),
+        Op(native.Constant, number, 2, 0, 0, 0), Op(native.Publish, number, 0, 2, 0, 0),
+        Op(native.Return, 0, 0, 0, 0, 0)];
+    if (!Rejected(target, [array, pointer, number], payload_code, false, [], [],
+                  "initializer differs from its scalar type")) { return 1; }
     for (mode in 2..<6) {
         switch RecordEmission(target, mode) {
             case .Emitted(text): os.Print("accepted invalid managed record metadata or projection"); return 1;
@@ -122,6 +163,15 @@ Main :: () -> int {
                 expected := "projection differs from its typed record field";
                 if (mode == 4) { expected = "initializer differs from its scalar type"; }
                 if (mode == 5) { expected = "identities differ from the field table"; }
+                if (!strings.Contains(message, expected)) { os.Print(message); return 1; }
+        }
+    }
+    for (mode in [int(3), 4]) {
+        switch OptionalEmission(target, mode) {
+            case .Emitted(text): os.Print("accepted an unsafe optional cell layout or projection"); return 1;
+            case .Rejected(instruction, message):
+                expected := "projection differs";
+                if (mode == 4) { expected = "metadata requires scalar or pointer fields"; }
                 if (!strings.Contains(message, expected)) { os.Print(message); return 1; }
         }
     }
@@ -200,7 +250,7 @@ Main :: () -> int {
     for (mode in ["positive", "persistent", "typed_layout", "untraced_layout", "bad_layout_storage", "bad_layout_identity", "bad_layout_root",
                   "wrong_tag", "wrong_storage", "wrong_range", "nil", "wrong_owner", "array_owner", "epoch_wrap",
                   "code_underflow", "code_overflow", "no_layout_drop", "record", "record_parent",
-                  "array_cell", "array_cell_tag", "array_cell_storage"]) {
+                  "array_cell", "array_cell_tag", "array_cell_storage", "text_array_cell", "optional_cell", "optional_cell_tag", "optional_cell_storage"]) {
         module := format_text("{}/native-{}.ll", work, mode);
         body := format_text("\ndefine i32 @managed_source.entry(ptr %ctx) {{\n  %native = call i32 @managed_native.entry(ptr %ctx)\n  %runtime = call i32 @managed_runtime.{}(ptr %ctx)\n  %result = or i32 %native, %runtime\n  ret i32 %result\n}}\n", mode);
         current := strings.Concatenate([text, fixture.text, body]);
@@ -214,11 +264,23 @@ Main :: () -> int {
                         "define i32 @managed_source.entry(ptr %ctx)");
             }
         }
-        if (mode == "array_cell" || mode == "array_cell_tag" || mode == "array_cell_storage") {
+        if (mode == "array_cell" || mode == "array_cell_tag" || mode == "array_cell_storage" || mode == "text_array_cell") {
             array_mode := 0;
             if (mode == "array_cell_tag") { array_mode = 1; }
             if (mode == "array_cell_storage") { array_mode = 2; }
+            if (mode == "text_array_cell") { array_mode = 3; }
             switch ArrayEmission(target, array_mode) {
+                case .Rejected(instruction, message): os.Print(message); return 1;
+                case .Emitted(emitted):
+                    current = strings.ReplaceAll(emitted, "define i32 @chibi_scalar(ptr %ctx)",
+                        "define i32 @managed_source.entry(ptr %ctx)");
+            }
+        }
+        if (mode == "optional_cell" || mode == "optional_cell_tag" || mode == "optional_cell_storage") {
+            optional_mode := 0;
+            if (mode == "optional_cell_tag") { optional_mode = 1; }
+            if (mode == "optional_cell_storage") { optional_mode = 2; }
+            switch OptionalEmission(target, optional_mode) {
                 case .Rejected(instruction, message): os.Print(message); return 1;
                 case .Emitted(emitted):
                     current = strings.ReplaceAll(emitted, "define i32 @chibi_scalar(ptr %ctx)",
@@ -239,7 +301,7 @@ Main :: () -> int {
             result := os.Capture([output]);
             valid := result.status == 0;
             trapped := mode == "epoch_wrap" || mode == "code_underflow" || mode == "code_overflow" || mode == "no_layout_drop";
-            if (mode != "positive" && mode != "persistent" && mode != "typed_layout" && mode != "untraced_layout" && mode != "record" && mode != "array_cell" && !trapped) {
+            if (mode != "positive" && mode != "persistent" && mode != "typed_layout" && mode != "untraced_layout" && mode != "record" && mode != "array_cell" && mode != "text_array_cell" && mode != "optional_cell" && !trapped) {
                 valid = result.status == 134 && strings.Contains(result.stderr, "native failure: another failure");
             }
             // Capture preserves negative signals; some runners encode 128+sig.

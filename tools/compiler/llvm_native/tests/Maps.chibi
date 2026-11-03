@@ -125,3 +125,30 @@ StringKeysHashAndCompareBytesAndCountReferences :: () {
     assert(strings.Contains(text, "%o.rk = extractvalue { ptr, i32, ptr } %rkv, 2\n  call void @chibi_scalar.retain(ptr %o.rk)\n"));
     assert(strings.Contains(text, "define internal void @chibi_scalar.retain(ptr %owner) {\n"));
 }
+
+RecordPayloadMap :: (field: int, array: bool) -> native.Result {
+    payload := native.RecordType;
+    if (array) { payload += native.ArrayType; }
+    mapped := native.MapOf(abi.IntStorage, payload);
+    code := [Code(native.Constant, mapped, 0, 0, 0, 0, 0),
+             Code(native.MapLength, abi.IntStorage, 1, 0, 0, 0, i64(mapped)),
+             Code(native.Publish, abi.IntStorage, 0, 1, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}];
+    source: native.Source = {file: "", directory: ""};
+    return native.Emit(abi.LinuxX64(), [Function(abi.IntStorage, 0, 0, 2, 0, length(code), 0, 0)],
+        [], [mapped, abi.IntStorage], [], code, [], records, [field], [], source, [], [], [], false, 1);
+}
+@test
+RecordMapPayloadsShareTheValueLifecycleDomain :: () {
+    Emitted(RecordPayloadMap(native.ArrayType + abi.IntStorage, false));
+    Rejects(RecordPayloadMap(native.TaskType, false), "native records differ from their field table");
+    Rejects(RecordPayloadMap(native.MapOf(abi.IntStorage, abi.IntStorage), false), MapOperands());
+}
+
+@test
+ArrayRecordMapPayloadsUseTheSameClosedLifecycle :: () {
+    Emitted(RecordPayloadMap(native.ArrayType + abi.TextStorage, true));
+    Rejects(RecordPayloadMap(native.PointerType, true), "native managed pointer aggregate roots require typed flat records");
+    Rejects(RecordPayloadMap(native.MapOf(abi.IntStorage, abi.IntStorage), true), MapOperands());
+}

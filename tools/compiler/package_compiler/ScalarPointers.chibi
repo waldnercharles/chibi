@@ -5,6 +5,15 @@ import binding "project:lexical_binding"
 import snapshot "project:source_snapshot"
 import syntax "project:syntax_diagnostics"
 
+// Optional cells initially contain plain values only. Their tag and payload
+// move together; owned backing and managed graph edges need a separate layout.
+ScalarPointerOptional :: (types: TypeDecl[], record: int) -> bool {
+    if (!ScalarOptional(types, record)) { return false; }
+    declared := types[record];
+    if (declared.value_container != 0) { return false; }
+    if (declared.value_record < 0) { return Numeric(declared.value_storage) || declared.value_storage == BoolStorage; }
+    return declared.value_storage == StructStorage && types[declared.value_record].kind == RecordDecl;
+}
 // Managed cells keep their pointee's complete identity; storage alone is not
 // enough for a nominal type. Nullable descriptors retain that pointee type;
 // only their absent value has an all-zero descriptor.
@@ -19,9 +28,14 @@ ScalarPointerElement :: (types: TypeDecl[], record: int) -> ValueType {
         types[declared.value_record].kind == RecordDecl) {
         return {storage: StructStorage, container: 0, record: declared.value_record};
     }
+    if (declared.value_container == 0 && declared.value_storage == UnionStorage &&
+        ScalarPointerOptional(types, declared.value_record)) {
+        return {storage: UnionStorage, container: 0, record: declared.value_record};
+    }
     if (declared.value_record != -1) { return none; }
     type := ScalarTypeOf(declared.value_storage);
-    if (type < facts.IntType || type > facts.DoubleType) { return none; }
+    text_array := type == facts.StringType && declared.value_container == ArrayContainer;
+    if ((type < facts.IntType || type > facts.DoubleType) && !text_array) { return none; }
     return {storage: declared.value_storage, container: declared.value_container, record: -1};
 }
 ScalarPointerType :: (types: TypeDecl[], record: int) -> int {
@@ -35,6 +49,12 @@ ScalarPointerTag :: (types: TypeDecl[], value: ValueType) -> i64 {
     nominal := SemanticTag(types, value);
     if (value.container == ArrayContainer) {
         return i64(wrap: binding.ID("native-managed-array-v1", format_text("{}", nominal)));
+    }
+    if (value.storage == UnionStorage && value.container == 0 && ScalarPointerOptional(types, value.record)) {
+        payload := types[value.record];
+        layout: u64 = 0;
+        if (payload.value_record >= 0) { layout = types[payload.value_record].layout; }
+        return i64(wrap: binding.ID("native-managed-optional-v1", format_text("{}:{}", nominal, layout)));
     }
     if (value.storage == StructStorage && value.container == 0 && value.record >= 0) {
         return i64(wrap: binding.ID("native-managed-record-v1", format_text("{}:{}", nominal, types[value.record].layout)));
@@ -123,8 +143,9 @@ ScalarPointerRecord :: (forest: snapshot.SnapshotNode[], text: string, callables
         binding := names[found];
         scalar := binding.record == -1 && ScalarTypeOf(binding.storage) >= facts.IntType && ScalarTypeOf(binding.storage) <= facts.DoubleType;
         record := binding.storage == StructStorage && binding.record >= 0 && types[binding.record].kind == RecordDecl;
-        array := scalar && binding.container == ArrayContainer;
-        if (binding.place == ReferencePlace || (binding.container != 0 && !array) || (!scalar && !record)) { return -1; }
+        array := (scalar || (binding.storage == TextStorage && binding.record == -1)) && binding.container == ArrayContainer;
+        optional := binding.storage == UnionStorage && ScalarPointerOptional(types, binding.record);
+        if (binding.place == ReferencePlace || (binding.container != 0 && !array) || (!scalar && !record && !array && !optional)) { return -1; }
         pointed: ValueType = {storage: binding.storage, container: binding.container, record: binding.record};
         return FindPointer(types, pointed, false);
     }
@@ -191,7 +212,7 @@ ScalarPointerAddress :: (forest: snapshot.SnapshotNode[], text: string, callable
     output := rows;
     address := ScalarAt(forest, node, facts.ManagedAddressRow, facts.PointerType, names[found].index, 0, "");
     shape := ScalarPointerElement(types, record);
-    if (shape.storage == StructStorage || shape.container == ArrayContainer) {
+    if (shape.storage == StructStorage || shape.storage == UnionStorage || shape.container == ArrayContainer) {
         address.count = ScalarValueType(types, shape.storage, shape.container, shape.record);
     }
     address.literal = ScalarPointerTag(types, shape);
@@ -310,6 +331,27 @@ ScalarManagedRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], mem
     for (index in 0..<length(heads)) {
         if (!wanted[index]) { continue; }
         record := declarations[index];
+        if (ScalarPointerOptional(types, record)) {
+            payload := types[record];
+            if (payload.value_record >= 0) {
+                child := types[payload.value_record];
+                if (child.layout == 0) {
+                    return ScalarOperands.Failed(Diagnose(forest, child.node, 0,
+                        "native optional cells require a stable payload layout"));
+                }
+                for (at in child.first..<child.first + child.count) {
+                    field := members[at];
+                    if (field.container != 0 || field.record >= 0 || (!Numeric(field.storage) && field.storage != BoolStorage)) {
+                        return ScalarOperands.Failed(Diagnose(forest, child.node, 0,
+                            "native optional cells require plain numeric or bool payloads"));
+                    }
+                }
+            }
+            header := output[heads[index]];
+            header.literal = ScalarPointerTag(types, {storage: UnionStorage, container: 0, record: record});
+            output[heads[index]] = header;
+            continue;
+        }
         if (record < 0 || types[record].kind != RecordDecl || types[record].layout == 0) {
             return ScalarOperands.Failed(Diagnose(forest, 0, 0, "native managed records require a stable authored layout"));
         }

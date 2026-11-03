@@ -139,7 +139,7 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         read := ScalarMapRead(forest, text, callables, names, types, package, value);
         record := ScalarMapShape(forest, text, callables, names, types, package, read.object);
         if (read.operator == facts.MapGet && ScalarMapArrayValue(types, record)) {
-            return {storage: IntStorage, container: ArrayContainer, record: -1};
+            return {storage: types[record].value_storage, container: ArrayContainer, record: types[record].value_record};
         }
         return none;
     }

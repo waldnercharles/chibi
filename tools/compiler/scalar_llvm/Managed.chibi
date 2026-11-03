@@ -40,12 +40,27 @@ ManagedVariables :: (rows: facts.Row[], head: int, last: int) -> ManagedBoxes {
 ManagedVariable :: (boxed: bool[], variable: int) -> bool {
     return variable >= 0 && variable < length(boxed) && boxed[variable];
 }
+// The optional tag and its plain payload can be copied as bytes. This
+// closed shape excludes backing owners and collector edges from cell payloads.
+ManagedOptional :: (rows: facts.Row[], records: int[], type: int) -> bool {
+    payload := OptionalPayloadType(rows, records, type);
+    if (Scalar(payload)) { return true; }
+    if (payload < facts.RecordType || payload >= facts.ArrayType || payload - facts.RecordType >= length(records)) { return false; }
+    head := records[payload - facts.RecordType];
+    if (rows[head].kind != facts.RecordRow || After(rows, head) < 0) { return false; }
+    for (field in head + 1..<head + 1 + rows[head].count) {
+        if (rows[field].kind != facts.MemberRow || !Scalar(rows[field].type) || rows[field].literal == i64(facts.CharNominal)) { return false; }
+    }
+    return true;
+}
 ManagedValue :: (rows: facts.Row[], records: int[], type: int, tag: i64) -> bool {
     if (Scalar(type) || type == facts.PointerType) { return tag != 0; }
-    if (type >= facts.ArrayType && type < facts.MapType && Scalar(type - facts.ArrayType)) { return tag != 0; }
+    if (type >= facts.ArrayType && type < facts.MapType &&
+        (Scalar(type - facts.ArrayType) || type - facts.ArrayType == facts.StringType)) { return tag != 0; }
     if (type < facts.RecordType || type >= facts.ArrayType || type - facts.RecordType >= length(records)) { return false; }
     head := records[type - facts.RecordType];
-    return rows[head].kind == facts.RecordRow && rows[head].literal != 0 && rows[head].literal == tag;
+    return (rows[head].kind == facts.RecordRow || ManagedOptional(rows, records, type)) &&
+           rows[head].literal != 0 && rows[head].literal == tag;
 }
 
 ManagedPins :: struct {
@@ -58,7 +73,7 @@ ManagedPins :: struct {
 // the descriptor's stable address, so replacement through a scoped call is
 // observed. Fresh owners are stable slots until this collecting call returns.
 ManagedPinOwners :: (vars: int[], owned: int[], places: int[], locals: int[], first_local: int,
-                     fresh: int[], slots: int[], first_slot: int, frames: Frame[], next_slot: int, next_root: int) -> ManagedPins {
+                     fresh: int[], slots: int[], first_slot: int, frames: Frame[], next_slot: int, next_root: int, frame_owners: bool, records: native.Record[], layout: native.ValueLayout) -> ManagedPins {
     output: ManagedPins = {before: [], after: [], types: [], next: next_root};
     roots: int[] = [];
     modes: int[] = [];
@@ -101,5 +116,38 @@ ManagedPinOwners :: (vars: int[], owned: int[], places: int[], locals: int[], fi
         index -= 1;
     }
     output.next += length(roots);
+    if (frame_owners) {
+        owners := TaskOwnerPins(vars, owned, places, frames, fresh, slots, first_slot, records, layout);
+        output.before.extend(owners.before);
+        owners.after.extend(output.after);
+        output.after = owners.after;
+    }
+    return output;
+}
+
+TaskOwnerPins :: (vars: int[], owned: int[], places: int[], frames: Frame[], fresh: int[], slots: int[],
+                  first_slot: int, records: native.Record[], layout: native.ValueLayout) -> ManagedPins {
+    output: ManagedPins = {before: [], after: [], types: [], next: 0};
+    for (index in 0..<length(vars)) {
+        type := owned[index];
+        if (!native.TaskOwnedType(records, layout, type)) { continue; }
+        output.before.append(Op(native.OwnerPin, type, 0, places[vars[index]], 0, 1));
+    }
+    for (frame in frames) {
+        if (frame.held < 0 || !native.TaskOwnedType(records, layout, frame.held_type)) { continue; }
+        output.before.append(Op(native.OwnerPin, frame.held_type, 0, frame.held, 0, 1));
+    }
+    for (slot in fresh) {
+        type := slots[first_slot + slot];
+        if (native.TaskOwnedType(records, layout, type)) {
+            output.before.append(Op(native.OwnerPin, type, 0, slot, 0, 0));
+        }
+    }
+    index := length(output.before) - 1;
+    while (index >= 0) {
+        item := output.before[index];
+        output.after.append(Op(native.OwnerUnpin, 0, 0, item.left, 0, item.target));
+        index -= 1;
+    }
     return output;
 }

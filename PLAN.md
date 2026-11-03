@@ -20,6 +20,15 @@ these are verification timings, not a controlled performance comparison.
 The same source passes 455 compiler tests in 26.10 seconds and the complete
 native clock projection/factory/two-image suite in 27.52 seconds.
 
+The later compiler/core source at `3d4d948e9` adds primitive pointer views,
+canonical nested-array mutation, retained owned source values and numeric
+compound map assignments. Its compiler builds in 18.37 seconds and passes
+458 compiler tests in 27.39 seconds. The complete managed-pointer/view suite
+passes in 85.77 seconds, nested arrays in 21.01, and maps with the promoted
+compound fixture in 48.09, including O0/O2 poisoned allocation checks. All
+213 frozen compiler/core files match that commit. This is a composed runtime
+check; the newer source has not yet received its fixed-point proof.
+
 The preceding `bba9ddaae` composition passes the generation/family/snapshot
 suite in 49.92 seconds, builds native compiler/service/archive products in
 53.91 seconds, and passes the actual C facade consumer in 7.71 seconds.
@@ -48,14 +57,31 @@ unchecked fixture reads. `a3853c327` and `5dee31198` correct those fixtures.
 The platform module bundle held only runners because its producer had stopped;
 those consumer failures occurred before native module execution.
 
-Pointer views, owned values across task suspension, retained aggregate source
-admission and nested collection places remain active implementation lanes.
+Owned values across task suspension, optional managed cells, additional view
+payloads, collection equality and remaining map/foreign-buffer forms remain
+active implementation lanes. The parity audit compares native restrictions
+with the ordinary checker; a native rejection alone is not preservation evidence.
+The original sample survey covers all nine categories: 441 passed and 14
+required missing native support at `450f8f2e6`. The newer source needs a fresh
+combined run of those cases after their owning changes are integrated.
 The final VM/build/recovery removal is being prepared separately and will be
 integrated after the replacement behavior passes. Graph C fixtures now use the three-source `chibi_graph_fixture` archive and
 `graph_headerless` program; `ca08e2a35` removes the 552-line `policy_worker`.
 Incremental/archive/headerless controls pass on macOS (14.49 seconds) and
 Linux (36.42 seconds), preserving foreign-library build checks after VM deletion.
 This is not full platform acceptance and PR #1331 is not ready to merge.
+
+Hosted CI `41574174752` at published `7482af7be` confirms macOS native products,
+CLI and compiler/core tests. Its sample failures match the known admissions.
+`ac9db86ae` fixes a formatter test that expected a later diagnostic than its
+fixture reached; both the union-payload and formatter restrictions retain
+separate rejection/output-preservation coverage. `517dd1b0b` checks each
+temporary-directory error independently, fixing the Linux graph-OS fixture.
+The Linux native compiler reproduces at stages three and four with SHA-256
+`6e867c8e5588509286a5709ecdca902e8aaeb6d3db51f1ea4efb1bb09b677d03`.
+Its old VM driver comparison failed before graph parity, and a scalar bounds
+exit-code mismatch remains under investigation. Windows execution is in progress;
+these results do not establish final platform acceptance.
 
 ## Earlier integration evidence
 

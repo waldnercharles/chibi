@@ -2016,6 +2016,12 @@ ScalarIs :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[
 ScalarHeldUnion :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                     names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> int {
     value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.DereferenceExpression) && !ScalarScopedDereference(forest, text, names, value)) {
+        pointer := ScalarPointerRecord(forest, text, callables, params, names, types, members, package,
+                                       Field(forest, value, syntax.FieldOperand));
+        shape := ScalarPointerElement(types, pointer);
+        if (shape.storage == UnionStorage && shape.container == 0) { return shape.record; }
+    }
     view := ScalarViewOperation(forest, text, callables, params, names, types, members, package, value);
     optional_view := ScalarViewOptional(types, view);
     if (optional_view >= 0) { return optional_view; }
@@ -3568,6 +3574,14 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                                            value, record, copied, operands);
                 }
             case .MapEdited(change):
+                if (change.operator == facts.MapSet && Operator(forest, statement) != tk.Eq) {
+                    switch ScalarMapCompound(forest, text, callables, params, callable, names, types, members, constants,
+                                              statement, change, &variables) {
+                        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                        case .Built(assigned): rows.extend(assigned);
+                    }
+                    continue;
+                }
                 appended = change.object;
                 built = ScalarMapChanged(forest, text, callables, params, callable, names, types, members, constants,
                                          statement, change, operands);
@@ -4098,7 +4112,7 @@ ScalarRetainedNames :: (forest: snapshot.SnapshotNode[], text: string, types: Ty
         if (Is(forest, node, syntax.StateDeclaration)) {
             declared := StateType(forest, text, &table, 0, node);
             place := StatePlace;
-            if (declared.storage == StructStorage || declared.container == ArrayContainer) {
+            if (declared.storage == StructStorage || declared.storage == UnionStorage || declared.container == ArrayContainer) {
                 // The ordinary preflight checks a mutable aggregate local;
                 // native retained lowering supplies its persistent storage.
                 place = CellPlace;

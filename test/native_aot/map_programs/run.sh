@@ -10,7 +10,7 @@ case "$(uname -s)-$(uname -m)" in
     Linux-x86_64) triple=x86_64-unknown-linux-gnu ;;
     *) echo 'native map programs: unsupported test host' >&2; exit 2 ;;
 esac
-for name in Values Strings Iteration Records Effects Receivers ManagedRecords StringEffects ArrayPayload ArrayForeign; do
+for name in Values Strings Iteration Records Effects Receivers ManagedRecords StringEffects ArrayPayload ArrayForeign Compound ArrayBacked ArrayValues; do
     for level in 0 2; do
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$root/test/native_aot/map_programs/$name.chibi" --entry Main \
@@ -31,20 +31,6 @@ for name in MissingRecord ArrayMissing; do
         grep -F "$expected" "$work/$name-O$level.log" >/dev/null
     done
 done
-if "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
-    --source "$root/test/native_aot/map_programs/Compound.chibi" --entry Main \
-    --output "$work/Compound" --llvm "$llvm" --target "$triple" --jobs 2 > "$work/compound.log" 2>&1; then
-    echo 'native map programs: compound assignment was accepted' >&2
-    exit 1
-fi
-grep -F 'native compound map assignment is not supported yet' "$work/compound.log" >/dev/null
-if "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
-    --source "$root/test/native_aot/map_programs/ArrayBacked.chibi" --entry Main \
-    --output "$work/ArrayBacked" --llvm "$llvm" --target "$triple" --jobs 2 > "$work/array-backed.log" 2>&1; then
-    echo 'native map programs: array-backed record was accepted' >&2
-    exit 1
-fi
-grep -F 'native map operation differs from its operands' "$work/array-backed.log" >/dev/null
 for name in ArrayCompound ArrayForeignPlace; do
     if "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
         --source "$root/test/native_aot/map_programs/$name.chibi" --entry Main \

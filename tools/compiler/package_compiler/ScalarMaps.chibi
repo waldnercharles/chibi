@@ -5,12 +5,12 @@ import snapshot "project:source_snapshot"
 import syntax "project:syntax_diagnostics"
 import tk "project:source_tokenizer"
 
-// Native maps have scalar/string keys and scalar/string/record or int[] values.
+// Native maps have scalar/string keys and scalar/string/record or array values.
 // The ordinary compiler supplies the types; lowering checks record ownership.
 ScalarMapArrayValue :: (types: TypeDecl[], record: int) -> bool {
     return record >= 0 && record < length(types) && types[record].kind == MapDecl &&
-           types[record].value_container == ArrayContainer && types[record].value_storage == IntStorage &&
-           types[record].value_record < 0;
+           types[record].value_container == ArrayContainer && types[record].value_storage != PointerStorage &&
+           ScalarArrayType(types, types[record].value_storage, types[record].value_record) != 0;
 }
 ScalarMapType :: (types: TypeDecl[], record: int) -> int {
     if (record < 0 || record >= length(types) || types[record].kind != MapDecl) {
@@ -21,10 +21,10 @@ ScalarMapType :: (types: TypeDecl[], record: int) -> int {
     value := ScalarTypeOf(declared.value_storage);
     if (declared.value_storage == StructStorage) { value = ScalarRecordType(types, declared.value_record); }
     array := ScalarMapArrayValue(types, record);
-    if (array) { value = facts.ArrayType + facts.IntType; }
+    if (array) { value = ScalarArrayType(types, declared.value_storage, declared.value_record); }
     if ((facts.Bits(key) == 0 && key != facts.BoolType && key != facts.StringType) ||
         value == 0 || declared.value_storage == TaskStorage || (declared.value_container != 0 && !array) ||
-        (declared.value_record >= 0 && declared.value_storage != StructStorage)) {
+        (declared.value_record >= 0 && declared.value_storage != StructStorage && !array)) {
         return 0;
     }
     return facts.MapType + value * 16 + key;
@@ -263,9 +263,6 @@ ScalarMapChange :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
 ScalarMapChanged :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                      callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
                      constants: ConstDecl[], statement: int, change: ScalarMapCall, rows: facts.Row[]) -> ScalarOperands {
-    if (change.operator == facts.MapSet && Operator(forest, statement) != tk.Eq) {
-        return ScalarOperands.Failed(Diagnose(forest, statement, 0, "native compound map assignment is not supported yet"));
-    }
     if (change.operator == facts.MapArraySet && Operator(forest, statement) != tk.Eq) {
         return ScalarOperands.Failed(Diagnose(forest, statement, 0, "native mapped array elements currently assign only by ="));
     }
@@ -300,9 +297,18 @@ ScalarMapChanged :: (forest: snapshot.SnapshotNode[], text: string, callables: C
             value = FirstMember(forest, Field(forest, FirstMember(forest, statement), syntax.FieldArguments));
         }
         if (change.operator == facts.MapArrayExtend) {
-            shape: ValueType = {storage: IntStorage, container: ArrayContainer, record: -1};
+            shape: ValueType = {storage: types[record].value_storage, container: ArrayContainer,
+                                record: types[record].value_record};
             switch ScalarArrayValue(forest, text, callables, params, callable, names, types, members, constants,
                                     value, shape, output) {
+                case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                case .Built(built): output = built;
+            }
+        } else if (change.operator == facts.MapArrayPush || change.operator == facts.MapArraySet) {
+            shape: ValueType = {storage: types[record].value_storage, container: 0,
+                                record: types[record].value_record};
+            switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                                      value, shape, output) {
                 case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
                 case .Built(built): output = built;
             }
@@ -327,5 +333,55 @@ ScalarMapChanged :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         count += 1;
     }
     output.append(ScalarAt(forest, statement, facts.MapRow, ScalarMapType(types, record), change.operator, count, ""));
+    return ScalarOperands.Built(output);
+}
+
+// Read the old numeric value after evaluating the key, before the RHS. The
+// final store resolves the map variable again, so RHS replacement is preserved.
+// A missing numeric key reads zero through the ordinary MapGet contract.
+ScalarMapCompound :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                       callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                       constants: ConstDecl[], statement: int, change: ScalarMapCall, variables: ^int) -> ScalarOperands {
+    object := Unparenthesized(forest, change.object);
+    if (!Is(forest, object, syntax.Identifier)) {
+        return ScalarOperands.Failed(Diagnose(forest, object, 0, "native map changes require a map variable"));
+    }
+    record := ScalarMapShape(forest, text, callables, names, types, callable.package, object);
+    shape := types[record];
+    if (!Numeric(shape.value_storage) || shape.value_container != 0) {
+        return ScalarOperands.Failed(Diagnose(forest, statement, 0, "compound assignment needs numeric operands"));
+    }
+    mapped := ScalarMapType(types, record);
+    binding := ScalarVariable(names, Text(forest, text, object)).index;
+    key_type := ScalarTypeOf(shape.key);
+    value_type := ScalarTypeOf(shape.value_storage);
+    key := variables^;
+    previous := key + 1;
+    output := [ScalarAt(forest, statement, facts.ScopeRow, 0, 0, 0, "")];
+    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                         change.key, change.key, shape.key, shape.key, facts.Clamp, []) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): output.extend(ScalarCapture(forest, statement, key_type, key, built));
+    }
+    read_key := ScalarAt(forest, change.key, facts.ReadRow, key_type, key, 0, "");
+    get := ScalarAt(forest, statement, facts.MapRow, value_type, facts.MapGet, 2, "");
+    get.literal = i64(mapped);
+    output.extend(ScalarCapture(forest, statement, value_type, previous,
+        [ScalarAt(forest, object, facts.ReadRow, mapped, binding, 0, ""), read_key, get]));
+    incoming := [ScalarAt(forest, object, facts.RefRow, mapped, binding, 0, ""), read_key,
+                 ScalarAt(forest, statement, facts.ReadRow, value_type, previous, 0, "")];
+    value := Field(forest, statement, syntax.FieldValue);
+    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                         value, value, shape.value_storage, shape.value_storage, facts.Clamp, incoming) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): incoming = built;
+    }
+    incoming.append(ScalarAt(forest, statement, facts.ArithmeticRow, value_type,
+                             ScalarArithmetic(CompoundOperator(Operator(forest, statement))), 2, ""));
+    incoming.append(ScalarAt(forest, statement, facts.MapRow, mapped, facts.MapSet, 3, ""));
+    output.append(ScalarAt(forest, statement, facts.AssignRow, mapped, binding, length(incoming), ""));
+    output.extend(incoming);
+    output.append(ScalarAt(forest, statement, facts.EndRow, 0, 0, 0, ""));
+    variables^ += 2;
     return ScalarOperands.Built(output);
 }

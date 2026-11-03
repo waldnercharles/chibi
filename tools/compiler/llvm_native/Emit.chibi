@@ -517,31 +517,29 @@ RecordLayout :: (records: Record[], fields: int[]) -> bool {
             return false;
         }
     }
+    // Only inline record edges affect LLVM's finite by-value layout. Each
+    // field is visited once, even when many parents share a deep child DAG.
+    incoming := resize([int(0)], length(records));
+    for (type in fields) {
+        if (type >= RecordType && type < ArrayType) { incoming[type - RecordType] += 1; }
+    }
+    ready: int[] = [];
     for (index in 0..<length(records)) {
-        if (Nests(records, fields, index, index, 0)) {
-            return false;
-        }
+        if (incoming[index] == 0) { ready.append(index); }
     }
-    return true;
-}
-// Whether record `from` holds record `wanted` by value, directly or through
-// the records it holds. An array holds its elements apart. `depth` bounds the
-// walk for cycles that do not reach `wanted`.
-Nests :: (records: Record[], fields: int[], from: int, wanted: int, depth: int) -> bool {
-    if (depth > length(records)) {
-        return true;
-    }
-    record := records[from];
-    for (index in record.first..<record.first + record.count) {
-        type := fields[index];
-        if (type < RecordType || type >= ArrayType) {
-            continue;
+    at := 0;
+    while (at < length(ready)) {
+        record := records[ready[at]];
+        for (field in record.first..<record.first + record.count) {
+            type := fields[field];
+            if (type < RecordType || type >= ArrayType) { continue; }
+            child := type - RecordType;
+            incoming[child] -= 1;
+            if (incoming[child] == 0) { ready.append(child); }
         }
-        if (type - RecordType == wanted || Nests(records, fields, type - RecordType, wanted, depth + 1)) {
-            return true;
-        }
+        at += 1;
     }
-    return false;
+    return length(ready) == length(records);
 }
 // Whether the backend computes `op` in `type`: every operation on integers,
 // IEEE arithmetic other than remainders and every comparison on floats,

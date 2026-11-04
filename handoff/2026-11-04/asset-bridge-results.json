@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "code_commit": "083e82408a337787cfd9f08c1fff1113a1884831",
+  "source_tree": "39424a0ad887d48fc7ccd389716963c375c90c08",
+  "scope": "Authored Linux native asset bridge phases, separately admitted",
+  "initial_attempt": {
+    "status": "failed",
+    "cause": "Controller incorrectly required Verify os.Print PASS on stdout and empty stderr. Native core:os Print delegates to POSIX Print, which writes fd2.",
+    "phase_to_terminal_write_seconds": 3.132260322570801,
+    "consumer_launched": false,
+    "processes": {
+      "adopted_sigkill_count": 2,
+      "echild": true,
+      "owner_signals": 0,
+      "root_exit": 0,
+      "status": "passed"
+    },
+    "verify": {
+      "closure_sha256": "08b7ec6ca8d209820e44ddbda3151b5f8b866334fd45cc7f06124794279f3dc9",
+      "exit_status": 0,
+      "pass_stream": "stderr",
+      "status": "passed_original_fixture_semantics",
+      "stderr_bytes": 85,
+      "stdout_bytes": 0
+    }
+  },
+  "ownership_controls": {
+    "fixed_cases": 14,
+    "counterfactuals": 3,
+    "status": "independently_admitted",
+    "seconds_to_terminal_write": 10.643145084381104,
+    "admission_sha256": "6eb510fd2d23dd34f0ab926972ff99ada70ab37b3058a976c19b78cba568c93a"
+  },
+  "consumer_continuation": {
+    "status": "independently_admitted",
+    "consumer_seconds": 3.6237101554870605,
+    "phase_to_terminal_write_seconds": 6.233124256134033,
+    "total_cap_seconds": 30,
+    "cleanup_reserve_seconds": 5,
+    "tool_exit": 0,
+    "cleanup_echild": true,
+    "output_files": 9,
+    "admission_sha256": "2dbf790e378271db077cbfd20d34c263786fde51f5545d461636b0e7d3391da9"
+  },
+  "proof_archive": {
+    "name": "chibi-asset-bridge-validated-20261104.tar.gz",
+    "sha256": "97c7d26a5194f9805f8d1cf2270da6fae2f603e40189d46f2d7a83c08d715377",
+    "bytes": 30850929,
+    "regular_files": 4615,
+    "symlinks": 1
+  },
+  "remaining": [
+    "SDK install and relocation",
+    "ordinary VM/native differential",
+    "C engine integration",
+    "actual Windows runtime",
+    "separate pointer-view WIP",
+    "PR #1331 hold"
+  ]
+}

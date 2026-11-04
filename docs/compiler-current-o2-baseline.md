@@ -156,3 +156,7 @@ The pinned-interpreter harness controls passed all 27 tests and the serial
 controller controls passed all 12 tests. A successful source hash or exit alone
 is insufficient to admit another workload. No compiler implementation, default,
 bootstrap pin, CI gate or release changed in this checkpoint.
+
+A later [single source-to-LLVM-bundle diagnostic](compiler-current-emit-diagnostic.md)
+records 16.409 seconds to emit 92.76 MB of text. It is a different output and
+measurement boundary, not an exclusive phase breakdown of these full builds.

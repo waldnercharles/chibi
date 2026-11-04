@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "kind": "derived_public_source_to_bundle_diagnostic_not_raw_receipt_or_runnable_spec",
+  "date_utc": "2026-11-04",
+  "independent_terminal_review": "passed_limited_diagnostic",
+  "source": {
+    "commit": "02c86287430def964445ec90185961e20319536d",
+    "tree": "780ba87ea9f29308f2f20a94381cdce8cc5d26ca",
+    "compiler_sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266"
+  },
+  "configuration": {
+    "target": "x86_64-unknown-linux-gnu",
+    "optimization_level": 2,
+    "jobs": 2,
+    "cpu_affinity": [
+      0,
+      1
+    ],
+    "output_kind": "LLVM text bundle from fresh original source, no output execution",
+    "compiler_limit_seconds": 120,
+    "inner_cleanup_limit_seconds": 1,
+    "outer_worker_limit_seconds": 180,
+    "outer_cleanup_limit_seconds": 1,
+    "filesystem": "Warmed by verification, shared virtualized host, not cold or exclusive."
+  },
+  "measurement": {
+    "success": true,
+    "elapsed_seconds": 16.409267155,
+    "exit_code": 0,
+    "timed_out": false,
+    "cleanup_seconds": 0.001445263,
+    "cleanup_echild": true,
+    "subreaper_restored": true,
+    "errors": []
+  },
+  "output": {
+    "structurally_consistent": true,
+    "semantic_completeness_verified": false,
+    "llvm_validity_verified": false,
+    "bytes": 92759932,
+    "sha256": "95d7009f54683c1c6e879de8307f3697d18f22502bd01352d3974611fa4289aa",
+    "piece_count": 61,
+    "source_function_comments": 2356,
+    "textual_definitions": 9028
+  },
+  "outer_execution": {
+    "exit_code": 0,
+    "status": "passed",
+    "timed_out": false,
+    "elapsed_seconds": 20.984326996,
+    "cleanup_seconds": 0.001086641,
+    "surviving_children": false,
+    "cleanup_errors": [],
+    "cleanup_echild": true,
+    "subreaper_restored": true,
+    "cleanup_limit_seconds": 1.0,
+    "overall_limit_seconds": 181.0
+  },
+  "final_fences": {
+    "status": "passed",
+    "source_entries": 4054,
+    "inherited_pins": 160,
+    "runtime_pins": 128,
+    "loader_search_snapshots": 9,
+    "exact_spec_environment_and_output_digest": "passed"
+  },
+  "original_artifact_sha256": {
+    "diagnostic.py": "8443a7a0ac0e8af6c4a15a5c53a4f7c238e665197b894e0bfa8d33975f4cd7e1",
+    "diagnostic_tests.py": "542ac25f483630c1ebfa87553145670a7d1e1b69d9fde430fe90514c61accf4b",
+    "controller.armed.json": "d19d574207e6566ac7be3869381ff9cbb8d48ac40735e9e1ea41c8f0557bf0ac",
+    "emit-1.armed.json": "aaefb59438812a20ea3ff112044ca3316ea40ae5843689c4647e00dd083bc78a",
+    "runtime-inputs.json": "7738602522b511567f1d57ab478091d39ecafdf0b04b70783d1d6bf22f258292",
+    "input-fences.unarmed.json": "7aff1c40d17485781ab9cbfa6e57375e17f1cdb274c5644dd6d490e7aa682445",
+    "controls-03.tests.log": "b06140c4e5d1790767d1dd787239d6527d920bff1f3dff827c22097af6bbf22d",
+    "initial-quiet-observation-01.json": "baa62402624e4a3c7f219f3f32d1d194049683f13a97e0b95cd1403d939025a2",
+    "diagnostic-01/admission.json": "fce0bbaf8e40ea2ee35bb19755368f644faa4b4a7fcdd2e21367c0d4c5754739",
+    "diagnostic-01/diagnostic-result.json": "e4b7f00ba1ebcfc192137fc06a9e945a4c08c455efd6a66bc75de2e92d094f30",
+    "diagnostic-01/runs/emit-1/result.json": "09afe1308f8b5f2f7dbcf06d2c53c1a153171287599b6a00c69a63e9e361e0e4"
+  },
+  "original_independent_terminal_review_sha256": "f6e079f959651bfd512e3091647e8519e52122c12ef43e8123d6207081cc909a",
+  "limitations": [
+    "Selected summary omits machine-local paths/process observations/full inventories. Original hashes identify original retained bytes, not this derived record; this is not a complete replay bundle.",
+    "Structural consistency only: LLVM validity and semantic completeness are not independently verified. No output is executed.",
+    "One source-to-LLVM-bundle observation, not a full usable program, median/tail series, vNext speed result or direct Jai comparison.",
+    "Not exclusive frontend timing or exact lower bound. Do not subtract from full-build latency to attribute exclusive backend cost.",
+    "Comments and textual definitions are not typed-function, specialization, machine-instruction or machine-code counts.",
+    "The prospective uname metadata pin does not retroactively repair the separate historical O2 evidence gap."
+  ],
+  "timing_boundary": "Immediately before compiler process creation through observed leader exit, including startup, source-to-text work, publication and compiler cleanup. Source/tool evidence hashing, output structural checks, owned descendant cleanup and receipt writing are outside."
+}

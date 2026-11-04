@@ -102,6 +102,10 @@ class BaselineTests(unittest.TestCase):
         self.assertIsNone(result["phase_times"])
         self.assertIsNone(result["peak_memory_bytes"])
         self.assertIsNone(result["allocations"])
+        self.assertTrue(result["cleanup_echild"])
+        self.assertTrue(result["subreaper_restored"])
+        self.assertEqual(result["cleanup_limit_seconds"], 1)
+        self.assertEqual(result["overall_limit_seconds"], self.spec["timeout_seconds"] + 1)
         self.assertNotIn("lines_per_second", result)
         self.assertIn("SHA-256", result["outside_timing"][0])
         self.assertIn("not a cold-cache", result["filesystem_condition"])
@@ -336,9 +340,33 @@ class BaselineTests(unittest.TestCase):
         result = self.run_spec()
         self.assertEqual(result["exit_code"], 0)
         self.assertFalse(result["success"])
-        self.assertTrue(any("process group survived" in e for e in result["errors"]))
+        self.assertTrue(any("owned descendant survived" in e for e in result["errors"]))
         time.sleep(1)
         self.assertFalse(marker.exists(), "the surviving child was not terminated")
+
+    def test_separate_group_child_is_cleaned_after_success_and_timeout(self):
+        for mode in ("success", "timeout"):
+            with self.subTest(mode=mode):
+                marker = self.folder / (mode + "-escaped")
+                ready = self.folder / (mode + "-ready")
+                child = ("import os,time; from pathlib import Path; "
+                         f"Path({str(ready)!r}).write_text(f'{{os.getpid()}} {{os.getpgrp()}} {{os.getsid(0)}}'); "
+                         f"time.sleep(0.6); Path({str(marker)!r}).touch()")
+                self.spec["argv"][2] = (
+                    "import subprocess,sys,time; from pathlib import Path; Path('program').write_bytes(b'ok'); "
+                    f"subprocess.Popen([sys.executable, '-c', {child!r}], process_group=0); "
+                    f"deadline=time.monotonic()+1\nwhile not Path({str(ready)!r}).exists() and time.monotonic()<deadline: time.sleep(0.005)\n"
+                    + ("time.sleep(1)" if mode == "timeout" else ""))
+                self.spec["timeout_seconds"] = 0.2 if mode == "timeout" else 2
+                result = self.run_spec(mode)
+                # Even the broken implementation's child finishes on its own.
+                time.sleep(0.7)
+                pid, pgid, sid = map(int, ready.read_text().split())
+                self.assertEqual(pid, pgid)
+                self.assertNotEqual(pgid, sid)
+                self.assertFalse(marker.exists(), "separate-group child escaped owned cleanup")
+                self.assertFalse(result["success"], result)
+                self.assertEqual(result["timed_out"], mode == "timeout")
 
     def test_run_directory_must_not_exist(self):
         for name in ("empty", "stale"):

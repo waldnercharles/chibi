@@ -5,8 +5,9 @@ accepted current Chibi builder is available for this experiment yet. Do not
 retry an uncertain bootstrap or run compilation without CPU coordination.
 
 Python 3.11+ and Git are the only dependencies. No packages need installing.
-Command measurements additionally require Linux `waitid(WNOWAIT)` and readable
-procfs; other platforms are rejected before launch.
+Command measurements additionally require Linux `waitid(WNOWAIT)`, pidfds,
+process-local subreaper support and readable procfs; unavailable capabilities
+are rejected before launch without a fallback or privilege change.
 
 ## Static source census
 
@@ -108,20 +109,27 @@ Only the explicitly specified environment is inherited by the child, plus fresh
 must point every intermediate/cache to this run or explicitly disable reuse.
 These directories cannot prevent an arbitrary command from using an external
 cache or compiler daemon. The caller must inspect that contract. The shared
-`owned_process.py` operation uses Linux process groups and procfs; the deadline
-kills only the group started by this run. It reserves the leader PID with
-`waitid(WNOWAIT)`, disables signal callbacks and stops the timer, inspects/kills
-the group, and only then reaps the leader. It never signals a reaped group ID.
-Commands must wait for all required work and must not daemonize or detach work.
-A process group surviving leader exit is rejected and sent SIGKILL. Detached
-sessions are not detected, and the harness cannot reap grandchildren itself.
+`owned_process.py` operation temporarily makes its one-purpose caller a Linux
+child subreaper. It rejects pre-existing children without reaping or signalling
+them. The deadline first kills the newly started leader's group. The leader
+PID remains reserved with `waitid(WNOWAIT)` until callbacks stop and the final
+group signal finishes. Cleanup then signals only pidfds bound to actual kernel
+direct/adopted children and repeatedly reaps them until `waitpid` reports
+`ECHILD`. This covers workers in separate process groups and orphaned nested
+descendants without claiming that a procfs scan proves absence. No group is
+signalled after leader reap. The prior subreaper state is restored afterwards.
+Commands must wait for all required work and must not deliberately daemonize or
+detach work. Any adopted descendant rejects a successful leader's result.
 
 `result.json`, `stdout.log`, `stderr.log` and partial outputs survive failures.
 SIGINT or SIGTERM during owned process launch/setup/wait terminates and reaps
 the command, records its exit status and signal, and produces a failed-run
 receipt. Timer startup failures use the same ownership cleanup. This requires
-running the harness on the main Python thread, with the default SIGCHLD
-disposition and no other child reaper. SIGKILL, an abrupt interpreter
+running the harness on its single main Python thread, with no pre-existing
+children, the default SIGCHLD disposition and no other child reaper. Before
+launch it explicitly establishes kernel SIGCHLD default/no-auto-reap semantics,
+including clearing native flags that Python's cached disposition cannot reveal.
+SIGKILL, an abrupt interpreter
 crash or host failure cannot be handled: they may leave children or omit the
 receipt. An external supervisor is needed for guarantees across those failures.
 Nonfinite JSON
@@ -135,10 +143,21 @@ failures do not launch the command or create the run directory.
 
 Elapsed monotonic wall time starts immediately before process creation and ends
 when leader exit is observed. It includes process startup, all compiler work and
-children the command waits for, and finalization/linking. Watchdog shutdown,
-procfs group inspection, surviving-child termination and final leader reap are
+children the command waits for, and finalization/linking.
+Leader observation polls every 5 ms, adding up to roughly 5 ms of observation
+delay plus scheduler delay to fast commands; these are not precise
+submillisecond measurements. Watchdog shutdown,
+procfs child inspection, descendant termination/reaping and subreaper restoration are
 reported separately as `cleanup_seconds`; they do not turn an already completed
-command into a timeout. On setup/wait failures, leader-exit observation may
+command into a timeout. Cleanup has an explicit one-second allowance in addition
+to `timeout_seconds`; the configured overall ownership budget is therefore
+`timeout_seconds + 1`. An outer phase with a fixed total budget must reserve
+that second before choosing the execution limit. Receipts preserve
+`cleanup_limit_seconds`, `overall_limit_seconds`, `cleanup_echild` and
+`subreaper_restored`. Cleanup errors, unavailable ownership capability or failure
+to reach `ECHILD` cannot be accepted as success. Blocking OS operations and
+controller termination still require an external supervisor for hard wall-clock
+guarantees. On setup/wait failures, leader-exit observation may
 include termination cleanup, and that failed run is not a timing sample. Source/tool identity
 hashes and static census verification happen before and after that interval;
 output validation/hashing and receipt writing happen afterwards. These are

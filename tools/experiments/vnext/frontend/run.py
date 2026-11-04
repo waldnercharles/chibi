@@ -56,6 +56,7 @@ def run_command(argv, directory, environment, name, limit):
         with (directory / f"{name}.stdout").open("xb") as out, (directory / f"{name}.stderr").open("xb") as err:
             execution = owned_process.run(argv, directory, environment, out, err, limit)
         for key in ("pid", "exit_code", "status", "elapsed_seconds", "cleanup_seconds",
+                    "cleanup_echild", "subreaper_restored", "cleanup_limit_seconds", "overall_limit_seconds",
                     "inspection_error", "termination_error"):
             if key in execution:
                 result[key] = execution[key]

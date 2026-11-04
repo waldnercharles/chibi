@@ -185,6 +185,176 @@ class ProbeTests(unittest.TestCase):
         time.sleep(0.4)
         self.assertFalse(marker.exists())
 
+    def test_separate_group_child_is_cleaned_after_interrupt(self):
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=signum):
+                marker = self.folder / (str(signum) + "-escaped")
+                ready = self.folder / (str(signum) + "-ready")
+                child = ("import os,time; from pathlib import Path; "
+                         f"Path({str(ready)!r}).write_text(f'{{os.getpid()}} {{os.getpgrp()}} {{os.getsid(0)}}'); "
+                         f"time.sleep(0.6); Path({str(marker)!r}).touch()")
+                code = ("import os,subprocess,sys,time; from pathlib import Path; "
+                        f"subprocess.Popen([sys.executable, '-c', {child!r}], process_group=0); "
+                        f"deadline=time.monotonic()+1\nwhile not Path({str(ready)!r}).exists() and time.monotonic()<deadline: time.sleep(0.005)\n"
+                        f"os.kill(os.getppid(), {int(signum)}); time.sleep(1)")
+                result = run.run_command([sys.executable, "-c", code], self.folder, {}, str(signum), 2)
+                time.sleep(0.7)
+                pid, pgid, sid = map(int, ready.read_text().split())
+                self.assertEqual(pid, pgid)
+                self.assertNotEqual(pgid, sid)
+                self.assertEqual(result["status"], "interrupted")
+                self.assertEqual(result["signal"], signal.Signals(signum).name)
+                self.assertFalse(marker.exists(), "interrupt left separate-group child running")
+                self.assertTrue(result["cleanup_echild"])
+                self.assertTrue(result["subreaper_restored"])
+
+    def test_unrelated_session_is_not_signalled(self):
+        marker = self.folder / "unrelated-finished"
+        sibling = subprocess.Popen([sys.executable, "-c",
+                                    "import time; from pathlib import Path; time.sleep(0.4); "
+                                    f"Path({str(marker)!r}).touch()"], start_new_session=True)
+        try:
+            # The one-purpose owner is a sibling, not the parent of foreign work.
+            code = (f"import sys; sys.path.insert(0, {str(Path(run.__file__).parent)!r}); "
+                    "import run; from pathlib import Path; "
+                    f"run.run_command([sys.executable, '-c', 'import time; time.sleep(1)'], Path({str(self.folder)!r}), "
+                    "{'PATH': '/usr/bin:/bin'}, 'probe', 0.1)")
+            subprocess.run([sys.executable, "-c", code], check=True, timeout=3)
+            result = json.loads((self.folder / "probe-result.json").read_text())
+            self.assertEqual(sibling.wait(timeout=2), 0)
+            self.assertTrue(marker.exists())
+            self.assertEqual(result["status"], "timeout")
+        finally:
+            sibling.wait(timeout=2)
+
+    def test_existing_child_rejected_without_launch_reap_or_signal(self):
+        for state in ("living", "zombie"):
+            with self.subTest(state=state):
+                sibling = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(0.1)"])
+                try:
+                    if state == "zombie":
+                        os.waitid(os.P_PID, sibling.pid, os.WEXITED | os.WNOWAIT)
+                    with patch.object(run.owned_process.subprocess, "Popen") as launch:
+                        with patch.object(run.owned_process.os, "killpg") as kill:
+                            result = run.run_command([sys.executable, "-c", "pass"], self.folder,
+                                                     {}, "existing-" + state, 1)
+                    launch.assert_not_called()
+                    kill.assert_not_called()
+                    self.assertEqual(result["status"], "error")
+                    self.assertIn("no pre-existing children", result["error"])
+                    # This still succeeds only if rejection left the child unreaped.
+                    exited = os.waitid(os.P_PID, sibling.pid, os.WEXITED | os.WNOWAIT)
+                    self.assertEqual(exited.si_status, 0)
+                    self.assertEqual(sibling.wait(timeout=2), 0)
+                finally:
+                    sibling.wait(timeout=2)
+
+    def test_subreaper_state_restored_for_both_initial_values(self):
+        ctypes = run.owned_process.ctypes
+        libc = ctypes.CDLL(None, use_errno=True)
+        original = ctypes.c_int()
+        self.assertEqual(libc.prctl(37, ctypes.byref(original), 0, 0, 0), 0)
+        try:
+            for value in (0, 1):
+                with self.subTest(initial=value):
+                    self.assertEqual(libc.prctl(36, value, 0, 0, 0), 0)
+                    result = run.run_command([sys.executable, "-c", "pass"], self.folder,
+                                             {}, "state-" + str(value), 1)
+                    current = ctypes.c_int()
+                    self.assertEqual(libc.prctl(37, ctypes.byref(current), 0, 0, 0), 0)
+                    self.assertEqual(current.value, value)
+                    self.assertTrue(result["cleanup_echild"])
+                    self.assertTrue(result["subreaper_restored"])
+                    self.assertEqual(result["overall_limit_seconds"], 2)
+                    self.assertEqual(result["status"], "passed")
+        finally:
+            self.assertEqual(libc.prctl(36, original.value, 0, 0, 0), 0)
+
+    def test_pidfd_capability_denied_does_not_launch(self):
+        with patch.object(run.owned_process.os, "pidfd_open", side_effect=PermissionError("pidfd unavailable")):
+            with patch.object(run.owned_process.subprocess, "Popen") as launch:
+                result = self.command("pass")
+        launch.assert_not_called()
+        self.assertEqual(result["status"], "error")
+        self.assertIn("pidfd unavailable", result["error"])
+        self.assertTrue(result["cleanup_echild"])
+        self.assertTrue(result["subreaper_restored"])
+
+    def test_kernel_sigchld_auto_reap_is_cleared_before_launch(self):
+        ctypes = run.owned_process.ctypes
+        libc = ctypes.CDLL(None, use_errno=True)
+        libc.signal.argtypes = [ctypes.c_int, ctypes.c_void_p]
+        libc.signal.restype = ctypes.c_void_p
+        original = os.killpg
+
+        def signal_reserved_group(group, signum):
+            # A broken owner must not actually signal a potentially released ID.
+            os.waitid(os.P_PID, group, os.WEXITED | os.WNOWAIT | os.WNOHANG)
+            return original(group, signum)
+
+        self.assertEqual(signal.getsignal(signal.SIGCHLD), signal.SIG_DFL)
+        libc.signal(signal.SIGCHLD, ctypes.c_void_p(1))  # Kernel SIG_IGN; Python cache is still SIG_DFL.
+        try:
+            with patch.object(run.owned_process.os, "killpg", signal_reserved_group):
+                result = self.command("pass")
+        finally:
+            signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+        self.assertEqual(result["status"], "passed", result)
+        self.assertTrue(result["cleanup_echild"])
+        self.assertTrue(result["subreaper_restored"])
+
+    def test_nested_separate_groups_are_adopted_and_reaped(self):
+        marker, ready = self.folder / "nested-escaped", self.folder / "nested-ready"
+        leaf = ("import time; from pathlib import Path; "
+                f"Path({str(ready)!r}).touch(); time.sleep(0.6); Path({str(marker)!r}).touch()")
+        middle = ("import subprocess,sys,time; from pathlib import Path; "
+                  f"subprocess.Popen([sys.executable, '-c', {leaf!r}], process_group=0); "
+                  f"deadline=time.monotonic()+1\nwhile not Path({str(ready)!r}).exists() and time.monotonic()<deadline: time.sleep(0.005)\n"
+                  "time.sleep(1)")
+        code = ("import subprocess,sys,time; from pathlib import Path; "
+                f"subprocess.Popen([sys.executable, '-c', {middle!r}], process_group=0); "
+                f"deadline=time.monotonic()+1\nwhile not Path({str(ready)!r}).exists() and time.monotonic()<deadline: time.sleep(0.005)\n")
+        result = self.command(code)
+        time.sleep(0.7)
+        self.assertFalse(marker.exists())
+        self.assertEqual(result["status"], "surviving_children")
+        self.assertTrue(result["cleanup_echild"])
+        self.assertTrue(result["subreaper_restored"])
+
+    def test_cleanup_bound_reports_unresolved_children(self):
+        ready = self.folder / "bounded-ready"
+        child = ("import os,time; from pathlib import Path; "
+                 f"Path({str(ready)!r}).write_text(str(os.getpid())); time.sleep(1.3)")
+        code = ("import subprocess,sys,time; from pathlib import Path; "
+                f"subprocess.Popen([sys.executable, '-c', {child!r}], process_group=0); "
+                f"deadline=time.monotonic()+1\nwhile not Path({str(ready)!r}).exists() and time.monotonic()<deadline: time.sleep(0.005)\n")
+        original = signal.pidfd_send_signal
+
+        def deny_termination(fd, signum, *args):
+            if signum:
+                raise PermissionError("injected owned-child signal denial")
+            return original(fd, signum, *args)
+
+        start = time.monotonic()
+        try:
+            with patch.object(run.owned_process.signal, "pidfd_send_signal", deny_termination):
+                result = self.command(code)
+            duration = time.monotonic() - start
+        finally:
+            # The one denied synthetic child self-exits; reap only its recorded
+            # owned PID after the helper honestly reports unresolved cleanup.
+            if ready.exists():
+                try:
+                    os.waitpid(int(ready.read_text()), 0)
+                except ChildProcessError:
+                    pass
+        self.assertLess(duration, 1.25)
+        self.assertEqual(result["status"], "cleanup_error")
+        self.assertFalse(result["cleanup_echild"])
+        self.assertTrue(result["subreaper_restored"])
+        self.assertIn("ECHILD", result["termination_error"])
+        self.assertTrue(any("signal denial" in row for row in result["cleanup_errors"]))
+
     def test_receipt_failure_restores_handlers(self):
         handlers = {s: signal.getsignal(s) for s in (signal.SIGINT, signal.SIGTERM)}
         (self.folder / "probe-result.json").write_text("preserve")

@@ -40,15 +40,27 @@ evidence paths cannot be overwritten. Failure is evidence, not a retry request.
 
 The controller and baseline runner share `../owned_process.py`. Preparation
 copies that operation beside the frozen controller and includes it in the
-implementation fence. Linux `waitid(WNOWAIT)` and readable procfs are required
-and checked before launch. The operation retains the exited leader until its
-watchdog and signal callbacks are stopped, live same-group children are
-inspected, and all group signals finish. Only then is the leader reaped, so its
-process-group ID cannot be reused before cleanup. Detached sessions are outside
-the supported command contract. Only the newly launched group can be signalled;
-no old recovery process, receipt or session is acted on. Elapsed time measures
-launch through observed leader exit; watchdog/group cleanup is reported
-separately as `cleanup_seconds`. This is controller evidence, not a benchmark.
+implementation fence. Linux `waitid(WNOWAIT)`, pidfds, self subreaper capability
+and readable procfs are required. The one-purpose caller must have a single
+main thread, default SIGCHLD disposition, no existing children and no other
+child reaper. It explicitly resets the required kernel SIGCHLD default before
+launch, so native auto-reap flags cannot invalidate PID reservation. It
+temporarily becomes a subreaper, retains the exited leader
+until watchdog/signal callbacks and all group signals finish, then terminates
+only actual direct/adopted children through pidfds. This includes native LLVM
+workers with separate process groups. Reaping continues to kernel `ECHILD`,
+not merely an empty procfs observation, and restores prior subreaper state.
+Adopted descendants reject ordinary success. No old recovery process, receipt
+or session is acted on. Elapsed time measures launch through observed leader
+exit. Exit observation polls every 5 ms and can add that observation delay plus
+scheduler delay, so fast runs are not submillisecond timing measurements.
+Cleanup has a separate one-second bound and reports `cleanup_seconds`,
+`cleanup_echild`, `subreaper_restored`, `cleanup_limit_seconds` and
+`overall_limit_seconds`. An enclosing fixed phase must reserve that second
+from its total budget; the existing 300/30 execution limits are unchanged.
+Incomplete cleanup is an error. Controller crashes and blocking OS operations
+still need an external supervisor for hard wall-clock guarantees. This is
+controller evidence, not a benchmark. Older frozen receipts remain unchanged.
 
 The old seed is a distinct builder experiment, **not an admitted current
 compiler**. The passing parser harness validates these current source bytes

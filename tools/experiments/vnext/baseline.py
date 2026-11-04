@@ -231,10 +231,10 @@ def measure(spec_path, run_dir):
                                             "logical_cpus": os.cpu_count()},
               "source_census_sha256": spec["source"]["census_sha256"],
               "timing_boundary": "before process creation through observed leader exit; includes startup, child work waited for by command, finalization and exit",
-              "cleanup_boundary": "after leader exit on ordinary runs: watchdog shutdown, group inspection/termination and leader reap; reported separately",
+              "cleanup_boundary": "after leader exit on ordinary runs: watchdog shutdown, owned-child termination/reap through ECHILD and subreaper restoration; separate 1-second allowance",
               "filesystem_condition": "uncontrolled/warmed by preflight source and tool reads; not a cold-cache measurement",
               "outside_timing": ["source census and source/tool SHA-256 verification before and after execution",
-                                 "fresh directory creation", "owned group cleanup after observed leader exit",
+                                 "fresh directory creation", "owned descendant cleanup after observed leader exit",
                                  "output validation and output SHA-256", "receipt writing"],
               "limitations": ["arbitrary argv does not prove full non-incremental compilation or correctness",
                               "cache isolation requires command to honor fresh paths and avoid external caches/daemons",
@@ -245,7 +245,8 @@ def measure(spec_path, run_dir):
               "outputs": [], "errors": []}
     with (run_dir / "stdout.log").open("xb") as stdout, (run_dir / "stderr.log").open("xb") as stderr:
         execution = owned_process.run(expanded, output_dir, env, stdout, stderr, timeout)
-    for key in ("exit_code", "timed_out", "cleanup_seconds"):
+    for key in ("exit_code", "timed_out", "cleanup_seconds", "cleanup_echild",
+                "subreaper_restored", "cleanup_limit_seconds", "overall_limit_seconds"):
         result[key] = execution[key]
     if "pid" in execution:
         result["elapsed_seconds"] = execution["elapsed_seconds"]
@@ -254,7 +255,7 @@ def measure(spec_path, run_dir):
         error = execution["exception"]
         result["errors"].append(f"process execution failed: {error['type']}: {error['message']}")
     if execution["surviving_children"]:
-        result["errors"].append("process group survived command exit; termination requested")
+        result["errors"].append("owned descendant survived command exit; termination requested")
     for key in ("inspection_error", "termination_error"):
         if key in execution:
             result[key] = execution[key]

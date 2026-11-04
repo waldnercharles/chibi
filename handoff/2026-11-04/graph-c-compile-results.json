@@ -1,0 +1,51 @@
+{
+  "status": "COMPILE_ARTIFACT_ACCEPTED_RUNTIME_NOT_ADMITTED",
+  "source_revision": "63f0e52bca036ff93230ff0b7e10a8374442af68",
+  "source_baseline_sha256": "9dc22780b7e53f717111aeddf499bd671312804c19cb74c1d4dc5d5c28855ae9",
+  "source_files": 4088,
+  "controls": {
+    "plan_sha256": "0e9ebeef3e846a0dcf2596d3aaab328c936504535dc9ef3f1ae6b942d6a31d6e",
+    "controller_sha256": "b557465f4ddaf97c9de645d6ce623b8779337a7744c10be6171277b4306e0e46",
+    "owner_sha256": "eb565285001cef43ed88cf73e5797cc83b726afcf6cf192cf5b4ba10f6078698",
+    "launcher_sha256": "5756b38bdaf693bb2a8a518647e7b38ca5e39c1e51bc1b29ccfe6d141f977c88"
+  },
+  "compile_elapsed_seconds": 7.284243583679199,
+  "command_elapsed_seconds": 3.080742597579956,
+  "original_budget_seconds": 95,
+  "owner_cleanup_echild": true,
+  "owner_deadline_respected": true,
+  "intent_mtime_minus_recorded_start_seconds": -0.0006730556488037109,
+  "timestamp_note": "Intent mtime/ctime precedes the userspace wall-clock start capture by 0.000673 seconds, within the accepted window. No exact lower-bound equivalence between filesystem timestamps and time.time is claimed. The reviewed source exclusively creates intent after capturing start; all later phase evidence is after start and all evidence precedes the original deadline.",
+  "elf": {
+    "interpreter": "/lib64/ld-linux-x86-64.so.2",
+    "needed": [
+      "libc.so.6"
+    ],
+    "rpath": null,
+    "runpath": null,
+    "inspection_sha256": "ae4bad4eb70980080d36491cd92450497e12fbf70b771f4146a52b653300eb0a"
+  },
+  "runtime_admitted": false,
+  "artifacts": [
+    {
+      "path": "graph-c",
+      "bytes": 293456,
+      "sha256": "046fabf20b00f394cecf4307c7f1758ff17fad7694b31bc3da9dac889321120f"
+    }
+  ],
+  "independent_admission_sha256": "d9a7c2ce6e16da3a3e2eeea94bc15184a975e556fcfe28c562417887d6983e7d",
+  "authoritative_evidence_files": 9,
+  "latest_evidence_deadline_margin_seconds": 87.71569728851318,
+  "proof_archive": {
+    "archive": "chibi-graph-c-compile-validated-20261104.tar.gz",
+    "sha256": "3690b8403860b8d9072f08b8639f2c1713c52ffe997fc08e65425ebb3421a324",
+    "bytes": 17342774,
+    "regular_members": 4128,
+    "symlink_members": 1
+  },
+  "preserved_host_lifetime_failure_archive": {
+    "archive": "chibi-compiler-host-lifetime-failure-20261104.tar.gz",
+    "sha256": "0e33964f1240790f29e88ecfd9cc0e6df92d2215b57d158c3887779a84f902f3",
+    "bytes": 44349880
+  }
+}

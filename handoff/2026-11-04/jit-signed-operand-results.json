@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "status": "Independent source and strict baseline-fail/candidate-pass proof accepted; full host and runtime integration pending",
+  "source_base": "cd40d7d06e2e00947e58fda3b334e5bded0c512d",
+  "baseline_source_sha256": "260026488dd0d6eb5964c9c268efd74c27f15b3b7c3da757afce3b873109ee5d",
+  "candidate_source_sha256": "fed0fe6b515bca4325724050f1e3cfead791f3bdfcdd7f1019a955f265e1a4ec",
+  "plan_sha256": "b96cbb35af59561808edf985467787da57769bdf8b7bc10e805322bfe388ffee",
+  "controller_sha256": "9ccbf75c0512c2f3f67418cfe23f90527a33fa45a52c79242a4a84aa524cf8c9",
+  "owner_sha256": "eb565285001cef43ed88cf73e5797cc83b726afcf6cf192cf5b4ba10f6078698",
+  "phase_seconds": 3.6359524726867676,
+  "phase_cap_seconds": 60,
+  "command_cap_seconds": 15,
+  "cleanup_reserve_seconds": 5,
+  "owner_receipt_sha256": "b6f7e3905d39409a51b8019cab2456e59f3d788ce7efcb131bb16ff1db28e9bc",
+  "terminal_result_sha256": "0e6fc1e59d4ec5651d5586e04a0dbb6b3a21e10528aefd319ee56f0852dd0bc7",
+  "cleanup_echild": true,
+  "deadline_respected": true,
+  "commands": [
+    {
+      "name": "baseline",
+      "exit_status": 1,
+      "seconds": 0.5047829151153564,
+      "diagnostic_count": 1,
+      "ordered_dependency_occurrences": 118,
+      "log_sha256": "30a22f8fc4fd06a8f73370e0fc11f5386f0cd86711ec6ef620ae8ad572273143",
+      "object_bytes": null,
+      "object_sha256": null,
+      "command_receipt_sha256": "db9e4f0459d12356271d05900526fd691c0cf95f010824d3f904379acf271b21"
+    },
+    {
+      "name": "candidate",
+      "exit_status": 0,
+      "seconds": 0.4975602626800537,
+      "diagnostic_count": 0,
+      "ordered_dependency_occurrences": 118,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "object_bytes": 41720,
+      "object_sha256": "4a055e4bcf1871d88c405b7649eafb064843609795babd7b123dd6c91a6528bf",
+      "command_receipt_sha256": "495ff50399b4d50fdc9ec9201174c3d6b77b006d1b6c7ac307a7f51fed09239f"
+    }
+  ],
+  "scope": "Complete production JIT translation unit under unchanged strict GCC 14 GNU23/O3 flags, compile only. No object or generated-code execution. Not full host, Windows, exact-head CI, PR readiness, merge or release acceptance.",
+  "source_review_sha256": "1128022e4150a4b7ee39514fe8e942689334fd49baabc7a765431cb681c76547",
+  "terminal_attestation_sha256": "71292d35c1ef52d75fc5d04951432ad6310c35f7eed2a237e1cd02ed5121dee3",
+  "terminal_review_sha256": "47af10ec474ce56b81bd6b39d1fcf19d990b8e06fbc05f18c3c867c9a1edd097",
+  "resource_helper_cases_passed": 35
+}

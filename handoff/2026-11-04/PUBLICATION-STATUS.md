@@ -2,7 +2,7 @@
 
 On November 4, 2026, the 22 completed local source/test/documentation checkpoints
 were published in their original order to `codex/resume-native-jobs-20261104`.
-Published head: `752df281116e74f29642117215e0a766f1e26d2e`.
+Initial publication head: `752df281116e74f29642117215e0a766f1e26d2e`.
 Its tree `32b9025f14a76b7dc36e4cc4bcc53a24ea5a7894` exactly equals local
 `5a6d81ce3233f448aa6d5752e2427320ee117b2f`. Every remote commit's tree, parent
 and message, and the final branch ref, were read back. The connector generates
@@ -14,7 +14,7 @@ also preserved in a verified Git bundle.
 
 These are development checkpoints, not merge or release acceptance. PR #1331
 remains explicitly not ready. No PR branch, release, seed pin or protection was
-changed. The exact published head had no Actions runs when queried immediately
+changed. The initial published head had no Actions runs when queried immediately
 after publication; publication is not a claim of passing exact-head CI.
 
 The separately validated current compiler has a raw fixed point and 573 exact
@@ -29,8 +29,11 @@ The retained pre-correction strict compiler-host construction failed after 31 su
 objects, at 19 nonconstant-initializer diagnostics in `text_definition.c`. It
 produced no archives or host. See [HOST-INITIALIZER-FAILURE.md](HOST-INITIALIZER-FAILURE.md).
 The archived source-only initializer proposal has a subsequent
-[focused tested correction](NATIVE-DEFAULT-INITIALIZERS.md). Disabled graph-c
-ownership preparation remains preserved in
+[focused tested correction](NATIVE-DEFAULT-INITIALIZERS.md). The next fresh host
+construction advanced to 44 successful objects before one strict JIT signedness
+error; its [one-line correction and paired strict compile proof](JIT-SIGNED-OPERAND.md)
+are now accepted. No host was produced, and another full construction is pending.
+Disabled graph-c ownership preparation remains preserved in
 [unvalidated-preparations](unvalidated-preparations/README.md).
 The pointer patch there remains unapplied and has two known findings. The
 [sdk-reflect wrapper finding](SDK-REFLECT-OPEN-FINDING.md) has a subsequent

@@ -203,7 +203,7 @@ static void failure(
         SLJIT_MOV32,
         reason == BEHAVIOR_FUNCTION_COMMAND ? SLJIT_MEM1(m->context) : SLJIT_IMM,
         reason == BEHAVIOR_FUNCTION_COMMAND
-            ? offsetof(behavior_function_context, error_status)
+            ? (sljit_sw)offsetof(behavior_function_context, error_status)
         : reason == BEHAVIOR_FUNCTION_ARGUMENT  ? FLOW_ERR_ARGUMENT
         : reason == BEHAVIOR_FUNCTION_STATE     ? FLOW_ERR_STATE
         : reason == BEHAVIOR_FUNCTION_HOST_FLOW ? FLOW_ERR_NODE

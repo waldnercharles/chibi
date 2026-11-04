@@ -1,0 +1,245 @@
+{
+  "source_commit": "af1368540660106bd9b769f151f347bc4155556d",
+  "compiler_source_commit": "02c86287430def964445ec90185961e20319536d",
+  "compiler_sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266",
+  "source_files": 4067,
+  "source_manifest_sha256": "f013d4601c3e2af8b4fbb37a1001473d6742230344c90c322ec45c3de0b09c6e",
+  "source_reconciliation": "20 saved hunks across 13 paths are present or equivalently evolved; no tools/compiler or test/native_aot diff from admitted compiler source.",
+  "inventory": {
+    "source_runtime_cases": 24,
+    "schema_rejections": 2,
+    "normal_generation_reloads": 2
+  },
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "deadline_seconds_per_phase": 120,
+  "all_source_tool_and_process_gates_passed": true,
+  "independent_review": "Source/control review before builds; actual ELF/LLVM and generation callback/finalizer admission before runtime; exact receipts, logs, markers and source fences independently read back after all phases.",
+  "limits": [
+    "Linux named cases only; no actual Windows runtime or full managed/task suite.",
+    "External peak parsing closes the assertion-mode SourceProbe gap for these receipts; checked-in harness improvement remains.",
+    "Normal close balance only; deliberately unbalanced negative close control was not rerun.",
+    "No exact-current ordinary compiler differential proof.",
+    "Historical failed/uncertain runs retain their original status."
+  ],
+  "groups": {
+    "standalone": {
+      "controller_sha256": "77e564a60845c2e78acda69f33445d17de7b11e0c6d836a6fa83c23b272d0f3e",
+      "phases": {
+        "probe": {
+          "exit_status": 0,
+          "elapsed_seconds": 3.29,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "artifact_sha256": "f8af16ab3e459354a9ae653ee669bc0b75e229d8441dfef626e513b06a222aa8"
+        },
+        "main_ir": {
+          "exit_status": 0,
+          "elapsed_seconds": 0.454,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "artifact_sha256": "b453b073e7c0de09e8bf9cec07681e305abb0d3105fa6690c17f274cace5691c"
+        },
+        "failure_ir": {
+          "exit_status": 0,
+          "elapsed_seconds": 0.418,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "artifact_sha256": "cd55682910dc9c438e1ac7844050932aa3d81fb93e3195ff5012053c6e6088f0"
+        },
+        "main": {
+          "exit_status": 0,
+          "elapsed_seconds": 1.498,
+          "log_sha256": "ce53f706d491613bd2b482205efd50a1156f2024ae97ea0e49680a5998d2958d",
+          "runtime_cases": {
+            "passes": [
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/build/NestedPointers.ll force=false O0 poisoned balance",
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/build/NestedPointers.ll force=false O2 poisoned balance",
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/build/NestedPointers.ll force=true O0 poisoned balance",
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/build/NestedPointers.ll force=true O2 poisoned balance"
+            ],
+            "balances": [
+              "managed source live 0 peak 807 total 90010",
+              "managed source live 0 peak 807 total 90010",
+              "managed source live 0 peak 16 total 90010",
+              "managed source live 0 peak 16 total 90010"
+            ]
+          }
+        },
+        "callbacks": {
+          "exit_status": 0,
+          "elapsed_seconds": 1.477,
+          "log_sha256": "cba2445cdc45b46846d2f7f682799f900a208eb602d41e7686311a621620a8ca",
+          "runtime_cases": {
+            "passes": [
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/build/NestedPointers.ll force=false O0 poisoned balance",
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/build/NestedPointers.ll force=false O2 poisoned balance",
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/build/NestedPointers.ll force=true O0 poisoned balance",
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/build/NestedPointers.ll force=true O2 poisoned balance"
+            ],
+            "balances": [
+              "managed source live 0 peak 18 total 180020",
+              "managed source live 0 peak 18 total 180020",
+              "managed source live 0 peak 17 total 180020",
+              "managed source live 0 peak 17 total 180020"
+            ]
+          }
+        },
+        "failure": {
+          "exit_status": 0,
+          "elapsed_seconds": 1.165,
+          "log_sha256": "1d775cd179cf3c8d2255d1f8c8d1dd339cb788c1bceaa312f44cf8d633dd85ca",
+          "runtime_cases": {
+            "passes": [
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/build/NestedPointerFailure.ll force=false O0 poisoned balance",
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/build/NestedPointerFailure.ll force=false O2 poisoned balance",
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/build/NestedPointerFailure.ll force=true O0 poisoned balance",
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/build/NestedPointerFailure.ll force=true O2 poisoned balance"
+            ],
+            "balances": [
+              "managed source live 0 peak 806 total 9003",
+              "managed source live 0 peak 806 total 9003",
+              "managed source live 0 peak 9 total 9003",
+              "managed source live 0 peak 9 total 9003"
+            ]
+          }
+        },
+        "failure_callbacks": {
+          "exit_status": 0,
+          "elapsed_seconds": 1.026,
+          "log_sha256": "148d5872c88c353b595ccff0e29fd0472ac0c8cc85b9827e842343ecc06b3266",
+          "runtime_cases": {
+            "passes": [
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/build/NestedPointerFailure.ll force=false O0 poisoned balance",
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/build/NestedPointerFailure.ll force=false O2 poisoned balance",
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/build/NestedPointerFailure.ll force=true O0 poisoned balance",
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/build/NestedPointerFailure.ll force=true O2 poisoned balance"
+            ],
+            "balances": [
+              "managed source live 0 peak 11 total 18006",
+              "managed source live 0 peak 11 total 18006",
+              "managed source live 0 peak 10 total 18006",
+              "managed source live 0 peak 10 total 18006"
+            ]
+          }
+        }
+      }
+    },
+    "controls": {
+      "controller_sha256": "c31bd8eb2685bded6ef3cc932535c8fe419c47508fdcc75485f485d5b2943472",
+      "phases": {
+        "cells_ir": {
+          "exit_status": 0,
+          "elapsed_seconds": 0.405,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "artifact_sha256": "7c98d30836a0f668cf8d2b643cffcfc8a1eb5c54d799fe83dfbe3897d8d4a4dd"
+        },
+        "scoped_ir": {
+          "exit_status": 0,
+          "elapsed_seconds": 0.415,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "artifact_sha256": "8df6c2791d240b0647a06987db7c1d3a58146b8c69669ca3fbf8ff1da56db0ca"
+        },
+        "reject_array": {
+          "exit_status": 1,
+          "elapsed_seconds": 0.494,
+          "log_sha256": "8c30463374371577af8cd458bf78d255a3567c070903e6e853894251eac05f97",
+          "sentinel_preserved": true
+        },
+        "reject_nested": {
+          "exit_status": 1,
+          "elapsed_seconds": 0.408,
+          "log_sha256": "9927dd7afefd61633fe5b84c0c38a12ebf7313e3c75c79bdc63d7545182415f9",
+          "sentinel_preserved": true
+        },
+        "cells": {
+          "exit_status": 0,
+          "elapsed_seconds": 1.573,
+          "log_sha256": "44bbfc1966bee5570e988da23f4bfea797ed171bf4585fd9ed9516def7adee10",
+          "runtime_cases": {
+            "passes": [
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/controls/build/Cells.ll force=false O0 poisoned balance",
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/controls/build/Cells.ll force=false O2 poisoned balance",
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/controls/build/Cells.ll force=true O0 poisoned balance",
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/controls/build/Cells.ll force=true O2 poisoned balance"
+            ],
+            "balances": [
+              "managed source live 0 peak 967 total 16036",
+              "managed source live 0 peak 967 total 16036",
+              "managed source live 0 peak 12 total 16036",
+              "managed source live 0 peak 12 total 16036"
+            ]
+          }
+        },
+        "scoped": {
+          "exit_status": 0,
+          "elapsed_seconds": 0.824,
+          "log_sha256": "d56c11a9decc456b1ce6f56b3f1ce3959a04be7078204db93821c54316b718c9",
+          "runtime_cases": {
+            "passes": [
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/controls/build/ScopedAliases.ll force=false O0 poisoned balance",
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/controls/build/ScopedAliases.ll force=false O2 poisoned balance",
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/controls/build/ScopedAliases.ll force=true O0 poisoned balance",
+              "PASS managed source /workspace/shared/chibi-nested-pointer-runtime-20261104/controls/build/ScopedAliases.ll force=true O2 poisoned balance"
+            ],
+            "balances": [
+              "managed source live 0 peak 0 total 0",
+              "managed source live 0 peak 0 total 0",
+              "managed source live 0 peak 0 total 0",
+              "managed source live 0 peak 0 total 0"
+            ]
+          }
+        }
+      }
+    },
+    "generations": {
+      "controller_sha256": "ff15a3df866bf38a5f240b43b877b10827519a4a30c753fc8c4f05fe666a3b87",
+      "phases": {
+        "host": {
+          "exit_status": 0,
+          "elapsed_seconds": 1.031,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "artifact_sha256": "7f78b2f4a992caa3fba4b16364276b5e806abcc2b0837218dd5bbbe2c822bd10"
+        },
+        "nested0": {
+          "exit_status": 0,
+          "elapsed_seconds": 0.657,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "artifact_sha256": "c64beedf869ef4a6de028a11e30b7ff7b606f08f1ec7611bac869ff19584d201"
+        },
+        "edited0": {
+          "exit_status": 0,
+          "elapsed_seconds": 0.587,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "artifact_sha256": "0450ab87a44adc123d184bcd4ad1112dec0b55b61d23bcce403fbb29c0916b2e"
+        },
+        "nested2": {
+          "exit_status": 0,
+          "elapsed_seconds": 0.901,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "artifact_sha256": "82e435905f081b8d58d7a6bf31594459e0433aac9ce662d2904bab44741c7d73"
+        },
+        "edited2": {
+          "exit_status": 0,
+          "elapsed_seconds": 0.675,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "artifact_sha256": "14205f53232e6831bc10966b523ce012a47d4f49205ba5ccef5b159cdd4c8535"
+        },
+        "run0": {
+          "exit_status": 0,
+          "elapsed_seconds": 0.51,
+          "log_sha256": "e4077f84f31b764b32d45e6fdca89b783aad1823fb664b33e19bc15b2f87feaf",
+          "generation_completed": true,
+          "host_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "run2": {
+          "exit_status": 0,
+          "elapsed_seconds": 0.509,
+          "log_sha256": "e4077f84f31b764b32d45e6fdca89b783aad1823fb664b33e19bc15b2f87feaf",
+          "generation_completed": true,
+          "host_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    }
+  },
+  "total_phase_seconds": 18.317
+}

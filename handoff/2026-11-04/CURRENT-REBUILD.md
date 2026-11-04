@@ -19,7 +19,13 @@ The four phases total 354.271 seconds. These are bounded diagnostic/correctness 
 
 With that compiler, the **entire** `test/bootstrap/native-runner.sh` passed against checkpoint `cc5c8346a9c7e0bf2a45a1c1bc015dd29cdf9b00` in 17.155 seconds. This extends the earlier extracted stage-contract proof to execution, cache reuse/rejection, cleanup, in-flight source changes, controlled fixed-point cases, Windows argv planning and legacy-seed/resource behavior. Deliberate child failures are expected negative cases; the outer suite returned zero. All 4,062 tracked source blobs and modes stayed intact and all owned processes terminated.
 
-The stage cases use controlled fixtures, not another real bootstrap. `native-runner-full-results.json` records the exact script, controller and log hashes. Full graph-driver validation is still pending at this checkpoint.
+The stage cases use controlled fixtures, not another real bootstrap. `native-runner-full-results.json` records the exact script, controller and log hashes. Full graph-driver validation subsequently passed; see below.
+
+## Full graph-driver regression
+
+The complete `DriverTests.chibi` suite exposed a stale comparison fixture: it rejected the mandatory `CommandTests-Run` output. The baseline failed at the predicted native-only assertion in 9.711 seconds. A fixture-only correction now emits a distinct contract marker, preserves planner rejection, and runs comparison cases from a scratch cwd with controlled legacy-seed preparation. This also prevents a test from downloading a real seed. It asserts no preparation in native-only mode and exactly one request for the expected seed in comparison mode.
+
+Independent review approved the exact patch and controller before the corrected suite passed in 7.819 seconds. Separate test compilations took 6.239 seconds before and 5.314 seconds after. Both runs retained the 120-second cap, two-CPU affinity, unchanged tracked-source/tool fences and clean process termination. These are correctness timings, not an optimization comparison. The nested Driver compilation retains its own default worker selection. `graph-driver-results.json` records the before/after evidence. No production check was removed or weakened.
 
 ## Remaining gates
 

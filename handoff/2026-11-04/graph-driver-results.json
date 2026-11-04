@@ -1,0 +1,65 @@
+{
+  "base_commit": "c9a094ce3aeba880b44db292f8c245f1a402cdca",
+  "patch_sha256": "276f85e8d24ee97c160f17114b5922cdb88df86a447d3bf21787d26c2a7eaac9",
+  "compiler_sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266",
+  "review": "Independent reviewer checked complete test and callers, mapped baseline assertion, then approved exact patch/controller before corrected execution.",
+  "scope": "Entire DriverTests Run; no real bootstrap, production graph execution or network seed retrieval.",
+  "outer_build_jobs": 2,
+  "nested_compile_jobs": "unmodified programs.Build defaults, not capped by outer --jobs; inherited two-CPU affinity",
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "deadline_seconds_per_phase": 120,
+  "cases": {
+    "baseline": {
+      "build": {
+        "status": "passed",
+        "exit_status": 0,
+        "elapsed_seconds": 6.239,
+        "cleanup_complete": true,
+        "artifact_sha256": "187472da5a700492f398cccc6eaf4a3cc13e19a1747c4a09187a1b272404d207",
+        "controller_sha256": "992b44c5659448b7aa7b19aca5f8bc3da185d5ccdbfd2267f643e95dd3448d9e",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "source_files_unchanged": 4065,
+        "tools_unchanged": true
+      },
+      "test": {
+        "status": "failed",
+        "exit_status": 134,
+        "elapsed_seconds": 9.711,
+        "cleanup_complete": true,
+        "artifact_sha256": null,
+        "controller_sha256": "992b44c5659448b7aa7b19aca5f8bc3da185d5ccdbfd2267f643e95dd3448d9e",
+        "log_sha256": "a2604d6a37d05308acdddea5b3bb61f582d6dd609aedf0987c39d81e3321b510",
+        "source_files_unchanged": 4065,
+        "tools_unchanged": true
+      }
+    },
+    "corrected": {
+      "build": {
+        "status": "passed",
+        "exit_status": 0,
+        "elapsed_seconds": 5.314,
+        "cleanup_complete": true,
+        "artifact_sha256": "12df77e72a445f67c2483a0346adf409ee2536f511b18b4b36b104f87593f47a",
+        "controller_sha256": "992b44c5659448b7aa7b19aca5f8bc3da185d5ccdbfd2267f643e95dd3448d9e",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "source_files_unchanged": 4065,
+        "tools_unchanged": true
+      },
+      "test": {
+        "status": "passed",
+        "exit_status": 0,
+        "elapsed_seconds": 7.819,
+        "cleanup_complete": true,
+        "artifact_sha256": null,
+        "controller_sha256": "992b44c5659448b7aa7b19aca5f8bc3da185d5ccdbfd2267f643e95dd3448d9e",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "source_files_unchanged": 4065,
+        "tools_unchanged": true
+      }
+    }
+  },
+  "baseline_failure": "DriverTests.chibi:388, source bytes 23187..23299, explicit native-only mode remains; stale fixture rejected mandatory CommandTests-Run."
+}

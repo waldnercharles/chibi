@@ -34,6 +34,15 @@ while [ "$#" -gt 0 ]; do
     shift
 done
 case "$output" in
+    */CommandTests-Run)
+        cat > "$output" <<'CONTRACT'
+#!/bin/sh
+echo 'fixture ran command contract'
+exit 0
+CONTRACT
+        chmod +x "$output"
+        exit 0
+        ;;
     */Build-Build|*/Graph-Libraries)
         # The comparison plans these children but must never execute them.
         cat > "$output" <<'RUNNER'

@@ -380,13 +380,29 @@ NativeComparisonMode :: (toolchain: Toolchain) {
         written = os.WriteText(format_text("{}/{}", scratch, tool), "planner fixture\n")
         assert(written == nil, "the planner's fingerprinted LLVM input")
     }
+    // Keep legacy-seed preparation and all fingerprinted inputs in the fixture.
+    // The comparison tests selection, not a network download or VM execution.
+    for (folder in ["tools/bootstrap", "tools/toolchain", "tools/graph", "packages/core", "test/graph"]) {
+        assert(os.MakeDirectory(format_text("{}/{}", scratch, folder)) == nil, "the comparison input directory")
+    }
+    for (file in ["tools/toolchain/Build.chibi", "tools/toolchain/Graph.chibi", "tools/toolchain/Driver.chibi", "test/graph/CommandTests.chibi"]) {
+        assert(os.WriteText(format_text("{}/{}", scratch, file), "package fixture\n") == nil, "the comparison source input")
+    }
+    assert(os.WriteText(format_text("{}/tools/bootstrap/seed.sh", scratch),
+                        "#!/bin/sh\nprintf '%s\\n' \"$@\" >> seed-events\necho 'fixture prepared legacy seed'\n") == nil, "the controlled legacy seed")
+    command := Command(toolchain, scratch)
     for (flag in ["--skip-vm", "--skip-vm-comparison"]) {
-        result := Verb(toolchain, "native-self-host", ["--llvm", scratch, "--work", scratch, "--stage-one", seed,
-                                                "--build-host", fake_host, "--compiler-host", toolchain.compiler, "--compare-vm", flag])
+        result := process.Capture(extend(command, ["build", "native-self-host", "--llvm", scratch, "--work", scratch, "--stage-one", seed,
+                                                "--build-host", fake_host, "--compiler-host", toolchain.compiler, "--compare-vm", flag]), 200000)
         log := Output(result)
+        assert(Has(log, "fixture ran command contract"), "both modes keep the independent command contract")
+        assert(Has(log, "fixture prepared legacy seed") == (flag == "--skip-vm-comparison"), "only the legacy comparison prepares its seed")
         if (flag == "--skip-vm") {
+            assert(!os.Exists(format_text("{}/seed-events", scratch)), "native-only mode does not prepare a legacy seed")
             assert(result.status == 0 && !Has(log, "fixture reached graph comparison"), "explicit native-only mode remains")
         } else {
+            prepared := os.ReadText(format_text("{}/seed-events", scratch))
+            assert(prepared.error == nil && prepared.text == "tools/compiler/bootstrap\n", "the comparison prepares its exact legacy seed once")
             assert(Has(log, "native runner: the dry-run commands match"), "driver parity still runs")
             assert(result.status != 0 && Has(log, "fixture reached graph comparison"), "the graph proof still rejects")
         }

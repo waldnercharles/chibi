@@ -1,0 +1,84 @@
+package vnext_typed
+
+import syntax "project:syntax_diagnostics"
+
+// Experimental invocation-owned tables, not a serialized or foreign ABI.
+// Every table-reference ID is a dense, one-based u32 index. Zero is absent.
+// Origin.document preserves the caller's nonnegative signed-32-bit int label,
+// including zero, through 2147483647. Span starts are zero-based offsets and an
+// empty span has start/count zero. Arrays own their storage through the returned
+// Module; no source tree is retained.
+pub Bool: u32 : 1;
+pub I64: u32 : Bool + 1;
+pub ConstantI64: u32 : 1;
+pub AddI64: u32 : ConstantI64 + 1;
+pub Jump: u32 : AddI64 + 1;
+pub Branch: u32 : Jump + 1;
+pub Return: u32 : Branch + 1;
+pub BlockDefinition: u32 : 2147483648;
+pub MaxFunctions: int : 32;
+pub MaxParameters: int : 32;
+pub MaxLocals: int : 64;
+pub MaxBlocks: int : 64;
+pub MaxDepth: int : 32;
+pub MaxNodes: int : 8192;
+pub MaxSourceBytes: int : 65536;
+
+pub Function :: struct {
+    name: u32;
+    signature: u32;
+    first_block: u32;
+    block_count: u32;
+    origin: u32;
+    exported: u32;
+}
+pub Signature :: struct {
+    first_parameter: u32;
+    parameter_count: u32;
+    result_type: u32;
+}
+pub Block :: struct {
+    first_parameter: u32;
+    parameter_count: u32;
+    first_instruction: u32;
+    instruction_count: u32;
+}
+// Target: 8 scalar bytes. definition is an instruction ID, or the defining
+// block ID | BlockDefinition for a block parameter. Type lives only here.
+pub Value :: struct { type: u32; definition: u32; }
+// Target: 24 scalar bytes. ConstantI64 payload is a literal ID. AddI64 reads
+// left/right. Jump payload is an edge ID. Branch reads left and payload names
+// two consecutive edges (true, false). Return reads left. Other fields are 0.
+pub Instruction :: struct {
+    op: u32; result: u32; left: u32; right: u32; payload: u32; origin: u32;
+}
+pub Edge :: struct { target: u32; first_argument: u32; argument_count: u32; }
+pub Origin :: struct { document: u32; start: u32; end: u32; }
+pub Name :: struct { start: u32; count: u32; }
+pub Module :: struct {
+    functions: Function[];
+    signatures: Signature[];
+    parameter_types: u32[];
+    blocks: Block[];
+    block_parameters: u32[];
+    values: Value[];
+    instructions: Instruction[];
+    edges: Edge[];
+    arguments: u32[];
+    literals: i64[];
+    origins: Origin[];
+    names: Name[];
+    name_bytes: u8[];
+}
+pub Result :: union { Produced(module: Module) | Rejected(diagnostic: syntax.Diagnostic) }
+
+// Verify returns 0 for a valid module, otherwise an invariant category. It is
+// exposed for mutation tests, not as a serialized-input loader. Produce calls
+// it once and asserts success before publishing any module.
+pub InvalidSpan: int : 1;
+pub InvalidDefinition: int : InvalidSpan + 1;
+pub InvalidType: int : InvalidDefinition + 1;
+pub InvalidDominance: int : InvalidType + 1;
+pub InvalidTerminator: int : InvalidDominance + 1;
+pub InvalidEdge: int : InvalidTerminator + 1;
+pub InvalidInstruction: int : InvalidEdge + 1;

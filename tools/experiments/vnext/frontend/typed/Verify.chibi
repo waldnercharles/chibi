@@ -1,0 +1,275 @@
+package vnext_typed
+
+// Span owners are visited in table order. next is already inside total, so
+// subtract before comparing and never narrow an unchecked u32 to signed int.
+OwnedSpan :: (first: u32, count: u32, total: int, next: int) -> bool {
+    if (count == 0) { return first == 0; }
+    return first == u32(next) && count <= u32(total - next);
+}
+
+Present :: (id: u32, count: int) -> bool { return id > 0 && id <= u32(count); }
+ScalarType :: (type: u32) -> bool { return type == Bool || type == I64; }
+
+AllUsed :: (used: bool[]) -> bool {
+    for (present in used) { if (!present) { return false; } }
+    return true;
+}
+
+// Both definition and defining_block were checked in the ownership pass.
+// A block parameter is available at entry; an instruction result is available
+// only after its instruction. Other blocks must be in this function's mask.
+DefinedBefore :: (definition: u32, defining_block: u32, block: u32,
+                  instruction: u32, first_block: u32, dominators: u64) -> bool {
+    if (defining_block == block) {
+        return (definition & BlockDefinition) != 0 || definition < instruction;
+    }
+    if (defining_block <= first_block || defining_block > block) { return false; }
+    return (dominators & (u64(1) << (defining_block - first_block - 1))) != 0;
+}
+
+// Linear in table rows, operands and edge arguments. Scratch is one defining
+// block ID/value, one u64/block and ownership/usage flags for side rows. Forward
+// edges and the explicit 64-block/function experiment bound make one-pass u64
+// dominance possible; this is not a scalable general CFG algorithm.
+pub Verify :: (module: Module) -> int {
+    if (length(module.functions) > MaxFunctions) { return InvalidSpan; }
+    names_used := resize([false], length(module.names));
+    signatures_used := resize([false], length(module.signatures));
+    origins_used := resize([false], length(module.origins));
+    literals_used := resize([false], length(module.literals));
+    edges_used := resize([false], length(module.edges));
+    arguments_used := resize([false], length(module.arguments));
+    defining_blocks := resize([u32(0)], length(module.values));
+    dominators := resize([u64(0)], length(module.blocks));
+
+    // Side-table spans own all their scalar storage, including empty spans'
+    // canonical zero start. Shared row references do not duplicate ownership.
+    next_name_byte: int = 0;
+    for (name in module.names) {
+        if (!OwnedSpan(name.start, name.count, length(module.name_bytes), next_name_byte)) {
+            return InvalidSpan;
+        }
+        next_name_byte += int(name.count);
+    }
+    if (next_name_byte != length(module.name_bytes)) { return InvalidSpan; }
+    for (origin in module.origins) {
+        if (origin.start > origin.end) { return InvalidSpan; }
+    }
+    next_parameter_type: int = 0;
+    for (signature in module.signatures) {
+        if (signature.parameter_count > u32(MaxParameters) ||
+            !OwnedSpan(signature.first_parameter, signature.parameter_count,
+                       length(module.parameter_types), next_parameter_type)) {
+            return InvalidSpan;
+        }
+        next_parameter_type += int(signature.parameter_count);
+        if (!ScalarType(signature.result_type)) { return InvalidType; }
+    }
+    if (next_parameter_type != length(module.parameter_types)) { return InvalidSpan; }
+    for (type in module.parameter_types) {
+        if (!ScalarType(type)) { return InvalidType; }
+    }
+    // An outer branch's exit edge can precede nested edges but receive its
+    // arguments after them. Check disjoint coverage, not edge-table ordering.
+    for (edge in module.edges) {
+        if (!Present(edge.target, length(module.blocks))) { return InvalidEdge; }
+        if (edge.argument_count == 0) {
+            if (edge.first_argument != 0) { return InvalidSpan; }
+        } else {
+            if (edge.first_argument > u32(length(module.arguments)) ||
+                edge.argument_count > u32(length(module.arguments)) - edge.first_argument) {
+                return InvalidSpan;
+            }
+            first := int(edge.first_argument);
+            end := first + int(edge.argument_count);
+            for (at in first..<end) {
+                if (arguments_used[at]) { return InvalidSpan; }
+                arguments_used[at] = true;
+            }
+        }
+    }
+    if (!AllUsed(arguments_used)) { return InvalidSpan; }
+
+    // Functions partition the block table. Their shared metadata IDs must
+    // exist before any lookup; their entry signatures are checked below.
+    next_block: int = 0;
+    for (function in module.functions) {
+        if (function.block_count == 0 || function.block_count > u32(MaxBlocks) ||
+            !OwnedSpan(function.first_block, function.block_count, length(module.blocks), next_block)) {
+            return InvalidSpan;
+        }
+        next_block += int(function.block_count);
+        if (!Present(function.name, length(module.names)) ||
+            !Present(function.signature, length(module.signatures)) ||
+            !Present(function.origin, length(module.origins)) || function.exported > 1) {
+            return InvalidSpan;
+        }
+        names_used[int(function.name) - 1] = true;
+        signatures_used[int(function.signature) - 1] = true;
+        origins_used[int(function.origin) - 1] = true;
+    }
+    if (next_block != length(module.blocks)) { return InvalidSpan; }
+
+    // Every value is defined exactly once, either by a block parameter or an
+    // instruction result. No use is inspected until this whole pass succeeds.
+    next_parameter: int = 0;
+    next_instruction: int = 0;
+    for (block, block_index in module.blocks) {
+        block_id := u32(block_index + 1);
+        if (block.parameter_count > u32(MaxLocals) ||
+            !OwnedSpan(block.first_parameter, block.parameter_count,
+                       length(module.block_parameters), next_parameter) ||
+            !OwnedSpan(block.first_instruction, block.instruction_count,
+                       length(module.instructions), next_instruction)) {
+            return InvalidSpan;
+        }
+        if (block.instruction_count == 0) { return InvalidTerminator; }
+        next_parameter += int(block.parameter_count);
+        next_instruction += int(block.instruction_count);
+        for (ordinal in 0..<int(block.parameter_count)) {
+            id := module.block_parameters[int(block.first_parameter) + ordinal];
+            if (!Present(id, length(module.values))) { return InvalidDefinition; }
+            slot := int(id) - 1;
+            if (defining_blocks[slot] != 0 || module.values[slot].definition != (BlockDefinition | block_id)) {
+                return InvalidDefinition;
+            }
+            defining_blocks[slot] = block_id;
+        }
+        for (at in int(block.first_instruction)..<next_instruction) {
+            instruction := module.instructions[at];
+            instruction_id := u32(at + 1);
+            if (instruction.op < ConstantI64 || instruction.op > Return) { return InvalidInstruction; }
+            terminator := instruction.op == Jump || instruction.op == Branch || instruction.op == Return;
+            if (terminator != (at == next_instruction - 1)) { return InvalidTerminator; }
+            if (!Present(instruction.origin, length(module.origins))) { return InvalidSpan; }
+            origins_used[int(instruction.origin) - 1] = true;
+            edge_count: int = 0;
+            switch instruction.op {
+                case ConstantI64:
+                    if (instruction.left != 0 || instruction.right != 0 ||
+                        !Present(instruction.payload, length(module.literals))) { return InvalidInstruction; }
+                    literals_used[int(instruction.payload) - 1] = true;
+                case AddI64:
+                    if (instruction.payload != 0) { return InvalidInstruction; }
+                case Jump:
+                    if (instruction.left != 0 || instruction.right != 0) { return InvalidInstruction; }
+                    edge_count = 1;
+                case Branch:
+                    if (instruction.right != 0) { return InvalidInstruction; }
+                    edge_count = 2;
+                case Return:
+                    if (instruction.right != 0 || instruction.payload != 0) { return InvalidInstruction; }
+                case: assert(false, "checked typed instruction opcode");
+            }
+            if (terminator) {
+                if (instruction.result != 0) { return InvalidDefinition; }
+            } else {
+                if (!Present(instruction.result, length(module.values))) { return InvalidDefinition; }
+                slot := int(instruction.result) - 1;
+                if (defining_blocks[slot] != 0 || module.values[slot].definition != instruction_id) {
+                    return InvalidDefinition;
+                }
+                if (module.values[slot].type != I64) { return InvalidType; }
+                defining_blocks[slot] = block_id;
+            }
+            if (edge_count != 0) {
+                if (!Present(instruction.payload, length(module.edges))) { return InvalidEdge; }
+                first := int(instruction.payload) - 1;
+                if (edge_count > length(module.edges) - first) { return InvalidEdge; }
+                for (edge_index in first..<first + edge_count) {
+                    if (edges_used[edge_index]) { return InvalidEdge; }
+                    edges_used[edge_index] = true;
+                }
+            }
+        }
+    }
+    if (next_parameter != length(module.block_parameters) ||
+        next_instruction != length(module.instructions)) { return InvalidSpan; }
+    for (value, index in module.values) {
+        if (defining_blocks[index] == 0) { return InvalidDefinition; }
+        if (!ScalarType(value.type)) { return InvalidType; }
+    }
+    if (!AllUsed(names_used) || !AllUsed(signatures_used) || !AllUsed(origins_used) ||
+        !AllUsed(literals_used)) { return InvalidSpan; }
+    if (!AllUsed(edges_used)) { return InvalidEdge; }
+
+    // The block IDs are a topological ordering. Incoming intersections are
+    // final when a block is visited. Every reachable mask contains entry's
+    // bit, so zero is an unambiguous missing-predecessor sentinel.
+    for (function in module.functions) {
+        first_block := int(function.first_block);
+        block_end := first_block + int(function.block_count);
+        signature := module.signatures[int(function.signature) - 1];
+        entry_block := module.blocks[first_block];
+        if (entry_block.parameter_count != signature.parameter_count) { return InvalidType; }
+        for (ordinal in 0..<int(signature.parameter_count)) {
+            id := module.block_parameters[int(entry_block.first_parameter) + ordinal];
+            expected := module.parameter_types[int(signature.first_parameter) + ordinal];
+            if (module.values[int(id) - 1].type != expected) { return InvalidType; }
+        }
+        dominators[first_block] = 1;
+        for (block_index in first_block..<block_end) {
+            block := module.blocks[block_index];
+            block_id := u32(block_index + 1);
+            mask := dominators[block_index];
+            if (mask == 0) { return InvalidDominance; }
+            mask |= u64(1) << u32(block_index - first_block);
+            dominators[block_index] = mask;
+            instruction_end := int(block.first_instruction) + int(block.instruction_count);
+            for (at in int(block.first_instruction)..<instruction_end) {
+                instruction := module.instructions[at];
+                instruction_id := u32(at + 1);
+                operand_count: int = 0;
+                operand_type: u32 = I64;
+                edge_count: int = 0;
+                switch instruction.op {
+                    case ConstantI64: continue;
+                    case AddI64: operand_count = 2;
+                    case Jump: edge_count = 1;
+                    case Branch:
+                        operand_count = 1;
+                        operand_type = Bool;
+                        edge_count = 2;
+                    case Return:
+                        operand_count = 1;
+                        operand_type = signature.result_type;
+                    case: assert(false, "checked typed instruction opcode");
+                }
+                for (operand in 0..<operand_count) {
+                    id := instruction.left;
+                    if (operand != 0) { id = instruction.right; }
+                    if (!Present(id, length(module.values))) { return InvalidDefinition; }
+                    slot := int(id) - 1;
+                    value := module.values[slot];
+                    if (value.type != operand_type) { return InvalidType; }
+                    if (!DefinedBefore(value.definition, defining_blocks[slot], block_id,
+                                       instruction_id, function.first_block, mask)) {
+                        return InvalidDominance;
+                    }
+                }
+                for (ordinal in 0..<edge_count) {
+                    edge := module.edges[int(instruction.payload) - 1 + ordinal];
+                    if (edge.target <= block_id || edge.target > u32(block_end)) { return InvalidEdge; }
+                    target := int(edge.target) - 1;
+                    target_block := module.blocks[target];
+                    if (edge.argument_count != target_block.parameter_count) { return InvalidEdge; }
+                    for (argument in 0..<int(edge.argument_count)) {
+                        id := module.arguments[int(edge.first_argument) + argument];
+                        parameter := module.block_parameters[int(target_block.first_parameter) + argument];
+                        if (!Present(id, length(module.values))) { return InvalidDefinition; }
+                        slot := int(id) - 1;
+                        value := module.values[slot];
+                        if (value.type != module.values[int(parameter) - 1].type) { return InvalidType; }
+                        if (!DefinedBefore(value.definition, defining_blocks[slot], block_id,
+                                           instruction_id, function.first_block, mask)) {
+                            return InvalidDominance;
+                        }
+                    }
+                    if (dominators[target] == 0) { dominators[target] = mask; }
+                    else { dominators[target] &= mask; }
+                }
+            }
+        }
+    }
+    return 0;
+}

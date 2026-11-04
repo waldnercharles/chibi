@@ -1,0 +1,8 @@
+package scalar_pair
+
+pub Echo :: (value: i64) -> i64 { return value; }
+pub Join :: (choose: bool, left: i64, right: i64) -> i64 {
+    result: i64 = right;
+    if (choose) { result = left; }
+    return result + 1;
+}

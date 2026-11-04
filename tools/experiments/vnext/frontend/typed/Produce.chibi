@@ -1,0 +1,589 @@
+package vnext_typed
+
+import parser "project:source_parser"
+import reader "project:signature_reader"
+import binding "project:lexical_binding"
+import named "project:named_binding"
+import constructors "project:type_constructors"
+import syntax "project:syntax_diagnostics"
+import token "project:source_tokenizer"
+
+DecimalZero: int : 48;
+
+// One invocation owns this scratch state and a separate Module. Output helpers
+// take both as direct scoped parameters: the old seed rejected the version
+// storing a Module pointer with ReadEffect. This removes that path without duplicating the
+// schema or explicitly copying Module values per node. Actual lowering/COW
+// traffic remains unmeasured. Branch snapshots copy at most 64 IDs per detach.
+State :: struct {
+    tree: reader.Tree;
+    environment: reader.Environment;
+    nodes: syntax.Node[];
+    text: string;
+    document: int;
+    diagnostics: syntax.Diagnostic[];
+    declarations: int[];
+    header_names: int[];
+    parameter_names: int[];
+    bindings: int[];
+    current_values: u32[];
+    origin_ids: u32[];
+    block: u32;
+    first_block: int;
+    result_type: u32;
+}
+
+EmptyModule :: () -> Module {
+    return {functions: [], signatures: [], parameter_types: [], blocks: [],
+            block_parameters: [], values: [], instructions: [], edges: [],
+            arguments: [], literals: [], origins: [], names: [], name_bytes: []};
+}
+
+// Retain the real annotation reader without broad callable-header publication,
+// prepared emission, scalar lowering or a second type interpretation.
+SignatureEnvironment :: () -> reader.Environment {
+    scope: binding.Scope = {parent: -1, function: -1, start: 0, end: 0,
+                            line: 1, column: 1, document: 0};
+    symbols: binding.Symbol[] = [];
+    functions: binding.Function[] = [];
+    ids: u64[] = [];
+    keys: string[] = [];
+    lexical := binding.Environment.Tables([scope], symbols, functions, ids, keys);
+    types: named.Type[] = [];
+    entries: named.Entry[] = [];
+    indices: int[] = [];
+    imports: named.Import[] = [];
+    exports: named.Export[] = [];
+    uses: named.Use[] = [];
+    names := named.Environment.Tables(lexical, types, ids, entries, entries, entries,
+                                      indices, imports, exports, uses, "vnext-scalar", 0, false, true, 0);
+    definitions: constructors.Definition[] = [];
+    variants: constructors.RawVariant[] = [];
+    capabilities: constructors.Capability[] = [];
+    constructors_functions: constructors.Function[] = [];
+    constructors_symbols: constructors.Symbol[] = [];
+    construction := constructors.Environment.Tables(types, ids, definitions, variants,
+                                                    capabilities, constructors_functions, constructors_symbols, indices);
+    return reader.Environment.Tables(names, construction, 8);
+}
+
+Fail :: (s: ^State, node: int, message: string) {
+    if (length(s.diagnostics) == 0) {
+        diagnostic := reader.Diagnostic(s.tree, node, s.document, message);
+        diagnostic.document = s.document;
+        s.diagnostics.append(diagnostic);
+    }
+}
+First :: (s: ^State, parent: int) -> int {
+    if (parent < 0) { return -1; }
+    return reader.NextMember(s.tree, s.nodes[parent].first_child);
+}
+Next :: (s: ^State, node: int) -> int {
+    return reader.NextMember(s.tree, s.nodes[node].next_sibling);
+}
+
+// Names compare source byte views, without allocating per identifier use.
+// Both callers scan a checked bound: 32 function names or 64 visible bindings.
+SameName :: (s: ^State, left: int, right: int) -> bool {
+    a := s.nodes[left];
+    b := s.nodes[right];
+    if (a.end - a.start != b.end - b.start) { return false; }
+    index: int = 0;
+    while (index < a.end - a.start) {
+        if (text_byte_at(s.text, a.start + index) != text_byte_at(s.text, b.start + index)) { return false; }
+        index += 1;
+    }
+    return true;
+}
+AdmitName :: (s: ^State, node: int) -> bool {
+    if (!reader.Kind(s.tree, node, syntax.Identifier)) {
+        Fail(s, node, "vNext scalar slice requires an identifier binding");
+        return false;
+    }
+    spelling := reader.Text(s.tree, node);
+    if (spelling == "_") {
+        Fail(s, node, "vNext scalar slice requires a named binding");
+        return false;
+    }
+    if (spelling == "Cancelled") {
+        Fail(s, node, "'Cancelled' is reserved for the cancellation singleton");
+        return false;
+    }
+    return true;
+}
+FindBinding :: (s: ^State, node: int) -> int {
+    index := length(s.bindings) - 1;
+    while (index >= 0) {
+        if (SameName(s, s.bindings[index], node)) { return index; }
+        index -= 1;
+    }
+    return -1;
+}
+OriginID :: (s: ^State, output: ^Module, node: int) -> u32 {
+    assert(node >= 0, "origin requires a syntax node");
+    if (s.origin_ids[node] != 0) { return s.origin_ids[node]; }
+    source := s.nodes[node];
+    row: Origin = {document: u32(s.document), start: u32(source.start), end: u32(source.end)};
+    output.origins.append(row);
+    id := u32(length(output.origins));
+    s.origin_ids[node] = id;
+    return id;
+}
+ReadType :: (s: ^State, node: int, owner: int) -> u32 {
+    if (node < 0) { node = owner; }
+    // Ordinary scalar annotations only. Reject modifiers, constructors, units,
+    // nominal types and parameter types before they can expand the closure.
+    if (!reader.Kind(s.tree, node, syntax.Type)) {
+        Fail(s, node, "vNext scalar slice requires an explicit i64 or bool type");
+        return 0;
+    }
+    spelling := reader.Text(s.tree, node);
+    if (spelling != "i64" && spelling != "bool") {
+        Fail(s, node, "vNext scalar slice supports only ordinary i64 and bool types");
+        return 0;
+    }
+    switch reader.Signature(s.environment, s.tree, node, 0, s.document) {
+        case .Read(value, has_unit, unit, updated, diagnostics, uses, publications, collection):
+            if (length(diagnostics) != 0) {
+                s.diagnostics.append(diagnostics[0]);
+                return 0;
+            }
+            switch value {
+                case .Typed(storage, container, flags, nominal, parameter):
+                    if ((storage != 1 && storage != 8) || container != 0 || flags != 0 ||
+                        nominal != 0 || parameter != 0 || has_unit || unit != "" || collection != 0 ||
+                        length(uses) != 0 || length(publications) != 0) {
+                        Fail(s, node, "vNext scalar slice rejected a nonordinary scalar signature");
+                        return 0;
+                    }
+                    if (storage == 1) { return Bool; }
+                    return I64;
+            }
+    }
+}
+
+Headers :: (s: ^State, output: ^Module, root: int) {
+    declaration := First(s, root);
+    if (!reader.Kind(s.tree, declaration, syntax.PackageHeader)) {
+        Fail(s, root, "vNext scalar slice requires one package header");
+        return;
+    }
+    declaration = Next(s, declaration);
+    while (declaration >= 0 && length(s.diagnostics) == 0) {
+        if (!reader.Kind(s.tree, declaration, syntax.FunctionDeclaration)) {
+            Fail(s, declaration, "unsupported declaration in vNext scalar slice");
+            return;
+        }
+        if (length(s.declarations) == MaxFunctions) {
+            Fail(s, declaration, "vNext scalar slice exceeds 32 functions");
+            return;
+        }
+        if (reader.Field(s.tree, declaration, syntax.FieldAttribute) >= 0) {
+            Fail(s, declaration, "attributes are unsupported in vNext scalar slice");
+            return;
+        }
+        name := reader.Field(s.tree, declaration, syntax.FieldName);
+        if (!AdmitName(s, name)) { return; }
+        index: int = 0;
+        while (index < length(s.header_names)) {
+            if (SameName(s, s.header_names[index], name)) {
+                Fail(s, name, "duplicate function name");
+                return;
+            }
+            index += 1;
+        }
+        parameter_first := length(output.parameter_types);
+        parameters := reader.Field(s.tree, declaration, syntax.FieldParameters);
+        parameter := First(s, parameters);
+        s.bindings = [];
+        while (parameter >= 0 && length(s.diagnostics) == 0) {
+            if (length(s.bindings) == MaxParameters) {
+                Fail(s, parameter, "vNext scalar slice exceeds 32 parameters");
+                return;
+            }
+            if (!reader.Kind(s.tree, parameter, syntax.Parameter) ||
+                reader.Field(s.tree, parameter, syntax.FieldComptime) >= 0 ||
+                reader.Field(s.tree, parameter, syntax.FieldValue) >= 0 ||
+                reader.Field(s.tree, parameter, syntax.FieldSource) >= 0) {
+                Fail(s, parameter, "vNext scalar slice requires ordinary explicit parameters");
+                return;
+            }
+            parameter_name := reader.Field(s.tree, parameter, syntax.FieldName);
+            if (!AdmitName(s, parameter_name)) { return; }
+            if (FindBinding(s, parameter_name) >= 0) {
+                Fail(s, parameter_name, "duplicate parameter name");
+                return;
+            }
+            type := ReadType(s, reader.Field(s.tree, parameter, syntax.FieldType), parameter);
+            if (type == 0) { return; }
+            s.bindings.append(parameter_name);
+            s.parameter_names.append(parameter_name);
+            output.parameter_types.append(type);
+            parameter = Next(s, parameter);
+        }
+        result_type := ReadType(s, reader.Field(s.tree, declaration, syntax.FieldResults), declaration);
+        if (result_type == 0) { return; }
+        count := length(s.bindings);
+        if (count == 0) { parameter_first = 0; }
+        signature: Signature = {first_parameter: u32(parameter_first), parameter_count: u32(count), result_type: result_type};
+        output.signatures.append(signature);
+        source := s.nodes[name];
+        function_name: Name = {start: u32(length(output.name_bytes)), count: u32(source.end - source.start)};
+        index = source.start;
+        while (index < source.end) {
+            output.name_bytes.append(u8(text_byte_at(s.text, index)));
+            index += 1;
+        }
+        output.names.append(function_name);
+        exported: u32 = 0;
+        if (reader.Field(s.tree, declaration, syntax.FieldVisibility) >= 0) { exported = 1; }
+        function: Function = {name: u32(length(output.names)), signature: u32(length(output.signatures)),
+                              first_block: 0, block_count: 0, origin: OriginID(s, output, declaration), exported: exported};
+        output.functions.append(function);
+        s.declarations.append(declaration);
+        s.header_names.append(name);
+        declaration = Next(s, declaration);
+    }
+    if (length(s.declarations) == 0 && length(s.diagnostics) == 0) {
+        Fail(s, root, "vNext scalar slice requires at least one function");
+    }
+}
+
+NewBlock :: (s: ^State, output: ^Module, node: int) -> u32 {
+    if (length(output.blocks) - s.first_block == MaxBlocks) {
+        Fail(s, node, "vNext scalar slice exceeds 64 blocks in one function");
+        return 0;
+    }
+    block: Block = {first_parameter: 0, parameter_count: 0,
+                    first_instruction: u32(length(output.instructions)), instruction_count: 0};
+    output.blocks.append(block);
+    s.block = u32(length(output.blocks));
+    return s.block;
+}
+NewParameter :: (s: ^State, output: ^Module, type: u32) -> u32 {
+    assert(s.block != 0, "block parameter requires an active block");
+    row: Value = {type: type, definition: BlockDefinition | s.block};
+    output.values.append(row);
+    id := u32(length(output.values));
+    block := output.blocks[int(s.block) - 1];
+    if (block.parameter_count == 0) { block.first_parameter = u32(length(output.block_parameters)); }
+    block.parameter_count += 1;
+    output.blocks[int(s.block) - 1] = block;
+    output.block_parameters.append(id);
+    return id;
+}
+Emit :: (s: ^State, output: ^Module, op: u32, type: u32, left: u32, right: u32, payload: u32, node: int) -> u32 {
+    assert(s.block != 0, "instruction requires an active block");
+    id := u32(length(output.instructions) + 1);
+    result: u32 = 0;
+    if (type != 0) {
+        value: Value = {type: type, definition: id};
+        output.values.append(value);
+        result = u32(length(output.values));
+    }
+    instruction: Instruction = {op: op, result: result, left: left, right: right, payload: payload, origin: OriginID(s, output, node)};
+    output.instructions.append(instruction);
+    block := output.blocks[int(s.block) - 1];
+    block.instruction_count += 1;
+    output.blocks[int(s.block) - 1] = block;
+    if (op == Jump || op == Branch || op == Return) { s.block = 0; }
+    return result;
+}
+Expression :: (s: ^State, output: ^Module, node: int, depth: int) -> u32 {
+    if (length(s.diagnostics) != 0) { return 0; }
+    if (node < 0) {
+        Fail(s, node, "vNext scalar slice requires an expression");
+        return 0;
+    }
+    if (depth >= MaxDepth) {
+        Fail(s, node, "vNext scalar slice exceeds expression nesting 32");
+        return 0;
+    }
+    kind := s.nodes[node].kind;
+    if (kind == syntax.Identifier) {
+        slot := FindBinding(s, node);
+        if (slot < 0) {
+            Fail(s, node, "unknown scalar name");
+            return 0;
+        }
+        return s.current_values[slot];
+    }
+    if (kind == syntax.ParenthesizedExpression) {
+        return Expression(s, output, reader.Field(s.tree, node, syntax.FieldExpression), depth + 1);
+    }
+    if (kind == syntax.Number) {
+        // Accumulate only after range checking, with no signed overflow or
+        // float conversion. Hex, separators and floating literals are rejected.
+        value: i64 = 0;
+        at := s.nodes[node].start;
+        stop := s.nodes[node].end;
+        while (at < stop) {
+            digit := text_byte_at(s.text, at) - DecimalZero;
+            if (digit < 0 || digit > 9) {
+                Fail(s, node, "vNext scalar slice requires a decimal i64 literal");
+                return 0;
+            }
+            if (value > 922337203685477580 || (value == 922337203685477580 && digit > 7)) {
+                Fail(s, node, "decimal literal is outside i64 range");
+                return 0;
+            }
+            value = value * 10 + i64(digit);
+            at += 1;
+        }
+        output.literals.append(value);
+        return Emit(s, output, ConstantI64, I64, 0, 0, u32(length(output.literals)), node);
+    }
+    if (kind == syntax.BinaryExpression) {
+        operator := reader.Field(s.tree, node, syntax.FieldOperator);
+        if (!reader.Kind(s.tree, operator, token.Add)) {
+            Fail(s, operator, "vNext scalar slice supports only wrapping i64 addition");
+            return 0;
+        }
+        left := Expression(s, output, reader.Field(s.tree, node, syntax.FieldLeft), depth + 1);
+        right := Expression(s, output, reader.Field(s.tree, node, syntax.FieldRight), depth + 1);
+        if (left == 0 || right == 0) { return 0; }
+        if (output.values[int(left) - 1].type != I64 || output.values[int(right) - 1].type != I64) {
+            Fail(s, node, "i64 addition requires two i64 operands");
+            return 0;
+        }
+        return Emit(s, output, AddI64, I64, left, right, 0, node);
+    }
+    Fail(s, node, "unsupported expression in vNext scalar slice");
+    return 0;
+}
+
+NewEdge :: (output: ^Module) -> u32 {
+    edge: Edge = {target: 0, first_argument: 0, argument_count: 0};
+    output.edges.append(edge);
+    return u32(length(output.edges));
+}
+FinishEdge :: (output: ^Module, edge: u32, target: u32, arguments: u32[]) {
+    row: Edge = {target: target, first_argument: 0, argument_count: u32(length(arguments))};
+    if (length(arguments) != 0) {
+        row.first_argument = u32(length(output.arguments));
+        output.arguments.extend(arguments);
+    }
+    output.edges[int(edge) - 1] = row;
+}
+
+// Acyclic source if becomes branch/true/[else]/merge. Without an else, the
+// branch's false edge supplies the pre-branch values directly to the merge.
+// Each authored arm has an isolated snapshot; differing values get parameters.
+// Arm snapshots retain scoped-local suffixes, but the merge reads only the
+// pre-branch prefix. COW supplies isolation without eagerly slicing each arm.
+// Blocks are allocated in topological order, including nested conditionals.
+Conditional :: (s: ^State, output: ^Module, node: int, depth: int) {
+    condition := Expression(s, output, reader.Field(s.tree, node, syntax.FieldCondition), 0);
+    if (condition == 0) { return; }
+    if (output.values[int(condition) - 1].type != Bool) {
+        Fail(s, node, "if condition requires bool");
+        return;
+    }
+    bindings := s.bindings;
+    before := s.current_values;
+    true_entry_edge := NewEdge(output);
+    false_entry_edge := NewEdge(output);
+    Emit(s, output, Branch, 0, condition, 0, true_entry_edge, node);
+    true_block := NewBlock(s, output, node);
+    if (true_block == 0) { return; }
+    empty: u32[] = [];
+    FinishEdge(output, true_entry_edge, true_block, empty);
+    Statements(s, output, reader.Field(s.tree, node, syntax.FieldConsequence), depth + 1);
+    if (length(s.diagnostics) != 0) { return; }
+    after_true := s.current_values;
+    true_exit: u32 = 0;
+    if (s.block != 0) {
+        true_exit = NewEdge(output);
+        Emit(s, output, Jump, 0, 0, 0, true_exit, node);
+    }
+    s.bindings = bindings;
+    s.current_values = before;
+    after_false := before;
+    false_exit := false_entry_edge;
+    alternative := reader.Field(s.tree, node, syntax.FieldAlternative);
+    if (alternative >= 0) {
+        false_block := NewBlock(s, output, node);
+        if (false_block == 0) { return; }
+        FinishEdge(output, false_entry_edge, false_block, empty);
+        if (reader.Kind(s.tree, alternative, syntax.IfStatement)) {
+            if (depth + 1 >= MaxDepth) {
+                Fail(s, alternative, "vNext scalar slice exceeds statement nesting 32");
+                return;
+            }
+            Conditional(s, output, alternative, depth + 1);
+        } else {
+            Statements(s, output, alternative, depth + 1);
+        }
+        if (length(s.diagnostics) != 0) { return; }
+        after_false = s.current_values;
+        false_exit = 0;
+        if (s.block != 0) {
+            false_exit = NewEdge(output);
+            Emit(s, output, Jump, 0, 0, 0, false_exit, node);
+        }
+    }
+    s.bindings = bindings;
+    s.current_values = before;
+    if (true_exit == 0 && false_exit == 0) { return; }
+    merge := NewBlock(s, output, node);
+    if (merge == 0) { return; }
+    true_arguments: u32[] = [];
+    false_arguments: u32[] = [];
+    index: int = 0;
+    while (index < length(before)) {
+        if (true_exit == 0) {
+            s.current_values[index] = after_false[index];
+        } else if (false_exit == 0) {
+            s.current_values[index] = after_true[index];
+        } else if (after_true[index] == after_false[index]) {
+            s.current_values[index] = after_true[index];
+        } else {
+            type := output.values[int(before[index]) - 1].type;
+            s.current_values[index] = NewParameter(s, output, type);
+            true_arguments.append(after_true[index]);
+            false_arguments.append(after_false[index]);
+        }
+        index += 1;
+    }
+    if (true_exit != 0) { FinishEdge(output, true_exit, merge, true_arguments); }
+    if (false_exit != 0) { FinishEdge(output, false_exit, merge, false_arguments); }
+}
+
+Statements :: (s: ^State, output: ^Module, parent: int, depth: int) {
+    if (depth >= MaxDepth) {
+        Fail(s, parent, "vNext scalar slice exceeds statement nesting 32");
+        return;
+    }
+    statement := First(s, parent);
+    while (statement >= 0 && length(s.diagnostics) == 0) {
+        if (s.block == 0) {
+            Fail(s, statement, "unreachable statement after return");
+            return;
+        }
+        kind := s.nodes[statement].kind;
+        if (kind == syntax.LocalDeclaration) {
+            name := reader.Field(s.tree, statement, syntax.FieldName);
+            if (length(s.bindings) == MaxLocals) {
+                Fail(s, name, "vNext scalar slice exceeds 64 visible bindings");
+                return;
+            }
+            if (!AdmitName(s, name)) { return; }
+            if (FindBinding(s, name) >= 0) {
+                Fail(s, name, "duplicate scalar local name");
+                return;
+            }
+            type := ReadType(s, reader.Field(s.tree, statement, syntax.FieldType), statement);
+            if (type == 0) { return; }
+            value := Expression(s, output, reader.Field(s.tree, statement, syntax.FieldValue), 0);
+            if (value == 0) { return; }
+            if (output.values[int(value) - 1].type != type) {
+                Fail(s, statement, "scalar local initializer type does not match annotation");
+                return;
+            }
+            s.bindings.append(name);
+            s.current_values.append(value);
+        } else if (kind == syntax.Assignment) {
+            target := reader.Field(s.tree, statement, syntax.FieldTarget);
+            operator := reader.Field(s.tree, statement, syntax.FieldOperator);
+            if (!reader.Kind(s.tree, target, syntax.Identifier) || !reader.Kind(s.tree, operator, token.Eq)) {
+                Fail(s, statement, "vNext scalar slice requires plain scalar assignment");
+                return;
+            }
+            slot := FindBinding(s, target);
+            if (slot < 0) {
+                Fail(s, target, "assignment to unknown scalar name");
+                return;
+            }
+            value := Expression(s, output, reader.Field(s.tree, statement, syntax.FieldValue), 0);
+            if (value == 0) { return; }
+            if (output.values[int(value) - 1].type != output.values[int(s.current_values[slot]) - 1].type) {
+                Fail(s, statement, "scalar assignment changes the local type");
+                return;
+            }
+            s.current_values[slot] = value;
+        } else if (kind == syntax.IfStatement) {
+            Conditional(s, output, statement, depth);
+        } else if (kind == syntax.ReturnStatement) {
+            if (reader.Field(s.tree, statement, syntax.FieldOutcome) >= 0) {
+                Fail(s, statement, "named return outcomes are unsupported in vNext scalar slice");
+                return;
+            }
+            expression := reader.Field(s.tree, statement, syntax.FieldValue);
+            if (expression < 0) {
+                Fail(s, statement, "vNext scalar slice requires a return value");
+                return;
+            }
+            value := Expression(s, output, expression, 0);
+            if (value == 0) { return; }
+            if (output.values[int(value) - 1].type != s.result_type) {
+                Fail(s, statement, "return type does not match function result");
+                return;
+            }
+            Emit(s, output, Return, 0, value, 0, 0, statement);
+        } else {
+            Fail(s, statement, "unsupported statement in vNext scalar slice");
+            return;
+        }
+        statement = Next(s, statement);
+    }
+}
+
+pub Produce :: (text: string, document: int) -> Result {
+    if (document < 0 || text_byte_length(text) > MaxSourceBytes) {
+        diagnostic: syntax.Diagnostic = {start: 0, end: 0, line: 1, column: 1, document: document,
+                                         message: "vNext scalar slice requires a nonnegative document and at most 64 KiB source"};
+        return Result.Rejected(diagnostic);
+    }
+    switch parser.Parse(text) {
+        case .Rejected(diagnostic):
+            located := diagnostic;
+            located.document = document;
+            return Result.Rejected(located);
+        case .Parsed(nodes, fields, named_flags, extras, root):
+            tree := reader.Tree.Raw(nodes, fields, named_flags, extras, text);
+            if (length(nodes) > MaxNodes) {
+                return Result.Rejected(reader.Diagnostic(tree, root, document, "vNext scalar slice exceeds 8192 syntax nodes"));
+            }
+            output := EmptyModule();
+            pass_state: State = {tree: tree, environment: SignatureEnvironment(),
+                            nodes: nodes, text: text, document: document,
+                            diagnostics: [], declarations: [], header_names: [], parameter_names: [], bindings: [],
+                            current_values: [], origin_ids: resize([u32(0)], length(nodes)), block: 0,
+                            first_block: 0, result_type: 0};
+            Headers(&pass_state, &output, root);
+            if (length(pass_state.diagnostics) != 0) { return Result.Rejected(pass_state.diagnostics[0]); }
+            function_index: int = 0;
+            // No bodies are visited before all function signatures exist.
+            while (function_index < length(pass_state.declarations)) {
+                declaration := pass_state.declarations[function_index];
+                function := output.functions[function_index];
+                signature := output.signatures[int(function.signature) - 1];
+                pass_state.first_block = length(output.blocks);
+                pass_state.result_type = signature.result_type;
+                pass_state.bindings = [];
+                pass_state.current_values = [];
+                entry_block := NewBlock(&pass_state, &output, declaration);
+                assert(entry_block != 0, "fresh function has room for its entry block");
+                parameter: int = 0;
+                while (parameter < int(signature.parameter_count)) {
+                    at := int(signature.first_parameter) + parameter;
+                    pass_state.bindings.append(pass_state.parameter_names[at]);
+                    value := NewParameter(&pass_state, &output, output.parameter_types[at]);
+                    pass_state.current_values.append(value);
+                    parameter += 1;
+                }
+                Statements(&pass_state, &output, reader.Field(tree, declaration, syntax.FieldBody), 0);
+                if (length(pass_state.diagnostics) != 0) { return Result.Rejected(pass_state.diagnostics[0]); }
+                if (pass_state.block != 0) {
+                    return Result.Rejected(reader.Diagnostic(tree, declaration, document, "function has a reachable exit without return"));
+                }
+                function.first_block = u32(pass_state.first_block);
+                function.block_count = u32(length(output.blocks) - pass_state.first_block);
+                output.functions[function_index] = function;
+                function_index += 1;
+            }
+            verification := Verify(output);
+            assert(verification == 0, "typed producer emitted an invalid module");
+            return Result.Produced(output);
+    }
+}

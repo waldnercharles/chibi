@@ -1,0 +1,543 @@
+package vnext_typed_tests
+
+import typed "project:vnext_typed"
+import strings "core:strings"
+
+// The preparation caller replaces this marker with the exact UTF-8 fixture.
+// No file access, parser replacement, interpreter or backend is in this test.
+Main :: () -> int {
+    source := FIXTURE_SOURCE;
+    switch typed.Produce(source, -1) {
+        case .Produced(module): assert(false, "negative document ID accepted");
+        case .Rejected(diagnostic): assert(diagnostic.document == -1, "invalid document ID is an input diagnostic");
+    }
+    document_labels: int[] = [0, 2147483647];
+    for (document in document_labels) {
+        switch typed.Produce(source, document) {
+            case .Produced(module):
+                CheckPair(module, 1);
+                verified := typed.Verify(module);
+                assert(verified == 0 && length(module.origins) == 7, "boundary document labels produce all verified origins");
+                for (origin in module.origins) {
+                    assert(origin.document == u32(document), "every origin preserves the exact boundary document label");
+                }
+            case .Rejected(diagnostic): assert(false, "valid boundary document label rejected");
+        }
+    }
+    original := Accepted(source);
+    CheckPair(original, 1);
+    repeat := Accepted(source);
+    CheckEqual(original, repeat);
+
+    seven := Accepted(strings.ReplaceAll(source, "+ 1", "+ 7"));
+    CheckPair(seven, 7);
+    renamed_source := strings.ReplaceAll(source, "Echo", "Identity");
+    renamed_source = strings.ReplaceAll(renamed_source, "Join", "Select");
+    renamed_source = strings.ReplaceAll(renamed_source, "result", "selected");
+    renamed := Accepted(renamed_source);
+    CheckPair(renamed, 1);
+    assert(NameMatches(renamed, 0, "Identity") && NameMatches(renamed, 1, "Select"), "renamed exported functions are source driven");
+
+    swapped := Accepted(strings.ReplaceAll(source, "result = left", "result = right"));
+    assert(length(swapped.values) == 6 && length(swapped.arguments) == 0, "unchanged branch value needs no phi");
+    assert(swapped.blocks[3].parameter_count == 0, "unchanged assignment changes the merge body");
+    assert(swapped.instructions[4].left == 4, "unchanged assignment keeps the right parameter");
+
+    // Inspect value flow in produced tables; these are not backend recipes.
+    parentheses := Accepted("package p\nParentheses :: (x: i64) -> i64 { return ((x + 7)); }\n");
+    returned := Terminator(parentheses, 1);
+    assert(returned.op == typed.Return, "parenthesized addition is returned");
+    CheckAdd(parentheses, returned.left, 1, 7);
+    flag := Accepted("package p\nFlag :: (x: bool) -> bool { saved: bool = x; return saved; }\n");
+    returned = Terminator(flag, 1);
+    assert(returned.op == typed.Return && returned.left == 1 && flag.values[0].type == typed.Bool, "bool local retains its parameter value");
+    maximum := Accepted("package p\nMaxLiteral :: () -> i64 { return 9223372036854775807; }\n");
+    returned = Terminator(maximum, 1);
+    assert(returned.op == typed.Return, "maximum literal is returned");
+    constant := DefiningInstruction(maximum, returned.left);
+    assert(constant.op == typed.ConstantI64 && maximum.literals[int(constant.payload) - 1] == 9223372036854775807, "maximum decimal literal keeps its full value");
+
+    early := Accepted("package p\nEarly :: (b: bool, x: i64, y: i64) -> i64 { if (b) { return x; } return y; }\n");
+    condition := Terminator(early, 1);
+    assert(condition.op == typed.Branch && condition.left == 1, "early return branches on b");
+    true_return := Terminator(early, early.edges[int(condition.payload) - 1].target);
+    false_return := Terminator(early, early.edges[int(condition.payload)].target);
+    assert(true_return.op == typed.Return && true_return.left == 2, "early true path returns x");
+    assert(false_return.op == typed.Return && false_return.left == 3, "early remaining path returns y");
+    assert(length(early.arguments) == 0 && length(early.block_parameters) == 3, "early return needs no merge argument");
+
+    both := Accepted("package p\nBoth :: (b: bool, x: i64, y: i64) -> i64 { if (b) { return x; } else { return y; } }\n");
+    condition = Terminator(both, 1);
+    assert(condition.op == typed.Branch && condition.left == 1, "both returns condition on b");
+    true_return = Terminator(both, both.edges[int(condition.payload) - 1].target);
+    false_return = Terminator(both, both.edges[int(condition.payload)].target);
+    assert(true_return.op == typed.Return && true_return.left == 2, "both true path returns x");
+    assert(false_return.op == typed.Return && false_return.left == 3, "both false path returns y");
+    assert(length(both.blocks) == 3 && length(both.arguments) == 0, "two returns leave no continuation merge");
+
+    // Each case exercises a different one-surviving-arm path in Conditional.
+    surviving_sources: string[] = [
+        "package p\nSurviveFalse :: (b: bool, x: i64, y: i64) -> i64 { r: i64 = x; if (b) { return x; } else { r = y + 7; } return r; }\n",
+        "package p\nSurviveTrue :: (b: bool, x: i64, y: i64) -> i64 { r: i64 = x; if (b) { r = y + 7; } else { return x; } return r; }\n"
+    ];
+    for (text, index in surviving_sources) {
+        surviving := Accepted(text);
+        condition = Terminator(surviving, 1);
+        assert(condition.op == typed.Branch && condition.left == 1, "surviving-arm case branches on b");
+        returning_edge := surviving.edges[int(condition.payload) - 1 + index];
+        continuing_edge := surviving.edges[int(condition.payload) - index];
+        returned = Terminator(surviving, returning_edge.target);
+        assert(returned.op == typed.Return && returned.left == 2, "terminated arm returns x");
+        continued := Terminator(surviving, continuing_edge.target);
+        assert(continued.op == typed.Jump, "surviving arm reaches continuation");
+        continuation := surviving.edges[int(continued.payload) - 1];
+        returned = Terminator(surviving, continuation.target);
+        assert(returned.op == typed.Return, "continuation returns surviving assignment");
+        CheckAdd(surviving, returned.left, 3, 7);
+        assert(length(surviving.arguments) == 0 && length(surviving.block_parameters) == 3, "single surviving arm retains its value without merge parameters");
+    }
+
+    nested := Accepted("package p\nNested :: (a: bool, b: bool, x: i64, y: i64) -> i64 { r: i64 = y; if (a) { if (b) { r = x + 1; } else { r = y + 7; } } else { if (b) { r = x + 7; } } return r; }\n");
+    outer := Terminator(nested, 1);
+    assert(outer.op == typed.Branch && outer.left == 1, "outer condition reads a");
+    true_inner := Terminator(nested, nested.edges[int(outer.payload) - 1].target);
+    false_inner := Terminator(nested, nested.edges[int(outer.payload)].target);
+    assert(true_inner.op == typed.Branch && true_inner.left == 2 && false_inner.op == typed.Branch && false_inner.left == 2, "both inner conditions read b");
+    true_true := Terminator(nested, nested.edges[int(true_inner.payload) - 1].target);
+    true_false := Terminator(nested, nested.edges[int(true_inner.payload)].target);
+    false_true := Terminator(nested, nested.edges[int(false_inner.payload) - 1].target);
+    assert(true_true.op == typed.Jump && true_false.op == typed.Jump && false_true.op == typed.Jump, "inner assignment arms reach their merges");
+    true_true_edge := nested.edges[int(true_true.payload) - 1];
+    true_false_edge := nested.edges[int(true_false.payload) - 1];
+    false_true_edge := nested.edges[int(false_true.payload) - 1];
+    false_false_edge := nested.edges[int(false_inner.payload)];
+    assert(true_true_edge.target == true_false_edge.target && false_true_edge.target == false_false_edge.target, "each inner pair converges on its own merge");
+    CheckAdd(nested, EdgeArgument(nested, true_true_edge), 3, 1);
+    CheckAdd(nested, EdgeArgument(nested, true_false_edge), 4, 7);
+    CheckAdd(nested, EdgeArgument(nested, false_true_edge), 3, 7);
+    assert(EdgeArgument(nested, false_false_edge) == 4, "missing inner else preserves y");
+    true_merge := nested.blocks[int(true_true_edge.target) - 1];
+    false_merge := nested.blocks[int(false_true_edge.target) - 1];
+    assert(true_merge.parameter_count == 1 && false_merge.parameter_count == 1, "inner joins each merge the changed r value");
+    true_exit := Terminator(nested, true_true_edge.target);
+    false_exit := Terminator(nested, false_true_edge.target);
+    assert(true_exit.op == typed.Jump && false_exit.op == typed.Jump, "inner merged results reach outer join");
+    true_outer_edge := nested.edges[int(true_exit.payload) - 1];
+    false_outer_edge := nested.edges[int(false_exit.payload) - 1];
+    assert(true_outer_edge.target == false_outer_edge.target, "outer paths converge");
+    assert(EdgeArgument(nested, true_outer_edge) == nested.block_parameters[int(true_merge.first_parameter)], "outer true input is the true inner merge result");
+    assert(EdgeArgument(nested, false_outer_edge) == nested.block_parameters[int(false_merge.first_parameter)], "outer false input is the false inner merge result");
+    outer_merge := nested.blocks[int(true_outer_edge.target) - 1];
+    returned = Terminator(nested, true_outer_edge.target);
+    assert(outer_merge.parameter_count == 1 && returned.op == typed.Return && returned.left == nested.block_parameters[int(outer_merge.first_parameter)], "nested return uses the outer merged value");
+
+    scoped := Accepted("package p\nScoped :: (b: bool, x: i64) -> i64 { if (b) { temp: i64 = x; } else { temp: i64 = x; } return x; }\n");
+    returned = Terminator(scoped, u32(length(scoped.blocks)));
+    assert(returned.op == typed.Return && returned.left == 2, "arm-local declarations do not change returned x");
+    assert(length(scoped.arguments) == 0 && length(scoped.block_parameters) == 2, "arm-local declarations create no merge parameters");
+    multiple := Accepted("package p\nFirst :: () -> i64 { return 1; }\nSecond :: (x: i64) -> i64 { return x; }\nThird :: () -> i64 { return 7; }\n");
+    assert(length(multiple.functions) == 3, "all source functions retained");
+    for (function, index in multiple.functions) {
+        returned = Terminator(multiple, function.first_block + 1);
+        assert(returned.op == typed.Return, "each function retains its return");
+        if (index == 1) {
+            entry_block := multiple.blocks[int(function.first_block)];
+            assert(returned.left == multiple.block_parameters[int(entry_block.first_parameter)], "middle function returns its own parameter");
+        } else {
+            constant = DefiningInstruction(multiple, returned.left);
+            expected: i64 = 1;
+            if (index == 2) { expected = 7; }
+            assert(constant.op == typed.ConstantI64 && multiple.literals[int(constant.payload) - 1] == expected, "constant-return functions keep their own literals");
+        }
+    }
+    wrapping := Accepted("package p\nWrap :: () -> i64 { return 9223372036854775807 + 1; }\n");
+    assert(length(wrapping.instructions) == 4 && length(wrapping.values) == 3, "constant addition is not folded");
+    assert(wrapping.instructions[0].op == typed.ConstantI64 && wrapping.instructions[1].op == typed.ConstantI64, "both range-checked constants remain explicit");
+    assert(wrapping.literals[0] == 9223372036854775807 && wrapping.literals[1] == 1, "wrapping operands preserve full i64 values");
+    assert(wrapping.instructions[2].op == typed.AddI64 && wrapping.instructions[2].left == 1 && wrapping.instructions[2].right == 2, "literal-only addition follows the explicit wrapping operation");
+    assert(wrapping.instructions[3].op == typed.Return && wrapping.instructions[3].left == 3, "wrapping result is returned without evaluator substitution");
+    CheckMutations(original, both);
+    CheckLimits();
+    dominance := Accepted(strings.ReplaceAll(source, "result = left", "result = left + 7"));
+    branch_value := dominance.instructions[3].result;
+    assert(dominance.instructions[3].op == typed.AddI64, "mutation source creates branch-local addition");
+    last_add := length(dominance.instructions) - 2;
+    dominance_instructions := dominance.instructions;
+    addition := dominance_instructions[last_add];
+    addition.left = branch_value;
+    dominance_instructions[last_add] = addition;
+    dominance.instructions = dominance_instructions;
+    error := typed.Verify(dominance);
+    assert(error == typed.InvalidDominance, "branch-local value must not escape without merge argument");
+
+    negatives: string[] = [
+        "package p\nBad :: (b: bool, x: i64) -> i64 { if (b) { x: i64 = 1; } return x; }\n",
+        "package p\nBad :: (b: bool) -> i64 { x: i64 = 1; if (b) { x: i64 = 7; } return x; }\n",
+        "package p\nCancelled :: () -> i64 { return 1; }\n",
+        "package p\nBad :: (Cancelled: i64) -> i64 { return Cancelled; }\n",
+        "package p\nBad :: () -> i64 { Cancelled: i64 = 1; return Cancelled; }\n",
+        "package p\n",
+        "",
+        "package p\nBad :: (x: i64[]) -> i64 { return 1; }\n",
+        "package p\nBad :: (x: i64?) -> i64 { return 1; }\n",
+        "package p\nBad :: (x: plain i64) -> i64 { return 1; }\n",
+        "package p\nBad :: (x: char) -> i64 { return 1; }\n",
+        "package p\nBad :: (x: int) -> i64 { return 1; }\n",
+        "package p\nBad :: (x: i64, x: i64) -> i64 { return x; }\n",
+        "package p\nBad :: (x: i64 = 1) -> i64 { return x; }\n",
+        "package p\nBad :: ($x: i64) -> i64 { return x; }\n",
+        "package p\nBad :: (x: i64) -> i64 { return absent; }\n",
+        "package p\nBad :: (x: i64) -> i64 { local := x; return local; }\n",
+        "package p\nBad :: (x: i64) -> i64 { local: bool = x; return x; }\n",
+        "package p\nBad :: (b: bool, x: i64) -> i64 { x = b; return x; }\n",
+        "package p\nBad :: (b: bool) -> i64 { return b + 1; }\n",
+        "package p\nBad :: (x: i64) -> i64 { if (x) { return x; } return x; }\n",
+        "package p\nBad :: (x: i64) -> bool { return x; }\n",
+        "package p\nBad :: (x: i64) -> i64 { x = 1; }\n",
+        "package p\nBad :: () -> i64 { return 9223372036854775808; }\n",
+        "package p\nBad :: () -> i64 { return 0xff; }\n",
+        "package p\nBad :: () -> i64 { return 1.5; }\n",
+        "package p\nBad :: () -> i64 { return -1; }\n",
+        "package p\nBad :: (x: i64) -> i64 { return x * 7; }\n",
+        "package p\nBad :: (x: i64) -> i64 { return x; x = 7; }\n",
+        "package p\nBad :: (b: bool, x: i64) -> i64 { if (b) { temp: i64 = x; } return temp; }\n",
+        "package p\nGood :: (x: i64) -> i64 { return x; }\nUnsupported :: (x: i64) -> i64 { return x * 7; }\n",
+        "package p\nDuplicate :: () -> i64 { return 1; }\nDuplicate :: () -> i64 { return 7; }\n",
+        "package p\nimport q \"project:q\"\nGood :: () -> i64 { return 1; }\n",
+        "package p\n@custom Good :: () -> i64 { return 1; }\n"
+    ];
+    for (text in negatives) { Rejected(text); }
+    // The second header is rejected before the first body can report its name.
+    header_first := "package p\nFirst :: () -> i64 { return absent; }\nSecond :: (x: i64[]) -> i64 { return 1; }\n";
+    switch typed.Produce(header_first, 19) {
+        case .Produced(module): assert(false, "unsupported later header accepted");
+        case .Rejected(diagnostic): assert(diagnostic.line == 3, "all headers precede body checking");
+    }
+    return 0;
+}
+
+Accepted :: (text: string) -> typed.Module {
+    switch typed.Produce(text, 19) {
+        case .Produced(module):
+            verified := typed.Verify(module);
+            assert(verified == 0, "produced body verifies");
+            return module;
+        case .Rejected(diagnostic):
+            assert(false, "valid scalar transform rejected");
+            return {functions: [], signatures: [], parameter_types: [], blocks: [],
+                    block_parameters: [], values: [], instructions: [], edges: [],
+                    arguments: [], literals: [], origins: [], names: [], name_bytes: []};
+    }
+}
+Rejected :: (text: string) -> string {
+    switch typed.Produce(text, 19) {
+        case .Produced(module):
+            assert(false, "unsupported scalar source accepted");
+            return "";
+        case .Rejected(diagnostic):
+            assert(diagnostic.document == 19, "source diagnostic document retained");
+            assert(diagnostic.start >= 0 && diagnostic.end >= diagnostic.start, "source diagnostic byte range");
+            assert(diagnostic.end <= text_byte_length(text), "source diagnostic inside input");
+            assert(diagnostic.line > 0 && diagnostic.column > 0 && diagnostic.message != "", "source diagnostic location and explanation");
+            return diagnostic.message;
+    }
+}
+// Read table relationships only. No source evaluator or IR execution lives here.
+Terminator :: (module: typed.Module, block: u32) -> typed.Instruction {
+    row := module.blocks[int(block) - 1];
+    return module.instructions[int(row.first_instruction) + int(row.instruction_count) - 1];
+}
+DefiningInstruction :: (module: typed.Module, value: u32) -> typed.Instruction {
+    definition := module.values[int(value) - 1].definition;
+    assert((definition & typed.BlockDefinition) == 0, "expected an instruction-produced value");
+    return module.instructions[int(definition) - 1];
+}
+EdgeArgument :: (module: typed.Module, edge: typed.Edge) -> u32 {
+    assert(edge.argument_count == 1, "edge carries exactly one merged value");
+    return module.arguments[int(edge.first_argument)];
+}
+CheckAdd :: (module: typed.Module, value: u32, left: u32, literal: i64) {
+    addition := DefiningInstruction(module, value);
+    assert(addition.op == typed.AddI64 && addition.left == left, "addition retains its source operand");
+    constant := DefiningInstruction(module, addition.right);
+    assert(constant.op == typed.ConstantI64 && module.literals[int(constant.payload) - 1] == literal, "addition retains its source literal");
+}
+NameMatches :: (module: typed.Module, index: int, expected: string) -> bool {
+    row := module.names[int(module.functions[index].name) - 1];
+    if (int(row.count) != text_byte_length(expected)) { return false; }
+    for (at in 0..<int(row.count)) {
+        if (int(module.name_bytes[int(row.start) + at]) != text_byte_at(expected, at)) { return false; }
+    }
+    return true;
+}
+CheckPair :: (module: typed.Module, literal: i64) {
+    assert(length(module.functions) == 2 && length(module.signatures) == 2, "both source functions admitted");
+    assert(length(module.blocks) == 4 && length(module.values) == 7, "source-driven parameter and merge values");
+    assert(length(module.instructions) == 6 && length(module.edges) == 3 && length(module.literals) == 1, "absent else needs no empty block or jump");
+    assert(module.literals[0] == literal, "literal is read from source");
+    assert(module.functions[0].first_block == 0 && module.functions[0].block_count == 1, "Echo owns entry block");
+    assert(module.functions[1].first_block == 1 && module.functions[1].block_count == 3, "Join owns branch blocks");
+    assert(module.signatures[0].result_type == typed.I64 && module.signatures[1].result_type == typed.I64, "real result annotations");
+    assert(module.parameter_types[1] == typed.Bool && module.parameter_types[2] == typed.I64, "real parameter annotations");
+    assert(module.instructions[0].op == typed.Return && module.instructions[0].left == 1, "Echo returns its parameter");
+    assert(module.instructions[1].op == typed.Branch && module.instructions[1].left == 2, "Join branches on bool parameter");
+    assert(module.edges[0].target == 3 && module.edges[1].target == 4, "condition reaches true block or merge directly");
+    assert(module.edges[2].target == 4, "true arm reaches merge");
+    assert(EdgeArgument(module, module.edges[2]) == 3 && EdgeArgument(module, module.edges[1]) == 4, "true supplies left and direct false supplies right");
+    assert(module.blocks[3].parameter_count == 1, "merge owns one block parameter");
+    assert(module.values[4].definition == (typed.BlockDefinition | u32(4)), "merge value definition is explicit");
+    assert(module.instructions[4].op == typed.AddI64 && module.instructions[4].left == 5 && module.instructions[4].right == 6, "merge plus source constant");
+    assert(module.instructions[5].op == typed.Return && module.instructions[5].left == 7, "Join returns produced addition");
+}
+CheckEqual :: (left: typed.Module, right: typed.Module) {
+    assert(length(left.functions) == length(right.functions), "deterministic functions count");
+    for (a, index in left.functions) {
+        b := right.functions[index];
+        assert(a.name == b.name && a.signature == b.signature && a.first_block == b.first_block && a.block_count == b.block_count && a.origin == b.origin && a.exported == b.exported, "deterministic functions rows");
+    }
+    assert(length(left.signatures) == length(right.signatures), "deterministic signatures count");
+    for (a, index in left.signatures) {
+        b := right.signatures[index];
+        assert(a.first_parameter == b.first_parameter && a.parameter_count == b.parameter_count && a.result_type == b.result_type, "deterministic signatures rows");
+    }
+    assert(length(left.blocks) == length(right.blocks), "deterministic blocks count");
+    for (a, index in left.blocks) {
+        b := right.blocks[index];
+        assert(a.first_parameter == b.first_parameter && a.parameter_count == b.parameter_count && a.first_instruction == b.first_instruction && a.instruction_count == b.instruction_count, "deterministic blocks rows");
+    }
+    assert(length(left.values) == length(right.values), "deterministic values count");
+    for (a, index in left.values) {
+        b := right.values[index];
+        assert(a.type == b.type && a.definition == b.definition, "deterministic values rows");
+    }
+    assert(length(left.instructions) == length(right.instructions), "deterministic instructions count");
+    for (a, index in left.instructions) {
+        b := right.instructions[index];
+        assert(a.op == b.op && a.result == b.result && a.left == b.left && a.right == b.right && a.payload == b.payload && a.origin == b.origin, "deterministic instructions rows");
+    }
+    assert(length(left.edges) == length(right.edges), "deterministic edges count");
+    for (a, index in left.edges) {
+        b := right.edges[index];
+        assert(a.target == b.target && a.first_argument == b.first_argument && a.argument_count == b.argument_count, "deterministic edges rows");
+    }
+    assert(length(left.origins) == length(right.origins), "deterministic origins count");
+    for (a, index in left.origins) {
+        b := right.origins[index];
+        assert(a.document == b.document && a.start == b.start && a.end == b.end, "deterministic origins rows");
+    }
+    assert(length(left.names) == length(right.names), "deterministic names count");
+    for (a, index in left.names) {
+        b := right.names[index];
+        assert(a.start == b.start && a.count == b.count, "deterministic names rows");
+    }
+    assert(length(left.parameter_types) == length(right.parameter_types), "deterministic parameter_types count");
+    for (a, index in left.parameter_types) {
+        assert(a == right.parameter_types[index], "deterministic parameter_types rows");
+    }
+    assert(length(left.block_parameters) == length(right.block_parameters), "deterministic block_parameters count");
+    for (a, index in left.block_parameters) {
+        assert(a == right.block_parameters[index], "deterministic block_parameters rows");
+    }
+    assert(length(left.arguments) == length(right.arguments), "deterministic arguments count");
+    for (a, index in left.arguments) {
+        assert(a == right.arguments[index], "deterministic arguments rows");
+    }
+    assert(length(left.literals) == length(right.literals), "deterministic literals count");
+    for (a, index in left.literals) {
+        assert(a == right.literals[index], "deterministic literals rows");
+    }
+    assert(length(left.name_bytes) == length(right.name_bytes), "deterministic name_bytes count");
+    for (a, index in left.name_bytes) {
+        assert(a == right.name_bytes[index], "deterministic name_bytes rows");
+    }
+}
+CheckMutations :: (source: typed.Module, both: typed.Module) {
+    module := source;
+    instructions := module.instructions;
+    instruction := instructions[5];
+    instruction.left = 999;
+    instructions[5] = instruction;
+    module.instructions = instructions;
+    error := typed.Verify(module);
+    assert(error == typed.InvalidDefinition, "bad use is rejected");
+    module = source;
+    values := module.values;
+    value := values[6];
+    value.definition = 4;
+    values[6] = value;
+    module.values = values;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDefinition, "bad definition is rejected");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[5];
+    instruction.left = 1;
+    instructions[5] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDominance, "cross-function use is rejected");
+    module = source;
+    values = module.values;
+    value = values[4];
+    value.type = typed.Bool;
+    values[4] = value;
+    module.values = values;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "wrong block parameter type is rejected");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[4];
+    instruction.left = 7;
+    instructions[4] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDominance, "non-dominating same-block use is rejected");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[5];
+    instruction.op = typed.AddI64;
+    instructions[5] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidTerminator, "missing terminator is rejected");
+    module = source;
+    instructions = module.instructions;
+    instructions.append(source.instructions[5]);
+    module.instructions = instructions;
+    blocks := module.blocks;
+    block := blocks[3];
+    block.instruction_count += 1;
+    blocks[3] = block;
+    module.blocks = blocks;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidTerminator, "instruction after return is rejected");
+    module = source;
+    arguments := module.arguments;
+    arguments[0] = 2;
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "wrong edge argument type is rejected");
+    module = source;
+    edges := module.edges;
+    edge := edges[2];
+    edge.target = 1;
+    edges[2] = edge;
+    module.edges = edges;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidEdge, "cross-function edge is rejected");
+    module = source;
+    edges = module.edges;
+    edge = edges[2];
+    edge.first_argument = module.edges[1].first_argument;
+    edges[2] = edge;
+    module.edges = edges;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "overlapping argument spans are rejected");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[3];
+    instruction.op = 0;
+    instructions[3] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "unknown opcode is rejected");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[2];
+    instruction.payload = 2;
+    instructions[2] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidEdge, "reused edge is rejected");
+    // Both-return has a real false block with no merge arguments to confound reachability.
+    module = both;
+    edges = module.edges;
+    edge = edges[1];
+    edge.target = edges[0].target;
+    edges[1] = edge;
+    module.edges = edges;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDominance, "unreachable block is rejected");
+    module = source;
+    origins := module.origins;
+    origins.append(source.origins[0]);
+    module.origins = origins;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "unowned origin is rejected");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[5];
+    instruction.left = 4294967295;
+    instructions[5] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDefinition, "maximum u32 value ID is rejected");
+    module = source;
+    edges = module.edges;
+    edge = edges[2];
+    edge.first_argument = 4294967295;
+    edges[2] = edge;
+    module.edges = edges;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "maximum u32 span offset is rejected");
+    pristine := typed.Verify(source);
+    assert(pristine == 0, "mutation snapshots preserve the original produced body");
+    pristine = typed.Verify(both);
+    assert(pristine == 0, "unreachable-block mutation preserves both-return source");
+}
+
+CheckLimits :: () {
+    functions := "package p\n";
+    for (index in 0..<32) {
+        functions = strings.Concatenate([functions, "F", format_text("{}", index), " :: () -> i64 { return 1; }\n"]);
+    }
+    full := Accepted(functions);
+    assert(length(full.functions) == 32, "32 functions are accepted");
+    message := Rejected(strings.Concatenate([functions, "F32 :: () -> i64 { return 1; }\n"]));
+    assert(message == "vNext scalar slice exceeds 32 functions", "33rd function reaches the function limit");
+
+    parameters := "package p\nMany :: (";
+    for (index in 0..<32) {
+        if (index != 0) { parameters = strings.Concatenate([parameters, ", "]); }
+        parameters = strings.Concatenate([parameters, "p", format_text("{}", index), ": i64"]);
+    }
+    full = Accepted(strings.Concatenate([parameters, ") -> i64 { return p0; }\n"]));
+    assert(length(full.parameter_types) == 32, "32 parameters are accepted");
+    message = Rejected(strings.Concatenate([parameters, ", p32: i64) -> i64 { return p0; }\n"]));
+    assert(message == "vNext scalar slice exceeds 32 parameters", "33rd parameter reaches the parameter limit");
+
+    locals := "package p\nMany :: () -> i64 {\n";
+    for (index in 0..<64) {
+        locals = strings.Concatenate([locals, "v", format_text("{}", index), ": i64 = 1;\n"]);
+    }
+    full = Accepted(strings.Concatenate([locals, "return v0; }\n"]));
+    assert(length(full.values) == 64, "64 visible locals are accepted");
+    message = Rejected(strings.Concatenate([locals, "v64: i64 = 1;\nreturn v0; }\n"]));
+    assert(message == "vNext scalar slice exceeds 64 visible bindings", "65th local reaches the visible-binding limit");
+
+    prefix := "package p\nMany :: (b: bool, x: i64) -> i64 {\n";
+    // Explicit else contributes three blocks; 21 conditions plus entry is 64.
+    branch_source := "if (b) { x = x + 1; } else { x = x + 7; }\n";
+    exact := strings.Concatenate([prefix, strings.Repeat(branch_source, 21), "return x; }\n"]);
+    full = Accepted(exact);
+    assert(length(full.blocks) == 64, "64th block dominance bit is valid");
+    message = Rejected(strings.Concatenate([prefix, strings.Repeat(branch_source, 22), "return x; }\n"]));
+    assert(message == "vNext scalar slice exceeds 64 blocks in one function", "next conditional reaches the block limit");
+
+    prefix = "package p\nDeep :: () -> i64 { return ";
+    full = Accepted(strings.Concatenate([prefix, strings.Repeat("(", 31), "1", strings.Repeat(")", 31), "; }\n"]));
+    assert(length(full.literals) == 1 && full.literals[0] == 1, "expression at depth 31 is accepted");
+    message = Rejected(strings.Concatenate([prefix, strings.Repeat("(", 32), "1", strings.Repeat(")", 32), "; }\n"]));
+    assert(message == "vNext scalar slice exceeds expression nesting 32", "expression at depth 32 reaches the nesting limit");
+
+    prefix = "package p\nBoundary :: () -> i64 { return 1; }\n";
+    exact = strings.Concatenate([prefix, strings.Repeat(" ", 65536 - text_byte_length(prefix))]);
+    assert(text_byte_length(exact) == 65536, "accepted source boundary is exactly 64 KiB");
+    full = Accepted(exact);
+    assert(length(full.functions) == 1 && full.literals[0] == 1, "valid padded source remains a scalar program");
+    over := strings.Concatenate([exact, " "]);
+    assert(text_byte_length(over) == 65537, "rejected source boundary is exactly one byte over");
+    message = Rejected(over);
+    assert(message == "vNext scalar slice requires a nonnegative document and at most 64 KiB source", "valid document isolates the source byte limit");
+    // Syntax-node and statement-depth boundaries are not exercised here.
+}

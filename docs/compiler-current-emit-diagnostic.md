@@ -85,3 +85,8 @@ summary, not raw receipts or a runnable replay bundle; local workspace paths and
 process details are omitted. Original hashes identify retained original bytes,
 not this derived record. No production compiler, default, bootstrap pin, CI gate or release
 changed to obtain this diagnostic.
+
+The later [usable O0 full-build series](compiler-current-o0-baseline.md) is now
+independently checked: 47.001-second median over five samples, with raw identity
+to an oracle that passed 573 tests. It does not turn this emit-only observation
+into an exclusive frontend/backend breakdown.

@@ -184,7 +184,12 @@ from the pinned starting source, with raw-identical stage3/stage4 outputs and
 O2 baseline has a 96.516-second median over five fresh builds, about 793 original
 parsed LOC/s. See [the O2 baseline](compiler-current-o2-baseline.md) for exact
 samples and limitations. It is not development O0, a vNext result or a direct
-Jai comparison. Historical timings used other source/tool states.
+Jai comparison. The subsequent [O0 full-build series](compiler-current-o0-baseline.md)
+has a 47.001-second median, about 1,629 original parsed LOC/s, with all six
+outputs raw-identical to a separately tested O0 oracle. It uses the same
+original O2 input compiler, not an O0 selfhost. This narrows the development
+baseline without selecting a backend or changing defaults. Historical timings
+used other source/tool states.
 
 ## Phases and exit gates
 

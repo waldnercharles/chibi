@@ -1,0 +1,203 @@
+{
+  "schema": 1,
+  "kind": "derived_public_full_rebuild_o0_summary_not_raw_receipts_or_runnable_spec",
+  "date_utc": "2026-11-04",
+  "independent_terminal_review": "passed",
+  "source": {
+    "commit": "02c86287430def964445ec90185961e20319536d",
+    "tree": "780ba87ea9f29308f2f20a94381cdce8cc5d26ca",
+    "builder_optimization_level": 2,
+    "builder_sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266"
+  },
+  "configuration": {
+    "target": "x86_64-unknown-linux-gnu",
+    "output_optimization_level": 0,
+    "jobs": 2,
+    "cpu_affinity": [
+      0,
+      1
+    ],
+    "fresh_nonincremental_build": true,
+    "reused_application_ast_ir_objects": false,
+    "compiler_limit_seconds": 120,
+    "inner_cleanup_limit_seconds": 1,
+    "outer_worker_limit_seconds": 900,
+    "outer_cleanup_limit_seconds": 1,
+    "filesystem": "Warmed by verification; shared virtualized host, not cold or exclusive."
+  },
+  "denominator": {
+    "original_files_read": 121,
+    "packages": 31,
+    "original_bytes_read": 3830672,
+    "original_physical_lines_read": 76592,
+    "original_bytes_parsed_unchanged": 3829984,
+    "original_physical_lines_parsed_unchanged": 76569,
+    "generated_target_lines_excluded": 16,
+    "replaced_original_target_lines_excluded": 23,
+    "includes_comments_and_blank_lines": true,
+    "target_100000_LOC_per_second_budget_seconds": 0.76569
+  },
+  "warmup": {
+    "success": true,
+    "elapsed_seconds": 48.462327433,
+    "exit_code": 0,
+    "timed_out": false,
+    "cleanup_echild": true,
+    "subreaper_restored": true,
+    "errors": []
+  },
+  "warmup_excluded": true,
+  "statistics": {
+    "sample_count": 5,
+    "elapsed_seconds": [
+      47.001361032,
+      46.443293692,
+      46.110402721,
+      47.984012118,
+      49.690535001
+    ],
+    "median_seconds": 47.001361032,
+    "min_seconds": 46.110402721,
+    "max_seconds": 49.690535001,
+    "p95_nearest_rank_seconds": 49.690535001,
+    "original_LOC_per_median_second": 1629.0804844538316
+  },
+  "samples": [
+    {
+      "name": "sample-1",
+      "success": true,
+      "elapsed_seconds": 47.001361032,
+      "exit_code": 0,
+      "timed_out": false,
+      "cleanup_echild": true,
+      "subreaper_restored": true,
+      "errors": []
+    },
+    {
+      "name": "sample-2",
+      "success": true,
+      "elapsed_seconds": 46.443293692,
+      "exit_code": 0,
+      "timed_out": false,
+      "cleanup_echild": true,
+      "subreaper_restored": true,
+      "errors": []
+    },
+    {
+      "name": "sample-3",
+      "success": true,
+      "elapsed_seconds": 46.110402721,
+      "exit_code": 0,
+      "timed_out": false,
+      "cleanup_echild": true,
+      "subreaper_restored": true,
+      "errors": []
+    },
+    {
+      "name": "sample-4",
+      "success": true,
+      "elapsed_seconds": 47.984012118,
+      "exit_code": 0,
+      "timed_out": false,
+      "cleanup_echild": true,
+      "subreaper_restored": true,
+      "errors": []
+    },
+    {
+      "name": "sample-5",
+      "success": true,
+      "elapsed_seconds": 49.690535001,
+      "exit_code": 0,
+      "timed_out": false,
+      "cleanup_echild": true,
+      "subreaper_restored": true,
+      "errors": []
+    }
+  ],
+  "output": {
+    "bytes": 59624208,
+    "sha256": "d92500a3e1b8f9cc4066362de3ef609c4270c838f10e4d8a64afa3d7483884f2",
+    "mode": "0o755",
+    "raw_equal": true
+  },
+  "output_admission": {
+    "exact_573_compiler_tests_passed": true,
+    "same_original_O2_builder_raw_reproduction_passed": true,
+    "O0_selfhost_fixed_point": false,
+    "campaign_outputs_executed": false,
+    "tests_repeated_per_campaign_output": false,
+    "test_program_optimization_level": 2,
+    "test_route_worker_limit": "Unchanged Jobs([])/getconf object worker selection, not --jobs 2; two-CPU affinity retained.",
+    "filesystem_effectful_test_included": true,
+    "oracle_admission_sha256": "47f48ce7db8ad891730e73b8adc942bd1dfb266f37aaa26672864a36ade63f8e"
+  },
+  "outer_execution": {
+    "exit_code": 0,
+    "status": "passed",
+    "timed_out": false,
+    "elapsed_seconds": 305.02206692,
+    "cleanup_seconds": 0.00124416,
+    "surviving_children": false,
+    "cleanup_errors": [],
+    "cleanup_echild": true,
+    "subreaper_restored": true,
+    "cleanup_limit_seconds": 1.0,
+    "overall_limit_seconds": 901.0
+  },
+  "timing_boundary": "Immediately before compiler process creation through observed leader exit; includes startup, source work, LLVM tools, runtime/start generation, linking, publication, compiler cleanup and compiler-internal hashing. Evidence guards, output validation, host metadata, receipt writing and owned cleanup are outside.",
+  "historical_O2_comparison": {
+    "median_seconds": 96.515532821,
+    "O2_median_divided_by_O0_median": 2.053462510485371,
+    "O0_elapsed_reduction_percent": 51.30176495096407,
+    "qualification": "Different serial campaigns, not paired/randomized or exclusive-host; historical O2 omitted the metadata-only uname executable identity pin. New prospective pin does not repair old receipts. Whole-command configuration comparison, not exclusive LLVM phase attribution."
+  },
+  "original_artifact_sha256": {
+    "campaign.py": "3f60c7fc3bb6931ae0271e95db2fab0d96dff1fd338716e4fccce403f02c571e",
+    "harness/baseline.py": "95652a9df68f04b26ad0b4ea435c7f226aa8e87ce0cfefd36b0be8e3bd3df78d",
+    "harness/owned_process.py": "729f23222278fd6898afaee8555c7227473006b38ba7207e7dac9c44d1b7adfd",
+    "campaign.armed.json": "ce0a0632dc7caadd7140afc0c9d962b3c75ecccc5fa8f0b94cee09d5ec1a15c1",
+    "runtime-inputs.json": "a993d06d749830e3abeb26f30c4a4d0bb3fad0f071bd33a54a59ec52348fc165",
+    "launch-contract.json": "5f5cb597bbcd1ec65ff9e3ff4e25ed0a57afeb3e01e9d5608d3702158de806b5",
+    "actual-launch-01.json": "8b3efb0e46221cbb8dc1efbc90e67dcb6d39a16820fe715be0c97f6ed8765989",
+    "quiet-observation-01.json": "d541fc823708cd2204edfa65a700d55fa257de9c6e07eb47a740526133c948e4",
+    "controls-01.log": "6445583f95b3e661492a59938057390cc8fbeaf50245de4418cf788818191f78",
+    "campaign-01/summary.json": "47b730b267c8dddb8229bf846475bb13ae0a56c0a0834dc02d1e6ba3058ba2e8",
+    "campaign-01/campaign-result.json": "c0f8de135506ecc3d641847c2d94160613e7f604ecc1f052eece22ab3be89156",
+    "specs/warmup.armed.json": "d527de1b2892caf19c0c0a001c6362de4918bf80d5cce63acef62958c2ca5098",
+    "campaign-01/warmup.admission.json": "f770634fe4f2cb395bdfc2e1c2a8df539bd324dc0ddc05ff90e6fe6222a48dfd",
+    "campaign-01/runs/warmup/result.json": "91e2ac27d2df23e85b0976c7eb63e24ac2538ae49793311b568c3e0af28af166",
+    "specs/sample-1.armed.json": "8cc89dd65980da789892c418589af7edcfc779b8d97d3f36faf74695e7859290",
+    "campaign-01/sample-1.admission.json": "362901c3ff3c21993d2064e6a63905db55129144c1fc1cb0e9541d44d7bc2667",
+    "campaign-01/runs/sample-1/result.json": "c503368055148efcc46590d8b587c07c7eebdee617627def4450c1a2e6f9464a",
+    "specs/sample-2.armed.json": "8777312198444c0bd0879aad18c6877ba5669973d62d20e10795049c50be0fa5",
+    "campaign-01/sample-2.admission.json": "371d092dbdfc5e493ae32154769d7ea15bf65d7b4231bc2512e27cae12c5530a",
+    "campaign-01/runs/sample-2/result.json": "ddc66a56e4103c12ae0fbe905e24e3c2b91fed5cc422a3b1e1335f31dc2a88e8",
+    "specs/sample-3.armed.json": "f98c65e63897016d39de81921d695b580b9c965642cf05258dc2d8dffddd8f57",
+    "campaign-01/sample-3.admission.json": "4a74d51ca9cf678a5fc654fbf3c97dd1a0f75bd23871620978d8f37b0b36aa78",
+    "campaign-01/runs/sample-3/result.json": "20873fb0ce24a8eb74a8dd353f913ae52b4079f55cc77d045225dcd6ca3c5aaa",
+    "specs/sample-4.armed.json": "ccb7725c72a162d84a76c8e0c7fdc8a216d98068c693fe378167559db14da5e7",
+    "campaign-01/sample-4.admission.json": "771bed42688cf931cf270ca1c87adc9841be76fe6ddbc496e16d2f052c783990",
+    "campaign-01/runs/sample-4/result.json": "a3a1ce65eb5ea3c42266cd431e3d848bc4a48ba92e16d87c2138593730fa186d",
+    "specs/sample-5.armed.json": "d047449dfbe280fa13164ced11e55025cbba697c96d5cbb88060661b0083dc9c",
+    "campaign-01/sample-5.admission.json": "832496667a77914a7c463da79605fdbf1feb763dc106fd68e31ba4244ad35dbf",
+    "campaign-01/runs/sample-5/result.json": "cc9a2d3167e8e1ca62bd6640816b6f6afabd061f6cbbbe707b7d0f6ad9e1072a"
+  },
+  "limitations": [
+    "Selected summary omits machine-local paths, process observations and full inventories. Original hashes identify retained original bytes, not this derived record; not a replay bundle.",
+    "Exploratory five-sample Linux O0 full-build series, not twenty-build acceptance, a vNext speed result, backend selection, platform/release gate or direct Jai comparison.",
+    "All six outputs raw-equal the separately tested oracle, transferring that evidence; no generated campaign output was executed. Not an O0 selfhost fixed point.",
+    "No exclusive phase timings, peak RSS, allocation/clone/RC counts, noncomment LOC, token/specialization counts or produced-program runtime regression budgets measured.",
+    "The original admitted O2 compiler built every O0 output. This does not measure repeated builds using the produced O0 compiler.",
+    "Cgroup quota and memory-limit files unavailable; affinity and jobs are not an exact total OS-thread count.",
+    "Frozen descriptive preparation strings still say UNARMED; explicit armed fields, exact spec classifications/references and independent arming readback govern the actual launch. Original labels remain unchanged."
+  ],
+  "original_independent_terminal_acceptance_sha256": "82282bff68102e0366145b547b8adbf4e71715f89ec68954996da7846816949b",
+  "final_fences": {
+    "source_entries": 4054,
+    "config_pins": 177,
+    "runtime_subset_pins": 126,
+    "loader_search_snapshots": 9,
+    "exact_launch_argv_environment_specs": "passed",
+    "six_streaming_raw_comparisons": "passed"
+  }
+}

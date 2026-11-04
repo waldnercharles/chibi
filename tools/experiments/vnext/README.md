@@ -2,7 +2,9 @@
 
 This harness records full-command measurements; its regression tests are not
 compiler-speed evidence. A current builder and the first five-build O2 baseline
-are now independently checked. See [the baseline note](../../../docs/compiler-current-o2-baseline.md).
+are now independently checked. See [the O2 note](../../../docs/compiler-current-o2-baseline.md)
+and the subsequent [O0 series](../../../docs/compiler-current-o0-baseline.md)
+(47.001-second median, still far from the 100k LOC/s goal).
 Do not retry an uncertain bootstrap or run compilation without CPU coordination.
 
 Python 3.11+ and Git are the only dependencies. No packages need installing.

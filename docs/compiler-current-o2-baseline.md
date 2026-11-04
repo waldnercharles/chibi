@@ -160,3 +160,7 @@ bootstrap pin, CI gate or release changed in this checkpoint.
 A later [single source-to-LLVM-bundle diagnostic](compiler-current-emit-diagnostic.md)
 records 16.409 seconds to emit 92.76 MB of text. It is a different output and
 measurement boundary, not an exclusive phase breakdown of these full builds.
+
+The subsequent [O0 full-build campaign](compiler-current-o0-baseline.md) records
+a 47.001-second median across five fresh samples. This is a separate, admitted
+configuration comparison, not an exclusive LLVM phase timing or a default change.

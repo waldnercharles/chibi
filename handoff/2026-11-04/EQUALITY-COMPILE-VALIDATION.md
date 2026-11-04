@@ -25,3 +25,5 @@ The real strict compilation is the regression: it fails on the original complete
 `equality-compile-results.json` records exact source/object/review digests and the verified recovery archive. Every archive member was reread and the original evidence remained unchanged. Installed tool/runtime facts and the original source in the separately retained host-failure archive remain external prerequisites.
 
 Focused scalar/array behavior assurance is separately prepared and unarmed at this checkpoint. Linking, a fresh complete host build, graph-c runtime, actual Windows behavior and exact-head integration remain outstanding. No broad types selector or excluded union leak investigation was run. PR #1331 remains explicitly not ready; no merge, release or remote publication is claimed.
+
+Subsequent focused runtime assurance is recorded in EQUALITY-RUNTIME-VALIDATION.md. It preserves this compiler-only result and all original failures.

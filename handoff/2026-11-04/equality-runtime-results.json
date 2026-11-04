@@ -1,0 +1,86 @@
+{
+  "scope": "Focused actual scalar/array equality behavior assurance after compile-validated cleanup; no pre-fix runtime defect claim.",
+  "source_commit": "b5c03fb445fc86430707d4c8dcbe2c06e45a182b",
+  "candidate_sha256": "279c54c6936f35bd4b1d7d91318210275880b0a71c137a1ff9992c6d0119a103",
+  "artifact_sha256": "5ffb9b575a7c94630207135ad003befd5bdee3a6beae3a0083e0ca2bb29f24c9",
+  "artifact_bytes": 52840,
+  "build": {
+    "compiles": 10,
+    "links": 1,
+    "all_exit_zero": true,
+    "all_streams_empty": true,
+    "phase_seconds": 6.975260257720947,
+    "original_limit_seconds": 120,
+    "cleanup_echild": true
+  },
+  "preserved_failed_inspection": {
+    "reason": "Narrow import allowlist omitted source-supported libm trunc. Four metadata commands succeeded, then guard failed. Controller final post-fence/result did not run; independent subsequent input readback passed.",
+    "phase_seconds": 1.3476433753967285,
+    "cleanup_echild": true,
+    "reclassified": false
+  },
+  "fresh_inspection": {
+    "status": "passed and independently admitted",
+    "phase_seconds": 3.234060525894165,
+    "original_limit_seconds": 35,
+    "imports": 24,
+    "only_needed": [
+      "libm.so.6",
+      "libc.so.6"
+    ],
+    "cleanup_echild": true
+  },
+  "runtime": {
+    "status": "passed and independently admitted",
+    "cases": [
+      "integer/type mismatch",
+      "F32/F64 signed zero and NaN",
+      "flat and packed arrays",
+      "repeated call/same-address scope reset",
+      "visited-pair growth",
+      "shared aliases",
+      "cyclic nested arrays"
+    ],
+    "exit_status": 0,
+    "command_seconds": 0.0019698143005371094,
+    "phase_seconds": 3.3050544261932373,
+    "original_command_limit_seconds": 5,
+    "original_phase_limit_seconds": 30,
+    "stdout_bytes": 94,
+    "stdout_sha256": "5a367e99e8c3319babc65dfe8706fbab5e6ca3442c8c5102ae645e20882d9a46",
+    "stderr_bytes": 0,
+    "cleanup_echild": true,
+    "signals": [],
+    "errors": [],
+    "tool_session": 46588,
+    "tool_chunk": "0d4d03"
+  },
+  "independent_final_admission_sha256": "9b881b6daed31a97f62dbcac93e7368b3946632bdac397ab791e37188d7a4022",
+  "independent_final_readback_sha256": "c412aa7038cb26f12ce2bfceb2f0797fadee4120cb1ce9e74b364fd5f512cbb5",
+  "archives": [
+    {
+      "name": "chibi-equality-runtime-inspection-failure-20261104.tar.gz",
+      "sha256": "4845cceb7b230d2df12ccbbda82c514af30e55b3d31f05b95ed8939d77f864e3",
+      "bytes": 908095,
+      "regular_members": 140
+    },
+    {
+      "name": "chibi-equality-runtime-validated-20261104.tar.gz",
+      "sha256": "2dc59e9219d1cbe6cfac4598eadd0bec620638ee86fcce690e898869bcd2ffe9",
+      "bytes": 649433,
+      "regular_members": 60
+    }
+  ],
+  "remaining": [
+    "Complete fresh compiler-host build/inspection",
+    "Full graph-c runtime and C engine integration",
+    "Actual Windows and exact-head PR gates"
+  ],
+  "excluded": [
+    "No union objects or union leak investigation",
+    "No broad types/mixed remove_item selector",
+    "No old uncertain bootstrap",
+    "No claim of sanitizer/leak/performance coverage",
+    "No merge/release/remote publication"
+  ]
+}

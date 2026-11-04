@@ -32,6 +32,7 @@ Document :: struct {
     node_base: int;
 }
 Header :: struct { source: int; declaration: int; name: int; public: bool; }
+Library :: struct { alias: int; path: string; name: u32; }
 
 // One invocation owns this scratch state and a separate Module. Output helpers
 // take both as direct scoped parameters: the old seed rejected the version
@@ -61,7 +62,7 @@ State :: struct {
 }
 
 EmptyModule :: () -> Module {
-    return {functions: [], signatures: [], parameter_types: [], blocks: [],
+    return {functions: [], foreigns: [], signatures: [], parameter_types: [], blocks: [],
             block_parameters: [], values: [], instructions: [], edges: [], calls: [],
             arguments: [], literals: [], origins: [], names: [], name_bytes: []};
 }
@@ -219,101 +220,174 @@ ReadType :: (s: ^State, node: int, owner: int) -> u32 {
     }
 }
 
+// Both authored and foreign declarations use the retained annotation reader.
+FunctionHeader :: (s: ^State, output: ^Module, declaration: int, library_id: u32) {
+    if (length(s.headers) == MaxFunctions) {
+        Fail(s, declaration, "vNext scalar slice exceeds 32 functions");
+        return;
+    }
+    if (reader.Field(s.tree, declaration, syntax.FieldAttribute) >= 0) {
+        Fail(s, declaration, "attributes are unsupported in vNext scalar slice");
+        return;
+    }
+    name := reader.Field(s.tree, declaration, syntax.FieldName);
+    if (!AdmitName(s, name)) { return; }
+    for (header in s.headers) {
+        if (s.packages[header.source] == s.packages[s.source] && HeaderMatches(s, header, name)) {
+            Fail(s, name, "duplicate function name");
+            return;
+        }
+    }
+    parameter_first := length(output.parameter_types);
+    parameters := reader.Field(s.tree, declaration, syntax.FieldParameters);
+    parameter := First(s, parameters);
+    s.bindings = [];
+    while (parameter >= 0 && length(s.diagnostics) == 0) {
+        if (length(s.bindings) == MaxParameters) {
+            Fail(s, parameter, "vNext scalar slice exceeds 32 parameters");
+            return;
+        }
+        if (!reader.Kind(s.tree, parameter, syntax.Parameter) ||
+            reader.Field(s.tree, parameter, syntax.FieldComptime) >= 0 ||
+            reader.Field(s.tree, parameter, syntax.FieldValue) >= 0 ||
+            reader.Field(s.tree, parameter, syntax.FieldSource) >= 0) {
+            Fail(s, parameter, "vNext scalar slice requires ordinary explicit parameters");
+            return;
+        }
+        parameter_name := reader.Field(s.tree, parameter, syntax.FieldName);
+        if (!AdmitName(s, parameter_name)) { return; }
+        if (FindBinding(s, parameter_name) >= 0) {
+            Fail(s, parameter_name, "duplicate parameter name");
+            return;
+        }
+        type := ReadType(s, reader.Field(s.tree, parameter, syntax.FieldType), parameter);
+        if (type == 0) { return; }
+        s.bindings.append(parameter_name);
+        s.parameter_names.append(parameter_name);
+        output.parameter_types.append(type);
+        parameter = Next(s, parameter);
+    }
+    result_type := ReadType(s, reader.Field(s.tree, declaration, syntax.FieldResults), declaration);
+    if (result_type == 0) { return; }
+    count := length(s.bindings);
+    if (count == 0) { parameter_first = 0; }
+    signature: Signature = {first_parameter: u32(parameter_first), parameter_count: u32(count), result_type: result_type};
+    output.signatures.append(signature);
+    source := s.nodes[name];
+    first_name := length(output.name_bytes);
+    entry_package := s.packages[s.source] == s.packages[0];
+    if (entry_package || library_id != 0) {
+        for (index in source.start..<source.end) {
+            output.name_bytes.append(u8(text_byte_at(s.text, index)));
+        }
+    } else {
+        // A dot cannot be part of a source Identifier. Global IDs keep
+        // dependency names unique without hashing or backend resolution.
+        symbol := format_text(".vnext.{}", length(s.headers) + 1);
+        for (index in 0..<text_byte_length(symbol)) {
+            output.name_bytes.append(u8(text_byte_at(symbol, index)));
+        }
+    }
+    // Each <=9-byte dependency name is shorter than its declaration;
+    // entry names are disjoint source spans within the aggregate byte cap.
+    assert(length(output.name_bytes) <= MaxSourceBytes, "admitted source bounds emitted names");
+    function_name: Name = {start: u32(first_name), count: u32(length(output.name_bytes) - first_name)};
+    output.names.append(function_name);
+    public := reader.Field(s.tree, declaration, syntax.FieldVisibility) >= 0;
+    exported: u32 = 0;
+    if (entry_package && public && library_id == 0) { exported = 1; }
+    function: Function = {name: u32(length(output.names)), signature: u32(length(output.signatures)),
+                          first_block: 0, block_count: 0, origin: OriginID(s, output, declaration), exported: exported};
+    // At most 32 function names are compared per admitted header. Native names
+    // must be unique even across libraries: AOT cannot distinguish two C symbols.
+    for (previous in output.functions) {
+        a := output.names[int(previous.name) - 1];
+        b := output.names[int(function.name) - 1];
+        equal := a.count == b.count;
+        for (index in 0..<int(a.count)) {
+            if (!equal) { break; }
+            if (output.name_bytes[int(a.start) + index] != output.name_bytes[int(b.start) + index]) { equal = false; }
+        }
+        if (equal) { Fail(s, name, "duplicate native symbol name"); return; }
+    }
+    output.functions.append(function);
+    if (library_id != 0) {
+        imported: Foreign = {function: u32(length(output.functions)), library: library_id};
+        output.foreigns.append(imported);
+    }
+    header: Header = {source: s.source, declaration: declaration, name: name, public: public};
+    s.headers.append(header);
+}
+
 Headers :: (s: ^State, output: ^Module, root: int) {
     declaration := First(s, root);
     if (!reader.Kind(s.tree, declaration, syntax.PackageHeader)) {
         Fail(s, root, "vNext scalar slice requires one package header");
         return;
     }
+    // Foreign aliases are file-local and precede their blocks, matching the
+    // current compiler. At most 32 rows are scanned once per foreign block.
+    libraries: Library[] = [];
     declaration = Next(s, declaration);
     while (declaration >= 0 && length(s.diagnostics) == 0) {
-        if (reader.Kind(s.tree, declaration, syntax.ImportDeclaration)) {
-            declaration = Next(s, declaration);
-            continue;
-        }
-        if (!reader.Kind(s.tree, declaration, syntax.FunctionDeclaration)) {
-            Fail(s, declaration, "unsupported declaration in vNext scalar slice");
-            return;
-        }
-        if (length(s.headers) == MaxFunctions) {
-            Fail(s, declaration, "vNext scalar slice exceeds 32 functions");
-            return;
-        }
-        if (reader.Field(s.tree, declaration, syntax.FieldAttribute) >= 0) {
-            Fail(s, declaration, "attributes are unsupported in vNext scalar slice");
-            return;
-        }
-        name := reader.Field(s.tree, declaration, syntax.FieldName);
-        if (!AdmitName(s, name)) { return; }
-        for (header in s.headers) {
-            if (s.packages[header.source] == s.packages[s.source] && HeaderMatches(s, header, name)) {
-                Fail(s, name, "duplicate function name");
+        kind := s.nodes[declaration].kind;
+        if (kind == syntax.FunctionDeclaration) {
+            FunctionHeader(s, output, declaration, 0);
+        } else if (kind == syntax.ForeignImportDeclaration) {
+            if (length(libraries) == MaxLibraries) {
+                Fail(s, declaration, "vNext scalar slice exceeds 32 foreign libraries per source");
                 return;
             }
+            alias := reader.Field(s.tree, declaration, syntax.FieldAlias);
+            if (!AdmitName(s, alias)) { return; }
+            for (foreign_library in libraries) {
+                if (SameName(s, alias, foreign_library.alias)) { Fail(s, alias, "duplicate foreign library alias"); return; }
+            }
+            path_node := reader.Field(s.tree, declaration, syntax.FieldPath);
+            switch reader.Name(s.tree, path_node, s.document) {
+                case .Name(path, diagnostics):
+                    if (length(diagnostics) != 0) { s.diagnostics.append(diagnostics[0]); return; }
+                    if (text_byte_length(path) == 0 || text_byte_length(path) > MaxLibraryBytes) {
+                        Fail(s, path_node, "foreign library identity requires 1..256 bytes"); return;
+                    }
+                    for (index in 0..<text_byte_length(path)) {
+                        if (text_byte_at(path, index) == 0) { Fail(s, path_node, "foreign library identity contains a zero byte"); return; }
+                    }
+                    foreign_library: Library = {alias: alias, path: path, name: 0};
+                    libraries.append(foreign_library);
+            }
+        } else if (kind == syntax.ForeignBlock) {
+            alias := reader.Field(s.tree, declaration, syntax.FieldLibrary);
+            if (!reader.Kind(s.tree, alias, syntax.Identifier)) {
+                Fail(s, declaration, "vNext scalar slice requires an explicit foreign library alias"); return;
+            }
+            slot: int = -1;
+            for (foreign_library, index in libraries) {
+                if (SameName(s, alias, foreign_library.alias)) { slot = index; break; }
+            }
+            if (slot < 0) { Fail(s, alias, "unknown foreign library alias"); return; }
+            foreign_library := libraries[slot];
+            member := Next(s, alias);
+            while (member >= 0 && length(s.diagnostics) == 0) {
+                if (!reader.Kind(s.tree, member, syntax.ForeignFunction)) {
+                    Fail(s, member, "unsupported foreign declaration in vNext scalar slice"); return;
+                }
+                if (foreign_library.name == 0) {
+                    start := length(output.name_bytes);
+                    for (index in 0..<text_byte_length(foreign_library.path)) {
+                        output.name_bytes.append(u8(text_byte_at(foreign_library.path, index)));
+                    }
+                    name: Name = {start: u32(start), count: u32(text_byte_length(foreign_library.path))};
+                    output.names.append(name);
+                    foreign_library.name = u32(length(output.names));
+                    libraries[slot] = foreign_library;
+                }
+                FunctionHeader(s, output, member, foreign_library.name);
+                member = Next(s, member);
+            }
+        } else if (kind != syntax.ImportDeclaration) {
+            Fail(s, declaration, "unsupported declaration in vNext scalar slice"); return;
         }
-        parameter_first := length(output.parameter_types);
-        parameters := reader.Field(s.tree, declaration, syntax.FieldParameters);
-        parameter := First(s, parameters);
-        s.bindings = [];
-        while (parameter >= 0 && length(s.diagnostics) == 0) {
-            if (length(s.bindings) == MaxParameters) {
-                Fail(s, parameter, "vNext scalar slice exceeds 32 parameters");
-                return;
-            }
-            if (!reader.Kind(s.tree, parameter, syntax.Parameter) ||
-                reader.Field(s.tree, parameter, syntax.FieldComptime) >= 0 ||
-                reader.Field(s.tree, parameter, syntax.FieldValue) >= 0 ||
-                reader.Field(s.tree, parameter, syntax.FieldSource) >= 0) {
-                Fail(s, parameter, "vNext scalar slice requires ordinary explicit parameters");
-                return;
-            }
-            parameter_name := reader.Field(s.tree, parameter, syntax.FieldName);
-            if (!AdmitName(s, parameter_name)) { return; }
-            if (FindBinding(s, parameter_name) >= 0) {
-                Fail(s, parameter_name, "duplicate parameter name");
-                return;
-            }
-            type := ReadType(s, reader.Field(s.tree, parameter, syntax.FieldType), parameter);
-            if (type == 0) { return; }
-            s.bindings.append(parameter_name);
-            s.parameter_names.append(parameter_name);
-            output.parameter_types.append(type);
-            parameter = Next(s, parameter);
-        }
-        result_type := ReadType(s, reader.Field(s.tree, declaration, syntax.FieldResults), declaration);
-        if (result_type == 0) { return; }
-        count := length(s.bindings);
-        if (count == 0) { parameter_first = 0; }
-        signature: Signature = {first_parameter: u32(parameter_first), parameter_count: u32(count), result_type: result_type};
-        output.signatures.append(signature);
-        source := s.nodes[name];
-        first_name := length(output.name_bytes);
-        entry_package := s.packages[s.source] == s.packages[0];
-        if (entry_package) {
-            for (index in source.start..<source.end) {
-                output.name_bytes.append(u8(text_byte_at(s.text, index)));
-            }
-        } else {
-            // A dot cannot be part of a source Identifier. Global IDs keep
-            // dependency names unique without hashing or backend resolution.
-            symbol := format_text(".vnext.{}", length(s.headers) + 1);
-            for (index in 0..<text_byte_length(symbol)) {
-                output.name_bytes.append(u8(text_byte_at(symbol, index)));
-            }
-        }
-        // Each <=9-byte dependency name is shorter than its declaration;
-        // entry names are disjoint source spans within the aggregate byte cap.
-        assert(length(output.name_bytes) <= MaxSourceBytes, "admitted source bounds emitted names");
-        function_name: Name = {start: u32(first_name), count: u32(length(output.name_bytes) - first_name)};
-        output.names.append(function_name);
-        public := reader.Field(s.tree, declaration, syntax.FieldVisibility) >= 0;
-        exported: u32 = 0;
-        if (entry_package && public) { exported = 1; }
-        function: Function = {name: u32(length(output.names)), signature: u32(length(output.signatures)),
-                              first_block: 0, block_count: 0, origin: OriginID(s, output, declaration), exported: exported};
-        output.functions.append(function);
-        header: Header = {source: s.source, declaration: declaration, name: name, public: public};
-        s.headers.append(header);
         declaration = Next(s, declaration);
     }
 }
@@ -427,13 +501,17 @@ Expression :: (s: ^State, output: ^Module, node: int, depth: int) -> u32 {
     }
     if (kind == syntax.BinaryExpression) {
         operator := reader.Field(s.tree, node, syntax.FieldOperator);
+        if (reader.Kind(s.tree, operator, token.CmpAnd)) {
+            return Conjunction(s, output, node, depth);
+        }
         op: u32 = 0;
         result_type: u32 = I64;
         if (reader.Kind(s.tree, operator, token.Add)) { op = AddI64; }
         else if (reader.Kind(s.tree, operator, token.Mul)) { op = MultiplyI64; }
         else if (reader.Kind(s.tree, operator, token.Gt)) { op = GreaterI64; result_type = Bool; }
+        else if (reader.Kind(s.tree, operator, token.CmpEq)) { op = EqualI64; result_type = Bool; }
         else {
-            Fail(s, operator, "vNext scalar slice supports only i64 +, * and > binary operations");
+            Fail(s, operator, "vNext scalar slice supports only i64 +, *, >, == and bool && binary operations");
             return 0;
         }
         left_node := reader.Field(s.tree, node, syntax.FieldLeft);
@@ -536,7 +614,9 @@ Expression :: (s: ^State, output: ^Module, node: int, depth: int) -> u32 {
             // <=64 bindings. Admission proves this bound before growth/int use.
             limit := MaxNodes * MaxParameters + MaxFunctions * MaxBlocks * 2 * MaxLocals;
             assert(first <= limit - count, "admitted source bounds all argument spans");
-            output.arguments.resize(first + count);
+            // Resize copies the whole existing prefix. Consuming append keeps
+            // unique capacity and grows geometrically across successive calls.
+            for (slot in 0..<count) { output.arguments.append(u32(0)); }
         }
         // Reserve the outer span first. Nested calls append beyond it; write
         // by offset after each evaluation, never retain an element pointer.
@@ -575,6 +655,39 @@ FinishEdge :: (output: ^Module, edge: u32, target: u32, arguments: u32[]) {
         output.arguments.extend(arguments);
     }
     output.edges[int(edge) - 1] = row;
+}
+FinishScalarEdge :: (output: ^Module, edge: u32, target: u32, argument: u32) {
+    row: Edge = {target: target, first_argument: u32(length(output.arguments)), argument_count: 1};
+    output.arguments.append(argument);
+    output.edges[int(edge) - 1] = row;
+}
+
+// The false edge carries left, already false. The right expression is emitted
+// only in the true block; nested conjunctions finish before this merge exists.
+Conjunction :: (s: ^State, output: ^Module, node: int, depth: int) -> u32 {
+    left_node := reader.Field(s.tree, node, syntax.FieldLeft);
+    left := Expression(s, output, left_node, depth + 1);
+    if (left == 0) { return 0; }
+    if (output.values[int(left) - 1].type != Bool) { Fail(s, left_node, "bool && requires a bool operand"); return 0; }
+    true_edge := NewEdge(output);
+    false_edge := NewEdge(output);
+    Emit(s, output, Branch, 0, left, 0, true_edge, node);
+    right_block := NewBlock(s, output, node);
+    if (right_block == 0) { return 0; }
+    empty: u32[] = [];
+    FinishEdge(output, true_edge, right_block, empty);
+    right_node := reader.Field(s.tree, node, syntax.FieldRight);
+    right := Expression(s, output, right_node, depth + 1);
+    if (right == 0) { return 0; }
+    if (output.values[int(right) - 1].type != Bool) { Fail(s, right_node, "bool && requires a bool operand"); return 0; }
+    right_exit := NewEdge(output);
+    Emit(s, output, Jump, 0, 0, 0, right_exit, node);
+    merge := NewBlock(s, output, node);
+    if (merge == 0) { return 0; }
+    result := NewParameter(s, output, Bool);
+    FinishScalarEdge(output, false_edge, merge, left);
+    FinishScalarEdge(output, right_exit, merge, right);
+    return result;
 }
 
 // Acyclic source if becomes branch/true/[else]/merge. Without an else, the
@@ -683,16 +796,26 @@ Statements :: (s: ^State, output: ^Module, parent: int, depth: int) {
                 Fail(s, name, "duplicate scalar local name");
                 return;
             }
-            type := ReadType(s, reader.Field(s.tree, statement, syntax.FieldType), statement);
-            if (type == 0) { return; }
+            annotation := reader.Field(s.tree, statement, syntax.FieldType);
+            type: u32 = 0;
+            if (annotation >= 0) {
+                type = ReadType(s, annotation, statement);
+                if (type == 0) { return; }
+            }
             value := Expression(s, output, reader.Field(s.tree, statement, syntax.FieldValue), 0);
             if (value == 0) { return; }
-            if (output.values[int(value) - 1].type != type) {
+            if (type != 0 && output.values[int(value) - 1].type != type) {
                 Fail(s, statement, "scalar local initializer type does not match annotation");
                 return;
             }
             s.bindings.append(name);
             s.current_values.append(value);
+        } else if (kind == syntax.ExpressionStatement) {
+            expression := First(s, statement);
+            if (!reader.Kind(s.tree, expression, syntax.CallExpression)) {
+                Fail(s, statement, "vNext scalar slice permits only a discarded call statement"); return;
+            }
+            Expression(s, output, expression, 0);
         } else if (kind == syntax.Assignment) {
             target := reader.Field(s.tree, statement, syntax.FieldTarget);
             operator := reader.Field(s.tree, statement, syntax.FieldOperator);
@@ -868,7 +991,9 @@ pub ProduceSources :: (sources: Source[]) -> Result {
                                 import_rows.append(row);
                                 import_nodes.append(declaration);
                         }
-                    } else if (!reader.Kind(tree, declaration, syntax.FunctionDeclaration)) {
+                    } else if (!reader.Kind(tree, declaration, syntax.FunctionDeclaration) &&
+                               !reader.Kind(tree, declaration, syntax.ForeignImportDeclaration) &&
+                               !reader.Kind(tree, declaration, syntax.ForeignBlock)) {
                         return Result.Rejected(reader.Diagnostic(tree, declaration, source.document, "unsupported declaration in vNext scalar slice"));
                     }
                     declaration = reader.NextMember(tree, nodes[declaration].next_sibling);
@@ -962,7 +1087,12 @@ pub ProduceSources :: (sources: Source[]) -> Result {
     }
 
     // No body is visited until every package's signatures and aliases exist.
+    foreign_index: int = 0;
     for (header, function_index in pass_state.headers) {
+        if (foreign_index < length(output.foreigns) && output.foreigns[foreign_index].function == u32(function_index + 1)) {
+            foreign_index += 1;
+            continue;
+        }
         SelectSource(&pass_state, header.source);
         declaration := header.declaration;
         function := output.functions[function_index];

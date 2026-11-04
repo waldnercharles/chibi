@@ -158,6 +158,7 @@ Main :: () -> int {
     assert(wrapping.instructions[3].op == typed.Return && wrapping.instructions[3].left == 3, "wrapping result is returned without evaluator substitution");
     CheckScalarCalls();
     CheckPackages();
+    CheckForeign();
     CheckCallMutations();
     CheckMutations(original, both);
     CheckLimits();
@@ -190,7 +191,6 @@ Main :: () -> int {
         "package p\nBad :: (x: i64 = 1) -> i64 { return x; }\n",
         "package p\nBad :: ($x: i64) -> i64 { return x; }\n",
         "package p\nBad :: (x: i64) -> i64 { return absent; }\n",
-        "package p\nBad :: (x: i64) -> i64 { local := x; return local; }\n",
         "package p\nBad :: (x: i64) -> i64 { local: bool = x; return x; }\n",
         "package p\nBad :: (b: bool, x: i64) -> i64 { x = b; return x; }\n",
         "package p\nBad :: (b: bool) -> i64 { return b + 1; }\n",
@@ -227,7 +227,7 @@ Accepted :: (text: string) -> typed.Module {
             return module;
         case .Rejected(diagnostic):
             assert(false, "valid scalar transform rejected");
-            return {functions: [], signatures: [], parameter_types: [], blocks: [],
+            return {functions: [], foreigns: [], signatures: [], parameter_types: [], blocks: [],
                     block_parameters: [], values: [], instructions: [], edges: [], calls: [],
                     arguments: [], literals: [], origins: [], names: [], name_bytes: []};
     }
@@ -297,6 +297,11 @@ CheckEqual :: (left: typed.Module, right: typed.Module) {
     for (a, index in left.functions) {
         b := right.functions[index];
         assert(a.name == b.name && a.signature == b.signature && a.first_block == b.first_block && a.block_count == b.block_count && a.origin == b.origin && a.exported == b.exported, "deterministic functions rows");
+    }
+    assert(length(left.foreigns) == length(right.foreigns), "deterministic foreign membership count");
+    for (a, index in left.foreigns) {
+        b := right.foreigns[index];
+        assert(a.function == b.function && a.library == b.library, "deterministic foreign membership rows");
     }
     assert(length(left.signatures) == length(right.signatures), "deterministic signatures count");
     for (a, index in left.signatures) {
@@ -664,11 +669,9 @@ CheckScalarCalls :: () {
         "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return Read(x: i64 = 1); }\n",
         "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return (Read)(1); }\n",
         "package p\nF :: () -> i64 { return other.Read(1); }\n",
-        "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { Read(1); return 7; }\n",
         "package p\nF :: () -> bool { return !1; }\n",
         "package p\nF :: () -> i64 { return true * 7; }\n",
         "package p\nF :: () -> bool { return 7 > false; }\n",
-        "package p\nF :: () -> bool { return true && false; }\n"
     ];
     for (text in negatives) { Rejected(text); }
     CheckRejectedAt("package p\nF :: () -> i64 { return Missing(); }\n", "unknown direct callee", "Missing");
@@ -1136,7 +1139,7 @@ AcceptedSources :: (sources: typed.Source[]) -> typed.Module {
             return module;
         case .Rejected(diagnostic):
             assert(false, "valid package transform rejected");
-            return {functions: [], signatures: [], parameter_types: [], blocks: [],
+            return {functions: [], foreigns: [], signatures: [], parameter_types: [], blocks: [],
                     block_parameters: [], values: [], instructions: [], edges: [], calls: [],
                     arguments: [], literals: [], origins: [], names: [], name_bytes: []};
     }
@@ -1375,4 +1378,150 @@ CheckSourcesFailure :: (sources: typed.Source[], message: string, document: int)
             assert(diagnostic.message == message && diagnostic.document == document,
                    "source admission preserves the exact reason and offending document");
     }
+}
+
+// These exact original inputs are read only by the retained source parser.
+// Missing symbols are deliberately accepted here: resolution is a link gate.
+CheckForeign :: () {
+    source := FOREIGN_SOURCE;
+    missing_source := MISSING_SYMBOL_SOURCE;
+    module := Accepted(source);
+    CheckEqual(module, Accepted(source));
+    assert(length(module.functions) == 11 && length(module.foreigns) == 6, "six foreign signatures and five real source bodies are retained");
+    assert(length(module.parameter_types) == 14 && length(module.calls) == 12, "original foreign signatures and all effectful calls are produced");
+    assert(length(module.names) == 12, "one library name is shared by six foreign declarations");
+    library_id := module.foreigns[0].library;
+    path := module.names[int(library_id) - 1];
+    expected := "libslice_probe.a";
+    assert(path.count == u32(text_byte_length(expected)), "foreign library identity length comes from source");
+    for (index in 0..<int(path.count)) {
+        assert(module.name_bytes[int(path.start) + index] == u8(text_byte_at(expected, index)), "foreign library identity bytes come from source");
+    }
+    symbols := ["chibi_slice_echo", "chibi_slice_not", "chibi_slice_clear", "chibi_slice_mark", "chibi_slice_trace", "chibi_slice_weighted8"];
+    for (symbol, index in symbols) {
+        imported := module.foreigns[index];
+        function := module.functions[index];
+        assert(imported.function == u32(index + 1) && imported.library == library_id && NameMatches(module, index, symbol), "foreign names and dense IDs follow source order");
+        assert(function.first_block == 0 && function.block_count == 0 && function.exported == 0, "foreign declarations have no authored body or native export");
+        origin := module.origins[int(function.origin) - 1];
+        assert(origin.document == 19 && origin.start < origin.end && origin.end <= u32(text_byte_length(source)), "foreign origin retains the original declaration bytes");
+    }
+    for (index in 6..<11) {
+        function := module.functions[index];
+        assert(function.block_count > 0 && function.exported == 1, "all five original exports have produced bodies");
+    }
+    order := module.functions[9];
+    entry_block := module.blocks[int(order.first_block)];
+    first := module.instructions[int(entry_block.first_instruction)];
+    assert(first.op == typed.DirectCall && module.calls[int(first.payload) - 1].callee == 3, "discarded clear is still the first emitted effect");
+    // The call table records source evaluation order, not argument-list nesting.
+    assert(module.calls[3].callee == 3 && module.calls[4].callee == 4 && module.calls[5].callee == 4 && module.calls[6].callee == 6 && module.calls[7].callee == 5, "Order emits clear, mark1, mark2, weighted8 and trace in order");
+    weighted := module.calls[6];
+    left := DefiningInstruction(module, module.arguments[int(weighted.first_argument)]);
+    right := DefiningInstruction(module, module.arguments[int(weighted.first_argument) + 1]);
+    assert(left.op == typed.DirectCall && right.op == typed.DirectCall && left.payload == 5 && right.payload == 6, "outer foreign arguments retain separate nested call results");
+    short := module.functions[10];
+    condition := Terminator(module, short.first_block + 1);
+    assert(condition.op == typed.Branch, "short circuit branches before its effectful RHS");
+    rhs := module.edges[int(condition.payload) - 1];
+    skipped := module.edges[int(condition.payload)];
+    assert(rhs.target < skipped.target && skipped.argument_count == 1, "false path skips RHS and supplies its false value");
+    merge := module.blocks[int(skipped.target) - 1];
+    assert(merge.parameter_count == 1 && module.values[int(module.block_parameters[int(merge.first_parameter)]) - 1].type == typed.Bool, "short circuit merges one bool value");
+    rhs_exit := Terminator(module, rhs.target);
+    assert(rhs_exit.op == typed.Jump, "RHS reaches the bool merge");
+    rhs_value := EdgeArgument(module, module.edges[int(rhs_exit.payload) - 1]);
+    equality := DefiningInstruction(module, rhs_value);
+    assert(equality.op == typed.EqualI64, "original equality is typed explicitly inside RHS");
+
+    unresolved := Accepted(missing_source);
+    assert(length(unresolved.foreigns) == 1 && length(unresolved.functions) == 2 && length(unresolved.calls) == 1, "missing_symbol remains a successfully typed module for the link gate");
+    assert(NameMatches(unresolved, 0, "chibi_slice_absent"), "missing symbol is never substituted by a fixture implementation");
+    changed := Accepted(strings.ReplaceAll(source, "chibi_slice_echo", "another_echo"));
+    assert(NameMatches(changed, 0, "another_echo") && changed.calls[0].callee == 1, "foreign declaration and call names are source driven");
+    inferred := Accepted("package p\nFlag :: (x: bool) -> bool { saved := x; return saved; }\nNumber :: (x: i64) -> i64 { saved := x; return saved; }\n");
+    assert(length(inferred.values) == 2, "initialized inferred scalar locals preserve their typed values");
+    nested := Accepted("package p\nBoth :: (a: bool, b: bool, c: bool) -> bool { return a && (b && c); }\n");
+    assert(length(nested.blocks) == 5 && length(nested.edges) == 6, "nested short circuits retain topological RHS and merge blocks");
+    // Repeated discarded calls exercise accumulated argument spans beyond the
+    // tiny original fixture. These verify semantics, not allocation timings.
+    call_counts: int[] = [100, 400];
+    for (count in call_counts) {
+        lines := ["package p\nforeign import probe \"one.a\"\nforeign probe { f :: (x: i64) -> i64 }\nMany :: () -> i64 {\n"];
+        for (index in 0..<count) { lines.append(format_text("f({});\n", index)); }
+        lines.append("return 0;\n}\n");
+        repeated := Accepted(strings.Join(lines, ""));
+        assert(length(repeated.calls) == count && length(repeated.arguments) == count, "every discarded call owns exactly one argument");
+        for (call, index in repeated.calls) {
+            assert(call.callee == 1 && call.first_argument == u32(index), "successive call spans retain source order");
+            operand := DefiningInstruction(repeated, repeated.arguments[index]);
+            assert(operand.op == typed.ConstantI64 && repeated.literals[int(operand.payload) - 1] == i64(index), "later span growth preserves every earlier operand");
+        }
+    }
+    for (text in [
+        "package p\nBad :: () -> bool { return 1 && true; }\n",
+        "package p\nBad :: () -> bool { return true && 1; }\n",
+        "package p\nBad :: () -> bool { return true == false; }\n",
+        "package p\nBad :: () -> i64 { 1; return 1; }\n",
+        "package p\nforeign missing { f :: () -> i64 }\n",
+        "package p\nforeign { f :: () -> i64 }\n",
+        "package p\nforeign import probe \"one.a\"\nforeign import probe \"two.a\"\n",
+        "package p\nforeign import probe \"one.a\"\nforeign probe { f :: () -> i64 f :: () -> i64 }\n"
+    ]) { Rejected(text); }
+    discarded := Accepted("package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { Read(1); return 7; }\n");
+    assert(length(discarded.calls) == 1, "discarded authored calls remain effectful too");
+    collision: typed.Source[] = [
+        {path: "Main.chibi", text: "package p\nimport q \"project:q\"\nforeign import a \"one.a\"\nforeign a { same :: () -> i64 }\npub Main :: () -> i64 { return same(); }\n", document: 41},
+        {path: "q/Q.chibi", text: "package q\nforeign import b \"two.a\"\nforeign b { same :: () -> i64 }\n", document: 42}
+    ];
+    CheckSourcesRejected(collision, "duplicate native symbol name", 1, "same");
+    CheckForeignMutations(module);
+}
+
+CheckForeignMutations :: (original: typed.Module) {
+    changed := original;
+    rows := changed.foreigns;
+    row := rows[0];
+    row.function = 0;
+    rows[0] = row;
+    changed.foreigns = rows;
+    assert(typed.Verify(changed) == typed.InvalidSpan, "foreign function ID must exist");
+    changed = original;
+    rows = changed.foreigns;
+    rows[1] = rows[0];
+    changed.foreigns = rows;
+    assert(typed.Verify(changed) == typed.InvalidSpan, "foreign membership cannot repeat");
+    changed = original;
+    rows = changed.foreigns;
+    row = rows[0];
+    row.library = u32(length(changed.names) + 1);
+    rows[0] = row;
+    changed.foreigns = rows;
+    assert(typed.Verify(changed) == typed.InvalidSpan, "foreign library ID must exist");
+    changed = original;
+    functions := changed.functions;
+    function := functions[0];
+    function.block_count = 1;
+    functions[0] = function;
+    changed.functions = functions;
+    assert(typed.Verify(changed) == typed.InvalidSpan, "foreign declarations cannot own body blocks");
+    changed = original;
+    functions = changed.functions;
+    function = functions[0];
+    function.exported = 1;
+    functions[0] = function;
+    changed.functions = functions;
+    assert(typed.Verify(changed) == typed.InvalidSpan, "foreign declarations cannot publish entries");
+    changed = original;
+    instructions := changed.instructions;
+    for (instruction, index in instructions) {
+        if (instruction.op == typed.EqualI64) {
+            changed_instruction := instruction;
+            changed_instruction.left = 3;
+            instructions[index] = changed_instruction;
+            break;
+        }
+    }
+    changed.instructions = instructions;
+    assert(typed.Verify(changed) == typed.InvalidType, "equality rejects a bool operand");
 }

@@ -22,6 +22,7 @@ OUTPUT = HERE / "generated"
 VERSION_LAYOUTS = {
     1: "3c80038a06b4ae925e60658a0506a816e8177630b6744367949e1f95d6b6a4bb",
     2: "9812f63cd2c2d7786cc536d5aed57665c4ab8c75327aaa744e25533039f2a3b1",
+    3: "886b15e405bde5a0cb4223fc8986022797bd38d67946efaa3d6fa43c2fcc3ec6",
 }
 IDENT = r"[A-Za-z_][A-Za-z_0-9]*"
 NUMBER = r"(?:0|[1-9][0-9]*)"
@@ -203,17 +204,16 @@ def chibi_source(model: Model) -> str:
              "// All native scalar array element counts use signed 32-bit Chibi int.",
              "MaxWords: i64 : 2147483647;", "",
              "pub Buffers :: struct { words: u32[]; literals: i64[]; name_bytes: u8[]; }",
-             "pub Result :: union { Packed(buffers: Buffers) | TooLarge(table: string) }", "",
+             "",
              "// Pack only already-produced/verified Modules. No semantic rechecking.",
              "// One flattened word destination, initialized by resize then filled once.",
              "// Literal/name arrays share invocation-owned COW storage, never copied here.",
              "// Borrow all three only during a synchronous C call; retain no pointers.",
-             "pub Pack :: (module: typed.Module) -> Result {",
+             "pub Pack :: (module: typed.Module) -> Buffers {",
              "    count: i64 = i64(HeaderWords);"]
     for name, _, fields in tables:
         width = len(fields) or 1
-        lines += [f"    if (i64(length(module.{name})) > (MaxWords - count) / {width}) {{",
-                  f'        return Result.TooLarge("{name}");', "    }",
+        lines += [f'    assert(i64(length(module.{name})) <= (MaxWords - count) / {width}, "verified {name} word admission");',
                   f"    count += i64(length(module.{name})) * {width};"]
     lines += ["    words: u32[] = [];", "    words.resize(int(count));", "    words[0] = Version;"]
     for index, (name, _, _) in enumerate(tables, 1):
@@ -229,7 +229,7 @@ def chibi_source(model: Model) -> str:
             lines.append("        words[at] = row;")
         lines += [f"        at += {len(fields) or 1};", "    }"]
     lines += ['    assert(at == int(count), "generated transport word count");',
-              "    return Result.Packed({words: words, literals: module.literals, name_bytes: module.name_bytes});", "}"]
+              "    return {words: words, literals: module.literals, name_bytes: module.name_bytes};", "}"]
     return "\n".join(lines) + "\n"
 
 

@@ -1,6 +1,6 @@
 package vnext_typed
 
-// vnext-bridge-version: 2
+// vnext-bridge-version: 3
 
 import syntax "project:syntax_diagnostics"
 
@@ -24,9 +24,12 @@ pub MultiplyI64: u32 : ConstantBool + 1;
 pub GreaterI64: u32 : MultiplyI64 + 1;
 pub NotBool: u32 : GreaterI64 + 1;
 pub DirectCall: u32 : NotBool + 1;
+pub EqualI64: u32 : DirectCall + 1;
 // vnext-bridge-enum: end
 pub BlockDefinition: u32 : 2147483648;
 pub MaxFunctions: int : 32;
+pub MaxLibraries: int : 32;
+pub MaxLibraryBytes: int : 256;
 pub MaxParameters: int : 32;
 pub MaxLocals: int : 64;
 pub MaxBlocks: int : 64;
@@ -42,6 +45,10 @@ pub Function :: struct {
     origin: u32;
     exported: u32;
 }
+// Target: 8 scalar bytes. Each imported function belongs to exactly one row,
+// in FunctionID order. library is a nonempty NameID, not a loader path.
+// Imported functions have zero body spans and no published entry.
+pub Foreign :: struct { function: u32; library: u32; }
 pub Signature :: struct {
     first_parameter: u32;
     parameter_count: u32;
@@ -57,7 +64,7 @@ pub Block :: struct {
 // block ID | BlockDefinition for a block parameter. Type lives only here.
 pub Value :: struct { type: u32; definition: u32; }
 // Target: 24 scalar bytes. ConstantI64 payload is a literal ID; ConstantBool
-// payload is 0/1. AddI64/MultiplyI64/GreaterI64 read left/right; NotBool reads
+// payload is 0/1. AddI64/MultiplyI64/GreaterI64/EqualI64 read left/right; NotBool reads
 // left. DirectCall payload is a CallID. Jump payload is an edge ID. Branch
 // reads left and payload names two consecutive edges (true, false). Return
 // reads left. Unused fields are zero; result type lives only in Value.
@@ -73,6 +80,7 @@ pub Origin :: struct { document: u32; start: u32; end: u32; }
 pub Name :: struct { start: u32; count: u32; }
 pub Module :: struct {
     functions: Function[];
+    foreigns: Foreign[];
     signatures: Signature[];
     parameter_types: u32[];
     blocks: Block[];

@@ -56,7 +56,9 @@ class NativePreparationTests(unittest.TestCase):
                     "tools/experiments/vnext/owned_process.py",
                     "tools/experiments/vnext/frontend/prepare.py",
                     "tools/experiments/vnext/frontend/typed/prepare.py"]
-        sources += [BRIDGE + "/registry_callers.py", "tools/experiments/vnext/slice_cases.json"]
+        sources += [BRIDGE + "/registry_callers.py", "tools/experiments/vnext/slice_cases.json",
+                    "tools/experiments/vnext/slice_probe.c", BRIDGE + "/tests/foreign_bindings.c",
+                    "tools/experiments/vnext/slice_backend/foreign.h"]
         registry = json.loads((ROOT / "tools/experiments/vnext/slice_cases.json").read_bytes())
         sources += ["tools/experiments/vnext/" + name for row in registry["cases"] for name in row["files"]]
         for name in set(sources):
@@ -77,8 +79,8 @@ class NativePreparationTests(unittest.TestCase):
         AUDIT_ACTIVE = False
         self.assertEqual(LAUNCH_EVENTS, [], "preparation must not launch tools or load native libraries")
 
-    def prepare(self, case="nativecases"):
-        return self.subject.prepare(self.output, self.library, case)
+    def prepare(self, case="nativecases", foreign_archive=None):
+        return self.subject.prepare(self.output, self.library, case, foreign_archive)
 
     def reject(self, exception=ValueError):
         with self.assertRaises(exception):
@@ -181,12 +183,20 @@ class NativePreparationTests(unittest.TestCase):
 
     def test_literal_utf8_crlf_quotes_and_backslash_paths(self):
         self.fixture.write_bytes('package café\r\n// "quote" \\ slash\tend\r\n'.encode())
-        self.library = self.base / 'lib "café" \\ identity.so'
+        self.library = self.base / 'lib café identity.so'
         self.library.write_bytes(b"fixture")
         self.output = self.base / 'prepared "café" \\ output'
         self.prepare()
         self.assertEqual((self.output / "entry/Main.chibi").read_bytes(), self.expected_entry())
         self.assertEqual((self.output / "inputs/NativeCases.chibi").read_bytes(), self.fixture.read_bytes())
+
+    def test_backend_foreign_path_rejects_escapes_before_output_creation(self):
+        for character in ('"', '\\', '\x00', '\n', '\r', '\t', '\x1f', '\x7f'):
+            with self.subTest(character=character):
+                library = self.base / ('backend' + character + '.so')
+                with self.assertRaisesRegex(ValueError, "backend requires a plain foreign library path"):
+                    self.subject.prepare(self.output, library)
+                self.assertFalse(self.output.exists())
 
     def test_inserted_marker_text_is_not_replaced_again(self):
         self.fixture.write_bytes(b'package example\n// FIXTURE_SOURCES OUTPUT_PATH "LIBRARY_PATH"\n')
@@ -532,7 +542,7 @@ class NativePreparationTests(unittest.TestCase):
         for selected, names in policy["REGISTRY_REJECTIONS"].items():
             self.assertEqual(set(names), {name for name, row in callers.REJECTIONS.items() if row[0] == selected})
         self.assertEqual(policy["SNAPSHOT_FILES"],
-                         {"nativecases": 33, "scalars": 44, "direct_calls": 35, "modules": 37})
+                         {"nativecases": 33, "scalars": 44, "direct_calls": 35, "modules": 37, "foreign": 39})
 
     def test_registry_bool_int_and_signature_shape_rejections(self):
         path, original = self.registry()
@@ -647,6 +657,98 @@ class NativePreparationTests(unittest.TestCase):
         for value in (None, 1.0, "1", [], {}, 1 << 63, -(1 << 63) - 1):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 caller.scalar_type(value)
+
+
+    def test_foreign_original_sources_registry_and_same_archive_binding(self):
+        archive = self.base / "lib probe fixture.a"
+        archive.write_bytes(b"archive identity only; never loaded")
+        result = self.prepare("foreign", archive)
+        rows = {row["path"]: row for row in result["files"]}
+        self.assertEqual(len(rows), 39)
+        self.assertEqual(result["expectations"]["rejections"], ["missing_symbol"])
+        self.assertEqual(result["expectations"]["aot_checks"], 8)
+        self.assertEqual(result["foreign_archive"], {
+            "path": str(archive), "resolved": str(archive), "bytes": archive.stat().st_size,
+            "sha256": hashlib.sha256(archive.read_bytes()).hexdigest()})
+        for origin, dest in (("slice_probe.c", "slice_probe.c"),
+                             ("frontend/bridge/tests/foreign_bindings.c", "foreign_bindings.c"),
+                             ("slice_backend/foreign.h", "foreign.h")):
+            self.assertEqual((self.output / "inputs" / dest).read_bytes(),
+                             (self.root / "tools/experiments/vnext" / origin).read_bytes())
+        entry = (self.output / "entry/Main.chibi").read_text()
+        for name, binding, document in (("slice_cases/foreign/Main.chibi", "sources", 19),
+                                         ("slice_cases/rejected/missing_symbol.chibi", "sources0", 100)):
+            source = (self.root / "tools/experiments/vnext" / name).read_bytes()
+            self.assertEqual(self.source_records(entry, binding), [(name, source, document)])
+        self.assertIn("foreign import fixture_bindings " + json.dumps(str(archive), ensure_ascii=False), entry)
+        self.assertIn("binding_pointer := chibi_vnext_test_bindings();", entry)
+        self.assertIn("binding_count := chibi_vnext_test_binding_count();", entry)
+        self.assertIn("u64(length(names)), binding_pointer, binding_count)", entry)
+        self.assertEqual(entry.count("owner := chibi_vnext_compile_both("), 1)
+        self.assertEqual(len(re.findall(r"^    result[0-9]+ :=", entry, re.M)), 8)
+        self.assertIn("for (iteration in 0..<8)", entry)
+        link = entry.split("CheckLinkRejections :: () {", 1)[1].split("CheckFailure ::", 1)[0]
+        self.assertIn("case .Rejected(diagnostic): assert(false", link)
+        self.assertIn("owner := CompileOwned(module);", link)
+        self.assertIn("origin.document == 100", link)
+        raw = (self.root / "tools/experiments/vnext/slice_cases/rejected/missing_symbol.chibi").read_bytes()
+        declaration = b"chibi_slice_absent :: () -> i64"
+        start = raw.index(declaration)
+        self.assertIn(f"origin.start == u32({start}) && origin.end == u32({start + len(declaration)})", link)
+        self.assertIn(r'format_text("unresolved foreign symbol \"chibi_slice_absent\" in library \"libslice_probe.a\"', link)
+        self.assertIn("CheckFailure(owner, expected);", link)
+        self.assertIn("chibi_vnext_destroy(owner)", link)
+        perf = entry.split("PerfBuildIdFailure ::", 1)[1]
+        self.assertIn("CheckSourceRejections();", perf)
+        self.assertNotIn("CheckLinkRejections();", perf)
+        self.assertIn('CheckFailure(owner, "PERF_BUILDID_DIR profiling is unsupported by this backend")', perf)
+        caller = (self.output / "inputs/native_aot_caller.c").read_text()
+        self.assertEqual(caller.count("    ++checks;"), 8)
+        self.assertIn("extern int64_t Order(void);", caller)
+        self.assertNotIn("chibi_vnext_test_bindings", caller)
+
+    def test_foreign_archive_is_required_regular_nonempty_and_exclusive_to_case(self):
+        archive = self.base / "fixture.a"
+        archive.write_bytes(b"identity")
+        with self.assertRaises(ValueError): self.prepare("foreign")
+        self.assertFalse(self.output.exists())
+        for case in ("nativecases", "scalars", "direct_calls", "modules"):
+            with self.subTest(case=case), self.assertRaises(ValueError): self.prepare(case, archive)
+            self.assertFalse(self.output.exists())
+        for name in ('quote".a', "back\\slash.a", "line\nfeed.a", "tab\t.a", "delete\x7f.a"):
+            unusual = self.base / name; unusual.write_bytes(b"identity")
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "plain foreign"):
+                self.prepare("foreign", unusual)
+            self.assertFalse(self.output.exists())
+        for form in ("empty", "directory", "symlink"):
+            if form == "empty": archive.write_bytes(b"")
+            elif form == "directory": archive.unlink(); archive.mkdir()
+            else:
+                archive.rmdir()
+                actual = self.base / "real.a"; actual.write_bytes(b"identity")
+                archive.symlink_to(actual)
+            with self.subTest(form=form), self.assertRaises(ValueError): self.prepare("foreign", archive)
+            self.assertFalse(self.output.exists())
+
+    def test_foreign_registry_rejects_changed_fixture_and_link_contract(self):
+        archive = self.base / "fixture.a"; archive.write_bytes(b"identity")
+        path, original = self.registry()
+        for name in ("foreign", "missing_symbol"):
+            for value in (None, "other.c", "../slice_probe.c", "/slice_probe.c"):
+                registry = copy.deepcopy(original)
+                row = next(row for row in registry["cases"] if row["id"] == name)
+                if value is None: del row["foreign_fixture"]
+                else: row["foreign_fixture"] = value
+                path.write_text(json.dumps(registry))
+                with self.subTest(name=name, value=value), self.assertRaises(ValueError):
+                    self.prepare("foreign", archive)
+                self.assertFalse(self.output.exists())
+        for field, value in ((0, "type"), (2, "missing declaration anchor")):
+            registry = copy.deepcopy(original)
+            next(row for row in registry["cases"] if row["id"] == "missing_symbol")["reject"][field] = value
+            path.write_text(json.dumps(registry))
+            with self.subTest(field=field), self.assertRaises(ValueError): self.prepare("foreign", archive)
+            self.assertFalse(self.output.exists())
 
 
 if __name__ == "__main__":

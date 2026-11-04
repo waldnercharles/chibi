@@ -19,39 +19,34 @@ Main :: () -> int {
         case .Rejected(diagnostic): assert(false, "nested call packing source is accepted");
         case .Produced(module):
             frozen := Freeze(module);
-            switch bridge.Pack(module) {
-                case .TooLarge(table): assert(false, "nested call transport fits");
-                case .Packed(buffers):
-                    CheckBuffers(buffers, frozen);
-                    CheckBuffers(Freeze(module), frozen);
-                    assert(buffers.words[0] == 2 && buffers.words[9] == 3 && buffers.words[10] == 4, "v2 header includes call and argument counts");
-                    assert(module.calls[2].first_argument == 0 && module.calls[0].first_argument == 2 && module.calls[1].first_argument == 3, "packing preserves reserved nested spans");
-                    changed := module;
-                    calls := changed.calls;
-                    call := calls[0];
-                    call.callee = 1;
-                    calls[0] = call;
-                    changed.calls = calls;
-                    assert(changed.calls[0].callee == 1, "changed call row is a distinct COW snapshot");
-                    CheckBuffers(buffers, frozen);
-                    CheckBuffers(Freeze(module), frozen);
-            }
+            buffers := bridge.Pack(module);
+            CheckBuffers(buffers, frozen);
+            CheckBuffers(Freeze(module), frozen);
+            assert(buffers.words[0] == 3 && buffers.words[10] == 3 && buffers.words[11] == 4, "v3 header includes call and argument counts");
+            assert(module.calls[2].first_argument == 0 && module.calls[0].first_argument == 2 && module.calls[1].first_argument == 3, "packing preserves reserved nested spans");
+            changed := module;
+            calls := changed.calls;
+            call := calls[0];
+            call.callee = 1;
+            calls[0] = call;
+            changed.calls = calls;
+            assert(changed.calls[0].callee == 1, "changed call row is a distinct COW snapshot");
+            CheckBuffers(buffers, frozen);
+            CheckBuffers(Freeze(module), frozen);
     }
-    empty: typed.Module = {functions: [], signatures: [], parameter_types: [], blocks: [],
+    CheckForeignTransport();
+    empty: typed.Module = {functions: [], foreigns: [], signatures: [], parameter_types: [], blocks: [],
         block_parameters: [], values: [], instructions: [], edges: [], calls: [], arguments: [],
         literals: [], origins: [], names: [], name_bytes: []};
     frozen_empty := Freeze(empty);
-    switch bridge.Pack(empty) {
-        case .TooLarge(table): assert(false, "empty transport fits");
-        case .Packed(buffers):
-            CheckBuffers(buffers, frozen_empty);
-            CheckBuffers(Freeze(empty), frozen_empty);
-            assert(length(buffers.words) == 13 && buffers.words[0] == bridge.Version, "empty transport retains version header");
-            for (word, index in buffers.words) {
-                if (index > 0) { assert(word == 0, "empty module counts are zero"); }
-            }
-            assert(length(buffers.literals) == 0 && length(buffers.name_bytes) == 0, "empty side arrays stay empty");
+    buffers := bridge.Pack(empty);
+    CheckBuffers(buffers, frozen_empty);
+    CheckBuffers(Freeze(empty), frozen_empty);
+    assert(length(buffers.words) == 14 && buffers.words[0] == bridge.Version, "empty transport retains version header");
+    for (word, index in buffers.words) {
+        if (index > 0) { assert(word == 0, "empty module counts are zero"); }
     }
+    assert(length(buffers.literals) == 0 && length(buffers.name_bytes) == 0, "empty side arrays stay empty");
     return 0;
 }
 
@@ -62,74 +57,64 @@ CheckSource :: (source: string, literal: i64, name_count: int) {
             // Freeze all fields and explicitly copy side values BEFORE Pack.
             // A COW alias to source storage is not an independent oracle.
             frozen := Freeze(module);
-            switch bridge.Pack(module) {
-                case .TooLarge(table): assert(false, "fixture fits scalar word arena");
-                case .Packed(buffers):
-                    CheckBuffers(buffers, frozen);
-                    CheckBuffers(Freeze(module), frozen);
-                    assert(length(buffers.words) == 142, "129 scalar words plus 13 header words");
-                    header: u32[] = [2, 2, 2, 4, 4, 5, 7, 6, 3, 0, 2, 7, 2];
-                    for (word, index in header) {
-                        assert(buffers.words[index] == word, "version and table counts in Model order");
-                    }
-                    assert(length(buffers.literals) == 1 && buffers.literals[0] == literal, "source literal side array preserved");
-                    assert(length(buffers.name_bytes) == name_count, "source-driven name bytes preserved");
-                    assert(buffers.words[56] == typed.I64 && buffers.words[57] == (typed.BlockDefinition | u32(1)), "first Value type and definition");
-                    assert(buffers.words[58] == typed.Bool && buffers.words[59] == (typed.BlockDefinition | u32(2)), "bool parameter type lives only in Value");
-                    assert(buffers.words[64] == typed.I64 && buffers.words[65] == (typed.BlockDefinition | u32(4)), "merge Value survives packing");
-                    assert(buffers.words[70] == typed.Return && buffers.words[72] == 1, "Echo terminator fields");
-                    assert(buffers.words[94] == typed.AddI64 && buffers.words[96] == 5 && buffers.words[97] == 6, "Join addition fields");
-                    if (name_count == 8) {
-                        assert(buffers.words[138] == 0 && buffers.words[139] == 4 && buffers.words[140] == 4 && buffers.words[141] == 4, "original fixture name spans");
-                    }
-                    switch bridge.Pack(module) {
-                        case .TooLarge(table): assert(false, "repeat fixture fits");
-                        case .Packed(repeat):
-                            CheckBuffers(repeat, frozen);
-                            CheckBuffers(buffers, frozen);
-                            CheckBuffers(Freeze(module), frozen);
-
-                            // Pattern bindings are read-only. Mutate an ordinary
-                            // local copy while retaining both original results.
-                            // Array locals also avoid nested element assignment.
-                            changed := buffers;
-                            changed_literals := changed.literals;
-                            changed_literals[0] = literal + 100;
-                            changed.literals = changed_literals;
-                            assert(changed.literals[0] == literal + 100, "returned literal actually changed");
-                            CheckBuffers(Freeze(module), frozen);
-                            CheckBuffers(repeat, frozen);
-                            CheckBuffers(buffers, frozen);
-
-                            changed_names := changed.name_bytes;
-                            changed_names[0] = frozen.name_bytes[0] + u8(1);
-                            changed.name_bytes = changed_names;
-                            assert(changed.name_bytes[0] == frozen.name_bytes[0] + u8(1), "returned name byte actually changed");
-                            CheckBuffers(Freeze(module), frozen);
-                            CheckBuffers(repeat, frozen);
-                            CheckBuffers(buffers, frozen);
-
-                            switch bridge.Pack(module) {
-                                case .TooLarge(table): assert(false, "repacking after returned-array mutations fits");
-                                case .Packed(repacked):
-                                    CheckBuffers(repacked, frozen);
-                                    CheckBuffers(repeat, frozen);
-                                    CheckBuffers(Freeze(module), frozen);
-                            }
-                    }
-                    verified := typed.Verify(module);
-                    assert(verified == 0, "packing did not mutate the source Module");
+            buffers := bridge.Pack(module);
+            CheckBuffers(buffers, frozen);
+            CheckBuffers(Freeze(module), frozen);
+            assert(length(buffers.words) == 143, "129 scalar words plus 14 header words");
+            header: u32[] = [3, 2, 0, 2, 4, 4, 5, 7, 6, 3, 0, 2, 7, 2];
+            for (word, index in header) {
+                assert(buffers.words[index] == word, "version and table counts in Model order");
             }
+            assert(length(buffers.literals) == 1 && buffers.literals[0] == literal, "source literal side array preserved");
+            assert(length(buffers.name_bytes) == name_count, "source-driven name bytes preserved");
+            assert(buffers.words[57] == typed.I64 && buffers.words[58] == (typed.BlockDefinition | u32(1)), "first Value type and definition");
+            assert(buffers.words[59] == typed.Bool && buffers.words[60] == (typed.BlockDefinition | u32(2)), "bool parameter type lives only in Value");
+            assert(buffers.words[65] == typed.I64 && buffers.words[66] == (typed.BlockDefinition | u32(4)), "merge Value survives packing");
+            assert(buffers.words[71] == typed.Return && buffers.words[73] == 1, "Echo terminator fields");
+            assert(buffers.words[95] == typed.AddI64 && buffers.words[97] == 5 && buffers.words[98] == 6, "Join addition fields");
+            if (name_count == 8) {
+                assert(buffers.words[139] == 0 && buffers.words[140] == 4 && buffers.words[141] == 4 && buffers.words[142] == 4, "original fixture name spans");
+            }
+            repeat := bridge.Pack(module);
+            CheckBuffers(repeat, frozen);
+            CheckBuffers(buffers, frozen);
+            CheckBuffers(Freeze(module), frozen);
+
+            // Mutate a local copy while retaining both original results.
+            // Array locals also avoid nested element assignment.
+            changed := buffers;
+            changed_literals := changed.literals;
+            changed_literals[0] = literal + 100;
+            changed.literals = changed_literals;
+            assert(changed.literals[0] == literal + 100, "returned literal actually changed");
+            CheckBuffers(Freeze(module), frozen);
+            CheckBuffers(repeat, frozen);
+            CheckBuffers(buffers, frozen);
+
+            changed_names := changed.name_bytes;
+            changed_names[0] = frozen.name_bytes[0] + u8(1);
+            changed.name_bytes = changed_names;
+            assert(changed.name_bytes[0] == frozen.name_bytes[0] + u8(1), "returned name byte actually changed");
+            CheckBuffers(Freeze(module), frozen);
+            CheckBuffers(repeat, frozen);
+            CheckBuffers(buffers, frozen);
+
+            repacked := bridge.Pack(module);
+            CheckBuffers(repacked, frozen);
+            CheckBuffers(repeat, frozen);
+            CheckBuffers(Freeze(module), frozen);
+            verified := typed.Verify(module);
+            assert(verified == 0, "packing did not mutate the source Module");
     }
 }
 
 // Independent reference order, deliberately handwritten rather than generated
 // from the binding generator. This extra test-only copy covers EVERY scalar in
-// all 12 tables, including edge argument spans, origins and zero-valued fields.
+// all 13 tables, including edge argument spans, origins and zero-valued fields.
 // Each array is built from scalar values, never assigned from a source array.
 Freeze :: (module: typed.Module) -> bridge.Buffers {
-    expected: u32[] = [2,
-        u32(length(module.functions)), u32(length(module.signatures)),
+    expected: u32[] = [3,
+        u32(length(module.functions)), u32(length(module.foreigns)), u32(length(module.signatures)),
         u32(length(module.parameter_types)), u32(length(module.blocks)),
         u32(length(module.block_parameters)), u32(length(module.values)),
         u32(length(module.instructions)), u32(length(module.edges)), u32(length(module.calls)),
@@ -137,6 +122,7 @@ Freeze :: (module: typed.Module) -> bridge.Buffers {
     for (row in module.functions) {
         expected.extend([row.name, row.signature, row.first_block, row.block_count, row.origin, row.exported]);
     }
+    for (row in module.foreigns) { expected.extend([row.function, row.library]); }
     for (row in module.signatures) {
         expected.extend([row.first_parameter, row.parameter_count, row.result_type]);
     }
@@ -174,5 +160,30 @@ CheckBuffers :: (buffers: bridge.Buffers, frozen: bridge.Buffers) {
     assert(length(frozen.name_bytes) == length(buffers.name_bytes), "name byte count unchanged");
     for (byte, index in frozen.name_bytes) {
         assert(buffers.name_bytes[index] == byte, "every name byte matches frozen value");
+    }
+}
+
+// Real parser output exercises the new side table independently of codegen.
+CheckForeignTransport :: () {
+    source := "package p\nforeign import probe \"libprobe.a\"\nforeign probe { read :: (x: i64) -> i64 }\npub Call :: (x: i64) -> i64 { return read(x); }\n";
+    switch typed.Produce(source, 31) {
+        case .Rejected(diagnostic): assert(false, "foreign packing source is accepted");
+        case .Produced(module):
+            assert(length(module.foreigns) == 1, "one imported declaration is produced");
+            frozen := Freeze(module);
+            buffers := bridge.Pack(module);
+            CheckBuffers(buffers, frozen);
+            assert(buffers.words[0] == 3 && buffers.words[2] == 1, "v3 header retains foreign membership count");
+            at := bridge.HeaderWords + length(module.functions) * 6;
+            assert(buffers.words[at] == 1 && buffers.words[at + 1] == module.foreigns[0].library, "foreign function and library scalars survive packing");
+            changed := module;
+            imports := changed.foreigns;
+            imported := imports[0];
+            imported.library = imported.library + u32(1);
+            imports[0] = imported;
+            changed.foreigns = imports;
+            assert(changed.foreigns[0].library != module.foreigns[0].library, "foreign mutation creates a distinct COW snapshot");
+            CheckBuffers(buffers, frozen);
+            CheckBuffers(Freeze(module), frozen);
     }
 }

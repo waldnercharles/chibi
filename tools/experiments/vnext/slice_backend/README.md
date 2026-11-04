@@ -5,14 +5,63 @@ The `chibi_vnext_backend` cdylib consumes the generated
 retained Chibi parser/signature reader → typed Produce/Verify → generated
 Pack → one Cranelift lowering for eager JIT and object output. The backend never
 reads source, interprets an IR, runs a prepared VM or converts LLVM text. The
-pinned old c5 seed uses LLVM to build the Chibi test caller; that is distinct
+historical c5 seed and the separately admitted current compiler use LLVM to
+build Chibi test callers; that is distinct
 from compiling the caller's source-produced typed bodies with Cranelift.
-Only Linux x86-64 System V is admitted. The current version-2 source adds bool
+Only Linux x86-64 System V is admitted. The historical version-2 source added bool
 literals, wrapping multiply, signed greater-than, bool not and direct calls.
 Its pure-source proof, focused Rust backend tests, production library build
 and three exact-source private native proofs passed, including JIT,
 owned environment-failure handling and linked C execution. The subsequent
 package-aware checkpoint below also passed independent full-chain acceptance.
+
+## Version-3 foreign-binding source checkpoint
+
+The current source consumes version 3 and adds integer equality plus imported
+functions through the same DirectCall lowering used for local calls. The sparse
+ordered Foreign table drives Linkage::Import declarations; imports have no body
+and publish no entry. Every source import must resolve against an exact
+caller-supplied library, symbol and scalar signature before either native
+consumer is constructed. An intermediate version-3 backend passed all seven
+focused Rust tests and its production cdylib construction/artifact review. The
+current source then improved descriptor-error context and added seven cases
+inside the existing invalid-argument test. The corrected source now passes
+fresh construction, actual-artifact review and all seven unfiltered Rust tests.
+A fresh non-test library and original-source foreign JIT/AOT remain pending.
+Earlier evidence below applies
+only to its own frozen inputs, not this implementation.
+
+The corrected Rust source SHA-256 is
+`625f40f6020251be06175a735c57fffd1e456985c40200b2edfa298bcee71947`.
+Its tested executable is
+`cb2b436238b20c414668cfd73f389cd44f710ea1aebcafc7e8f5c984c9076378`.
+The complete runtime receipt is
+`c1c50f00bc50b3763f0ebc51646ab294201ed6f5a40c59c4b02be81456d9a709`,
+with independent acceptance
+`c242fb74c447198c88d290dcf158e4abffbf237abc9be5f5731a0d79d012b4ea`.
+This narrow test run had seven passes, no skipped or filtered cases, empty
+stderr and complete process cleanup. It includes explicit-pointer JIT fixtures,
+but does not establish original-source foreign JIT/AOT or compilation speed.
+
+The separate current-v3 Arena framing suite also passes all eight tests,
+including imported membership rows, with no skipped or filtered cases. Its
+executable SHA-256 is
+`90fa7cd8f01c79c6f569e2642ec8aad7072b89596cd5473cd31e4708e761248d`;
+test receipt
+`2adddb45a7954ba0bd46e9fb05aea2835336ad3511380a32bd279ab4e304fcf6`
+and independent acceptance
+`b9bb069c2b6e7efc67e0095ad3e1391404413b4a636a2b438c5974e653ddc3c1`
+bind the two exact current framing/view sources. This is separate from both
+the seven backend tests and the source-to-native gate.
+
+The backend contains no fixture symbol catalog, loader or process-symbol
+fallback. It registers real, nonnull caller-owned code addresses for resolved
+imports. Cranelift 0.137.1 installs dlsym in with_isa, so a newest-first lookup
+guard panics on any unexpected backend lookup rather than falling through.
+Missing/mismatched bindings instead return ordinary owned diagnostics with the
+source symbol, library, document label and byte span before any object or JIT
+output exists. The existing explicit JIT free, partial-failure cleanup,
+PERF_BUILDID_DIR rejection and finalization-before-publication rules remain.
 
 ## Package-aware checkpoint
 
@@ -165,9 +214,11 @@ all handles are opaque `void *` (Chibi rawptr).
 
 1. `chibi_vnext_compile_both(words: const uint32_t *, word_count: uint64_t,
    literals: const int64_t *, literal_count: uint64_t,
-   names: const uint8_t *, name_byte_count: uint64_t) -> void *`.
+   names: const uint8_t *, name_byte_count: uint64_t,
+   bindings: const ChibiVnextForeignBinding *, binding_count: uint64_t) -> void *`.
    Return an owned result after eager object and JIT completion, or an owned
-   failure diagnostic. OOM aborts. No input pointers survive this call.
+   failure diagnostic. OOM aborts. Metadata borrows end during this call;
+   imported code remains caller-owned until every JIT owner is destroyed.
 2. `chibi_vnext_status(owner) -> uint32_t`: 0 ready, 1 bad public argument,
    2 bad framing, 3 unsupported target, 4 backend/environment failure.
 3. `chibi_vnext_diagnostic_length(owner) -> uint64_t` and
@@ -196,8 +247,29 @@ with no concurrent mutation during compile. Output destinations likewise name
 writable, nonoverlapping caller storage. Checks cannot prove pointer validity,
 prevent forged/stale handles or make double destruction safe.
 
-The current frame decoder requires version 2 and checks counts/exact framing.
-Version-1 input is rejected, with no compatibility translation. This is explicitly
+[foreign.h](foreign.h) is the common C declaration and layout contract. Append
+`bindings: rawptr, binding_count: u64` to the six existing Chibi foreign-call
+parameters. A descriptor is 64 bytes/alignment 8 on Linux x86-64 System V:
+library pointer/length at offsets 0/8, symbol pointer/length at 16/24,
+parameter-type pointer/count at 32/40, u32 result type at 48, natural four-byte
+padding, then code pointer at 56. Both Rust and C pin every offset. Scalar IDs
+come from the generated typed schema: bool=1, i64=2. Code addresses must have
+the exact declared System V signature, including zero-extended bool parameters
+and results. Pointer checks cannot prove executable storage or signature truth.
+
+At most 32 descriptors are accepted, including unused bindings. Every supplied
+descriptor is validated: library spelling is 1..256 UTF-8 bytes, symbol spelling
+is 1..65,536 UTF-8 bytes, neither contains NUL, parameter count is at most 32,
+all parameter/result types are scalar, and code addresses are nonnull. Repeated
+symbols are rejected even across libraries or with identical signatures,
+because AOT link names cannot distinguish them. NULL/zero descriptor arrays
+support modules without imports. Metadata is never retained; the caller must
+keep imported code loaded and callable through all generated calls and owner
+destructions. The copied object contains ordinary external relocations, not
+copied code addresses, and requires its own native link against the provider.
+
+The current frame decoder requires version 3 and checks counts/exact framing.
+Version-1 and version-2 input is rejected, with no compatibility translation. This is explicitly
 an already-verified same-process model contract: the producer has run Chibi
 Verify before packing. The backend does not accept or semantically validate
 arbitrary unverified frames. It checks IDs/spans, admission bounds, kind decoding
@@ -233,8 +305,8 @@ library is compiled with panic=abort; no panic may unwind through Chibi/C.
 
 ## Focused tests and accounting
 
-All three focused Rust tests in lib.rs passed without filtering in both the
-historical version-1 proof and the separate version-2 proof above. Public framing/count
+The three earlier focused Rust tests in lib.rs passed without filtering in both
+the historical version-1 proof and the separate version-2 proof above. Public framing/count
 rejection covers null/nonzero pairs for each scalar buffer and
 excessive counts on actual small buffers, with shared owned-diagnostic,
 no-output and destroy checks; byte copy is exact or leaves
@@ -250,7 +322,29 @@ gate recorded under each version's result. Generated enum/framing tests are owne
 frontend/bridge/tests/arena_tests.rs. A production library requires panic=abort;
 Rust's unit-test harness uses its ordinary test panic behavior.
 
-Current adapter accounting: borrowed name adaptation, then one instruction
+Four added tests cover malformed descriptor pointers/counts and
+metadata, duplicate symbols across libraries, exact library/symbol/signature
+resolution with source-origin diagnostics and no outputs, a compiled import/call
+and equality wrapper after every metadata buffer is poisoned/dropped, and the
+no-fallback lookup guard. The
+existing three tests remain, including injected finalization-failure cleanup.
+The [current seven-test result](#version-3-foreign-binding-source-checkpoint)
+passes all of them. The lifetime test executes its generated wrapper against a real Rust C-ABI function;
+its synthetic model is only a focused backend test. The eight original foreign
+oracles and missing-symbol rejection remain separate source integration gates.
+
+Current adapter accounting: descriptors occupy 64 bytes each (384 bytes for the
+six-import fixture, 2,048 bytes maximum), with temporary borrowed views and an
+8-byte resolved address per import. Metadata validation runs once. Duplicate
+checking costs at most 496 symbol comparisons and source resolution at most
+1,024 library/symbol comparisons; signatures compare at most 32 scalar IDs per
+match. These bounded scans never occur per instruction. Symbol lengths remain
+bounded by the 65,536-byte source admission; pathological long common prefixes
+can raise duplicate comparison traffic to about 31 MiB, and are not measured
+here. Both function passes consume sparse import membership/declaration linkage
+without adding a function flag table. No speed claim follows from these counts.
+
+The retained adapter does borrowed name adaptation, then one instruction
 traversal for Object and one for JIT. Duplicate semantic verification and its
 4-bytes/value plus 1-byte/block scratch are removed. Each lowering reserves a
 block map, a statically pinned 4-byte PackedOption<Value> per value, declaration
@@ -264,7 +358,7 @@ facts without a separate staged signature vector. Cranelift's required
 declaration-owned signature copies remain. Context and FunctionBuilderContext
 are reused; Cranelift's IR/code allocations remain additional costs. Work is
 linear in rows/arguments plus the explicitly bounded per-body cache clearing.
-The current Echo/Join frame is 584 borrowed bytes. No measured speed claim
+The current Echo/Join frame is 588 borrowed bytes. No measured speed claim
 follows: `compile_both` intentionally compiles both outputs and is not a fair
 single-build benchmark. LLVM could consume the same neutral typed facts through
 a separate lowering; no LLVM consumer or measurement is included here.

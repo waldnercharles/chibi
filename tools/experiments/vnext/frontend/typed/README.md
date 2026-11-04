@@ -1,5 +1,26 @@
 # Bounded scalar typed-body producer
 
+## Current version-3 source
+
+The current experiment adds explicit foreign declarations, integer equality,
+short-circuit `&&`, inferred scalar locals and discarded scalar-call statements.
+The original foreign fixture exercises six C declarations and five Chibi
+definitions, including eight-argument ABI passing and observable call order.
+Foreign declarations use the same signatures and DirectCall rows as local calls;
+a sparse Foreign table records library membership without giving imports bodies
+or exported entries. No loader, symbol catalog or backend semantics are added to
+this producer. Original source and byte spans remain the diagnostic authority.
+
+The complete current typed-source regression suite has passed with the admitted
+current compiler, including the 100/400-call argument-span controls. This is
+source-to-typed-IR correctness evidence, not foreign JIT/AOT, full-language or
+throughput acceptance. The complete source-to-v3-Pack suite and seven corrected
+Rust backend tests also pass. A fresh non-test library and original-source
+foreign native integration remain separate open gates. The version-1/2 results below
+remain historical evidence for their exact inputs, not acceptance of version 3.
+
+## Historical version-1/2 results
+
 The published version-1 retained-parser/signature producer passed proof10 on
 2026-11-04 using the pinned old c5 seed: 25 accepted source calls, 42 rejection
 probes and 17 verifier mutations. At that checkpoint the public preparer
@@ -17,6 +38,8 @@ version-1 results. Its pre-package test inventory and readback are recorded
 [below](#accepted-version-2-pure-transform-result). The separate
 [version-2 native result](../../slice_backend/README.md#version-2-verification-status)
 also passed all three bounded JIT/AOT matrices.
+
+## Current producer contract
 
 `ProduceSources(sources)` parses each supplied document once with the retained
 `source_parser`, resolves its package/import graph, reads all scalar headers
@@ -50,9 +73,8 @@ locals, identifier/parameter reads, decimal nonnegative i64 and bool literals,
 parentheses, wrapping i64 `+`/`*`, signed i64 `>`, bool `!`, plain assignment,
 if/else, scalar return, same-package positional identifier calls and qualified
 public calls through explicit `project:` import aliases. Other forms are source
-diagnostics, not fallback compilation. Foreign calls, equality, `&&`, inferred
-locals, discarded-call statements and unary negative literals remain outside
-this checkpoint. Negative registry arguments
+diagnostics, not fallback compilation. Version 3 additionally admits the forms
+listed above. Unary negative literals remain unsupported. Negative registry arguments
 enter through the native caller. The existing reserved cancellation-singleton
 name `Cancelled` remains rejected for functions, parameters and locals. Local shadowing of any currently visible
 parameter/local is unsupported and diagnosed; disjoint branch-local names are
@@ -60,7 +82,8 @@ allowed. Names and branch values are source-driven, including renamed
 functions/locals and +7.
 
 Version 2 preserves opcodes 1–5 and appends ConstantBool=6, MultiplyI64=7,
-GreaterI64=8, NotBool=9 and DirectCall=10. A DirectCall payload names one
+GreaterI64=8, NotBool=9 and DirectCall=10. Version 3 appends EqualI64=11 and
+the sparse Foreign table. A DirectCall payload names one
 `Call { callee, first_argument }` row: eight scalar bytes, with arity/result
 type read only from the callee Signature. Calls and edges partition the shared
 argument array without gaps or overlaps; zero-arity calls start at zero.
@@ -157,8 +180,9 @@ this first body producer.
 ## Caller tests and cost estimate
 
 `tests/Main.chibi.in` is a pure-transform executable template. A copied-source
-proof caller replaces four fixture markers with independent JSON-style string
-literals of exact Echo/Join, modules Main/Math and private-import source bytes,
+proof caller replaces six fixture markers with independent JSON-style string
+literals of exact Echo/Join, modules Main/Math, private-import, foreign and
+missing-symbol source bytes,
 then maps `project:vnext_typed` to the three package files here. The fixture/tests
 subdirectories are not package implementation inputs. Tests change +1 to +7, rename exports/locals, change an
 assignment, exercise nested and early-return branches, check source rejections
@@ -185,7 +209,7 @@ python3 -I -B tools/experiments/vnext/frontend/typed/prepare.py "$work/typed"
 
 Preparation refuses an existing output directory. It writes 15 compiler
 sources, `core:strings`, three typed package sources, generated `Main.chibi`,
-the original template and four fixtures: 25 recorded files plus
+the original template and six fixtures: 27 recorded files plus
 `source-manifest.json` with relative working-tree byte hashes.
 It checks exact UTF-8 fixture transport and the package/import closure. It
 never compiles, runs native tests or configures a toolchain; source hashes alone
@@ -246,7 +270,7 @@ intent remains a measurement gate. No unsupported reserve API is assumed. At
 admission limits the conservative bounds are 139,264 values, 10,240 instructions,
 8,192 calls and 524,288 combined edge/call arguments, below signed array counts
 and the high-bit definition tag. The loose whole-module transport ceiling is
-4,363,700 bytes, not a reservation size. Table work is linear in nodes, rows and
+4,364,216 bytes for version 3, not a reservation size. Table work is linear in nodes, rows and
 arguments plus the stated bounded name scans. Actual allocation/COW and native
 compilation costs remain unknown; these bounds are not throughput evidence.
 

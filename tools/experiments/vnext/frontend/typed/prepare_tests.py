@@ -66,6 +66,8 @@ class PreparationTests(unittest.TestCase):
             b"FIXTURE_SOURCE": self.typed / "fixtures/EchoJoin.chibi",
             b"PACKAGE_MAIN_SOURCE": self.root / "tools/experiments/vnext/slice_cases/modules/Main.chibi",
             b"PACKAGE_MATH_SOURCE": self.root / "tools/experiments/vnext/slice_cases/modules/math/Math.chibi",
+            b"FOREIGN_SOURCE": self.root / "tools/experiments/vnext/slice_cases/foreign/Main.chibi",
+            b"MISSING_SYMBOL_SOURCE": self.root / "tools/experiments/vnext/slice_cases/rejected/missing_symbol.chibi",
             b"PRIVATE_IMPORT_SOURCE": self.root / "tools/experiments/vnext/slice_cases/rejected/private_import.chibi",
         }
         literals = {marker: json.dumps(path.read_bytes().decode("utf-8"), ensure_ascii=False).encode()
@@ -81,7 +83,7 @@ class PreparationTests(unittest.TestCase):
     def test_exact_sources_literal_and_relative_manifest(self):
         result = self.subject.prepare(self.output)
         self.assertEqual(len(self.subject.SOURCE_MAP), 19)
-        self.assertEqual(len(result["files"]), 25)
+        self.assertEqual(len(result["files"]), 27)
         self.assertEqual(result["compile"], "not_run")
         self.assertEqual(result["typed_tests"], "not_run")
         for row in result["files"]:
@@ -97,7 +99,8 @@ class PreparationTests(unittest.TestCase):
         self.assertIn("project:package_graph", result["imports"]["project:vnext_typed"])
         generated = next(row for row in result["files"] if row["path"] == "Main.chibi")
         self.assertEqual(generated["generated_from"], ["inputs/Main.chibi.in", "inputs/EchoJoin.chibi",
-                         "inputs/modules/Main.chibi", "inputs/modules/math/Math.chibi", "inputs/private_import.chibi"])
+                         "inputs/modules/Main.chibi", "inputs/modules/math/Math.chibi",
+                         "inputs/foreign/Main.chibi", "inputs/missing_symbol.chibi", "inputs/private_import.chibi"])
         serialized = (self.output / "source-manifest.json").read_text()
         self.assertNotIn(str(self.base), serialized)
         self.assertEqual(json.loads(serialized), result)
@@ -116,7 +119,7 @@ class PreparationTests(unittest.TestCase):
     def test_missing_or_duplicate_marker(self):
         path = self.typed / "tests/Main.chibi.in"
         original = path.read_bytes()
-        for marker in (b"FIXTURE_SOURCE", b"PACKAGE_MAIN_SOURCE", b"PACKAGE_MATH_SOURCE", b"PRIVATE_IMPORT_SOURCE"):
+        for marker in (b"FIXTURE_SOURCE", b"PACKAGE_MAIN_SOURCE", b"PACKAGE_MATH_SOURCE", b"FOREIGN_SOURCE", b"MISSING_SYMBOL_SOURCE", b"PRIVATE_IMPORT_SOURCE"):
             for value in (b'"absent"', marker + b" " + marker):
                 with self.subTest(marker=marker, value=value):
                     path.write_bytes(original.replace(marker, value))

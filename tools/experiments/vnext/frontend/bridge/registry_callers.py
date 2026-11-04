@@ -5,7 +5,7 @@ import json
 import re
 
 # The selection owning each rejection is explicit; source-file count does not
-# decide which diagnostic checks run. Foreign linking remains deferred.
+# decide which diagnostic checks run. Link rejection is a separate typed-success path.
 REJECTIONS = {
     "argument_type": ("scalars", "type", "direct call argument type does not match signature"),
     "argument_count": ("scalars", "type", "direct call argument count does not match signature"),
@@ -17,9 +17,9 @@ REJECTIONS = {
     "literal_range": ("scalars", "type", "decimal literal is outside i64 range"),
     "duplicate_parameter": ("scalars", "resolve", "duplicate parameter name"),
     "private_import": ("modules", "resolve", "private member"),
+    "missing_symbol": ("foreign", "link", "unresolved foreign symbol"),
 }
-ACCEPTED = ("scalars", "direct_calls", "modules")
-DEFERRED = ("foreign", "missing_symbol")
+ACCEPTED = ("scalars", "direct_calls", "modules", "foreign")
 REGISTRY_PATH = "tools/experiments/vnext/slice_cases.json"
 
 
@@ -53,7 +53,7 @@ def read_registry(raw, selected):
             or registry["version"] != 1 or registry.get("project_root") != "."):
         raise ValueError("native test registry requires version 1 and project_root '.'")
     rows = registry.get("cases")
-    members = set(ACCEPTED) | set(REJECTIONS) | set(DEFERRED)
+    members = set(ACCEPTED) | set(REJECTIONS)
     if not isinstance(rows, list) or len(rows) != len(members):
         raise ValueError("native registry case membership changed")
     cases = {}
@@ -67,8 +67,11 @@ def read_registry(raw, selected):
     if set(cases) != members:
         raise ValueError("native registry is missing a selected case")
     chosen = cases[selected]
-    if (set(chosen) != {"id", "files", "calls"}
-            or chosen["files"] != case_files(selected)):
+    fields = {"id", "files", "calls"}
+    if selected == "foreign":
+        fields.add("foreign_fixture")
+    if (set(chosen) != fields or chosen["files"] != case_files(selected)
+            or (selected == "foreign" and chosen["foreign_fixture"] != "slice_probe.c")):
         raise ValueError("selected native registry case requires its exact ordered source paths")
     calls = chosen["calls"]
     if not isinstance(calls, list) or not 1 <= len(calls) <= 128:
@@ -97,7 +100,11 @@ def read_registry(raw, selected):
             continue
         _, category, _ = REJECTIONS[name]
         rejection = row.get("reject")
-        if (set(row) != {"id", "files", "reject"}
+        fields = {"id", "files", "reject"}
+        if name == "missing_symbol":
+            fields.add("foreign_fixture")
+        if (set(row) != fields
+                or (name == "missing_symbol" and row["foreign_fixture"] != "slice_probe.c")
                 or row["files"] != case_files(name)
                 or not isinstance(rejection, list) or len(rejection) != 3
                 or rejection[0] != category
@@ -140,8 +147,22 @@ def replace_region(template, region, content):
     return template[:first] + content + template[last + len(end):]
 
 
-def generate(template, chosen, signatures, rejected, sources, rejection_sources):
+def generate(template, chosen, signatures, rejected, sources, rejection_sources, foreign_archive=None):
     """Generate callers from JSON values and prepared literals, never source syntax."""
+    if chosen["id"] == "foreign":
+        if not isinstance(foreign_archive, str) or not foreign_archive:
+            raise ValueError("foreign callers require the exact existing fixture archive")
+        declarations = (f"foreign import fixture_bindings {json.dumps(foreign_archive, ensure_ascii=False)}\n"
+                        "foreign fixture_bindings {\n"
+                        "    chibi_vnext_test_bindings :: () -> rawptr\n"
+                        "    chibi_vnext_test_binding_count :: () -> u64\n}\n\n")
+        template = replace_region(template, "FOREIGN_DECLARATIONS", declarations)
+        template = replace_region(template, "FOREIGN_ARGUMENTS",
+            "            binding_pointer := chibi_vnext_test_bindings();\n"
+            "            binding_count := chibi_vnext_test_binding_count();\n"
+            '            assert(binding_pointer != 0 && binding_count == u64(6), "six actual C fixture bindings");\n')
+    elif foreign_archive is not None:
+        raise ValueError("non-foreign selection cannot link a foreign archive")
     lines = ["CheckCalls :: (module: typed.Module, owner: rawptr) -> int {"]
     # Annotate before evaluation, matching the historical caller's full-width
     # literals. Never route a JSON integer through Chibi's default int type.
@@ -209,6 +230,7 @@ def generate(template, chosen, signatures, rejected, sources, rejection_sources)
 '''
     template = replace_region(template, "FIXTURE_CHECKS", checks)
     lines = ["CheckSourceRejections :: () {"]
+    link_lines = ["CheckLinkRejections :: () {"]
     assert len(rejection_sources) == len(rejected), "one prepared source closure per rejection"
     for index, (row, (expression, document)) in enumerate(zip(rejected, rejection_sources)):
         source = sources[row["files"][0]]
@@ -217,6 +239,30 @@ def generate(template, chosen, signatures, rejected, sources, rejection_sources)
             raise ValueError(f"registry diagnostic anchor must occur once: {row['id']}")
         first, last = source.index(anchor), source.index(anchor) + len(anchor)
         label = json.dumps(f"registry {row['id']}: {row['reject'][0]} / {row['reject'][1]}")
+        if row["id"] == "missing_symbol":
+            # Independent fixture oracle: resolution must fail after real source
+            # production, before any output or callable is published.
+            declaration = b"chibi_slice_absent :: () -> i64"
+            if source[first:first + len(declaration)] != declaration:
+                raise ValueError("missing-symbol fixture requires its exact independent declaration oracle")
+            declaration_end = first + len(declaration)
+            link_lines += [f"    sources{index}: typed.Source[] = {expression};",
+                      f"    switch typed.ProduceSources(sources{index}) {{",
+                      f"        case .Rejected(diagnostic): assert(false, {label});",
+                      "        case .Produced(module):",
+                      '            missing := FindFunction(module, "chibi_slice_absent");',
+                      '            assert(missing != 0 && length(module.foreigns) == 1 && module.foreigns[0].function == missing, "original missing symbol is an imported function");',
+                      "            function := module.functions[int(missing) - 1];",
+                      "            origin := module.origins[int(function.origin) - 1];",
+                      f'            assert(origin.document == {document} && origin.start < origin.end && origin.end <= u32(text_byte_length(sources{index}[0].text)), "missing symbol retains source bounds");',
+                      f'            assert(origin.start == u32({first}) && origin.end == u32({declaration_end}), "missing symbol reports the exact independent declaration span");',
+                      r'            expected := format_text("unresolved foreign symbol \"chibi_slice_absent\" in library \"libslice_probe.a\" at document {} span {}..{}: no matching library and symbol binding", origin.document, origin.start, origin.end);',
+                      "            owner := CompileOwned(module);",
+                      "            CheckFailure(owner, expected);",
+                      "            closed := chibi_vnext_destroy(owner);",
+                      '            assert(closed == 0, "close missing-symbol failure exactly once");',
+                      "    }"]
+            continue
         lines += [f"    sources{index}: typed.Source[] = {expression};",
                   "    // Neither arm can reach Pack or the backend.",
                   f"    switch typed.ProduceSources(sources{index}) {{",
@@ -232,6 +278,8 @@ def generate(template, chosen, signatures, rejected, sources, rejection_sources)
         lines.append("    }")
     lines += ["}", ""]
     template = replace_region(template, "FIXTURE_REJECTIONS", "\n".join(lines))
+    link_lines += ["}", ""]
+    template = replace_region(template, "LINK_REJECTIONS", "\n".join(link_lines))
     c = ["/* Generated only from exact JSON bool/int test values; no source interpretation. */",
          "#include <stdbool.h>", "#include <stdint.h>", "#include <stdio.h>", ""]
     c_types = {"bool": "bool", "i64": "int64_t"}

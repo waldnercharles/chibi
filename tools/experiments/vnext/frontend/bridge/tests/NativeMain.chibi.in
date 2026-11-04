@@ -6,7 +6,7 @@ import os "core:os"
 
 foreign import backend "LIBRARY_PATH"
 foreign backend {
-    chibi_vnext_compile_both :: (words: u32[], word_count: u64, literals: i64[], literal_count: u64, names: u8[], name_byte_count: u64) -> rawptr
+    chibi_vnext_compile_both :: (words: u32[], word_count: u64, literals: i64[], literal_count: u64, names: u8[], name_byte_count: u64, bindings: rawptr, binding_count: u64) -> rawptr
     chibi_vnext_status :: (owner: rawptr) -> u32
     chibi_vnext_diagnostic_length :: (owner: rawptr) -> u64
     chibi_vnext_diagnostic_copy :: (owner: rawptr, destination: u8[], capacity: u64) -> i32
@@ -15,6 +15,10 @@ foreign backend {
     chibi_vnext_object_copy :: (owner: rawptr, destination: u8[], capacity: u64) -> i32
     chibi_vnext_destroy :: (owner: rawptr) -> i32
 }
+
+// BEGIN FOREIGN_DECLARATIONS
+// No foreign fixture is linked for the historical or non-foreign selections.
+// END FOREIGN_DECLARATIONS
 
 // Preparation replaces the source marker with the ordered original source files,
 // each with its exact UTF-8 bytes, canonical path and document label. It replaces
@@ -37,6 +41,7 @@ Main :: () -> int {
     output_path := OUTPUT_PATH;
     if (os.Kind(output_path) != os.KindNone) { return 3; }
     CheckSourceRejections();
+    CheckLinkRejections();
     switch typed.ProduceSources(sources) {
         case .Rejected(diagnostic):
             assert(false, "native fixture must pass the retained source producer");
@@ -98,30 +103,29 @@ Main :: () -> int {
 // actual foreign input arrays, so poisoning writes the exact borrowed storage
 // rather than silently detaching from the retained module's side arrays.
 CompileOwned :: (module: typed.Module) -> rawptr {
-    switch bridge.Pack(module) {
-        case .TooLarge(table):
-            assert(false, "admitted fixture fits the generated transport");
-            return 0;
-        case .Packed(buffers):
-            words: u32[] = [];
-            literals: i64[] = [];
-            names: u8[] = [];
-            words.resize(length(buffers.words));
-            literals.resize(length(buffers.literals));
-            names.resize(length(buffers.name_bytes));
-            for (word, index in buffers.words) { words[index] = word; }
-            for (literal, index in buffers.literals) { literals[index] = literal; }
-            for (byte, index in buffers.name_bytes) { names[index] = byte; }
-            owner := chibi_vnext_compile_both(words, u64(length(words)), literals, u64(length(literals)), names, u64(length(names)));
-            assert(owner != 0, "backend returns an owned ready or failure result");
-            for (index in 0..<length(words)) { words[index] = 0; }
-            for (index in 0..<length(literals)) { literals[index] = 0; }
-            for (index in 0..<length(names)) { names[index] = 0; }
-            words = [];
-            literals = [];
-            names = [];
-            return owner;
-    }
+    buffers := bridge.Pack(module);
+    words: u32[] = [];
+    literals: i64[] = [];
+    names: u8[] = [];
+    words.resize(length(buffers.words));
+    literals.resize(length(buffers.literals));
+    names.resize(length(buffers.name_bytes));
+    for (word, index in buffers.words) { words[index] = word; }
+    for (literal, index in buffers.literals) { literals[index] = literal; }
+    for (byte, index in buffers.name_bytes) { names[index] = byte; }
+// BEGIN FOREIGN_ARGUMENTS
+    binding_pointer: rawptr = 0;
+    binding_count: u64 = 0;
+// END FOREIGN_ARGUMENTS
+    owner := chibi_vnext_compile_both(words, u64(length(words)), literals, u64(length(literals)), names, u64(length(names)), binding_pointer, binding_count);
+    assert(owner != 0, "backend returns an owned ready or failure result");
+    for (index in 0..<length(words)) { words[index] = 0; }
+    for (index in 0..<length(literals)) { literals[index] = 0; }
+    for (index in 0..<length(names)) { names[index] = 0; }
+    words = [];
+    literals = [];
+    names = [];
+    return owner;
 }
 
 Ready :: (owner: rawptr) -> bool {
@@ -393,6 +397,42 @@ CheckSourceRejections :: () {
 
 // END FIXTURE_REJECTIONS
 
+// BEGIN LINK_REJECTIONS
+CheckLinkRejections :: () { }
+// END LINK_REJECTIONS
+
+// Shared by the real missing-symbol rejection and profiling-failure control.
+// Copying failure metadata never publishes or casts an entry; the caller closes
+// the owner exactly once after these checks return.
+CheckFailure :: (owner: rawptr, expected: string) {
+    status := chibi_vnext_status(owner);
+    object_length := chibi_vnext_object_length(owner);
+    failure_entry := chibi_vnext_entry(owner, u32(1));
+    assert(status == u32(4) && object_length == u64(0) && failure_entry == 0, "owned BackendFailure has no partial output");
+    unavailable := [u8(165)];
+    retained_unavailable := unavailable;
+    absent_copy := chibi_vnext_object_copy(owner, unavailable, u64(1));
+    assert(absent_copy == 4, "failure has no copyable object");
+    CheckSentinel(unavailable);
+    CheckSentinel(retained_unavailable);
+    count := chibi_vnext_diagnostic_length(owner);
+    assert(count == u64(text_byte_length(expected)), "failure owns the exact expected diagnostic length");
+    bytes: u8[] = [];
+    bytes.resize(int(count));
+    for (index in 0..<length(bytes)) { bytes[index] = u8(165); }
+    retained := bytes;
+    short_copy := chibi_vnext_diagnostic_copy(owner, bytes, count - u64(1));
+    assert(short_copy == 2, "short diagnostic copy rejects before writing");
+    CheckSentinel(bytes);
+    CheckSentinel(retained);
+    retained_for_copy := bytes;
+    copied := chibi_vnext_diagnostic_copy(owner, bytes, count);
+    assert(copied == 0, "owned failure diagnostic copies exactly");
+    CheckSentinel(retained);
+    CheckSentinel(retained_for_copy);
+    assert(text_from_bytes(bytes) == expected, "failure retains the exact expected diagnostic");
+}
+
 PerfBuildIdFailure :: (sources: typed.Source[]) -> int {
     CheckSourceRejections();
     switch typed.ProduceSources(sources) {
@@ -401,33 +441,7 @@ PerfBuildIdFailure :: (sources: typed.Source[]) -> int {
             return 1;
         case .Produced(module):
             owner := CompileOwned(module);
-            status := chibi_vnext_status(owner);
-            object_length := chibi_vnext_object_length(owner);
-            failure_entry := chibi_vnext_entry(owner, u32(1));
-            assert(status == u32(4) && object_length == u64(0) && failure_entry == 0, "PERF_BUILDID_DIR returns owned BackendFailure without partial output");
-            unavailable := [u8(165)];
-            retained_unavailable := unavailable;
-            absent_copy := chibi_vnext_object_copy(owner, unavailable, u64(1));
-            assert(absent_copy == 4, "failure has no copyable object");
-            CheckSentinel(unavailable);
-            CheckSentinel(retained_unavailable);
-            expected := "PERF_BUILDID_DIR profiling is unsupported by this backend";
-            count := chibi_vnext_diagnostic_length(owner);
-            assert(count == u64(text_byte_length(expected)), "environment failure owns the exact expected diagnostic length");
-            bytes: u8[] = [];
-            bytes.resize(int(count));
-            for (index in 0..<length(bytes)) { bytes[index] = u8(165); }
-            retained := bytes;
-            short_copy := chibi_vnext_diagnostic_copy(owner, bytes, count - u64(1));
-            assert(short_copy == 2, "short diagnostic copy rejects before writing");
-            CheckSentinel(bytes);
-            CheckSentinel(retained);
-            retained_for_copy := bytes;
-            copied := chibi_vnext_diagnostic_copy(owner, bytes, count);
-            assert(copied == 0, "owned failure diagnostic copies exactly");
-            CheckSentinel(retained);
-            CheckSentinel(retained_for_copy);
-            assert(text_from_bytes(bytes) == expected, "failure identifies the actual environment blocker");
+            CheckFailure(owner, "PERF_BUILDID_DIR profiling is unsupported by this backend");
             closed := chibi_vnext_destroy(owner);
             assert(closed == 0, "failure owner destroys successfully");
             return 0;

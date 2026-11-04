@@ -1,6 +1,13 @@
 # Typed-module scalar transport bindings
 
-Status: version-2 scalar/direct-call transport passed the native Chibi packing
+Status: version 3 adds explicit foreign membership and integer equality. The
+foreign-call tranche is under review. The current complete typed-source,
+source-to-v3-Pack, eight-test Arena framing and seven-test Rust backend suites
+pass. A fresh non-test backend library and original-source foreign JIT/AOT
+remain separate open gates.
+These results do not establish full-corpus or throughput acceptance.
+
+Historical version-2 scalar/direct-call transport passed the native Chibi packing
 and seven standalone Rust framing tests in the [six-stage pure-source proof](../typed/README.md#accepted-version-2-pure-transform-result).
 The separate Rust backend proof and three exact-source private native proofs
 also passed, including JIT/environment-failure/linked C execution. The later
@@ -44,8 +51,13 @@ not affect artifacts. The initial v1 digest is
 The version-2 digest is
 `9812f63cd2c2d7786cc536d5aed57665c4ab8c75327aaa744e25533039f2a3b1`.
 It appends opcodes 6–10 and the two-word Call table without changing the exported
-C signatures or literal/name side buffers. Version-1 frames are rejected rather
-than guessed or translated; pair the new Pack with a version-2 backend.
+C signatures or literal/name side buffers. Version 3 has digest
+`886b15e405bde5a0cb4223fc8986022797bd38d67946efaa3d6fa43c2fcc3ec6`.
+It adds EqualI64 and a two-word Foreign table after Functions. Versions 1 and 2
+are rejected rather than translated; pair the current Pack with a version-3
+backend. Its C compile entry point additionally takes an explicit foreign-binding
+pointer/count pair, described by `../../slice_backend/foreign.h`. The descriptors
+are separate invocation metadata, not pointers embedded in the scalar frame.
 
 From the repository root:
 
@@ -61,8 +73,8 @@ compiler invocation, source discovery or user-program interpretation occurs.
 
 ## One pack, three synchronous borrows
 
-The ordinary Chibi call is `bridge.Pack(module)`, returning
-`Packed(buffers)` or `TooLarge(table)`. The caller handles one result and passes
+The ordinary Chibi call is `buffers := bridge.Pack(module)`, returning
+`Buffers` directly. The caller passes
 `buffers.words`, `buffers.literals`, and `buffers.name_bytes` to its synchronous
 C entry point. `generated/Pack.chibi` is package `vnext_bridge` and imports the
 existing `project:vnext_typed` package. It does not call `Verify` again. The
@@ -80,11 +92,11 @@ exercise scalar-array transport and copy-out/COW isolation; actual native
 record layout, allocation/COW costs and conversion traffic remain unmeasured.
 
 All counts are element counts. The word buffer starts with version followed by
-12 row counts, in Module declaration order with literals/name_bytes omitted:
-functions, signatures, parameter_types, blocks, block_parameters, values,
-instructions, edges, calls, arguments, origins, names. This is 13 u32 words /
-52 bytes. Rows follow in that same order, fields in declaration order. Widths
-are 6, 3, 1, 4, 1, 2, 6, 3, 2, 1, 3, 2 words. Call stores callee FunctionID and
+13 row counts, in Module declaration order with literals/name_bytes omitted:
+functions, foreigns, signatures, parameter_types, blocks, block_parameters, values,
+instructions, edges, calls, arguments, origins, names. This is 14 u32 words /
+56 bytes. Rows follow in that same order, fields in declaration order. Widths
+are 6, 2, 3, 1, 4, 1, 2, 6, 3, 2, 1, 3, 2 words. Call stores callee FunctionID and
 first argument offset; its arity comes only from the resolved Signature. Calls
 and edges own disjoint spans of the same arguments table. Literal and name
 lengths come from their independent C pointer/count pairs. Native byte order is intentional: these are
@@ -92,10 +104,13 @@ same-process scalar arrays, not an endian-neutral on-disk representation.
 
 The Chibi length domain is signed 32-bit. Pack checks each count against the
 remaining word capacity before multiplication/addition, calculates in i64 and
-narrows only after the bounds are proved. It returns the overflowing table
-before allocation. Allocation failure remains the runtime's abort contract.
-An all-zero empty Module packs to version 2 plus twelve zero counts and empty
-side arrays; zero and version 1 are not accepted transport versions.
+narrows only after the bounds are proved. These are internal assertions, not
+source-input validation: Pack accepts only produced/verified Modules. The
+current conservative admission bound is 1,058,286 words, below the signed
+32-bit limit. A violated capacity invariant stops before allocation; allocation
+failure remains the runtime's abort contract. An all-zero empty Module packs to
+version 3 plus thirteen zero counts and empty side arrays; zero and versions 1/2
+are not accepted transport versions.
 
 ## Rust consumer contract
 
@@ -158,7 +173,7 @@ results after each mutation, and repacks the unchanged source. These reference
 copies and COW mutation checks are test-only costs. `tests/arena_tests.rs` is a standalone Rust test
 caller for zero-copy row/side-array views, empty and malformed frames, canonical
 spans and exhaustive kind decoding; it has no backend dependencies. Its bounded
-replay now covers all twelve count positions with zero, one, MAX_ELEMENTS and
+replay now covers all thirteen count positions with zero, one, MAX_ELEMENTS and
 MAX_ELEMENTS+1, every short prefix of small frames, and extra words. Large-count
 rejections use actual short headers with safe Arena::from_parts calls, never
 large allocations or fabricated pointers. All seven version-2 Rust tests passed
@@ -204,12 +219,12 @@ compilation-throughput result is claimed by this packing proof.
 IR recipe. `tests/NativeMain.chibi.in` calls Produce/Verify, Pack and the backend,
 then checks JIT results, owner lifetime, copy-out and an owned environment
 failure. `tests/native_aot_caller.c` independently checks the copied object.
-The [backend README](../../slice_backend/README.md) records current version-2
-verification status, the separate historical version-1 result, the ABI contract
+The [backend README](../../slice_backend/README.md) records current foreign-call
+work, the historical version-1/2 results, the ABI contract
 and remaining gates.
 
 `prepare_native.py --case nativecases` remains the default historical regression.
-Three version-2 selections use the same `../../slice_cases.json` registry:
+The historical scalar/direct-call/package selections use the same `../../slice_cases.json` registry:
 
 - `--case scalars`: the original 15 scalar calls and nine applicable source
   rejections, each a separate Produce invocation with category/location checks.
@@ -236,7 +251,11 @@ for the independent terminal readbacks.
 The package selection now transports the original modules Main/Math with
 document labels 19/20 and, independently, private_import/Math with labels
 100/101. Its native stages and final independent admission passed. The eight
-original foreign calls and `missing_symbol` remain unsupported and open. The
+original foreign calls and `missing_symbol` now have prepared callers, with
+integration acceptance still open. `--case foreign` binds the exact independently
+reviewed archive containing the six original C functions and descriptor getters.
+The same archive must be used for both JIT caller linkage and final AOT linkage;
+there is no process-symbol fallback or fabricated replacement implementation. The
 original 25-call/11-rejection
 inventory is unchanged; 23 supplemental calls make 48 total expected calls.
 The runner takes the exact AOT success record from the prepared case.
@@ -247,6 +266,12 @@ dependency. The exact nativecases/scalars/direct_calls/modules snapshots
 contain 33/44/35/37 recorded files. Both normal and PERF callers use the same
 ProduceSources/Pack path. A shared Math source is copied once per snapshot but
 remains a distinct input in each independent source-array invocation.
+
+The backend and foreign fixture archive must use plain foreign-library paths:
+no quote, backslash, C0 control byte or DEL. Spaces and UTF-8 are supported.
+The preparer rejects unsupported spelling before creating output, and the runner
+checks it independently. Ordinary source literals and output paths retain their
+separate string-escaping support.
 
 The public `prepare_native.py` snapshots the exact working-tree source closure,
 templates, C caller and controller into a new directory. It checks generated
@@ -268,14 +293,21 @@ python3 -I -B -S tools/experiments/vnext/frontend/bridge/prepare_native.py \
 
 Add `--case scalars`, `--case direct_calls` or `--case modules` for its separate
 fresh snapshot.
-Every selection needs a separately reviewed version-2 backend; the historical
-version-1 library below cannot consume the current frame. The version-2 result
+Every selection needs a separately reviewed version-3 backend; historical
+version-1/2 libraries cannot consume the current frame. The version-2 result
 used this public preparer's exact output with a private, separately admitted
 five-stage controller. The later package-aware proof also uses exact public-
 preparer bytes with a separately admitted private controller and the unchanged
 c5 seed/backend identities. The public `run_native.py` whole-run workflow was
 not rerun for either checkpoint; passing controls do not create a whole-run
 receipt or change its seed pin.
+
+The current version-3 typed-source and packing proofs use the separately
+admitted current compiler. The public runner below still accepts only the
+pinned c5 seed, so it cannot select that current-compiler route. Current-v3
+compatibility with c5 has not been established, and the command below is not a
+validated current-v3 reproduction. A current-compiler runner needs its own
+explicit identity contract and fresh execution evidence; do not bypass the pin.
 
 After the earlier three-case native proofs closed, a generator docstring-only
 cleanup changed no behavior. All three preparations were regenerated and their compiled source
@@ -343,18 +375,19 @@ outputs for new work.
 
 Echo/Join has 129 u32 payload words = 516 bytes, one i64 = 8 bytes and eight
 name bytes. The existing scalar payload is **532 bytes**. The transport adds
-52 header bytes in version 2, totaling **584 bytes**. Pack's logical temporary
-word buffer is 142 words / 568 scalar bytes, including the header. The
+56 header bytes in version 3, totaling **588 bytes**. Pack's logical temporary
+word buffer is 143 words / 572 scalar bytes, including the header. The version-2
+frame was 584 bytes with a 52-byte header and 142-word / 568-scalar-byte buffer. The
 historical version-1 frame was 580 bytes with a 48-byte header and
 141-word / 564-scalar-byte buffer; its receipts retain that accounting. Only the 516-byte u32 payload
 is explicitly flattened; the 16 side-array bytes are borrowed. These are scalar
 accounting figures, not measured allocator/GC/FFI memory or speed claims.
 
-The hot transform is linear in scalar fields with twelve constant-count length
-checks and one sequential write per scalar, plus destination initialization.
-For this fixture the minimum copying work is 129 scalar reads/writes and thirteen
+The hot transform is linear in scalar fields with thirteen constant-count length
+assertions and one sequential write per scalar, plus destination initialization.
+For this fixture the minimum copying work is 129 scalar reads/writes and fourteen
 header writes, estimated well under a frame on ordinary hardware; actual Chibi
-lowering, allocation/COW and native-boundary costs are unmeasured. Rust framing is O(12)
+lowering, allocation/COW and native-boundary costs are unmeasured. Rust framing is O(13)
 with no row traversal; checked lowering is a separate backend cost. The Chibi
 producer alone owns semantic verification.
 The cold generator scans a roughly 4 KiB schema and emits two small fixed-source

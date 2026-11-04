@@ -230,6 +230,16 @@ class NativeRunnerTests(unittest.TestCase):
             with self.subTest(content=content), self.assertRaises(ValueError):
                 SUBJECT.check_sources(directory, manifest, self.stage_names)
 
+    def test_check_sources_rejects_escaped_backend_foreign_paths(self):
+        directory, manifest = self.snapshot()
+        for character in ('"', '\\', '\x00', '\n', '\r', '\t', '\x1f', '\x7f'):
+            altered = copy.deepcopy(manifest)
+            path = str(self.base / ('backend' + character + '.so'))
+            altered["backend"].update(path=path, resolved=path)
+            with self.subTest(character=character), self.assertRaisesRegex(
+                    ValueError, "backend requires a plain foreign library path"):
+                SUBJECT.check_sources(directory, altered, self.stage_names)
+
 
     def test_malformed_manifest_roots_and_required_fields(self):
         directory, manifest = self.snapshot()
@@ -630,6 +640,49 @@ else:
                 altered["files"][index]["path"] = "inputs/slice_cases/modules/math/Wrong.chibi"
             with self.subTest(dependency=change), self.assertRaises(ValueError):
                 SUBJECT.check_sources(directory, altered, self.stage_names)
+
+
+    def test_foreign_archive_links_once_after_the_exact_object(self):
+        archive = self.base / "fixture.a"
+        plan = SUBJECT.stage_plan(self.base, "/tools/c5", "/tools/llvm", "/tools/clang", [], archive)
+        self.assertEqual(plan[3]["argv"], self.plan[3]["argv"][:-2] + [str(archive)] + self.plan[3]["argv"][-2:])
+        self.assertEqual(plan[3]["argv"].count(str(archive)), 1)
+        for index in (0, 1, 2, 4): self.assertEqual(plan[index], self.plan[index])
+
+    def test_foreign_archive_manifest_and_original_c_inputs_are_bound(self):
+        prepare = types.ModuleType("foreign_native_preparation")
+        prepare.__file__ = str(HERE / "prepare_native.py")
+        exec(compile(Path(prepare.__file__).read_bytes(), prepare.__file__, "exec"), prepare.__dict__)
+        backend = self.base / "identity-backend.so"; backend.write_bytes(b"identity only")
+        archive = self.base / "fixture.a"; archive.write_bytes(b"archive identity only")
+        directory = self.base / "foreign"
+        manifest = prepare.prepare(directory, backend, "foreign", archive)
+        identities = SUBJECT.check_sources(directory, manifest, self.stage_names)
+        self.assertEqual(len(manifest["files"]), 39)
+        self.assertEqual(len(identities), 43)
+        self.assertIn(str(archive), identities)
+        self.assertEqual(manifest["expectations"]["rejections"], ["missing_symbol"])
+        self.assertEqual(manifest["expectations"]["aot_checks"], 8)
+        for key, value in (("path", "relative"), ("resolved", "/other.a"),
+                           ("bytes", True), ("bytes", 0), ("sha256", "bad")):
+            altered = copy.deepcopy(manifest); altered["foreign_archive"][key] = value
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                SUBJECT.check_sources(directory, altered, self.stage_names)
+        altered = copy.deepcopy(manifest); del altered["foreign_archive"]
+        with self.assertRaises(ValueError): SUBJECT.check_sources(directory, altered, self.stage_names)
+        for name in ("inputs/slice_probe.c", "inputs/foreign_bindings.c", "inputs/foreign.h"):
+            path = directory / name; original = path.read_bytes(); path.write_bytes(original + b" ")
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "snapshot changed"):
+                SUBJECT.check_sources(directory, manifest, self.stage_names)
+            path.write_bytes(original)
+        archive.write_bytes(b"different")
+        with self.assertRaisesRegex(ValueError, "fixture archive changed"):
+            SUBJECT.check_sources(directory, manifest, self.stage_names)
+        ordinary = self.base / "ordinary"
+        old = prepare.prepare(ordinary, backend)
+        old["foreign_archive"] = manifest["foreign_archive"]
+        with self.assertRaisesRegex(ValueError, "non-foreign"):
+            SUBJECT.check_sources(ordinary, old, self.stage_names)
 
 
 if __name__ == "__main__":

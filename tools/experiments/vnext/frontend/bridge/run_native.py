@@ -27,8 +27,9 @@ REGISTRY_REJECTIONS = {
                 "duplicate_parameter"),
     "direct_calls": (),
     "modules": ("private_import",),
+    "foreign": ("missing_symbol",),
 }
-SNAPSHOT_FILES = {"nativecases": 33, "scalars": 44, "direct_calls": 35, "modules": 37}
+SNAPSHOT_FILES = {"nativecases": 33, "scalars": 44, "direct_calls": 35, "modules": 37, "foreign": 39}
 
 
 def file_identity(path):
@@ -58,7 +59,7 @@ def write_new(path, value):
         stream.write(payload)
 
 
-def stage_plan(directory, seed, llvm_bin, cc, library_dirs):
+def stage_plan(directory, seed, llvm_bin, cc, library_dirs, foreign_archive=None):
     """Pure argv/environment construction. The five stages have one definition."""
     directory, seed, llvm_bin, cc = map(Path, (directory, seed, llvm_bin, cc))
     normal = directory / "run/normal"
@@ -80,7 +81,7 @@ def stage_plan(directory, seed, llvm_bin, cc, library_dirs):
         ("c_link", 59, [str(cc), "-std=c11", "-O0", "-g0", "-Wall", "-Wextra", "-Werror",
           "-B" + str(llvm_bin) + "/", "-fuse-ld=lld", "-v", "-H", "-MD", "-MF",
           str(output / "native-aot.d"), "-Wl,--trace", str(directory / "inputs/native_aot_caller.c"),
-          str(obj), "-o", str(aot)], output, aot),
+          str(obj), *([str(foreign_archive)] if foreign_archive is not None else []), "-o", str(aot)], output, aot),
         ("aot_run", 29, [str(aot)], directory / "run/aot", None),
     ]
     result = []
@@ -160,6 +161,12 @@ def validate_manifest(directory, manifest, stage_names):
             digest = row.get("sha256")
             if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
                 raise ValueError(f"{label}.sha256 must be a lowercase SHA256 digest")
+    fixture_archive = manifest.get("foreign_archive")
+    if expected["case"] == "foreign":
+        if not isinstance(fixture_archive, dict) or set(fixture_archive) != {"path", "resolved", "bytes", "sha256"}:
+            raise ValueError(f"{prefix}: foreign selection requires one exact fixture archive")
+    elif "foreign_archive" in manifest:
+        raise ValueError(f"{prefix}: non-foreign selection cannot carry a fixture archive")
     backend = manifest.get("backend")
     if not isinstance(backend, dict):
         raise ValueError(f"{prefix}: backend must be an object")
@@ -171,6 +178,12 @@ def validate_manifest(directory, manifest, stage_names):
     digest = backend.get("sha256")
     if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
         raise ValueError(f"{prefix}: backend.sha256 must be a lowercase SHA256 digest")
+    if fixture_archive is not None:
+        if (any(not isinstance(fixture_archive[key], str) or not fixture_archive[key] for key in ("path", "resolved"))
+                or type(fixture_archive["bytes"]) is not int or fixture_archive["bytes"] <= 0
+                or not isinstance(fixture_archive["sha256"], str) or len(fixture_archive["sha256"]) != 64
+                or any(c not in "0123456789abcdef" for c in fixture_archive["sha256"])):
+            raise ValueError(f"{prefix}: invalid fixture archive identity")
 
 
 def check_sources(directory, manifest, stage_names):
@@ -223,20 +236,29 @@ def check_sources(directory, manifest, stage_names):
                 or len({row["id"] for row in cases}) != len(cases)):
             raise ValueError("invalid prepared registry membership")
         selected = [row for row in cases if row["id"] == expected["case"]]
-        if (len(selected) != 1 or set(selected[0]) != {"id", "files", "calls"}
+        selected_fields = {"id", "files", "calls"}
+        if expected["case"] == "foreign":
+            selected_fields.add("foreign_fixture")
+        if (len(selected) != 1 or set(selected[0]) != selected_fields
+                or (expected["case"] == "foreign" and selected[0]["foreign_fixture"] != "slice_probe.c")
                 or not isinstance(selected[0]["calls"], list)):
             raise ValueError("prepared registry requires exactly one selected call case")
         selected = selected[0]
         required_rejections = set(REGISTRY_REJECTIONS[expected["case"]])
         rejected = [row for row in cases if row["id"] in required_rejections]
         if (set(row["id"] for row in rejected) != required_rejections
-                or any(set(row) != {"id", "files", "reject"} for row in rejected)):
+                or any(set(row) != ({"id", "files", "reject", "foreign_fixture"} if row["id"] == "missing_symbol"
+                                   else {"id", "files", "reject"})
+                       or (row["id"] == "missing_symbol" and row.get("foreign_fixture") != "slice_probe.c")
+                       for row in rejected)):
             raise ValueError("prepared registry requires its exact source rejections")
         if (expected["aot_checks"] != len(selected["calls"])
                 or expected["rejections"] != [row["id"] for row in rejected]):
             raise ValueError("native expectations differ from the prepared registry")
         required_inputs = {"inputs/NativeMain.chibi.in", "inputs/slice_cases.json",
                            "inputs/registry_callers.py", "inputs/native_aot_caller.c"}
+        if expected["case"] == "foreign":
+            required_inputs.update(("inputs/slice_probe.c", "inputs/foreign_bindings.c", "inputs/foreign.h"))
         for row in [selected, *rejected]:
             files = row.get("files")
             name = row["id"]
@@ -251,12 +273,27 @@ def check_sources(directory, manifest, stage_names):
             raise ValueError("prepared registry source membership differs from snapshot")
     backend = manifest["backend"]
     library = Path(backend["path"])
+    if any(character in '\"\\' or ord(character) < 32 or ord(character) == 127
+           for character in str(library)):
+        raise ValueError("backend requires a plain foreign library path")
     if not library.is_absolute() or str(library) != backend["resolved"]:
         raise ValueError("backend must name its absolute non-symlink path")
     current = file_identity(library)
     if not current["bytes"] or any(current[key] != backend[key] for key in ("bytes", "sha256")):
         raise ValueError(f"backend library changed: {library}")
     identities[str(library)] = current
+    if "foreign_archive" in manifest:
+        fixture_archive = manifest["foreign_archive"]
+        archive_path = Path(fixture_archive["path"])
+        if any(character in '\"\\' or ord(character) < 32 or ord(character) == 127
+               for character in str(archive_path)):
+            raise ValueError("fixture archive requires a plain foreign library path")
+        if not archive_path.is_absolute() or str(archive_path) != fixture_archive["resolved"]:
+            raise ValueError("fixture archive must name its absolute non-symlink path")
+        current = file_identity(archive_path)
+        if any(current[key] != fixture_archive[key] for key in ("bytes", "sha256")):
+            raise ValueError(f"fixture archive changed: {archive_path}")
+        identities[str(archive_path)] = current
     return identities
 
 
@@ -317,7 +354,9 @@ def run(directory, seed, llvm_bin, cc, library_dirs):
     for path in [llvm_bin, *libraries]:
         if not path.is_dir() or path.resolve() != path or ":" in str(path):
             raise ValueError(f"tool/library directory must be an existing non-symlink path without colons: {path}")
-    plan = stage_plan(directory, seed, llvm_bin, cc, libraries)
+    fixture_archive = manifest.get("foreign_archive")
+    plan = stage_plan(directory, seed, llvm_bin, cc, libraries,
+                      fixture_archive["path"] if fixture_archive is not None else None)
     for name in ("attempt", "output", "run", "home", "tmp", "cache"):
         path = directory / name
         if path.exists() or path.is_symlink():

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! Same-process typed-frame backend. See README.md for the C caller contract.
-//! No input borrow survives compile_both; only complete output is published.
+//! Metadata borrows end during compile_both; imported code stays caller-owned.
+//! Only complete output is published.
 #![deny(unsafe_op_in_unsafe_fn)]
 
 #[cfg(all(not(test), not(panic = "abort")))]
@@ -25,6 +26,46 @@ use std::{mem, ptr, slice, str};
 // Dense adapter maps use one Cranelift entity ID including its absent sentinel.
 const _: () = assert!(mem::size_of::<PackedOption<Value>>() == 4);
 const _: () = assert!(mem::size_of::<PackedOption<FuncRef>>() == 4);
+
+// The descriptor is a process-local C ABI, never a serialized frame. Metadata
+// borrows end at compile_both; code must remain callable until owner destruction.
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub struct ForeignBinding {
+    pub library: *const u8,
+    pub library_length: u64,
+    pub symbol: *const u8,
+    pub symbol_length: u64,
+    pub parameter_types: *const u32,
+    pub parameter_count: u64,
+    pub result_type: u32,
+    pub address: *const c_void,
+}
+
+// Linux x86-64 System V: 4 bytes of ABI padding precede the code pointer.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+const _: () = {
+    assert!(mem::size_of::<ForeignBinding>() == 64);
+    assert!(mem::align_of::<ForeignBinding>() == 8);
+    assert!(mem::offset_of!(ForeignBinding, library) == 0);
+    assert!(mem::offset_of!(ForeignBinding, library_length) == 8);
+    assert!(mem::offset_of!(ForeignBinding, symbol) == 16);
+    assert!(mem::offset_of!(ForeignBinding, symbol_length) == 24);
+    assert!(mem::offset_of!(ForeignBinding, parameter_types) == 32);
+    assert!(mem::offset_of!(ForeignBinding, parameter_count) == 40);
+    assert!(mem::offset_of!(ForeignBinding, result_type) == 48);
+    assert!(mem::offset_of!(ForeignBinding, address) == 56);
+};
+
+// Validated views avoid repeating UTF-8/type checks during bounded resolution.
+#[derive(Debug)]
+struct Binding<'a> {
+    library: &'a str,
+    symbol: &'a str,
+    parameter_types: &'a [u32],
+    result_type: u32,
+    address: *const u8,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
@@ -138,7 +179,10 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
     let mut context = module.make_context();
     // Declare the whole module before any body, preserving dense source IDs.
     // Forward, self and mutual calls share this same eager compilation path.
-    for function in a.functions {
+    let mut foreigns = a.foreigns.iter().peekable();
+    for (at, function) in a.functions.iter().enumerate() {
+        let imported = foreigns.peek().is_some_and(|row| row[FOREIGN_FUNCTION] == at as u32 + 1);
+        if imported { foreigns.next(); }
         let source = &a.signatures[index(function[FUNCTION_SIGNATURE], a.signatures.len())];
         assert!(source[SIGNATURE_PARAMETER_COUNT] <= MAX_PARAMETERS as u32,
                 "typed signature parameter admission");
@@ -150,13 +194,17 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
         for &type_id in &a.parameter_types[parameters] { signature.params.push(abi_parameter(type_id)); }
         signature.returns.push(abi_parameter(source[SIGNATURE_RESULT_TYPE]));
         assert!(function[FUNCTION_EXPORTED] <= 1, "typed export membership");
-        let linkage = if function[FUNCTION_EXPORTED] == 1 { Linkage::Export } else { Linkage::Local };
+        let linkage = if imported { Linkage::Import }
+            else if function[FUNCTION_EXPORTED] == 1 { Linkage::Export }
+            else { Linkage::Local };
         let name = names[index(function[FUNCTION_NAME], names.len())];
         let id = module.declare_function(name, linkage, signature)
             .expect("verified typed function declaration");
         declarations.push(id);
         module.clear_signature(&mut context.func.signature);
     }
+
+    assert!(foreigns.next().is_none(), "typed foreign function order");
 
     let mut builder_context = FunctionBuilderContext::new();
     let mut blocks = Vec::with_capacity(a.blocks.len());
@@ -168,7 +216,9 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
     for (&id, function) in declarations.iter().zip(a.functions) {
         // Reuse the declaration's ABI facts and the context's signature storage.
         // Signature::clone would allocate fresh parameter/return buffers here.
-        let signature = &module.declarations().get_function_decl(id).signature;
+        let declaration = module.declarations().get_function_decl(id);
+        if declaration.linkage == Linkage::Import { continue; }
+        let signature = &declaration.signature;
         context.func.signature.params.extend_from_slice(&signature.params);
         context.func.signature.returns.extend_from_slice(&signature.returns);
         context.func.signature.call_conv = signature.call_conv;
@@ -216,6 +266,9 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
                     Opcode::MultiplyI64 => Some((builder.ins().imul(value(&values, instruction[INSTRUCTION_LEFT]),
                                                                    value(&values, instruction[INSTRUCTION_RIGHT])), I64)),
                     Opcode::GreaterI64 => Some((builder.ins().icmp(IntCC::SignedGreaterThan,
+                        value(&values, instruction[INSTRUCTION_LEFT]),
+                        value(&values, instruction[INSTRUCTION_RIGHT])), BOOL)),
+                    Opcode::EqualI64 => Some((builder.ins().icmp(IntCC::Equal,
                         value(&values, instruction[INSTRUCTION_LEFT]),
                         value(&values, instruction[INSTRUCTION_RIGHT])), BOOL)),
                     Opcode::NotBool => Some((builder.ins().icmp_imm(IntCC::Equal,
@@ -331,7 +384,62 @@ fn native_isa() -> Result<OwnedTargetIsa, Failure> {
     })
 }
 
-fn compile(a: &Arena<'_>) -> Result<Compiled, Failure> {
+// At most 32 imports by 32 bindings, once before either native consumer.
+// Source verification owns semantic validity; these assertions protect adapter
+// invariants, while absent/mismatched external bindings are ordinary failures.
+fn resolve_imports(a: &Arena<'_>, names: &[&str], bindings: &[Binding<'_>])
+    -> Result<Vec<*const u8>, Failure>
+{
+    assert!(a.foreigns.len() <= MAX_FUNCTIONS as usize, "typed foreign admission");
+    let mut addresses = Vec::with_capacity(a.foreigns.len());
+    let mut previous = 0;
+    for foreign in a.foreigns {
+        let function_id = foreign[FOREIGN_FUNCTION];
+        assert!(function_id > previous, "typed foreign function order");
+        previous = function_id;
+        let function = &a.functions[index(function_id, a.functions.len())];
+        assert_eq!(function[FUNCTION_FIRST_BLOCK], 0, "imported body starts at zero");
+        assert_eq!(function[FUNCTION_BLOCK_COUNT], 0, "imported function has no body");
+        assert_eq!(function[FUNCTION_EXPORTED], 0, "imported function is not exported");
+        let symbol = names[index(function[FUNCTION_NAME], names.len())];
+        let library = names[index(foreign[FOREIGN_LIBRARY], names.len())];
+        let signature = &a.signatures[index(function[FUNCTION_SIGNATURE], a.signatures.len())];
+        let parameters = model_span(signature[SIGNATURE_FIRST_PARAMETER],
+                                    signature[SIGNATURE_PARAMETER_COUNT], a.parameter_types.len());
+        let binding = bindings.iter().find(|binding| binding.library == library && binding.symbol == symbol);
+        let reason = match binding {
+            Some(binding) if binding.parameter_types == &a.parameter_types[parameters]
+                && binding.result_type == signature[SIGNATURE_RESULT_TYPE] => {
+                    addresses.push(binding.address);
+                    continue;
+                }
+            Some(_) => "signature mismatch",
+            None => "no matching library and symbol binding",
+        };
+        let origin = &a.origins[index(function[FUNCTION_ORIGIN], a.origins.len())];
+        return Err(Failure { status: Status::BackendFailure, message: format!(
+            "unresolved foreign symbol {symbol:?} in library {library:?} at document {} span {}..{}: {reason}",
+            origin[ORIGIN_DOCUMENT], origin[ORIGIN_START], origin[ORIGIN_END]) });
+    }
+    Ok(addresses)
+}
+
+fn jit_builder(isa: OwnedTargetIsa, a: &Arena<'_>, names: &[&str], addresses: &[*const u8]) -> JITBuilder {
+    assert_eq!(a.foreigns.len(), addresses.len(), "every import was resolved");
+    let mut builder = JITBuilder::with_isa(isa, default_libcall_names());
+    for (foreign, &address) in a.foreigns.iter().zip(addresses) {
+        assert!(!address.is_null(), "resolved code address is nonnull");
+        let function = &a.functions[index(foreign[FOREIGN_FUNCTION], a.functions.len())];
+        builder.symbol(names[index(function[FUNCTION_NAME], names.len())], address);
+    }
+    // with_isa installs dlsym; callbacks run newest-first and None falls through.
+    // All admitted symbols are registered above. Unexpected helper/import lookup
+    // is a compiler bug, never permission to resolve process-global symbols.
+    builder.symbol_lookup_fn(Box::new(|name| panic!("unexpected JIT symbol lookup: {name}")));
+    builder
+}
+
+fn compile(a: &Arena<'_>, bindings: &[Binding<'_>]) -> Result<Compiled, Failure> {
     // Upstream perf-map creation uses unwrap. This bounded compiler admits
     // no perf-map side effects; return an owned environment error before JIT.
     if std::env::var_os("PERF_BUILDID_DIR").is_some() {
@@ -339,6 +447,7 @@ fn compile(a: &Arena<'_>) -> Result<Compiled, Failure> {
             message: "PERF_BUILDID_DIR profiling is unsupported by this backend".into() });
     }
     let names = borrow_names(a);
+    let addresses = resolve_imports(a, &names, bindings)?;
     let isa = native_isa()?;
     // Finish object bytes first; a later JIT error drops them without ever
     // publishing a partial result. No semantic body is copied or retained.
@@ -349,7 +458,7 @@ fn compile(a: &Arena<'_>) -> Result<Compiled, Failure> {
     let object = object.finish().emit().map_err(|error| Failure {
         status: Status::BackendFailure, message: format!("object emission: {error}"),
     })?;
-    let mut jit = JitOwner(Some(JITModule::new(JITBuilder::with_isa(isa, default_libcall_names()))));
+    let mut jit = JitOwner(Some(JITModule::new(jit_builder(isa, a, &names, &addresses))));
     let functions = define_bodies(jit.module(), a, &names)?;
     jit.module().finalize_definitions().map_err(|error| module_failure(error, "JIT finalization"))?;
     let entries = functions.iter().zip(a.functions).map(|(&id, source)| {
@@ -359,7 +468,7 @@ fn compile(a: &Arena<'_>) -> Result<Compiled, Failure> {
     Ok(Compiled { _jit: jit, entries, object })
 }
 
-// Called for three scalar input types. This checks only what raw pointers can
+// Used for all public input arrays. This checks only what raw pointers can
 // prove; valid readable storage and no concurrent mutation remain obligations.
 fn input_length<T>(pointer: *const T, count: u64) -> Result<usize, Failure> {
     let count = usize::try_from(count).ok().filter(|count| *count <= MAX_ELEMENTS)
@@ -377,24 +486,83 @@ unsafe fn input_slice<'a, T>(pointer: *const T, count: usize) -> &'a [T] {
     if count == 0 { &[] } else { unsafe { slice::from_raw_parts(pointer, count) } }
 }
 
+// SAFETY: each admitted nonempty metadata pointer names a readable allocation
+// for this call. Null/count, alignment and extents are checked before borrowing.
+unsafe fn borrow_bindings<'a>(descriptors: &[ForeignBinding]) -> Result<Vec<Binding<'a>>, Failure> {
+    let mut bindings: Vec<Binding<'a>> = Vec::with_capacity(descriptors.len());
+    for (at, descriptor) in descriptors.iter().enumerate() {
+        let invalid = |reason: &str| Failure { status: Status::InvalidArgument,
+            message: format!("foreign binding {}: {reason}", at + 1) };
+        let field_error = |field: &str, failure: Failure| Failure { status: failure.status,
+            message: format!("foreign binding {} {field}: {}", at + 1, failure.message) };
+        let library_count = input_length(descriptor.library, descriptor.library_length)
+            .map_err(|failure| field_error("library", failure))?;
+        let symbol_count = input_length(descriptor.symbol, descriptor.symbol_length)
+            .map_err(|failure| field_error("symbol", failure))?;
+        let parameter_count = input_length(descriptor.parameter_types, descriptor.parameter_count)
+            .map_err(|failure| field_error("parameter types", failure))?;
+        if library_count == 0 || library_count > MAX_LIBRARY_BYTES as usize {
+            return Err(invalid("library length must be 1..256 bytes"));
+        }
+        if symbol_count == 0 || symbol_count > MAX_SOURCE_BYTES as usize {
+            return Err(invalid("symbol length exceeds source-name admission"));
+        }
+        if parameter_count > MAX_PARAMETERS as usize {
+            return Err(invalid("parameter count exceeds scalar signature admission"));
+        }
+        if descriptor.address.is_null() { return Err(invalid("nonnull code address required")); }
+        if ScalarType::decode(descriptor.result_type).is_none() {
+            return Err(invalid("result type must be bool or i64"));
+        }
+        let (library, symbol, parameter_types) = unsafe {
+            (input_slice(descriptor.library, library_count), input_slice(descriptor.symbol, symbol_count),
+             input_slice(descriptor.parameter_types, parameter_count))
+        };
+        if library.contains(&0) || symbol.contains(&0) {
+            return Err(invalid("library and symbol must not contain NUL"));
+        }
+        let library = str::from_utf8(library).map_err(|_| invalid("library must be UTF-8"))?;
+        let symbol = str::from_utf8(symbol).map_err(|_| invalid("symbol must be UTF-8"))?;
+        if parameter_types.iter().any(|&type_id| ScalarType::decode(type_id).is_none()) {
+            return Err(invalid("parameter types must be bool or i64"));
+        }
+        // AOT link names are bare C symbols: even different libraries cannot
+        // disambiguate duplicate symbols. Bound: at most 32 descriptors.
+        if bindings.iter().any(|binding| binding.symbol == symbol) {
+            return Err(invalid(&format!("duplicate native symbol {symbol:?}")));
+        }
+        bindings.push(Binding { library, symbol, parameter_types,
+            result_type: descriptor.result_type, address: descriptor.address.cast() });
+    }
+    Ok(bindings)
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn chibi_vnext_compile_both(
     words: *const u32, word_count: u64, literals: *const i64, literal_count: u64,
     names: *const u8, name_byte_count: u64,
+    bindings: *const ForeignBinding, binding_count: u64,
 ) -> *mut c_void {
     // Check every pointer/count pair before constructing any input slice.
     let result = (|| {
         let word_count = input_length(words, word_count)?;
         let literal_count = input_length(literals, literal_count)?;
         let name_byte_count = input_length(names, name_byte_count)?;
+        let binding_count = input_length(bindings, binding_count)?;
+        if binding_count > MAX_FUNCTIONS as usize {
+            return Err(Failure { status: Status::InvalidArgument,
+                message: "foreign binding count exceeds 32".into() });
+        }
         // SAFETY: counts were checked; remaining validity is the caller contract.
-        let (words, literals, names) = unsafe {
-            (input_slice(words, word_count), input_slice(literals, literal_count), input_slice(names, name_byte_count))
+        let (words, literals, names, descriptors) = unsafe {
+            (input_slice(words, word_count), input_slice(literals, literal_count),
+             input_slice(names, name_byte_count), input_slice(bindings, binding_count))
         };
+        let bindings = unsafe { borrow_bindings(descriptors) }?;
         let arena = Arena::from_parts(words, literals, names).map_err(|error| Failure {
             status: Status::InvalidFrame, message: format!("typed frame: {error:?}"),
         })?;
-        compile(&arena)
+        compile(&arena, &bindings)
     })();
     let owner = match result { Ok(compiled) => Owner::Compiled(compiled), Err(error) => Owner::Failed(error) };
     Box::into_raw(Box::new(owner)).cast()
@@ -507,27 +675,249 @@ mod tests {
         ];
         for (words, word_count, literals, literal_count, names, name_count, expected) in cases {
             let handle = unsafe {
-                chibi_vnext_compile_both(words, word_count, literals, literal_count, names, name_count)
+                chibi_vnext_compile_both(words, word_count, literals, literal_count, names, name_count, ptr::null(), 0)
             };
-            assert!(!handle.is_null());
-            unsafe {
-                assert_eq!(chibi_vnext_status(handle), expected as u32);
-                assert!(chibi_vnext_entry(handle, 1).is_null());
-                assert_eq!(chibi_vnext_object_length(handle), 0);
-                assert_eq!(chibi_vnext_object_copy(handle, ptr::null_mut(), 0), 4);
-                let count = chibi_vnext_diagnostic_length(handle) as usize;
-                assert!(count > 0);
-                let mut destination = vec![0x7f; count];
-                let too_small = chibi_vnext_diagnostic_copy(handle, destination.as_mut_ptr(), count as u64 - 1);
-                assert_eq!(too_small, 2);
-                assert!(destination.iter().all(|byte| *byte == 0x7f));
-                let copied = chibi_vnext_diagnostic_copy(handle, destination.as_mut_ptr(), count as u64);
-                assert_eq!(copied, 0);
-                assert!(str::from_utf8(&destination).is_ok());
-                let closed = chibi_vnext_destroy(handle);
-                assert_eq!(closed, 0);
-            }
+            assert!(!failed_owner(handle, expected).is_empty());
         }
+    }
+
+    // Exercise the public failure owner, byte-copy and destruction contract for
+    // both old framing failures and the foreign-input/resolution failures.
+    fn failed_owner(handle: *mut c_void, expected: Status) -> String {
+        assert!(!handle.is_null());
+        unsafe {
+            assert_eq!(chibi_vnext_status(handle), expected as u32);
+            assert!(chibi_vnext_entry(handle, 1).is_null());
+            assert_eq!(chibi_vnext_object_length(handle), 0);
+            assert_eq!(chibi_vnext_object_copy(handle, ptr::null_mut(), 0), 4);
+            let count = chibi_vnext_diagnostic_length(handle) as usize;
+            assert!(count > 0);
+            let mut destination = vec![0x7f; count];
+            let too_small = chibi_vnext_diagnostic_copy(handle, destination.as_mut_ptr(), count as u64 - 1);
+            assert_eq!(too_small, 2);
+            assert!(destination.iter().all(|byte| *byte == 0x7f));
+            let copied = chibi_vnext_diagnostic_copy(handle, destination.as_mut_ptr(), count as u64);
+            assert_eq!(copied, 0);
+            let diagnostic = String::from_utf8(destination).unwrap();
+            let closed = chibi_vnext_destroy(handle);
+            assert_eq!(closed, 0);
+            diagnostic
+        }
+    }
+
+    extern "C" fn foreign_echo(value: i64) -> i64 { value }
+    extern "C" fn foreign_flag() -> bool { true }
+
+    fn descriptor(library: &[u8], symbol: &[u8], parameter_types: &[u32], result_type: u32) -> ForeignBinding {
+        ForeignBinding {
+            library: library.as_ptr(), library_length: library.len() as u64,
+            symbol: symbol.as_ptr(), symbol_length: symbol.len() as u64,
+            parameter_types: parameter_types.as_ptr(), parameter_count: parameter_types.len() as u64,
+            result_type, address: foreign_echo as *const () as *const c_void,
+        }
+    }
+
+    // One import-only model checks binding admission without compiling or
+    // executing native code. Original-source acceptance is a separate gate.
+    fn import_frame() -> (Vec<u32>, Vec<u8>) {
+        let symbol = b"ForeignEcho";
+        let library = b"test:binding";
+        let mut words = vec![VERSION, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 2];
+        assert_eq!(words.len(), HEADER_WORDS);
+        words.extend_from_slice(&[1, 1, 0, 0, 1, 0]); // function
+        words.extend_from_slice(&[1, 2]); // foreign
+        words.extend_from_slice(&[0, 1, I64]); // signature
+        words.push(I64);
+        words.extend_from_slice(&[17, 23, 47]); // original document/span
+        words.extend_from_slice(&[0, symbol.len() as u32]);
+        words.extend_from_slice(&[symbol.len() as u32, library.len() as u32]);
+        let mut names = symbol.to_vec();
+        names.extend_from_slice(library);
+        (words, names)
+    }
+
+    #[test]
+    fn public_foreign_arguments_reject_before_output_construction() {
+        let parameter = [I64];
+        let invalid_parameter = [0];
+        let base = descriptor(b"test:binding", b"ForeignEcho", &parameter, I64);
+        let cases = [
+            ForeignBinding { library: ptr::null(), ..base },
+            ForeignBinding { library_length: 0, ..base },
+            ForeignBinding { library_length: MAX_LIBRARY_BYTES as u64 + 1, ..base },
+            ForeignBinding { library_length: u64::MAX, ..base },
+            ForeignBinding { symbol: ptr::null(), ..base },
+            ForeignBinding { symbol_length: 0, ..base },
+            ForeignBinding { symbol_length: MAX_SOURCE_BYTES as u64 + 1, ..base },
+            ForeignBinding { symbol_length: u64::MAX, ..base },
+            ForeignBinding { parameter_types: ptr::null(), ..base },
+            ForeignBinding { parameter_count: MAX_PARAMETERS as u64 + 1, ..base },
+            ForeignBinding { parameter_count: u64::MAX, ..base },
+            ForeignBinding { parameter_types: invalid_parameter.as_ptr(), ..base },
+            ForeignBinding { result_type: 0, ..base },
+            ForeignBinding { address: ptr::null(), ..base },
+            descriptor(b"a\0b", b"ForeignEcho", &parameter, I64),
+            descriptor(b"test:binding", b"a\0b", &parameter, I64),
+            descriptor(b"\xff", b"ForeignEcho", &parameter, I64),
+            descriptor(b"test:binding", b"\xff", &parameter, I64),
+        ];
+        // Every pointer is null or comes from actual live storage. Oversized
+        // counts must reject before constructing a slice beyond that storage.
+        for binding in &cases {
+            let handle = unsafe { chibi_vnext_compile_both(ptr::null(), 0, ptr::null(), 0,
+                ptr::null(), 0, binding, 1) };
+            failed_owner(handle, Status::InvalidArgument);
+        }
+        // A later descriptor must retain its one-based index and exact field
+        // through the common pointer/count checks, before constructing outputs.
+        let pointer_reason = "nonnull aligned input required for nonempty array";
+        let count_reason = "input element count/extent out of range";
+        let contextual_cases = [
+            (ForeignBinding { library: ptr::null(), ..base }, "library", pointer_reason),
+            (ForeignBinding { symbol: ptr::null(), ..base }, "symbol", pointer_reason),
+            (ForeignBinding { parameter_types: ptr::null(), ..base }, "parameter types", pointer_reason),
+            (ForeignBinding { library_length: u64::MAX, ..base }, "library", count_reason),
+            (ForeignBinding { symbol_length: u64::MAX, ..base }, "symbol", count_reason),
+            (ForeignBinding { parameter_count: u64::MAX, ..base }, "parameter types", count_reason),
+            (ForeignBinding { parameter_types: parameter.as_ptr().cast::<u8>().wrapping_add(1).cast(), ..base },
+                "parameter types", pointer_reason),
+        ];
+        for (binding, field, reason) in contextual_cases {
+            let descriptors = [base, binding];
+            let handle = unsafe { chibi_vnext_compile_both(ptr::null(), 0, ptr::null(), 0,
+                ptr::null(), 0, descriptors.as_ptr(), descriptors.len() as u64) };
+            assert_eq!(failed_owner(handle, Status::InvalidArgument),
+                format!("foreign binding 2 {field}: {reason}"));
+        }
+        for (bindings, count) in [(ptr::null(), 1), (&base as *const _, 33), (&base as *const _, u64::MAX)] {
+            let handle = unsafe { chibi_vnext_compile_both(ptr::null(), 0, ptr::null(), 0,
+                ptr::null(), 0, bindings, count) };
+            failed_owner(handle, Status::InvalidArgument);
+        }
+        for library in [b"test:binding".as_slice(), b"another:library".as_slice()] {
+            let duplicates = [base, descriptor(library, b"ForeignEcho", &parameter, I64)];
+            let handle = unsafe { chibi_vnext_compile_both(ptr::null(), 0, ptr::null(), 0,
+                ptr::null(), 0, duplicates.as_ptr(), 2) };
+            assert!(failed_owner(handle, Status::InvalidArgument).contains("duplicate native symbol"));
+        }
+        let valid = [base, ForeignBinding {
+            address: foreign_flag as *const () as *const c_void,
+            ..descriptor(b"test:binding", b"ZeroArity", &[], BOOL)
+        }];
+        let views = unsafe { borrow_bindings(&valid) }.unwrap();
+        assert_eq!(views.len(), 2);
+        assert_eq!(views[0].parameter_types, &[I64]);
+        assert!(views[1].parameter_types.is_empty());
+    }
+
+    #[test]
+    fn foreign_resolution_requires_exact_library_symbol_and_signature() {
+        let (words, names) = import_frame();
+        let arena = Arena::from_parts(&words, &[], &names).unwrap();
+        let parameter = [I64];
+        let base = descriptor(b"test:binding", b"ForeignEcho", &parameter, I64);
+        let valid = [base];
+        let bindings = unsafe { borrow_bindings(&valid) }.unwrap();
+        let resolved = resolve_imports(&arena, &borrow_names(&arena), &bindings).unwrap();
+        assert_eq!(resolved, vec![base.address.cast::<u8>()]);
+        assert!(std::env::var_os("PERF_BUILDID_DIR").is_none(), "test requires profiling disabled");
+        let absent = unsafe { chibi_vnext_compile_both(words.as_ptr(), words.len() as u64,
+            ptr::null(), 0, names.as_ptr(), names.len() as u64, ptr::null(), 0) };
+        let message = failed_owner(absent, Status::BackendFailure);
+        assert!(message.contains("ForeignEcho") && message.contains("test:binding"));
+        assert!(message.contains("document 17 span 23..47"));
+        let wrong_parameter = [BOOL];
+        let too_many_parameters = [I64, I64];
+        let cases = [
+            descriptor(b"other:binding", b"ForeignEcho", &parameter, I64),
+            descriptor(b"test:binding", b"OtherSymbol", &parameter, I64),
+            descriptor(b"test:binding", b"ForeignEcho", &wrong_parameter, I64),
+            descriptor(b"test:binding", b"ForeignEcho", &[], I64),
+            descriptor(b"test:binding", b"ForeignEcho", &too_many_parameters, I64),
+            ForeignBinding { result_type: BOOL, ..base },
+        ];
+        for (at, binding) in cases.iter().enumerate() {
+            let handle = unsafe { chibi_vnext_compile_both(words.as_ptr(), words.len() as u64,
+                ptr::null(), 0, names.as_ptr(), names.len() as u64, binding, 1) };
+            let message = failed_owner(handle, Status::BackendFailure);
+            assert!(message.contains("ForeignEcho") && message.contains("document 17 span 23..47"));
+            assert!(message.contains(if at < 2 { "no matching" } else { "signature mismatch" }));
+        }
+    }
+
+    #[test]
+    fn compiled_owner_outlives_all_borrowed_metadata() {
+        // A generic import plus a two-parameter equality wrapper exercises
+        // DirectCall/EqualI64 in both consumers. It is not a source substitute.
+        let symbol = b"ForeignEcho";
+        let library = b"test:binding";
+        let exported = b"CompareForeign";
+        let mut words = vec![VERSION, 2, 1, 2, 3, 1, 2, 4, 3, 0, 1, 1, 3, 3];
+        words.extend_from_slice(&[1, 1, 0, 0, 1, 0, 3, 2, 0, 1, 2, 1]); // functions
+        words.extend_from_slice(&[1, 2]); // foreign
+        words.extend_from_slice(&[0, 1, I64, 1, 2, BOOL]); // signatures
+        words.extend_from_slice(&[I64, I64, I64]);
+        words.extend_from_slice(&[0, 2, 0, 3]); // block
+        words.extend_from_slice(&[1, 2]); // block parameters
+        words.extend_from_slice(&[I64, BLOCK_DEFINITION | 1, I64, BLOCK_DEFINITION | 1, I64, 1, BOOL, 2]);
+        words.extend_from_slice(&[DIRECT_CALL, 3, 0, 0, 1, 3,
+                                 EQUAL_I64, 4, 3, 2, 0, 3, RETURN, 0, 4, 0, 0, 3]);
+        words.extend_from_slice(&[1, 0]); // call
+        words.push(1); // call argument
+        words.extend_from_slice(&[17, 23, 47, 17, 50, 80, 17, 60, 75]); // origins
+        words.extend_from_slice(&[0, symbol.len() as u32, symbol.len() as u32, library.len() as u32,
+            (symbol.len() + library.len()) as u32, exported.len() as u32]);
+        let mut names = [symbol.as_slice(), library.as_slice(), exported.as_slice()].concat();
+        let mut parameters = vec![I64];
+        let mut binding_library = library.to_vec();
+        let mut binding_symbol = symbol.to_vec();
+        let mut descriptors = vec![descriptor(&binding_library, &binding_symbol, &parameters, I64)];
+        let handle = unsafe { chibi_vnext_compile_both(words.as_ptr(), words.len() as u64,
+            ptr::null(), 0, names.as_ptr(), names.len() as u64, descriptors.as_ptr(), descriptors.len() as u64) };
+        assert!(!handle.is_null());
+        // Poison the actual borrowed storage, then free it. The real function's
+        // code remains loaded for the test process; there is no global state.
+        words.fill(0);
+        names.fill(0);
+        parameters.fill(0);
+        binding_library.fill(0);
+        binding_symbol.fill(0);
+        for descriptor in &mut descriptors { descriptor.address = ptr::null(); }
+        drop((words, names, parameters, binding_library, binding_symbol, descriptors));
+        // Keep an owned Rust guard even if an assertion fails. No generated
+        // address escapes this scope or survives destruction of the owner.
+        let owner = unsafe { Box::from_raw(handle.cast::<Owner>()) };
+        assert_eq!(unsafe { chibi_vnext_status(handle) }, Status::Ready as u32);
+        assert!(unsafe { chibi_vnext_entry(handle, 1) }.is_null());
+        let entry = unsafe { chibi_vnext_entry(handle, 2) };
+        assert!(!entry.is_null());
+        let compare: extern "C" fn(i64, i64) -> bool = unsafe { mem::transmute(entry) };
+        for (left, right) in [(0, 0), (0, 1), (i64::MIN, i64::MIN), (i64::MIN, i64::MAX),
+                              (i64::MAX, i64::MAX), (1_i64 << 40, 0)] {
+            assert_eq!(compare(left, right), left == right);
+        }
+        let object_length = unsafe { chibi_vnext_object_length(handle) };
+        assert!(object_length > 0);
+        let mut object = vec![0; object_length as usize];
+        assert_eq!(unsafe { chibi_vnext_object_copy(handle, object.as_mut_ptr(), object_length) }, 0);
+        assert!(object.starts_with(b"\x7fELF"));
+        assert_eq!(unsafe { chibi_vnext_destroy(Box::into_raw(owner).cast()) }, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "unexpected JIT symbol lookup: malloc")]
+    fn jit_lookup_guard_cannot_fall_through_to_process_symbols() {
+        let (words, names) = import_frame();
+        let arena = Arena::from_parts(&words, &[], &names).unwrap();
+        let parameters = [I64];
+        let descriptors = [descriptor(b"test:binding", b"ForeignEcho", &parameters, I64)];
+        let bindings = unsafe { borrow_bindings(&descriptors) }.unwrap();
+        let names = borrow_names(&arena);
+        let addresses = resolve_imports(&arena, &names, &bindings).unwrap();
+        let mut jit = JitOwner(Some(JITModule::new(jit_builder(native_isa().unwrap(), &arena, &names, &addresses))));
+        let signature = jit.module().make_signature();
+        let unexpected = jit.module().declare_function("malloc", Linkage::Import, &signature).unwrap();
+        jit.module().get_address(&unexpected.into());
     }
 
     #[test]
@@ -641,7 +1031,7 @@ mod tests {
         let mut names = [[0; NAME_WORDS]];
         names[0][NAME_COUNT] = name.len() as u32;
         let arena = Arena {
-            functions: &functions, signatures: &signatures, parameter_types: &[],
+            functions: &functions, foreigns: &[], signatures: &signatures, parameter_types: &[],
             blocks: &blocks, block_parameters: &[], values: &values, instructions: &instructions,
             edges: &[], calls: &[], arguments: &[], origins: &origins, names: &names,
             literals: &[7], name_bytes: name,

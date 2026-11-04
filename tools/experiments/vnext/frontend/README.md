@@ -96,7 +96,7 @@ variants, verified their bodies, and passed them through generated Pack to both
 native consumers: 1,080 JIT value assertions and 45 linked C checks passed. The
 superseded handwritten backend probe has been removed.
 
-The current version-2 source extends that path with bool literals, wrapping i64
+The historical version-2 source extended that path with bool literals, wrapping i64
 multiply, signed `>`, bool `!` and same-document positional direct calls. The
 later package-aware producer
 adds explicit source closures and public calls through import aliases. It
@@ -117,9 +117,17 @@ and checks `private_import` in a separate source-array invocation. The
 records passing compile/JIT/PERF/link/C stages and final independent admission. Its separate unfiltered producer proof passed; the older receipts
 remain historical.
 
-The numbered design below still includes later foreign-call, equality and
-`&&` gates. Neither the original 25-call/11-rejection corpus nor a real tool is
-fully accepted. Do not synthesize bodies from function names or special-case text.
+Current version 3 adds foreign declarations/calls, integer equality,
+short-circuit `&&`, inferred scalar locals and discarded-call statements. Its
+complete typed-source and packing suites pass. The new `--case foreign`
+preparation selects the original eight foreign calls and the separate
+missing-symbol binding failure, using the same registry and real C archive.
+The seven corrected Rust backend tests also pass. A fresh non-test library and
+original-source foreign JIT/AOT remain open. Neither the entire original
+25-call/11-rejection corpus under this version
+nor a small real tool is fully accepted. Do not synthesize bodies from function
+names or special-case source text. The numbered design below describes the
+shared producer/backend boundary, not a claim that every native gate has passed.
 
 1. Parse each explicit document once with `source_parser.Parse`. Keep its raw
    indexed nodes/fields and source bytes until diagnostics are complete. Reject

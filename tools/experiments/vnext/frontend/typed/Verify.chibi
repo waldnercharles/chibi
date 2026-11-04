@@ -37,7 +37,7 @@ pub Verify :: (module: Module) -> int {
     block_limit := MaxFunctions * MaxBlocks;
     parameter_limit := block_limit * MaxLocals;
     if (length(module.functions) > MaxFunctions || length(module.signatures) > MaxFunctions ||
-        length(module.names) > MaxFunctions || length(module.parameter_types) > MaxFunctions * MaxParameters ||
+        length(module.names) > MaxFunctions + MaxLibraries || length(module.foreigns) > MaxFunctions || length(module.parameter_types) > MaxFunctions * MaxParameters ||
         length(module.blocks) > block_limit || length(module.block_parameters) > parameter_limit ||
         length(module.values) > parameter_limit + MaxNodes || length(module.instructions) > block_limit + MaxNodes ||
         length(module.edges) > block_limit * 2 || length(module.calls) > MaxNodes ||
@@ -53,6 +53,7 @@ pub Verify :: (module: Module) -> int {
     arguments_used := resize([false], length(module.arguments));
     defining_blocks := resize([u32(0)], length(module.values));
     dominators := resize([u64(0)], length(module.blocks));
+    imported_functions := resize([false], length(module.functions));
 
     // Side-table spans own all their scalar storage, including empty spans'
     // canonical zero start. Shared row references do not duplicate ownership.
@@ -102,15 +103,34 @@ pub Verify :: (module: Module) -> int {
     }
     // Call spans are checked after callee/signature IDs below.
 
-    // Functions partition the block table. Their shared metadata IDs must
-    // exist before any lookup; their entry signatures are checked below.
-    next_block: int = 0;
-    for (function in module.functions) {
-        if (function.block_count == 0 || function.block_count > u32(MaxBlocks) ||
-            !OwnedSpan(function.first_block, function.block_count, length(module.blocks), next_block)) {
-            return InvalidSpan;
+    // Imported membership is sparse, unique and ordered. Libraries own names,
+    // not bodies; their actual symbols are resolved only at native admission.
+    previous_foreign: u32 = 0;
+    for (imported in module.foreigns) {
+        if (!Present(imported.function, length(module.functions)) || imported.function <= previous_foreign ||
+            !Present(imported.library, length(module.names))) { return InvalidSpan; }
+        library_name := module.names[int(imported.library) - 1];
+        if (library_name.count == 0 || library_name.count > u32(MaxLibraryBytes)) { return InvalidSpan; }
+        for (index in int(library_name.start)..<int(library_name.start + library_name.count)) {
+            if (module.name_bytes[index] == 0) { return InvalidSpan; }
         }
-        next_block += int(function.block_count);
+        previous_foreign = imported.function;
+        imported_functions[int(imported.function) - 1] = true;
+        names_used[int(imported.library) - 1] = true;
+    }
+    // Authored functions partition the block table; imported functions have
+    // canonical empty bodies and cannot publish an entry address.
+    next_block: int = 0;
+    for (function, index in module.functions) {
+        if (imported_functions[index]) {
+            if (function.first_block != 0 || function.block_count != 0 || function.exported != 0) { return InvalidSpan; }
+        } else {
+            if (function.block_count == 0 || function.block_count > u32(MaxBlocks) ||
+                !OwnedSpan(function.first_block, function.block_count, length(module.blocks), next_block)) {
+                return InvalidSpan;
+            }
+            next_block += int(function.block_count);
+        }
         if (!Present(function.name, length(module.names)) ||
             !Present(function.signature, length(module.signatures)) ||
             !Present(function.origin, length(module.origins)) || function.exported > 1) {
@@ -173,7 +193,7 @@ pub Verify :: (module: Module) -> int {
         for (at in int(block.first_instruction)..<next_instruction) {
             instruction := module.instructions[at];
             instruction_id := u32(at + 1);
-            if (instruction.op < ConstantI64 || instruction.op > DirectCall) { return InvalidInstruction; }
+            if (instruction.op < ConstantI64 || instruction.op > EqualI64) { return InvalidInstruction; }
             terminator := instruction.op == Jump || instruction.op == Branch || instruction.op == Return;
             if (terminator != (at == next_instruction - 1)) { return InvalidTerminator; }
             if (!Present(instruction.origin, length(module.origins))) { return InvalidSpan; }
@@ -193,6 +213,9 @@ pub Verify :: (module: Module) -> int {
                 case MultiplyI64:
                     if (instruction.payload != 0) { return InvalidInstruction; }
                 case GreaterI64:
+                    if (instruction.payload != 0) { return InvalidInstruction; }
+                    result_type = Bool;
+                case EqualI64:
                     if (instruction.payload != 0) { return InvalidInstruction; }
                     result_type = Bool;
                 case NotBool:
@@ -253,6 +276,7 @@ pub Verify :: (module: Module) -> int {
     // final when a block is visited. Every reachable mask contains entry's
     // bit, so zero is an unambiguous missing-predecessor sentinel.
     for (function in module.functions) {
+        if (function.block_count == 0) { continue; }
         first_block := int(function.first_block);
         block_end := first_block + int(function.block_count);
         signature := module.signatures[int(function.signature) - 1];
@@ -284,6 +308,7 @@ pub Verify :: (module: Module) -> int {
                     case AddI64: operand_count = 2;
                     case MultiplyI64: operand_count = 2;
                     case GreaterI64: operand_count = 2;
+                    case EqualI64: operand_count = 2;
                     case NotBool:
                         operand_count = 1;
                         operand_type = Bool;

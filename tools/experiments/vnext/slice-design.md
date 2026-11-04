@@ -1,6 +1,13 @@
 # Bounded typed-body slice
 
-Status: version 1 of the bounded Produce/Verify → Pack → Cranelift JIT/object subset has an accepted source-native result. The current version-2 scalar/direct-call checkpoint passed separate pure-source, Rust backend and exact-source private native proofs for all three JIT/C matrices; the public whole-run workflow was not rerun for version 2. The later [package-aware checkpoint](slice_backend/README.md#package-aware-checkpoint) passed all four native cases through linked C execution and final independent acceptance. The wider corpus and real-tool milestone below remain open. Source inspection for the original design used `02c86287430def964445ec90185961e20319536d`. The external-backend-first plan governs this experiment. Cranelift implements this bounded backend, without a representative performance or full-platform qualification claim. A custom emitter is not the default.
+Status: version 1 of the bounded Produce/Verify → Pack → Cranelift JIT/object subset has an accepted source-native result. The historical version-2 scalar/direct-call checkpoint passed separate pure-source, Rust backend and exact-source private native proofs for all three JIT/C matrices; the public whole-run workflow was not rerun for version 2. The later [package-aware checkpoint](slice_backend/README.md#package-aware-checkpoint) passed all four native cases through linked C execution and final independent acceptance. The wider corpus and real-tool milestone below remain open. Source inspection for the original design used `02c86287430def964445ec90185961e20319536d`. The external-backend-first plan governs this experiment. Cranelift implements this bounded backend, without a representative performance or full-platform qualification claim. A custom emitter is not the default.
+
+Current version 3 implements foreign declarations/calls, integer equality,
+short-circuit `&&`, inferred scalar locals and discarded-call statements. Its
+complete typed-source, packing, eight-test Arena framing and seven-test Rust
+backend suites pass. A fresh non-test library and original-source foreign
+JIT/AOT remain open; historical receipts
+above do not validate this version or complete the real-tool milestone.
 
 ## What runs today
 
@@ -32,8 +39,7 @@ The first file is the entry package. Call entries name `pub` functions in that p
 - Foreign calls: C `int64_t` and `_Bool`, eight position-weighted integer arguments crossing register/stack boundaries on x86-64, signed extremes, left-to-right argument evaluation and short-circuit effect suppression.
 - Rejections: argument type/count, condition/result type, missing return, unknown name, private member, duplicate parameter, out-of-range literal, unsupported array and unresolved foreign symbol.
 
-The array case is an explicitly unsupported **slice** feature, not a declaration that arrays are removed from Chibi. Tasks, pointers, records, generic/comptime execution, loops, division/remainder/shifts, implicit conversions, default/named arguments and retained state are also outside this first slice. Reject unsupported input before emission; never silently run it through the old compiler. Current syntax is retained. The original 15 source files passed the retained parser in the [separate parser experiment](frontend/README.md); its historical 22 parser calls do not prove the added 16th source. Full-registry typing/native acceptance remains open. Version 2 adds the original scalar operations and same-document direct calls to the [producer](frontend/typed/README.md), with pure-transform and bounded JIT/C execution passed; package support now has a separate checkpoint; foreign calls, equality and
-`&&` remain unsupported.
+The array case is an explicitly unsupported **slice** feature, not a declaration that arrays are removed from Chibi. Tasks, pointers, records, generic/comptime execution, loops, division/remainder/shifts, implicit conversions, default/named arguments and retained state are also outside this first slice. Reject unsupported input before emission; never silently run it through the old compiler. Current syntax is retained. The original 15 source files passed the retained parser in the [separate parser experiment](frontend/README.md); its historical 22 parser calls do not prove the added 16th source. Full-registry native acceptance remains open. Historical version 2 added the original scalar operations and same-document direct calls to the [producer](frontend/typed/README.md), with pure-transform and bounded JIT/C execution passed; package support passed a separate checkpoint. The current version-3 additions listed above are implemented, but original-source foreign native execution remains a separate gate.
 
 Runtime add/multiply wrap at 64 bits and comparisons are signed. Bool is distinct from i64 and there is no implicit truthiness. This follows the current numeric contract for these operations, rather than adopting C signed-overflow behavior. Literal range errors remain compile-time errors. The candidate deliberately wraps literal-only addition and multiplication too, without constant folding. That experimental deviation is documented in the [producer contract](frontend/typed/README.md#experimental-arithmetic-deviation); it is not current-language constant-expression parity. The wider constant/runtime arithmetic-policy decision remains open. Source: [numeric contract](../../../docs/package-numeric-contract.md), [language reference](../../../docs/code-language.md#values-and-operators).
 
@@ -48,7 +54,7 @@ All paths below are relative to the repository root.
 5. The replacement begins at body checking. `package_compiler/Body.chibi:2596` (`EmitBody`) simultaneously checks and produces prepared slots/cells/code/roots; `Scalar.chibi:4368` calls it, then performs another lowering. Move retained scalar typing/resolution decisions into the new typed-body producer. It must **not** require prepared emission first or rediscover operands from source in a backend.
 6. `compiler_facts/Facts.chibi` is a sparse facts view; `scalar_lowering/Lower.chibi` targets prepared storage and has a separate expression schema. Neither becomes canonical by renaming it. Their tests/rules can be migrated; their output is not another mandatory hop. `native_abi/Abi.chibi:101` expressly warns that an internal bool type is not a foreign ABI promise.
 
-The broader implementation path is therefore: retained parser and package/header resolution → one scalar typed-body producer → verifier → target ABI lowering → Cranelift function construction → JIT or object output. The bounded implementation follows this path for explicit source closures. Its version-2 direct-call expansion passed pure-transform and bounded source-to-backend execution. The package-aware producer now reuses the retained graph over at most eight supplied sources and 32 imports, with aggregate source/node/function caps; foreign expansion remains unimplemented. The verifier and both consumers see the same semantic decisions. Source access after typing is solely for diagnostics. Do not use a second parser, prepared VM execution or an LLVM text round trip as an unnoticed prerequisite.
+The broader implementation path is therefore: retained parser and package/header resolution → one scalar typed-body producer → verifier → target ABI lowering → Cranelift function construction → JIT or object output. The bounded implementation follows this path for explicit source closures. Its version-2 direct-call expansion passed pure-transform and bounded source-to-backend execution. The package-aware producer now reuses the retained graph over at most eight supplied sources and 32 imports, with aggregate source/node/function caps. Version 3 adds sparse foreign membership to ordinary function/signature rows and resolves caller-supplied bindings before either native output. The verifier and both consumers see the same semantic decisions. Source access after typing is solely for diagnostics. Do not use a second parser, prepared VM execution or an LLVM text round trip as an unnoticed prerequisite.
 
 ## Canonical body contract and later extensions
 
@@ -63,20 +69,22 @@ This is a bounded implementation contract to validate, not a public file format 
 | Block | Ordered parameter/value span, instruction span and exactly one terminator; entry block parameters are function parameters. |
 | Origin | Document ID and start/end byte offsets, 12 bytes; diagnostic lines/columns are resolved when needed. |
 | Call | 8 bytes: callee FunctionID and first argument offset. Arity/result type belong only to the callee Signature; arguments share disjoint spans with edges. |
+| Foreign | 8 bytes: imported FunctionID and library NameID. No body, exported entry or separate call opcode. |
 
 Budgets are targets, not measured layouts. Pin implemented C records with static assertions and count corresponding Chibi storage before claiming these sizes. Do not copy a type onto every use; each Value owns its type. Function/name IDs are assigned in deterministic source/package order; resolution tables may be temporary. There is no identity hashing in the per-instruction loop.
 
-The version-2 Model preserves ConstantI64/AddI64/Jump/Branch/Return at 1–5 and
-appends ConstantBool/MultiplyI64/GreaterI64/NotBool/DirectCall at 6–10. Each Call
+The Model preserves ConstantI64/AddI64/Jump/Branch/Return at 1–5 and
+ConstantBool/MultiplyI64/GreaterI64/NotBool/DirectCall at 6–10. Version 3 adds
+EqualI64=11 and sparse Foreign membership after Functions. Each Call
 belongs to exactly one DirectCall; zero arity requires offset zero. The producer
 reserves outer argument spans before left-to-right nested evaluation. The
 verifier checks safe callee/signature lookup, scalar types, shared edge/call
 argument coverage and argument dominance in the caller. The transport is
-version 2 with a 13-word/52-byte header; Echo/Join retains 532 payload bytes and
-now has a 584-byte frame. See the [bridge contract](frontend/bridge/README.md) for
+version 3 with a 14-word/56-byte header; Echo/Join retains 532 payload bytes and
+has a 588-byte frame. See the [bridge contract](frontend/bridge/README.md) for
 its versioned layout digest. This is not a native acceptance receipt.
 
-The broader proposed operation set for all original callers is: i64/bool constant, wrapping i64 add/multiply, signed i64 greater-than, i64 equality, bool not, resolved direct call, foreign call, jump, conditional branch and return. `&&` becomes branches, not eager boolean arithmetic. A foreign call is effectful and ordered even if its result is unused. An internal call conservatively carries the callee's effects until a later measured simplification needs more precision. No general effect framework is required here.
+The current operation set is: i64/bool constant, wrapping i64 add/multiply, signed i64 greater-than, i64 equality, bool not, resolved direct call, jump, conditional branch and return. Imports use the same DirectCall as local functions. `&&` becomes branches, not eager boolean arithmetic. A foreign call is effectful and ordered even if its result is unused. An internal call conservatively carries the callee's effects until a later measured simplification needs more precision. No general effect framework is required here.
 
 Local assignment updates the checker's local-to-value map. At a join, explicit block arguments carry differing values; there are no untyped stack slots for a backend to re-infer. For `Join`, the true edge supplies `left`, the false edge supplies `right`, and the merge block receives one i64 argument then adds 1. Emit that fact once. Avoid a general SSA-repair pass for this acyclic branch-only slice.
 
@@ -99,7 +107,11 @@ Use target-aware C calling conventions for imported functions and harness-visibl
 
 JIT: declare the whole module and foreign symbols, compile **all** required bodies eagerly, verify, resolve relocations and finalize code before obtaining an entry pointer. Keep the result owner alive through all calls; retire it only after callers finish. No compilation on first call and no interpreter fallback. AOT: use those same lowered bodies, emit native object bytes and link with the C fixture archive plus the minimal entry harness. Resolve every expected import and execute every corpus call; linked bytes alone are not acceptance.
 
-No C archive is checked in. When generated foreign-call support is added, build `slice_probe.c` without `CHIBI_SLICE_PROBE_SELFTEST` to `slice_probe.o`, then archive it as `libslice_probe.a` with the target's existing archive tool. Both consumers must bind this same compiled fixture: explicit symbol addresses for JIT, native relocations/linking for AOT. Do not map `probe` to the system C library. `slice_check.py` deliberately produces only the standalone fixture selftest.
+No C archive is checked in. The foreign gate builds `slice_probe.c` without
+`CHIBI_SLICE_PROBE_SELFTEST` plus `frontend/bridge/tests/foreign_bindings.c`, then
+archives the two real objects as `libslice_probe.a`. The latter exposes fixture
+signatures and real code addresses through the shared descriptor contract.
+Construction and inspection passed; this alone proves no Chibi foreign execution. Both consumers must bind this same compiled fixture: explicit symbol addresses for JIT, native relocations/linking for AOT. Do not map `probe` to the system C library. `slice_check.py` deliberately produces only the standalone fixture selftest.
 
 ## Historical acceptance and current gates
 

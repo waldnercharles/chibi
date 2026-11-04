@@ -32,6 +32,8 @@ FIXTURES = (
     (b"FIXTURE_SOURCE", TYPED_ROOT + "/fixtures/EchoJoin.chibi", "inputs/EchoJoin.chibi"),
     (b"PACKAGE_MAIN_SOURCE", "tools/experiments/vnext/slice_cases/modules/Main.chibi", "inputs/modules/Main.chibi"),
     (b"PACKAGE_MATH_SOURCE", "tools/experiments/vnext/slice_cases/modules/math/Math.chibi", "inputs/modules/math/Math.chibi"),
+    (b"FOREIGN_SOURCE", "tools/experiments/vnext/slice_cases/foreign/Main.chibi", "inputs/foreign/Main.chibi"),
+    (b"MISSING_SYMBOL_SOURCE", "tools/experiments/vnext/slice_cases/rejected/missing_symbol.chibi", "inputs/missing_symbol.chibi"),
     (b"PRIVATE_IMPORT_SOURCE", "tools/experiments/vnext/slice_cases/rejected/private_import.chibi", "inputs/private_import.chibi"),
 )
 INPUT_MAP = [(TYPED_ROOT + "/tests/Main.chibi.in", "inputs/Main.chibi.in"),

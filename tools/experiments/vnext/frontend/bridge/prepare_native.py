@@ -69,18 +69,39 @@ def source_array(files, sources, document):
     return "[\n" + ",\n".join(rows) + "\n    ]"
 
 
-def prepare(output, backend_library, case="nativecases"):
+def prepare(output, backend_library, case="nativecases", foreign_archive=None):
     output = Path(output).absolute()
     if output.exists() or output.is_symlink():
         raise FileExistsError(f"output must be a new directory: {output}")
     if output.resolve() != output:
         raise ValueError(f"output must not traverse symlinks or parent components: {output}")
     library = Path(backend_library).absolute()
+    # Current ForeignNatives accepts a plain string, not escaped paths.
+    if any(character in '\"\\' or ord(character) < 32 or ord(character) == 127
+           for character in str(library)):
+        raise ValueError("backend requires a plain foreign library path")
     if not stat.S_ISREG(library.lstat().st_mode) or library.resolve() != library:
         raise ValueError(f"backend must be a regular non-symlink file: {library}")
     backend = {"path": str(library), "resolved": str(library), **helpers.identity(library)}
     if not backend["bytes"]:
         raise ValueError(f"backend is empty: {library}")
+    fixture_archive = None
+    if case == "foreign":
+        if foreign_archive is None:
+            raise ValueError("foreign selection requires an existing fixture archive")
+        archive_path = Path(foreign_archive).absolute()
+        # Current ForeignNatives accepts a plain string, not escaped paths.
+        if any(character in '\"\\' or ord(character) < 32 or ord(character) == 127
+               for character in str(archive_path)):
+            raise ValueError("fixture archive requires a plain foreign library path")
+        if not stat.S_ISREG(archive_path.lstat().st_mode) or archive_path.resolve() != archive_path:
+            raise ValueError(f"fixture archive must be a regular non-symlink file: {archive_path}")
+        fixture_archive = {"path": str(archive_path), "resolved": str(archive_path),
+                           **helpers.identity(archive_path)}
+        if not fixture_archive["bytes"]:
+            raise ValueError("fixture archive must not be empty")
+    elif foreign_archive is not None:
+        raise ValueError("only the foreign selection may use a fixture archive")
     # The only expansion is package_graph/Graph.chibi, imported by Produce.
     # Its core:strings dependency was already in the exact package snapshot.
     if len(SOURCE_MAP) != 29 or len(INPUT_MAP) != 3:
@@ -100,6 +121,11 @@ def prepare(output, backend_library, case="nativecases"):
         input_map = [(BRIDGE_ROOT + "/tests/NativeMain.chibi.in", "inputs/NativeMain.chibi.in"),
                      *registry_map, (BRIDGE_ROOT + "/registry_callers.py", "inputs/registry_callers.py"),
                      *(("tools/experiments/vnext/" + name, "inputs/" + name) for name in input_files)]
+    if case == "foreign":
+        input_map = [*input_map,
+                     ("tools/experiments/vnext/slice_probe.c", "inputs/slice_probe.c"),
+                     (BRIDGE_ROOT + "/tests/foreign_bindings.c", "inputs/foreign_bindings.c"),
+                     ("tools/experiments/vnext/slice_backend/foreign.h", "inputs/foreign.h")]
     data, origins, graph = typed.read_sources(SOURCE_MAP, input_map)
     if selected is not None:
         if data["inputs/slice_cases.json"] != registry["inputs/slice_cases.json"]:
@@ -147,7 +173,8 @@ def prepare(output, backend_library, case="nativecases"):
             rejection_sources.append((source_array(row["files"], source_bytes, document), document))
             document += len(row["files"])
         entry, c = callers["generate"](data["entry/Main.chibi"].decode("utf-8"), selected,
-                                        signatures, rejected, source_bytes, rejection_sources)
+                                        signatures, rejected, source_bytes, rejection_sources,
+                                        fixture_archive["path"] if fixture_archive is not None else None)
         data["entry/Main.chibi"] = entry
         data["inputs/native_aot_caller.c"] = c
         generated_from = ["inputs/NativeMain.chibi.in", "inputs/slice_cases.json",
@@ -184,6 +211,12 @@ def prepare(output, backend_library, case="nativecases"):
                         for path, source in preparation],
         "stages": {name: "not_run" for name in ("chibi_compile", "jit_normal", "perf_failure", "c_link", "aot_run")},
     }
+    if fixture_archive is not None:
+        # The same exact archive is named in the Chibi import and later C link.
+        # This binds bytes only; actual archive/code admission is separate.
+        if helpers.identity(archive_path) != {key: fixture_archive[key] for key in ("bytes", "sha256")}:
+            raise ValueError("fixture archive changed during preparation")
+        manifest["foreign_archive"] = fixture_archive
     payload = (json.dumps(manifest, indent=2, allow_nan=False) + "\n").encode("utf-8")
     output.mkdir(parents=True, exist_ok=False)
     for name, value in [*sorted(data.items()), *sorted(implementation.items()), ("source-manifest.json", payload)]:
@@ -203,9 +236,11 @@ if __name__ == "__main__":
     callers, _ = load_source(HERE / "registry_callers.py")
     parser.add_argument("--case", choices=("nativecases", *callers["ACCEPTED"]), default="nativecases",
                         help="one separate native module; default preserves the historical regression")
+    parser.add_argument("--foreign-archive", type=Path,
+                        help="existing admitted C probe plus binding archive; required only for foreign")
     args = parser.parse_args()
     try:
-        result = prepare(args.output, args.backend, args.case)
+        result = prepare(args.output, args.backend, args.case, args.foreign_archive)
     except (OSError, ValueError) as error:
         parser.exit(1, f"native preparation: {error}\n")
     print(json.dumps({"output": result["directory"], "snapshot_files": len(result["files"]) - 1,

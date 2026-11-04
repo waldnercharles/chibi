@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "code_commit": "083e82408a337787cfd9f08c1fff1113a1884831",
+  "source_tree": "39424a0ad887d48fc7ccd389716963c375c90c08",
+  "scope": "Linux archive invalidation and recovery only",
+  "status": "independently_admitted",
+  "cases": [
+    {
+      "built": 1,
+      "case": "cold",
+      "exit_status": 0,
+      "log_sha256": "31a64f2000dcb8ab4e3268de1361265867205cd36c7e56dd70b0b7311b3a7196",
+      "seconds": 8.330390453338623
+    },
+    {
+      "built": 0,
+      "case": "warm",
+      "exit_status": 0,
+      "log_sha256": "495266bf165eb82834ea802a74ed46edca51b2f373128fa389952cba031e585c",
+      "seconds": 0.032485246658325195
+    },
+    {
+      "built": 1,
+      "case": "edited",
+      "exit_status": 0,
+      "log_sha256": "31a64f2000dcb8ab4e3268de1361265867205cd36c7e56dd70b0b7311b3a7196",
+      "seconds": 5.2496278285980225
+    },
+    {
+      "built": 0,
+      "case": "edited-warm",
+      "exit_status": 0,
+      "log_sha256": "495266bf165eb82834ea802a74ed46edca51b2f373128fa389952cba031e585c",
+      "seconds": 0.036890506744384766
+    },
+    {
+      "built": -1,
+      "case": "missing",
+      "exit_status": 1,
+      "log_sha256": "f75b92c259ea3c1aa4c08f727f449ed1397597157d62fcea329a10138b856b3e",
+      "seconds": 0.001219034194946289
+    },
+    {
+      "built": 1,
+      "case": "restored",
+      "exit_status": 0,
+      "log_sha256": "31a64f2000dcb8ab4e3268de1361265867205cd36c7e56dd70b0b7311b3a7196",
+      "seconds": 4.8882527351379395
+    },
+    {
+      "built": 0,
+      "case": "restored-warm",
+      "exit_status": 0,
+      "log_sha256": "495266bf165eb82834ea802a74ed46edca51b2f373128fa389952cba031e585c",
+      "seconds": 0.032033681869506836
+    }
+  ],
+  "helper_phase_to_terminal_write_seconds": 6.406491279602051,
+  "case_phase_to_terminal_write_seconds": 22.452425718307495,
+  "phase_total_cap_seconds": 300,
+  "cleanup_reserve_seconds": 5,
+  "actual_tool_exit": 0,
+  "cleanup_echild": true,
+  "original_paths_preserved": 7571,
+  "archive_record_inputs": 275,
+  "independent_admission_sha256": "12b6492099329471c14b9b1decccf8cc193439796815619f44e6dfadb3421c8f",
+  "proof_archive": {
+    "name": "chibi-archive-invalidation-validated-20261104.tar.gz",
+    "sha256": "d1eb1fd16e7516c538cea41fcfdab0aaaea6a3d937fdaf979c0616fe92cf38c9",
+    "bytes": 8051579,
+    "regular_members": 613
+  },
+  "remaining": [
+    "C asset bridge behavior",
+    "SDK install and relocation",
+    "ordinary VM/native differential",
+    "C engine integration",
+    "actual Windows runtime",
+    "separate pointer-view WIP",
+    "PR #1331 hold"
+  ]
+}

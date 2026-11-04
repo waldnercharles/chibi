@@ -11,12 +11,56 @@ Only Linux x86-64 System V is admitted. The current version-2 source adds bool
 literals, wrapping multiply, signed greater-than, bool not and direct calls.
 Its pure-source proof, focused Rust backend tests, production library build
 and three exact-source private native proofs passed, including JIT,
-owned environment-failure handling and linked C execution.
+owned environment-failure handling and linked C execution. The subsequent
+package-aware checkpoint below also passed independent full-chain acceptance.
+
+## Package-aware checkpoint
+
+The package-aware producer and source transport reuse the unchanged version-2
+Model, Verify, Pack, backend library, C ABI and dependency pins. The exact
+original [modules Main](../slice_cases/modules/Main.chibi),
+[Math](../slice_cases/modules/math/Math.chibi) and
+[private-import rejection](../slice_cases/rejected/private_import.chibi) now
+reach the same native harness through ordered `typed.Source[]` inputs.
+
+All four selections passed Chibi compilation, normal JIT, expected
+PERF_BUILDID_DIR failure, C link and linked C execution. Independent terminal
+acceptance checked all 20 exact stage chains, final source/tool/runtime fences,
+artifacts, loader dependencies and linked function bodies. The result covers
+46 source functions, **2,040 normal JIT value checks, 36 normal owners and
+85 linked C assertions**, plus 17 source rejections in each normal/PERF set
+(34 total). The four C executables emitted their exact 45/15/23/2-check success
+records with empty stderr.
+
+The independent acceptance-summary SHA-256 is
+`670612cdd07998b8ccff02ede3dc0accba41a88502004068d596e7a9c207a9b1`.
+The [normalized evidence](../evidence/package-aware-20261104.json) records exact
+source, per-stage receipt and artifact hashes. It is a public summary, not a
+runnable reproduction specification or a copy of the raw receipts.
+
+The modules object exports only Apply. Dependency Double and Hidden are local
+`.vnext.2` and `.vnext.3`; its 59 code bytes contain one direct Apply-to-Double
+call and no external helper, initializer or fallback. The earlier three copied
+objects are byte-identical to their accepted pre-package counterparts. Actual
+C link readback preserved all 46 function bodies and resolved all 24 direct-call
+operands; final executables require only libc and the loader. These are bounded
+code/ABI observations, not a runtime quality or throughput result. C linker
+traces were observed; c5 transient linker selection remains static evidence,
+not an observed trace.
+
+The native proof uses exact public-preparer output and a separately admitted
+private controller, the same c5 seed and the same backend library. The public
+whole-run workflow was not rerun. The separately accepted package-aware pure
+producer test used the current O2 builder; neither test admits the complete
+current compiler, self-hosting or a default-toolchain switch. The original
+foreign calls/`missing_symbol`, equality/`&&`, a real C call from Chibi, real
+tool/compiler workloads, non-Linux execution and 100,000 LOC/sec remain open.
+Historical results below and existing O0/O2 baselines are unchanged.
 
 ## Version-2 verification status
 
 The [six-stage pure-source proof](../frontend/typed/README.md#accepted-version-2-pure-transform-result)
-passed the current producer/verifier, generated Pack and seven standalone Rust
+passed the pre-package producer/verifier, generated Pack and seven standalone Rust
 framing tests. A separate fresh Rust proof passed the test build, all three
 focused tests unfiltered and the production panic-abort cdylib build. It kept
 the pinned toolchain, Cargo.lock and dependencies unchanged. Independent review
@@ -104,8 +148,9 @@ The accepted version-1 subset was the then-current
 [bounded producer](../frontend/typed/README.md), not the whole
 [slice corpus](../slice-design.md), and excluded direct/foreign calls and several
 scalar operations. Version 2 implements direct calls and the remaining original
-scalar operations, with its validation status recorded above; package/foreign
-support remains pending. The experimental rule that all admitted i64 additions/multiplications wrap, even
+scalar operations, with its validation status recorded above. The subsequent
+package-aware implementation has separate proof status; foreign support remains
+pending. The experimental rule that all admitted i64 additions/multiplications wrap, even
 literal-only expressions, is not current-language constant-expression parity.
 There is no current-compiler, full-compiler, real-tool, cross-platform or
 compilation-speed acceptance.
@@ -272,8 +317,9 @@ the private proof's full tool/loader admission fences.
 
 The three version-2 runtime matrices passed as listed in
 [verification status](#version-2-verification-status). The original
-registry still has 25 calls and 11 rejections: two package calls, eight foreign
-calls, `private_import` and `missing_symbol` remain open. The 23 supplemental
+registry still has 25 calls and 11 rejections. The two original package calls
+and `private_import` now have the separate checkpoint above; eight foreign calls
+and `missing_symbol` remain open. The 23 supplemental
 call oracles extend coverage; they do not replace those original gates.
 
 Full corpus coverage, generated foreign calls, representative real-tool/runtime

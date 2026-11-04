@@ -157,6 +157,7 @@ Main :: () -> int {
     assert(wrapping.instructions[2].op == typed.AddI64 && wrapping.instructions[2].left == 1 && wrapping.instructions[2].right == 2, "literal-only addition follows the explicit wrapping operation");
     assert(wrapping.instructions[3].op == typed.Return && wrapping.instructions[3].left == 3, "wrapping result is returned without evaluator substitution");
     CheckScalarCalls();
+    CheckPackages();
     CheckCallMutations();
     CheckMutations(original, both);
     CheckLimits();
@@ -1016,5 +1017,362 @@ CheckRejectedAt :: (text: string, message: string, span: string) {
             assert(diagnostic.start >= 0 && diagnostic.end <= text_byte_length(text), "call diagnostic is inside source");
             actual := text_slice(text, diagnostic.start, diagnostic.end - diagnostic.start);
             assert(actual == span, "call diagnostic identifies the callee, list or argument responsible");
+    }
+}
+
+// The preparer transports the unchanged original corpus bytes independently.
+// These callers inspect typed relationships, not an IR evaluator or backend.
+CheckPackages :: () {
+    main := PACKAGE_MAIN_SOURCE;
+    math := PACKAGE_MATH_SOURCE;
+    private_import := PRIVATE_IMPORT_SOURCE;
+    sources: typed.Source[] = [
+        {path: "slice_cases/modules/Main.chibi", text: main, document: 19},
+        {path: "slice_cases/modules/math/Math.chibi", text: math, document: 20}
+    ];
+    module := AcceptedSources(sources);
+    CheckEqual(module, AcceptedSources(sources));
+    assert(length(module.functions) == 3 && length(module.blocks) == 5 &&
+           length(module.instructions) == 8 && length(module.values) == 7,
+           "original modules retain Apply, Double and unused Hidden bodies");
+    assert(length(module.calls) == 1 && module.calls[0].callee == 2 &&
+           module.arguments[int(module.calls[0].first_argument)] == 1,
+           "qualified call resolves to the actual dependency signature and argument");
+    assert(NameMatches(module, 0, "Apply") && NameMatches(module, 1, ".vnext.2") &&
+           NameMatches(module, 2, ".vnext.3"), "dependency native names are deterministic and distinct");
+    assert(module.functions[0].exported == 1 && module.functions[1].exported == 0 &&
+           module.functions[2].exported == 0, "only entry package pub functions are native exports");
+    condition := Terminator(module, 1);
+    assert(condition.op == typed.Branch && condition.left == 2, "Apply tests its bool parameter");
+    true_target := module.edges[int(condition.payload) - 1].target;
+    true_block := module.blocks[int(true_target) - 1];
+    true_return := Terminator(module, true_target);
+    call_index := CallInstruction(module, 1);
+    assert(call_index >= int(true_block.first_instruction) &&
+           call_index < int(true_block.first_instruction + true_block.instruction_count),
+           "enabled Apply block contains the qualified call");
+    assert(true_return.op == typed.Return && true_return.left == module.instructions[call_index].result,
+           "enabled Apply returns the qualified call result");
+    false_return := Terminator(module, module.edges[int(condition.payload)].target);
+    assert(false_return.op == typed.Return && false_return.left == 1, "disabled Apply returns its input");
+    double_entry := module.blocks[int(module.functions[1].first_block)];
+    double_return := Terminator(module, module.functions[1].first_block + 1);
+    multiply := DefiningInstruction(module, double_return.left);
+    factor := DefiningInstruction(module, multiply.right);
+    assert(double_return.op == typed.Return && double_entry.parameter_count == 1 &&
+           multiply.left == module.block_parameters[int(double_entry.first_parameter)],
+           "Double returns the multiplication of its own argument");
+    assert(multiply.op == typed.MultiplyI64 && factor.op == typed.ConstantI64 &&
+           module.literals[int(factor.payload) - 1] == 2, "enabled Apply calls the authored multiply by two");
+    for (function, index in module.functions) {
+        origin := module.origins[int(function.origin) - 1];
+        expected: u32 = 20;
+        if (index == 0) { expected = 19; }
+        assert(origin.document == expected, "function origins preserve separate source documents");
+    }
+    for (origin in module.origins) {
+        text := main;
+        if (origin.document == 20) { text = math; }
+        assert((origin.document == 19 || origin.document == 20) && origin.start < origin.end &&
+               origin.end <= u32(text_byte_length(text)), "every origin stays in its original source document");
+    }
+    CheckSourcesRejected([
+        {path: "slice_cases/rejected/private_import.chibi", text: private_import, document: 21},
+        sources[1]
+    ], "private member", 0, "math.Hidden");
+
+    renamed := sources;
+    row := renamed[0];
+    row.text = strings.ReplaceAll(main, "math", "renamed");
+    row.text = strings.ReplaceAll(row.text, "Double", "Twice");
+    renamed[0] = row;
+    row = renamed[1];
+    row.path = "slice_cases/modules/renamed/Other.chibi";
+    row.text = strings.ReplaceAll(math, "package math", "package alternate");
+    row.text = strings.ReplaceAll(row.text, "Double", "Twice");
+    renamed[1] = row;
+    renamed_module := AcceptedSources(renamed);
+    assert(renamed_module.calls[0].callee == 2, "renamed aliases, directories, headers and callees resolve from source");
+
+    split: typed.Source[] = [
+        {path: "root/Main.chibi", text: "package root\nimport left \"project:left\"\nimport right \"project:right\"\npub Apply :: (x: i64) -> i64 { return left.Same(x) + right.Same(x) + Later(x); }\n", document: 0},
+        {path: "left/Main.chibi", text: "package left\npub Same :: (x: i64) -> i64 { return Hidden(x); }\nHidden :: (x: i64) -> i64 { return x + 1; }\n", document: 10},
+        {path: "right/Main.chibi", text: "package right\npub Same :: (x: i64) -> i64 { return x * 7; }\n", document: 11},
+        {path: "root/Later.chibi", text: "package root\nLater :: (x: i64) -> i64 { return x; }\n", document: 2147483647}
+    ];
+    module = AcceptedSources(split);
+    assert(length(module.functions) == 5 && length(module.calls) == 4,
+           "same-named dependency functions and private later-file function are all produced");
+    assert(module.calls[0].callee == 2 && module.calls[1].callee == 4 && module.calls[2].callee == 5 &&
+           module.calls[3].callee == 3, "global IDs do not reset at document boundaries");
+    assert(NameMatches(module, 4, "Later") && module.functions[4].exported == 0,
+           "entry-package private names remain unchanged");
+    assert(module.origins[int(module.functions[4].origin) - 1].document == u32(2147483647),
+           "later-file origin preserves the maximum document label");
+
+    row = sources[0];
+    row.text = strings.ReplaceAll(main, "math.Double", "unknown.Double");
+    CheckSourcesRejected([row, sources[1]], "unknown package alias", 0, "unknown");
+    row.text = strings.ReplaceAll(main, "math.Double", "math.Absent");
+    CheckSourcesRejected([row, sources[1]], "unknown imported function", 0, "Absent");
+    row.text = strings.ReplaceAll(main, "math.Double(value)", "math.Double(true)");
+    CheckSourcesRejected([row, sources[1]], "direct call argument type does not match signature", 0, "true");
+    row.text = strings.ReplaceAll(main, "math.Double(value)", "math.Double()");
+    CheckSourcesRejected([row, sources[1]], "direct call argument count does not match signature", 0, "()");
+    row.text = strings.ReplaceAll(main, "value: i64", "math: i64");
+    CheckSourcesRejected([row, sources[1]], "scalar binding has no package members", 0, "math.Double");
+    row = sources[1];
+    row.text = strings.ReplaceAll(math, "return value;", "return absent;");
+    CheckSourcesRejected([sources[0], row], "unknown scalar name", 1, "absent");
+    CheckPackageRules(sources);
+    CheckPackageLimits();
+}
+
+AcceptedSources :: (sources: typed.Source[]) -> typed.Module {
+    switch typed.ProduceSources(sources) {
+        case .Produced(module):
+            verified := typed.Verify(module);
+            assert(verified == 0, "multi-source produced module verifies");
+            return module;
+        case .Rejected(diagnostic):
+            assert(false, "valid package transform rejected");
+            return {functions: [], signatures: [], parameter_types: [], blocks: [],
+                    block_parameters: [], values: [], instructions: [], edges: [], calls: [],
+                    arguments: [], literals: [], origins: [], names: [], name_bytes: []};
+    }
+}
+CheckSourcesRejected :: (sources: typed.Source[], message: string, source: int, anchor: string) {
+    switch typed.ProduceSources(sources) {
+        case .Produced(module): assert(false, "invalid package transform accepted");
+        case .Rejected(diagnostic):
+            expected := sources[source];
+            start := strings.Index(expected.text, anchor);
+            assert(start >= 0, "rejection anchor exists in original source");
+            assert(diagnostic.message == message && diagnostic.document == expected.document,
+                   "package diagnostic retains its reason and source document");
+            assert(diagnostic.start >= 0 && diagnostic.end > diagnostic.start &&
+                   diagnostic.end <= text_byte_length(expected.text) &&
+                   diagnostic.start < start + text_byte_length(anchor) && diagnostic.end > start,
+                   "package diagnostic overlaps its real source anchor");
+            line: int = 1;
+            column: int = 1;
+            for (at in 0..<diagnostic.start) {
+                if (text_byte_at(expected.text, at) == 10) { line += 1; column = 1; }
+                else { column += 1; }
+            }
+            assert(diagnostic.line == line && diagnostic.column == column,
+                   "package diagnostic coordinates match its source byte offset");
+            if (message == "private member") {
+                actual := text_slice(expected.text, diagnostic.start, diagnostic.end - diagnostic.start);
+                assert(actual == anchor, "private import reports the exact qualified member span");
+            }
+            if (message == "Invalid string or embedded NUL") {
+                assert(diagnostic.start == start && diagnostic.end == start + text_byte_length(anchor),
+                       "decoded import failure retains the exact original quoted literal span");
+            }
+    }
+}
+
+CheckPackageRules :: (original: typed.Source[]) {
+    scoped: typed.Source[] = [
+        {path: "root/A.chibi", text: "package root\nimport helper \"project:left\"\npub First :: (x: i64) -> i64 { return helper.Read(x); }\n", document: 31},
+        {path: "root/B.chibi", text: "package root\nimport helper \"project:right\"\npub Second :: (x: i64) -> i64 { return helper.Read(x); }\n", document: 32},
+        {path: "left/Main.chibi", text: "package left\npub Read :: (x: i64) -> i64 { return x + 1; }\n", document: 33},
+        {path: "right/Main.chibi", text: "package right\npub Read :: (x: i64) -> i64 { return x + 7; }\n", document: 34}
+    ];
+    module := AcceptedSources(scoped);
+    assert(module.calls[0].callee == 3 && module.calls[1].callee == 4,
+           "identical aliases in two files keep different package bindings");
+    reordered := AcceptedSources([scoped[0], scoped[3], scoped[1], scoped[2]]);
+    assert(reordered.calls[0].callee == 4 && reordered.calls[1].callee == 2 &&
+           NameMatches(reordered, 1, ".vnext.2") && NameMatches(reordered, 2, "Second"),
+           "reordered sources deliberately change global IDs without changing name resolution");
+    row := scoped[1];
+    row.text = "package root\npub Second :: (x: i64) -> i64 { return helper.Read(x); }\n";
+    CheckSourcesRejected([scoped[0], row, scoped[2]], "unknown package alias", 1, "helper.Read");
+    row.text = "package root\nhelper :: (x: i64) -> i64 { return x; }\n";
+    CheckSourcesRejected([scoped[0], row, scoped[2]], "import alias conflicts with a package function", 0, "helper");
+    conflicts := scoped[0];
+    conflicts.text = "package root\nimport z \"project:left\"\nimport a \"project:left\"\npub First :: (x: i64) -> i64 { return x; }\n";
+    row.text = "package root\nz :: (x: i64) -> i64 { return x; }\na :: (x: i64) -> i64 { return x; }\n";
+    CheckSourcesRejected([conflicts, row, scoped[2]], "import alias conflicts with a package function", 0, "z \"project:left\"");
+    row.text = "package root\nFirst :: (x: i64) -> i64 { return x; }\n";
+    CheckSourcesRejected([scoped[0], row, scoped[2]], "duplicate function name", 1, "First");
+    row.text = "package wrong\nOther :: (x: i64) -> i64 { return x; }\n";
+    CheckSourcesRejected([scoped[0], row, scoped[2]], "package header mismatch", 1, "wrong");
+    row = scoped[2];
+    row.text = "package root\npub Read :: (x: i64) -> i64 { return x; }\n";
+    CheckSourcesRejected([scoped[0], row], "duplicate package name", 1, "package root");
+
+    self: typed.Source[] = [
+        {path: "self/Main.chibi", text: "package self\nimport own \"project:self\"\npub Call :: (x: i64) -> i64 { return own.Private(x); }\n", document: 35},
+        {path: "self/Private.chibi", text: "package self\nPrivate :: (x: i64) -> i64 { return x; }\n", document: 36}
+    ];
+    module = AcceptedSources(self);
+    assert(module.calls[0].callee == 2 && NameMatches(module, 1, "Private"), "self-import retains package-private access");
+    row = self[0];
+    row.text = "package self\nimport own \"project:self\"\n";
+    module = AcceptedSources([row, self[1]]);
+    assert(length(module.functions) == 1 && NameMatches(module, 0, "Private"),
+           "header/import-only files are admitted when their package contains a body");
+    recursive := AcceptedSources([
+        {path: "p/A.chibi", text: "package p\npub First :: (b: bool, x: i64) -> i64 { if (b) { return Second(false, x); } return x; }\n", document: 37},
+        {path: "p/B.chibi", text: "package p\nSecond :: (b: bool, x: i64) -> i64 { if (b) { return First(false, x); } return x; }\n", document: 38}
+    ]);
+    assert(recursive.calls[0].callee == 2 && recursive.calls[1].callee == 1,
+           "mutual calls across same-package files use complete headers");
+
+    row = original[0];
+    row.text = strings.ReplaceAll(row.text, "project:slice_cases/modules/math", "project:absent");
+    CheckSourcesRejected([row, original[1]], "import target is outside the supplied source closure", 0, "project:absent");
+    row = original[1];
+    row.text = strings.ReplaceAll(row.text, "package math", "package math\nimport root \"project:slice_cases/modules\"");
+    CheckSourcesRejected([original[0], row], "package import cycle", 0, "import math");
+    row = original[0];
+    row.text = strings.ReplaceAll(row.text, "pub Apply", "import math \"project:slice_cases/modules\"\npub Apply");
+    CheckSourcesRejected([row, original[1]], "duplicate import alias", 0, "math \"project:slice_cases/modules\"");
+    row.text = strings.ReplaceAll(original[0].text, "math.Double", "Double");
+    CheckSourcesRejected([row, original[1]], "unknown direct callee", 0, "Double");
+    row.text = strings.ReplaceAll(original[0].text, "math.Double", "math.nested.Double");
+    CheckSourcesRejected([row, original[1]], "vNext scalar slice requires an identifier package and member", 0, "math.nested.Double");
+    row = scoped[2];
+    CheckSourcesRejected([original[0], original[1], row], "source package is unreachable from the entry package", 2, "package left");
+    row = original[1];
+    row.text = strings.ReplaceAll(row.text, "value: i64", "value: i64[]");
+    bad_body := original[0];
+    bad_body.text = strings.ReplaceAll(bad_body.text, "math.Double(value)", "absent");
+    CheckSourcesRejected([bad_body, row], "vNext scalar slice supports only ordinary i64 and bool types", 1, "i64[]");
+    row = original[1];
+    row.text = "package math\npub Double :: (";
+    switch typed.ProduceSources([original[0], row]) {
+        case .Produced(module): assert(false, "malformed dependency syntax accepted");
+        case .Rejected(diagnostic):
+            assert(diagnostic.document == row.document && diagnostic.line == 2 &&
+                   diagnostic.start >= 0 && diagnostic.end >= diagnostic.start &&
+                   diagnostic.end <= text_byte_length(row.text), "retained parser error keeps its dependency document");
+    }
+
+    // Ordinary string escapes are decoded by the retained reader, not by a
+    // fixture-specific import scanner. Distinct aliases may share a target.
+    row = original[0];
+    row.text = strings.ReplaceAll(row.text, "project:slice_cases/modules/math", "project:slice_cases\\/modules\\/math");
+    module = AcceptedSources([row, original[1]]);
+    assert(module.calls[0].callee == 2, "decoded import paths resolve their real target");
+    // Four hex digits pass ScanEscape, but Metadata rejects an unpaired
+    // surrogate. A decoded NUL instead fails Name's explicit byte check.
+    invalid_literals: string[] = ["\"project:\\uD800\"", "\"project:\\u0000\""];
+    for (literal in invalid_literals) {
+        row = original[1];
+        row.text = strings.ReplaceAll(row.text, "package math", strings.Concatenate(["package math\nimport bad ", literal]));
+        CheckSourcesRejected([original[0], row], "Invalid string or embedded NUL", 1, literal);
+    }
+    row = original[0];
+    row.text = strings.ReplaceAll(original[0].text, "pub Apply", "import second \"project:slice_cases/modules/math\"\npub Apply");
+    row.text = strings.ReplaceAll(row.text, "math.Double", "second.Double");
+    module = AcceptedSources([row, original[1]]);
+    assert(module.calls[0].callee == 2, "two aliases can name the same package");
+    imports: string[] = ["import \"project:slice_cases/modules/math\"", "import _ \"project:slice_cases/modules/math\"",
+                         "import math \"../math\"", "import math \"core:math\"", "import math \"project:bad/../math\""];
+    reasons: string[] = ["vNext scalar slice requires an explicit import alias", "vNext scalar slice requires a nonreserved import alias",
+                         "vNext scalar slice requires a canonical project: import", "vNext scalar slice requires a canonical project: import",
+                         "vNext scalar slice requires a canonical project: import"];
+    for (declaration, index in imports) {
+        row = original[0];
+        row.text = strings.ReplaceAll(row.text, "import math \"project:slice_cases/modules/math\"", declaration);
+        CheckSourcesRejected([row, original[1]], reasons[index], 0, declaration);
+    }
+}
+
+// Admission bounds apply to the whole explicit closure, not once per file.
+CheckPackageLimits :: () {
+    empty: typed.Source[] = [];
+    CheckSourcesFailure(empty, "vNext scalar slice requires 1..8 source files", 0);
+    files: typed.Source[] = [];
+    for (index in 0..<8) {
+        file: typed.Source = {path: format_text("F{}.chibi", index),
+                             text: format_text("package p\nF{} :: () -> i64 {{ return 1; }}\n", index), document: index};
+        files.append(file);
+    }
+    module := AcceptedSources(files);
+    assert(length(module.functions) == 8, "eight files are admitted without multiplying function limits");
+    ninth: typed.Source = {path: "Ninth.chibi", text: "package p\nNinth :: () -> i64 { return 1; }\n", document: 8};
+    files.append(ninth);
+    CheckSourcesFailure(files, "vNext scalar slice requires 1..8 source files", 8);
+    first: typed.Source = {path: "First.chibi", text: "package p\nFirst :: () -> i64 { return 1; }\n", document: 40};
+    second: typed.Source = {path: "Second.chibi", text: "package p\nSecond :: () -> i64 { return 7; }\n", document: 41};
+    duplicate := second;
+    duplicate.document = 40;
+    CheckSourcesFailure([first, duplicate], "duplicate source document label", 40);
+    duplicate = second;
+    duplicate.path = first.path;
+    CheckSourcesFailure([first, duplicate], "duplicate source path", 41);
+    duplicate = second;
+    duplicate.document = -1;
+    CheckSourcesFailure([first, duplicate], "vNext scalar slice requires a nonnegative document and at most 64 KiB source", -1);
+    invalid_paths: string[] = ["", "../Second.chibi", "/Second.chibi", "p//Second.chibi", "p/./Second.chibi", "Second.txt", "project:Second.chibi"];
+    for (path in invalid_paths) {
+        duplicate = second;
+        duplicate.path = path;
+        CheckSourcesFailure([first, duplicate], "vNext scalar slice requires a canonical project-relative .chibi path", 41);
+    }
+    duplicate = first;
+    duplicate.path = strings.Concatenate([strings.Repeat("a", 245), "/Main.chibi"]);
+    module = AcceptedSources([duplicate]);
+    assert(length(module.functions) == 1 && text_byte_length(duplicate.path) == 256, "256-byte canonical source location is admitted");
+    duplicate.path = strings.Concatenate(["a", duplicate.path]);
+    CheckSourcesFailure([duplicate], "vNext scalar slice requires a canonical project-relative .chibi path", 40);
+
+    left := first;
+    right := second;
+    left.text = strings.Concatenate([first.text, strings.Repeat(" ", 32768 - text_byte_length(first.text))]);
+    right.text = strings.Concatenate([second.text, strings.Repeat(" ", 32768 - text_byte_length(second.text))]);
+    module = AcceptedSources([left, right]);
+    assert(length(module.functions) == 2, "aggregate 65536-byte closure is admitted");
+    right.text = strings.Concatenate([right.text, " "]);
+    CheckSourcesFailure([left, right], "vNext scalar slice requires a nonnegative document and at most 64 KiB source", 41);
+
+    left = first;
+    right = second;
+    left.text = "package p\n";
+    right.text = "package p\n";
+    for (index in 0..<32) {
+        declaration := format_text("F{} :: () -> i64 {{ return 1; }}\n", index);
+        if (index < 16) { left.text = strings.Concatenate([left.text, declaration]); }
+        else { right.text = strings.Concatenate([right.text, declaration]); }
+    }
+    module = AcceptedSources([left, right]);
+    assert(length(module.functions) == 32, "aggregate 32-function closure is admitted");
+    right.text = strings.Concatenate([right.text, "F32 :: () -> i64 { return 1; }\n"]);
+    CheckSourcesRejected([left, right], "vNext scalar slice exceeds 32 functions", 1, "F32");
+
+    left = first;
+    left.text = "package p\n";
+    for (index in 0..<32) {
+        left.text = strings.Concatenate([left.text, format_text("import a{} \"project:\"\n", index)]);
+    }
+    left.text = strings.Concatenate([left.text, "First :: () -> i64 { return 1; }\n"]);
+    module = AcceptedSources([left]);
+    assert(length(module.functions) == 1, "32 distinct self aliases are admitted");
+    right = second;
+    right.text = "package p\nimport extra \"project:\"\nSecond :: () -> i64 { return 1; }\n";
+    CheckSourcesRejected([left, right], "vNext scalar slice exceeds 32 imports", 1, "import extra");
+
+    // Each one-parameter file has 27 parser nodes, an assignment adds five,
+    // and a retained comment adds one: 54 + 1627*5 + 3 = 8192 total.
+    left = first;
+    right = second;
+    left.text = strings.Concatenate(["package p\nFirst :: (x: i64) -> i64 { ", strings.Repeat("x = x; ", 800), "return x; }\n"]);
+    right.text = strings.Concatenate(["// one\n// two\n// three\npackage p\nSecond :: (x: i64) -> i64 { ", strings.Repeat("x = x; ", 827), "return x; }\n"]);
+    module = AcceptedSources([left, right]);
+    assert(length(module.values) == 2 && length(module.instructions) == 2, "aggregate 8192 syntax nodes retain two no-op bodies");
+    right.text = strings.Concatenate(["// fourth\n", right.text]);
+    CheckSourcesFailure([left, right], "vNext scalar slice exceeds 8192 syntax nodes", 41);
+}
+CheckSourcesFailure :: (sources: typed.Source[], message: string, document: int) {
+    switch typed.ProduceSources(sources) {
+        case .Produced(module): assert(false, "invalid multi-source admission accepted");
+        case .Rejected(diagnostic):
+            assert(diagnostic.message == message && diagnostic.document == document,
+                   "source admission preserves the exact reason and offending document");
     }
 }

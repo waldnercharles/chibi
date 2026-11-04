@@ -21,14 +21,21 @@ exec(compile(HELPER_BYTES, str(HELPER_PATH), "exec"), helpers.__dict__)
 COMPILER_FILES = (*helpers.PARSER_FILES,
     "json_string/JsonString.chibi", "lexical_binding/Binding.chibi",
     "named_binding/Binding.chibi", "signature_reader/Reader.chibi",
-    "type_constructors/Constructors.chibi", "unit_algebra/Units.chibi")
+    "type_constructors/Constructors.chibi", "unit_algebra/Units.chibi",
+    "package_graph/Graph.chibi")
 TYPED_FILES = ("Model.chibi", "Produce.chibi", "Verify.chibi")
 TYPED_ROOT = "tools/experiments/vnext/frontend/typed"
 SOURCE_MAP = [("tools/compiler/" + name, "project/" + name) for name in COMPILER_FILES]
 SOURCE_MAP += [("packages/core/strings/Strings.chibi", "core/strings/Strings.chibi")]
 SOURCE_MAP += [(TYPED_ROOT + "/" + name, "project/vnext_typed/" + name) for name in TYPED_FILES]
+FIXTURES = (
+    (b"FIXTURE_SOURCE", TYPED_ROOT + "/fixtures/EchoJoin.chibi", "inputs/EchoJoin.chibi"),
+    (b"PACKAGE_MAIN_SOURCE", "tools/experiments/vnext/slice_cases/modules/Main.chibi", "inputs/modules/Main.chibi"),
+    (b"PACKAGE_MATH_SOURCE", "tools/experiments/vnext/slice_cases/modules/math/Math.chibi", "inputs/modules/math/Math.chibi"),
+    (b"PRIVATE_IMPORT_SOURCE", "tools/experiments/vnext/slice_cases/rejected/private_import.chibi", "inputs/private_import.chibi"),
+)
 INPUT_MAP = [(TYPED_ROOT + "/tests/Main.chibi.in", "inputs/Main.chibi.in"),
-             (TYPED_ROOT + "/fixtures/EchoJoin.chibi", "inputs/EchoJoin.chibi")]
+             *((source, copied) for _, source, copied in FIXTURES)]
 PACKAGE_PART = r"[a-z_][a-z_0-9]{0,63}"
 PACKAGE_PATH = rf"{PACKAGE_PART}:{PACKAGE_PART}(?:/{PACKAGE_PART}){{0,7}}"
 
@@ -101,25 +108,32 @@ def prepare(output):
     output = Path(output).absolute()
     if output.exists() or output.is_symlink():
         raise FileExistsError(f"output must be a new directory: {output}")
-    if len(COMPILER_FILES) != 14 or len(set(COMPILER_FILES)) != 14:
+    if len(COMPILER_FILES) != 15 or len(set(COMPILER_FILES)) != 15:
         raise ValueError("compiler file closure changed; inspect before expanding it")
     data, origins, graph = read_sources(SOURCE_MAP, INPUT_MAP)
     pending = imports(data["inputs/Main.chibi.in"], "tests/Main.chibi.in")
     if pending != ["core:strings", "project:vnext_typed"]:
         raise ValueError("test imports changed")
     check_closure(graph, pending)
-    template, fixture = data["inputs/Main.chibi.in"], data["inputs/EchoJoin.chibi"]
-    if template.count(b"FIXTURE_SOURCE") != 1:
-        raise ValueError("template must contain exactly one FIXTURE_SOURCE marker")
-    literal = helpers.literal(fixture.decode("utf-8"))
-    if json.loads(literal).encode("utf-8") != fixture:
-        raise ValueError("fixture literal does not preserve UTF-8 bytes")
-    data["Main.chibi"] = template.replace(b"FIXTURE_SOURCE", literal.encode("utf-8"))
+    template = data["inputs/Main.chibi.in"]
+    substitutions = {}
+    for marker, _, copied in FIXTURES:
+        if template.count(marker) != 1:
+            raise ValueError(f"template must contain exactly one {marker.decode()} marker")
+        fixture = data[copied]
+        literal = helpers.literal(fixture.decode("utf-8"))
+        if json.loads(literal).encode("utf-8") != fixture:
+            raise ValueError(f"fixture literal does not preserve UTF-8 bytes: {copied}")
+        substitutions[marker] = literal.encode("utf-8")
+    # One pass never reinterprets marker-like text in an inserted source. Each
+    # original file stays a separate string; no imports or bodies are parsed here.
+    data["Main.chibi"] = re.sub(b"|".join(map(re.escape, substitutions)),
+                               lambda match: substitutions[match[0]], template)
     manifest = {
         "schema": 1,
         "purpose": "copied working-tree source preparation only; not compiler or toolchain admission",
         "files": [{"path": name, **({"source": origins[name]} if name in origins else
-                   {"generated_from": ["inputs/Main.chibi.in", "inputs/EchoJoin.chibi"]}),
+                   {"generated_from": ["inputs/Main.chibi.in", *[copied for _, _, copied in FIXTURES]]}),
                    **helpers.byte_identity(value)} for name, value in sorted(data.items())],
         "imports": graph,
         "preparation": [{"source": str(path.relative_to(ROOT)), **helpers.byte_identity(value)}

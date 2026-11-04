@@ -167,7 +167,7 @@ class NativeRunnerTests(unittest.TestCase):
     def snapshot(self):
         directory = self.base / "prepared"
         directory.mkdir()
-        names = ["project/source" + str(i) + ".chibi" for i in range(29)]
+        names = ["project/source" + str(i) + ".chibi" for i in range(30)]
         names += ["core/Core.chibi", "inputs/caller.c", "entry/Main.chibi"]
         implementation = ["controller/owned_process.py", "controller/run_native.py"]
         rows = []
@@ -181,14 +181,14 @@ class NativeRunnerTests(unittest.TestCase):
         manifest = {"schema": 2, "directory": str(directory),
                     "expectations": self.expectations,
                     "stages": {name: "not_run" for name in self.stage_names},
-                    "files": rows[:32], "implementation": rows[32:],
+                    "files": rows[:33], "implementation": rows[33:],
                     "backend": {"path": str(backend), "resolved": str(backend), **SUBJECT.file_identity(backend)}}
         return directory, manifest
 
     def test_check_sources_exact_membership_and_manifest(self):
         directory, manifest = self.snapshot()
         identities = SUBJECT.check_sources(directory, manifest, self.stage_names)
-        self.assertEqual(len(identities), 35)
+        self.assertEqual(len(identities), 36)
         for change in ("schema", "directory", "stages", "missing_row", "duplicate", "implementation", "escape"):
             altered = copy.deepcopy(manifest)
             if change in ("schema", "directory", "stages"):
@@ -495,14 +495,24 @@ else:
         exec(compile(Path(prepare.__file__).read_bytes(), prepare.__file__, "exec"), prepare.__dict__)
         backend = self.base / "identity-backend.so"
         backend.write_bytes(b"identity only, never loaded")
-        for case, count in (("scalars", 15), ("direct_calls", 23)):
+        for case, count, file_count, rejections in (
+                ("scalars", 15, 44, ["argument_type", "argument_count", "condition_type",
+                                     "result_type", "missing_return", "unknown_name",
+                                     "unsupported_array", "literal_range", "duplicate_parameter"]),
+                ("direct_calls", 23, 35, []), ("modules", 2, 37, ["private_import"])):
             directory = self.base / case
             manifest = prepare.prepare(directory, backend, case)
-            SUBJECT.check_sources(directory, manifest, self.stage_names)
+            self.assertEqual(len(manifest["files"]), file_count)
+            self.assertEqual(len(manifest["implementation"]), 2)
+            self.assertEqual(len(SUBJECT.check_sources(directory, manifest, self.stage_names)), file_count + 3)
             attempt = directory / "attempt"
             attempt.mkdir()
             output = attempt / "aot_run.stdout"
             expected = manifest["expectations"]
+            self.assertEqual(expected, {
+                "case": case, "rejections": rejections, "aot_checks": count,
+                "aot_success": '{"aot_c_caller_checks":' + str(count)
+                               + ',"status":"passed","input":"source-produced-copied-object"}\n'})
             success = expected["aot_success"].encode()
             output.write_bytes(success)
             SUBJECT.check_stage_outputs(self.plan[4], directory, attempt, expected)
@@ -513,7 +523,8 @@ else:
                     SUBJECT.check_stage_outputs(self.plan[4], directory, attempt, expected)
             for key, value in (("aot_checks", count + 1), ("aot_checks", True),
                                ("aot_success", SUBJECT.AOT_SUCCESS.decode()),
-                               ("case", "modules"), ("rejections", ["unknown"]), ("rejections", None)):
+                               ("case", "foreign"), ("rejections", ["unknown"]), ("rejections", None),
+                               ("rejections", rejections + ["private_import"])):
                 altered = copy.deepcopy(manifest)
                 altered["expectations"][key] = value
                 with self.subTest(case=case, key=key), self.assertRaises(ValueError):
@@ -524,13 +535,101 @@ else:
             altered["expectations"]["aot_success"] = expected["aot_success"].replace(str(count), str(count + 1), 1)
             with self.assertRaisesRegex(ValueError, "prepared registry"):
                 SUBJECT.check_sources(directory, altered, self.stage_names)
-            for name in ("inputs/registry_callers.py", "inputs/slice_cases.json", "inputs/native_aot_caller.c", "entry/Main.chibi"):
+            sources = ["inputs/registry_callers.py", "inputs/slice_cases.json",
+                       "inputs/native_aot_caller.c", "entry/Main.chibi"]
+            if case == "modules":
+                sources += ["inputs/slice_cases/modules/Main.chibi",
+                            "inputs/slice_cases/modules/math/Math.chibi",
+                            "inputs/slice_cases/rejected/private_import.chibi"]
+            for name in sources:
                 path = directory / name
                 original = path.read_bytes()
                 path.write_bytes(original + b" ")
                 with self.subTest(case=case, name=name), self.assertRaisesRegex(ValueError, "snapshot changed"):
                     SUBJECT.check_sources(directory, manifest, self.stage_names)
                 path.write_bytes(original)
+
+    def test_real_nativecases_snapshot_keeps_45_checks(self):
+        prepare = types.ModuleType("native_preparation")
+        prepare.__file__ = str(HERE / "prepare_native.py")
+        exec(compile(Path(prepare.__file__).read_bytes(), prepare.__file__, "exec"), prepare.__dict__)
+        backend = self.base / "identity-backend.so"
+        backend.write_bytes(b"identity only, never loaded")
+        directory = self.base / "nativecases"
+        manifest = prepare.prepare(directory, backend)
+        self.assertEqual(manifest["expectations"], self.expectations)
+        self.assertEqual(len(manifest["files"]), 33)
+        self.assertEqual(len(manifest["implementation"]), 2)
+        self.assertEqual(len(SUBJECT.check_sources(directory, manifest, self.stage_names)), 36)
+        self.assertIn("project/package_graph/Graph.chibi", [row["path"] for row in manifest["files"]])
+
+    def test_modules_exact_dependency_and_rejection_membership(self):
+        prepare = types.ModuleType("native_preparation")
+        prepare.__file__ = str(HERE / "prepare_native.py")
+        exec(compile(Path(prepare.__file__).read_bytes(), prepare.__file__, "exec"), prepare.__dict__)
+        backend = self.base / "identity-backend.so"
+        backend.write_bytes(b"identity only, never loaded")
+        directory = self.base / "modules"
+        manifest = prepare.prepare(directory, backend, "modules")
+        names = [row["path"] for row in manifest["files"]]
+        self.assertEqual({name for name in names if name.startswith("inputs/")}, {
+            "inputs/NativeMain.chibi.in", "inputs/slice_cases.json", "inputs/registry_callers.py",
+            "inputs/native_aot_caller.c", "inputs/slice_cases/modules/Main.chibi",
+            "inputs/slice_cases/modules/math/Math.chibi", "inputs/slice_cases/rejected/private_import.chibi"})
+        self.assertEqual(names.count("inputs/slice_cases/modules/math/Math.chibi"), 1)
+        SUBJECT.check_sources(directory, manifest, self.stage_names)
+        for rejections in ([], ["private_import", "private_import"], ["unknown_name"]):
+            altered = copy.deepcopy(manifest)
+            altered["expectations"]["rejections"] = rejections
+            with self.subTest(rejections=rejections), self.assertRaises(ValueError):
+                SUBJECT.check_sources(directory, altered, self.stage_names)
+
+        registry_path = directory / "inputs/slice_cases.json"
+        original_registry = registry_path.read_bytes()
+        registry = json.loads(original_registry)
+        # Keep valid cases for version/root failures and refresh only registry
+        # identity, so the combined metadata guard supplies the diagnostic.
+        for field, value in (("version", 2), ("project_root", "other"), ("cases", {})):
+            altered_registry = copy.deepcopy(registry)
+            altered_registry[field] = value
+            registry_path.write_text(json.dumps(altered_registry), encoding="utf-8")
+            altered = copy.deepcopy(manifest)
+            next(row for row in altered["files"] if row["path"] == "inputs/slice_cases.json").update(
+                SUBJECT.file_identity(registry_path))
+            with self.subTest(field=field), self.assertRaises(ValueError) as error:
+                SUBJECT.check_sources(directory, altered, self.stage_names)
+            self.assertEqual(str(error.exception),
+                             "prepared registry requires an object with version 1, project_root '.', and a cases list")
+        # Refresh only the changed registry identity so rejection exercises its
+        # ordered source contract rather than the byte-tamper guard above.
+        for case in ("modules", "private_import"):
+            original_files = next(row["files"] for row in registry["cases"] if row["id"] == case)
+            for files in ([original_files[0]], [original_files[0], original_files[0]],
+                          [original_files[0], "slice_cases/scalars/Main.chibi"],
+                          list(reversed(original_files))):
+                altered_registry = copy.deepcopy(registry)
+                next(row for row in altered_registry["cases"] if row["id"] == case)["files"] = files
+                registry_path.write_text(json.dumps(altered_registry), encoding="utf-8")
+                altered = copy.deepcopy(manifest)
+                next(row for row in altered["files"] if row["path"] == "inputs/slice_cases.json").update(
+                    SUBJECT.file_identity(registry_path))
+                with self.subTest(case=case, files=files), self.assertRaises(ValueError):
+                    SUBJECT.check_sources(directory, altered, self.stage_names)
+        registry_path.write_bytes(original_registry)
+        SUBJECT.check_sources(directory, manifest, self.stage_names)
+
+        dependency = "inputs/slice_cases/modules/math/Math.chibi"
+        for change in ("omitted", "duplicate", "wrong"):
+            altered = copy.deepcopy(manifest)
+            index = next(i for i, row in enumerate(altered["files"]) if row["path"] == dependency)
+            if change == "omitted":
+                altered["files"].pop(index)
+            elif change == "duplicate":
+                altered["files"][index] = copy.deepcopy(altered["files"][0])
+            else:
+                altered["files"][index]["path"] = "inputs/slice_cases/modules/math/Wrong.chibi"
+            with self.subTest(dependency=change), self.assertRaises(ValueError):
+                SUBJECT.check_sources(directory, altered, self.stage_names)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Data-only native preparation regressions; no compiler, linker or native runs."""
 
+import ast
 import copy
 import hashlib
 import json
@@ -85,16 +86,41 @@ class NativePreparationTests(unittest.TestCase):
         self.assertFalse(self.output.exists())
 
     def expected_entry(self):
+        source = json.dumps(self.fixture.read_bytes().decode("utf-8"), ensure_ascii=False)
+        sources = ('[\n        {path: "NativeCases.chibi", text: ' + source +
+                   ', document: 19}\n    ]').encode()
         replacements = {
             b'"LIBRARY_PATH"': json.dumps(str(self.library), ensure_ascii=False).encode(),
-            b"FIXTURE_SOURCE": json.dumps(self.fixture.read_bytes().decode("utf-8"), ensure_ascii=False).encode(),
+            b"FIXTURE_SOURCES": sources,
             b"OUTPUT_PATH": json.dumps(str(self.output / "run/normal/source-native.o"), ensure_ascii=False).encode(),
         }
-        return re.sub(b'"LIBRARY_PATH"|FIXTURE_SOURCE|OUTPUT_PATH',
+        return re.sub(b'"LIBRARY_PATH"|FIXTURE_SOURCES|OUTPUT_PATH',
                       lambda match: replacements[match[0]], self.template.read_bytes())
 
+    def source_records(self, entry, binding="sources"):
+        body = entry.split(f"    {binding}: typed.Source[] = [\n", 1)[1].split("    ];", 1)[0]
+        string = r'("(?:[^"\\]|\\.)*")'
+        rows = re.findall(r'^        \{path: ' + string + ', text: ' + string +
+                          r', document: ([0-9]+)\},?$', body, re.M)
+        self.assertEqual(len(body.splitlines()), len(rows))
+        return [(json.loads(path), json.loads(source).encode("utf-8"), int(document))
+                for path, source, document in rows]
+
     def test_exact_closure_bytes_manifest_and_no_execution(self):
-        expected_sources = set(self.subject.typed.SOURCE_MAP)
+        # Independent old closure plus exactly Graph, not the preparer's own map
+        # compared back to itself. Tests/fixtures are not discovered dependencies.
+        compiler = ("source_parser/Declarations.chibi", "source_parser/Expressions.chibi",
+                    "source_parser/Parser.chibi", "source_parser/Statements.chibi",
+                    "source_parser/Tree.chibi", "source_parser/Types.chibi",
+                    "source_tokenizer/Tokenizer.chibi", "syntax_diagnostics/Diagnostics.chibi",
+                    "json_string/JsonString.chibi", "lexical_binding/Binding.chibi",
+                    "named_binding/Binding.chibi", "signature_reader/Reader.chibi",
+                    "type_constructors/Constructors.chibi", "unit_algebra/Units.chibi",
+                    "package_graph/Graph.chibi")
+        expected_sources = {("tools/compiler/" + name, "project/" + name) for name in compiler}
+        expected_sources.add(("packages/core/strings/Strings.chibi", "core/strings/Strings.chibi"))
+        for name in ("Model.chibi", "Produce.chibi", "Verify.chibi"):
+            expected_sources.add(("tools/experiments/vnext/frontend/typed/" + name, "project/vnext_typed/" + name))
         expected_sources.add((BRIDGE + "/generated/Pack.chibi", "project/vnext_bridge/Pack.chibi"))
         for name in ("os/Os.chibi", "target/Target.chibi", "sys/windows/Decimal.chibi",
                      "sys/windows/Windows.chibi", "sys/posix/Posix.chibi",
@@ -102,16 +128,16 @@ class NativePreparationTests(unittest.TestCase):
                      "bytes/Bytes.chibi", "bytes/Tests.chibi"):
             expected_sources.add(("packages/core/" + name, "core/" + name))
         self.assertEqual(set(self.subject.SOURCE_MAP), expected_sources)
-        self.assertEqual(len(self.subject.SOURCE_MAP), 28)
+        self.assertEqual(len(self.subject.SOURCE_MAP), 29)
         self.assertEqual(set(self.subject.INPUT_MAP), {
             (BRIDGE + "/tests/NativeCases.chibi", "inputs/NativeCases.chibi"),
             (BRIDGE + "/tests/NativeMain.chibi.in", "inputs/NativeMain.chibi.in"),
             (BRIDGE + "/tests/native_aot_caller.c", "inputs/native_aot_caller.c"),
         })
         result = self.prepare()
-        self.assertEqual(len(result["files"]), 32)
+        self.assertEqual(len(result["files"]), 33)
         rows = {row["path"]: row for row in result["files"]}
-        self.assertEqual(len(rows), 32)
+        self.assertEqual(len(rows), 33)
         for name, row in rows.items():
             self.assertFalse(Path(name).is_absolute())
             data = (self.output / name).read_bytes()
@@ -125,6 +151,8 @@ class NativePreparationTests(unittest.TestCase):
                 self.assertIn("inputs/NativeMain.chibi.in", row["generated_from"])
                 self.assertIn("inputs/NativeCases.chibi", row["generated_from"])
         self.assertEqual((self.output / "entry/Main.chibi").read_bytes(), self.expected_entry())
+        self.assertEqual(result["imports"]["project:package_graph"], ["core:strings"])
+        self.assertIn("project:package_graph", result["imports"]["project:vnext_typed"])
         self.assertEqual(json.loads((self.output / "source-manifest.json").read_bytes()), result)
         self.assertEqual(sorted(str(path.relative_to(self.output)) for path in self.output.rglob("*") if path.is_file()),
                          sorted([*rows, *[row["path"] for row in result["implementation"]], "source-manifest.json"]))
@@ -161,23 +189,23 @@ class NativePreparationTests(unittest.TestCase):
         self.assertEqual((self.output / "inputs/NativeCases.chibi").read_bytes(), self.fixture.read_bytes())
 
     def test_inserted_marker_text_is_not_replaced_again(self):
-        self.fixture.write_bytes(b'package example\n// FIXTURE_SOURCE OUTPUT_PATH "LIBRARY_PATH"\n')
-        self.library = self.base / 'LIBRARY_PATH FIXTURE_SOURCE OUTPUT_PATH.so'
+        self.fixture.write_bytes(b'package example\n// FIXTURE_SOURCES OUTPUT_PATH "LIBRARY_PATH"\n')
+        self.library = self.base / 'LIBRARY_PATH FIXTURE_SOURCES OUTPUT_PATH.so'
         self.library.write_bytes(b"fixture")
-        self.output = self.base / "OUTPUT_PATH FIXTURE_SOURCE LIBRARY_PATH"
+        self.output = self.base / "OUTPUT_PATH FIXTURE_SOURCES LIBRARY_PATH"
         self.prepare()
         self.assertEqual((self.output / "entry/Main.chibi").read_bytes(), self.expected_entry())
 
     def test_missing_duplicate_and_invalid_marker_contexts(self):
         original = self.template.read_bytes()
         changes = []
-        for marker in (b"LIBRARY_PATH", b"FIXTURE_SOURCE", b"OUTPUT_PATH"):
+        for marker in (b"LIBRARY_PATH", b"FIXTURE_SOURCES", b"OUTPUT_PATH"):
             changes.extend([(marker, b"missing"), (marker, marker + b" " + marker)])
         changes.extend([(b'"LIBRARY_PATH"', b"LIBRARY_PATH"),
                         (b'"LIBRARY_PATH"', b'"prefix LIBRARY_PATH"'),
-                        (b"FIXTURE_SOURCE", b'"FIXTURE_SOURCE"'),
+                        (b"FIXTURE_SOURCES", b'"FIXTURE_SOURCES"'),
                         (b"OUTPUT_PATH", b'"OUTPUT_PATH"'),
-                        (b"FIXTURE_SOURCE", b"prefixFIXTURE_SOURCE"),
+                        (b"FIXTURE_SOURCES", b"prefixFIXTURE_SOURCES"),
                         (b"OUTPUT_PATH", b"OUTPUT_PATHsuffix")])
         for marker, replacement in changes:
             with self.subTest(marker=marker, replacement=replacement):
@@ -293,7 +321,7 @@ class NativePreparationTests(unittest.TestCase):
         return path, json.loads(path.read_bytes())
 
     def test_registry_callers_exact_values_sources_and_membership(self):
-        for case, count, files, rejections in (("scalars", 15, 43, 9), ("direct_calls", 23, 34, 0)):
+        for case, count, files, rejections in (("scalars", 15, 44, 9), ("direct_calls", 23, 35, 0)):
             self.output = self.base / case
             result = self.prepare(case)
             rows = {row["path"]: row for row in result["files"]}
@@ -311,9 +339,8 @@ class NativePreparationTests(unittest.TestCase):
             self.assertEqual((self.output / "inputs/slice_cases.json").read_bytes(), path.read_bytes())
             selected = next(row for row in registry["cases"] if row["id"] == case)
             entry = (self.output / "entry/Main.chibi").read_text()
-            source_literal = re.search(r"^    source := (.*);$", entry, re.M)[1]
             source = (self.root / "tools/experiments/vnext" / selected["files"][0]).read_bytes()
-            self.assertEqual(json.loads(source_literal).encode(), source)
+            self.assertEqual(self.source_records(entry), [(selected["files"][0], source, 19)])
             self.assertEqual((self.output / "inputs" / selected["files"][0]).read_bytes(), source)
             self.assertEqual(len(re.findall(r"^    result[0-9]+ :=", entry, re.M)), count)
             self.assertLess(entry.rfind(" := ExpectedEntry("), entry.index(": fn("))
@@ -337,14 +364,14 @@ class NativePreparationTests(unittest.TestCase):
                 self.assertIn("extern bool TrueLiteral(void);", c)
                 self.assertIn("extern bool FalseLiteral(void);", c)
             rejection_body = entry.split("CheckSourceRejections :: () {", 1)[1].split("PerfBuildIdFailure ::", 1)[0]
-            self.assertEqual(rejection_body.count("switch typed.Produce("), rejections)
+            self.assertEqual(rejection_body.count("switch typed.ProduceSources("), rejections)
             self.assertNotIn("bridge.Pack(", rejection_body)
             self.assertNotIn("chibi_vnext_compile_both(", rejection_body)
             for index, name in enumerate(result["expectations"]["rejections"]):
                 row = next(row for row in registry["cases"] if row["id"] == name)
-                encoded = re.search(rf"^    source{index} := (.*);$", rejection_body, re.M)[1]
                 expected = (self.root / "tools/experiments/vnext" / row["files"][0]).read_bytes()
-                self.assertEqual(json.loads(encoded).encode(), expected)
+                self.assertEqual(self.source_records(rejection_body, f"sources{index}"),
+                                 [(row["files"][0], expected, 100 + index)])
                 self.assertIn(f"diagnostic.document == {100 + index}", rejection_body)
                 self.assertIn(f"registry {name}: {row['reject'][0]}", rejection_body)
             for row in rows.values():
@@ -378,6 +405,134 @@ class NativePreparationTests(unittest.TestCase):
                     path.write_bytes(original)
                 self.assertEqual(changed, [True])
                 self.assertFalse(self.output.exists())
+
+    def test_original_modules_and_private_import_keep_separate_closures(self):
+        result = self.prepare("modules")
+        rows = {row["path"]: row for row in result["files"]}
+        self.assertEqual(len(result["files"]), 37)
+        self.assertEqual(len(rows), 37)
+        main = "slice_cases/modules/Main.chibi"
+        math = "slice_cases/modules/math/Math.chibi"
+        private = "slice_cases/rejected/private_import.chibi"
+        expected_inputs = {"inputs/NativeMain.chibi.in", "inputs/slice_cases.json",
+                           "inputs/registry_callers.py", "inputs/native_aot_caller.c",
+                           "inputs/" + main, "inputs/" + math, "inputs/" + private}
+        self.assertEqual({name for name in rows if name.startswith("inputs/")}, expected_inputs)
+        self.assertEqual(sum(row["path"] == "inputs/" + math for row in result["files"]), 1)
+        raw = {name: (self.root / "tools/experiments/vnext" / name).read_bytes()
+               for name in (main, math, private)}
+        self.assertEqual([len(raw[name]) for name in (main, math, private)], [181, 117, 109])
+        self.assertEqual([hashlib.sha256(raw[name]).hexdigest() for name in (main, math, private)], [
+            "86ded16117e844c3c57a7aca9191617ab148c9aa9c237a8502f397e75377e4cf",
+            "6fe411ca68648829984aa48f7b8c08da049d99c0f7792b379b9bcb70269c39be",
+            "450d919e432a1913473410fbf8eea6fa1f8d9d249ced4cba18e322d35c2b2e4c",
+        ])
+        for name, value in raw.items():
+            self.assertEqual((self.output / "inputs" / name).read_bytes(), value)
+            self.assertIn("inputs/" + name, rows["entry/Main.chibi"]["generated_from"])
+        entry = (self.output / "entry/Main.chibi").read_text()
+        self.assertEqual(self.source_records(entry), [(main, raw[main], 19), (math, raw[math], 20)])
+        self.assertEqual(self.source_records(entry, "sources0"),
+                         [(private, raw[private], 100), (math, raw[math], 101)])
+        self.assertEqual(entry.count("switch typed.ProduceSources(sources)"), 2)
+        self.assertIn("return PerfBuildIdFailure(sources);", entry)
+        self.assertEqual(entry.count("chibi_vnext_compile_both(words,"), 1)
+        self.assertEqual(len(re.findall(r"^    result[0-9]+ :=", entry, re.M)), 2)
+        self.assertIn("for (iteration in 0..<8)", entry)
+        self.assertIn('FindFunction(module, ".vnext.2") == 2', entry)
+        self.assertIn('module.functions[1].exported == 0', entry)
+        self.assertIn('if (origin.document == 20) { source = sources[1].text; }', entry)
+        self.assertIn('for (name in ["Double", "Hidden", ".vnext.2", ".vnext.3"])', entry)
+        rejection = entry.split("CheckSourceRejections :: () {", 1)[1].split("PerfBuildIdFailure ::", 1)[0]
+        self.assertNotIn("bridge.Pack(", rejection)
+        self.assertNotIn("chibi_vnext_compile_both(", rejection)
+        self.assertIn('diagnostic.message == "private member"', rejection)
+        self.assertIn("diagnostic.document == 100", rejection)
+        start = raw[private].index(b"math.Hidden")
+        end = start + len(b"math.Hidden")
+        line = raw[private][:start].count(b"\n") + 1
+        column = start - raw[private].rfind(b"\n", 0, start)
+        self.assertIn(f"diagnostic.start == {start} && diagnostic.end == {end} && diagnostic.line == {line} && diagnostic.column == {column}", rejection)
+        c = (self.output / "inputs/native_aot_caller.c").read_text()
+        self.assertIn("extern int64_t Apply(int64_t, bool);", c)
+        self.assertIn("Apply(INT64_C(21), true) != INT64_C(42)", c)
+        self.assertIn("Apply(INT64_C(21), false) != INT64_C(21)", c)
+        self.assertEqual(c.count("    ++checks;"), 2)
+        self.assertNotIn("extern int64_t Double", c)
+        self.assertEqual(result["expectations"], {
+            "case": "modules", "rejections": ["private_import"], "aot_checks": 2,
+            "aot_success": '{"aot_c_caller_checks":2,"status":"passed","input":"source-produced-copied-object"}\n',
+        })
+
+    def test_package_registry_requires_exact_ordered_paths_and_rejections(self):
+        path, original = self.registry()
+        for name in ("modules", "private_import"):
+            for change in ("omit", "duplicate", "reverse", "wrong", "traversal", "absolute", "extra", "empty", "not_list"):
+                registry = copy.deepcopy(original)
+                row = next(row for row in registry["cases"] if row["id"] == name)
+                if change == "omit": row["files"].pop()
+                elif change == "duplicate": row["files"][1] = row["files"][0]
+                elif change == "reverse": row["files"].reverse()
+                elif change == "wrong": row["files"][1] = "slice_cases/scalars/Main.chibi"
+                elif change == "traversal": row["files"][1] = "slice_cases/modules/../math/Math.chibi"
+                elif change == "absolute": row["files"][1] = "/slice_cases/modules/math/Math.chibi"
+                elif change == "extra": row["files"].append("slice_cases/direct_calls/Main.chibi")
+                elif change == "empty": row["files"] = []
+                else: row["files"] = "slice_cases/modules/Main.chibi"
+                path.write_text(json.dumps(registry))
+                with self.subTest(name=name, change=change), self.assertRaises(ValueError):
+                    self.prepare("modules")
+                self.assertFalse(self.output.exists())
+        for change in ("category", "anchor", "foreign"):
+            registry = copy.deepcopy(original)
+            row = next(row for row in registry["cases"] if row["id"] == "private_import")
+            if change == "category": row["reject"][0] = "link"
+            elif change == "anchor": row["reject"][2] = "absent anchor"
+            else: row["foreign_fixture"] = "slice_probe.c"
+            path.write_text(json.dumps(registry))
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.prepare("modules")
+            self.assertFalse(self.output.exists())
+
+    def test_package_dependency_bytes_transport_and_file_guards(self):
+        math = self.root / "tools/experiments/vnext/slice_cases/modules/math/Math.chibi"
+        original = math.read_bytes()
+        changed = original.replace(b"\n", b"\r\n") + '// café "LIBRARY_PATH" FIXTURE_SOURCES OUTPUT_PATH\n'.encode()
+        math.write_bytes(changed)
+        self.prepare("modules")
+        entry = (self.output / "entry/Main.chibi").read_text()
+        self.assertEqual(self.source_records(entry)[1][1], changed)
+        self.assertEqual(self.source_records(entry, "sources0")[1][1], changed)
+        self.output = self.base / "invalid"
+        for source in (b"\xff", b"\x00", b"", b"x" * 65536):
+            math.write_bytes(source)
+            with self.subTest(source=source[:10]), self.assertRaises((ValueError, UnicodeDecodeError)):
+                self.prepare("modules")
+            self.assertFalse(self.output.exists())
+        math.unlink()
+        with self.assertRaises(FileNotFoundError):
+            self.prepare("modules")
+        self.assertFalse(self.output.exists())
+        saved = math.with_suffix(".saved")
+        saved.write_bytes(original)
+        math.symlink_to(saved.name)
+        with self.assertRaises(ValueError):
+            self.prepare("modules")
+        self.assertFalse(self.output.exists())
+
+    def test_preparer_runner_admission_policies_stay_in_step_without_execution(self):
+        callers = load(self.bridge / "registry_callers.py")
+        # Inspect data constants without importing/executing any runner code.
+        tree = ast.parse((self.bridge / "run_native.py").read_bytes())
+        policy = {node.targets[0].id: ast.literal_eval(node.value)
+                  for node in tree.body if isinstance(node, ast.Assign)
+                  and isinstance(node.targets[0], ast.Name)
+                  and node.targets[0].id in ("REGISTRY_REJECTIONS", "SNAPSHOT_FILES")}
+        self.assertEqual(set(policy["REGISTRY_REJECTIONS"]), set(callers.ACCEPTED))
+        for selected, names in policy["REGISTRY_REJECTIONS"].items():
+            self.assertEqual(set(names), {name for name, row in callers.REJECTIONS.items() if row[0] == selected})
+        self.assertEqual(policy["SNAPSHOT_FILES"],
+                         {"nativecases": 33, "scalars": 44, "direct_calls": 35, "modules": 37})
 
     def test_registry_bool_int_and_signature_shape_rejections(self):
         path, original = self.registry()
@@ -426,7 +581,7 @@ class NativePreparationTests(unittest.TestCase):
                 self.prepare("scalars")
             self.assertFalse(self.output.exists())
         path.write_text(json.dumps(original))
-        for case in ("unknown", "modules", "foreign", "argument_type"):
+        for case in ("unknown", "foreign", "missing_symbol", "argument_type"):
             with self.subTest(case=case), self.assertRaises(ValueError):
                 self.prepare(case)
 
@@ -434,11 +589,11 @@ class NativePreparationTests(unittest.TestCase):
         fixture = self.root / "tools/experiments/vnext/slice_cases/scalars/Main.chibi"
         original = fixture.read_bytes()
         fixture.write_bytes(original.replace(b"\n", b"\r\n") +
-                            '// café "LIBRARY_PATH" FIXTURE_SOURCE OUTPUT_PATH\n'.encode())
+                            '// café "LIBRARY_PATH" FIXTURE_SOURCES OUTPUT_PATH\n'.encode())
         self.prepare("scalars")
         entry = (self.output / "entry/Main.chibi").read_text()
-        literal = re.search(r"^    source := (.*);$", entry, re.M)[1]
-        self.assertEqual(json.loads(literal).encode(), fixture.read_bytes())
+        self.assertEqual(self.source_records(entry),
+                         [("slice_cases/scalars/Main.chibi", fixture.read_bytes(), 19)])
         self.assertNotIn("NativeCases.chibi", [row["path"] for row in json.loads((self.output / "source-manifest.json").read_bytes())["files"]])
 
     def test_registry_stale_schema_and_bad_region_rejected_without_output(self):

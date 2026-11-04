@@ -9,6 +9,14 @@ This work proceeds alongside the existing native self-hosting branch. It does no
 replace that branch's pending correctness, platform, bootstrap, or release gates.
 No release or default-toolchain switch is part of this first checkpoint.
 
+Current experiment status: the
+[package-aware slice](../tools/experiments/vnext/slice_backend/README.md#package-aware-checkpoint)
+passed the unfiltered producer test and all four native cases through linked C
+execution and final independent native acceptance. The
+[normalized evidence](../tools/experiments/vnext/evidence/package-aware-20261104.json)
+keeps this bounded result separate from the unchanged O0/O2 baselines and the
+full-corpus, real-tool, platform and 100,000-lines/second gates below.
+
 ## Goal
 
 Reach at least **100,000 physical input lines per second for a full,

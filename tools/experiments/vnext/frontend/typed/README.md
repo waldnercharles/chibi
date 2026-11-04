@@ -13,14 +13,15 @@ readback. These later results do not broaden proof10's historical claim.
 
 Version 2 adds the scalar operations and direct calls described below. Its
 six-stage pure-source proof passed on 2026-11-04, independently of the preserved
-version-1 results. The exact current test inventory and readback are recorded
+version-1 results. Its pre-package test inventory and readback are recorded
 [below](#accepted-version-2-pure-transform-result). The separate
 [version-2 native result](../../slice_backend/README.md#version-2-verification-status)
 also passed all three bounded JIT/AOT matrices.
 
-`Produce(text, document)` parses once with the retained `source_parser`, reads
-all scalar headers with `signature_reader.Signature` and its empty named/type
-constructor environments, then checks every body. It returns a complete Module
+`ProduceSources(sources)` parses each supplied document once with the retained
+`source_parser`, resolves its package/import graph, reads all scalar headers
+with `signature_reader.Signature` and its empty named/type constructor
+environments, then checks every body. It returns a complete Module
 or one source Diagnostic. It never selects functions by name or ignores an
 unsupported declaration/body. The dedicated first fixture is `fixtures/EchoJoin.chibi`.
 
@@ -36,7 +37,9 @@ semantics. Instructions include terminators as the final row of each block.
 An absent else routes the original false edge directly to the merge with its
 pre-branch values; it does not allocate an empty false block and jump.
 
-The public transform is `Produce(text: string, document: int) -> Result`.
+The public transforms are `ProduceSources(sources: Source[]) -> Result` and
+`Produce(text: string, document: int) -> Result`. The latter supplies one
+`Main.chibi` source to the same implementation.
 `Verify(module: Module) -> int` returns zero or a named invariant category for
 mutation tests. Successful production asserts verification once. There is no
 interpreter, secondary parser, prepared representation, ABI packer or backend
@@ -45,10 +48,11 @@ in this package.
 The candidate supports explicitly typed i64/bool headers and initialized
 locals, identifier/parameter reads, decimal nonnegative i64 and bool literals,
 parentheses, wrapping i64 `+`/`*`, signed i64 `>`, bool `!`, plain assignment,
-if/else, scalar return and same-document positional identifier calls. Other
-forms are source diagnostics, not fallback compilation. Packages, foreign
-calls, equality, `&&`, inferred locals, discarded-call statements and unary
-negative literals remain outside this checkpoint. Negative registry arguments
+if/else, scalar return, same-package positional identifier calls and qualified
+public calls through explicit `project:` import aliases. Other forms are source
+diagnostics, not fallback compilation. Foreign calls, equality, `&&`, inferred
+locals, discarded-call statements and unary negative literals remain outside
+this checkpoint. Negative registry arguments
 enter through the native caller. The existing reserved cancellation-singleton
 name `Cancelled` remains rejected for functions, parameters and locals. Local shadowing of any currently visible
 parameter/local is unsupported and diagnosed; disjoint branch-local names are
@@ -65,15 +69,18 @@ and unused instruction fields are zero.
 
 Headers precede bodies, including private/forward/self/mutual callees. A visible
 scalar binding shadows a function name and is diagnosed as non-callable. Calls
-require an identifier and positional arguments, with at most 32 arguments.
+require a same-package identifier or an imported alias/member and positional
+arguments, with at most 32 arguments.
 Production reserves the outer argument span before evaluating arguments
 left-to-right; nested calls append beyond it, and writes re-fetch by index.
 No partial Module is published. Verify checks callee/signature IDs before use,
 unique Call ownership, shared argument coverage, scalar types and every
 argument's dominance in the caller. Call-graph cycles are not CFG back-edges.
 
-Admission limits are explicit experiment limits: 64 KiB source, 8192 parsed
-nodes, 32 functions, 32 parameters/function, 64 simultaneously visible bindings
+Admission limits are explicit experiment limits: 1..8 source files, 32 imports,
+256-byte source paths/import strings, 64 KiB aggregate source, 8192 aggregate
+parsed nodes, 32 aggregate functions, 32 parameters/function and 64
+simultaneously visible bindings
 (including parameters), 64 blocks/function, expression/statement nesting 32.
 The producer checks each limit before adding the affected rows or descending. Parser nesting
 behavior belongs to the retained parser and is not newly guaranteed here.
@@ -91,6 +98,39 @@ framing tests passed; the historical source-native proof covers backend integrat
 Version-2 packing and seven Rust framing tests have now passed their separate
 pure-source proof. The separate version-2 native result covers source-to-backend
 execution, without broadening either version's pure-transform receipts.
+
+## Package-aware input and proof status
+
+`Source { path, text, document }` carries original source bytes, a canonical
+project-relative `.chibi` path and a distinct nonnegative document label. The
+first source selects the entry package. The producer performs no filesystem
+access or discovery. It reuses `package_graph.Build` for package membership,
+explicit imports and cycle checks, then requires every supplied package to be
+reachable from the entry package. Original trees and document labels remain
+available for precise diagnostics; the caller supplies no resolved symbols.
+
+All headers precede all bodies in supplied file/declaration order. Unqualified
+calls resolve in the current package; an imported member must be public. Only
+public entry-package functions are exported. Dependency functions use unique
+`.vnext.<FunctionID>` native names and remain internal, including public source
+members. Neither Model, Verify, version-2 transport nor the backend ABI changes.
+
+The complete unfiltered package-aware `tests/Main.chibi.in` compiled and exited
+zero on 2026-11-04 using the separately admitted current O2 builder with O0,
+`jobs=1` output. Its **259 static assert-call sites are not a measured dynamic
+check count**. The template SHA-256 is
+`eaa0d62bcf5f2a3f3711eeef5fce34fbecbdab6e0bd67f123fdaeb3bf4272185`;
+independent pure-transform acceptance SHA-256 is
+`691fe542aee0dca5b7b70519f884dd20b9ea0d6d73777d8c41d25ade2a7e8e3c`.
+This accepts the producer test, not whole-current-compiler/self-hosting or speed.
+The original failed attempt remains separate evidence.
+
+All four package-aware native cases passed their five execution stages and
+independent full-chain acceptance. See the
+[package checkpoint](../../slice_backend/README.md#package-aware-checkpoint)
+and [normalized evidence](../../evidence/package-aware-20261104.json). The
+historical pre-package pure-source and native results below retain their exact
+inputs and counts; they do not validate later source changes.
 
 ## Experimental arithmetic deviation
 
@@ -117,10 +157,10 @@ this first body producer.
 ## Caller tests and cost estimate
 
 `tests/Main.chibi.in` is a pure-transform executable template. A copied-source
-proof caller replaces its sole `FIXTURE_SOURCE` marker with the JSON-style
-string literal of the exact fixture bytes, then maps `project:vnext_typed` to
-the three package files here. The fixture/tests subdirectories are not package
-implementation inputs. Tests change +1 to +7, rename exports/locals, change an
+proof caller replaces four fixture markers with independent JSON-style string
+literals of exact Echo/Join, modules Main/Math and private-import source bytes,
+then maps `project:vnext_typed` to the three package files here. The fixture/tests
+subdirectories are not package implementation inputs. Tests change +1 to +7, rename exports/locals, change an
 assignment, exercise nested and early-return branches, check source rejections
 and paired admission boundaries (functions, parameters, visible bindings,
 blocks, expression depth and source bytes), and corrupt real produced tables.
@@ -143,15 +183,18 @@ work=$(mktemp -d)
 python3 -I -B tools/experiments/vnext/frontend/typed/prepare.py "$work/typed"
 ```
 
-Preparation refuses an existing output directory. It writes the 15 production
-and three typed package sources, generated `Main.chibi`, original template and
-fixture, and `source-manifest.json` with relative working-tree byte hashes.
+Preparation refuses an existing output directory. It writes 15 compiler
+sources, `core:strings`, three typed package sources, generated `Main.chibi`,
+the original template and four fixtures: 25 recorded files plus
+`source-manifest.json` with relative working-tree byte hashes.
 It checks exact UTF-8 fixture transport and the package/import closure. It
 never compiles, runs native tests or configures a toolchain; source hashes alone
 do not establish compiler or tool admission.
 
-For manual Linux x86-64 reproduction, set `SEED` to the verified c5 native
-compiler and `LLVM_BIN` to the matching, working LLVM 22 binary directory. The
+The historical manual Linux x86-64 reproduction below uses the verified c5
+native compiler. It is not the recorded package-aware pure-transform proof,
+which used the current O2 builder. Set `SEED` to the verified c5 native compiler
+and `LLVM_BIN` to the matching, working LLVM 22 binary directory. The
 seed used here has SHA256
 `1d1d289a2429fe2ee2a75a71a959bf21590a02ff3ebf7cd8af1037a11bf1268e`.
 Review the prepared inputs and tool identities before launching. With GNU
@@ -216,16 +259,18 @@ parser/type logic, old compiler/prepared emitter and the separate backend librar
 
 ## Accepted version-2 pure-transform result
 
-All six separately admitted stages passed on 2026-11-04: typed compile/test,
+Before package support, all six separately admitted stages passed on
+2026-11-04: typed compile/test,
 packing compile/test and standalone Rust framing build/test. Independent final
 readback checked exact source/tool/runtime inputs, artifact/receipt chains and
 clean child-process cleanup. The public typed preparer's 21 files matched the
 proof inputs byte-for-byte.
 
-The complete current typed template executes **109 Produce invocations: 42
+That frozen typed template executed **109 Produce invocations: 42
 accepted and 67 rejected**, plus **57 verifier-mutation rejection checks**.
-This is a recount of the current source, not historical counts added to new
-ones. It includes seven exact diagnostic-span checks, eight paired admission
+These counts apply to that frozen template, not to the later package-aware
+source or a sum of historical and new tests. It includes seven exact
+diagnostic-span checks, eight paired admission
 limits, 32/33 call arguments and the document-label boundary cases. Its 216
 textual assert sites are not a runtime assertion count. The packing template
 covers original Echo/Join, renamed/+7 source, nested-call argument packing and call-row

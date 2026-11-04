@@ -19,6 +19,16 @@ import types
 HERE = Path(__file__).resolve().parent
 SEED_SHA256 = "1d1d289a2429fe2ee2a75a71a959bf21590a02ff3ebf7cd8af1037a11bf1268e"
 AOT_SUCCESS = b'{"aot_c_caller_checks":45,"status":"passed","input":"source-produced-copied-object"}\n'
+# Independent admission policy for the frozen runner. Preparation tests compare
+# this boundary with the caller generator; the runner never executes that input.
+REGISTRY_REJECTIONS = {
+    "scalars": ("argument_type", "argument_count", "condition_type", "result_type",
+                "missing_return", "unknown_name", "unsupported_array", "literal_range",
+                "duplicate_parameter"),
+    "direct_calls": (),
+    "modules": ("private_import",),
+}
+SNAPSHOT_FILES = {"nativecases": 33, "scalars": 44, "direct_calls": 35, "modules": 37}
 
 
 def file_identity(path):
@@ -125,7 +135,7 @@ def validate_manifest(directory, manifest, stage_names):
     if (not isinstance(expected, dict)
             or set(expected) != {"case", "rejections", "aot_checks", "aot_success"}
             or not isinstance(expected["case"], str)
-            or expected["case"] not in ("nativecases", "scalars", "direct_calls")
+            or expected["case"] not in SNAPSHOT_FILES
             or type(expected["aot_checks"]) is not int or not 1 <= expected["aot_checks"] <= 128
             or not isinstance(expected["rejections"], list)
             or any(not isinstance(name, str) for name in expected["rejections"])):
@@ -136,7 +146,7 @@ def validate_manifest(directory, manifest, stage_names):
         raise ValueError(f"{prefix}: expectations must bind the exact AOT success record")
     if expected["case"] == "nativecases" and (success.encode("utf-8") != AOT_SUCCESS or expected["rejections"]):
         raise ValueError(f"{prefix}: historical nativecases requires 45 AOT checks and no registry rejections")
-    count = {"nativecases": 32, "scalars": 43, "direct_calls": 34}[expected["case"]]
+    count = SNAPSHOT_FILES[expected["case"]]
     for field, count in (("files", count), ("implementation", 2)):
         rows = manifest.get(field)
         if not isinstance(rows, list) or len(rows) != count:
@@ -203,19 +213,25 @@ def check_sources(directory, manifest, stage_names):
             registry = json.loads(raw_registry)
         except (ValueError, UnicodeError, RecursionError) as error:
             raise ValueError(f"invalid prepared registry: {error}") from error
-        if not isinstance(registry, dict) or not isinstance(registry.get("cases"), list):
-            raise ValueError("prepared registry cases must be a list")
+        if (not isinstance(registry, dict) or type(registry.get("version")) is not int
+                or registry["version"] != 1 or registry.get("project_root") != "."
+                or not isinstance(registry.get("cases"), list)):
+            raise ValueError("prepared registry requires an object with version 1, project_root '.', and a cases list")
         cases = registry["cases"]
         if (any(not isinstance(row, dict) or not isinstance(row.get("id"), str)
                 or not isinstance(row.get("files"), list) for row in cases)
                 or len({row["id"] for row in cases}) != len(cases)):
             raise ValueError("invalid prepared registry membership")
         selected = [row for row in cases if row["id"] == expected["case"]]
-        if len(selected) != 1 or not isinstance(selected[0].get("calls"), list):
+        if (len(selected) != 1 or set(selected[0]) != {"id", "files", "calls"}
+                or not isinstance(selected[0]["calls"], list)):
             raise ValueError("prepared registry requires exactly one selected call case")
         selected = selected[0]
-        rejected = [row for row in cases if "reject" in row and len(row.get("files", [])) == 1
-                    and "foreign_fixture" not in row] if expected["case"] == "scalars" else []
+        required_rejections = set(REGISTRY_REJECTIONS[expected["case"]])
+        rejected = [row for row in cases if row["id"] in required_rejections]
+        if (set(row["id"] for row in rejected) != required_rejections
+                or any(set(row) != {"id", "files", "reject"} for row in rejected)):
+            raise ValueError("prepared registry requires its exact source rejections")
         if (expected["aot_checks"] != len(selected["calls"])
                 or expected["rejections"] != [row["id"] for row in rejected]):
             raise ValueError("native expectations differ from the prepared registry")
@@ -223,9 +239,14 @@ def check_sources(directory, manifest, stage_names):
                            "inputs/registry_callers.py", "inputs/native_aot_caller.c"}
         for row in [selected, *rejected]:
             files = row.get("files")
-            if not isinstance(files, list) or len(files) != 1 or not isinstance(files[0], str):
-                raise ValueError("prepared registry selection requires one source per case")
-            required_inputs.add("inputs/" + files[0])
+            name = row["id"]
+            exact_files = ([f"slice_cases/{name}/Main.chibi"] if row is selected
+                           else [f"slice_cases/rejected/{name}.chibi"])
+            if name in ("modules", "private_import"):
+                exact_files.append("slice_cases/modules/math/Math.chibi")
+            if files != exact_files:
+                raise ValueError("prepared registry selection requires exact ordered source paths")
+            required_inputs.update("inputs/" + name for name in files)
         if {name for name in names if name.startswith("inputs/")} != required_inputs:
             raise ValueError("prepared registry source membership differs from snapshot")
     backend = manifest["backend"]

@@ -97,7 +97,9 @@ native consumers: 1,080 JIT value assertions and 45 linked C checks passed. The
 superseded handwritten backend probe has been removed.
 
 The current version-2 source extends that path with bool literals, wrapping i64
-multiply, signed `>`, bool `!` and same-document positional direct calls. It
+multiply, signed `>`, bool `!` and same-document positional direct calls. The
+later package-aware producer
+adds explicit source closures and public calls through import aliases. It
 uses the complete header catalog for forward/private/self/mutual calls and
 reserves nested call argument spans before evaluating arguments left-to-right.
 The pure-transform tests and three bounded source-to-backend JIT/AOT matrices
@@ -106,12 +108,18 @@ records exact counts and proof scope.
 The public [case selectors](bridge/README.md#source-native-correctness-reproduction)
 keep NativeCases as the default regression, select the original 15 scalar calls
 and nine applicable rejections with `--case scalars`, and select 23 supplementary
-call oracles with `--case direct_calls`. Those two selections share
+call oracles with `--case direct_calls`. Those selections and `--case modules`
+share
 `slice_cases.json`; their caller generator reads JSON values, never source syntax.
+The modules selection preserves the original Main/Math source paths and bytes
+and checks `private_import` in a separate source-array invocation. The
+[package checkpoint](../slice_backend/README.md#package-aware-checkpoint)
+records passing compile/JIT/PERF/link/C stages and final independent admission. Its separate unfiltered producer proof passed; the older receipts
+remain historical.
 
-The numbered design below still includes later package/foreign-call and `&&`
-gates. Neither the original 25-call/11-rejection corpus nor a real tool is fully
-accepted. Do not synthesize bodies from function names or special-case text.
+The numbered design below still includes later foreign-call, equality and
+`&&` gates. Neither the original 25-call/11-rejection corpus nor a real tool is
+fully accepted. Do not synthesize bodies from function names or special-case text.
 
 1. Parse each explicit document once with `source_parser.Parse`. Keep its raw
    indexed nodes/fields and source bytes until diagnostics are complete. Reject

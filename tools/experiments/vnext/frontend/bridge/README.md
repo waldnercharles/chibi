@@ -3,7 +3,10 @@
 Status: version-2 scalar/direct-call transport passed the native Chibi packing
 and seven standalone Rust framing tests in the [six-stage pure-source proof](../typed/README.md#accepted-version-2-pure-transform-result).
 The separate Rust backend proof and three exact-source private native proofs
-also passed, including JIT/environment-failure/linked C execution. The historical
+also passed, including JIT/environment-failure/linked C execution. The later
+[package-aware checkpoint](../../slice_backend/README.md#package-aware-checkpoint)
+passed all four cases through linked C execution and independent full-chain
+acceptance. The historical
 version-1
 checkpoint passed nine Python generator controls, native Chibi Produce-to-Pack
 and six generated Rust view/framing tests. Its separately reviewed
@@ -126,10 +129,13 @@ producer diagnostics.
 
 ## Tests and accounting
 
-The current version-2 Python controls passed all 93 tests: 21 native-preparation,
+The pre-package version-2 Python controls passed all 93 tests: 21 native-preparation,
 21 runner (including all four real-signal controls), 10 generator, 29 frontend
 and 12 typed-preparation tests. This is separate from the historical 54-test
-version-1 control run below. Generator freshness also passed.
+version-1 control run below. Generator freshness also passed. Package changes
+separately passed 25 native-preparation tests and the four affected runner
+source-admission controls, including the diagnostic correction. This does not
+claim a fresh whole-run or full runner/signal-control campaign.
 
 Python checks cover malformed schema and markers, same-version kind/field/table
 order drift, stale artifacts, deterministic generation, an independent fixture
@@ -203,7 +209,7 @@ verification status, the separate historical version-1 result, the ABI contract
 and remaining gates.
 
 `prepare_native.py --case nativecases` remains the default historical regression.
-Two version-2 selections use the same `../../slice_cases.json` registry:
+Three version-2 selections use the same `../../slice_cases.json` registry:
 
 - `--case scalars`: the original 15 scalar calls and nine applicable source
   rejections, each a separate Produce invocation with category/location checks.
@@ -211,21 +217,36 @@ Two version-2 selections use the same `../../slice_cases.json` registry:
   including source-produced true/false literals and opposite-sign/equal comparisons, without repeating the registry
   rejections. These are tiny terminating
   recursive tests, not recursion-depth or stack-exhaustion qualification.
+- `--case modules`: the two original Apply expectations and the separate
+  original `private_import` rejection, with exact source location checks.
 
 `registry_callers.py` generates Chibi signature checks and independent C
 declarations/assertions from exact JSON integer/bool expectations. It never
 parses source or evaluates Chibi. Preparation snapshots the registry, exact
-source bytes, generated callers and generator identity. Each selected source
-is a separate module, avoiding overlapping export names. Eight peer cycles
+source bytes, generated callers and generator identity. Each selection is a
+separate produced Module. The caller builds ordered `typed.Source[]` values
+with original project-relative paths and separate exact UTF-8 strings; it
+never concatenates documents or supplies resolved semantic facts. Eight peer
+cycles
 with three CheckCalls each specify 1,080/360/552 JIT assertions and 45/15/23 AOT
 checks for nativecases/scalars/direct_calls respectively. All three matrices
 passed in the version-2 exact-source private proofs, including the nine scalar
 registry rejections. See the [native result](../../slice_backend/README.md#version-2-verification-status)
 for the independent terminal readbacks.
-The two original package calls, eight foreign calls and `private_import`/
-`missing_symbol` remain unsupported and pending. The original 25-call/11-rejection
+The package selection now transports the original modules Main/Math with
+document labels 19/20 and, independently, private_import/Math with labels
+100/101. Its native stages and final independent admission passed. The eight
+original foreign calls and `missing_symbol` remain unsupported and open. The
+original 25-call/11-rejection
 inventory is unchanged; 23 supplemental calls make 48 total expected calls.
 The runner takes the exact AOT success record from the prepared case.
+
+The implementation source map contains 29 files; `package_graph/Graph.chibi`
+is the sole added compiler source, retaining its existing `core:strings`
+dependency. The exact nativecases/scalars/direct_calls/modules snapshots
+contain 33/44/35/37 recorded files. Both normal and PERF callers use the same
+ProduceSources/Pack path. A shared Math source is copied once per snapshot but
+remains a distinct input in each independent source-array invocation.
 
 The public `prepare_native.py` snapshots the exact working-tree source closure,
 templates, C caller and controller into a new directory. It checks generated
@@ -245,15 +266,19 @@ python3 -I -B -S tools/experiments/vnext/frontend/bridge/prepare_native.py \
   "$NATIVE_PROOF" --backend "$BACKEND"
 ```
 
-Add `--case scalars` or `--case direct_calls` for its separate fresh snapshot.
+Add `--case scalars`, `--case direct_calls` or `--case modules` for its separate
+fresh snapshot.
 Every selection needs a separately reviewed version-2 backend; the historical
 version-1 library below cannot consume the current frame. The version-2 result
 used this public preparer's exact output with a private, separately admitted
-five-stage controller. The public `run_native.py` whole-run workflow was not
-rerun for version 2; its passing controls do not create a whole-run receipt.
+five-stage controller. The later package-aware proof also uses exact public-
+preparer bytes with a separately admitted private controller and the unchanged
+c5 seed/backend identities. The public `run_native.py` whole-run workflow was
+not rerun for either checkpoint; passing controls do not create a whole-run
+receipt or change its seed pin.
 
-After the native proofs closed, a generator docstring-only cleanup changed no
-behavior. All three preparations were regenerated and their compiled source
+After the earlier three-case native proofs closed, a generator docstring-only
+cleanup changed no behavior. All three preparations were regenerated and their compiled source
 bytes matched the tested snapshots after substituting only each owned object
 output path. This was a data-only comparison, not an execution rerun. Its
 composition-check SHA-256 is

@@ -3,6 +3,7 @@
 
 import hashlib
 import json
+import re
 from pathlib import Path
 import shutil
 import sys
@@ -12,6 +13,18 @@ import unittest
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[4]
+AUDIT_ACTIVE = False
+LAUNCH_EVENTS = []
+
+
+def prohibit_launch(event, arguments):
+    if AUDIT_ACTIVE and (event in ("subprocess.Popen", "os.system", "ctypes.dlopen")
+                         or event.startswith(("os.exec", "os.spawn", "os.posix_spawn", "os.fork"))):
+        LAUNCH_EVENTS.append(event)
+        raise AssertionError(f"data-only preparation attempted forbidden operation: {event}")
+
+
+sys.addaudithook(prohibit_launch)
 
 
 def load(path):
@@ -23,6 +36,10 @@ def load(path):
 
 class PreparationTests(unittest.TestCase):
     def setUp(self):
+        global AUDIT_ACTIVE
+        LAUNCH_EVENTS.clear()
+        AUDIT_ACTIVE = True
+        self.addCleanup(self.check_no_launches)
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.base = Path(self.temporary.name).resolve()
@@ -39,6 +56,23 @@ class PreparationTests(unittest.TestCase):
         self.subject = load(self.typed / "prepare.py")
         self.output = self.base / "prepared"
 
+    def check_no_launches(self):
+        global AUDIT_ACTIVE
+        AUDIT_ACTIVE = False
+        self.assertEqual(LAUNCH_EVENTS, [], "preparation must not launch tools or load native libraries")
+
+    def expected_main(self):
+        paths = {
+            b"FIXTURE_SOURCE": self.typed / "fixtures/EchoJoin.chibi",
+            b"PACKAGE_MAIN_SOURCE": self.root / "tools/experiments/vnext/slice_cases/modules/Main.chibi",
+            b"PACKAGE_MATH_SOURCE": self.root / "tools/experiments/vnext/slice_cases/modules/math/Math.chibi",
+            b"PRIVATE_IMPORT_SOURCE": self.root / "tools/experiments/vnext/slice_cases/rejected/private_import.chibi",
+        }
+        literals = {marker: json.dumps(path.read_bytes().decode("utf-8"), ensure_ascii=False).encode()
+                    for marker, path in paths.items()}
+        template = (self.typed / "tests/Main.chibi.in").read_bytes()
+        return re.sub(b"|".join(literals), lambda match: literals[match[0]], template)
+
     def reject(self, exception=ValueError):
         with self.assertRaises(exception):
             self.subject.prepare(self.output)
@@ -46,8 +80,8 @@ class PreparationTests(unittest.TestCase):
 
     def test_exact_sources_literal_and_relative_manifest(self):
         result = self.subject.prepare(self.output)
-        self.assertEqual(len(self.subject.SOURCE_MAP), 18)
-        self.assertEqual(len(result["files"]), 21)
+        self.assertEqual(len(self.subject.SOURCE_MAP), 19)
+        self.assertEqual(len(result["files"]), 25)
         self.assertEqual(result["compile"], "not_run")
         self.assertEqual(result["typed_tests"], "not_run")
         for row in result["files"]:
@@ -58,10 +92,12 @@ class PreparationTests(unittest.TestCase):
             if "source" in row:
                 self.assertFalse(Path(row["source"]).is_absolute())
                 self.assertEqual(data, (self.root / row["source"]).read_bytes())
-        template = (self.typed / "tests/Main.chibi.in").read_bytes()
-        fixture = (self.typed / "fixtures/EchoJoin.chibi").read_bytes()
-        expected = template.replace(b"FIXTURE_SOURCE", json.dumps(fixture.decode("utf-8"), ensure_ascii=False).encode("utf-8"))
-        self.assertEqual((self.output / "Main.chibi").read_bytes(), expected)
+        self.assertEqual((self.output / "Main.chibi").read_bytes(), self.expected_main())
+        self.assertEqual(result["imports"]["project:package_graph"], ["core:strings"])
+        self.assertIn("project:package_graph", result["imports"]["project:vnext_typed"])
+        generated = next(row for row in result["files"] if row["path"] == "Main.chibi")
+        self.assertEqual(generated["generated_from"], ["inputs/Main.chibi.in", "inputs/EchoJoin.chibi",
+                         "inputs/modules/Main.chibi", "inputs/modules/math/Math.chibi", "inputs/private_import.chibi"])
         serialized = (self.output / "source-manifest.json").read_text()
         self.assertNotIn(str(self.base), serialized)
         self.assertEqual(json.loads(serialized), result)
@@ -72,20 +108,39 @@ class PreparationTests(unittest.TestCase):
         fixture = 'package café\r\n// "quoted" \\ slash\tend\r\n'.encode("utf-8")
         (self.typed / "fixtures/EchoJoin.chibi").write_bytes(fixture)
         self.subject.prepare(self.output)
-        template = (self.typed / "tests/Main.chibi.in").read_bytes()
-        prefix, suffix = template.split(b"FIXTURE_SOURCE")
         generated = (self.output / "Main.chibi").read_bytes()
-        literal = generated[len(prefix):len(generated) - len(suffix)]
-        self.assertEqual(json.loads(literal).encode("utf-8"), fixture)
+        self.assertEqual(generated, self.expected_main())
+        self.assertIn(json.dumps(fixture.decode("utf-8"), ensure_ascii=False).encode(), generated)
         self.assertEqual((self.output / "inputs/EchoJoin.chibi").read_bytes(), fixture)
 
     def test_missing_or_duplicate_marker(self):
         path = self.typed / "tests/Main.chibi.in"
         original = path.read_bytes()
-        for value in (b'"absent"', b"FIXTURE_SOURCE FIXTURE_SOURCE"):
-            with self.subTest(value=value):
-                path.write_bytes(original.replace(b"FIXTURE_SOURCE", value))
-                self.reject()
+        for marker in (b"FIXTURE_SOURCE", b"PACKAGE_MAIN_SOURCE", b"PACKAGE_MATH_SOURCE", b"PRIVATE_IMPORT_SOURCE"):
+            for value in (b'"absent"', marker + b" " + marker):
+                with self.subTest(marker=marker, value=value):
+                    path.write_bytes(original.replace(marker, value))
+                    self.reject()
+
+    def test_source_markers_are_not_reinterpreted_inside_inserted_bytes(self):
+        source = self.root / "tools/experiments/vnext/slice_cases/modules/Main.chibi"
+        source.write_bytes(source.read_bytes() + b"// PACKAGE_MATH_SOURCE FIXTURE_SOURCE PRIVATE_IMPORT_SOURCE\n")
+        self.subject.prepare(self.output)
+        self.assertEqual((self.output / "Main.chibi").read_bytes(), self.expected_main())
+        self.assertEqual((self.output / "inputs/modules/Main.chibi").read_bytes(), source.read_bytes())
+
+    def test_package_fixtures_are_exact_independent_inputs(self):
+        original = {
+            "inputs/modules/Main.chibi": "slice_cases/modules/Main.chibi",
+            "inputs/modules/math/Math.chibi": "slice_cases/modules/math/Math.chibi",
+            "inputs/private_import.chibi": "slice_cases/rejected/private_import.chibi",
+        }
+        self.subject.prepare(self.output)
+        for copied, path in original.items():
+            self.assertEqual((self.output / copied).read_bytes(),
+                             (self.root / "tools/experiments/vnext" / path).read_bytes())
+        self.assertEqual(len((self.output / "inputs/modules/Main.chibi").read_bytes()) +
+                         len((self.output / "inputs/modules/math/Math.chibi").read_bytes()), 298)
 
     def test_invalid_utf8_and_unsupported_control_byte(self):
         for value in (b"\xff", b"\x00"):
@@ -94,7 +149,7 @@ class PreparationTests(unittest.TestCase):
                 self.reject((UnicodeDecodeError, ValueError))
 
     def test_extra_source_in_each_package_root(self):
-        for package in ("tools/compiler/signature_reader", "packages/core/strings", "tools/experiments/vnext/frontend/typed"):
+        for package in ("tools/compiler/signature_reader", "tools/compiler/package_graph", "packages/core/strings", "tools/experiments/vnext/frontend/typed"):
             with self.subTest(package=package):
                 extra = self.root / package / "Unexpected.chibi"
                 extra.write_text("package unexpected\n")

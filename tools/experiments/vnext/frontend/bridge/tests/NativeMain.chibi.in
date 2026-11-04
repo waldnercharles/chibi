@@ -16,8 +16,9 @@ foreign backend {
     chibi_vnext_destroy :: (owner: rawptr) -> i32
 }
 
-// Preparation replaces the source marker with the exact selected UTF-8 source
-// as one escaped string, the library marker with the accepted backend CDylib
+// Preparation replaces the source marker with the ordered original source files,
+// each with its exact UTF-8 bytes, canonical path and document label. It replaces
+// the library marker with the accepted backend CDylib
 // path, and the output marker with one escaped absolute filename in the parent's fresh,
 // exclusively owned output directory. core:os.WriteBytes is not exclusive;
 // no other writer may touch that directory, and an existing path is refused.
@@ -27,16 +28,16 @@ foreign backend {
 // This program never changes environment variables or launches a process.
 // Prepared tests are not acceptance and contain no throughput measurement.
 Main :: () -> int {
-    source := FIXTURE_SOURCE;
+    sources: typed.Source[] = FIXTURE_SOURCES;
     arguments := os.Arguments();
     if (length(arguments) == 1 && arguments[0] == "expect-perf-buildid-failure") {
-        return PerfBuildIdFailure(source);
+        return PerfBuildIdFailure(sources);
     }
     if (length(arguments) != 0) { return 2; }
     output_path := OUTPUT_PATH;
     if (os.Kind(output_path) != os.KindNone) { return 3; }
     CheckSourceRejections();
-    switch typed.Produce(source, 19) {
+    switch typed.ProduceSources(sources) {
         case .Rejected(diagnostic):
             assert(false, "native fixture must pass the retained source producer");
             return 4;
@@ -92,7 +93,7 @@ Main :: () -> int {
     }
 }
 
-// The sole successful source-to-native pipeline is Produce -> Pack -> this
+// The sole successful source-to-native pipeline is ProduceSources -> Pack -> this
 // one call. Scalar copies here deliberately remove all COW aliases to the
 // actual foreign input arrays, so poisoning writes the exact borrowed storage
 // rather than silently detaching from the retained module's side arrays.
@@ -392,9 +393,9 @@ CheckSourceRejections :: () {
 
 // END FIXTURE_REJECTIONS
 
-PerfBuildIdFailure :: (source: string) -> int {
+PerfBuildIdFailure :: (sources: typed.Source[]) -> int {
     CheckSourceRejections();
-    switch typed.Produce(source, 19) {
+    switch typed.ProduceSources(sources) {
         case .Rejected(diagnostic):
             assert(false, "environment control still uses the real accepted source producer");
             return 1;

@@ -51,6 +51,24 @@ def load_source(path):
     return module.__dict__, source
 
 
+def source_array(files, sources, document):
+    """Transport one ordered closure; no source syntax or package facts are read."""
+    if not 1 <= len(files) <= 8 or len(set(files)) != len(files):
+        raise ValueError("native source closure requires 1..8 distinct files")
+    if sum(len(sources[name]) for name in files) > 65536:
+        raise ValueError("native source closure exceeds 64 KiB")
+    rows = []
+    for index, name in enumerate(files):
+        source = sources[name]
+        if not source:
+            raise ValueError("native source file must not be empty")
+        literal = helpers.literal(source.decode("utf-8"))
+        if json.loads(literal).encode("utf-8") != source:
+            raise ValueError("native source literal does not preserve UTF-8 bytes")
+        rows.append(f"        {{path: {helpers.literal(name)}, text: {literal}, document: {document + index}}}")
+    return "[\n" + ",\n".join(rows) + "\n    ]"
+
+
 def prepare(output, backend_library, case="nativecases"):
     output = Path(output).absolute()
     if output.exists() or output.is_symlink():
@@ -63,22 +81,25 @@ def prepare(output, backend_library, case="nativecases"):
     backend = {"path": str(library), "resolved": str(library), **helpers.identity(library)}
     if not backend["bytes"]:
         raise ValueError(f"backend is empty: {library}")
-    if len(SOURCE_MAP) != 28 or len(INPUT_MAP) != 3:
+    # The only expansion is package_graph/Graph.chibi, imported by Produce.
+    # Its core:strings dependency was already in the exact package snapshot.
+    if len(SOURCE_MAP) != 29 or len(INPUT_MAP) != 3:
         raise ValueError("source-native snapshot membership changed; inspect before expanding it")
     caller_path = HERE / "registry_callers.py"
     selected = None
     input_map = INPUT_MAP
-    fixture_path = "inputs/NativeCases.chibi"
+    fixture_files = ["NativeCases.chibi"]
+    rejected = []
     if case != "nativecases":
         callers, caller_bytes = load_source(caller_path)
         registry_map = [(callers["REGISTRY_PATH"], "inputs/slice_cases.json")]
         registry, _, _ = typed.read_sources([], registry_map)
         selected, signatures, rejected = callers["read_registry"](registry["inputs/slice_cases.json"], case)
-        fixture_path = "inputs/" + selected["files"][0]
+        fixture_files = selected["files"]
+        input_files = dict.fromkeys(name for row in [selected, *rejected] for name in row["files"])
         input_map = [(BRIDGE_ROOT + "/tests/NativeMain.chibi.in", "inputs/NativeMain.chibi.in"),
                      *registry_map, (BRIDGE_ROOT + "/registry_callers.py", "inputs/registry_callers.py"),
-                     *(("tools/experiments/vnext/" + row["files"][0], "inputs/" + row["files"][0])
-                       for row in [selected, *rejected])]
+                     *(("tools/experiments/vnext/" + name, "inputs/" + name) for name in input_files)]
     data, origins, graph = typed.read_sources(SOURCE_MAP, input_map)
     if selected is not None:
         if data["inputs/slice_cases.json"] != registry["inputs/slice_cases.json"]:
@@ -102,35 +123,31 @@ def prepare(output, backend_library, case="nativecases"):
 
     template = data["inputs/NativeMain.chibi.in"]
     contexts = ((b'LIBRARY_PATH', rb'^foreign import backend "LIBRARY_PATH"$'),
-                (b'FIXTURE_SOURCE', rb'^    source := FIXTURE_SOURCE;$'),
+                (b'FIXTURE_SOURCES', rb'^    sources: typed.Source\[\] = FIXTURE_SOURCES;$'),
                 (b'OUTPUT_PATH', rb'^    output_path := OUTPUT_PATH;$'))
     for marker, context in contexts:
         if template.count(marker) != 1 or len(re.findall(context, template, re.M)) != 1:
             raise ValueError(f"native template requires one complete {marker.decode()} substitution context")
-    fixture = data[fixture_path]
-    source_literal = helpers.literal(fixture.decode("utf-8"))
-    if json.loads(source_literal).encode("utf-8") != fixture:
-        raise ValueError("native fixture literal does not preserve UTF-8 bytes")
+    source_bytes = {name: data["inputs/" + name]
+                    for files in [fixture_files, *[row["files"] for row in rejected]] for name in files}
+    source_literal = source_array(fixture_files, source_bytes, 19)
     substitutions = {b'"LIBRARY_PATH"': helpers.literal(str(library)).encode("utf-8"),
-                     b'FIXTURE_SOURCE': source_literal.encode("utf-8"),
+                     b'FIXTURE_SOURCES': source_literal.encode("utf-8"),
                      b'OUTPUT_PATH': helpers.literal(str(output / "run/normal/source-native.o")).encode("utf-8")}
     # A single pass never interprets marker-like text inside inserted literals.
-    data["entry/Main.chibi"] = re.sub(rb'"LIBRARY_PATH"|FIXTURE_SOURCE|OUTPUT_PATH',
+    data["entry/Main.chibi"] = re.sub(rb'"LIBRARY_PATH"|FIXTURE_SOURCES|OUTPUT_PATH',
                                       lambda match: substitutions[match[0]], template)
-    generated_from = ["inputs/NativeMain.chibi.in", fixture_path]
+    generated_from = ["inputs/NativeMain.chibi.in", *["inputs/" + name for name in fixture_files]]
     expectations = {"case": "nativecases", "rejections": [], "aot_checks": 45,
                     "aot_success": '{"aot_c_caller_checks":45,"status":"passed","input":"source-produced-copied-object"}\n'}
     if selected is not None:
-        source_bytes = {row["files"][0]: data["inputs/" + row["files"][0]] for row in [selected, *rejected]}
-        for value in source_bytes.values():
-            # Bound and validate literal transport even for rejected inputs.
-            if not 0 < len(value) <= 65536:
-                raise ValueError("native registry source requires 1..65536 bytes")
-            encoded = helpers.literal(value.decode("utf-8"))
-            if json.loads(encoded).encode("utf-8") != value:
-                raise ValueError("registry source literal does not preserve UTF-8 bytes")
+        rejection_sources = []
+        document = 100
+        for row in rejected:
+            rejection_sources.append((source_array(row["files"], source_bytes, document), document))
+            document += len(row["files"])
         entry, c = callers["generate"](data["entry/Main.chibi"].decode("utf-8"), selected,
-                                        signatures, rejected, source_bytes)
+                                        signatures, rejected, source_bytes, rejection_sources)
         data["entry/Main.chibi"] = entry
         data["inputs/native_aot_caller.c"] = c
         generated_from = ["inputs/NativeMain.chibi.in", "inputs/slice_cases.json",
@@ -183,7 +200,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path, help="fresh output directory; must not already exist")
     parser.add_argument("--backend", required=True, type=Path, help="existing backend shared library; never built here")
-    parser.add_argument("--case", choices=("nativecases", "scalars", "direct_calls"), default="nativecases",
+    callers, _ = load_source(HERE / "registry_callers.py")
+    parser.add_argument("--case", choices=("nativecases", *callers["ACCEPTED"]), default="nativecases",
                         help="one separate native module; default preserves the historical regression")
     args = parser.parse_args()
     try:

@@ -4,22 +4,32 @@
 import json
 import re
 
-# This checkpoint selects these nine source failures. Package visibility and
-# foreign linking stay outside its producer/backend path.
+# The selection owning each rejection is explicit; source-file count does not
+# decide which diagnostic checks run. Foreign linking remains deferred.
 REJECTIONS = {
-    "argument_type": ("type", "direct call argument type does not match signature"),
-    "argument_count": ("type", "direct call argument count does not match signature"),
-    "condition_type": ("type", "if condition requires bool"),
-    "result_type": ("type", "return type does not match function result"),
-    "missing_return": ("type", "function has a reachable exit without return"),
-    "unknown_name": ("resolve", "unknown scalar name"),
-    "unsupported_array": ("subset", "vNext scalar slice supports only ordinary i64 and bool types"),
-    "literal_range": ("type", "decimal literal is outside i64 range"),
-    "duplicate_parameter": ("resolve", "duplicate parameter name"),
+    "argument_type": ("scalars", "type", "direct call argument type does not match signature"),
+    "argument_count": ("scalars", "type", "direct call argument count does not match signature"),
+    "condition_type": ("scalars", "type", "if condition requires bool"),
+    "result_type": ("scalars", "type", "return type does not match function result"),
+    "missing_return": ("scalars", "type", "function has a reachable exit without return"),
+    "unknown_name": ("scalars", "resolve", "unknown scalar name"),
+    "unsupported_array": ("scalars", "subset", "vNext scalar slice supports only ordinary i64 and bool types"),
+    "literal_range": ("scalars", "type", "decimal literal is outside i64 range"),
+    "duplicate_parameter": ("scalars", "resolve", "duplicate parameter name"),
+    "private_import": ("modules", "resolve", "private member"),
 }
-ACCEPTED = ("scalars", "direct_calls")
-DEFERRED = ("modules", "foreign", "private_import", "missing_symbol")
+ACCEPTED = ("scalars", "direct_calls", "modules")
+DEFERRED = ("foreign", "missing_symbol")
 REGISTRY_PATH = "tools/experiments/vnext/slice_cases.json"
+
+
+def case_files(name):
+    """Exact original corpus membership; never discover files from imports."""
+    files = ([f"slice_cases/{name}/Main.chibi"] if name in ACCEPTED
+             else [f"slice_cases/rejected/{name}.chibi"])
+    if name in ("modules", "private_import"):
+        files.append("slice_cases/modules/math/Math.chibi")
+    return files
 
 
 def scalar_type(value):
@@ -58,8 +68,8 @@ def read_registry(raw, selected):
         raise ValueError("native registry is missing a selected case")
     chosen = cases[selected]
     if (set(chosen) != {"id", "files", "calls"}
-            or chosen["files"] != [f"slice_cases/{selected}/Main.chibi"]):
-        raise ValueError("selected native registry case requires its one exact source path")
+            or chosen["files"] != case_files(selected)):
+        raise ValueError("selected native registry case requires its exact ordered source paths")
     calls = chosen["calls"]
     if not isinstance(calls, list) or not 1 <= len(calls) <= 128:
         raise ValueError("native registry requires 1..128 calls")
@@ -81,20 +91,19 @@ def read_registry(raw, selected):
     if len(signatures) > 32:
         raise ValueError("native registry exceeds 32 tested exports")
     rejected = []
-    if selected == "scalars":
-        for row in rows:
-            name = row["id"]
-            if name not in REJECTIONS:
-                continue
-            category, _ = REJECTIONS[name]
-            rejection = row.get("reject")
-            if (set(row) != {"id", "files", "reject"}
-                    or row["files"] != [f"slice_cases/rejected/{name}.chibi"]
-                    or not isinstance(rejection, list) or len(rejection) != 3
-                    or rejection[0] != category
-                    or any(not isinstance(value, str) or not value for value in rejection)):
-                raise ValueError(f"unsupported registry rejection shape: {name}")
-            rejected.append(row)
+    for row in rows:
+        name = row["id"]
+        if name not in REJECTIONS or REJECTIONS[name][0] != selected:
+            continue
+        _, category, _ = REJECTIONS[name]
+        rejection = row.get("reject")
+        if (set(row) != {"id", "files", "reject"}
+                or row["files"] != case_files(name)
+                or not isinstance(rejection, list) or len(rejection) != 3
+                or rejection[0] != category
+                or any(not isinstance(value, str) or not value for value in rejection)):
+            raise ValueError(f"unsupported registry rejection shape: {name}")
+        rejected.append(row)
     return chosen, signatures, rejected
 
 
@@ -131,8 +140,8 @@ def replace_region(template, region, content):
     return template[:first] + content + template[last + len(end):]
 
 
-def generate(template, chosen, signatures, rejected, sources):
-    """Generate both callers in bounded linear passes; <=128 calls × <=32 args, <=64 KiB/source."""
+def generate(template, chosen, signatures, rejected, sources, rejection_sources):
+    """Generate callers from JSON values and prepared literals, never source syntax."""
     lines = ["CheckCalls :: (module: typed.Module, owner: rawptr) -> int {"]
     # Annotate before evaluation, matching the historical caller's full-width
     # literals. Never route a JSON integer through Chibi's default int type.
@@ -156,6 +165,11 @@ def generate(template, chosen, signatures, rejected, sources):
               "            private_address := chibi_vnext_entry(owner, u32(index + 1));",
               '            assert(private_address == 0, "private function has no published entry");',
               "        }", "    }"]
+    if chosen["id"] == "modules":
+        lines += ['    for (name in ["Double", "Hidden", ".vnext.2", ".vnext.3"]) {',
+                  '        private_entry := ExpectedEntry(module, owner, name, [typed.I64], typed.I64);',
+                  '        assert(private_entry == 0, "dependency names cannot publish native entries");',
+                  '    }']
     first = next(iter(signatures))
     parameters, result = signatures[first]
     wrong_result = "typed.I64" if result == "bool" else "typed.Bool"
@@ -176,25 +190,46 @@ def generate(template, chosen, signatures, rejected, sources):
                   f'    assert(result{at} == {expected}, "registry {chosen["id"]} call {at + 1}: {name}");']
     lines += ["    return 0;", "}", ""]
     template = replace_region(template, "FIXTURE_CALLS", "\n".join(lines))
-    template = replace_region(template, "FIXTURE_CHECKS",
-                              '            assert(length(module.functions) > 0, "registered source produced functions");\n')
+    checks = '            assert(length(module.functions) > 0, "registered source produced functions");\n'
+    if chosen["id"] == "modules":
+        checks += '''            assert(length(module.functions) == 3, "all original package bodies were produced");
+            assert(FindFunction(module, "Apply") == 1 && FindFunction(module, ".vnext.2") == 2 && FindFunction(module, ".vnext.3") == 3, "original package names retain global function IDs");
+            assert(module.functions[0].exported == 1 && module.functions[1].exported == 0 && module.functions[2].exported == 0, "only entry-package Apply is exported");
+            for (function, index in module.functions) {
+                origin := module.origins[int(function.origin) - 1];
+                expected: u32 = 20;
+                if (index == 0) { expected = 19; }
+                assert(origin.document == expected, "function origin retains its original document");
+            }
+            for (origin in module.origins) {
+                source := sources[0].text;
+                if (origin.document == 20) { source = sources[1].text; }
+                assert((origin.document == 19 || origin.document == 20) && origin.start < origin.end && origin.end <= u32(text_byte_length(source)), "origin stays inside its original source bytes");
+            }
+'''
+    template = replace_region(template, "FIXTURE_CHECKS", checks)
     lines = ["CheckSourceRejections :: () {"]
-    for index, row in enumerate(rejected):
+    assert len(rejection_sources) == len(rejected), "one prepared source closure per rejection"
+    for index, (row, (expression, document)) in enumerate(zip(rejected, rejection_sources)):
         source = sources[row["files"][0]]
         anchor = row["reject"][2].encode("utf-8")
         if source.count(anchor) != 1:
             raise ValueError(f"registry diagnostic anchor must occur once: {row['id']}")
         first, last = source.index(anchor), source.index(anchor) + len(anchor)
         label = json.dumps(f"registry {row['id']}: {row['reject'][0]} / {row['reject'][1]}")
-        lines += [f"    source{index} := {json.dumps(source.decode('utf-8'), ensure_ascii=False)};",
+        lines += [f"    sources{index}: typed.Source[] = {expression};",
                   "    // Neither arm can reach Pack or the backend.",
-                  f"    switch typed.Produce(source{index}, {100 + index}) {{",
+                  f"    switch typed.ProduceSources(sources{index}) {{",
                   f"        case .Produced(module): assert(false, {label});",
                   "        case .Rejected(diagnostic):",
-                  f'            assert(diagnostic.message == {json.dumps(REJECTIONS[row["id"]][1])}, {label});',
-                  f'            assert(diagnostic.document == {100 + index} && diagnostic.start >= 0 && diagnostic.end > diagnostic.start && diagnostic.end <= text_byte_length(source{index}), "registered rejection source bounds");',
-                  f'            assert(diagnostic.start < {last} && diagnostic.end > {first}, "registered rejection location anchor");',
-                  "    }"]
+                  f'            assert(diagnostic.message == {json.dumps(REJECTIONS[row["id"]][2])}, {label});',
+                  f'            assert(diagnostic.document == {document} && diagnostic.start >= 0 && diagnostic.end > diagnostic.start && diagnostic.end <= text_byte_length(sources{index}[0].text), "registered rejection source bounds");',
+                  f'            assert(diagnostic.start < {last} && diagnostic.end > {first}, "registered rejection location anchor");']
+        if row["id"] == "private_import":
+            line = source[:first].count(b"\n") + 1
+            column = first - source.rfind(b"\n", 0, first)
+            lines.append(f'            assert(diagnostic.start == {first} && diagnostic.end == {last} && diagnostic.line == {line} && diagnostic.column == {column}, "private member reports its exact original byte span and coordinates");')
+        lines.append("    }")
     lines += ["}", ""]
     template = replace_region(template, "FIXTURE_REJECTIONS", "\n".join(lines))
     c = ["/* Generated only from exact JSON bool/int test values; no source interpretation. */",

@@ -7,8 +7,31 @@ import named "project:named_binding"
 import constructors "project:type_constructors"
 import syntax "project:syntax_diagnostics"
 import token "project:source_tokenizer"
+import graph "project:package_graph"
+import strings "core:strings"
 
 DecimalZero: int : 48;
+PathSlash: int : 47;
+PathDot: int : 46;
+PathColon: int : 58;
+PathBackslash: int : 92;
+MaxSources: int : 8;
+MaxImports: int : 32;
+MaxPathBytes: int : 256;
+
+// Invocation inputs, not part of Model or its native transport. Paths are
+// canonical project-relative locations; the first file selects the entry
+// package. The caller supplies bytes and locations, never semantic decisions.
+pub Source :: struct { path: string; text: string; document: int; }
+Document :: struct {
+    tree: reader.Tree;
+    nodes: syntax.Node[];
+    text: string;
+    document: int;
+    root: int;
+    node_base: int;
+}
+Header :: struct { source: int; declaration: int; name: int; public: bool; }
 
 // One invocation owns this scratch state and a separate Module. Output helpers
 // take both as direct scoped parameters: the old seed rejected the version
@@ -21,9 +44,13 @@ State :: struct {
     nodes: syntax.Node[];
     text: string;
     document: int;
+    source: int;
+    node_base: int;
+    documents: Document[];
+    packages: int[];
+    imports: graph.Binding[];
+    headers: Header[];
     diagnostics: syntax.Diagnostic[];
-    declarations: int[];
-    header_names: int[];
     parameter_names: int[];
     bindings: int[];
     current_values: u32[];
@@ -74,6 +101,15 @@ Fail :: (s: ^State, node: int, message: string) {
         s.diagnostics.append(diagnostic);
     }
 }
+SelectSource :: (s: ^State, source: int) {
+    document := s.documents[source];
+    s.tree = document.tree;
+    s.nodes = document.nodes;
+    s.text = document.text;
+    s.document = document.document;
+    s.source = source;
+    s.node_base = document.node_base;
+}
 First :: (s: ^State, parent: int) -> int {
     if (parent < 0) { return -1; }
     return reader.NextMember(s.tree, s.nodes[parent].first_child);
@@ -82,8 +118,8 @@ Next :: (s: ^State, node: int) -> int {
     return reader.NextMember(s.tree, s.nodes[node].next_sibling);
 }
 
-// Names compare source byte views, without allocating per identifier use.
-// Both callers scan a checked bound: 32 function names or 64 visible bindings.
+// Local names compare source byte views without allocating per use.
+// FindBinding scans at most 64 currently visible parameters/locals.
 SameName :: (s: ^State, left: int, right: int) -> bool {
     a := s.nodes[left];
     b := s.nodes[right];
@@ -92,6 +128,26 @@ SameName :: (s: ^State, left: int, right: int) -> bool {
     while (index < a.end - a.start) {
         if (text_byte_at(s.text, a.start + index) != text_byte_at(s.text, b.start + index)) { return false; }
         index += 1;
+    }
+    return true;
+}
+// Header and import lookups are bounded by 32 rows for the entire closure.
+// Compare source views across documents without allocating per call/use.
+HeaderMatches :: (s: ^State, header: Header, node: int) -> bool {
+    document := s.documents[header.source];
+    a := document.nodes[header.name];
+    b := s.nodes[node];
+    if (a.end - a.start != b.end - b.start) { return false; }
+    for (index in 0..<a.end - a.start) {
+        if (text_byte_at(document.text, a.start + index) != text_byte_at(s.text, b.start + index)) { return false; }
+    }
+    return true;
+}
+SpellingMatches :: (s: ^State, node: int, name: string) -> bool {
+    source := s.nodes[node];
+    if (source.end - source.start != text_byte_length(name)) { return false; }
+    for (index in 0..<source.end - source.start) {
+        if (text_byte_at(s.text, source.start + index) != text_byte_at(name, index)) { return false; }
     }
     return true;
 }
@@ -121,12 +177,13 @@ FindBinding :: (s: ^State, node: int) -> int {
 }
 OriginID :: (s: ^State, output: ^Module, node: int) -> u32 {
     assert(node >= 0, "origin requires a syntax node");
-    if (s.origin_ids[node] != 0) { return s.origin_ids[node]; }
+    slot := s.node_base + node;
+    if (s.origin_ids[slot] != 0) { return s.origin_ids[slot]; }
     source := s.nodes[node];
     row: Origin = {document: u32(s.document), start: u32(source.start), end: u32(source.end)};
     output.origins.append(row);
     id := u32(length(output.origins));
-    s.origin_ids[node] = id;
+    s.origin_ids[slot] = id;
     return id;
 }
 ReadType :: (s: ^State, node: int, owner: int) -> u32 {
@@ -170,11 +227,15 @@ Headers :: (s: ^State, output: ^Module, root: int) {
     }
     declaration = Next(s, declaration);
     while (declaration >= 0 && length(s.diagnostics) == 0) {
+        if (reader.Kind(s.tree, declaration, syntax.ImportDeclaration)) {
+            declaration = Next(s, declaration);
+            continue;
+        }
         if (!reader.Kind(s.tree, declaration, syntax.FunctionDeclaration)) {
             Fail(s, declaration, "unsupported declaration in vNext scalar slice");
             return;
         }
-        if (length(s.declarations) == MaxFunctions) {
+        if (length(s.headers) == MaxFunctions) {
             Fail(s, declaration, "vNext scalar slice exceeds 32 functions");
             return;
         }
@@ -184,13 +245,11 @@ Headers :: (s: ^State, output: ^Module, root: int) {
         }
         name := reader.Field(s.tree, declaration, syntax.FieldName);
         if (!AdmitName(s, name)) { return; }
-        index: int = 0;
-        while (index < length(s.header_names)) {
-            if (SameName(s, s.header_names[index], name)) {
+        for (header in s.headers) {
+            if (s.packages[header.source] == s.packages[s.source] && HeaderMatches(s, header, name)) {
                 Fail(s, name, "duplicate function name");
                 return;
             }
-            index += 1;
         }
         parameter_first := length(output.parameter_types);
         parameters := reader.Field(s.tree, declaration, syntax.FieldParameters);
@@ -228,24 +287,34 @@ Headers :: (s: ^State, output: ^Module, root: int) {
         signature: Signature = {first_parameter: u32(parameter_first), parameter_count: u32(count), result_type: result_type};
         output.signatures.append(signature);
         source := s.nodes[name];
-        function_name: Name = {start: u32(length(output.name_bytes)), count: u32(source.end - source.start)};
-        index = source.start;
-        while (index < source.end) {
-            output.name_bytes.append(u8(text_byte_at(s.text, index)));
-            index += 1;
+        first_name := length(output.name_bytes);
+        entry_package := s.packages[s.source] == s.packages[0];
+        if (entry_package) {
+            for (index in source.start..<source.end) {
+                output.name_bytes.append(u8(text_byte_at(s.text, index)));
+            }
+        } else {
+            // A dot cannot be part of a source Identifier. Global IDs keep
+            // dependency names unique without hashing or backend resolution.
+            symbol := format_text(".vnext.{}", length(s.headers) + 1);
+            for (index in 0..<text_byte_length(symbol)) {
+                output.name_bytes.append(u8(text_byte_at(symbol, index)));
+            }
         }
+        // Each <=9-byte dependency name is shorter than its declaration;
+        // entry names are disjoint source spans within the aggregate byte cap.
+        assert(length(output.name_bytes) <= MaxSourceBytes, "admitted source bounds emitted names");
+        function_name: Name = {start: u32(first_name), count: u32(length(output.name_bytes) - first_name)};
         output.names.append(function_name);
+        public := reader.Field(s.tree, declaration, syntax.FieldVisibility) >= 0;
         exported: u32 = 0;
-        if (reader.Field(s.tree, declaration, syntax.FieldVisibility) >= 0) { exported = 1; }
+        if (entry_package && public) { exported = 1; }
         function: Function = {name: u32(length(output.names)), signature: u32(length(output.signatures)),
                               first_block: 0, block_count: 0, origin: OriginID(s, output, declaration), exported: exported};
         output.functions.append(function);
-        s.declarations.append(declaration);
-        s.header_names.append(name);
+        header: Header = {source: s.source, declaration: declaration, name: name, public: public};
+        s.headers.append(header);
         declaration = Next(s, declaration);
-    }
-    if (length(s.declarations) == 0 && length(s.diagnostics) == 0) {
-        Fail(s, root, "vNext scalar slice requires at least one function");
     }
 }
 
@@ -385,22 +454,57 @@ Expression :: (s: ^State, output: ^Module, node: int, depth: int) -> u32 {
     }
     if (kind == syntax.CallExpression) {
         name := reader.Field(s.tree, node, syntax.FieldFunction);
-        if (!reader.Kind(s.tree, name, syntax.Identifier)) {
+        target := s.packages[s.source];
+        member := name;
+        qualified := reader.Kind(s.tree, name, syntax.MemberExpression);
+        if (reader.Kind(s.tree, name, syntax.Identifier)) {
+            if (FindBinding(s, name) >= 0) {
+                Fail(s, name, "scalar binding is not callable");
+                return 0;
+            }
+        } else if (qualified) {
+            object := reader.Field(s.tree, name, syntax.FieldObject);
+            member = reader.Field(s.tree, name, syntax.FieldMember);
+            if (!reader.Kind(s.tree, object, syntax.Identifier) || !reader.Kind(s.tree, member, syntax.Identifier)) {
+                Fail(s, name, "vNext scalar slice requires an identifier package and member");
+                return 0;
+            }
+            if (FindBinding(s, object) >= 0) {
+                Fail(s, object, "scalar binding has no package members");
+                return 0;
+            }
+            target = -1;
+            for (imported in s.imports) {
+                if (imported.file == s.source && SpellingMatches(s, object, imported.name)) {
+                    target = imported.target;
+                    break;
+                }
+            }
+            if (target < 0) {
+                Fail(s, object, "unknown package alias");
+                return 0;
+            }
+        } else {
             Fail(s, name, "vNext scalar slice requires an identifier direct callee");
             return 0;
         }
-        if (FindBinding(s, name) >= 0) {
-            Fail(s, name, "scalar binding is not callable");
-            return 0;
-        }
-        // Headers are complete before bodies. This scan is bounded by 32,
-        // and preserves same-document private, forward and recursive calls.
+        // All closure headers precede bodies. Both scans have an aggregate
+        // 32-row bound, and produce the one authoritative global callee ID.
         callee: u32 = 0;
-        for (header, index in s.header_names) {
-            if (SameName(s, header, name)) { callee = u32(index + 1); break; }
+        for (header, index in s.headers) {
+            if (s.packages[header.source] == target && HeaderMatches(s, header, member)) {
+                if (target != s.packages[s.source] && !header.public) {
+                    Fail(s, name, "private member");
+                    return 0;
+                }
+                callee = u32(index + 1);
+                break;
+            }
         }
         if (callee == 0) {
-            Fail(s, name, "unknown direct callee");
+            message := "unknown direct callee";
+            if (qualified) { message = "unknown imported function"; }
+            Fail(s, member, message);
             return 0;
         }
         function := output.functions[int(callee) - 1];
@@ -635,62 +739,258 @@ Statements :: (s: ^State, output: ^Module, parent: int, depth: int) {
     }
 }
 
+// Canonical relative locations only: no filesystem access or normalization.
+// Empty denotes the project root for an imported directory, not a source file.
+CanonicalDirectory :: (path: string) -> bool {
+    size := text_byte_length(path);
+    if (size > MaxPathBytes) { return false; }
+    if (size == 0) { return true; }
+    first: int = 0;
+    for (at in 0..size) {
+        byte: int = PathSlash;
+        if (at < size) {
+            byte = text_byte_at(path, at);
+            if (byte == 0 || byte == PathBackslash || byte == PathColon) { return false; }
+        }
+        if (byte == PathSlash) {
+            count := at - first;
+            if (count == 0 || (count == 1 && text_byte_at(path, first) == PathDot) ||
+                (count == 2 && text_byte_at(path, first) == PathDot && text_byte_at(path, first + 1) == PathDot)) {
+                return false;
+            }
+            first = at + 1;
+        }
+    }
+    return true;
+}
+InputError :: (document: int, message: string) -> Result {
+    return Result.Rejected({start: 0, end: 0, line: 1, column: 1, document: document, message: message});
+}
+
 pub Produce :: (text: string, document: int) -> Result {
-    if (document < 0 || text_byte_length(text) > MaxSourceBytes) {
-        diagnostic: syntax.Diagnostic = {start: 0, end: 0, line: 1, column: 1, document: document,
-                                         message: "vNext scalar slice requires a nonnegative document and at most 64 KiB source"};
-        return Result.Rejected(diagnostic);
+    sources: Source[] = [{path: "Main.chibi", text: text, document: document}];
+    return ProduceSources(sources);
+}
+
+pub ProduceSources :: (sources: Source[]) -> Result {
+    if (length(sources) == 0) {
+        return InputError(0, "vNext scalar slice requires 1..8 source files");
     }
-    switch parser.Parse(text) {
-        case .Rejected(diagnostic):
-            located := diagnostic;
-            located.document = document;
-            return Result.Rejected(located);
-        case .Parsed(nodes, fields, named_flags, extras, root):
-            tree := reader.Tree.Raw(nodes, fields, named_flags, extras, text);
-            if (length(nodes) > MaxNodes) {
-                return Result.Rejected(reader.Diagnostic(tree, root, document, "vNext scalar slice exceeds 8192 syntax nodes"));
-            }
-            output := EmptyModule();
-            pass_state: State = {tree: tree, environment: SignatureEnvironment(),
-                            nodes: nodes, text: text, document: document,
-                            diagnostics: [], declarations: [], header_names: [], parameter_names: [], bindings: [],
-                            current_values: [], origin_ids: resize([u32(0)], length(nodes)), block: 0,
-                            first_block: 0, result_type: 0};
-            Headers(&pass_state, &output, root);
-            if (length(pass_state.diagnostics) != 0) { return Result.Rejected(pass_state.diagnostics[0]); }
-            function_index: int = 0;
-            // No bodies are visited before all function signatures exist.
-            while (function_index < length(pass_state.declarations)) {
-                declaration := pass_state.declarations[function_index];
-                function := output.functions[function_index];
-                signature := output.signatures[int(function.signature) - 1];
-                pass_state.first_block = length(output.blocks);
-                pass_state.result_type = signature.result_type;
-                pass_state.bindings = [];
-                pass_state.current_values = [];
-                entry_block := NewBlock(&pass_state, &output, declaration);
-                assert(entry_block != 0, "fresh function has room for its entry block");
-                parameter: int = 0;
-                while (parameter < int(signature.parameter_count)) {
-                    at := int(signature.first_parameter) + parameter;
-                    pass_state.bindings.append(pass_state.parameter_names[at]);
-                    value := NewParameter(&pass_state, &output, output.parameter_types[at]);
-                    pass_state.current_values.append(value);
-                    parameter += 1;
-                }
-                Statements(&pass_state, &output, reader.Field(tree, declaration, syntax.FieldBody), 0);
-                if (length(pass_state.diagnostics) != 0) { return Result.Rejected(pass_state.diagnostics[0]); }
-                if (pass_state.block != 0) {
-                    return Result.Rejected(reader.Diagnostic(tree, declaration, document, "function has a reachable exit without return"));
-                }
-                function.first_block = u32(pass_state.first_block);
-                function.block_count = u32(length(output.blocks) - pass_state.first_block);
-                output.functions[function_index] = function;
-                function_index += 1;
-            }
-            verification := Verify(output);
-            assert(verification == 0, "typed producer emitted an invalid module");
-            return Result.Produced(output);
+    if (length(sources) > MaxSources) {
+        return InputError(sources[MaxSources].document, "vNext scalar slice requires 1..8 source files");
     }
+    // Validate the entire input byte budget before invoking the retained
+    // parser. Source paths/documents identify input, not semantic facts.
+    source_bytes: int = 0;
+    for (source, index in sources) {
+        bytes := text_byte_length(source.text);
+        if (source.document < 0 || bytes > MaxSourceBytes - source_bytes) {
+            return InputError(source.document, "vNext scalar slice requires a nonnegative document and at most 64 KiB source");
+        }
+        source_bytes += bytes;
+        if (text_byte_length(source.path) == 0 || !CanonicalDirectory(source.path) || !strings.HasSuffix(source.path, ".chibi")) {
+            return InputError(source.document, "vNext scalar slice requires a canonical project-relative .chibi path");
+        }
+        for (previous in 0..<index) {
+            if (sources[previous].document == source.document) {
+                return InputError(source.document, "duplicate source document label");
+            }
+        }
+    }
+
+    documents: Document[] = [];
+    files: graph.File[] = [];
+    import_rows: graph.Import[] = [];
+    import_nodes: int[] = [];
+    node_count: int = 0;
+    // Parse exactly once per document, keeping original trees and origins.
+    // Imports are AST fields. No preparer or backend interprets their syntax.
+    for (source, index in sources) {
+        switch parser.Parse(source.text) {
+            case .Rejected(diagnostic):
+                located := diagnostic;
+                located.document = source.document;
+                return Result.Rejected(located);
+            case .Parsed(nodes, fields, named_flags, extras, root):
+                tree := reader.Tree.Raw(nodes, fields, named_flags, extras, source.text);
+                if (length(nodes) > MaxNodes - node_count) {
+                    return Result.Rejected(reader.Diagnostic(tree, root, source.document, "vNext scalar slice exceeds 8192 syntax nodes"));
+                }
+                document: Document = {tree: tree, nodes: nodes, text: source.text,
+                                       document: source.document, root: root, node_base: node_count};
+                documents.append(document);
+                node_count += length(nodes);
+                header := reader.Field(tree, root, syntax.FieldPackage);
+                if (!reader.Kind(tree, header, syntax.PackageHeader)) {
+                    return Result.Rejected(reader.Diagnostic(tree, root, source.document, "vNext scalar slice requires one package header"));
+                }
+                name := reader.Field(tree, header, syntax.FieldName);
+                if (!reader.Kind(tree, name, syntax.Identifier)) {
+                    return Result.Rejected(reader.Diagnostic(tree, header, source.document, "vNext scalar slice requires a named package"));
+                }
+                package_name := reader.Text(tree, name);
+                if (package_name == "_") {
+                    return Result.Rejected(reader.Diagnostic(tree, header, source.document, "vNext scalar slice requires a named package"));
+                }
+                slash := strings.LastIndexByte(source.path, PathSlash);
+                directory := "/project";
+                if (slash >= 0) { directory = format_text("/project/{}", strings.Slice(source.path, 0, slash)); }
+                file: graph.File = {path: format_text("/project/{}", source.path), directory: directory, name: package_name};
+                files.append(file);
+                declaration := reader.NextMember(tree, nodes[header].next_sibling);
+                while (declaration >= 0) {
+                    if (reader.Kind(tree, declaration, syntax.ImportDeclaration)) {
+                        if (length(import_rows) == MaxImports) {
+                            return Result.Rejected(reader.Diagnostic(tree, declaration, source.document, "vNext scalar slice exceeds 32 imports"));
+                        }
+                        alias := reader.Field(tree, declaration, syntax.FieldAlias);
+                        if (!reader.Kind(tree, alias, syntax.Identifier)) {
+                            return Result.Rejected(reader.Diagnostic(tree, declaration, source.document, "vNext scalar slice requires an explicit import alias"));
+                        }
+                        spelling := reader.Text(tree, alias);
+                        if (spelling == "_" || spelling == "Cancelled") {
+                            return Result.Rejected(reader.Diagnostic(tree, alias, source.document, "vNext scalar slice requires a nonreserved import alias"));
+                        }
+                        path := reader.Field(tree, declaration, syntax.FieldPath);
+                        switch reader.Name(tree, path, source.document) {
+                            case .Name(value, diagnostics):
+                                if (length(diagnostics) != 0) { return Result.Rejected(diagnostics[0]); }
+                                if (text_byte_length(value) > MaxPathBytes || !strings.HasPrefix(value, "project:")) {
+                                    return Result.Rejected(reader.Diagnostic(tree, path, source.document, "vNext scalar slice requires a canonical project: import"));
+                                }
+                                tail := strings.Slice(value, 8, text_byte_length(value) - 8);
+                                if (!CanonicalDirectory(tail)) {
+                                    return Result.Rejected(reader.Diagnostic(tree, path, source.document, "vNext scalar slice requires a canonical project: import"));
+                                }
+                                target := "/project";
+                                if (tail != "") { target = format_text("/project/{}", tail); }
+                                row: graph.Import = {file: index, directory: target, alias: spelling, explicit_alias: true, conditional: false};
+                                import_rows.append(row);
+                                import_nodes.append(declaration);
+                        }
+                    } else if (!reader.Kind(tree, declaration, syntax.FunctionDeclaration)) {
+                        return Result.Rejected(reader.Diagnostic(tree, declaration, source.document, "unsupported declaration in vNext scalar slice"));
+                    }
+                    declaration = reader.NextMember(tree, nodes[declaration].next_sibling);
+                }
+        }
+    }
+
+    package_ids: int[] = [];
+    imports: graph.Binding[] = [];
+    // This retained transform receives location/header/import descriptors only,
+    // never source trees, bodies or type catalogs. Its 256-int cycle scratch
+    // and <=32-row binding sort are bounded costs of reusing one graph policy.
+    switch graph.Build(files, import_rows) {
+        case .Rejected(error, cycle):
+            document := documents[error.file];
+            node := reader.Field(document.tree, reader.Field(document.tree, document.root, syntax.FieldPackage), syntax.FieldName);
+            message := "";
+            switch error.code {
+                case graph.DuplicateFile: return InputError(document.document, "duplicate source path");
+                case graph.HeaderMismatch: message = "package header mismatch";
+                case graph.DuplicateName: message = "duplicate package name";
+                case graph.Missing:
+                    node = reader.Field(document.tree, import_nodes[error.import_index], syntax.FieldPath);
+                    message = "import target is outside the supplied source closure";
+                case graph.ImportName:
+                    node = reader.Field(document.tree, import_nodes[error.import_index], syntax.FieldAlias);
+                    message = "invalid import alias";
+                case graph.DuplicateImport:
+                    node = reader.Field(document.tree, import_nodes[error.import_index], syntax.FieldAlias);
+                    message = "duplicate import alias";
+                case graph.Cycle:
+                    node = import_nodes[error.import_index];
+                    message = "package import cycle";
+                case: assert(false, "retained graph returned an unknown failure");
+            }
+            return Result.Rejected(reader.Diagnostic(document.tree, node, document.document, message));
+        case .Accepted(packages, members, file_packages, order, edges, bindings):
+            package_ids = file_packages;
+            imports = bindings;
+            reached := resize([false], length(packages));
+            pending: int[] = [file_packages[0]];
+            reached[file_packages[0]] = true;
+            cursor: int = 0;
+            while (cursor < length(pending)) {
+                from := pending[cursor];
+                for (edge in edges) {
+                    if (edge.from == from && !reached[edge.to]) {
+                        reached[edge.to] = true;
+                        pending.append(edge.to);
+                    }
+                }
+                cursor += 1;
+            }
+            for (package, index in file_packages) {
+                if (!reached[package]) {
+                    document := documents[index];
+                    header := reader.Field(document.tree, document.root, syntax.FieldPackage);
+                    return Result.Rejected(reader.Diagnostic(document.tree, header, document.document, "source package is unreachable from the entry package"));
+                }
+            }
+    }
+
+    output := EmptyModule();
+    first := documents[0];
+    pass_state: State = {tree: first.tree, environment: SignatureEnvironment(),
+                        nodes: first.nodes, text: first.text, document: first.document,
+                        source: 0, node_base: 0, documents: documents, packages: package_ids,
+                        imports: imports, headers: [], diagnostics: [], parameter_names: [], bindings: [],
+                        current_values: [], origin_ids: resize([u32(0)], node_count), block: 0,
+                        first_block: 0, result_type: 0};
+    // One global header catalog, in supplied file/declaration order. Empty
+    // files may contribute imports; only the entire module requires a body.
+    for (document, index in documents) {
+        SelectSource(&pass_state, index);
+        Headers(&pass_state, &output, document.root);
+        if (length(pass_state.diagnostics) != 0) { return Result.Rejected(pass_state.diagnostics[0]); }
+    }
+    if (length(pass_state.headers) == 0) {
+        return Result.Rejected(reader.Diagnostic(first.tree, first.root, first.document, "vNext scalar slice requires at least one function"));
+    }
+    // Graph bindings are sorted for lookup; conflicts still follow the
+    // original import declaration order, not alias spelling order.
+    for (imported, index in import_rows) {
+        SelectSource(&pass_state, imported.file);
+        alias := reader.Field(pass_state.tree, import_nodes[index], syntax.FieldAlias);
+        for (header in pass_state.headers) {
+            if (package_ids[header.source] == package_ids[imported.file] && HeaderMatches(&pass_state, header, alias)) {
+                return Result.Rejected(reader.Diagnostic(pass_state.tree, alias, pass_state.document, "import alias conflicts with a package function"));
+            }
+        }
+    }
+
+    // No body is visited until every package's signatures and aliases exist.
+    for (header, function_index in pass_state.headers) {
+        SelectSource(&pass_state, header.source);
+        declaration := header.declaration;
+        function := output.functions[function_index];
+        signature := output.signatures[int(function.signature) - 1];
+        pass_state.first_block = length(output.blocks);
+        pass_state.result_type = signature.result_type;
+        pass_state.bindings = [];
+        pass_state.current_values = [];
+        entry_block := NewBlock(&pass_state, &output, declaration);
+        assert(entry_block != 0, "fresh function has room for its entry block");
+        parameter: int = 0;
+        while (parameter < int(signature.parameter_count)) {
+            at := int(signature.first_parameter) + parameter;
+            pass_state.bindings.append(pass_state.parameter_names[at]);
+            value := NewParameter(&pass_state, &output, output.parameter_types[at]);
+            pass_state.current_values.append(value);
+            parameter += 1;
+        }
+        Statements(&pass_state, &output, reader.Field(pass_state.tree, declaration, syntax.FieldBody), 0);
+        if (length(pass_state.diagnostics) != 0) { return Result.Rejected(pass_state.diagnostics[0]); }
+        if (pass_state.block != 0) {
+            return Result.Rejected(reader.Diagnostic(pass_state.tree, declaration, pass_state.document, "function has a reachable exit without return"));
+        }
+        function.first_block = u32(pass_state.first_block);
+        function.block_count = u32(length(output.blocks) - pass_state.first_block);
+        output.functions[function_index] = function;
+    }
+    verification := Verify(output);
+    assert(verification == 0, "typed producer emitted an invalid module");
+    return Result.Produced(output);
 }

@@ -2763,18 +2763,19 @@ int pin_value_equal(const pin_value *a, const pin_value *b)
                      a->container == b->container && a->ptr && b->ptr &&
                      (a->container != PIN_CONTAINER_SINGLE ||
                       a->type == PIN_STRUCT || a->type == PIN_UNION);
+    if (comparing_graph) {
+        bool seen = aggregate &&
+                    equal_seen(comparing_graph, (equal_pair){ a->ptr, b->ptr, a->type, a->container });
+        return seen || value_equal(a, b);
+    }
     equal_graph local = { 0 };
-    bool outermost = !comparing_graph;
-    if (outermost) {
-        comparing_graph = &local;
+    comparing_graph = &local;
+    if (aggregate) {
+        equal_seen(&local, (equal_pair){ a->ptr, b->ptr, a->type, a->container });
     }
-    bool seen = aggregate &&
-                equal_seen(comparing_graph, (equal_pair){ a->ptr, b->ptr, a->type, a->container });
-    int result = seen || value_equal(a, b);
-    if (outermost) {
-        comparing_graph = NULL;
-        free(local.pairs);
-    }
+    int result = value_equal(a, b);
+    comparing_graph = NULL;
+    free(local.pairs);
     return result;
 }
 int pin_array_equal(const pin_array *a, const pin_array *b)

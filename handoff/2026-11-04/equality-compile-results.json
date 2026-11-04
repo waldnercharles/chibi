@@ -1,0 +1,61 @@
+{
+  "scope": "Strict GCC14 actual-unit compile regression only. No linked or generated output executed.",
+  "source": {
+    "base_array_sha256": "6d3af5e0e6cf72682208a7c1b15e2cceb0c88e3988d4a38430969a2e538726cf",
+    "candidate_array_sha256": "279c54c6936f35bd4b1d7d91318210275880b0a71c137a1ff9992c6d0119a103",
+    "change": "Only pin_value_equal root/nested ownership control flow; semantics, layout, flags and dependencies unchanged."
+  },
+  "phase": {
+    "status": "passed",
+    "seconds": 5.349279880523682,
+    "original_total_seconds": 60,
+    "command_limit_seconds": 15,
+    "cleanup_seconds": 5,
+    "cleanup_echild": true,
+    "errors": [],
+    "signals": [],
+    "tool_session": 94020,
+    "tool_chunk": "b2a1c5"
+  },
+  "commands": [
+    {
+      "name": "baseline",
+      "exit_status": 1,
+      "seconds": 1.1679739952087402,
+      "log_sha256": "4e8a3ee2111ffa603a1e9a0891f1f3fd1b8bb8076e2ddf1e8d1fc2008acb03f6",
+      "object_sha256": null
+    },
+    {
+      "name": "candidate",
+      "exit_status": 0,
+      "seconds": 1.3209333419799805,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "object_sha256": "69e5b80d85b0cd6edeb15a4eba398ec4acbc12ec4ac51302ddbd076a7ebf5a14"
+    }
+  ],
+  "independent_review": {
+    "source_and_controller": "No blocking finding. Exact original flags, real sources, 25 headers and complete inherited tool/runtime/search closure reviewed.",
+    "terminal_report_sha256": "f802caeeec161fb6e2cdd27e2f8b10ea6cb37ee0dda80a88043cc240e6e223ca",
+    "terminal_readback_sha256": "def100b7144952ad5e23b58bac4454bfe6f745e4c54b368bca5bebae28d9eabd"
+  },
+  "proof_archive": {
+    "name": "chibi-equality-compile-validated-20261104.tar.gz",
+    "sha256": "433094122be356005533ecc1d182ef4bcfcc8b7ce57e2885b617ee24193daad7",
+    "bytes": 833375,
+    "regular_members": 77,
+    "directories": 28,
+    "verification": "Complete member bytes/modes and unchanged source identity read back."
+  },
+  "remaining": [
+    "Separate scalar/array runtime assurance and actual linked artifact admission.",
+    "Fresh full compiler-host build and integration.",
+    "Full graph-c runtime, actual Windows, exact-head reviews/checks and PR hold."
+  ],
+  "excluded": [
+    "Old c5 bootstrap retry",
+    "Union native 16-byte leak investigation",
+    "Broad types or mixed native remove_item selectors",
+    "Warning suppression",
+    "Merge, release or unverified remote publication"
+  ]
+}

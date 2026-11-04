@@ -59,6 +59,12 @@ entry:
   ; permits the few live array owners without growing with loop iterations.
   %bounded = icmp ule i64 %peak, 2048
   %valid = and i1 %balanced, %bounded
-  %checked = select i1 %valid, i32 %result, i32 99
-  ret i32 %checked
+  ; A pending source assertion overrides returned status in the program shim.
+  ; Stop here so an expected assertion cannot hide a failed allocation audit.
+  br i1 %valid, label %done, label %invalid
+invalid:
+  call void @llvm.trap()
+  unreachable
+done:
+  ret i32 %result
 }

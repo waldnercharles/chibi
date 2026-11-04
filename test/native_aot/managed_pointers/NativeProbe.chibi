@@ -351,13 +351,29 @@ Main :: () -> int {
             if (mode != "positive" && mode != "persistent" && mode != "typed_layout" && mode != "untraced_layout" && mode != "record" && mode != "poll_null" && mode != "array_cell" && mode != "text_array_cell" && mode != "optional_cell" && !trapped) {
                 valid = result.status == 134 && strings.Contains(result.stderr, "native failure: another failure");
             }
-            // Capture preserves negative signals; some runners encode 128+sig.
-            // LLVM trap is SIGILL/SIGTRAP, distinct from audit99 or failure134.
-            if (trapped) { valid = result.status == -4 || result.status == -5 || result.status == 132 || result.status == 133; }
+            if (trapped) { valid = RuntimeTrap(result.status, result.stdout); }
             if (!valid) { os.Print(format_text("managed native {} O{} status{} {}{}", mode, level, result.status, result.stdout, result.stderr)); return 1; }
             os.Print(format_text("PASS managed native {} O{}", mode, level));
             if (mode == "positive") { os.Print(result.stdout); }
         }
+    }
+    return 0;
+}
+
+// Capture preserves negative signals; some runners encode 128+sig. An audit
+// report proves entry returned, so its trap is not the expected runtime trap.
+RuntimeTrap :: (status: int, output: string) -> bool {
+    return (status == -4 || status == -5 || status == 132 || status == 133) &&
+        !strings.Contains(output, "managed source live ");
+}
+
+// A separate entry tests only the oracle, without running any native fixtures.
+AuditTrapOracle :: () -> int {
+    for status in [int(-4), -5, 132, 133] {
+        if (!RuntimeTrap(status, "") || RuntimeTrap(status, "managed source live 0 peak 3 total 3\n")) { return 1; }
+    }
+    for status in [int(0), 99, 134] {
+        if (RuntimeTrap(status, "")) { return 1; }
     }
     return 0;
 }

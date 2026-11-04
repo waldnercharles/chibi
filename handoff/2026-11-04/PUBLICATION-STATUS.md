@@ -34,7 +34,11 @@ construction advanced to 44 successful objects before one strict JIT signedness
 error; its [one-line correction and paired strict compile proof](JIT-SIGNED-OPERAND.md)
 are now accepted. The following construction reached 46 successful objects,
 then stopped at two signedness diagnostics in `jit_memory.c` and
-`jit_registers.c`. No archives or host were produced. The permanent initializer
+`jit_registers.c`. Their [two-line correction and exact strict compile pairs](JIT-SIGNED-WIDTHS.md)
+are independently accepted. The broader diagnostic remains failed: it found
+additional source errors in `jit_suspend.c` and `runner.c`, then stopped on an
+unadmitted canonical header spelling before its final unit. No archives or host
+were produced. The permanent initializer
 regression now has accepted source, compile and focused runtime evidence, as
 described in [its report](NATIVE-DEFAULT-INITIALIZERS.md); this does not clear
 the full graph-c or host gates.

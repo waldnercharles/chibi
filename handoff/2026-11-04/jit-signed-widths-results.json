@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "publication_parent": "c01297c51d64f635660c1eba6ef7fc321506d302",
+  "status": "Two exact strict compile pairs independently accepted; broader diagnostic remains failed",
+  "pairs": [
+    {
+      "source": "src/execution/jit_memory.c",
+      "baseline_sha256": "609845859ae7bd11aa06138a3a62c9c4f8021e0f81df55a08c720241138c902b",
+      "candidate_sha256": "07979f7d6a6561233adc42e1f391864a93645fc0f8b2c1d48c46e090f549de26",
+      "baseline_exit": 1,
+      "candidate_exit": 0,
+      "baseline_object_absent": true,
+      "candidate_log_empty": true,
+      "ordered_dependencies_each": 116,
+      "baseline_command_record_sha256": "b6d3089363cab488bf8f6b3ae3cd790e8176587fb26e34d4e85c75271b528bd4",
+      "candidate_command_record_sha256": "62a49fae4a9934e841950fee5b8f36d47623481c9c094fceb5bfe0cc2ddb6310",
+      "baseline_depfile_sha256": "22b3dc82e9a0e84e25fb8e4ca186cceee310214ccb01cf8c35b9729214158249",
+      "candidate_depfile_sha256": "6e2899f4e0904327dc76993d8a0593dfba85b35126a6d053cc609976a57d6f4e",
+      "candidate_object_sha256": "69180835ff1edd27d15a1679d7f154d9ddbd73fa0a295faebb67128f51b39831",
+      "candidate_object_bytes": 22520,
+      "baseline_seconds": 0.23323392868041992,
+      "candidate_seconds": 0.2088932991027832
+    },
+    {
+      "source": "src/execution/jit_registers.c",
+      "baseline_sha256": "5bffc8dc234283cd71f7ea8ffaa77d90aa6500fbc59781e69a29d6992309e90a",
+      "candidate_sha256": "f71f5163e6d2bfbc8fb400ae56c6c0c1d1bc3a621b7bc69cdcfae7cec01bb5e7",
+      "baseline_exit": 1,
+      "candidate_exit": 0,
+      "baseline_object_absent": true,
+      "candidate_log_empty": true,
+      "ordered_dependencies_each": 116,
+      "baseline_command_record_sha256": "990f2666a2e3600af6be3c6966ef47d0ac31f03c5b25865ab473a5aef1eddce2",
+      "candidate_command_record_sha256": "32886e8bfbfbab7125b434067dc7fa34b02b6ac31ae68fc253a117b32a829ac0",
+      "baseline_depfile_sha256": "f9897a5cb39703b93913a762037e32e5f3c082692adeb80fedc7f51051d04947",
+      "candidate_depfile_sha256": "b40e444d3ed930d72cacf7d96bf4c44b701ea96cdf408365ddab6078b986a2bd",
+      "candidate_object_sha256": "8f527e72b8d87511047652feb9782ceef4010c314035ed2d1e5c58ad42ae839f",
+      "candidate_object_bytes": 19888,
+      "baseline_seconds": 0.4879734516143799,
+      "candidate_seconds": 0.44553565979003906
+    }
+  ],
+  "campaign": {
+    "status": "failed",
+    "planned_commands": 44,
+    "observed_commands": 43,
+    "validated_candidate_compiles": 38,
+    "ordinary_source_failures": [
+      "src/execution/jit_suspend.c",
+      "src/execution/runner.c"
+    ],
+    "unvalidated_exit_zero": [
+      "src/support/binary_cache.c"
+    ],
+    "unrun": [
+      "src/toolchain/compiler_main.c"
+    ],
+    "elapsed_seconds": 14.591093301773071,
+    "total_limit_seconds": 180,
+    "command_limit_seconds": 15,
+    "cleanup_reserve_seconds": 5,
+    "cleanup_echild": true,
+    "owner_errors": [],
+    "owner_signals": [],
+    "owned_survivors": [],
+    "worker_success_post_fences_ran": false,
+    "independent_postfailure_fences_passed": true,
+    "graph_records_created": 0,
+    "host_build_passed": false
+  },
+  "narrow_checkpoint_sha256": "eca7657fb21017a1d5309158b4773584c9e3fdf8e2dbe56b54c513d2842116ac",
+  "failed_campaign_review_sha256": "d20f6b840aed264e1c3353fafddd0c1a6be35c12d347f889e0fe9e3b95ebb1f8",
+  "terminal_verification_sha256": "e2102f3a2cd796f67ceaa69c897cb3eac431e846e706169736760e71aac158f2",
+  "postfailure_fences_sha256": "825e0b9807232e37253a91fc6ee9655b677d8859d5a55ceca00df98f244186b1",
+  "plan_sha256": "17ac5cdbc7c7473ba5636a28fe1a368c929316d37206f6caa9c330c55b992c7f",
+  "controller_sha256": "e7fe1031b3b5dfcef8fcbbf797a897c6990fd148caa2a1b9f6e794bf05250d72",
+  "owner_sha256": "eb565285001cef43ed88cf73e5797cc83b726afcf6cf192cf5b4ba10f6078698",
+  "scope": "Only the two reviewed production casts. No link/runtime, broad diagnostic pass, full host, graph-c, Windows, exact-head CI, PR readiness, merge or release acceptance."
+}

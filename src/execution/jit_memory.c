@@ -208,7 +208,7 @@ bool behavior_jit_memory(
         bool write = i->op == BF_WRITE;
         slot(m, write ? i->right : i->left, SLJIT_R3, 0);
         int source = write ? m->registers[i->left] : SLJIT_MEM1(SLJIT_R3);
-        sljit_sw address = write ? (source ? 0 : i->left * sizeof(double))
+        sljit_sw address = write ? (source ? 0 : (sljit_sw)(i->left * sizeof(double)))
                                  : (sljit_sw)i->offset;
         if (write && !source) {
             source = SLJIT_MEM1(SLJIT_SP);

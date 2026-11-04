@@ -673,7 +673,7 @@ int behavior_jit_field_branch(const behavior_machine *m, int pc, struct sljit_ju
                   : SLJIT_MEM1(SLJIT_SP),
         immediate ? (sljit_sw)behavior_scalar_bits(literal->value)
         : right   ? 0
-                  : compare->right * sizeof(double)
+                  : (sljit_sw)(compare->right * sizeof(double))
     );
     return last - pc + 1;
 }

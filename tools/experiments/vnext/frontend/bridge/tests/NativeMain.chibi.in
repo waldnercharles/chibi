@@ -1,0 +1,426 @@
+package vnext_native_tests
+
+import typed "project:vnext_typed"
+import bridge "project:vnext_bridge"
+import os "core:os"
+
+foreign import backend "LIBRARY_PATH"
+foreign backend {
+    chibi_vnext_compile_both :: (words: u32[], word_count: u64, literals: i64[], literal_count: u64, names: u8[], name_byte_count: u64) -> rawptr
+    chibi_vnext_status :: (owner: rawptr) -> u32
+    chibi_vnext_diagnostic_length :: (owner: rawptr) -> u64
+    chibi_vnext_diagnostic_copy :: (owner: rawptr, destination: u8[], capacity: u64) -> i32
+    chibi_vnext_entry :: (owner: rawptr, function_id: u32) -> rawptr
+    chibi_vnext_object_length :: (owner: rawptr) -> u64
+    chibi_vnext_object_copy :: (owner: rawptr, destination: u8[], capacity: u64) -> i32
+    chibi_vnext_destroy :: (owner: rawptr) -> i32
+}
+
+// Preparation replaces the source marker with the exact UTF-8 NativeCases.chibi
+// as one escaped string, the library marker with the accepted backend CDylib
+// path, and the output marker with one escaped absolute filename in the parent's fresh,
+// exclusively owned output directory. core:os.WriteBytes is not exclusive;
+// no other writer may touch that directory, and an existing path is refused.
+//
+// Ordinary launch requires PERF_BUILDID_DIR absent. A separate parent-launched
+// process sets it and passes the sole argument "expect-perf-buildid-failure".
+// This program never changes environment variables or launches a process.
+// Prepared tests are not acceptance and contain no throughput measurement.
+Main :: () -> int {
+    source := FIXTURE_SOURCE;
+    arguments := os.Arguments();
+    if (length(arguments) == 1 && arguments[0] == "expect-perf-buildid-failure") {
+        return PerfBuildIdFailure(source);
+    }
+    if (length(arguments) != 0) { return 2; }
+    output_path := OUTPUT_PATH;
+    if (os.Kind(output_path) != os.KindNone) { return 3; }
+    CheckSourceRejections();
+    switch typed.Produce(source, 19) {
+        case .Rejected(diagnostic):
+            assert(false, "native fixture must pass the retained source producer");
+            return 4;
+        case .Produced(module):
+            assert(length(module.functions) == 16, "all source fixture functions were produced");
+            CheckMergeShape(module);
+            anchor := CompileOwned(module);
+            if (!Ready(anchor)) {
+                closed := chibi_vnext_destroy(anchor);
+                assert(closed == 0, "close failed anchor result");
+                return 5;
+            }
+            anchor_object := CopyObject(anchor);
+            // Every compile poisons and drops its actual borrowed inputs before
+            // returning. Keep one JIT owner alive throughout eight full cycles.
+            for (iteration in 0..<8) {
+                peer := CompileOwned(module);
+                if (!Ready(peer)) {
+                    peer_closed := chibi_vnext_destroy(peer);
+                    anchor_closed := chibi_vnext_destroy(anchor);
+                    assert(peer_closed == 0 && anchor_closed == 0, "close both owned results on failure");
+                    return 6;
+                }
+                assert(peer != anchor, "two independent live owners coexist");
+                peer_checks := CheckCalls(module, peer);
+                anchor_checks := CheckCalls(module, anchor);
+                peer_object := CopyObject(peer);
+                CheckBytes(peer_object, anchor_object);
+                peer_closed := chibi_vnext_destroy(peer);
+                assert(peer_closed == 0, "destroy peer after its last generated call");
+                // CheckCalls retains no address beyond its synchronous return.
+                surviving_checks := CheckCalls(module, anchor);
+                if (peer_checks != 0 || anchor_checks != 0 || surviving_checks != 0) {
+                    anchor_closed := chibi_vnext_destroy(anchor);
+                    assert(anchor_closed == 0, "close surviving owner after a signature rejection");
+                    return 7;
+                }
+            }
+            copied := CopyObject(anchor);
+            CheckBytes(copied, anchor_object);
+            closed := chibi_vnext_destroy(anchor);
+            assert(closed == 0, "destroy anchor after calls and object copies finish");
+            // Only the independent object bytes remain; never use anchor again.
+            if (os.Kind(output_path) != os.KindNone) { return 8; }
+            written := os.WriteBytes(output_path, copied);
+            if (written != nil) { return 9; }
+            read := os.ReadBytes(output_path);
+            if (read.error != nil || length(read.data) == 0) { return 10; }
+            CheckBytes(read.data, copied);
+            return 0;
+    }
+}
+
+// The sole successful source-to-native pipeline is Produce -> Pack -> this
+// one call. Scalar copies here deliberately remove all COW aliases to the
+// actual foreign input arrays, so poisoning writes the exact borrowed storage
+// rather than silently detaching from the retained module's side arrays.
+CompileOwned :: (module: typed.Module) -> rawptr {
+    switch bridge.Pack(module) {
+        case .TooLarge(table):
+            assert(false, "admitted fixture fits the generated transport");
+            return 0;
+        case .Packed(buffers):
+            words: u32[] = [];
+            literals: i64[] = [];
+            names: u8[] = [];
+            words.resize(length(buffers.words));
+            literals.resize(length(buffers.literals));
+            names.resize(length(buffers.name_bytes));
+            for (word, index in buffers.words) { words[index] = word; }
+            for (literal, index in buffers.literals) { literals[index] = literal; }
+            for (byte, index in buffers.name_bytes) { names[index] = byte; }
+            owner := chibi_vnext_compile_both(words, u64(length(words)), literals, u64(length(literals)), names, u64(length(names)));
+            assert(owner != 0, "backend returns an owned ready or failure result");
+            for (index in 0..<length(words)) { words[index] = 0; }
+            for (index in 0..<length(literals)) { literals[index] = 0; }
+            for (index in 0..<length(names)) { names[index] = 0; }
+            words = [];
+            literals = [];
+            names = [];
+            return owner;
+    }
+}
+
+Ready :: (owner: rawptr) -> bool {
+    status := chibi_vnext_status(owner);
+    if (status != u32(0)) {
+        os.Print(format_text("native backend status {}", status));
+        count := chibi_vnext_diagnostic_length(owner);
+        if (count == u64(0)) {
+            os.Print("native backend diagnostic is empty");
+            return false;
+        }
+        // A broken result must not make this tiny fixture allocate unboundedly.
+        if (count > u64(16384)) {
+            os.Print(format_text("native backend diagnostic length {} exceeds the 16384-byte test limit; not copied", count));
+            return false;
+        }
+        bytes: u8[] = [];
+        bytes.resize(int(count));
+        copied := chibi_vnext_diagnostic_copy(owner, bytes, count);
+        if (copied != 0) {
+            os.Print(format_text("native backend diagnostic copy failed with status {}", copied));
+        } else {
+            os.Print(text_from_bytes(bytes));
+        }
+        return false;
+    }
+    diagnostic_length := chibi_vnext_diagnostic_length(owner);
+    empty: u8[] = [];
+    copied := chibi_vnext_diagnostic_copy(owner, empty, u64(0));
+    assert(diagnostic_length == u64(0) && copied == 0, "success has an empty owned diagnostic");
+    return true;
+}
+
+// The bounded fixture has 16 functions. This test-only linear name lookup is
+// outside backend lowering and compares the actual produced UTF-8 name bytes.
+FindFunction :: (module: typed.Module, expected: string) -> u32 {
+    for (function, index in module.functions) {
+        name := module.names[int(function.name) - 1];
+        equal := int(name.count) == text_byte_length(expected);
+        if (equal) {
+            for (at in 0..<int(name.count)) {
+                if (int(module.name_bytes[int(name.start) + at]) != text_byte_at(expected, at)) { equal = false; }
+            }
+        }
+        if (equal) { return u32(index + 1); }
+    }
+    return 0;
+}
+
+// A mismatch returns no address, never casts and never calls generated code.
+// Export, name, ordered parameter types and result type all come from the same
+// produced module supplied to Pack. No signature is inferred from an address.
+ExpectedEntry :: (module: typed.Module, owner: rawptr, name: string, parameters: u32[], result_type: u32) -> rawptr {
+    id := FindFunction(module, name);
+    if (id == 0) { return 0; }
+    function := module.functions[int(id) - 1];
+    if (function.exported != u32(1)) { return 0; }
+    signature := module.signatures[int(function.signature) - 1];
+    if (signature.result_type != result_type || int(signature.parameter_count) != length(parameters)) { return 0; }
+    for (parameter, index in parameters) {
+        if (module.parameter_types[int(signature.first_parameter) + index] != parameter) { return 0; }
+    }
+    return chibi_vnext_entry(owner, id);
+}
+
+CheckCalls :: (module: typed.Module, owner: rawptr) -> int {
+    minimum: i64 = -9223372036854775807 - 1;
+    maximum: i64 = 9223372036854775807;
+    rejected := ExpectedEntry(module, owner, "Echo", [typed.Bool], typed.I64);
+    assert(rejected == 0, "wrong parameter type rejects before any callable cast");
+    rejected = ExpectedEntry(module, owner, "Join", [typed.I64, typed.Bool, typed.I64], typed.I64);
+    assert(rejected == 0, "reordered mixed parameter types reject before any callable cast");
+    rejected = ExpectedEntry(module, owner, "Echo", [typed.I64], typed.Bool);
+    assert(rejected == 0, "wrong result type rejects before any callable cast");
+    rejected = ExpectedEntry(module, owner, "Echo", [], typed.I64);
+    assert(rejected == 0, "wrong parameter count rejects before any callable cast");
+    rejected = ExpectedEntry(module, owner, "Missing", [typed.I64], typed.I64);
+    assert(rejected == 0, "missing source name cannot produce a callable");
+    rejected = ExpectedEntry(module, owner, "Hidden", [typed.I64], typed.I64);
+    assert(rejected == 0, "private source function cannot pass caller export checking");
+    hidden := FindFunction(module, "Hidden");
+    assert(hidden != 0 && module.functions[int(hidden) - 1].exported == 0, "private function remains in the typed module");
+    hidden_address := chibi_vnext_entry(owner, hidden);
+    zero_address := chibi_vnext_entry(owner, u32(0));
+    past_address := chibi_vnext_entry(owner, u32(length(module.functions) + 1));
+    maximum_address := chibi_vnext_entry(owner, u32(4294967295));
+    assert(hidden_address == 0 && zero_address == 0 && past_address == 0 && maximum_address == 0, "backend exposes neither private nor absent function IDs");
+
+    address := ExpectedEntry(module, owner, "Echo", [typed.I64], typed.I64);
+    if (address == 0) { return 1; }
+    echo: fn(value: i64) -> i64 = address;
+    value := echo(i64(0)); assert(value == 0, "Echo zero");
+    value = echo(minimum); assert(value == minimum, "Echo minimum");
+    value = echo(maximum); assert(value == maximum, "Echo maximum");
+
+    address = ExpectedEntry(module, owner, "Join", [typed.Bool, typed.I64, typed.I64], typed.I64);
+    if (address == 0) { return 2; }
+    join: fn(choose: bool, left: i64, right: i64) -> i64 = address;
+    value = join(true, i64(8), i64(20)); assert(value == 9, "Join true edge");
+    value = join(false, i64(8), i64(20)); assert(value == 21, "Join false edge");
+    value = join(true, maximum, minimum); assert(value == minimum, "Join wraps on true edge");
+    value = join(false, minimum, maximum); assert(value == minimum, "Join wraps on false edge");
+
+    address = ExpectedEntry(module, owner, "Identity", [typed.I64], typed.I64);
+    if (address == 0) { return 3; }
+    identity: fn(value: i64) -> i64 = address;
+    value = identity(minimum); assert(value == minimum, "renamed Echo minimum");
+    value = identity(maximum); assert(value == maximum, "renamed Echo maximum");
+
+    address = ExpectedEntry(module, owner, "Select", [typed.Bool, typed.I64, typed.I64], typed.I64);
+    if (address == 0) { return 4; }
+    select: fn(choose: bool, left: i64, right: i64) -> i64 = address;
+    value = select(true, i64(8), i64(20)); assert(value == 15, "renamed plus-seven true edge");
+    value = select(false, i64(8), i64(20)); assert(value == 27, "renamed plus-seven false edge");
+    value = select(true, maximum, minimum); assert(value == minimum + 6, "plus-seven wrapping");
+
+    address = ExpectedEntry(module, owner, "MultiMerge", [typed.Bool, typed.Bool, typed.Bool, typed.I64, typed.I64], typed.I64);
+    if (address == 0) { return 5; }
+    multi: fn(choose: bool, left_flag: bool, right_flag: bool, x: i64, y: i64) -> i64 = address;
+    value = multi(false, false, true, i64(8), i64(20)); assert(value == 8, "false edge preserves first and bool");
+    value = multi(false, true, false, i64(8), i64(20)); assert(value == 36, "false edge preserves integer argument order");
+    value = multi(true, true, false, i64(8), i64(20)); assert(value == 21, "true edge changes first and bool");
+    value = multi(true, false, true, i64(8), i64(20)); assert(value == 57, "true edge preserves integer argument order");
+
+    address = ExpectedEntry(module, owner, "Nested", [typed.Bool, typed.Bool, typed.I64, typed.I64], typed.I64);
+    if (address == 0) { return 6; }
+    nested: fn(a: bool, b: bool, x: i64, y: i64) -> i64 = address;
+    value = nested(true, true, i64(8), i64(20)); assert(value == 9, "nested true true");
+    value = nested(true, false, i64(8), i64(20)); assert(value == 27, "nested true false");
+    value = nested(false, true, i64(8), i64(20)); assert(value == 15, "nested false true");
+    value = nested(false, false, i64(8), i64(20)); assert(value == 20, "nested false false");
+
+    address = ExpectedEntry(module, owner, "Early", [typed.Bool, typed.I64, typed.I64], typed.I64);
+    if (address == 0) { return 7; }
+    early: fn(choose: bool, x: i64, y: i64) -> i64 = address;
+    value = early(true, minimum, maximum); assert(value == minimum, "early return");
+    value = early(false, minimum, maximum); assert(value == maximum, "early continuation");
+
+    address = ExpectedEntry(module, owner, "Both", [typed.Bool, typed.I64, typed.I64], typed.I64);
+    if (address == 0) { return 8; }
+    both: fn(choose: bool, x: i64, y: i64) -> i64 = address;
+    value = both(true, minimum, maximum); assert(value == minimum, "both-return true");
+    value = both(false, minimum, maximum); assert(value == maximum, "both-return false");
+
+    address = ExpectedEntry(module, owner, "SurviveTrue", [typed.Bool, typed.I64, typed.I64], typed.I64);
+    if (address == 0) { return 9; }
+    survive_true: fn(choose: bool, x: i64, y: i64) -> i64 = address;
+    value = survive_true(true, i64(8), i64(20)); assert(value == 27, "only true arm survives");
+    value = survive_true(false, i64(8), i64(20)); assert(value == 8, "false arm returns early");
+
+    address = ExpectedEntry(module, owner, "SurviveFalse", [typed.Bool, typed.I64, typed.I64], typed.I64);
+    if (address == 0) { return 10; }
+    survive_false: fn(choose: bool, x: i64, y: i64) -> i64 = address;
+    value = survive_false(true, i64(8), i64(20)); assert(value == 8, "true arm returns early");
+    value = survive_false(false, i64(8), i64(20)); assert(value == 27, "only false arm survives");
+
+    address = ExpectedEntry(module, owner, "Wrap", [], typed.I64);
+    if (address == 0) { return 11; }
+    wrap: fn() -> i64 = address;
+    value = wrap(); assert(value == minimum, "literal MAX plus one wraps through real generated code");
+
+    address = ExpectedEntry(module, owner, "Flag", [typed.Bool], typed.Bool);
+    if (address == 0) { return 12; }
+    flag: fn(value: bool) -> bool = address;
+    truth := flag(true); assert(truth, "bool true result");
+    truth = flag(false); assert(!truth, "bool false result");
+
+    address = ExpectedEntry(module, owner, "BoolMerge", [typed.Bool, typed.Bool, typed.Bool], typed.Bool);
+    if (address == 0) { return 13; }
+    bool_merge: fn(choose: bool, left: bool, right: bool) -> bool = address;
+    truth = bool_merge(true, true, false); assert(truth, "true edge carries true bool");
+    truth = bool_merge(true, false, true); assert(!truth, "true edge carries false bool");
+    truth = bool_merge(false, false, true); assert(truth, "false edge carries true bool");
+    truth = bool_merge(false, true, false); assert(!truth, "false edge carries false bool");
+
+    address = ExpectedEntry(module, owner, "StackMix", [typed.I64, typed.Bool, typed.I64, typed.Bool, typed.I64, typed.Bool, typed.I64, typed.Bool, typed.I64], typed.I64);
+    if (address == 0) { return 14; }
+    stack_mix: fn(a: i64, b: bool, c: i64, d: bool, e: i64, f: bool, g: i64, h: bool, i: i64) -> i64 = address;
+    value = stack_mix(i64(2), false, i64(3), false, i64(5), false, i64(40), false, i64(80)); assert(value == 40, "all false with stack integer");
+    value = stack_mix(i64(2), true, i64(3), true, i64(5), true, i64(40), true, i64(80)); assert(value == 90, "all true with stack bool and integer");
+    value = stack_mix(i64(2), true, i64(3), false, i64(5), true, i64(40), false, i64(80)); assert(value == 47, "alternating mixed register arguments");
+    value = stack_mix(i64(2), false, i64(3), true, i64(5), false, i64(40), true, i64(80)); assert(value == 83, "opposite mixed register arguments");
+    value = stack_mix(i64(2), false, i64(3), false, i64(5), false, minimum, false, maximum); assert(value == minimum, "minimum in seventh argument (first stack slot)");
+    value = stack_mix(i64(2), false, i64(3), false, i64(5), false, minimum, true, maximum); assert(value == maximum, "maximum in ninth argument (third stack slot)");
+
+    address = ExpectedEntry(module, owner, "StackBool", [typed.I64, typed.Bool, typed.I64, typed.Bool, typed.I64, typed.Bool, typed.I64, typed.Bool], typed.Bool);
+    if (address == 0) { return 15; }
+    stack_bool: fn(a: i64, b: bool, c: i64, d: bool, e: i64, f: bool, g: i64, h: bool) -> bool = address;
+    truth = stack_bool(minimum, false, maximum, false, i64(5), false, minimum, true); assert(truth, "stack bool returns true");
+    truth = stack_bool(minimum, false, maximum, true, i64(5), false, maximum, false); assert(!truth, "stack bool returns false");
+    truth = stack_bool(minimum, true, maximum, true, i64(5), false, minimum, false); assert(truth, "register bool replaces stack bool");
+    truth = stack_bool(minimum, true, maximum, true, i64(5), true, maximum, false); assert(!truth, "stack bool survives a second merge");
+    return 0;
+}
+
+CheckMergeShape :: (module: typed.Module) {
+    id := FindFunction(module, "MultiMerge");
+    assert(id != 0, "source contains the multi-argument merge case");
+    function := module.functions[int(id) - 1];
+    found := false;
+    for (at in int(function.first_block)..<int(function.first_block + function.block_count)) {
+        block := module.blocks[at];
+        if (block.parameter_count == u32(3)) {
+            last := module.block_parameters[int(block.first_parameter) + 2];
+            assert(module.values[int(last) - 1].type == typed.Bool, "third merged binding has bool type");
+            found = true;
+        }
+    }
+    assert(found, "real producer supplies a three-argument merge, not a hand-authored IR recipe");
+}
+
+CheckBytes :: (actual: u8[], expected: u8[]) {
+    assert(length(actual) == length(expected), "exact byte length");
+    for (byte, index in expected) { assert(actual[index] == byte, "exact byte value"); }
+}
+CheckSentinel :: (bytes: u8[]) {
+    for (byte in bytes) { assert(byte == u8(165), "copy destination or retained COW alias is unchanged"); }
+}
+CopyObject :: (owner: rawptr) -> u8[] {
+    count := chibi_vnext_object_length(owner);
+    assert(count > u64(0) && count <= u64(4194304), "16-function fixture object must fit the 4 MiB test limit");
+    bytes: u8[] = [];
+    bytes.resize(int(count));
+    for (index in 0..<length(bytes)) { bytes[index] = u8(165); }
+    retained := bytes;
+    short_copy := chibi_vnext_object_copy(owner, bytes, count - u64(1));
+    assert(short_copy == 2, "short object copy is rejected without truncation");
+    CheckSentinel(bytes);
+    CheckSentinel(retained);
+    retained_for_copy := bytes;
+    copied := chibi_vnext_object_copy(owner, bytes, count);
+    assert(copied == 0, "exact-capacity object copy succeeds");
+    CheckSentinel(retained);
+    CheckSentinel(retained_for_copy);
+    again: u8[] = [];
+    again.resize(int(count));
+    repeated := chibi_vnext_object_copy(owner, again, count);
+    copied_length := chibi_vnext_object_length(owner);
+    assert(repeated == 0 && copied_length == count, "object length and bytes are retained across copies");
+    CheckBytes(bytes, again);
+    assert(length(bytes) >= 4 && bytes[0] == u8(127) && bytes[1] == u8(69) && bytes[2] == u8(76) && bytes[3] == u8(70), "admitted Linux target emits ELF object bytes");
+    return bytes;
+}
+
+CheckSourceRejections :: () {
+    rejected_sources: string[] = [
+        "package p\npub Bad :: (value: i64) -> i64 { return value * 7; }\n",
+        "package p\npub Bad :: (value: bool) -> i64 { return value; }\n",
+        "package p\npub Bad :: () -> i64 { return 9223372036854775808; }\n",
+        "package p\npub Bad :: (value: i64[]) -> i64 { return 1; }\n",
+        "package p\npub Bad :: () -> i64 { return missing; }\n",
+        "package p\npub Bad :: (value: i64) -> i64 { value = 1; }\n",
+        "package p\npub Good :: (value: i64) -> i64 { return value; }\npub Bad :: (value: i64) -> i64 { return value * 7; }\n"
+    ];
+    for (source in rejected_sources) {
+        // There is no Pack or backend call on either arm of this control.
+        switch typed.Produce(source, 23) {
+            case .Produced(module): assert(false, "unsupported source must not reach native compilation");
+            case .Rejected(diagnostic):
+                assert(diagnostic.document == 23 && diagnostic.message != "", "source rejection retains its diagnostic");
+                assert(diagnostic.start >= 0 && diagnostic.end >= diagnostic.start && diagnostic.end <= text_byte_length(source), "rejected source range stays inside the exact input");
+        }
+    }
+}
+
+PerfBuildIdFailure :: (source: string) -> int {
+    CheckSourceRejections();
+    switch typed.Produce(source, 19) {
+        case .Rejected(diagnostic):
+            assert(false, "environment control still uses the real accepted source producer");
+            return 1;
+        case .Produced(module):
+            owner := CompileOwned(module);
+            status := chibi_vnext_status(owner);
+            object_length := chibi_vnext_object_length(owner);
+            failure_entry := chibi_vnext_entry(owner, u32(1));
+            assert(status == u32(4) && object_length == u64(0) && failure_entry == 0, "PERF_BUILDID_DIR returns owned BackendFailure without partial output");
+            unavailable := [u8(165)];
+            retained_unavailable := unavailable;
+            absent_copy := chibi_vnext_object_copy(owner, unavailable, u64(1));
+            assert(absent_copy == 4, "failure has no copyable object");
+            CheckSentinel(unavailable);
+            CheckSentinel(retained_unavailable);
+            expected := "PERF_BUILDID_DIR profiling is unsupported by this backend";
+            count := chibi_vnext_diagnostic_length(owner);
+            assert(count == u64(text_byte_length(expected)), "environment failure owns the exact expected diagnostic length");
+            bytes: u8[] = [];
+            bytes.resize(int(count));
+            for (index in 0..<length(bytes)) { bytes[index] = u8(165); }
+            retained := bytes;
+            short_copy := chibi_vnext_diagnostic_copy(owner, bytes, count - u64(1));
+            assert(short_copy == 2, "short diagnostic copy rejects before writing");
+            CheckSentinel(bytes);
+            CheckSentinel(retained);
+            retained_for_copy := bytes;
+            copied := chibi_vnext_diagnostic_copy(owner, bytes, count);
+            assert(copied == 0, "owned failure diagnostic copies exactly");
+            CheckSentinel(retained);
+            CheckSentinel(retained_for_copy);
+            assert(text_from_bytes(bytes) == expected, "failure identifies the actual environment blocker");
+            closed := chibi_vnext_destroy(owner);
+            assert(closed == 0, "failure owner destroys successfully");
+            return 0;
+    }
+}

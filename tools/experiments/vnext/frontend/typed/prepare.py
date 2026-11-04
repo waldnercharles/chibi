@@ -29,36 +29,40 @@ SOURCE_MAP += [("packages/core/strings/Strings.chibi", "core/strings/Strings.chi
 SOURCE_MAP += [(TYPED_ROOT + "/" + name, "project/vnext_typed/" + name) for name in TYPED_FILES]
 INPUT_MAP = [(TYPED_ROOT + "/tests/Main.chibi.in", "inputs/Main.chibi.in"),
              (TYPED_ROOT + "/fixtures/EchoJoin.chibi", "inputs/EchoJoin.chibi")]
+PACKAGE_PART = r"[a-z_][a-z_0-9]{0,63}"
+PACKAGE_PATH = rf"{PACKAGE_PART}:{PACKAGE_PART}(?:/{PACKAGE_PART}){{0,7}}"
 
 
 def imports(data, name):
     result = set()
     for line in data.decode("utf-8").splitlines():
         if re.match(r"^\s*import\b", line):
-            match = re.fullmatch(r'\s*import\s+[A-Za-z_][A-Za-z_0-9]*\s+"([a-z_]+:[a-z_]+)"\s*', line)
+            match = re.fullmatch(rf'\s*import\s+[A-Za-z_][A-Za-z_0-9]*\s+"({PACKAGE_PATH})"\s*', line)
             if match is None:
                 raise ValueError(f"unsupported import declaration in {name}: {line}")
             result.add(match[1])
     return sorted(result)
 
 
-def prepare(output):
-    output = Path(output).absolute()
-    if output.exists() or output.is_symlink():
-        raise FileExistsError(f"output must be a new directory: {output}")
-    if len(COMPILER_FILES) != 14 or len(set(COMPILER_FILES)) != 14:
-        raise ValueError("compiler file closure changed; inspect before expanding it")
+def read_sources(source_map, input_map):
+    """Read an explicit snapshot and its literal imports, including when branches."""
     # Inspect all inputs before reserving output. Copy only immediate package
     # files, never the neighboring test/fixture trees or a discovered dependency.
     packages = {}
-    for original, copied in SOURCE_MAP:
+    for original, copied in source_map + input_map:
+        for name in (original, copied):
+            if Path(name).is_absolute() or any(part in ("", ".", "..") for part in name.split("/")):
+                raise ValueError(f"source map requires relative paths without traversal: {name}")
+    if len({copied for _, copied in source_map + input_map}) != len(source_map + input_map):
+        raise ValueError("source map contains duplicate destinations")
+    for original, copied in source_map:
         packages.setdefault(str(Path(original).parent), []).append((original, copied))
     for package, files in packages.items():
         actual = sorted(str(path.relative_to(ROOT)) for path in (ROOT / package).glob("*.chibi"))
         if actual != sorted(original for original, _ in files):
             raise ValueError(f"source package membership changed: {package}")
     data, origins = {}, {}
-    for original, copied in SOURCE_MAP + INPUT_MAP:
+    for original, copied in source_map + input_map:
         source = ROOT / original
         if not stat.S_ISREG(source.lstat().st_mode) or source.resolve() != source:
             raise ValueError(f"source must be a regular non-symlink file: {original}")
@@ -75,9 +79,11 @@ def prepare(output):
                 raise ValueError(f"package declaration mismatch: {copied}")
             dependencies.update(imports(data[copied], copied))
         graph[package] = sorted(dependencies)
-    pending = imports(data["inputs/Main.chibi.in"], "tests/Main.chibi.in")
-    if pending != ["core:strings", "project:vnext_typed"]:
-        raise ValueError("test imports changed")
+    return data, origins, graph
+
+
+def check_closure(graph, pending):
+    pending = list(pending)
     reached = set()
     while pending:
         package = pending.pop()
@@ -89,6 +95,19 @@ def prepare(output):
         pending.extend(graph[package])
     if reached != set(graph):
         raise ValueError("copied closure contains an unreachable package")
+
+
+def prepare(output):
+    output = Path(output).absolute()
+    if output.exists() or output.is_symlink():
+        raise FileExistsError(f"output must be a new directory: {output}")
+    if len(COMPILER_FILES) != 14 or len(set(COMPILER_FILES)) != 14:
+        raise ValueError("compiler file closure changed; inspect before expanding it")
+    data, origins, graph = read_sources(SOURCE_MAP, INPUT_MAP)
+    pending = imports(data["inputs/Main.chibi.in"], "tests/Main.chibi.in")
+    if pending != ["core:strings", "project:vnext_typed"]:
+        raise ValueError("test imports changed")
+    check_closure(graph, pending)
     template, fixture = data["inputs/Main.chibi.in"], data["inputs/EchoJoin.chibi"]
     if template.count(b"FIXTURE_SOURCE") != 1:
         raise ValueError("template must contain exactly one FIXTURE_SOURCE marker")

@@ -13,6 +13,13 @@ cranelift-native = "=0.137.1"
 cranelift-jit = "=0.137.1"
 cranelift-object = "=0.137.1"
 
-[[bin]]
-name = "chibi-slice-backend-probe"
-path = "main.rs"
+[lib]
+name = "chibi_vnext_backend"
+path = "lib.rs"
+crate-type = ["cdylib"]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

@@ -154,6 +154,27 @@ class PreparationTests(unittest.TestCase):
         self.assertEqual(subject.helpers.literal.__code__.co_filename, str(self.typed.parent / "prepare.py"))
         subject.prepare(self.output)
 
+    def test_bounded_nested_package_identifiers(self):
+        for package in ("core:hash/sha256", "core:sys/windows", "project2:package_3/child4",
+                        "a:" + "/".join(["b"] * 8), "a:" + "b" * 64):
+            with self.subTest(package=package):
+                source = f'    import name "{package}"\n'.encode()
+                self.assertEqual(self.subject.imports(source, "fixture"), [package])
+        for package in ("core:/sys", "core:sys//posix", "core:../sys", "core:sys/..",
+                        "core:sys/./posix", "core:sys/", "core:0sys", "core:\\sys",
+                        "a:" + "/".join(["b"] * 9), "a:" + "b" * 65):
+            with self.subTest(package=package), self.assertRaises(ValueError):
+                self.subject.imports(f'import name "{package}"\n'.encode(), "fixture")
+
+    def test_source_map_rejects_traversal_and_duplicate_destinations(self):
+        for name in ("/absolute.chibi", "../outside.chibi", "core//file.chibi", "core/./file.chibi"):
+            for source_map in ([(name, "project/file.chibi")], [("file.chibi", name)]):
+                with self.subTest(source_map=source_map), self.assertRaises(ValueError):
+                    self.subject.read_sources(source_map, [])
+        with self.assertRaises(ValueError):
+            self.subject.read_sources(self.subject.SOURCE_MAP, [self.subject.SOURCE_MAP[0]])
+        self.assertFalse(self.output.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

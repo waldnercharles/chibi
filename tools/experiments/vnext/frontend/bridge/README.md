@@ -1,13 +1,16 @@
 # Typed-module scalar transport bindings
 
-Status: nine Python controls, the native Chibi Produce-to-Pack proof, and all
-six generated Rust view/framing tests pass. This checkpoint does not establish
-source-to-native JIT/AOT acceptance.
+Status: nine Python generator controls, the native Chibi Produce-to-Pack proof,
+and all six generated Rust view/framing tests pass. The later, separately
+reviewed [source-native proof](../../slice_backend/README.md#accepted-bounded-result)
+also passed 1,080 JIT value assertions and 45 linked C checks. The public
+five-stage reproduction below has now passed using the separately validated
+final-Cargo backend library.
 
 This is a temporary, synchronous, same-process transport for the real
 `typed.Module`. It does not parse user programs, evaluate an IR, serialize a
-persistent file, choose staticlib versus cdylib, or supply a backend. The same
-Module and buffers are intended for both eager JIT and Object consumers.
+persistent file or supply a backend. The same Module and buffers feed the
+separate cdylib's eager JIT and Object consumers.
 
 ## Source authority and generation
 
@@ -59,8 +62,9 @@ flattening copy. Literals and names preserve the source arrays' COW references;
 there are no explicit copies of either side array. Source and returned arrays
 remain invocation-owned and reachable for the entire foreign call. The adapter
 may borrow them only until the call returns, never retain their pointers in an
-IR or result owner. Native storage/layout, allocation/COW costs and foreign-array
-conversion behavior still require separate compiled evidence.
+IR or result owner. The separate native packing and source-native proofs
+exercise scalar-array transport and copy-out/COW isolation; actual native
+record layout, allocation/COW costs and conversion traffic remain unmeasured.
 
 All counts are element counts. The word buffer starts with version followed by
 11 row counts, in Module declaration order with literals/name_bytes omitted:
@@ -163,6 +167,88 @@ a writable local copy and generated constructors explicitly name Result.
 No current compiler admission, Rust interoperability, Cranelift execution or
 compilation-throughput result is claimed by this packing proof.
 
+## Source-native correctness reproduction
+
+`tests/NativeCases.chibi` is actual source input to Produce, not a handwritten
+IR recipe. `tests/NativeMain.chibi.in` calls Produce/Verify, Pack and the backend,
+then checks JIT results, owner lifetime, copy-out and an owned environment
+failure. `tests/native_aot_caller.c` independently checks the copied object.
+The [backend README](../../slice_backend/README.md) records the accepted bounded
+result, ABI contract and remaining language/platform gates.
+
+The public `prepare_native.py` snapshots the exact working-tree source closure,
+templates, C caller and controller into a new directory. It checks generated
+bindings and records the identity of an existing non-symlink backend shared
+library. It neither builds nor loads that library and never runs a compiler.
+The frozen `controller/run_native.py` runs five stages once: Chibi compilation,
+normal JIT, expected environment failure, C link and AOT execution. Any failure
+stops advancement; existing attempts and outputs cannot be overwritten.
+
+From the repository root, using an already built and separately reviewed
+backend library:
+
+```sh
+: "${NATIVE_PROOF:?set a new absolute output directory}"
+: "${BACKEND:?set the absolute existing reviewed backend shared library}"
+python3 -I -B -S tools/experiments/vnext/frontend/bridge/prepare_native.py \
+  "$NATIVE_PROOF" --backend "$BACKEND"
+```
+
+Then configure the existing native tools and run the frozen controller:
+
+```sh
+: "${SEED:?set the absolute existing verified c5 compiler}"
+: "${LLVM_BIN:?set the existing reviewed LLVM 22 binary directory}"
+: "${CC:?set the absolute existing reviewed C compiler}"
+python3 -I -B -S "$NATIVE_PROOF/controller/run_native.py" "$NATIVE_PROOF" \
+  --seed "$SEED" --llvm-bin "$LLVM_BIN" --cc "$CC"
+```
+
+Use repeated `--library-dir /absolute/reviewed/directory` options when the
+already installed tools/backend require explicit runtime library search paths.
+The seed must match SHA-256
+`1d1d289a2429fe2ee2a75a71a959bf21590a02ff3ebf7cd8af1037a11bf1268e`.
+Use existing authorized tools and cached dependencies only; no installation or
+dependency fetching belongs to this path. The runner records source/backend
+and named-tool identities, stage receipts and owned-process cleanup, but does
+not establish a complete compiler/linker/loader dependency admission fence.
+
+The normal public workflow passed all five stages once on 2026-11-04 with
+exit zero, unchanged recorded inputs and clean owned-process cleanup.
+Independent terminal readback checked all 43 recorded inputs, launch plans,
+receipts, artifact identities, budgets and cleanup. The copied object and
+linked C executable matched the earlier proof's bytes; the AOT caller emitted
+the exact 45-check success record. The actual C link trace and 32-header set
+were checked, and the harness ELF names the exact final backend library.
+
+The source-manifest SHA-256 is
+`cd9a3ba8cf8f0693f1bb669d32335b830a8267723337f26d5c28008c356af9be`;
+the runner SHA-256 is
+`a273ed0e9764044909cbbfa6e342da776eec60dbb5a2c127019e4fb33e3dd06f`;
+the terminal result SHA-256 is
+`15fbf6d95b745cc2c0c89f077791ecf67346c64f3f3421514a584fe9d9cc0d6b`.
+All 54 Python controls passed: 12 typed-preparation, nine generator,
+13 native-preparation and 20 native-runner tests.
+
+A separate old/fixed cancellation control each performed one genuine first
+compilation, then delivered SIGTERM at the second stage-selection call. The old
+runner attempted a successor, which an audit hook blocked before process
+creation; the fixed runner made no successor attempt. Both preserved failed
+cancellation receipts and closed child ownership cleanly. Neither executed the
+generated program. This machine-bound diagnostic is separate from the default
+Python controls and normal five-stage reproduction, not general signal coverage.
+Its old and fixed outer receipt SHA-256 values are
+`a7befddcad093ebd5080e1e9ae507c4d0ba1eaa57dc578ab76ccc981f463e02e`
+and `e6c890fb294b93e4c569d5df17583e1867a5055aa70ad1a7b92333bcd8f04cfc`.
+Both diagnostic controls exited normally with successful independent readback.
+
+This public correctness result is separate from the earlier private admission
+proof and does not inherit its full tool/loader fences. It is not current-
+compiler or throughput acceptance. Preserve historical receipts and use fresh
+outputs for new work.
+
+## Transport accounting
+
 Echo/Join has 129 u32 payload words = 516 bytes, one i64 = 8 bytes and eight
 name bytes. The existing scalar payload is **532 bytes**. The transport adds
 48 header bytes, totaling **580 bytes**. Pack's logical temporary word buffer is
@@ -183,5 +269,5 @@ artifacts. No per-node parsing, hashing, dispatch or allocation is added.
 Deletion gate: remove the one-time flattening layer if authored scalar-record
 arrays later cross this boundary directly and differential/lifetime tests prove
 the replacement. Do not add a second serializer or per-op FFI. Leave the existing
-producer, parser, verifier, old compiler, staticlib/CDylib decision and parallel
+producer, parser, verifier, old compiler, backend cdylib contract and parallel
 native recovery untouched.

@@ -3,8 +3,13 @@
 The retained-parser/signature producer and final pure-transform tests passed
 in proof10 on 2026-11-04 using the pinned old c5 seed: 25 accepted source calls,
 42 rejection probes and 17 verifier mutations. The public preparer reproduces
-the exact compiled inputs. No backend integration, current-compiler admission,
-or full-build throughput acceptance is claimed.
+the exact compiled inputs. That pure-transform proof does not claim backend
+integration, current-compiler admission or full-build throughput acceptance.
+The later [source-native proof](../../slice_backend/README.md#accepted-bounded-result)
+passed Produce/Verify → Pack → Cranelift JIT and linked C execution for this
+bounded subset. The public reproduction also passed all five stages with the
+separately validated final-Cargo backend library and independent terminal
+readback. These later results do not broaden proof10's historical claim.
 
 `Produce(text, document)` parses once with the retained `source_parser`, reads
 all scalar headers with `signature_reader.Signature` and its empty named/type
@@ -51,12 +56,12 @@ claims; remove those limits/algorithms before a representative compiler workload
 
 Records are authored Chibi records. The 8-byte Value/24-byte Instruction figures
 are scalar payload targets, not asserted native array layout. The current C
-foreign ABI cannot pass authored-record arrays. A future synchronous versioned
-call will flatten these tables once into a u32 arena plus i64 literals/u8 names,
+foreign ABI cannot pass authored-record arrays. The synchronous versioned
+boundary flattens these tables once into a u32 arena plus i64 literals/u8 names,
 counting that temporary copy and its bytes explicitly. The [scalar transport
-experiment](../bridge/README.md) now generates this packing operation and borrowed
+experiment](../bridge/README.md) generates this packing operation and borrowed
 Rust views. Its Python checks, native Chibi packing proof and Rust framing tests
-pass; source-to-native backend integration still requires a separate proof.
+pass; the later source-native proof above covers backend integration separately.
 
 ## Experimental arithmetic deviation
 
@@ -64,9 +69,10 @@ This isolated producer deliberately assigns wrapping semantics to **every**
 admitted typed i64 addition, including literal-only expressions. It does no
 compile-time folding/evaluation. Each individual decimal literal must still fit
 0 through 9223372036854775807. Thus `9223372036854775807 + 1` is accepted as two
-ConstantI64 rows followed by AddI64; the eventual JIT/AOT result must be
+ConstantI64 rows followed by AddI64; the JIT/AOT result is
 -9223372036854775808. The pure-transform test pins these operations and full-width
-literals, not native execution that has not happened.
+literals. The later source-native proof checks that wrapping result through
+both native consumers.
 
 This differs from the current numeric contract's exact, range-checked constant
 expressions. It is an explicit experimental rule, **not** a settled language
@@ -167,7 +173,7 @@ real source-to-JIT/AOT harness; replace the bounded lookup/dominance algorithms
 before removing their limits. Measure: closure compilation compatibility,
 actual payload/allocation/COW costs, exclusive parser/signature/body/verifier
 phase time, and the eventual counted flattening copy. Leave alone: production
-parser/type logic, old compiler/prepared emitter and current backend probe.
+parser/type logic, old compiler/prepared emitter and the separate backend library.
 
 ## Old-seed compatibility experiment
 
@@ -229,5 +235,6 @@ and both original transport inputs byte-for-byte against that frozen proof.
 Its ten Python tests and six independent failure/closure checks passed.
 These are functional probe results, not representative compilation benchmarks.
 
-Exact emitted layout, allocation/COW costs, JIT/AOT execution and complete-build
-performance remain open.
+Exact emitted layout, allocation/COW costs and complete-build performance
+remain open. The later bounded source-native proof covers JIT/AOT execution
+separately; it does not close those measurement gates.

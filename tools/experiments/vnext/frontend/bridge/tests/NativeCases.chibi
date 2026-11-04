@@ -1,0 +1,82 @@
+package native_cases
+
+// This exact source is inserted into NativeMain.chibi.in, not compiled as the
+// harness itself. Every callable body must come from typed.Produce and Pack.
+pub Echo :: (value: i64) -> i64 { return value; }
+pub Join :: (choose: bool, left: i64, right: i64) -> i64 {
+    result: i64 = right;
+    if (choose) { result = left; }
+    return result + 1;
+}
+pub Identity :: (value: i64) -> i64 { return value; }
+pub Select :: (choose: bool, left: i64, right: i64) -> i64 {
+    selected: i64 = right;
+    if (choose) { selected = left; }
+    return selected + 7;
+}
+
+// All three differing bindings, including the bool, cross both merge edges.
+pub MultiMerge :: (choose: bool, left_flag: bool, right_flag: bool, x: i64, y: i64) -> i64 {
+    first: i64 = x;
+    second: i64 = y;
+    sum: bool = left_flag;
+    if (choose) {
+        first = y + 1;
+        second = x + 7;
+        sum = right_flag;
+    }
+    if (sum) { return first + first + second; }
+    return first;
+}
+pub Nested :: (a: bool, b: bool, x: i64, y: i64) -> i64 {
+    result: i64 = y;
+    if (a) {
+        if (b) { result = x + 1; } else { result = y + 7; }
+    } else {
+        if (b) { result = x + 7; }
+    }
+    return result;
+}
+pub Early :: (choose: bool, x: i64, y: i64) -> i64 {
+    if (choose) { return x; }
+    return y;
+}
+pub Both :: (choose: bool, x: i64, y: i64) -> i64 {
+    if (choose) { return x; } else { return y; }
+}
+pub SurviveTrue :: (choose: bool, x: i64, y: i64) -> i64 {
+    result: i64 = x;
+    if (choose) { result = y + 7; } else { return x; }
+    return result;
+}
+pub SurviveFalse :: (choose: bool, x: i64, y: i64) -> i64 {
+    result: i64 = x;
+    if (choose) { return x; } else { result = y + 7; }
+    return result;
+}
+pub Wrap :: () -> i64 { return 9223372036854775807 + 1; }
+pub Flag :: (value: bool) -> bool { return value; }
+pub BoolMerge :: (choose: bool, left: bool, right: bool) -> bool {
+    result: bool = right;
+    if (choose) { result = left; }
+    return result;
+}
+
+// g, h and i occupy System V stack argument slots. h is a stack bool.
+pub StackMix :: (a: i64, b: bool, c: i64, d: bool, e: i64, f: bool, g: i64, h: bool, i: i64) -> i64 {
+    result: i64 = g;
+    if (h) { result = i; }
+    if (b) { result = result + a; }
+    if (d) { result = result + c; }
+    if (f) { result = result + e; }
+    return result;
+}
+pub StackBool :: (a: i64, b: bool, c: i64, d: bool, e: i64, f: bool, g: i64, h: bool) -> bool {
+    result: bool = h;
+    if (b) { result = d; }
+    if (f) { result = h; }
+    return result;
+}
+
+// Compiled with the other bodies but never exposed as a callable entry.
+Hidden :: (value: i64) -> i64 { return value + 7; }

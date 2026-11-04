@@ -78,15 +78,21 @@ and all source/tool postflight guards. It produced the same executable bytes;
 its whole-run receipt SHA-256 is
 `415f537f0fb56b4a95add6b213f6636b1e61fe6c2b9d4f3cf05d65be158326e8`.
 These runs establish neither typechecking, current-compiler admission nor speed.
-No typed-body producer is implemented in this parser checkpoint.
+No typed-body producer was part of this parser checkpoint. The later
+[bounded producer](typed/README.md) and [source-native backend proof](../slice_backend/README.md)
+now pass their separate gates. The historical parser receipts remain limited
+to their frozen parser callers.
 
-## Next caller: scalar headers and bodies
+## Scalar headers and bodies
 
-The immediate next test should call `CompileSlice` on the existing Echo and Join
-source documents and inspect **produced** typed bodies before invoking any
-backend. It must pass those same produced bodies to the JIT and AOT consumers;
-the hand-authored `slice_backend/main.rs` bodies are comparison fixtures only.
-Do not synthesize expected bodies from function names or special-case their text.
+The implemented `Produce` caller parses real Echo/Join and source variants,
+verifies the produced bodies, and passes them through generated Pack to both
+native consumers. The source-native proof passed 1,080 JIT value assertions and
+45 linked C checks; the superseded handwritten backend probe has been removed.
+The numbered design below includes broader future gates, especially package,
+direct-call and foreign-call support; it is not a claim that the full original
+corpus is accepted. Do not synthesize expected bodies from function names or
+special-case their text.
 
 1. Parse each explicit document once with `source_parser.Parse`. Keep its raw
    indexed nodes/fields and source bytes until diagnostics are complete. Reject
@@ -136,9 +142,11 @@ Do not synthesize expected bodies from function names or special-case their text
 The concrete array budgets and operation vocabulary remain those in
 `../slice-design.md`. No backend may consult source syntax to reconstruct a
 semantic decision, and no mandatory prepared-VM, sparse-facts or LLVM-text step
-is inserted. Start with in-process pure-transform body assertions; choose a
-batched native boundary when the first real generated-body consumer exists,
-rather than adding a public serialization format merely to connect probes.
+is inserted. The implemented [batched boundary](bridge/README.md) is a
+synchronous same-process transport, not a persistent public serialization
+format. Its public source-native reproduction passed all five stages with the
+separately validated final-Cargo backend library and independent terminal
+readback. This remains bounded correctness evidence, not a compiler benchmark.
 
 ## Reuse cost and limits
 
@@ -159,7 +167,7 @@ remain unmeasured. Representative compiler cost remains unmeasured and is not pr
 these tiny source counts. No speedup is claimed.
 
 Delete the embedded standalone corpus transport when the real frontend driver
-can read the registry directly. The two real controllers now use one shared owned-process operation; the
+can read the registry directly. The controllers share one owned-process operation; the
 completed run-03 proof remains pinned to its earlier frozen implementation.
 Leave production parsing, old bootstrap work and backend implementation
 unchanged by this checkpoint.

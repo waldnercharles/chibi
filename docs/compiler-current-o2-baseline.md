@@ -120,6 +120,24 @@ Freeze the acceptance statistic, failure policy and numerical produced-program
 regression budgets before selecting a backend. No merge, release, platform
 acceptance or default-toolchain switch follows from this baseline.
 
+## Later metadata-dependency qualification
+
+A subsequent diagnostic review found an omitted controller dependency:
+Python's `platform.platform()` can execute `/usr/bin/uname -p` to populate the
+receipt's host string. This occurs before the compiler timer starts. That string
+is receipt metadata only; it is not used in the compiler arguments, environment
+or source inputs. The helper was **not pinned by this campaign**, so its exact
+historical bytes cannot be certified from these receipts. The declared source,
+compiler/backend and runtime pins and raw-output checks still passed.
+
+Keep the observed timings and original receipts unchanged, with this gap visible.
+Do not backdate a newly measured helper hash or replace the samples. Future
+diagnostics must include this helper and its already-covered loader/libc
+dependencies in their prospective controller closure before launch. Independent review
+found no other newly discovered unpinned input path affecting compiler inputs
+or timing within its scope. This qualification limits reproducibility evidence;
+it does not turn the metadata helper into measured compiler work.
+
 ## Evidence and reproduction limits
 
 The [derived result record](../tools/experiments/vnext/evidence/current-o2-20261104.json)

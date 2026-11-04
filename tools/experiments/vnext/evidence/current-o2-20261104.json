@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "derived_public_result_summary_not_raw_receipt_or_runnable_spec",
   "date_utc": "2026-11-04",
-  "independent_final_review": "passed",
+  "independent_final_review": "passed_exploratory_measurements_with_later_metadata_dependency_gap",
   "transformation": "Selected result, count and identity fields copied from preserved originals. Machine-local paths, raw host/process observations and duplicated source/tool manifests are omitted. Original hashes identify retained original bytes, not this derived record. This summary alone is not a complete replay bundle.",
   "source": {
     "commit": "02c86287430def964445ec90185961e20319536d",
@@ -188,5 +188,16 @@
     "stdout_and_stderr": "empty",
     "unrun": [],
     "replacement_samples": 0
+  },
+  "later_metadata_dependency_qualification": {
+    "helper": "/usr/bin/uname -p",
+    "call_path": "baseline.measure -> platform.platform() -> lazy uname processor metadata",
+    "historical_helper_bytes_pinned": false,
+    "boundary": "Before compiler timer; returned string is receipt metadata only, not compiler argv/environment/source.",
+    "effect": "Observed timings, declared input/output checks and original receipts retained unchanged; full historical controller executable closure was incomplete.",
+    "retrospective_pinning": false,
+    "next_diagnostic": "Prospective helper pin and its already-covered loader/libc closure required before launch.",
+    "independent_scope": "No other newly discovered unpinned path affecting compiler inputs or timing was found within the follow-on review.",
+    "follow_on_original_review_sha256": "e0e33c6e06294d16c20d2d76c9c4f669ff075208906bd502b396fec61017ce1f"
   }
 }

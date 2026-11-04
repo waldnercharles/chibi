@@ -22,7 +22,7 @@ typedef struct
 } dyna_hdr;
 
 #define DYNA_HDR(a) ((dyna_hdr *)(a) - 1)
-#define DYNA_COOKIE 'DYNA'
+#define DYNA_COOKIE (((uint32_t)'D' << 24) | ((uint32_t)'Y' << 16) | ((uint32_t)'N' << 8) | (uint32_t)'A')
 
 #ifdef NDEBUG
     #define DYNA_ASSERT(expr) ((void)0)

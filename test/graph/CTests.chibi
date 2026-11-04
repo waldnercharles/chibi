@@ -235,6 +235,27 @@ LongLinks :: (fixture: LinkFixture, source: string, quoted: string) {
     assert(c.Link(tools, "", [object], flags, []) == -1, "an empty output is rejected");
 }
 
+// The support header must compile under the graph's strict C flags. Both
+// canary-enabled and release arrays keep the same cookie and allocation path.
+ArrayCookieIsPortable :: (compiler: string, scratch: string) {
+    for (mode in ["checked", "release"]) {
+        output := Path([scratch, "/array-cookie-", mode]);
+        command := [compiler, "-std=gnu23", "-O3", "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-Werror=multichar"];
+        if (mode == "release") {
+            command.append("-DNDEBUG");
+        }
+        command.extend(["-I", Path([os.Root(), "/src"]), Path([os.Root(), "/test/graph/fixtures/array_cookie.c"]),
+                        Path([os.Root(), "/src/support/xalloc.c"]), "-o", output]);
+        built := process.Capture(command, 30000);
+        if (built.status != 0) {
+            os.Print(Path([built.stdout, built.stderr]));
+        }
+        assert(built.status == 0, "the array cookie compiles with strict multichar diagnostics");
+        ran := process.Capture([output], 5000);
+        assert(ran.status == 0, "the array cookie, growth, copy and free contract");
+    }
+}
+
 LinkResponses :: (scratch: string) {
     quoted := Path([scratch, "/quoted '\"\\ café 雪 directory"]);
     search_dir := Path([quoted, "/", strings.Repeat("l", 200)]);
@@ -252,6 +273,7 @@ LinkResponses :: (scratch: string) {
     }
     compiler := os.FindExecutable(selected);
     assert(compiler != "" && Write(Path([recorder, ".compiler"]), Path([compiler, "\n"])), "a C compiler");
+    ArrayCookieIsPortable(compiler, scratch);
     tools: c.Tools = {launcher: "", compiler: compiler, cxx_compiler: "", archiver: "", ranlib: "", jobs: 1};
     captured := tools;
     captured.compiler = recorder;

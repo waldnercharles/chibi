@@ -1,0 +1,120 @@
+{
+  "status": "accepted",
+  "proof": "source-bound focused portable array cookie baseline rejection and checked/release execution",
+  "scope": "Only the declared C regression; not graph-c integration, compiler-host rebuild, broad suite, or merge readiness.",
+  "source_manifest_sha256": "78e9dc3817cd233edd4caeeb5a679b6ff1d3646bb73c83b6a8b8daa909d6488b",
+  "source_identity_sha256": "f6d48caab5da45d23e743671e4a020d2b19d8a2f6cb42694a6d6954f82f8ad32",
+  "source_files": {
+    "src/support/array.h": "e2db9f05e7714aef0be38f11afe182e496a2c30077119bb6f58a319fd35c8424",
+    "test/graph/CTests.chibi": "ec0db0756d43a6c0545a4928bce7df744ddd13fc65e666e8a6436e75a7e298b5",
+    "test/graph/fixtures/array_cookie.c": "835ba7281cdf727e703ab6ab776a4194bb4369ea38c8d27c3e545ef19b37753f"
+  },
+  "plan_sha256": "443efb731e47eff161b9bec18dad437dd57af90d24a701c8f473a46596b6d3aa",
+  "controller_sha256": "965d0a24bb4adcad71394e40ab34416b5e10724fc3502f3c94cfd256856c7ca0",
+  "owner_sha256": "eb565285001cef43ed88cf73e5797cc83b726afcf6cf192cf5b4ba10f6078698",
+  "phases": {
+    "c-compile": {
+      "status": "passed",
+      "budget_seconds": 50,
+      "elapsed_seconds": 3.461271286010742,
+      "started_epoch": 1793798139.1010947,
+      "cutoff_epoch": 1793798184.1010947,
+      "deadline_epoch": 1793798189.1010947,
+      "finished_epoch": 1793798142.562366,
+      "latest_authoritative_evidence_timestamp": 1793798142.5624423,
+      "evidence_timestamps_inside_original_budget": true,
+      "cleanup_echild": true,
+      "deadline_respected": true,
+      "commands": [
+        {
+          "name": "baseline-release",
+          "exit_status": 1,
+          "elapsed_seconds": 0.11957526206970215
+        },
+        {
+          "name": "fixed-checked",
+          "exit_status": 0,
+          "elapsed_seconds": 0.1144862174987793
+        },
+        {
+          "name": "fixed-release",
+          "exit_status": 0,
+          "elapsed_seconds": 0.11521410942077637
+        }
+      ]
+    },
+    "c-run": {
+      "status": "passed",
+      "budget_seconds": 15,
+      "elapsed_seconds": 3.1186769008636475,
+      "started_epoch": 1793798313.6819615,
+      "cutoff_epoch": 1793798323.6819615,
+      "deadline_epoch": 1793798328.6819615,
+      "finished_epoch": 1793798316.8006384,
+      "latest_authoritative_evidence_timestamp": 1793798316.800695,
+      "evidence_timestamps_inside_original_budget": true,
+      "cleanup_echild": true,
+      "deadline_respected": true,
+      "commands": [
+        {
+          "name": "fixed-checked",
+          "exit_status": 0,
+          "elapsed_seconds": 0.0015342235565185547
+        },
+        {
+          "name": "fixed-release",
+          "exit_status": 0,
+          "elapsed_seconds": 0.0013844966888427734
+        }
+      ]
+    }
+  },
+  "elf_review": {
+    "fixed-checked": {
+      "sha256": "a627b8258cf87863d1f516b8ca8d4f3fbb869682276c25c5157f5c6e3996cbbd",
+      "bytes": 16952,
+      "readelf_sha256": "76bb1bac83cbacd39c5d80fec88cbef5bd7c0a9dd00fa92f2980c0a51e519fb6",
+      "interpreter": "/lib64/ld-linux-x86-64.so.2",
+      "needed": [
+        "libc.so.6"
+      ],
+      "rpath": null,
+      "runpath": null,
+      "assert_symbol_present": true
+    },
+    "fixed-release": {
+      "sha256": "a4fcb0368b58472c13463b2c0e5dba048c342d532e939d8162ccbf8c12a848cc",
+      "bytes": 16712,
+      "readelf_sha256": "97db16209ba57a177c5e144e9eda74bf0bc0362de8ee9ed25857245257737a6b",
+      "interpreter": "/lib64/ld-linux-x86-64.so.2",
+      "needed": [
+        "libc.so.6"
+      ],
+      "rpath": null,
+      "runpath": null,
+      "assert_symbol_present": false
+    }
+  },
+  "independent_final_proof_sha256": "8ccc11a3d9459f693d92244be7306e8e7af0a08e42fa2208de65c07113728520",
+  "authoritative_evidence_files": 27,
+  "remaining": [
+    "full graph-c integration including intentional cancellation ownership",
+    "fresh compiler-host reconstruction and inspection",
+    "ordinary VM/native parity and C integration",
+    "full-width native/interpreted filesystem stamp compatibility",
+    "actual Windows execution",
+    "exact-head integration and PR #1331 hold"
+  ],
+  "proof_archive": {
+    "archive": "chibi-array-cookie-validated-20261104.tar.gz",
+    "sha256": "0559d6d36cc6b63afc37be337e1abef1384c8860697d92fdb0a5f430ee5dfb7c",
+    "bytes": 17438584,
+    "regular_members": 4140,
+    "symlink_members": 1
+  },
+  "preserved_host_failure_archive": {
+    "archive": "chibi-compiler-host-failure-20261104.tar.gz",
+    "sha256": "1f60f203915e644a8c00251f5b4308c2a37edf57aeedd7630473a48c52c7b1f7",
+    "bytes": 44235956
+  }
+}

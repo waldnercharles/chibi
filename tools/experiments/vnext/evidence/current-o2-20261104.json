@@ -1,0 +1,192 @@
+{
+  "schema": 1,
+  "kind": "derived_public_result_summary_not_raw_receipt_or_runnable_spec",
+  "date_utc": "2026-11-04",
+  "independent_final_review": "passed",
+  "transformation": "Selected result, count and identity fields copied from preserved originals. Machine-local paths, raw host/process observations and duplicated source/tool manifests are omitted. Original hashes identify retained original bytes, not this derived record. This summary alone is not a complete replay bundle.",
+  "source": {
+    "commit": "02c86287430def964445ec90185961e20319536d",
+    "tree": "780ba87ea9f29308f2f20a94381cdce8cc5d26ca",
+    "files": 121,
+    "packages": 31,
+    "original_bytes_read": 3830672,
+    "original_physical_lines_read": 76592,
+    "original_physical_lines_parsed_unchanged": 76569,
+    "original_bytes_parsed_unchanged": 3829984,
+    "replaced_target_original_lines": 23,
+    "generated_target_lines": 16,
+    "generated_target_bytes": 235
+  },
+  "workload": {
+    "entry": "tools/compiler/native_driver/Main.chibi",
+    "target": "x86_64-unknown-linux-gnu",
+    "optimization_level": 2,
+    "jobs": 2,
+    "cpu_affinity": [
+      0,
+      1
+    ],
+    "compiler_sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266",
+    "compiler_bytes": 11576992,
+    "prior_raw_stage3_equals_stage4": true,
+    "prior_compiler_tests_passed": 573,
+    "output_oracle": "Same exact raw executable bytes and pinned runtime closure; no output executable run by this campaign. Prior 573-test evidence is transferred, not rerun.",
+    "fresh_per_run": [
+      "compiler process",
+      "output",
+      "HOME",
+      "TMPDIR",
+      "cache paths"
+    ],
+    "reuse": "Prebuilt installed compiler/LLVM/runtime/CRT/libc only; no application AST/IR/object cache. Warm OS pages, not cold storage.",
+    "llvm_package_version": "1:22.1.8~++20260613092233+e80beda6e255-1~exp1~20260613092250.77"
+  },
+  "host": {
+    "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+    "visible_logical_cpus": 9,
+    "os": "Debian GNU/Linux 13.6",
+    "kernel": "Linux 6.18.57 x86_64",
+    "scope": "Virtualized shared host; coordinated known-worker quiet window, no exclusive host/core claim. Cgroup quota and memory-limit files unavailable."
+  },
+  "limits_seconds": {
+    "per_compiler": 120,
+    "per_compiler_cleanup": 1,
+    "owned_campaign_worker": 900,
+    "owned_campaign_cleanup": 1
+  },
+  "warmup_excluded_from_statistics": true,
+  "runs": [
+    {
+      "name": "warmup",
+      "status": "passed",
+      "elapsed_seconds": 98.268114317,
+      "cleanup_seconds": 0.001388839,
+      "original_spec_sha256": "a882769918a4ce089a9316db00e2c1781ed397ce52c8908f90ffa107ef9178bc",
+      "original_measurement_sha256": "3525a837a95a73edfd2a16f9219f8cbc5e91c629b9f8e16093ce91547106d089",
+      "original_admission_sha256": "f54106028f058c9f0d440f0d56a72b853c036f68c07d22bbedf14f6460f58838"
+    },
+    {
+      "name": "sample-1",
+      "status": "passed",
+      "elapsed_seconds": 96.515532821,
+      "cleanup_seconds": 0.000866148,
+      "original_spec_sha256": "acde8b4675176d64ce264cf8a7d695a7d726ac0888deb59761a56d7818cc1088",
+      "original_measurement_sha256": "97696d3c43a5a9fe5f57ea71e39f4ddd1ea1f0553219548a1cbbd1e6a57dd0b5",
+      "original_admission_sha256": "3c5a57a5ba1e3d8cabd3c960fae985dafab9c2c8558a0693b3742e4488923b0d"
+    },
+    {
+      "name": "sample-2",
+      "status": "passed",
+      "elapsed_seconds": 92.915245091,
+      "cleanup_seconds": 0.000795682,
+      "original_spec_sha256": "d40e8079fdad725ef921cb4f1edd888d1decf7c2f4b3a257036df0b08b6caf2a",
+      "original_measurement_sha256": "f796060a6c7647d4a0fab20d7f10d24f4d53d92bcb9f8650a9d9b46349f1723d",
+      "original_admission_sha256": "df9aab2d65af79eb7af6868fbcf04045ac513b053441b645f7b75a609089a0bf"
+    },
+    {
+      "name": "sample-3",
+      "status": "passed",
+      "elapsed_seconds": 100.060811674,
+      "cleanup_seconds": 0.000979299,
+      "original_spec_sha256": "621dca14e14f65b936c9226563b86ffca799092aa3d1d6d23723461223f87143",
+      "original_measurement_sha256": "c3780addef362d1087cf3b68505c552bcdea28e171c76176647005e161873147",
+      "original_admission_sha256": "7edc4741a876d5004137b95c1fc4b57f7fcce456d712c63faebc53ff0ff6353e"
+    },
+    {
+      "name": "sample-4",
+      "status": "passed",
+      "elapsed_seconds": 90.235333957,
+      "cleanup_seconds": 0.000814831,
+      "original_spec_sha256": "d5e8bf4100b1de171cd9a6d2cf48e7722dabf772ad859884bfd1373431f5d662",
+      "original_measurement_sha256": "167e0d2626d5564e1f6b5244fc90688b0b5ed02a9f15907601b4ee0faad36ef4",
+      "original_admission_sha256": "67a3b0e4a1e1815bc80b481be7625495c292648e53a90625740d1d61405139ff"
+    },
+    {
+      "name": "sample-5",
+      "status": "passed",
+      "elapsed_seconds": 97.549658843,
+      "cleanup_seconds": 0.001151679,
+      "original_spec_sha256": "e87b647b69aeca8e3d421dc7d9bacf0eab58356ded01c2fb0b6a4dcd91a81cab",
+      "original_measurement_sha256": "866e9a0c4e54a90d5215cde353bd2e40a2f2289ed4a0cbccb6b2c7ffb6a2f9cb",
+      "original_admission_sha256": "af62be2104cf3040853d03fce662b529ce45cb75d51059d99827622a10633576"
+    }
+  ],
+  "statistics": {
+    "sample_count": 5,
+    "elapsed_seconds": [
+      96.515532821,
+      92.915245091,
+      100.060811674,
+      90.235333957,
+      97.549658843
+    ],
+    "median_seconds": 96.515532821,
+    "min_seconds": 90.235333957,
+    "max_seconds": 100.060811674,
+    "p95_nearest_rank_seconds": 100.060811674,
+    "original_LOC_per_median_second": 793.3334434573002
+  },
+  "outer_execution": {
+    "exit_code": 0,
+    "status": "passed",
+    "timed_out": false,
+    "elapsed_seconds": 593.428963741,
+    "cleanup_seconds": 0.001098789,
+    "surviving_children": false,
+    "cleanup_errors": [],
+    "cleanup_echild": true,
+    "subreaper_restored": true,
+    "cleanup_limit_seconds": 1.0,
+    "overall_limit_seconds": 901.0
+  },
+  "outer_receipt_writing_outside_owned_interval": true,
+  "preserved_failed_preflight": {
+    "error": "controller or interpreter not pinned: /usr/bin/python3.13",
+    "exit_code": 2,
+    "campaign_created": false,
+    "native_compiler_launched": false
+  },
+  "original_artifact_sha256": {
+    "campaign.py": "fd7e920e6a596f2ade18b0810ff1d1f25ca4b992e3b61994ac2eb657d21fa642",
+    "campaign_tests.py": "823abc3d7d84e2192e4a534527bdc0f72ed448cf8d428c68a484fafebd615d9f",
+    "campaign.armed.json": "508f05097d7a768808a841054e18d5de9238f7a4bf327933fb4461df22d1100f",
+    "harness/baseline.py": "95652a9df68f04b26ad0b4ea435c7f226aa8e87ce0cfefd36b0be8e3bd3df78d",
+    "harness/owned_process.py": "729f23222278fd6898afaee8555c7227473006b38ba7207e7dac9c44d1b7adfd",
+    "source-census.json": "a3a4979f62e6d542b01538c21278982b8b3b0774c9c95c6f5938ee93919408e5",
+    "source-verification.json": "857ca2cc68a97fac6f3a5a8c2591b572425b484730fca3712347015a1faf6c56",
+    "inputs/source-files.json": "e02527cf3b5386cd1b225bc1f377c4896783bce9bfec899a15996a22e04c3310",
+    "workload-counts.json": "51c75c223f8516246d89d4dc6568930ff27be0d5f1f68162d5bbe08e273dc802",
+    "tool-closure.json": "2021e0774d4f7c2b44055159b250ca074a705b6ff8785c70fab1c8cd34fe4f9b",
+    "inputs/accepted-builder-provenance.json": "c098969b159a0e12aced36bcd5a9acbe57ce159db4f1fcd6e1df9f5ea65e6a22",
+    "inputs/compiler-tests.json": "141ca85ebc1d85834fde952ccc9cb6280ae4a009583d1c3b0bf0f430fe7e492a",
+    "inputs/expected-tests.json": "0eb643937bdf7d21007bbf775780c946ce43746d582675ec945771f92cbdf60b",
+    "baseline-controls-pinned-python/tests.log": "c757f642c559b27f0b52a49031ed20d6f5dd64482065105fe6499719160b2395",
+    "launcher-controls/tests-02.log": "64c9af55de1e6a9bed68a486816749d3053ac5c5fc0e1566ba77d03eaa73484f",
+    "initial-quiet-observation-02.json": "c4ee84ad426c3484dc74e704ac4900df48ceb342bde45f1f22b36c507827383e",
+    "launch-preflight-failure-01.json": "b60b9b9d705eaa329252e67fb2feeb2c014b7a64855aa44ce2e3fa36fc42dd30",
+    "campaign-01/summary.json": "ec2897f191bf5c99d3921c6afd5a60ad4ba8e16359eea6079115aaeb44bb8dbe",
+    "campaign-01/campaign-result.json": "e627f9d2cec3b336c4503a6db3a8036d4970c15b8d4d204dcae2d3ebacba2d3c"
+  },
+  "limitations": [
+    "Exploratory five-sample current-default O2 result, not a twenty-run target acceptance, development-O0 or vNext backend comparison.",
+    "No direct Jai comparison: workload, target, machine and optimization configuration differ.",
+    "No exclusive phase wall/CPU, peak memory, allocation/clone/RC, token, specialization or function counts measured.",
+    "Physical source denominator includes comments/blanks and both target import branches; generated target text is excluded.",
+    "No runtime throughput, startup, memory, code-quality or frame-tail acceptance budgets established by this campaign.",
+    "Input/postflight hashes cannot detect a temporary change restored before checking; inputs were kept immutable."
+  ],
+  "independent_final_review_sha256": "ccedba487dc0d58a167da8dee7ae8d2ea0d3d35c8dd6f61623c6be1d979242a8",
+  "all_six_run_checks": {
+    "exit_code": 0,
+    "timed_out": false,
+    "cleanup_echild": true,
+    "subreaper_restored": true,
+    "raw_output_equal_to_admitted_compiler": true,
+    "output_bytes": 11576992,
+    "output_mode": "0o755",
+    "source_tool_and_resolver_fences": "passed",
+    "stdout_and_stderr": "empty",
+    "unrun": [],
+    "replacement_samples": 0
+  }
+}

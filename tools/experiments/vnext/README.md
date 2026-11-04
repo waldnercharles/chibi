@@ -1,8 +1,9 @@
 # vNext baseline preparation
 
-This is measurement plumbing, not a compiler benchmark or a speed claim. No
-accepted current Chibi builder is available for this experiment yet. Do not
-retry an uncertain bootstrap or run compilation without CPU coordination.
+This harness records full-command measurements; its regression tests are not
+compiler-speed evidence. A current builder and the first five-build O2 baseline
+are now independently checked. See [the baseline note](../../../docs/compiler-current-o2-baseline.md).
+Do not retry an uncertain bootstrap or run compilation without CPU coordination.
 
 Python 3.11+ and Git are the only dependencies. No packages need installing.
 Command measurements additionally require Linux `waitid(WNOWAIT)`, pidfds,
@@ -59,7 +60,7 @@ controls also cover kill-before-reap ordering, interrupted Popen assignment,
 timer construction/start failure, procfs read failure, receipt write failure,
 unsupported platforms and the separate cleanup timing boundary.
 
-## One candidate run, when an accepted builder exists
+## One candidate run with an admitted builder
 
 Create a JSON specification with this shape. All placeholder identities below
 must be replaced with verified values. The first tool must exactly match
@@ -99,8 +100,10 @@ its fresh `output/` directory. Each output may also have an expected `sha256`.
 A zero exit plus file existence is only an artifact check, not semantic/runtime
 correctness. Validate the resulting program separately before accepting a
 baseline; include any finalization required to make it usable inside the timed
-command. There is no hard-coded compiler invocation because no current one has
-been accepted. Use `harness_self_test` for dummy commands, never `chibi_candidate`.
+command. The generic harness does not hard-code a workload invocation; the
+admitted compiler, source, tool closure, flags and correctness oracle belong
+in the reviewed experiment specification. Use `harness_self_test` for dummy
+commands, never `chibi_candidate`.
 
 The command runs directly, without a shell, from the fresh output directory.
 Only the explicitly specified environment is inherited by the child, plus fresh
@@ -174,8 +177,9 @@ alongside accepted results; the receipt only discovers OS, architecture and CPU
 count. Source/tool postflight checks detect persistent changes, not temporary
 changes restored before verification. Keep inputs immutable during each run.
 
-No phase breakdown, allocation count, peak RSS or LOC/s is invented. Those fields
-remain unmeasured. Static Gather lines are not yet an accepted full-compilation
-throughput denominator. A successful candidate still needs independent evidence
-of eager full compilation, empty effective compilation caches, correct source
-closure and runtime correctness before comparison with the 100,000 LOC/s goal.
+The generic harness does not infer phase breakdown, allocation count, peak RSS
+or a throughput denominator. The [current O2 experiment](../../../docs/compiler-current-o2-baseline.md)
+uses 76,569 original parsed physical lines and separately reports 76,592
+original lines read. Other workloads still need independent evidence of eager
+full compilation, empty effective compilation caches, source closure and
+runtime correctness before comparison with the 100,000 LOC/s goal.

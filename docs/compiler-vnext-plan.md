@@ -173,12 +173,18 @@ evaluator with JIT must not silently change accepted effects or budget semantics
   identities, and name-lookup hashes serve different purposes. The existing raw
   `--compiler ... --output ...` route already bypasses `CacheSnapshot`.
 
-The frozen static native-driver closure has 121 files, 31 packages, 3,830,672
-bytes and 76,592 physical lines, including both target import branches. That
-implies a 0.76592-second budget at 100k physical LOC/s. It is a source census, not
-an active-target/token count or timing result. Historical timings used other
-source/tool states and are not the current baseline. A usable current compiler
-must be recovered and admitted before a new native baseline can be claimed.
+The frozen native-driver closure reads 121 files in 31 packages: 3,830,672
+bytes and 76,592 original physical lines, including both target import branches.
+The throughput denominator is 76,569 original physical lines passed unchanged
+to parsing: the 23-line target template is replaced by 16 generated lines,
+reported separately. At 100k original parsed LOC/s the budget is 0.76569 seconds.
+Neither count is active-target-only source. A current compiler is now admitted
+from the pinned starting source, with raw-identical stage3/stage4 outputs and
+573 compiler tests passed. The first independently checked full current-default
+O2 baseline has a 96.516-second median over five fresh builds, about 793 original
+parsed LOC/s. See [the O2 baseline](compiler-current-o2-baseline.md) for exact
+samples and limitations. It is not development O0, a vNext result or a direct
+Jai comparison. Historical timings used other source/tool states.
 
 ## Phases and exit gates
 
@@ -187,8 +193,8 @@ must be recovered and admitted before a new native baseline can be claimed.
 Write this plan on the isolated branch; retain source-linked evidence and open
 decisions. Prepare a bounded baseline runner with exact input identities, fresh
 outputs, finite deadlines, preserved failures, and tests of its own guards.
-Recover an admitted builder without duplicating any uncertain bootstrap. Measure
-the current full pipeline, then identify the largest costs and the precise
+Use the admitted current builder and measure the current full pipeline, then
+identify the largest costs and the precise
 frontend/backend seam. Freeze the acceptance statistic, failure policy and
 numerical runtime/memory/frame budgets before choosing a winner. Exit with
 reproducible receipts and a backend experiment decision, not a preferred-library
@@ -288,7 +294,8 @@ to another talk, not this recording.
 ## Initial checkpoint status
 
 - Plan and separate local branch: prepared.
-- Current baseline: not measured; no admitted recovered current builder.
+- Current baseline: initially unmeasured. The later [O2 baseline](compiler-current-o2-baseline.md)
+  now records five independently checked full builds with an admitted builder.
 - Baseline runner and caller-first slice corpus: in progress.
 - JIT/AOT vertical-slice acceptance: not run.
 - Backend dependencies: not installed by this checkpoint.

@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "code_commit": "083e82408a337787cfd9f08c1fff1113a1884831",
+  "source_tree": "39424a0ad887d48fc7ccd389716963c375c90c08",
+  "scope": "Full unchanged registered Linux SDK install/relocation selector; staged Verify, relocated consumer run/error/test/project build/Graph commands, native archive rejection and overlay cleanup. No Windows execution or actual C product build gate.",
+  "status": "independently_admitted",
+  "compiler_sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266",
+  "authored_files": 4072,
+  "dependency_files": 964,
+  "authored_assertion_call_sites_preserved": 96,
+  "execution": {
+    "cleanup_echild": true,
+    "deadline_respected": true,
+    "errors": [],
+    "selector_exit_code": 0,
+    "selector_seconds": 134.94520807266235,
+    "signals": [],
+    "survivors": [],
+    "tool_chunk_id": "410431",
+    "tool_exit_code": 0,
+    "tool_session_id": 63247,
+    "total_seconds": 139.4711525440216
+  },
+  "total_cap_seconds": 270,
+  "cleanup_reserve_seconds": 5,
+  "cache_admission": [
+    {
+      "entry": "Run",
+      "key": "cd161b197136d80259572a8c439f39a2f6204cfe541f175b5535377e0d3143c1",
+      "llvm_sha256": "71fe29a2ab64dcafe06bad23509533882a443720fa5db91316a282da13020036",
+      "loader": {
+        "interpreter": "/lib64/ld-linux-x86-64.so.2",
+        "needed": [
+          "libc.so.6"
+        ]
+      },
+      "program_sha256": "70a62b5856138f34ced783e7c68f78454d1e000ac3a1bfc70eef467683b3daa2",
+      "receipt_sha256": "a5cbe3510547b55a86d08195a4a5413f4cca3761ca9fd44bc977c7bcfc2182e5"
+    },
+    {
+      "entry": "CompilerTools",
+      "key": "9ac82ce5320f5026cd7982b80c381533be626e4013dfa7d13696cfd663c29652",
+      "llvm_sha256": "e040207acc1489e34edf96b49c28dc1682c29d4ab4dac589784da308b9aa3bda",
+      "loader": {
+        "interpreter": "/lib64/ld-linux-x86-64.so.2",
+        "needed": [
+          "libc.so.6"
+        ]
+      },
+      "program_sha256": "00f259359f7318fed4e6f84c5327370de60575e0b22b5b689c55da88b44e12ad",
+      "receipt_sha256": "33c2d560f95a88ee352d6bbfacb0d74d2b3e64f6634e6072882013636e951115"
+    },
+    {
+      "entry": "Install",
+      "key": "a2bb65006694a4a7083d71f5e6ee16d58d3deee25deddbfc4305cb3a6560df1e",
+      "llvm_sha256": "e591bf2c85beab3de1460794d5352b544236df9333604bfe3d4839396ad3000c",
+      "loader": {
+        "interpreter": "/lib64/ld-linux-x86-64.so.2",
+        "needed": [
+          "libc.so.6"
+        ]
+      },
+      "program_sha256": "b8a2c5342132abc3f9325c704596bd402e68a3ce1f16857b44680edc98e7935e",
+      "receipt_sha256": "e99c9b45a745ad33bcfe1571e4fb1db2c5f3a6280a652d98145e59382949e997"
+    },
+    {
+      "entry": "Libraries",
+      "key": "9899ee03262cb533ab4d4c9307d28d79c103e0bcbeb88d4034cd3479a407d837",
+      "llvm_sha256": "0d0b0d09ef375115c93685e7c5b20c77614ad43e521ffd89805351a3d6477ec8",
+      "loader": {
+        "interpreter": "/lib64/ld-linux-x86-64.so.2",
+        "needed": [
+          "libc.so.6"
+        ]
+      },
+      "program_sha256": "6cb86e1907374dce57e3a65a7292381de6999b854115fd3c537b6ce7b8763e19",
+      "receipt_sha256": "85956f08c3f0298189b929ac29b9adfeac4d9b5c00da5d464e958034c3512a2e"
+    }
+  ],
+  "independent_admission_sha256": "428c642ea42df43c8710df344c1629d8082531fc61d8e32446dd8156a7f5478e",
+  "proof_archive": {
+    "archive": "chibi-sdk-install-validated-20261104.tar.gz",
+    "sha256": "b35b25c8bc538578b62fba4e554a6a86eb8021e9c8c98140d8512d28dc3689df",
+    "bytes": 53592742,
+    "regular_members": 5378,
+    "symlink_members": 1
+  },
+  "limitations": [
+    "One correctness run, not a benchmark or runtime distribution.",
+    "Peak disk and native inner-worker count were not measured.",
+    "Ephemeral consumer/test/Verify/build artifacts were deleted by unchanged authored cleanup; their execution is established by the source-bound original suite and successful assertions, not retained binaries.",
+    "Retained source.ll hashes are identity evidence, not a separate source-to-IR equivalence proof."
+  ],
+  "remaining": [
+    "ordinary VM/native differential",
+    "C engine integration",
+    "actual Windows runtime",
+    "separate pointer-view WIP",
+    "exact-head integration and PR #1331 hold"
+  ]
+}

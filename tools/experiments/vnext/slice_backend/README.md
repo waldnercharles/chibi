@@ -1,18 +1,75 @@
 # Bounded source-native Cranelift backend
 
 The `chibi_vnext_backend` cdylib consumes the generated
-`frontend/bridge/generated/arena.rs` view of the real typed Module. The accepted
-path is retained Chibi parser/signature reader → typed Produce/Verify → generated
+`frontend/bridge/generated/arena.rs` view of the real typed Module. The path is
+retained Chibi parser/signature reader → typed Produce/Verify → generated
 Pack → one Cranelift lowering for eager JIT and object output. The backend never
 reads source, interprets an IR, runs a prepared VM or converts LLVM text. The
 pinned old c5 seed uses LLVM to build the Chibi test caller; that is distinct
 from compiling the caller's source-produced typed bodies with Cranelift.
-Only Linux x86-64 System V is admitted.
+Only Linux x86-64 System V is admitted. The current version-2 source adds bool
+literals, wrapping multiply, signed greater-than, bool not and direct calls.
+Its pure-source proof, focused Rust backend tests, production library build
+and three exact-source private native proofs passed, including JIT,
+owned environment-failure handling and linked C execution.
+
+## Version-2 verification status
+
+The [six-stage pure-source proof](../frontend/typed/README.md#accepted-version-2-pure-transform-result)
+passed the current producer/verifier, generated Pack and seven standalone Rust
+framing tests. A separate fresh Rust proof passed the test build, all three
+focused tests unfiltered and the production panic-abort cdylib build. It kept
+the pinned toolchain, Cargo.lock and dependencies unchanged. Independent review
+checked the exact library, exports, observed linker inputs and recursive runtime
+closure before any integration use.
+
+The version-2 Rust test receipt SHA-256 is
+`2e538153d005b4cd39b9a01b89486bd35665a212158693cb65f62d5aaa4a6008`;
+the cdylib build receipt is
+`e5c7af513c1f536298d64f34dbd8825ab28cb19a5c6838395b8b922e28ea116d`.
+The resulting library SHA-256 is
+`39fc5a692bf4a7b220a48976245319595dcd1b1de2b60a16ea47771c17140790`.
+
+All three cases passed five separately admitted stages: Chibi caller compilation,
+normal JIT execution, the expected PERF_BUILDID_DIR failure, C link and AOT
+execution. These are fresh exact-source private proofs using public-preparer
+output, not a rerun of the public `run_native.py` whole-run workflow.
+
+| Case | JIT value assertions | Linked C checks | Registry source rejections |
+| --- | ---: | ---: | ---: |
+| nativecases | 1,080 | 45 | 0 |
+| scalars | 360 | 15 | 9 |
+| direct_calls | 552 | 23 | 0 |
+
+Each case exercised nine complete owners; each separate PERF control returned
+an owned diagnostic with no callable/object output. NativeCases also retained
+its seven separate producer-rejection controls. The 23 supplemental oracles
+cover nested/private/forward/self/mutual and zero/32-argument calls, mixed scalar
+ABI positions, true/false literals, and signed strict greater-than. Tiny
+terminating recursion does not qualify depth or stack exhaustion.
+
+Independent terminal readback verified all 15 receipt/launch/approval chains,
+exact artifacts and input/process cleanup. Chibi/JIT/PERF streams were empty;
+each C executable emitted its exact success JSON with empty stderr. C compiler
+and linker traces were intentionally verbose and separately reviewed, including
+the GCC MPFR header/library-version banner warning. The c5 driver's selected
+link inputs were checked statically; no observed trace of its transient link
+inputs is claimed.
+
+The independent acceptance-summary SHA-256 is
+`fcd1941e5827b69005adbf7fcc34cc698b1127d5dff5dce2a648b70b3be3039c`.
+It binds all three case readbacks and 15 stage receipts, closed on 2026-11-04
+before the later documentation and generator-comment updates.
+
+Only Linux x86-64 System V is in scope. These bounded source-generated results
+do not admit the current compiler, self-hosting, the full original corpus or
+representative runtime/compilation performance. Historical version-1 results
+below remain bound to their own frozen inputs.
 
 ## Accepted bounded result
 
-The independently reviewed 2026-11-04 source-native proof passed all five
-stages: Chibi caller compilation, normal JIT execution, owned environment-failure
+The independently reviewed version-1 source-native proof on 2026-11-04 passed
+all five stages: Chibi caller compilation, normal JIT execution, owned environment-failure
 execution, native C link and AOT execution. Its terminal receipt SHA-256 is
 `af682cb96294c1aacbc31ed5fe6158b94bbbad2eb27b31fbfcf76774420f81be`.
 That proof's backend shared library SHA-256 is
@@ -43,12 +100,15 @@ and its separate C caller. The package name remains
 binary target. Historical receipts bind their frozen inputs, not later changes.
 The final-Cargo rebuild and public reproduction have separate validation below.
 
-The accepted subset is the [bounded producer](../frontend/typed/README.md), not
-the whole [slice corpus](../slice-design.md). Calls, foreign calls from generated
-bodies and the wider operation set remain unsupported. The experimental rule
-that all admitted i64 additions wrap, including literal-only additions, is not
-current-language constant-expression parity. There is no current-compiler,
-full-compiler, real-tool, cross-platform or compilation-speed acceptance.
+The accepted version-1 subset was the then-current
+[bounded producer](../frontend/typed/README.md), not the whole
+[slice corpus](../slice-design.md), and excluded direct/foreign calls and several
+scalar operations. Version 2 implements direct calls and the remaining original
+scalar operations, with its validation status recorded above; package/foreign
+support remains pending. The experimental rule that all admitted i64 additions/multiplications wrap, even
+literal-only expressions, is not current-language constant-expression parity.
+There is no current-compiler, full-compiler, real-tool, cross-platform or
+compilation-speed acceptance.
 
 ## Caller and ownership contract
 
@@ -91,7 +151,8 @@ with no concurrent mutation during compile. Output destinations likewise name
 writable, nonoverlapping caller storage. Checks cannot prove pointer validity,
 prevent forged/stale handles or make double destruction safe.
 
-The frame decoder checks version/counts/exact table framing. This is explicitly
+The current frame decoder requires version 2 and checks counts/exact framing.
+Version-1 input is rejected, with no compatibility translation. This is explicitly
 an already-verified same-process model contract: the producer has run Chibi
 Verify before packing. The backend does not accept or semantically validate
 arbitrary unverified frames. It checks IDs/spans, admission bounds, kind decoding
@@ -106,9 +167,13 @@ Upstream Cranelift perf-map creation can panic on an OS failure; this bounded
 backend admits no such side effect. It does not mutate the environment or catch
 C-boundary panics. The caller must keep the environment stable during compile.
 
-Both parameter and result bools receive explicit System V zero extension.
-Every edge argument is forwarded, including both conditional edges. Every
-body is compiled before JIT finalization and publication. The explicitly enabled
+Both parameter and result bools receive explicit System V zero extension,
+including direct-call signatures. The candidate declares every function before
+lowering any body; private, forward, self and mutual calls use dense IDs and
+never recursively compile bodies. Every edge argument is forwarded, including
+both conditional edges. Tiny terminating recursion cases do not qualify
+runtime recursion depth or stack exhaustion. Every body is compiled before
+JIT finalization and publication. The explicitly enabled
 Cranelift verifier runs inside both pinned consumers' Context::compile; the
 adapter does not repeat it. Verifier errors remain compiler-invariant failures.
 One generic lowering serves JITModule and ObjectModule. Each new AOT artifact
@@ -123,8 +188,9 @@ library is compiled with panic=abort; no panic may unwind through Chibi/C.
 
 ## Focused tests and accounting
 
-All three focused Rust tests in lib.rs passed without filtering: public
-framing/count rejection covers null/nonzero pairs for each scalar buffer and
+All three focused Rust tests in lib.rs passed without filtering in both the
+historical version-1 proof and the separate version-2 proof above. Public framing/count
+rejection covers null/nonzero pairs for each scalar buffer and
 excessive counts on actual small buffers, with shared owned-diagnostic,
 no-output and destroy checks; byte copy is exact or leaves
 the destination unchanged; an injected finalization failure after real JIT
@@ -134,8 +200,8 @@ provider's leak-on-Drop mappings, allocates a new current mapping, then injects
 failure. Kernel /proc/self/maps metadata checks that explicit free releases the
 finalized mapping and subsequent provider destruction releases the current one.
 It never dereferences stale/fabricated pointers. This test-only memory provider
-is not a production mode; source-produced acceptance is the separate proof
-above. Generated enum/framing tests are owned by
+is not a production mode; source-produced acceptance is a separate
+gate recorded under each version's result. Generated enum/framing tests are owned by
 frontend/bridge/tests/arena_tests.rs. A production library requires panic=abort;
 Rust's unit-test harness uses its ordinary test panic behavior.
 
@@ -143,15 +209,20 @@ Current adapter accounting: borrowed name adaptation, then one instruction
 traversal for Object and one for JIT. Duplicate semantic verification and its
 4-bytes/value plus 1-byte/block scratch are removed. Each lowering reserves a
 block map, a statically pinned 4-byte PackedOption<Value> per value, declaration
-IDs, and two edge-argument buffers of at most 64 entries. With no call opcode,
-each function is declared, lowered, compiled and cleared in source order in
-one loop. Context signature buffers reserve known arity and are reused; there
-is no preliminary declaration pass or staged signature vector. Cranelift's
-required declaration-owned signature copies remain. Context and
-FunctionBuilderContext are reused across functions; Cranelift's IR/code
-allocations remain additional costs. Bounds and direct indexing keep adapter
-work linear in rows and arguments. The current Echo/Join frame is 580 borrowed
-bytes; none of these counts is a measured throughput result.
+IDs, and two edge-argument buffers of at most 64 entries. Version 2 adds one
+reused call-operand buffer of at most 32 entries and a dense, body-local
+FuncRef cache of at most 32 slots, importing only referenced callees. The
+declaration pass is necessary for forward/recursive calls; body lowering and
+compilation then proceed once per function per output, in source order.
+Context signature buffers reserve known arity and reuse declaration-owned ABI
+facts without a separate staged signature vector. Cranelift's required
+declaration-owned signature copies remain. Context and FunctionBuilderContext
+are reused; Cranelift's IR/code allocations remain additional costs. Work is
+linear in rows/arguments plus the explicitly bounded per-body cache clearing.
+The current Echo/Join frame is 584 borrowed bytes. No measured speed claim
+follows: `compile_both` intentionally compiles both outputs and is not a fair
+single-build benchmark. LLVM could consume the same neutral typed facts through
+a separate lowering; no LLVM consumer or measurement is included here.
 
 ## Reproduction and remaining gates
 
@@ -178,7 +249,7 @@ The production cdylib requires panic=abort; the unit-test harness uses Rust's
 ordinary test panic behavior. A local rebuild does not reproduce the old
 proof's independent tool/dependency admission.
 
-The final library-only Cargo configuration has now passed a fresh independent
+The version-1 final library-only Cargo configuration passed a fresh independent
 build/test proof, preserving Cargo.lock and all dependency pins. All three
 backend tests passed at receipt SHA-256
 `4cfeb855ecc526e51e984dd0e1105049cc982dfd7bdf842d2386e955541978a2`.
@@ -187,16 +258,23 @@ The production cdylib build receipt is
 its library SHA-256 is
 `02e8957df08742cce7a2b40b79c21dd6569a93c442ab594eac044d6f750ea30e`.
 The exact library, observed linker trace and recursive runtime dependencies
-passed independent review. This is a new proof, not a rewrite of old receipts.
+passed independent review. This was a separate proof, not a rewrite of old
+receipts; it does not validate the current version-2 source.
 
 The [public source-native preparation and runner](../frontend/bridge/README.md#source-native-correctness-reproduction)
 snapshot real sources and use an existing backend library. Their normal
-five-stage workflow passed once with the final library above, followed by
-independent terminal readback. The 54 Python preparation/generator/controller
+five-stage version-1 workflow passed once with the final library above, followed
+by independent terminal readback. The 54 Python preparation/generator/controller
 controls also passed. A separate real-first-compilation cancellation control
 reproduced the old interstage bug and confirmed the fixed runner stops before
 any successor launch. This public correctness reproduction does not reproduce
 the private proof's full tool/loader admission fences.
+
+The three version-2 runtime matrices passed as listed in
+[verification status](#version-2-verification-status). The original
+registry still has 25 calls and 11 rejections: two package calls, eight foreign
+calls, `private_import` and `missing_symbol` remain open. The 23 supplemental
+call oracles extend coverage; they do not replace those original gates.
 
 Full corpus coverage, generated foreign calls, representative real-tool/runtime
 quality, phase/memory measurements, platform qualification and distribution

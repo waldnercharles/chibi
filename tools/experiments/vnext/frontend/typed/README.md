@@ -1,15 +1,22 @@
 # Bounded scalar typed-body producer
 
-The retained-parser/signature producer and final pure-transform tests passed
-in proof10 on 2026-11-04 using the pinned old c5 seed: 25 accepted source calls,
-42 rejection probes and 17 verifier mutations. The public preparer reproduces
-the exact compiled inputs. That pure-transform proof does not claim backend
+The published version-1 retained-parser/signature producer passed proof10 on
+2026-11-04 using the pinned old c5 seed: 25 accepted source calls, 42 rejection
+probes and 17 verifier mutations. At that checkpoint the public preparer
+reproduced the exact compiled inputs. That pure-transform proof does not claim backend
 integration, current-compiler admission or full-build throughput acceptance.
 The later [source-native proof](../../slice_backend/README.md#accepted-bounded-result)
-passed Produce/Verify → Pack → Cranelift JIT and linked C execution for this
-bounded subset. The public reproduction also passed all five stages with the
+passed Produce/Verify → Pack → Cranelift JIT and linked C execution for that
+version-1 subset. The public reproduction also passed all five stages with the
 separately validated final-Cargo backend library and independent terminal
 readback. These later results do not broaden proof10's historical claim.
+
+Version 2 adds the scalar operations and direct calls described below. Its
+six-stage pure-source proof passed on 2026-11-04, independently of the preserved
+version-1 results. The exact current test inventory and readback are recorded
+[below](#accepted-version-2-pure-transform-result). The separate
+[version-2 native result](../../slice_backend/README.md#version-2-verification-status)
+also passed all three bounded JIT/AOT matrices.
 
 `Produce(text, document)` parses once with the retained `source_parser`, reads
 all scalar headers with `signature_reader.Signature` and its empty named/type
@@ -35,16 +42,35 @@ mutation tests. Successful production asserts verification once. There is no
 interpreter, secondary parser, prepared representation, ABI packer or backend
 in this package.
 
-Supported source: explicitly typed i64/bool headers and initialized locals,
-identifier/parameter reads, decimal nonnegative i64 literals, parentheses,
-wrapping i64 addition, plain assignment, if/else and scalar return. Other forms
-are source diagnostics, not fallback compilation. The first gate intentionally
-excludes calls, bool literals/operators and unary negative literals. The
-existing reserved cancellation-singleton name `Cancelled` remains rejected for
-functions, parameters and locals. Local shadowing of any currently visible
+The candidate supports explicitly typed i64/bool headers and initialized
+locals, identifier/parameter reads, decimal nonnegative i64 and bool literals,
+parentheses, wrapping i64 `+`/`*`, signed i64 `>`, bool `!`, plain assignment,
+if/else, scalar return and same-document positional identifier calls. Other
+forms are source diagnostics, not fallback compilation. Packages, foreign
+calls, equality, `&&`, inferred locals, discarded-call statements and unary
+negative literals remain outside this checkpoint. Negative registry arguments
+enter through the native caller. The existing reserved cancellation-singleton
+name `Cancelled` remains rejected for functions, parameters and locals. Local shadowing of any currently visible
 parameter/local is unsupported and diagnosed; disjoint branch-local names are
-allowed. Names and
-branch values are source-driven, including renamed functions/locals and +7.
+allowed. Names and branch values are source-driven, including renamed
+functions/locals and +7.
+
+Version 2 preserves opcodes 1–5 and appends ConstantBool=6, MultiplyI64=7,
+GreaterI64=8, NotBool=9 and DirectCall=10. A DirectCall payload names one
+`Call { callee, first_argument }` row: eight scalar bytes, with arity/result
+type read only from the callee Signature. Calls and edges partition the shared
+argument array without gaps or overlaps; zero-arity calls start at zero.
+Value remains the sole owner of a value's type. Bool constants are exactly 0/1
+and unused instruction fields are zero.
+
+Headers precede bodies, including private/forward/self/mutual callees. A visible
+scalar binding shadows a function name and is diagnosed as non-callable. Calls
+require an identifier and positional arguments, with at most 32 arguments.
+Production reserves the outer argument span before evaluating arguments
+left-to-right; nested calls append beyond it, and writes re-fetch by index.
+No partial Module is published. Verify checks callee/signature IDs before use,
+unique Call ownership, shared argument coverage, scalar types and every
+argument's dominance in the caller. Call-graph cycles are not CFG back-edges.
 
 Admission limits are explicit experiment limits: 64 KiB source, 8192 parsed
 nodes, 32 functions, 32 parameters/function, 64 simultaneously visible bindings
@@ -60,19 +86,23 @@ foreign ABI cannot pass authored-record arrays. The synchronous versioned
 boundary flattens these tables once into a u32 arena plus i64 literals/u8 names,
 counting that temporary copy and its bytes explicitly. The [scalar transport
 experiment](../bridge/README.md) generates this packing operation and borrowed
-Rust views. Its Python checks, native Chibi packing proof and Rust framing tests
-pass; the later source-native proof above covers backend integration separately.
+Rust views. Its version-1 Python checks, native Chibi packing proof and Rust
+framing tests passed; the historical source-native proof covers backend integration separately.
+Version-2 packing and seven Rust framing tests have now passed their separate
+pure-source proof. The separate version-2 native result covers source-to-backend
+execution, without broadening either version's pure-transform receipts.
 
 ## Experimental arithmetic deviation
 
 This isolated producer deliberately assigns wrapping semantics to **every**
-admitted typed i64 addition, including literal-only expressions. It does no
-compile-time folding/evaluation. Each individual decimal literal must still fit
+admitted typed i64 addition and multiplication, including literal-only
+expressions. It does no compile-time folding/evaluation. Each individual decimal literal must still fit
 0 through 9223372036854775807. Thus `9223372036854775807 + 1` is accepted as two
 ConstantI64 rows followed by AddI64; the JIT/AOT result is
 -9223372036854775808. The pure-transform test pins these operations and full-width
-literals. The later source-native proof checks that wrapping result through
-both native consumers.
+literals. The version-1 source-native proof checked that addition result through
+both native consumers. The version-2 scalar matrix also checked wrapping
+multiplication through both native consumers.
 
 This differs from the current numeric contract's exact, range-checked constant
 expressions. It is an explicit experimental rule, **not** a settled language
@@ -93,10 +123,15 @@ the three package files here. The fixture/tests subdirectories are not package
 implementation inputs. Tests change +1 to +7, rename exports/locals, change an
 assignment, exercise nested and early-return branches, check source rejections
 and paired admission boundaries (functions, parameters, visible bindings,
-blocks, expression depth and source bytes), and corrupt real
-produced tables. The 8192-node and statement-depth boundaries are not exercised
-by this template. Document-label cases check 0 and 2147483647 in every emitted
-origin and reject -1 without changing the diagnostic label.
+blocks, expression depth and source bytes), and corrupt real produced tables.
+The version-2 additions include exact 8192/8193-node and 31/32 statement-depth
+controls, repeated/nested/zero/32-argument calls, mixed scalar types, source
+rename/reorder and branch merges. They add 40 Verify rejection expectations and
+seven precise source diagnostic-span checks for call/type/ownership failures.
+The full version-2 Chibi template passed against the frozen proof inputs;
+historical proof counts still apply only to their frozen inputs. Document-label
+cases check 0 and 2147483647
+in every emitted origin and reject -1 without changing the diagnostic label.
 These tests do not evaluate an IR or claim generated-code
 execution. No generic controller is added here.
 
@@ -165,8 +200,12 @@ capacity, actual detach counts and record-array boxing remain unmeasured. Module
 arrays are mutated through direct scoped output parameters without explicit
 per-node module copies in source; confirming that the exact emitted lowering preserves this
 intent remains a measurement gate. No unsupported reserve API is assumed. At
-admission limits a conservative bound is fewer than 150,000 values and 11,000
-instructions, well below u32 and the high-bit definition tag. These are bounds, not throughput evidence.
+admission limits the conservative bounds are 139,264 values, 10,240 instructions,
+8,192 calls and 524,288 combined edge/call arguments, below signed array counts
+and the high-bit definition tag. The loose whole-module transport ceiling is
+4,363,700 bytes, not a reservation size. Table work is linear in nodes, rows and
+arguments plus the stated bounded name scans. Actual allocation/COW and native
+compilation costs remain unknown; these bounds are not throughput evidence.
 
 Delete later: this template/proof-only fixture path after migration into the
 real source-to-JIT/AOT harness; replace the bounded lookup/dominance algorithms
@@ -175,7 +214,34 @@ actual payload/allocation/COW costs, exclusive parser/signature/body/verifier
 phase time, and the eventual counted flattening copy. Leave alone: production
 parser/type logic, old compiler/prepared emitter and the separate backend library.
 
-## Old-seed compatibility experiment
+## Accepted version-2 pure-transform result
+
+All six separately admitted stages passed on 2026-11-04: typed compile/test,
+packing compile/test and standalone Rust framing build/test. Independent final
+readback checked exact source/tool/runtime inputs, artifact/receipt chains and
+clean child-process cleanup. The public typed preparer's 21 files matched the
+proof inputs byte-for-byte.
+
+The complete current typed template executes **109 Produce invocations: 42
+accepted and 67 rejected**, plus **57 verifier-mutation rejection checks**.
+This is a recount of the current source, not historical counts added to new
+ones. It includes seven exact diagnostic-span checks, eight paired admission
+limits, 32/33 call arguments and the document-label boundary cases. Its 216
+textual assert sites are not a runtime assertion count. The packing template
+covers original Echo/Join, renamed/+7 source, nested-call argument packing and call-row
+COW isolation, and an empty Module; all seven standalone Rust framing tests
+passed unfiltered. These are pure transforms, not generated-code execution.
+
+The typed-template SHA-256 is
+`132d49495e35847ea0edf3bbee012130891b2fab21bb66fb7a7289828dfff18b`.
+The six-stage independent final readback SHA-256 is
+`d3390ad2f98517d8d94d71d66ca0be8d437a00eae33985e36cc3afff2c0a8b4c`;
+it binds input fence
+`525eb88b4ce9d4a8737ced0219ac82a1c3e593d46487162eff199a871df83c77`
+and each build/test receipt. The pinned old c5 seed built the Chibi callers;
+this does not admit the current compiler, self-hosting or a throughput claim.
+
+## Historical version-1 old-seed compatibility experiment
 
 Proof04 rejected `OriginID` with
 `scalar proof requires known effect-free scalar execution, not effects 1`.
@@ -188,7 +254,7 @@ than evidence that arbitrary writes should be permitted.
 
 The producer now passes `output: ^Module` directly beside `s: ^State`; edge
 helpers receive only output. This matches the retained parser's scoped style
-without duplicating all 13 Module table fields into scratch State. Proof05
+without duplicating the then-13 Module table fields into scratch State. Proof05
 cleared that rejection, then found old-seed restrictions in test mutation
 syntax. The fixture now modifies local arrays/rows before reassigning the
 Module fields. No effect check, assertion or semantic oracle was weakened.

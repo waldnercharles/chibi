@@ -19,7 +19,10 @@ MODEL = HERE.parent / "typed" / "Model.chibi"
 OUTPUT = HERE / "generated"
 # A digest is an ABI tripwire, not another field/kind definition. An intentional
 # layout/kind change requires a new Model version and a reviewed digest here.
-VERSION_LAYOUTS = {1: "3c80038a06b4ae925e60658a0506a816e8177630b6744367949e1f95d6b6a4bb"}
+VERSION_LAYOUTS = {
+    1: "3c80038a06b4ae925e60658a0506a816e8177630b6744367949e1f95d6b6a4bb",
+    2: "9812f63cd2c2d7786cc536d5aed57665c4ab8c75327aaa744e25533039f2a3b1",
+}
 IDENT = r"[A-Za-z_][A-Za-z_0-9]*"
 NUMBER = r"(?:0|[1-9][0-9]*)"
 
@@ -248,6 +251,7 @@ def rust_source(model: Model) -> str:
         lines += ["            _ => None,", "        }", "    }", "}"]
     for name, fields in model.records:
         lines.append(f"pub const {upper(name)}_WORDS: usize = {len(fields)};")
+        lines.append(f"const _: [(); {len(fields) * 4}] = [(); std::mem::size_of::<[u32; {upper(name)}_WORDS]>()];")
         for index, (field, _) in enumerate(fields):
             lines.append(f"pub const {upper(name)}_{upper(field)}: usize = {index};")
     lines += ["", "#[derive(Debug, Clone, Copy, PartialEq, Eq)]", "pub enum FramingError {",

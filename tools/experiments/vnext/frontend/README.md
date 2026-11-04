@@ -6,11 +6,13 @@ second parser. `prepare.py` embeds the actual slice corpus as source strings in
 into a new directory. It never compiles. All semantic/link rejection fixtures
 must parse successfully; parsing them does not establish their later rejection.
 
-The harness makes 22 parser calls: 15 unique corpus documents, one UTF-8 comment
-case with tree invariants, two scalar field/shape cases, and four syntax failures
-with precise diagnostic locations. The 15 corpus documents contain 2,851 bytes
-and 76 physical lines. The retained parser closure is eight files, 124,561 bytes
-and 3,549 lines at `ba99e386a74a6f610fcdfe0c16a5aa778e025a51`:
+The published version-1 harness made 22 parser calls: 15 unique corpus documents,
+one UTF-8 comment case with tree invariants, two scalar field/shape cases, and
+four syntax failures with precise diagnostic locations. Those 15 corpus
+documents contained 2,851 bytes and 76 physical lines. The current registry adds
+a 16th source document for supplementary direct-call cases; the old parser
+receipts do not validate that addition. The retained parser closure is eight
+files, 124,561 bytes and 3,549 lines at `ba99e386a74a6f610fcdfe0c16a5aa778e025a51`:
 
 - `source_parser/{Declarations,Expressions,Parser,Statements,Tree,Types}.chibi`
 - `source_tokenizer/Tokenizer.chibi`
@@ -80,19 +82,36 @@ its whole-run receipt SHA-256 is
 These runs establish neither typechecking, current-compiler admission nor speed.
 No typed-body producer was part of this parser checkpoint. The later
 [bounded producer](typed/README.md) and [source-native backend proof](../slice_backend/README.md)
-now pass their separate gates. The historical parser receipts remain limited
-to their frozen parser callers.
+passed their separate version-1 gates. Version 2 has now passed its separate
+[pure-source proof](typed/README.md#accepted-version-2-pure-transform-result)
+and [Rust backend proof](../slice_backend/README.md#version-2-verification-status).
+Its three exact-source private native proofs also passed JIT, owned environment
+failure and linked C execution. Historical parser receipts still cover only
+their frozen parser callers; these are separate version-2 results.
 
 ## Scalar headers and bodies
 
-The implemented `Produce` caller parses real Echo/Join and source variants,
-verifies the produced bodies, and passes them through generated Pack to both
-native consumers. The source-native proof passed 1,080 JIT value assertions and
-45 linked C checks; the superseded handwritten backend probe has been removed.
-The numbered design below includes broader future gates, especially package,
-direct-call and foreign-call support; it is not a claim that the full original
-corpus is accepted. Do not synthesize expected bodies from function names or
-special-case their text.
+The published version-1 `Produce` caller parsed real Echo/Join and source
+variants, verified their bodies, and passed them through generated Pack to both
+native consumers: 1,080 JIT value assertions and 45 linked C checks passed. The
+superseded handwritten backend probe has been removed.
+
+The current version-2 source extends that path with bool literals, wrapping i64
+multiply, signed `>`, bool `!` and same-document positional direct calls. It
+uses the complete header catalog for forward/private/self/mutual calls and
+reserves nested call argument spans before evaluating arguments left-to-right.
+The pure-transform tests and three bounded source-to-backend JIT/AOT matrices
+passed for these changes. The [version-2 result](../slice_backend/README.md#version-2-verification-status)
+records exact counts and proof scope.
+The public [case selectors](bridge/README.md#source-native-correctness-reproduction)
+keep NativeCases as the default regression, select the original 15 scalar calls
+and nine applicable rejections with `--case scalars`, and select 23 supplementary
+call oracles with `--case direct_calls`. Those two selections share
+`slice_cases.json`; their caller generator reads JSON values, never source syntax.
+
+The numbered design below still includes later package/foreign-call and `&&`
+gates. Neither the original 25-call/11-rejection corpus nor a real tool is fully
+accepted. Do not synthesize bodies from function names or special-case text.
 
 1. Parse each explicit document once with `source_parser.Parse`. Keep its raw
    indexed nodes/fields and source bytes until diagnostics are complete. Reject
@@ -144,9 +163,13 @@ The concrete array budgets and operation vocabulary remain those in
 semantic decision, and no mandatory prepared-VM, sparse-facts or LLVM-text step
 is inserted. The implemented [batched boundary](bridge/README.md) is a
 synchronous same-process transport, not a persistent public serialization
-format. Its public source-native reproduction passed all five stages with the
-separately validated final-Cargo backend library and independent terminal
-readback. This remains bounded correctness evidence, not a compiler benchmark.
+format. Its version-1 public source-native reproduction passed all five stages
+with the separately validated final-Cargo backend library and independent
+terminal readback. Version 2 passed its separate pure-source, Rust backend and
+exact-source private native proofs; the public whole-run workflow was not rerun
+for version 2. These are bounded correctness checks, not a compiler benchmark. LLVM could consume the same
+neutral typed facts through a separate lowering; no LLVM implementation or
+measurement is part of this checkpoint.
 
 ## Reuse cost and limits
 
@@ -159,8 +182,8 @@ path still refreshes catalog views; blindly calling it for every header is not
 the proposed scalable publication path. Any extracted batching change belongs
 in a later reviewed change, not silently in this parser experiment.
 
-This is a cold probe. Preparing the approximately 125 KB parser and 3 KB corpus
-should take substantially less than a second, excluding filesystem scheduling.
+This is a cold probe. Preparing the original approximately 125 KB parser and
+3 KB corpus was estimated below a second, excluding filesystem scheduling.
 The unavoidable harness work is one parser call per document and a linear walk
 of each returned tree; token/node counts and current parser allocation/copy cost
 remain unmeasured. Representative compiler cost remains unmeasured and is not predicted from

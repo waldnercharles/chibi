@@ -1,11 +1,16 @@
 # Typed-module scalar transport bindings
 
-Status: nine Python generator controls, the native Chibi Produce-to-Pack proof,
-and all six generated Rust view/framing tests pass. The later, separately
-reviewed [source-native proof](../../slice_backend/README.md#accepted-bounded-result)
-also passed 1,080 JIT value assertions and 45 linked C checks. The public
-five-stage reproduction below has now passed using the separately validated
-final-Cargo backend library.
+Status: version-2 scalar/direct-call transport passed the native Chibi packing
+and seven standalone Rust framing tests in the [six-stage pure-source proof](../typed/README.md#accepted-version-2-pure-transform-result).
+The separate Rust backend proof and three exact-source private native proofs
+also passed, including JIT/environment-failure/linked C execution. The historical
+version-1
+checkpoint passed nine Python generator controls, native Chibi Produce-to-Pack
+and six generated Rust view/framing tests. Its separately reviewed
+[source-native proof](../../slice_backend/README.md#accepted-bounded-result)
+passed 1,080 JIT assertions and 45 linked C checks, followed by the public
+five-stage reproduction with the final-Cargo library. Those results do not
+validate version 2.
 
 This is a temporary, synchronous, same-process transport for the real
 `typed.Module`. It does not parse user programs, evaluate an IR, serialize a
@@ -33,6 +38,11 @@ Model comment and reviewing a new digest in `VERSION_LAYOUTS`; do not replace
 the old version's digest to excuse drift. Whitespace and ordinary comments do
 not affect artifacts. The initial v1 digest is
 `3c80038a06b4ae925e60658a0506a816e8177630b6744367949e1f95d6b6a4bb`.
+The version-2 digest is
+`9812f63cd2c2d7786cc536d5aed57665c4ab8c75327aaa744e25533039f2a3b1`.
+It appends opcodes 6–10 and the two-word Call table without changing the exported
+C signatures or literal/name side buffers. Version-1 frames are rejected rather
+than guessed or translated; pair the new Pack with a version-2 backend.
 
 From the repository root:
 
@@ -67,20 +77,22 @@ exercise scalar-array transport and copy-out/COW isolation; actual native
 record layout, allocation/COW costs and conversion traffic remain unmeasured.
 
 All counts are element counts. The word buffer starts with version followed by
-11 row counts, in Module declaration order with literals/name_bytes omitted:
+12 row counts, in Module declaration order with literals/name_bytes omitted:
 functions, signatures, parameter_types, blocks, block_parameters, values,
-instructions, edges, arguments, origins, names. This is 12 u32 words / 48 bytes.
-Rows follow in that same order, fields in declaration order. Widths are
-6, 3, 1, 4, 1, 2, 6, 3, 1, 3, 2 words. Literal and name lengths come from their
-independent C pointer/count pairs. Native byte order is intentional: these are
+instructions, edges, calls, arguments, origins, names. This is 13 u32 words /
+52 bytes. Rows follow in that same order, fields in declaration order. Widths
+are 6, 3, 1, 4, 1, 2, 6, 3, 2, 1, 3, 2 words. Call stores callee FunctionID and
+first argument offset; its arity comes only from the resolved Signature. Calls
+and edges own disjoint spans of the same arguments table. Literal and name
+lengths come from their independent C pointer/count pairs. Native byte order is intentional: these are
 same-process scalar arrays, not an endian-neutral on-disk representation.
 
 The Chibi length domain is signed 32-bit. Pack checks each count against the
 remaining word capacity before multiplication/addition, calculates in i64 and
 narrows only after the bounds are proved. It returns the overflowing table
 before allocation. Allocation failure remains the runtime's abort contract.
-An all-zero empty Module packs to version 1 plus eleven zero counts and empty
-side arrays; a zero version is not an accepted transport frame.
+An all-zero empty Module packs to version 2 plus twelve zero counts and empty
+side arrays; zero and version 1 are not accepted transport versions.
 
 ## Rust consumer contract
 
@@ -114,6 +126,11 @@ producer diagnostics.
 
 ## Tests and accounting
 
+The current version-2 Python controls passed all 93 tests: 21 native-preparation,
+21 runner (including all four real-signal controls), 10 generator, 29 frontend
+and 12 typed-preparation tests. This is separate from the historical 54-test
+version-1 control run below. Generator freshness also passed.
+
 Python checks cover malformed schema and markers, same-version kind/field/table
 order drift, stale artifacts, deterministic generation, an independent fixture
 layout oracle, scalar round trips with full-width values, empty frames and
@@ -135,13 +152,21 @@ results after each mutation, and repacks the unchanged source. These reference
 copies and COW mutation checks are test-only costs. `tests/arena_tests.rs` is a standalone Rust test
 caller for zero-copy row/side-array views, empty and malformed frames, canonical
 spans and exhaustive kind decoding; it has no backend dependencies. Its bounded
-replay covers all eleven count positions with zero, one, MAX_ELEMENTS and
+replay now covers all twelve count positions with zero, one, MAX_ELEMENTS and
 MAX_ELEMENTS+1, every short prefix of small frames, and extra words. Large-count
 rejections use actual short headers with safe Arena::from_parts calls, never
-large allocations or fabricated pointers. All six tests pass without filtering.
+large allocations or fabricated pointers. All seven version-2 Rust tests passed
+unfiltered, and the version-2 Chibi template passed compilation and execution.
+The Chibi template also covers nested direct calls, outer argument reservation
+and mutation of a copied Module call row while the source and packed result
+remain live. Its 32 textual assert sites are not a runtime assertion count.
+The [pure-source result](../typed/README.md#accepted-version-2-pure-transform-result)
+records the shared six-stage readback; no backend is loaded by these tests.
 
-The Rust framing proof used the official Rust 1.99.0 toolchain, GCC 14 and
-LLVM 22.1.8 lld. Its fresh input fence SHA-256 is
+### Historical version-1 packing and framing proofs
+
+All six Rust tests passed without filtering. The Rust framing proof used the
+official Rust 1.99.0 toolchain, GCC 14 and LLVM 22.1.8 lld. Its fresh input fence SHA-256 is
 `6e58a2ff592b8dbb5e7c00c378306a2e3f9e3b663d32d454f82deb7f9f22e90f`;
 build receipt `a1d008819305436f8f8eacfa05a2f8b4000e1ef3391f9bdd766861da5cee5ac7`;
 test receipt `5151e6df03646917e4aabb90fb6f8900092b481bb2733e82e631483be1279e63`.
@@ -173,8 +198,34 @@ compilation-throughput result is claimed by this packing proof.
 IR recipe. `tests/NativeMain.chibi.in` calls Produce/Verify, Pack and the backend,
 then checks JIT results, owner lifetime, copy-out and an owned environment
 failure. `tests/native_aot_caller.c` independently checks the copied object.
-The [backend README](../../slice_backend/README.md) records the accepted bounded
-result, ABI contract and remaining language/platform gates.
+The [backend README](../../slice_backend/README.md) records current version-2
+verification status, the separate historical version-1 result, the ABI contract
+and remaining gates.
+
+`prepare_native.py --case nativecases` remains the default historical regression.
+Two version-2 selections use the same `../../slice_cases.json` registry:
+
+- `--case scalars`: the original 15 scalar calls and nine applicable source
+  rejections, each a separate Produce invocation with category/location checks.
+- `--case direct_calls`: 23 supplementary call-ABI/nesting/recursion oracles,
+  including source-produced true/false literals and opposite-sign/equal comparisons, without repeating the registry
+  rejections. These are tiny terminating
+  recursive tests, not recursion-depth or stack-exhaustion qualification.
+
+`registry_callers.py` generates Chibi signature checks and independent C
+declarations/assertions from exact JSON integer/bool expectations. It never
+parses source or evaluates Chibi. Preparation snapshots the registry, exact
+source bytes, generated callers and generator identity. Each selected source
+is a separate module, avoiding overlapping export names. Eight peer cycles
+with three CheckCalls each specify 1,080/360/552 JIT assertions and 45/15/23 AOT
+checks for nativecases/scalars/direct_calls respectively. All three matrices
+passed in the version-2 exact-source private proofs, including the nine scalar
+registry rejections. See the [native result](../../slice_backend/README.md#version-2-verification-status)
+for the independent terminal readbacks.
+The two original package calls, eight foreign calls and `private_import`/
+`missing_symbol` remain unsupported and pending. The original 25-call/11-rejection
+inventory is unchanged; 23 supplemental calls make 48 total expected calls.
+The runner takes the exact AOT success record from the prepared case.
 
 The public `prepare_native.py` snapshots the exact working-tree source closure,
 templates, C caller and controller into a new directory. It checks generated
@@ -194,6 +245,20 @@ python3 -I -B -S tools/experiments/vnext/frontend/bridge/prepare_native.py \
   "$NATIVE_PROOF" --backend "$BACKEND"
 ```
 
+Add `--case scalars` or `--case direct_calls` for its separate fresh snapshot.
+Every selection needs a separately reviewed version-2 backend; the historical
+version-1 library below cannot consume the current frame. The version-2 result
+used this public preparer's exact output with a private, separately admitted
+five-stage controller. The public `run_native.py` whole-run workflow was not
+rerun for version 2; its passing controls do not create a whole-run receipt.
+
+After the native proofs closed, a generator docstring-only cleanup changed no
+behavior. All three preparations were regenerated and their compiled source
+bytes matched the tested snapshots after substituting only each owned object
+output path. This was a data-only comparison, not an execution rerun. Its
+composition-check SHA-256 is
+`71d5a8237ceb5ad57cd1fd864deb88cd626169b7eb6a680dfb964ecc281c59a8`.
+
 Then configure the existing native tools and run the frozen controller:
 
 ```sh
@@ -212,6 +277,8 @@ Use existing authorized tools and cached dependencies only; no installation or
 dependency fetching belongs to this path. The runner records source/backend
 and named-tool identities, stage receipts and owned-process cleanup, but does
 not establish a complete compiler/linker/loader dependency admission fence.
+
+### Historical version-1 public reproduction
 
 The normal public workflow passed all five stages once on 2026-11-04 with
 exit zero, unchanged recorded inputs and clean owned-process cleanup.
@@ -251,19 +318,21 @@ outputs for new work.
 
 Echo/Join has 129 u32 payload words = 516 bytes, one i64 = 8 bytes and eight
 name bytes. The existing scalar payload is **532 bytes**. The transport adds
-48 header bytes, totaling **580 bytes**. Pack's logical temporary word buffer is
-141 words / 564 scalar bytes, including the header. Only the 516-byte u32 payload
+52 header bytes in version 2, totaling **584 bytes**. Pack's logical temporary
+word buffer is 142 words / 568 scalar bytes, including the header. The
+historical version-1 frame was 580 bytes with a 48-byte header and
+141-word / 564-scalar-byte buffer; its receipts retain that accounting. Only the 516-byte u32 payload
 is explicitly flattened; the 16 side-array bytes are borrowed. These are scalar
 accounting figures, not measured allocator/GC/FFI memory or speed claims.
 
-The hot transform is linear in scalar fields with eleven constant-count length
+The hot transform is linear in scalar fields with twelve constant-count length
 checks and one sequential write per scalar, plus destination initialization.
-For this fixture the minimum copying work is 129 scalar reads/writes and twelve
-header writes, well under a frame on ordinary hardware; actual Chibi lowering,
-allocation/COW and native-boundary costs are unmeasured. Rust framing is O(11)
+For this fixture the minimum copying work is 129 scalar reads/writes and thirteen
+header writes, estimated well under a frame on ordinary hardware; actual Chibi
+lowering, allocation/COW and native-boundary costs are unmeasured. Rust framing is O(12)
 with no row traversal; checked lowering is a separate backend cost. The Chibi
 producer alone owns semantic verification.
-The cold generator scans a roughly 3 KiB schema and emits two small fixed-source
+The cold generator scans a roughly 4 KiB schema and emits two small fixed-source
 artifacts. No per-node parsing, hashing, dispatch or allocation is added.
 
 Deletion gate: remove the one-time flattening layer if authored scalar-record

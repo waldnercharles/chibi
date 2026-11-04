@@ -35,7 +35,7 @@ State :: struct {
 
 EmptyModule :: () -> Module {
     return {functions: [], signatures: [], parameter_types: [], blocks: [],
-            block_parameters: [], values: [], instructions: [], edges: [],
+            block_parameters: [], values: [], instructions: [], edges: [], calls: [],
             arguments: [], literals: [], origins: [], names: [], name_bytes: []};
 }
 
@@ -333,20 +333,127 @@ Expression :: (s: ^State, output: ^Module, node: int, depth: int) -> u32 {
         output.literals.append(value);
         return Emit(s, output, ConstantI64, I64, 0, 0, u32(length(output.literals)), node);
     }
+    if (kind == syntax.Boolean) {
+        keyword := s.nodes[node].first_child;
+        assert(reader.Kind(s.tree, keyword, token.True) || reader.Kind(s.tree, keyword, token.False),
+               "parser boolean has a true or false token");
+        value: u32 = 0;
+        if (reader.Kind(s.tree, keyword, token.True)) { value = 1; }
+        return Emit(s, output, ConstantBool, Bool, 0, 0, value, node);
+    }
+    if (kind == syntax.UnaryExpression) {
+        operator := reader.Field(s.tree, node, syntax.FieldOperator);
+        if (!reader.Kind(s.tree, operator, token.Not)) {
+            Fail(s, operator, "vNext scalar slice supports only bool ! as a unary operation");
+            return 0;
+        }
+        operand := reader.Field(s.tree, node, syntax.FieldOperand);
+        value := Expression(s, output, operand, depth + 1);
+        if (value == 0) { return 0; }
+        if (output.values[int(value) - 1].type != Bool) {
+            Fail(s, operand, "bool ! requires a bool operand");
+            return 0;
+        }
+        return Emit(s, output, NotBool, Bool, value, 0, 0, node);
+    }
     if (kind == syntax.BinaryExpression) {
         operator := reader.Field(s.tree, node, syntax.FieldOperator);
-        if (!reader.Kind(s.tree, operator, token.Add)) {
-            Fail(s, operator, "vNext scalar slice supports only wrapping i64 addition");
+        op: u32 = 0;
+        result_type: u32 = I64;
+        if (reader.Kind(s.tree, operator, token.Add)) { op = AddI64; }
+        else if (reader.Kind(s.tree, operator, token.Mul)) { op = MultiplyI64; }
+        else if (reader.Kind(s.tree, operator, token.Gt)) { op = GreaterI64; result_type = Bool; }
+        else {
+            Fail(s, operator, "vNext scalar slice supports only i64 +, * and > binary operations");
             return 0;
         }
-        left := Expression(s, output, reader.Field(s.tree, node, syntax.FieldLeft), depth + 1);
-        right := Expression(s, output, reader.Field(s.tree, node, syntax.FieldRight), depth + 1);
-        if (left == 0 || right == 0) { return 0; }
-        if (output.values[int(left) - 1].type != I64 || output.values[int(right) - 1].type != I64) {
-            Fail(s, node, "i64 addition requires two i64 operands");
+        left_node := reader.Field(s.tree, node, syntax.FieldLeft);
+        right_node := reader.Field(s.tree, node, syntax.FieldRight);
+        left := Expression(s, output, left_node, depth + 1);
+        if (left == 0) { return 0; }
+        if (output.values[int(left) - 1].type != I64) {
+            Fail(s, left_node, "i64 binary operation requires an i64 operand");
             return 0;
         }
-        return Emit(s, output, AddI64, I64, left, right, 0, node);
+        right := Expression(s, output, right_node, depth + 1);
+        if (right == 0) { return 0; }
+        if (output.values[int(right) - 1].type != I64) {
+            Fail(s, right_node, "i64 binary operation requires an i64 operand");
+            return 0;
+        }
+        return Emit(s, output, op, result_type, left, right, 0, node);
+    }
+    if (kind == syntax.CallExpression) {
+        name := reader.Field(s.tree, node, syntax.FieldFunction);
+        if (!reader.Kind(s.tree, name, syntax.Identifier)) {
+            Fail(s, name, "vNext scalar slice requires an identifier direct callee");
+            return 0;
+        }
+        if (FindBinding(s, name) >= 0) {
+            Fail(s, name, "scalar binding is not callable");
+            return 0;
+        }
+        // Headers are complete before bodies. This scan is bounded by 32,
+        // and preserves same-document private, forward and recursive calls.
+        callee: u32 = 0;
+        for (header, index in s.header_names) {
+            if (SameName(s, header, name)) { callee = u32(index + 1); break; }
+        }
+        if (callee == 0) {
+            Fail(s, name, "unknown direct callee");
+            return 0;
+        }
+        function := output.functions[int(callee) - 1];
+        signature := output.signatures[int(function.signature) - 1];
+        list := reader.Field(s.tree, node, syntax.FieldArguments);
+        argument := First(s, list);
+        count: int = 0;
+        while (argument >= 0) {
+            if (count == MaxParameters) {
+                Fail(s, list, "vNext scalar slice exceeds 32 call arguments");
+                return 0;
+            }
+            argument_kind := s.nodes[argument].kind;
+            if (argument_kind == syntax.NamedArgument || argument_kind == syntax.TypedArgument) {
+                Fail(s, argument, "vNext scalar slice requires positional call arguments");
+                return 0;
+            }
+            count += 1;
+            argument = Next(s, argument);
+        }
+        if (count != int(signature.parameter_count)) {
+            Fail(s, list, "direct call argument count does not match signature");
+            return 0;
+        }
+        first: int = 0;
+        if (count != 0) {
+            first = length(output.arguments);
+            // Each source call has <=32 arguments, and <=2 edges/block carry
+            // <=64 bindings. Admission proves this bound before growth/int use.
+            limit := MaxNodes * MaxParameters + MaxFunctions * MaxBlocks * 2 * MaxLocals;
+            assert(first <= limit - count, "admitted source bounds all argument spans");
+            output.arguments.resize(first + count);
+        }
+        // Reserve the outer span first. Nested calls append beyond it; write
+        // by offset after each evaluation, never retain an element pointer.
+        argument = First(s, list);
+        ordinal: int = 0;
+        while (argument >= 0) {
+            value := Expression(s, output, argument, depth + 1);
+            if (value == 0) { return 0; }
+            expected := output.parameter_types[int(signature.first_parameter) + ordinal];
+            if (output.values[int(value) - 1].type != expected) {
+                Fail(s, argument, "direct call argument type does not match signature");
+                return 0;
+            }
+            output.arguments[first + ordinal] = value;
+            ordinal += 1;
+            argument = Next(s, argument);
+        }
+        assert(length(output.calls) < MaxNodes, "each admitted syntax node emits at most one Call");
+        call: Call = {callee: callee, first_argument: u32(first)};
+        output.calls.append(call);
+        return Emit(s, output, DirectCall, signature.result_type, 0, 0, u32(length(output.calls)), node);
     }
     Fail(s, node, "unsupported expression in vNext scalar slice");
     return 0;

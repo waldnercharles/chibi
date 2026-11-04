@@ -5,8 +5,8 @@ import argparse
 import json
 from pathlib import Path
 import re
-import runpy
 import stat
+import sys
 import types
 
 HERE = Path(__file__).resolve().parent
@@ -14,7 +14,8 @@ ROOT = HERE.parents[4]
 TYPED_PATH = HERE.parent / "typed/prepare.py"
 typed = types.ModuleType("native_typed_preparation")
 typed.__file__ = str(TYPED_PATH)
-exec(compile(TYPED_PATH.read_bytes(), str(TYPED_PATH), "exec"), typed.__dict__)
+TYPED_BYTES = TYPED_PATH.read_bytes()
+exec(compile(TYPED_BYTES, str(TYPED_PATH), "exec"), typed.__dict__)
 helpers = typed.helpers
 BRIDGE_ROOT = "tools/experiments/vnext/frontend/bridge"
 CORE_FILES = ("os/Os.chibi", "bytes/Bytes.chibi", "bytes/Tests.chibi",
@@ -28,7 +29,29 @@ INPUT_MAP = [(BRIDGE_ROOT + "/tests/" + name, "inputs/" + name)
              for name in ("NativeCases.chibi", "NativeMain.chibi.in", "native_aot_caller.c")]
 
 
-def prepare(output, backend_library):
+
+def load_source(path):
+    """Execute one exact source byte string and retain it for the manifest."""
+    if not stat.S_ISREG(path.lstat().st_mode) or path.resolve() != path:
+        raise ValueError(f"generator must be a regular non-symlink file: {path}")
+    source = path.read_bytes()
+    name = "native_preparation_" + path.stem
+    module = types.ModuleType(name)
+    module.__file__ = str(path)
+    previous = sys.modules.get(name)
+    # Dataclasses resolve postponed annotations through their defining module.
+    sys.modules[name] = module
+    try:
+        exec(compile(source, str(path), "exec"), module.__dict__)
+    finally:
+        if previous is None:
+            del sys.modules[name]
+        else:
+            sys.modules[name] = previous
+    return module.__dict__, source
+
+
+def prepare(output, backend_library, case="nativecases"):
     output = Path(output).absolute()
     if output.exists() or output.is_symlink():
         raise FileExistsError(f"output must be a new directory: {output}")
@@ -42,7 +65,26 @@ def prepare(output, backend_library):
         raise ValueError(f"backend is empty: {library}")
     if len(SOURCE_MAP) != 28 or len(INPUT_MAP) != 3:
         raise ValueError("source-native snapshot membership changed; inspect before expanding it")
-    data, origins, graph = typed.read_sources(SOURCE_MAP, INPUT_MAP)
+    caller_path = HERE / "registry_callers.py"
+    selected = None
+    input_map = INPUT_MAP
+    fixture_path = "inputs/NativeCases.chibi"
+    if case != "nativecases":
+        callers, caller_bytes = load_source(caller_path)
+        registry_map = [(callers["REGISTRY_PATH"], "inputs/slice_cases.json")]
+        registry, _, _ = typed.read_sources([], registry_map)
+        selected, signatures, rejected = callers["read_registry"](registry["inputs/slice_cases.json"], case)
+        fixture_path = "inputs/" + selected["files"][0]
+        input_map = [(BRIDGE_ROOT + "/tests/NativeMain.chibi.in", "inputs/NativeMain.chibi.in"),
+                     *registry_map, (BRIDGE_ROOT + "/registry_callers.py", "inputs/registry_callers.py"),
+                     *(("tools/experiments/vnext/" + row["files"][0], "inputs/" + row["files"][0])
+                       for row in [selected, *rejected])]
+    data, origins, graph = typed.read_sources(SOURCE_MAP, input_map)
+    if selected is not None:
+        if data["inputs/slice_cases.json"] != registry["inputs/slice_cases.json"]:
+            raise ValueError("registry changed while preparing native callers")
+        if data["inputs/registry_callers.py"] != caller_bytes:
+            raise ValueError("registry caller generator changed while preparing native callers")
     pending = typed.imports(data["inputs/NativeMain.chibi.in"], "NativeMain.chibi.in")
     if pending != ["core:os", "project:vnext_bridge", "project:vnext_typed"]:
         raise ValueError("native test imports changed")
@@ -51,7 +93,7 @@ def prepare(output, backend_library):
     # Reuse the generator's closed Model reader and both generated outputs.
     # No subprocess, compiler, build, or native-library loading happens here.
     generator_path = HERE / "generate.py"
-    generator = runpy.run_path(str(generator_path))
+    generator, generator_bytes = load_source(generator_path)
     model = generator["parse_model"](data["project/vnext_typed/Model.chibi"].decode("utf-8"))
     for name, content in generator["generated"](model).items():
         path = HERE / "generated" / name
@@ -65,7 +107,7 @@ def prepare(output, backend_library):
     for marker, context in contexts:
         if template.count(marker) != 1 or len(re.findall(context, template, re.M)) != 1:
             raise ValueError(f"native template requires one complete {marker.decode()} substitution context")
-    fixture = data["inputs/NativeCases.chibi"]
+    fixture = data[fixture_path]
     source_literal = helpers.literal(fixture.decode("utf-8"))
     if json.loads(source_literal).encode("utf-8") != fixture:
         raise ValueError("native fixture literal does not preserve UTF-8 bytes")
@@ -75,26 +117,54 @@ def prepare(output, backend_library):
     # A single pass never interprets marker-like text inside inserted literals.
     data["entry/Main.chibi"] = re.sub(rb'"LIBRARY_PATH"|FIXTURE_SOURCE|OUTPUT_PATH',
                                       lambda match: substitutions[match[0]], template)
+    generated_from = ["inputs/NativeMain.chibi.in", fixture_path]
+    expectations = {"case": "nativecases", "rejections": [], "aot_checks": 45,
+                    "aot_success": '{"aot_c_caller_checks":45,"status":"passed","input":"source-produced-copied-object"}\n'}
+    if selected is not None:
+        source_bytes = {row["files"][0]: data["inputs/" + row["files"][0]] for row in [selected, *rejected]}
+        for value in source_bytes.values():
+            # Bound and validate literal transport even for rejected inputs.
+            if not 0 < len(value) <= 65536:
+                raise ValueError("native registry source requires 1..65536 bytes")
+            encoded = helpers.literal(value.decode("utf-8"))
+            if json.loads(encoded).encode("utf-8") != value:
+                raise ValueError("registry source literal does not preserve UTF-8 bytes")
+        entry, c = callers["generate"](data["entry/Main.chibi"].decode("utf-8"), selected,
+                                        signatures, rejected, source_bytes)
+        data["entry/Main.chibi"] = entry
+        data["inputs/native_aot_caller.c"] = c
+        generated_from = ["inputs/NativeMain.chibi.in", "inputs/slice_cases.json",
+                          "inputs/registry_callers.py", *["inputs/" + name for name in source_bytes]]
+        expectations = callers["metadata"](selected, rejected)
     implementation = {}
     for name, path in (("run_native.py", HERE / "run_native.py"),
                        ("owned_process.py", HERE.parent.parent / "owned_process.py")):
         if not stat.S_ISREG(path.lstat().st_mode) or path.resolve() != path:
             raise ValueError(f"controller must be a regular non-symlink file: {path}")
         implementation["controller/" + name] = path.read_bytes()
+    preparation = [(Path(__file__).resolve(), Path(__file__).read_bytes()),
+                   (TYPED_PATH, TYPED_BYTES), (typed.HELPER_PATH, typed.HELPER_BYTES),
+                   (generator_path, generator_bytes)]
+    if selected is not None:
+        preparation.append((caller_path, caller_bytes))
+    for path, source in preparation:
+        if not stat.S_ISREG(path.lstat().st_mode) or path.resolve() != path or path.read_bytes() != source:
+            raise ValueError(f"preparation source changed while generating native callers: {path}")
     manifest = {
-        "schema": 1,
+        "schema": 2,
+        "expectations": expectations,
         "purpose": "working-tree source snapshot for developer correctness reproduction; not backend or toolchain admission",
         "directory": str(output),
         "files": [{"path": name, **({"source": origins[name]} if name in origins else
-                   {"generated_from": ["inputs/NativeMain.chibi.in", "inputs/NativeCases.chibi"]}),
+                   {"generated_from": generated_from}),
                    **helpers.byte_identity(value)} for name, value in sorted(data.items())],
         "imports": graph,
         "import_scope": "literal imports including conditional Windows branches; snapshot membership is not a compiled-file census",
         "backend": backend,
         "implementation": [{"path": name, **helpers.byte_identity(value)}
                            for name, value in sorted(implementation.items())],
-        "preparation": [{"source": str(path.relative_to(ROOT)), **helpers.identity(path)}
-                        for path in (Path(__file__).resolve(), TYPED_PATH, typed.HELPER_PATH, generator_path)],
+        "preparation": [{"source": str(path.relative_to(ROOT)), **helpers.byte_identity(source)}
+                        for path, source in preparation],
         "stages": {name: "not_run" for name in ("chibi_compile", "jit_normal", "perf_failure", "c_link", "aot_run")},
     }
     payload = (json.dumps(manifest, indent=2, allow_nan=False) + "\n").encode("utf-8")
@@ -113,9 +183,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path, help="fresh output directory; must not already exist")
     parser.add_argument("--backend", required=True, type=Path, help="existing backend shared library; never built here")
+    parser.add_argument("--case", choices=("nativecases", "scalars", "direct_calls"), default="nativecases",
+                        help="one separate native module; default preserves the historical regression")
     args = parser.parse_args()
     try:
-        result = prepare(args.output, args.backend)
+        result = prepare(args.output, args.backend, args.case)
     except (OSError, ValueError) as error:
         parser.exit(1, f"native preparation: {error}\n")
     print(json.dumps({"output": result["directory"], "snapshot_files": len(result["files"]) - 1,

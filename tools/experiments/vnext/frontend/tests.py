@@ -30,7 +30,7 @@ class ProbeTests(unittest.TestCase):
         output = self.folder / "frozen"
         fence = prepare.prepare(output)
         self.assertEqual(len(fence["parser_sources"]), 8)
-        self.assertEqual(len(fence["corpus_sources"]), 15)
+        self.assertEqual(len(fence["corpus_sources"]), 16)
         run.check_sources(output, fence)
         generated = (output / "ParserHarness.chibi").read_text()
         for row in fence["corpus_sources"]:

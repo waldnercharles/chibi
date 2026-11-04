@@ -25,6 +25,8 @@ class NativeRunnerTests(unittest.TestCase):
         self.base = Path(temporary.name).resolve()
         self.plan = SUBJECT.stage_plan(self.base, "/tools/c5", "/tools/llvm", "/tools/clang", [])
         self.stage_names = [row["name"] for row in self.plan]
+        self.expectations = {"case": "nativecases", "rejections": [], "aot_checks": 45,
+                             "aot_success": SUBJECT.AOT_SUCCESS.decode()}
 
     def test_exact_five_stage_plan_and_direct_argv(self):
         self.assertEqual([(row["name"], row["limit_seconds"]) for row in self.plan], [
@@ -176,7 +178,8 @@ class NativeRunnerTests(unittest.TestCase):
             rows.append({"path": name, **SUBJECT.file_identity(path)})
         backend = self.base / "backend.so"
         backend.write_bytes(b"identity only; not a loadable library")
-        manifest = {"schema": 1, "directory": str(directory),
+        manifest = {"schema": 2, "directory": str(directory),
+                    "expectations": self.expectations,
                     "stages": {name: "not_run" for name in self.stage_names},
                     "files": rows[:32], "implementation": rows[32:],
                     "backend": {"path": str(backend), "resolved": str(backend), **SUBJECT.file_identity(backend)}}
@@ -233,7 +236,7 @@ class NativeRunnerTests(unittest.TestCase):
         for root in (None, [], 1, True, "manifest"):
             with self.subTest(root=root), self.assertRaisesRegex(ValueError, "manifest"):
                 SUBJECT.check_sources(directory, root, self.stage_names)
-        for key in ("schema", "directory", "stages", "files", "implementation", "backend"):
+        for key in ("schema", "directory", "stages", "files", "implementation", "backend", "expectations"):
             altered = copy.deepcopy(manifest)
             del altered[key]
             with self.subTest(missing=key), self.assertRaisesRegex(ValueError, key):
@@ -242,7 +245,7 @@ class NativeRunnerTests(unittest.TestCase):
             "schema": (True, "1", None, 1.0),
             "directory": ([], None, 1), "stages": ([], None, "not_run"),
             "files": (None, {}, "files"), "implementation": (None, {}, "implementation"),
-            "backend": (None, [], "backend"),
+            "backend": (None, [], "backend"), "expectations": (None, [], "expectations"),
         }.items():
             for value in bad_values:
                 altered = copy.deepcopy(manifest)
@@ -438,7 +441,7 @@ print(json.dumps({'result': result, 'control': state}))
         perf.mkdir(parents=True)
         attempt = self.base / "attempt"
         attempt.mkdir()
-        SUBJECT.check_stage_outputs(self.plan[2], self.base, attempt)
+        SUBJECT.check_stage_outputs(self.plan[2], self.base, attempt, self.expectations)
         for kind in ("file", "directory"):
             unexpected = perf / "forbidden-profile"
             if kind == "file":
@@ -446,7 +449,7 @@ print(json.dumps({'result': result, 'control': state}))
             else:
                 unexpected.mkdir()
             with self.subTest(kind=kind), self.assertRaises(ValueError):
-                SUBJECT.check_stage_outputs(self.plan[2], self.base, attempt)
+                SUBJECT.check_stage_outputs(self.plan[2], self.base, attempt, self.expectations)
             if kind == "file":
                 unexpected.unlink()
             else:
@@ -457,25 +460,25 @@ print(json.dumps({'result': result, 'control': state}))
         attempt.mkdir()
         stdout = attempt / "aot_run.stdout"
         stdout.write_bytes(SUBJECT.AOT_SUCCESS)
-        SUBJECT.check_stage_outputs(self.plan[4], self.base, attempt)
+        SUBJECT.check_stage_outputs(self.plan[4], self.base, attempt, self.expectations)
         for content in (b"", SUBJECT.AOT_SUCCESS[:-1], SUBJECT.AOT_SUCCESS + b"x",
                         b" " + SUBJECT.AOT_SUCCESS):
             stdout.write_bytes(content)
             with self.subTest(content=content), self.assertRaises(ValueError):
-                SUBJECT.check_stage_outputs(self.plan[4], self.base, attempt)
+                SUBJECT.check_stage_outputs(self.plan[4], self.base, attempt, self.expectations)
         # Sparse data exercises a large trailing log without allocating it in the test.
         with stdout.open("wb") as stream:
             stream.write(SUBJECT.AOT_SUCCESS)
             stream.truncate(64 * 1024 * 1024)
         with self.assertRaises(ValueError):
-            SUBJECT.check_stage_outputs(self.plan[4], self.base, attempt)
+            SUBJECT.check_stage_outputs(self.plan[4], self.base, attempt, self.expectations)
         # A bounded read must reject even when the log exceeds available address space.
         script = """import resource, runpy, sys
 from pathlib import Path
 subject = runpy.run_path(sys.argv[1])
 resource.setrlimit(resource.RLIMIT_AS, (48 * 1024 * 1024, 48 * 1024 * 1024))
 try:
-    subject['check_stage_outputs']({'name': 'aot_run'}, Path(sys.argv[2]), Path(sys.argv[3]))
+    subject['check_stage_outputs']({'name': 'aot_run'}, Path(sys.argv[2]), Path(sys.argv[3]), {'aot_success': subject['AOT_SUCCESS'].decode()})
 except ValueError:
     pass
 else:
@@ -484,6 +487,50 @@ else:
         result = subprocess.run([sys.executable, "-B", "-c", script, SUBJECT.__file__,
                                  str(self.base), str(attempt)], capture_output=True, timeout=5, check=False)
         self.assertEqual(result.returncode, 0, result.stderr.decode())
+
+
+    def test_registry_metadata_tampering_and_exact_aot_counts(self):
+        prepare = types.ModuleType("native_preparation")
+        prepare.__file__ = str(HERE / "prepare_native.py")
+        exec(compile(Path(prepare.__file__).read_bytes(), prepare.__file__, "exec"), prepare.__dict__)
+        backend = self.base / "identity-backend.so"
+        backend.write_bytes(b"identity only, never loaded")
+        for case, count in (("scalars", 15), ("direct_calls", 23)):
+            directory = self.base / case
+            manifest = prepare.prepare(directory, backend, case)
+            SUBJECT.check_sources(directory, manifest, self.stage_names)
+            attempt = directory / "attempt"
+            attempt.mkdir()
+            output = attempt / "aot_run.stdout"
+            expected = manifest["expectations"]
+            success = expected["aot_success"].encode()
+            output.write_bytes(success)
+            SUBJECT.check_stage_outputs(self.plan[4], directory, attempt, expected)
+            for content in (SUBJECT.AOT_SUCCESS, success + b"x", success[:-1], b" " + success,
+                            success.replace(str(count).encode(), b"0", 1)):
+                output.write_bytes(content)
+                with self.subTest(case=case, content=content), self.assertRaises(ValueError):
+                    SUBJECT.check_stage_outputs(self.plan[4], directory, attempt, expected)
+            for key, value in (("aot_checks", count + 1), ("aot_checks", True),
+                               ("aot_success", SUBJECT.AOT_SUCCESS.decode()),
+                               ("case", "modules"), ("rejections", ["unknown"]), ("rejections", None)):
+                altered = copy.deepcopy(manifest)
+                altered["expectations"][key] = value
+                with self.subTest(case=case, key=key), self.assertRaises(ValueError):
+                    SUBJECT.check_sources(directory, altered, self.stage_names)
+            # Changing both metadata fields still cannot disagree with the registry.
+            altered = copy.deepcopy(manifest)
+            altered["expectations"]["aot_checks"] = count + 1
+            altered["expectations"]["aot_success"] = expected["aot_success"].replace(str(count), str(count + 1), 1)
+            with self.assertRaisesRegex(ValueError, "prepared registry"):
+                SUBJECT.check_sources(directory, altered, self.stage_names)
+            for name in ("inputs/registry_callers.py", "inputs/slice_cases.json", "inputs/native_aot_caller.c", "entry/Main.chibi"):
+                path = directory / name
+                original = path.read_bytes()
+                path.write_bytes(original + b" ")
+                with self.subTest(case=case, name=name), self.assertRaisesRegex(ValueError, "snapshot changed"):
+                    SUBJECT.check_sources(directory, manifest, self.stage_names)
+                path.write_bytes(original)
 
 
 if __name__ == "__main__":

@@ -27,17 +27,29 @@ DefinedBefore :: (definition: u32, defining_block: u32, block: u32,
     return (dominators & (u64(1) << (defining_block - first_block - 1))) != 0;
 }
 
-// Linear in table rows, operands and edge arguments. Scratch is one defining
+// Linear in table rows, operands and edge/call arguments. Scratch is one defining
 // block ID/value, one u64/block and ownership/usage flags for side rows. Forward
 // edges and the explicit 64-block/function experiment bound make one-pass u64
 // dominance possible; this is not a scalable general CFG algorithm.
 pub Verify :: (module: Module) -> int {
-    if (length(module.functions) > MaxFunctions) { return InvalidSpan; }
+    // Source admission bounds all derived tables. Reject impossible mutation
+    // sizes before allocating scratch or narrowing any table reference.
+    block_limit := MaxFunctions * MaxBlocks;
+    parameter_limit := block_limit * MaxLocals;
+    if (length(module.functions) > MaxFunctions || length(module.signatures) > MaxFunctions ||
+        length(module.names) > MaxFunctions || length(module.parameter_types) > MaxFunctions * MaxParameters ||
+        length(module.blocks) > block_limit || length(module.block_parameters) > parameter_limit ||
+        length(module.values) > parameter_limit + MaxNodes || length(module.instructions) > block_limit + MaxNodes ||
+        length(module.edges) > block_limit * 2 || length(module.calls) > MaxNodes ||
+        length(module.arguments) > block_limit * 2 * MaxLocals + MaxNodes * MaxParameters ||
+        length(module.literals) > MaxNodes || length(module.origins) > MaxNodes ||
+        length(module.name_bytes) > MaxSourceBytes) { return InvalidSpan; }
     names_used := resize([false], length(module.names));
     signatures_used := resize([false], length(module.signatures));
     origins_used := resize([false], length(module.origins));
     literals_used := resize([false], length(module.literals));
     edges_used := resize([false], length(module.edges));
+    calls_used := resize([false], length(module.calls));
     arguments_used := resize([false], length(module.arguments));
     defining_blocks := resize([u32(0)], length(module.values));
     dominators := resize([u64(0)], length(module.blocks));
@@ -88,7 +100,7 @@ pub Verify :: (module: Module) -> int {
             }
         }
     }
-    if (!AllUsed(arguments_used)) { return InvalidSpan; }
+    // Call spans are checked after callee/signature IDs below.
 
     // Functions partition the block table. Their shared metadata IDs must
     // exist before any lookup; their entry signatures are checked below.
@@ -109,6 +121,29 @@ pub Verify :: (module: Module) -> int {
         origins_used[int(function.origin) - 1] = true;
     }
     if (next_block != length(module.blocks)) { return InvalidSpan; }
+
+    // Call arity is owned only by the callee signature. Calls may be emitted
+    // after nested calls even though their argument span was reserved first.
+    for (call in module.calls) {
+        if (!Present(call.callee, length(module.functions))) { return InvalidDefinition; }
+        callee := module.functions[int(call.callee) - 1];
+        signature := module.signatures[int(callee.signature) - 1];
+        if (signature.parameter_count == 0) {
+            if (call.first_argument != 0) { return InvalidSpan; }
+        } else {
+            if (call.first_argument > u32(length(module.arguments)) ||
+                signature.parameter_count > u32(length(module.arguments)) - call.first_argument) {
+                return InvalidSpan;
+            }
+            first := int(call.first_argument);
+            end := first + int(signature.parameter_count);
+            for (at in first..<end) {
+                if (arguments_used[at]) { return InvalidSpan; }
+                arguments_used[at] = true;
+            }
+        }
+    }
+    if (!AllUsed(arguments_used)) { return InvalidSpan; }
 
     // Every value is defined exactly once, either by a block parameter or an
     // instruction result. No use is inspected until this whole pass succeeds.
@@ -138,19 +173,39 @@ pub Verify :: (module: Module) -> int {
         for (at in int(block.first_instruction)..<next_instruction) {
             instruction := module.instructions[at];
             instruction_id := u32(at + 1);
-            if (instruction.op < ConstantI64 || instruction.op > Return) { return InvalidInstruction; }
+            if (instruction.op < ConstantI64 || instruction.op > DirectCall) { return InvalidInstruction; }
             terminator := instruction.op == Jump || instruction.op == Branch || instruction.op == Return;
             if (terminator != (at == next_instruction - 1)) { return InvalidTerminator; }
             if (!Present(instruction.origin, length(module.origins))) { return InvalidSpan; }
             origins_used[int(instruction.origin) - 1] = true;
             edge_count: int = 0;
+            result_type: u32 = I64;
             switch instruction.op {
                 case ConstantI64:
                     if (instruction.left != 0 || instruction.right != 0 ||
                         !Present(instruction.payload, length(module.literals))) { return InvalidInstruction; }
                     literals_used[int(instruction.payload) - 1] = true;
+                case ConstantBool:
+                    if (instruction.left != 0 || instruction.right != 0 || instruction.payload > 1) { return InvalidInstruction; }
+                    result_type = Bool;
                 case AddI64:
                     if (instruction.payload != 0) { return InvalidInstruction; }
+                case MultiplyI64:
+                    if (instruction.payload != 0) { return InvalidInstruction; }
+                case GreaterI64:
+                    if (instruction.payload != 0) { return InvalidInstruction; }
+                    result_type = Bool;
+                case NotBool:
+                    if (instruction.right != 0 || instruction.payload != 0) { return InvalidInstruction; }
+                    result_type = Bool;
+                case DirectCall:
+                    if (instruction.left != 0 || instruction.right != 0 ||
+                        !Present(instruction.payload, length(module.calls))) { return InvalidInstruction; }
+                    call_index := int(instruction.payload) - 1;
+                    if (calls_used[call_index]) { return InvalidInstruction; }
+                    calls_used[call_index] = true;
+                    callee := module.functions[int(module.calls[call_index].callee) - 1];
+                    result_type = module.signatures[int(callee.signature) - 1].result_type;
                 case Jump:
                     if (instruction.left != 0 || instruction.right != 0) { return InvalidInstruction; }
                     edge_count = 1;
@@ -169,7 +224,7 @@ pub Verify :: (module: Module) -> int {
                 if (defining_blocks[slot] != 0 || module.values[slot].definition != instruction_id) {
                     return InvalidDefinition;
                 }
-                if (module.values[slot].type != I64) { return InvalidType; }
+                if (module.values[slot].type != result_type) { return InvalidType; }
                 defining_blocks[slot] = block_id;
             }
             if (edge_count != 0) {
@@ -192,6 +247,7 @@ pub Verify :: (module: Module) -> int {
     if (!AllUsed(names_used) || !AllUsed(signatures_used) || !AllUsed(origins_used) ||
         !AllUsed(literals_used)) { return InvalidSpan; }
     if (!AllUsed(edges_used)) { return InvalidEdge; }
+    if (!AllUsed(calls_used)) { return InvalidInstruction; }
 
     // The block IDs are a topological ordering. Incoming intersections are
     // final when a block is visited. Every reachable mask contains entry's
@@ -224,7 +280,29 @@ pub Verify :: (module: Module) -> int {
                 edge_count: int = 0;
                 switch instruction.op {
                     case ConstantI64: continue;
+                    case ConstantBool: continue;
                     case AddI64: operand_count = 2;
+                    case MultiplyI64: operand_count = 2;
+                    case GreaterI64: operand_count = 2;
+                    case NotBool:
+                        operand_count = 1;
+                        operand_type = Bool;
+                    case DirectCall:
+                        call := module.calls[int(instruction.payload) - 1];
+                        callee := module.functions[int(call.callee) - 1];
+                        callee_signature := module.signatures[int(callee.signature) - 1];
+                        for (argument in 0..<int(callee_signature.parameter_count)) {
+                            id := module.arguments[int(call.first_argument) + argument];
+                            if (!Present(id, length(module.values))) { return InvalidDefinition; }
+                            slot := int(id) - 1;
+                            value := module.values[slot];
+                            expected := module.parameter_types[int(callee_signature.first_parameter) + argument];
+                            if (value.type != expected) { return InvalidType; }
+                            if (!DefinedBefore(value.definition, defining_blocks[slot], block_id,
+                                               instruction_id, function.first_block, mask)) {
+                                return InvalidDominance;
+                            }
+                        }
                     case Jump: edge_count = 1;
                     case Branch:
                         operand_count = 1;

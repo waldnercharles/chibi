@@ -156,6 +156,8 @@ Main :: () -> int {
     assert(wrapping.literals[0] == 9223372036854775807 && wrapping.literals[1] == 1, "wrapping operands preserve full i64 values");
     assert(wrapping.instructions[2].op == typed.AddI64 && wrapping.instructions[2].left == 1 && wrapping.instructions[2].right == 2, "literal-only addition follows the explicit wrapping operation");
     assert(wrapping.instructions[3].op == typed.Return && wrapping.instructions[3].left == 3, "wrapping result is returned without evaluator substitution");
+    CheckScalarCalls();
+    CheckCallMutations();
     CheckMutations(original, both);
     CheckLimits();
     dominance := Accepted(strings.ReplaceAll(source, "result = left", "result = left + 7"));
@@ -198,10 +200,10 @@ Main :: () -> int {
         "package p\nBad :: () -> i64 { return 0xff; }\n",
         "package p\nBad :: () -> i64 { return 1.5; }\n",
         "package p\nBad :: () -> i64 { return -1; }\n",
-        "package p\nBad :: (x: i64) -> i64 { return x * 7; }\n",
+        "package p\nBad :: (x: i64) -> i64 { return x / 7; }\n",
         "package p\nBad :: (x: i64) -> i64 { return x; x = 7; }\n",
         "package p\nBad :: (b: bool, x: i64) -> i64 { if (b) { temp: i64 = x; } return temp; }\n",
-        "package p\nGood :: (x: i64) -> i64 { return x; }\nUnsupported :: (x: i64) -> i64 { return x * 7; }\n",
+        "package p\nGood :: (x: i64) -> i64 { return x; }\nUnsupported :: (x: i64) -> i64 { return x / 7; }\n",
         "package p\nDuplicate :: () -> i64 { return 1; }\nDuplicate :: () -> i64 { return 7; }\n",
         "package p\nimport q \"project:q\"\nGood :: () -> i64 { return 1; }\n",
         "package p\n@custom Good :: () -> i64 { return 1; }\n"
@@ -225,7 +227,7 @@ Accepted :: (text: string) -> typed.Module {
         case .Rejected(diagnostic):
             assert(false, "valid scalar transform rejected");
             return {functions: [], signatures: [], parameter_types: [], blocks: [],
-                    block_parameters: [], values: [], instructions: [], edges: [],
+                    block_parameters: [], values: [], instructions: [], edges: [], calls: [],
                     arguments: [], literals: [], origins: [], names: [], name_bytes: []};
     }
 }
@@ -319,6 +321,11 @@ CheckEqual :: (left: typed.Module, right: typed.Module) {
     for (a, index in left.edges) {
         b := right.edges[index];
         assert(a.target == b.target && a.first_argument == b.first_argument && a.argument_count == b.argument_count, "deterministic edges rows");
+    }
+    assert(length(left.calls) == length(right.calls), "deterministic calls count");
+    for (a, index in left.calls) {
+        b := right.calls[index];
+        assert(a.callee == b.callee && a.first_argument == b.first_argument, "deterministic calls rows");
     }
     assert(length(left.origins) == length(right.origins), "deterministic origins count");
     for (a, index in left.origins) {
@@ -539,5 +546,475 @@ CheckLimits :: () {
     assert(text_byte_length(over) == 65537, "rejected source boundary is exactly one byte over");
     message = Rejected(over);
     assert(message == "vNext scalar slice requires a nonnegative document and at most 64 KiB source", "valid document isolates the source byte limit");
-    // Syntax-node and statement-depth boundaries are not exercised here.
+    prefix = "package p\nDeep :: (b: bool, x: i64) -> i64 { ";
+    exact = strings.Concatenate([prefix, strings.Repeat("if (b) { ", 31), "return x; ",
+                                 strings.Repeat("} ", 31), "return x; }\n"]);
+    full = Accepted(exact);
+    assert(length(full.blocks) == 63, "statement depth 31 remains inside the block bound");
+    message = Rejected(strings.Concatenate([prefix, strings.Repeat("if (b) { ", 32), "return x; ",
+                                            strings.Repeat("} ", 32), "return x; }\n"]));
+    assert(message == "vNext scalar slice exceeds statement nesting 32", "statement depth is checked before deeper traversal");
+
+    // Retained parser emits 27 rows for this declaration and five per plain
+    // assignment, excluding its hidden newline terminators: 27 + 1633*5=8192.
+    prefix = "package p\nNodes :: (x: i64) -> i64 { ";
+    exact = strings.Concatenate([prefix, strings.Repeat("x = x; ", 1633), "return x; }\n"]);
+    full = Accepted(exact);
+    assert(length(full.values) == 1 && length(full.instructions) == 1, "8192 nodes admit no-op assignments without extra values");
+    // One extra comment is one retained extra row, without changing the body.
+    message = Rejected(strings.Concatenate(["// extra\n", exact]));
+    assert(message == "vNext scalar slice exceeds 8192 syntax nodes", "8193rd syntax row reaches the node bound");
+}
+
+// These helpers inspect produced relationships; they never evaluate source/IR.
+CallInstruction :: (module: typed.Module, call: u32) -> int {
+    for (instruction, index in module.instructions) {
+        if (instruction.op == typed.DirectCall && instruction.payload == call) { return index; }
+    }
+    assert(false, "expected a produced call instruction");
+    return 0;
+}
+OpcodeInstruction :: (module: typed.Module, opcode: u32) -> int {
+    for (instruction, index in module.instructions) {
+        if (instruction.op == opcode) { return index; }
+    }
+    assert(false, "expected a produced opcode");
+    return 0;
+}
+CheckScalarCalls :: () {
+    source := "package p\nOuter :: (x: i64, y: i64) -> i64 { return Pair(Inner(x), Inner(y)); }\nInner :: (value: i64) -> i64 { return value * 7; }\nPair :: (left: i64, right: i64) -> i64 { return left + right; }\n";
+    module := Accepted(source);
+    CheckEqual(module, Accepted(source));
+    assert(length(module.calls) == 3 && length(module.arguments) == 4, "two nested calls and their outer span are retained");
+    assert(module.calls[0].callee == 2 && module.calls[1].callee == 2 && module.calls[2].callee == 3, "forward private callees resolve from headers");
+    assert(module.calls[2].first_argument == 0 && module.calls[0].first_argument == 2 && module.calls[1].first_argument == 3, "outer span is reserved before nested arguments");
+    first_call := module.instructions[CallInstruction(module, 1)];
+    second_call := module.instructions[CallInstruction(module, 2)];
+    outer_call := module.instructions[CallInstruction(module, 3)];
+    assert(module.arguments[0] == first_call.result && module.arguments[1] == second_call.result, "outer arguments occupy contiguous slots in source order");
+    assert(module.arguments[2] == 1 && module.arguments[3] == 2, "nested calls read the correct caller parameters");
+    assert(CallInstruction(module, 1) < CallInstruction(module, 2) && CallInstruction(module, 2) < CallInstruction(module, 3), "argument evaluations are left-to-right before the outer call");
+    returned := Terminator(module, 1);
+    assert(returned.left == outer_call.result, "outer call result reaches the source return");
+    renamed := Accepted(strings.ReplaceAll(source, "Inner", "Renamed"));
+    assert(renamed.calls[0].callee == 2 && NameMatches(renamed, 1, "Renamed"), "renamed call resolution is source driven");
+    reordered := Accepted("package p\nInner :: (x: i64) -> i64 { return x; }\nOuter :: (x: i64) -> i64 { return Inner(x); }\n");
+    assert(reordered.calls[0].callee == 1, "declaration reorder changes the resolved FunctionID");
+
+    zero := Accepted("package p\nCaller :: (x: i64) -> i64 { saved: i64 = Identity(x); return Empty(); }\nIdentity :: (x: i64) -> i64 { return x; }\nEmpty :: () -> i64 { return 7; }\n");
+    assert(length(zero.arguments) == 1 && zero.calls[1].first_argument == 0, "zero arity has canonical offset even after nonempty arguments");
+    booleans := Accepted("package p\nCaller :: (x: i64, y: i64, b: bool) -> bool { scaled: i64 = x * y; return Flip(!(scaled > y)); }\nFlip :: (b: bool) -> bool { return !b; }\nTrue :: () -> bool { return true; }\nFalse :: () -> bool { return false; }\n");
+    multiply := booleans.instructions[OpcodeInstruction(booleans, typed.MultiplyI64)];
+    greater := booleans.instructions[OpcodeInstruction(booleans, typed.GreaterI64)];
+    inverted := booleans.instructions[OpcodeInstruction(booleans, typed.NotBool)];
+    assert(multiply.left == 1 && multiply.right == 2 && booleans.values[int(multiply.result) - 1].type == typed.I64, "multiply consumes i64 and produces i64");
+    assert(greater.left == multiply.result && greater.right == 2 && booleans.values[int(greater.result) - 1].type == typed.Bool, "signed greater consumes multiplied i64 and produces bool");
+    assert(inverted.left == greater.result && booleans.arguments[0] == inverted.result, "bool inversion flows through a bool call argument");
+    call := booleans.instructions[CallInstruction(booleans, 1)];
+    assert(booleans.values[int(call.result) - 1].type == typed.Bool, "bool call result follows callee signature");
+    for (function_index in 2..<4) {
+        function := booleans.functions[function_index];
+        returned = Terminator(booleans, function.first_block + 1);
+        constant := DefiningInstruction(booleans, returned.left);
+        assert(constant.op == typed.ConstantBool && constant.payload == u32(3 - function_index), "literal bool payloads are canonical 1/0");
+    }
+    wrapping := Accepted("package p\nWrap :: () -> i64 { return 9223372036854775807 * 2; }\n");
+    assert(length(wrapping.instructions) == 4 && wrapping.instructions[2].op == typed.MultiplyI64, "literal multiplication remains explicit wrapping IR");
+    assert(wrapping.literals[0] == 9223372036854775807 && wrapping.literals[1] == 2, "multiplication keeps individually checked literal operands");
+
+    recursive := Accepted("package p\nSelf :: (b: bool, x: i64) -> i64 { if (b) { return Self(false, x); } return x; }\n");
+    assert(recursive.calls[0].callee == 1, "self-call is not a CFG cycle");
+    mutual := Accepted("package p\nFirst :: (b: bool, x: i64) -> i64 { if (b) { return Second(false, x); } return x; }\nSecond :: (b: bool, x: i64) -> i64 { if (b) { return First(false, x); } return x; }\n");
+    assert(mutual.calls[0].callee == 2 && mutual.calls[1].callee == 1, "mutual calls use existing headers without recursive production");
+    branches := Accepted("package p\nCaller :: (b: bool, x: i64, y: i64) -> i64 { r: i64 = x; if (b) { r = Read(x); } else { r = Read(y); } return Read(r); }\nRead :: (x: i64) -> i64 { return x; }\n");
+    assert(length(branches.calls) == 3 && length(branches.arguments) == 5, "call and merge spans partition a shared argument table");
+    merge := branches.blocks[3];
+    last := branches.calls[2];
+    assert(branches.arguments[int(last.first_argument)] == branches.block_parameters[int(merge.first_parameter)], "post-branch call reads the merged value");
+
+    parameters := "";
+    arguments := "";
+    for (index in 0..<32) {
+        if (index != 0) {
+            parameters = strings.Concatenate([parameters, ", "]);
+            arguments = strings.Concatenate([arguments, ", "]);
+        }
+        annotation := "bool";
+        argument := "true";
+        if (index % 2 != 0) { annotation = "i64"; argument = format_text("{}", index); }
+        parameters = strings.Concatenate([parameters, "p", format_text("{}", index), ": ", annotation]);
+        arguments = strings.Concatenate([arguments, argument]);
+    }
+    header := strings.Concatenate(["package p\nMany :: (", parameters, ") -> i64 { return p31; }\n"]);
+    prefix := strings.Concatenate([header, "Caller :: () -> i64 { return Many("]);
+    full := Accepted(strings.Concatenate([prefix, arguments, "); }\n"]));
+    assert(length(full.calls) == 1 && length(full.arguments) == 32, "32 mixed scalar arguments cover register and stack positions");
+    message := Rejected(strings.Concatenate([prefix, arguments, ", 33); }\n"]));
+    assert(message == "vNext scalar slice exceeds 32 call arguments", "33rd argument reaches admission limit before evaluation");
+
+    negatives: string[] = [
+        "package p\nF :: () -> i64 { return Missing(); }\n",
+        "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: (Read: i64) -> i64 { return Read(1); }\n",
+        "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { Read: i64 = 7; return Read(1); }\n",
+        "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return Read(); }\n",
+        "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return Read(true); }\n",
+        "package p\nRead :: (x: bool) -> bool { return x; }\nF :: () -> bool { return Read(1); }\n",
+        "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return Read(x: 1); }\n",
+        "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return Read(x: i64 = 1); }\n",
+        "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return (Read)(1); }\n",
+        "package p\nF :: () -> i64 { return other.Read(1); }\n",
+        "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { Read(1); return 7; }\n",
+        "package p\nF :: () -> bool { return !1; }\n",
+        "package p\nF :: () -> i64 { return true * 7; }\n",
+        "package p\nF :: () -> bool { return 7 > false; }\n",
+        "package p\nF :: () -> bool { return true && false; }\n"
+    ];
+    for (text in negatives) { Rejected(text); }
+    CheckRejectedAt("package p\nF :: () -> i64 { return Missing(); }\n", "unknown direct callee", "Missing");
+    CheckRejectedAt("package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return Read(true); }\n", "direct call argument type does not match signature", "true");
+    CheckRejectedAt("package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return Read(); }\n", "direct call argument count does not match signature", "()");
+    CheckRejectedAt("package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return Read(absent, absent); }\n", "direct call argument count does not match signature", "(absent, absent)");
+    CheckRejectedAt("package p\nRead :: (x: i64) -> i64 { return x; }\nF :: (Read: i64) -> i64 { return Read(1); }\n", "scalar binding is not callable", "Read");
+    CheckRejectedAt("package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return Read(x: 1); }\n", "vNext scalar slice requires positional call arguments", "x: 1");
+    CheckRejectedAt("package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return (Read)(1); }\n", "vNext scalar slice requires an identifier direct callee", "(Read)");
+    // An initializer sees the previous scope; its new binding is not visible yet.
+    initializer := Accepted("package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { Read: i64 = Read(7); return Read; }\n");
+    assert(initializer.calls[0].callee == 1, "local declaration starts shadowing after its initializer");
+}
+
+CheckCallMutations :: () {
+    source := Accepted("package p\nCaller :: (x: i64, y: i64, b: bool) -> i64 { a: i64 = Target(x, b); c: i64 = Target(y, !b); return a + c; }\nTarget :: (value: i64, flag: bool) -> i64 { return value; }\nBoolTarget :: (flag: bool) -> bool { return !flag; }\nBoolCaller :: (flag: bool) -> bool { return BoolTarget(flag); }\nZero :: () -> i64 { return 7; }\nZeroCaller :: () -> i64 { return Zero(); }\n");
+    first := CallInstruction(source, 1);
+    second := CallInstruction(source, 2);
+    boolean := CallInstruction(source, 3);
+    module := source;
+    instructions := module.instructions;
+    instruction := instructions[first];
+    calls := module.calls;
+    call := calls[0];
+    arguments := module.arguments;
+    values := module.values;
+    value := values[0];
+    error: int = 0;
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[first];
+    instruction.payload = 0;
+    instructions[first] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "zero CallID is rejected");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[first];
+    instruction.payload = 4294967295;
+    instructions[first] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "maximum CallID is rejected before indexing");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[second];
+    instruction.payload = 1;
+    instructions[second] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "a Call row cannot have two instruction owners");
+    module = source;
+    calls = module.calls;
+    calls.append(source.calls[3]);
+    module.calls = calls;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "orphan zero-arity Call row is rejected");
+    module = source;
+    calls = module.calls;
+    call = calls[0];
+    call.callee = 0;
+    calls[0] = call;
+    module.calls = calls;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDefinition, "absent callee is rejected before signature indexing");
+    module = source;
+    calls = module.calls;
+    call = calls[0];
+    call.callee = 4294967295;
+    calls[0] = call;
+    module.calls = calls;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDefinition, "maximum callee is rejected before indexing");
+    module = source;
+    functions := module.functions;
+    function := functions[1];
+    function.signature = 4294967295;
+    functions[1] = function;
+    module.functions = functions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "bad callee signature ID is rejected before call span reading");
+    module = source;
+    calls = module.calls;
+    call = calls[0];
+    call.first_argument = 4294967295;
+    calls[0] = call;
+    module.calls = calls;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "out-of-range call span is rejected before narrowing");
+    module = source;
+    calls = module.calls;
+    call = calls[0];
+    call.first_argument = u32(length(module.arguments) - 1);
+    calls[0] = call;
+    module.calls = calls;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "call span ending beyond the argument table is rejected");
+    module = source;
+    calls = module.calls;
+    call = calls[1];
+    call.first_argument = 0;
+    calls[1] = call;
+    module.calls = calls;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "overlapping call argument spans are rejected");
+    module = source;
+    calls = module.calls;
+    call = calls[3];
+    call.first_argument = 1;
+    calls[3] = call;
+    module.calls = calls;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "empty call span requires canonical zero offset");
+    module = source;
+    arguments = module.arguments;
+    arguments.append(1);
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "unowned argument slot is rejected");
+    module = source;
+    arguments = module.arguments;
+    arguments[0] = 0;
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDefinition, "absent call argument is rejected");
+    module = source;
+    arguments = module.arguments;
+    arguments[0] = 4294967295;
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDefinition, "maximum call argument ID is rejected before indexing");
+    module = source;
+    arguments = module.arguments;
+    arguments[0] = 3;
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "bool argument cannot replace an i64 parameter");
+    module = source;
+    arguments = module.arguments;
+    arguments[1] = 1;
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "i64 argument cannot replace a bool parameter");
+    module = source;
+    arguments = module.arguments;
+    arguments[0] = module.block_parameters[int(module.blocks[int(module.functions[1].first_block)].first_parameter)];
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDominance, "callee-local value cannot be used in caller argument");
+    module = source;
+    arguments = module.arguments;
+    arguments[int(module.calls[2].first_argument)] = 3;
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDominance, "earlier function parameter is not in the bool caller scope");
+    module = source;
+    arguments = module.arguments;
+    arguments[0] = module.instructions[second].result;
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDominance, "later call result cannot be used by an earlier call");
+    module = source;
+    arguments = module.arguments;
+    arguments[0] = module.instructions[first].result;
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDominance, "call cannot read its own result");
+    module = source;
+    values = module.values;
+    value = values[int(module.instructions[first].result) - 1];
+    value.type = typed.Bool;
+    values[int(module.instructions[first].result) - 1] = value;
+    module.values = values;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "call result type must match the callee signature");
+    module = source;
+    values = module.values;
+    value = values[int(module.instructions[boolean].result) - 1];
+    value.type = typed.I64;
+    values[int(module.instructions[boolean].result) - 1] = value;
+    module.values = values;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "call result type must match the callee signature");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[first];
+    instruction.left = 1;
+    instructions[first] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "call left field is unused and must be zero");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[first];
+    instruction.right = 1;
+    instructions[first] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "call right field is unused and must be zero");
+    branches := Accepted("package p\nCaller :: (b: bool, x: i64, y: i64) -> i64 { r: i64 = x; if (b) { r = Read(x); } else { r = Read(y); } return Read(r); }\nRead :: (x: i64) -> i64 { return x; }\n");
+    module = branches;
+    arguments = module.arguments;
+    arguments[int(module.calls[2].first_argument)] = module.instructions[CallInstruction(module, 1)].result;
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDominance, "branch-local call result cannot bypass the merge");
+    module = branches;
+    calls = module.calls;
+    call = calls[0];
+    call.first_argument = module.edges[2].first_argument;
+    calls[0] = call;
+    module.calls = calls;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "call and edge argument spans cannot overlap");
+
+    scalar := Accepted("package p\nF :: (x: i64, y: i64, b: bool) -> bool { a: i64 = x * y; return !(a > y); }\nTrue :: () -> bool { return true; }\n");
+    constant := OpcodeInstruction(scalar, typed.ConstantBool);
+    multiply := OpcodeInstruction(scalar, typed.MultiplyI64);
+    greater := OpcodeInstruction(scalar, typed.GreaterI64);
+    invert := OpcodeInstruction(scalar, typed.NotBool);
+    source = scalar;
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[constant];
+    instruction.payload = 2;
+    instructions[constant] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "bool literal payload must be canonical zero or one");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[constant];
+    instruction.left = 1;
+    instructions[constant] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "bool literal left field must be zero");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[constant];
+    instruction.right = 1;
+    instructions[constant] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "bool literal right field must be zero");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[multiply];
+    instruction.payload = 1;
+    instructions[multiply] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "multiply payload is unused");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[greater];
+    instruction.payload = 1;
+    instructions[greater] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "greater payload is unused");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[invert];
+    instruction.right = 1;
+    instructions[invert] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "not right field is unused");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[invert];
+    instruction.payload = 1;
+    instructions[invert] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "not payload is unused");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[multiply];
+    instruction.left = 3;
+    instructions[multiply] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "multiply requires i64 operands");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[greater];
+    instruction.right = 3;
+    instructions[greater] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "greater requires i64 operands");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[invert];
+    instruction.left = 1;
+    instructions[invert] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "not requires bool operand");
+    module = source;
+    values = module.values;
+    value = values[int(module.instructions[multiply].result) - 1];
+    value.type = typed.Bool;
+    values[int(module.instructions[multiply].result) - 1] = value;
+    module.values = values;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "scalar opcode result has its required type");
+    module = source;
+    values = module.values;
+    value = values[int(module.instructions[greater].result) - 1];
+    value.type = typed.I64;
+    values[int(module.instructions[greater].result) - 1] = value;
+    module.values = values;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "scalar opcode result has its required type");
+    module = source;
+    values = module.values;
+    value = values[int(module.instructions[invert].result) - 1];
+    value.type = typed.I64;
+    values[int(module.instructions[invert].result) - 1] = value;
+    module.values = values;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "scalar opcode result has its required type");
+    module = source;
+    values = module.values;
+    value = values[int(module.instructions[constant].result) - 1];
+    value.type = typed.I64;
+    values[int(module.instructions[constant].result) - 1] = value;
+    module.values = values;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "scalar opcode result has its required type");
+    error = typed.Verify(source);
+    assert(error == 0, "mutations preserve the produced scalar module");
+    error = typed.Verify(branches);
+    assert(error == 0, "mutations preserve call and edge span source");
+}
+
+CheckRejectedAt :: (text: string, message: string, span: string) {
+    switch typed.Produce(text, 2147483647) {
+        case .Produced(module): assert(false, "invalid call source accepted");
+        case .Rejected(diagnostic):
+            assert(diagnostic.document == 2147483647 && diagnostic.message == message, "call diagnostic preserves document and precise category text");
+            assert(diagnostic.start >= 0 && diagnostic.end <= text_byte_length(text), "call diagnostic is inside source");
+            actual := text_slice(text, diagnostic.start, diagnostic.end - diagnostic.start);
+            assert(actual == span, "call diagnostic identifies the callee, list or argument responsible");
+    }
 }

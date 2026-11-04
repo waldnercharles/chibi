@@ -16,7 +16,7 @@ foreign backend {
     chibi_vnext_destroy :: (owner: rawptr) -> i32
 }
 
-// Preparation replaces the source marker with the exact UTF-8 NativeCases.chibi
+// Preparation replaces the source marker with the exact selected UTF-8 source
 // as one escaped string, the library marker with the accepted backend CDylib
 // path, and the output marker with one escaped absolute filename in the parent's fresh,
 // exclusively owned output directory. core:os.WriteBytes is not exclusive;
@@ -41,8 +41,10 @@ Main :: () -> int {
             assert(false, "native fixture must pass the retained source producer");
             return 4;
         case .Produced(module):
+// BEGIN FIXTURE_CHECKS
             assert(length(module.functions) == 16, "all source fixture functions were produced");
             CheckMergeShape(module);
+// END FIXTURE_CHECKS
             anchor := CompileOwned(module);
             if (!Ready(anchor)) {
                 closed := chibi_vnext_destroy(anchor);
@@ -152,7 +154,7 @@ Ready :: (owner: rawptr) -> bool {
     return true;
 }
 
-// The bounded fixture has 16 functions. This test-only linear name lookup is
+// The bounded fixture has at most 32 functions. This test-only linear name lookup is
 // outside backend lowering and compares the actual produced UTF-8 name bytes.
 FindFunction :: (module: typed.Module, expected: string) -> u32 {
     for (function, index in module.functions) {
@@ -184,6 +186,7 @@ ExpectedEntry :: (module: typed.Module, owner: rawptr, name: string, parameters:
     return chibi_vnext_entry(owner, id);
 }
 
+// BEGIN FIXTURE_CALLS
 CheckCalls :: (module: typed.Module, owner: rawptr) -> int {
     minimum: i64 = -9223372036854775807 - 1;
     maximum: i64 = 9223372036854775807;
@@ -330,6 +333,8 @@ CheckMergeShape :: (module: typed.Module) {
     assert(found, "real producer supplies a three-argument merge, not a hand-authored IR recipe");
 }
 
+// END FIXTURE_CALLS
+
 CheckBytes :: (actual: u8[], expected: u8[]) {
     assert(length(actual) == length(expected), "exact byte length");
     for (byte, index in expected) { assert(actual[index] == byte, "exact byte value"); }
@@ -339,7 +344,7 @@ CheckSentinel :: (bytes: u8[]) {
 }
 CopyObject :: (owner: rawptr) -> u8[] {
     count := chibi_vnext_object_length(owner);
-    assert(count > u64(0) && count <= u64(4194304), "16-function fixture object must fit the 4 MiB test limit");
+    assert(count > u64(0) && count <= u64(4194304), "bounded fixture object must fit the 4 MiB test limit");
     bytes: u8[] = [];
     bytes.resize(int(count));
     for (index in 0..<length(bytes)) { bytes[index] = u8(165); }
@@ -363,15 +368,16 @@ CopyObject :: (owner: rawptr) -> u8[] {
     return bytes;
 }
 
+// BEGIN FIXTURE_REJECTIONS
 CheckSourceRejections :: () {
     rejected_sources: string[] = [
-        "package p\npub Bad :: (value: i64) -> i64 { return value * 7; }\n",
+        "package p\npub Bad :: (value: i64) -> i64 { return value / 7; }\n",
         "package p\npub Bad :: (value: bool) -> i64 { return value; }\n",
         "package p\npub Bad :: () -> i64 { return 9223372036854775808; }\n",
         "package p\npub Bad :: (value: i64[]) -> i64 { return 1; }\n",
         "package p\npub Bad :: () -> i64 { return missing; }\n",
         "package p\npub Bad :: (value: i64) -> i64 { value = 1; }\n",
-        "package p\npub Good :: (value: i64) -> i64 { return value; }\npub Bad :: (value: i64) -> i64 { return value * 7; }\n"
+        "package p\npub Good :: (value: i64) -> i64 { return value; }\npub Bad :: (value: i64) -> i64 { return value / 7; }\n"
     ];
     for (source in rejected_sources) {
         // There is no Pack or backend call on either arm of this control.
@@ -383,6 +389,8 @@ CheckSourceRejections :: () {
         }
     }
 }
+
+// END FIXTURE_REJECTIONS
 
 PerfBuildIdFailure :: (source: string) -> int {
     CheckSourceRejections();

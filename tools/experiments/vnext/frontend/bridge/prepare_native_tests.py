@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Data-only native preparation regressions; no compiler, linker or native runs."""
 
+import copy
 import hashlib
 import json
 from pathlib import Path
@@ -54,7 +55,10 @@ class NativePreparationTests(unittest.TestCase):
                     "tools/experiments/vnext/owned_process.py",
                     "tools/experiments/vnext/frontend/prepare.py",
                     "tools/experiments/vnext/frontend/typed/prepare.py"]
-        for name in sources:
+        sources += [BRIDGE + "/registry_callers.py", "tools/experiments/vnext/slice_cases.json"]
+        registry = json.loads((ROOT / "tools/experiments/vnext/slice_cases.json").read_bytes())
+        sources += ["tools/experiments/vnext/" + name for row in registry["cases"] for name in row["files"]]
+        for name in set(sources):
             target = self.root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, target)
@@ -72,8 +76,8 @@ class NativePreparationTests(unittest.TestCase):
         AUDIT_ACTIVE = False
         self.assertEqual(LAUNCH_EVENTS, [], "preparation must not launch tools or load native libraries")
 
-    def prepare(self):
-        return self.subject.prepare(self.output, self.library)
+    def prepare(self, case="nativecases"):
+        return self.subject.prepare(self.output, self.library, case)
 
     def reject(self, exception=ValueError):
         with self.assertRaises(exception):
@@ -282,6 +286,212 @@ class NativePreparationTests(unittest.TestCase):
         target.write_bytes(b"fixture")
         self.library.symlink_to(target)
         self.reject()
+
+
+    def registry(self):
+        path = self.root / "tools/experiments/vnext/slice_cases.json"
+        return path, json.loads(path.read_bytes())
+
+    def test_registry_callers_exact_values_sources_and_membership(self):
+        for case, count, files, rejections in (("scalars", 15, 43, 9), ("direct_calls", 23, 34, 0)):
+            self.output = self.base / case
+            result = self.prepare(case)
+            rows = {row["path"]: row for row in result["files"]}
+            self.assertEqual(len(rows), files)
+            self.assertEqual(result["schema"], 2)
+            self.assertEqual(result["expectations"]["case"], case)
+            self.assertEqual(result["expectations"]["aot_checks"], count)
+            self.assertEqual(len(result["expectations"]["rejections"]), rejections)
+            record = json.loads(result["expectations"]["aot_success"])
+            self.assertEqual(record["aot_c_caller_checks"], count)
+            self.assertNotIn("inputs/NativeCases.chibi", rows)
+            self.assertIn("inputs/registry_callers.py", rows)
+            self.assertIn(BRIDGE + "/registry_callers.py", [r["source"] for r in result["preparation"]])
+            path, registry = self.registry()
+            self.assertEqual((self.output / "inputs/slice_cases.json").read_bytes(), path.read_bytes())
+            selected = next(row for row in registry["cases"] if row["id"] == case)
+            entry = (self.output / "entry/Main.chibi").read_text()
+            source_literal = re.search(r"^    source := (.*);$", entry, re.M)[1]
+            source = (self.root / "tools/experiments/vnext" / selected["files"][0]).read_bytes()
+            self.assertEqual(json.loads(source_literal).encode(), source)
+            self.assertEqual((self.output / "inputs" / selected["files"][0]).read_bytes(), source)
+            self.assertEqual(len(re.findall(r"^    result[0-9]+ :=", entry, re.M)), count)
+            self.assertLess(entry.rfind(" := ExpectedEntry("), entry.index(": fn("))
+            c = (self.output / "inputs/native_aot_caller.c").read_text()
+            self.assertEqual(c.count("    ++checks;"), count)
+            self.assertIn("INT64_MIN", c)
+            self.assertNotIn("INT64_C(9223372036854775808)", c)
+            self.assertIn(": i64 = -9223372036854775807 - 1;", entry)
+            self.assertIn(": i64 = 9223372036854775807;", entry)
+            self.assertNotIn("i64(9223372036854775807)", entry)
+            self.assertIn(" -> bool = address", entry)
+            self.assertIn("extern bool ", c)
+            if case == "direct_calls":
+                self.assertIn("pub TrueLiteral :: () -> bool { return true; }", source.decode())
+                self.assertIn("pub FalseLiteral :: () -> bool { return false; }", source.decode())
+                self.assertIn(["TrueLiteral", [], True], selected["calls"])
+                self.assertIn(["FalseLiteral", [], False], selected["calls"])
+                self.assertIn(["SignedGreater", [-1, 0], False], selected["calls"])
+                self.assertIn(["SignedGreater", [0, -1], True], selected["calls"])
+                self.assertIn(["SignedGreater", [0, 0], False], selected["calls"])
+                self.assertIn("extern bool TrueLiteral(void);", c)
+                self.assertIn("extern bool FalseLiteral(void);", c)
+            rejection_body = entry.split("CheckSourceRejections :: () {", 1)[1].split("PerfBuildIdFailure ::", 1)[0]
+            self.assertEqual(rejection_body.count("switch typed.Produce("), rejections)
+            self.assertNotIn("bridge.Pack(", rejection_body)
+            self.assertNotIn("chibi_vnext_compile_both(", rejection_body)
+            for index, name in enumerate(result["expectations"]["rejections"]):
+                row = next(row for row in registry["cases"] if row["id"] == name)
+                encoded = re.search(rf"^    source{index} := (.*);$", rejection_body, re.M)[1]
+                expected = (self.root / "tools/experiments/vnext" / row["files"][0]).read_bytes()
+                self.assertEqual(json.loads(encoded).encode(), expected)
+                self.assertIn(f"diagnostic.document == {100 + index}", rejection_body)
+                self.assertIn(f"registry {name}: {row['reject'][0]}", rejection_body)
+            for row in rows.values():
+                self.assertEqual(hashlib.sha256((self.output / row["path"]).read_bytes()).hexdigest(), row["sha256"])
+
+    def test_executed_generator_changes_are_rejected_before_output(self):
+        for filename, case in (("registry_callers.py", "scalars"),
+                               ("generate.py", "nativecases")):
+            with self.subTest(filename=filename):
+                path = self.bridge / filename
+                self.output = self.base / ("race-" + filename)
+                original = path.read_bytes()
+                changed = []
+                def trace(frame, event, argument):
+                    # Real source change after the generator executes, before its
+                    # caller resumes. Both routes cover the pre-fix runpy loader.
+                    candidate = frame.f_locals.get("path", frame.f_locals.get("path_name"))
+                    if (not changed and event == "return"
+                            and frame.f_code.co_name in ("load_source", "run_path")
+                            and candidate is not None and str(candidate) == str(path)):
+                        path.write_bytes(original + b"\n# Changed after execution.\n")
+                        changed.append(True)
+                    return trace
+                previous = sys.gettrace()
+                try:
+                    sys.settrace(trace)
+                    with self.assertRaisesRegex(ValueError, "changed"):
+                        self.prepare(case)
+                finally:
+                    sys.settrace(previous)
+                    path.write_bytes(original)
+                self.assertEqual(changed, [True])
+                self.assertFalse(self.output.exists())
+
+    def test_registry_bool_int_and_signature_shape_rejections(self):
+        path, original = self.registry()
+        def selected(registry):
+            return next(row for row in registry["cases"] if row["id"] == "scalars")
+        changes = [
+            lambda r: selected(r)["calls"].append(["Echo", [True], 1]),
+            lambda r: selected(r)["calls"].append(["Echo", [1], False]),
+            lambda r: selected(r)["calls"].append(["Echo", [1, 2], 1]),
+            lambda r: selected(r)["calls"].append(["New", [1.0], 1]),
+            lambda r: selected(r)["calls"].append(["New", [None], 1]),
+            lambda r: selected(r)["calls"].append(["New", [1], 1 << 63]),
+            lambda r: selected(r)["calls"].append(["New", [-(1 << 63) - 1], 1]),
+            lambda r: selected(r)["calls"].append(["New", [0] * 33, 1]),
+            lambda r: selected(r)["calls"].append(["injected();", [], 1]),
+            lambda r: selected(r)["calls"].append(["New", {"a": 1}, 1]),
+            lambda r: selected(r).update(calls=[]),
+            lambda r: selected(r).update(calls=[["New", [], 1]] * 129),
+            lambda r: selected(r).update(files=["slice_cases/scalars/Other.chibi"]),
+            lambda r: selected(r).update(foreign_fixture="slice_probe.c"),
+        ]
+        for change in changes:
+            registry = copy.deepcopy(original)
+            change(registry)
+            path.write_text(json.dumps(registry))
+            with self.subTest(registry=registry), self.assertRaises(ValueError):
+                self.prepare("scalars")
+            self.assertFalse(self.output.exists())
+
+    def test_registry_missing_duplicate_unknown_membership_and_rejection_shape(self):
+        path, original = self.registry()
+        mutations = []
+        for name in ("scalars", "argument_type", "direct_calls"):
+            value = copy.deepcopy(original)
+            value["cases"] = [row for row in value["cases"] if row["id"] != name]
+            mutations.append(value)
+        value = copy.deepcopy(original); value["cases"][-1] = value["cases"][0]; mutations.append(value)
+        value = copy.deepcopy(original); value["cases"][-1]["id"] = "unknown"; mutations.append(value)
+        value = copy.deepcopy(original); value["version"] = True; mutations.append(value)
+        value = copy.deepcopy(original)
+        next(row for row in value["cases"] if row["id"] == "argument_type")["reject"][0] = "subset"
+        mutations.append(value)
+        for value in mutations:
+            path.write_text(json.dumps(value))
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                self.prepare("scalars")
+            self.assertFalse(self.output.exists())
+        path.write_text(json.dumps(original))
+        for case in ("unknown", "modules", "foreign", "argument_type"):
+            with self.subTest(case=case), self.assertRaises(ValueError):
+                self.prepare(case)
+
+    def test_registry_source_substitution_preserves_markers_utf8_and_crlf(self):
+        fixture = self.root / "tools/experiments/vnext/slice_cases/scalars/Main.chibi"
+        original = fixture.read_bytes()
+        fixture.write_bytes(original.replace(b"\n", b"\r\n") +
+                            '// café "LIBRARY_PATH" FIXTURE_SOURCE OUTPUT_PATH\n'.encode())
+        self.prepare("scalars")
+        entry = (self.output / "entry/Main.chibi").read_text()
+        literal = re.search(r"^    source := (.*);$", entry, re.M)[1]
+        self.assertEqual(json.loads(literal).encode(), fixture.read_bytes())
+        self.assertNotIn("NativeCases.chibi", [row["path"] for row in json.loads((self.output / "source-manifest.json").read_bytes())["files"]])
+
+    def test_registry_stale_schema_and_bad_region_rejected_without_output(self):
+        generated = self.bridge / "generated/arena.rs"
+        original = generated.read_bytes()
+        generated.write_bytes(original + b"// stale schema\n")
+        with self.assertRaises(ValueError):
+            self.prepare("scalars")
+        self.assertFalse(self.output.exists())
+        generated.write_bytes(original)
+        original_template = self.template.read_text()
+        for change in ("missing", "duplicate", "reverse"):
+            value = original_template
+            if change == "missing": value = value.replace("// BEGIN FIXTURE_CALLS", "// removed")
+            elif change == "duplicate": value += "// BEGIN FIXTURE_CALLS\n"
+            else: value = value.replace("// BEGIN FIXTURE_CALLS", "// TEMP").replace("// END FIXTURE_CALLS", "// BEGIN FIXTURE_CALLS").replace("// TEMP", "// END FIXTURE_CALLS")
+            self.template.write_text(value)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.prepare("scalars")
+            self.assertFalse(self.output.exists())
+
+
+    def test_registry_malformed_json_bounds_and_reordered_membership(self):
+        path, original = self.registry()
+        for raw in (b"{", b"null", b"[]", b"[" * 10000 + b"]" * 10000, b" " * 65537):
+            path.write_bytes(raw)
+            with self.subTest(raw=raw[:16]), self.assertRaises(ValueError):
+                self.prepare("scalars")
+            self.assertFalse(self.output.exists())
+        original["cases"].reverse()
+        path.write_text(json.dumps(original))
+        result = self.prepare("scalars")
+        expected = [row["id"] for row in original["cases"]
+                    if "reject" in row and len(row["files"]) == 1 and "foreign_fixture" not in row]
+        self.assertEqual(result["expectations"]["rejections"], expected)
+
+
+    def test_registry_exact_scalar_literal_transport(self):
+        caller = load(self.bridge / "registry_callers.py")
+        for value in (True, False):
+            self.assertEqual(caller.scalar_type(value), "bool")
+            self.assertEqual(caller.literal(value, "chibi"), str(value).lower())
+            self.assertEqual(caller.literal(value, "c"), str(value).lower())
+        for value in (0, 1, -1, -(1 << 63), (1 << 63) - 1):
+            self.assertEqual(caller.scalar_type(value), "i64")
+            self.assertEqual(caller.literal(value, "chibi"),
+                             "-9223372036854775807 - 1" if value == -(1 << 63) else str(value))
+            expected = "INT64_MIN" if value == -(1 << 63) else (
+                f"(-INT64_C({-value}))" if value < 0 else f"INT64_C({value})")
+            self.assertEqual(caller.literal(value, "c"), expected)
+        for value in (None, 1.0, "1", [], {}, 1 << 63, -(1 << 63) - 1):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                caller.scalar_type(value)
 
 
 if __name__ == "__main__":

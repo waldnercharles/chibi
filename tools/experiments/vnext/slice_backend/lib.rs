@@ -9,7 +9,7 @@ compile_error!("the C backend library requires panic=abort");
 #[path = "../frontend/bridge/generated/arena.rs"]
 mod schema;
 
-use cranelift_codegen::ir::{self, types, AbiParam, BlockArg, InstBuilder, Value};
+use cranelift_codegen::ir::{self, condcodes::IntCC, types, AbiParam, BlockArg, FuncRef, InstBuilder, Value};
 use cranelift_codegen::isa::OwnedTargetIsa;
 use cranelift_codegen::packed_option::PackedOption;
 use cranelift_codegen::settings::{self, Configurable};
@@ -22,8 +22,9 @@ use std::ffi::c_void;
 use std::ops::Range;
 use std::{mem, ptr, slice, str};
 
-// Dense value-map budget: one Cranelift entity ID including its absent sentinel.
+// Dense adapter maps use one Cranelift entity ID including its absent sentinel.
 const _: () = assert!(mem::size_of::<PackedOption<Value>>() == 4);
+const _: () = assert!(mem::size_of::<PackedOption<FuncRef>>() == 4);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
@@ -135,13 +136,8 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
     assert!(a.functions.len() <= MAX_FUNCTIONS as usize, "typed function admission");
     let mut declarations = Vec::with_capacity(a.functions.len());
     let mut context = module.make_context();
-    let mut builder_context = FunctionBuilderContext::new();
-    let mut blocks = Vec::with_capacity(a.blocks.len());
-    let mut values = vec![PackedOption::<Value>::default(); a.values.len()];
-    let mut yes_arguments = Vec::with_capacity(MAX_LOCALS as usize);
-    let mut no_arguments = Vec::with_capacity(MAX_LOCALS as usize);
-    // This slice has no call opcode, so no forward declaration pass is needed.
-    // clear_context retains signature buffers and restores the target ABI.
+    // Declare the whole module before any body, preserving dense source IDs.
+    // Forward, self and mutual calls share this same eager compilation path.
     for function in a.functions {
         let source = &a.signatures[index(function[FUNCTION_SIGNATURE], a.signatures.len())];
         assert!(source[SIGNATURE_PARAMETER_COUNT] <= MAX_PARAMETERS as u32,
@@ -159,6 +155,27 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
         let id = module.declare_function(name, linkage, signature)
             .expect("verified typed function declaration");
         declarations.push(id);
+        module.clear_signature(&mut context.func.signature);
+    }
+
+    let mut builder_context = FunctionBuilderContext::new();
+    let mut blocks = Vec::with_capacity(a.blocks.len());
+    let mut values = vec![PackedOption::<Value>::default(); a.values.len()];
+    let mut yes_arguments = Vec::with_capacity(MAX_LOCALS as usize);
+    let mut no_arguments = Vec::with_capacity(MAX_LOCALS as usize);
+    let mut call_arguments = Vec::with_capacity(MAX_PARAMETERS as usize);
+    let mut callees = vec![PackedOption::<FuncRef>::default(); a.functions.len()];
+    for (&id, function) in declarations.iter().zip(a.functions) {
+        // Reuse the declaration's ABI facts and the context's signature storage.
+        // Signature::clone would allocate fresh parameter/return buffers here.
+        let signature = &module.declarations().get_function_decl(id).signature;
+        context.func.signature.params.extend_from_slice(&signature.params);
+        context.func.signature.returns.extend_from_slice(&signature.returns);
+        context.func.signature.call_conv = signature.call_conv;
+        context.func.name = ir::UserFuncName::user(0, id.as_u32());
+        // FuncRefs belong to one CLIF body. Clearing at most 32 dense slots per
+        // body avoids repeated signature/name imports for repeated calls.
+        callees.fill(PackedOption::default());
         let mut builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
         assert!(function[FUNCTION_BLOCK_COUNT] != 0
                 && function[FUNCTION_BLOCK_COUNT] <= MAX_BLOCKS as u32, "typed block admission");
@@ -187,10 +204,45 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
                 let result = match opcode(instruction) {
                     Opcode::ConstantI64 => {
                         let literal = a.literals[index(instruction[INSTRUCTION_PAYLOAD], a.literals.len())];
-                        Some(builder.ins().iconst(types::I64, literal))
+                        Some((builder.ins().iconst(types::I64, literal), I64))
                     }
-                    Opcode::AddI64 => Some(builder.ins().iadd(value(&values, instruction[INSTRUCTION_LEFT]),
-                                                             value(&values, instruction[INSTRUCTION_RIGHT]))),
+                    Opcode::ConstantBool => {
+                        let literal = instruction[INSTRUCTION_PAYLOAD];
+                        assert!(literal <= 1, "typed bool literal is canonical");
+                        Some((builder.ins().iconst(types::I8, i64::from(literal)), BOOL))
+                    }
+                    Opcode::AddI64 => Some((builder.ins().iadd(value(&values, instruction[INSTRUCTION_LEFT]),
+                                                              value(&values, instruction[INSTRUCTION_RIGHT])), I64)),
+                    Opcode::MultiplyI64 => Some((builder.ins().imul(value(&values, instruction[INSTRUCTION_LEFT]),
+                                                                   value(&values, instruction[INSTRUCTION_RIGHT])), I64)),
+                    Opcode::GreaterI64 => Some((builder.ins().icmp(IntCC::SignedGreaterThan,
+                        value(&values, instruction[INSTRUCTION_LEFT]),
+                        value(&values, instruction[INSTRUCTION_RIGHT])), BOOL)),
+                    Opcode::NotBool => Some((builder.ins().icmp_imm(IntCC::Equal,
+                        value(&values, instruction[INSTRUCTION_LEFT]), 0), BOOL)),
+                    Opcode::DirectCall => {
+                        let call = &a.calls[index(instruction[INSTRUCTION_PAYLOAD], a.calls.len())];
+                        let callee = index(call[CALL_CALLEE], declarations.len());
+                        let source = &a.signatures[index(a.functions[callee][FUNCTION_SIGNATURE], a.signatures.len())];
+                        let reference = match callees[callee].expand() {
+                            Some(reference) => reference,
+                            None => {
+                                let reference = module.declare_func_in_func(declarations[callee], builder.func);
+                                callees[callee] = reference.into();
+                                reference
+                            }
+                        };
+                        call_arguments.clear();
+                        let arguments = model_span(call[CALL_FIRST_ARGUMENT], source[SIGNATURE_PARAMETER_COUNT],
+                                                   a.arguments.len());
+                        for &argument in &a.arguments[arguments] {
+                            call_arguments.push(value(&values, argument));
+                        }
+                        let emitted = builder.ins().call(reference, &call_arguments);
+                        let results = builder.inst_results(emitted);
+                        assert_eq!(results.len(), 1, "typed call has one scalar result");
+                        Some((results[0], source[SIGNATURE_RESULT_TYPE]))
+                    }
                     Opcode::Jump => {
                         let edge = &a.edges[index(instruction[INSTRUCTION_PAYLOAD], a.edges.len())];
                         edge_arguments(a, edge, &values, &mut yes_arguments);
@@ -214,9 +266,11 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
                         None
                     }
                 };
-                if let Some(defined) = result {
+                if let Some((defined, result_type)) = result {
                     let slot = index(instruction[INSTRUCTION_RESULT], values.len());
-                    assert_eq!(a.values[slot][VALUE_TYPE], I64, "integer operation result type");
+                    assert_eq!(a.values[slot][VALUE_TYPE], result_type, "typed instruction result type");
+                    assert_eq!(builder.func.dfg.value_type(defined), clif_type(result_type),
+                               "CLIF instruction result type");
                     assert_eq!(a.values[slot][VALUE_DEFINITION], instruction_index as u32 + 1,
                                "instruction result definition mismatch");
                     let previous = mem::replace(&mut values[slot], defined.into());
@@ -589,7 +643,7 @@ mod tests {
         let arena = Arena {
             functions: &functions, signatures: &signatures, parameter_types: &[],
             blocks: &blocks, block_parameters: &[], values: &values, instructions: &instructions,
-            edges: &[], arguments: &[], origins: &origins, names: &names,
+            edges: &[], calls: &[], arguments: &[], origins: &origins, names: &names,
             literals: &[7], name_bytes: name,
         };
         assert!(std::env::var_os("PERF_BUILDID_DIR").is_none(), "test requires profiling disabled");

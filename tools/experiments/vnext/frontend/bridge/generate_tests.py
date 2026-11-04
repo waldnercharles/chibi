@@ -20,12 +20,12 @@ MODEL = generator.parse_model(SOURCE)
 # Independent layout oracle, not a second schema input. Counts come from the
 # real EchoJoin producer's CheckPair, including all side-table counts.
 ECHO_JOIN = [
-    ("functions", 2, 6, 12), ("signatures", 2, 3, 24),
-    ("parameter_types", 4, 1, 30), ("blocks", 4, 4, 34),
-    ("block_parameters", 5, 1, 50), ("values", 7, 2, 55),
-    ("instructions", 6, 6, 69), ("edges", 3, 3, 105),
-    ("arguments", 2, 1, 114), ("origins", 7, 3, 116),
-    ("names", 2, 2, 137),
+    ("functions", 2, 6, 13), ("signatures", 2, 3, 25),
+    ("parameter_types", 4, 1, 31), ("blocks", 4, 4, 35),
+    ("block_parameters", 5, 1, 51), ("values", 7, 2, 56),
+    ("instructions", 6, 6, 70), ("edges", 3, 3, 106),
+    ("calls", 0, 2, 115), ("arguments", 2, 1, 115),
+    ("origins", 7, 3, 117), ("names", 2, 2, 138),
 ]
 
 
@@ -104,7 +104,10 @@ class GenerateTests(unittest.TestCase):
 
     def test_enum_groups_are_complete_and_reject_malformed_markers(self):
         self.assertEqual(MODEL.enums, (("ScalarType", ("Bool", "I64")),
-            ("Opcode", ("ConstantI64", "AddI64", "Jump", "Branch", "Return"))))
+            ("Opcode", ("ConstantI64", "AddI64", "Jump", "Branch", "Return",
+                        "ConstantBool", "MultiplyI64", "GreaterI64", "NotBool", "DirectCall"))))
+        values = {name: value for name, _, value in MODEL.constants}
+        self.assertEqual([values[name] for name in MODEL.enums[1][1]], list(range(1, 11)))
         changes = [
             ("// vnext-bridge-enum: end", ""),
             ("// vnext-bridge-enum: Opcode", "// vnext-bridge-enum: ScalarType"),
@@ -112,7 +115,7 @@ class GenerateTests(unittest.TestCase):
             ("// vnext-bridge-enum: Opcode", "// vnext-bridge-enum: Empty\n// vnext-bridge-enum: Opcode"),
             ("// vnext-bridge-enum: ScalarType", "// vnext-bridge-enum: Block"),
             ("// vnext-bridge-enum: end", "// vnext-bridge-enum: end\n// vnext-bridge-enum: end"),
-            ("// vnext-bridge-version: 1", "// vnext-bridge-version: 1\n// vnext-bridge-version: nope"),
+            ("// vnext-bridge-version: 2", "// vnext-bridge-version: 2\n// vnext-bridge-version: nope"),
             ("// vnext-bridge-enum: Opcode", " // vnext-bridge-enum: Opcode"),
             ("name: u32;", "name: u32;\n// vnext-bridge-enum: Misplaced\n"),
             ("pub I64: u32 : Bool + 1;", "pub I64: u32 : Bool + 0;"),
@@ -124,9 +127,9 @@ class GenerateTests(unittest.TestCase):
 
     def test_malformed_schema_fails_closed(self):
         replacements = [
-            ("// vnext-bridge-version: 1", ""),
-            ("// vnext-bridge-version: 1", "// vnext-bridge-version: 1\n// vnext-bridge-version: 1"),
-            ("// vnext-bridge-version: 1", "// vnext-bridge-version: 2"),
+            ("// vnext-bridge-version: 2", ""),
+            ("// vnext-bridge-version: 2", "// vnext-bridge-version: 2\n// vnext-bridge-version: 2"),
+            ("// vnext-bridge-version: 2", "// vnext-bridge-version: 3"),
             ("package vnext_typed", "package another"),
             ('import syntax "project:syntax_diagnostics"', 'import syntax "project:other"'),
             ("name: u32;", "name: u64;"),
@@ -166,6 +169,7 @@ class GenerateTests(unittest.TestCase):
             ("pub Bool: u32 : 1;", "pub Bool: u32 : 3;"),
             ("pub MaxFunctions: int : 32;", "pub MaxFunctions: int : 64;"),
             ("arguments: u32[];", "arguments: u32[]; extra: u32[];"),
+            ("callee: u32; first_argument: u32;", "callee: u32; first_argument: u32; argument_count: u32;"),
             ("functions: Function[];\n    signatures: Signature[];", "signatures: Signature[];\n    functions: Function[];"),
         ]
         for old, new in changes:
@@ -177,11 +181,32 @@ class GenerateTests(unittest.TestCase):
         for (name, _, fields), (expected_name, count, width, start) in zip(MODEL.word_tables(), ECHO_JOIN):
             self.assertEqual((name, len(fields) or 1, cursor), (expected_name, width, start))
             cursor += count * width
-        self.assertEqual(cursor, 141)
-        self.assertEqual((cursor - 12) * 4 + 8 + 8, 532)
-        self.assertEqual(cursor * 4 + 8 + 8, 580)
+        self.assertEqual(len(MODEL.word_tables()), len(ECHO_JOIN))
+        self.assertEqual(cursor, 142)
+        self.assertEqual((cursor - 13) * 4 + 8 + 8, 532)
+        self.assertEqual(cursor * 4 + 8 + 8, 584)
         self.assertEqual(dict(MODEL.records)["Value"], (("type", "u32"), ("definition", "u32")))
         self.assertNotIn("type", dict(dict(MODEL.records)["Instruction"]))
+        self.assertEqual(dict(MODEL.records)["Call"], (("callee", "u32"), ("first_argument", "u32")))
+        self.assertEqual({name: len(fields) * 4 for name, fields in MODEL.records}, {
+            "Function": 24, "Signature": 12, "Block": 16, "Value": 8,
+            "Instruction": 24, "Edge": 12, "Call": 8, "Origin": 12, "Name": 8})
+        pack = generator.chibi_source(MODEL)
+        self.assertIn("pub HeaderWords: int : 13;", pack)
+        self.assertIn("words[9] = u32(length(module.calls));", pack)
+        self.assertIn("words[10] = u32(length(module.arguments));", pack)
+
+    def test_conservative_admission_transport_bound(self):
+        # Simultaneous bounds from source/node/function/block admission. This
+        # arithmetic test never creates maximum-sized arrays.
+        counts = dict(functions=32, signatures=32, parameter_types=1024,
+                      blocks=2048, block_parameters=131072, values=139264,
+                      instructions=10240, edges=4096, calls=8192,
+                      arguments=524288, origins=8192, names=32)
+        words = 13 + sum(counts[name] * (len(fields) or 1)
+                         for name, _, fields in MODEL.word_tables())
+        self.assertEqual(words, 1058157)
+        self.assertEqual(words * 4 + 8192 * 8 + 65536, 4363700)
 
     def test_deterministic_scalar_roundtrip(self):
         randomizer = random.Random(20261104)
@@ -190,6 +215,9 @@ class GenerateTests(unittest.TestCase):
             for (name, _, fields), (_, count, _, _) in zip(MODEL.word_tables(), ECHO_JOIN):
                 rows[name] = ([tuple(randomizer.randrange(2 ** 32) for _ in fields) for _ in range(count * multiplier)]
                               if fields else [randomizer.randrange(2 ** 32) for _ in range(count * multiplier)])
+            # EchoJoin has no calls, so give the new table independent rows too.
+            rows["calls"] = [(randomizer.randrange(2 ** 32), randomizer.randrange(2 ** 32))
+                             for _ in range(multiplier)]
             literals = (-(2 ** 63), -1, 0, 1, 2 ** 63 - 1) if multiplier else ()
             names = b"EchoJoin\x00\xff" if multiplier else b""
             packed = reference_pack(rows, literals, names)
@@ -199,20 +227,20 @@ class GenerateTests(unittest.TestCase):
             # This test encoding is not an on-disk IR format or production step.
             serialized = struct.pack(f"<{len(packed[0])}I", *packed[0])
             self.assertEqual(list(struct.unpack(f"<{len(packed[0])}I", serialized)), packed[0])
-        self.assertEqual(reference_pack({name: [] for name, _, _ in MODEL.word_tables()})[0], [1] + [0] * 11)
+        self.assertEqual(reference_pack({name: [] for name, _, _ in MODEL.word_tables()})[0], [2] + [0] * 12)
 
     def test_boundary_framing_errors(self):
-        empty = [MODEL.version] + [0] * 11
-        bad = [([], "header"), ([0] * 12, "version"), (empty + [0], "word count"),
-               ([MODEL.version, 1] + [0] * 10, "word count"),
-               ([MODEL.version, 2 ** 31] + [0] * 10, "count")]
+        empty = [MODEL.version] + [0] * 12
+        bad = [([], "header"), ([1] + [0] * 12, "version"), ([0] * 13, "version"), (empty + [0], "word count"),
+               ([MODEL.version, 1] + [0] * 11, "word count"),
+               ([MODEL.version, 2 ** 31] + [0] * 11, "count")]
         for words, diagnostic in bad:
             with self.subTest(words=words), self.assertRaisesRegex(ValueError, diagnostic):
                 reference_view(words)
         with self.assertRaisesRegex(ValueError, "overflow"):
-            reference_view([MODEL.version, 0x7fffffff] + [0] * 10, max_size=0x7fffffff)
+            reference_view([MODEL.version, 0x7fffffff] + [0] * 11, max_size=0x7fffffff)
         with self.assertRaisesRegex(ValueError, "extent"):
-            reference_view(empty, max_size=47)
+            reference_view(empty, max_size=51)
 
 
 if __name__ == "__main__":

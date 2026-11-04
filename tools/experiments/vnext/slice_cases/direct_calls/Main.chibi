@@ -1,0 +1,60 @@
+package direct_calls
+
+pub NestedCalls :: (x: i64, y: i64) -> i64 { return Pair(Increment(x), Increment(y)); }
+pub ZeroCall :: () -> i64 { return Zero(); }
+pub TrueLiteral :: () -> bool { return true; }
+pub FalseLiteral :: () -> bool { return false; }
+pub SignedGreater :: (a: i64, b: i64) -> bool { return a > b; }
+pub BoolCall :: (value: bool) -> bool { return Invert(value); }
+pub Repeated :: (value: i64) -> i64 { return Pair(Increment(value), Increment(value)); }
+pub SelfCall :: (again: bool, value: i64) -> i64 {
+    if (again) { return SelfCall(false, value + 1); }
+    return value;
+}
+pub MutualCall :: (again: bool, value: i64) -> i64 { return MutualLater(again, value); }
+pub FlowCall :: (choose: bool, x: i64, y: i64) -> i64 {
+    value: i64 = Zero();
+    if (choose) { value = Increment(x); } else { value = Increment(y); }
+    return Pair(value, Zero());
+}
+pub MixedCall :: (a: i64, b: bool, c: i64, d: bool, e: i64, f: bool, g: i64, h: bool, i: i64) -> bool {
+    return MixedLater(a, b, c, d, e, f, g, h, i);
+}
+pub ThirtyTwo :: (a0: i64, a1: bool, a2: i64, a3: bool, a4: i64, a5: bool, a6: i64, a7: bool, a8: i64, a9: bool, a10: i64, a11: bool, a12: i64, a13: bool, a14: i64, a15: bool, a16: i64, a17: bool, a18: i64, a19: bool, a20: i64, a21: bool, a22: i64, a23: bool, a24: i64, a25: bool, a26: i64, a27: bool, a28: i64, a29: bool, a30: i64, a31: bool) -> i64 { return WideLater(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21, a22, a23, a24, a25, a26, a27, a28, a29, a30, a31); }
+
+// Private callees occur both after and before their private callers.
+Zero :: () -> i64 { return 17; }
+Increment :: (value: i64) -> i64 { return value + 1; }
+Pair :: (x: i64, y: i64) -> i64 { return x * 7 + y; }
+Invert :: (value: bool) -> bool { return !value; }
+MutualLater :: (again: bool, value: i64) -> i64 {
+    if (again) { return MutualCall(false, value + 1); }
+    return value;
+}
+MixedLater :: (a: i64, b: bool, c: i64, d: bool, e: i64, f: bool, g: i64, h: bool, i: i64) -> bool {
+    flag: bool = h;
+    if (b) { flag = Invert(d); }
+    if (f) { flag = Invert(flag); }
+    if (a + c + e + g > i) { return Invert(flag); }
+    return flag;
+}
+WideLater :: (a0: i64, a1: bool, a2: i64, a3: bool, a4: i64, a5: bool, a6: i64, a7: bool, a8: i64, a9: bool, a10: i64, a11: bool, a12: i64, a13: bool, a14: i64, a15: bool, a16: i64, a17: bool, a18: i64, a19: bool, a20: i64, a21: bool, a22: i64, a23: bool, a24: i64, a25: bool, a26: i64, a27: bool, a28: i64, a29: bool, a30: i64, a31: bool) -> i64 {
+    result: i64 = a0 * 1 + a2 * 3 + a4 * 5 + a6 * 7 + a8 * 9 + a10 * 11 + a12 * 13 + a14 * 15 + a16 * 17 + a18 * 19 + a20 * 21 + a22 * 23 + a24 * 25 + a26 * 27 + a28 * 29 + a30 * 31;
+    if (a1) { result = result + 1; }
+    if (a3) { result = result + 3; }
+    if (a5) { result = result + 5; }
+    if (a7) { result = result + 7; }
+    if (a9) { result = result + 9; }
+    if (a11) { result = result + 11; }
+    if (a13) { result = result + 13; }
+    if (a15) { result = result + 15; }
+    if (a17) { result = result + 17; }
+    if (a19) { result = result + 19; }
+    if (a21) { result = result + 21; }
+    if (a23) { result = result + 23; }
+    if (a25) { result = result + 25; }
+    if (a27) { result = result + 27; }
+    if (a29) { result = result + 29; }
+    if (a31) { result = result + 31; }
+    return result;
+}

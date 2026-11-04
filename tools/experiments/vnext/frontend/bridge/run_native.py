@@ -115,13 +115,29 @@ def validate_manifest(directory, manifest, stage_names):
     prefix = str(directory / "source-manifest.json")
     if not isinstance(manifest, dict):
         raise ValueError(f"{prefix}: root must be an object")
-    if type(manifest.get("schema")) is not int or manifest["schema"] != 1:
-        raise ValueError(f"{prefix}: schema must be 1")
+    if type(manifest.get("schema")) is not int or manifest["schema"] != 2:
+        raise ValueError(f"{prefix}: schema must be 2")
     if manifest.get("directory") != str(directory):
         raise ValueError(f"{prefix}: directory is missing, invalid, or relocated")
     if manifest.get("stages") != {name: "not_run" for name in stage_names}:
         raise ValueError(f"{prefix}: stages must name the five unrun stages")
-    for field, count in (("files", 32), ("implementation", 2)):
+    expected = manifest.get("expectations")
+    if (not isinstance(expected, dict)
+            or set(expected) != {"case", "rejections", "aot_checks", "aot_success"}
+            or not isinstance(expected["case"], str)
+            or expected["case"] not in ("nativecases", "scalars", "direct_calls")
+            or type(expected["aot_checks"]) is not int or not 1 <= expected["aot_checks"] <= 128
+            or not isinstance(expected["rejections"], list)
+            or any(not isinstance(name, str) for name in expected["rejections"])):
+        raise ValueError(f"{prefix}: invalid expectations")
+    success = json.dumps({"aot_c_caller_checks": expected["aot_checks"], "status": "passed",
+                          "input": "source-produced-copied-object"}, separators=(",", ":")) + "\n"
+    if expected["aot_success"] != success:
+        raise ValueError(f"{prefix}: expectations must bind the exact AOT success record")
+    if expected["case"] == "nativecases" and (success.encode("utf-8") != AOT_SUCCESS or expected["rejections"]):
+        raise ValueError(f"{prefix}: historical nativecases requires 45 AOT checks and no registry rejections")
+    count = {"nativecases": 32, "scalars": 43, "direct_calls": 34}[expected["case"]]
+    for field, count in (("files", count), ("implementation", 2)):
         rows = manifest.get(field)
         if not isinstance(rows, list) or len(rows) != count:
             raise ValueError(f"{prefix}: {field} must contain exactly {count} file records")
@@ -151,7 +167,7 @@ def check_sources(directory, manifest, stage_names):
     validate_manifest(directory, manifest, stage_names)
     rows = manifest["files"] + manifest["implementation"]
     names = [row["path"] for row in rows]
-    if (len(manifest["files"]) != 32 or len(set(names)) != len(names)
+    if (len(set(names)) != len(names)
             or sorted(row["path"] for row in manifest["implementation"]) != ["controller/owned_process.py", "controller/run_native.py"]):
         raise ValueError("source-native snapshot membership changed")
     for name in names:
@@ -177,6 +193,41 @@ def check_sources(directory, manifest, stage_names):
         if any(current[key] != row[key] for key in ("bytes", "sha256")):
             raise ValueError(f"snapshot changed: {path}")
         identities[str(path)] = current
+    expected = manifest["expectations"]
+    if expected["case"] != "nativecases":
+        registry_path = directory / "inputs/slice_cases.json"
+        raw_registry = registry_path.read_bytes()
+        if len(raw_registry) > 65536:
+            raise ValueError("prepared registry exceeds 64 KiB")
+        try:
+            registry = json.loads(raw_registry)
+        except (ValueError, UnicodeError, RecursionError) as error:
+            raise ValueError(f"invalid prepared registry: {error}") from error
+        if not isinstance(registry, dict) or not isinstance(registry.get("cases"), list):
+            raise ValueError("prepared registry cases must be a list")
+        cases = registry["cases"]
+        if (any(not isinstance(row, dict) or not isinstance(row.get("id"), str)
+                or not isinstance(row.get("files"), list) for row in cases)
+                or len({row["id"] for row in cases}) != len(cases)):
+            raise ValueError("invalid prepared registry membership")
+        selected = [row for row in cases if row["id"] == expected["case"]]
+        if len(selected) != 1 or not isinstance(selected[0].get("calls"), list):
+            raise ValueError("prepared registry requires exactly one selected call case")
+        selected = selected[0]
+        rejected = [row for row in cases if "reject" in row and len(row.get("files", [])) == 1
+                    and "foreign_fixture" not in row] if expected["case"] == "scalars" else []
+        if (expected["aot_checks"] != len(selected["calls"])
+                or expected["rejections"] != [row["id"] for row in rejected]):
+            raise ValueError("native expectations differ from the prepared registry")
+        required_inputs = {"inputs/NativeMain.chibi.in", "inputs/slice_cases.json",
+                           "inputs/registry_callers.py", "inputs/native_aot_caller.c"}
+        for row in [selected, *rejected]:
+            files = row.get("files")
+            if not isinstance(files, list) or len(files) != 1 or not isinstance(files[0], str):
+                raise ValueError("prepared registry selection requires one source per case")
+            required_inputs.add("inputs/" + files[0])
+        if {name for name in names if name.startswith("inputs/")} != required_inputs:
+            raise ValueError("prepared registry source membership differs from snapshot")
     backend = manifest["backend"]
     library = Path(backend["path"])
     if not library.is_absolute() or str(library) != backend["resolved"]:
@@ -188,13 +239,14 @@ def check_sources(directory, manifest, stage_names):
     return identities
 
 
-def check_stage_outputs(stage, directory, attempt):
+def check_stage_outputs(stage, directory, attempt, expectations):
     if stage["name"] == "perf_failure" and any((directory / "run/perf").iterdir()):
         raise ValueError("perf failure control created unexpected filesystem output")
     if stage["name"] == "aot_run":
+        success = expectations["aot_success"].encode("utf-8")
         with (attempt / "aot_run.stdout").open("rb") as stream:
-            if stream.read(len(AOT_SUCCESS) + 1) != AOT_SUCCESS:
-                raise ValueError("AOT caller did not emit the exact 45-check source-produced-object success record")
+            if stream.read(len(success) + 1) != success:
+                raise ValueError("AOT caller did not emit the exact prepared source-produced-object success record")
 
 
 def run(directory, seed, llvm_bin, cc, library_dirs):
@@ -309,7 +361,7 @@ def run(directory, seed, llvm_bin, cc, library_dirs):
                         raise ValueError(f"stage did not produce a nonempty usable output: {artifact}")
                     artifacts[str(artifact)] = value
                     receipt["artifact"] = {"path": str(artifact), **value}
-                check_stage_outputs(stage, directory, attempt)
+                check_stage_outputs(stage, directory, attempt, manifest["expectations"])
                 receipt["status"] = "passed"
             except BaseException as error:
                 receipt["status"] = "failed"

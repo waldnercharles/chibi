@@ -1,5 +1,7 @@
 package vnext_typed
 
+// vnext-bridge-version: 1
+
 import syntax "project:syntax_diagnostics"
 
 // Experimental invocation-owned tables, not a serialized or foreign ABI.
@@ -8,13 +10,16 @@ import syntax "project:syntax_diagnostics"
 // including zero, through 2147483647. Span starts are zero-based offsets and an
 // empty span has start/count zero. Arrays own their storage through the returned
 // Module; no source tree is retained.
+// vnext-bridge-enum: ScalarType
 pub Bool: u32 : 1;
 pub I64: u32 : Bool + 1;
+// vnext-bridge-enum: Opcode
 pub ConstantI64: u32 : 1;
 pub AddI64: u32 : ConstantI64 + 1;
 pub Jump: u32 : AddI64 + 1;
 pub Branch: u32 : Jump + 1;
 pub Return: u32 : Branch + 1;
+// vnext-bridge-enum: end
 pub BlockDefinition: u32 : 2147483648;
 pub MaxFunctions: int : 32;
 pub MaxParameters: int : 32;

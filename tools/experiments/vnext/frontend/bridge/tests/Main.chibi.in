@@ -1,0 +1,154 @@
+package vnext_bridge_tests
+
+import typed "project:vnext_typed"
+import bridge "project:vnext_bridge"
+import strings "core:strings"
+
+// Replace this marker with the exact typed/fixtures/EchoJoin.chibi UTF-8 text.
+// These callers run the retained parser/signature/body producer. They remain
+// prepared source only until separately compiled/run.
+Main :: () -> int {
+    source := FIXTURE_SOURCE;
+    CheckSource(source, 1, 8);
+    renamed := strings.ReplaceAll(source, "Echo", "Identity");
+    renamed = strings.ReplaceAll(renamed, "Join", "Select");
+    renamed = strings.ReplaceAll(renamed, "+ 1", "+ 7");
+    CheckSource(renamed, 7, 14);
+    empty: typed.Module = {functions: [], signatures: [], parameter_types: [], blocks: [],
+        block_parameters: [], values: [], instructions: [], edges: [], arguments: [],
+        literals: [], origins: [], names: [], name_bytes: []};
+    frozen_empty := Freeze(empty);
+    switch bridge.Pack(empty) {
+        case .TooLarge(table): assert(false, "empty transport fits");
+        case .Packed(buffers):
+            CheckBuffers(buffers, frozen_empty);
+            CheckBuffers(Freeze(empty), frozen_empty);
+            assert(length(buffers.words) == 12 && buffers.words[0] == bridge.Version, "empty transport retains version header");
+            for (word, index in buffers.words) {
+                if (index > 0) { assert(word == 0, "empty module counts are zero"); }
+            }
+            assert(length(buffers.literals) == 0 && length(buffers.name_bytes) == 0, "empty side arrays stay empty");
+    }
+    return 0;
+}
+
+CheckSource :: (source: string, literal: i64, name_count: int) {
+    switch typed.Produce(source, 19) {
+        case .Rejected(diagnostic): assert(false, "EchoJoin producer accepts fixture variant");
+        case .Produced(module):
+            // Freeze all fields and explicitly copy side values BEFORE Pack.
+            // A COW alias to source storage is not an independent oracle.
+            frozen := Freeze(module);
+            switch bridge.Pack(module) {
+                case .TooLarge(table): assert(false, "fixture fits scalar word arena");
+                case .Packed(buffers):
+                    CheckBuffers(buffers, frozen);
+                    CheckBuffers(Freeze(module), frozen);
+                    assert(length(buffers.words) == 141, "129 scalar words plus 12 header words");
+                    header: u32[] = [1, 2, 2, 4, 4, 5, 7, 6, 3, 2, 7, 2];
+                    for (word, index in header) {
+                        assert(buffers.words[index] == word, "version and table counts in Model order");
+                    }
+                    assert(length(buffers.literals) == 1 && buffers.literals[0] == literal, "source literal side array preserved");
+                    assert(length(buffers.name_bytes) == name_count, "source-driven name bytes preserved");
+                    assert(buffers.words[55] == typed.I64 && buffers.words[56] == (typed.BlockDefinition | u32(1)), "first Value type and definition");
+                    assert(buffers.words[57] == typed.Bool && buffers.words[58] == (typed.BlockDefinition | u32(2)), "bool parameter type lives only in Value");
+                    assert(buffers.words[63] == typed.I64 && buffers.words[64] == (typed.BlockDefinition | u32(4)), "merge Value survives packing");
+                    assert(buffers.words[69] == typed.Return && buffers.words[71] == 1, "Echo terminator fields");
+                    assert(buffers.words[93] == typed.AddI64 && buffers.words[95] == 5 && buffers.words[96] == 6, "Join addition fields");
+                    if (name_count == 8) {
+                        assert(buffers.words[137] == 0 && buffers.words[138] == 4 && buffers.words[139] == 4 && buffers.words[140] == 4, "original fixture name spans");
+                    }
+                    switch bridge.Pack(module) {
+                        case .TooLarge(table): assert(false, "repeat fixture fits");
+                        case .Packed(repeat):
+                            CheckBuffers(repeat, frozen);
+                            CheckBuffers(buffers, frozen);
+                            CheckBuffers(Freeze(module), frozen);
+
+                            // Pattern bindings are read-only. Mutate an ordinary
+                            // local copy while retaining both original results.
+                            // Array locals also avoid nested element assignment.
+                            changed := buffers;
+                            changed_literals := changed.literals;
+                            changed_literals[0] = literal + 100;
+                            changed.literals = changed_literals;
+                            assert(changed.literals[0] == literal + 100, "returned literal actually changed");
+                            CheckBuffers(Freeze(module), frozen);
+                            CheckBuffers(repeat, frozen);
+                            CheckBuffers(buffers, frozen);
+
+                            changed_names := changed.name_bytes;
+                            changed_names[0] = frozen.name_bytes[0] + u8(1);
+                            changed.name_bytes = changed_names;
+                            assert(changed.name_bytes[0] == frozen.name_bytes[0] + u8(1), "returned name byte actually changed");
+                            CheckBuffers(Freeze(module), frozen);
+                            CheckBuffers(repeat, frozen);
+                            CheckBuffers(buffers, frozen);
+
+                            switch bridge.Pack(module) {
+                                case .TooLarge(table): assert(false, "repacking after returned-array mutations fits");
+                                case .Packed(repacked):
+                                    CheckBuffers(repacked, frozen);
+                                    CheckBuffers(repeat, frozen);
+                                    CheckBuffers(Freeze(module), frozen);
+                            }
+                    }
+                    verified := typed.Verify(module);
+                    assert(verified == 0, "packing did not mutate the source Module");
+            }
+    }
+}
+
+// Independent reference order, deliberately handwritten rather than generated
+// from the binding generator. This extra test-only copy covers EVERY scalar in
+// all 11 tables, including edge argument spans, origins and zero-valued fields.
+// Each array is built from scalar values, never assigned from a source array.
+Freeze :: (module: typed.Module) -> bridge.Buffers {
+    expected: u32[] = [1,
+        u32(length(module.functions)), u32(length(module.signatures)),
+        u32(length(module.parameter_types)), u32(length(module.blocks)),
+        u32(length(module.block_parameters)), u32(length(module.values)),
+        u32(length(module.instructions)), u32(length(module.edges)),
+        u32(length(module.arguments)), u32(length(module.origins)), u32(length(module.names))];
+    for (row in module.functions) {
+        expected.extend([row.name, row.signature, row.first_block, row.block_count, row.origin, row.exported]);
+    }
+    for (row in module.signatures) {
+        expected.extend([row.first_parameter, row.parameter_count, row.result_type]);
+    }
+    for (row in module.parameter_types) { expected.append(row); }
+    for (row in module.blocks) {
+        expected.extend([row.first_parameter, row.parameter_count, row.first_instruction, row.instruction_count]);
+    }
+    for (row in module.block_parameters) { expected.append(row); }
+    for (row in module.values) { expected.extend([row.type, row.definition]); }
+    for (row in module.instructions) {
+        expected.extend([row.op, row.result, row.left, row.right, row.payload, row.origin]);
+    }
+    for (row in module.edges) { expected.extend([row.target, row.first_argument, row.argument_count]); }
+    for (row in module.arguments) { expected.append(row); }
+    for (row in module.origins) { expected.extend([row.document, row.start, row.end]); }
+    for (row in module.names) { expected.extend([row.start, row.count]); }
+    copied_literals: i64[] = [];
+    for (literal in module.literals) { copied_literals.append(literal); }
+    copied_names: u8[] = [];
+    for (byte in module.name_bytes) { copied_names.append(byte); }
+    frozen: bridge.Buffers = {words: expected, literals: copied_literals, name_bytes: copied_names};
+    return frozen;
+}
+
+CheckBuffers :: (buffers: bridge.Buffers, frozen: bridge.Buffers) {
+    assert(length(frozen.words) == length(buffers.words), "exact scalar arena length");
+    for (word, index in frozen.words) {
+        assert(buffers.words[index] == word, "every flattened scalar matches frozen reference order");
+    }
+    assert(length(frozen.literals) == length(buffers.literals), "literal count unchanged");
+    for (literal, index in frozen.literals) {
+        assert(buffers.literals[index] == literal, "every full-width literal matches frozen value");
+    }
+    assert(length(frozen.name_bytes) == length(buffers.name_bytes), "name byte count unchanged");
+    for (byte, index in frozen.name_bytes) {
+        assert(buffers.name_bytes[index] == byte, "every name byte matches frozen value");
+    }
+}

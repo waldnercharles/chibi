@@ -53,8 +53,10 @@ Records are authored Chibi records. The 8-byte Value/24-byte Instruction figures
 are scalar payload targets, not asserted native array layout. The current C
 foreign ABI cannot pass authored-record arrays. A future synchronous versioned
 call will flatten these tables once into a u32 arena plus i64 literals/u8 names,
-counting that temporary copy and its bytes explicitly. No packing is implemented
-until the real producer/consumer contract has been exercised.
+counting that temporary copy and its bytes explicitly. The [scalar transport
+experiment](../bridge/README.md) now generates this packing operation and borrowed
+Rust views. Its Python checks, native Chibi packing proof and Rust framing tests
+pass; source-to-native backend integration still requires a separate proof.
 
 ## Experimental arithmetic deviation
 

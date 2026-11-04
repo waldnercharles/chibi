@@ -1,0 +1,62 @@
+{
+  "classification": "new local Linux intermediate compiler with exact-source fixed point and compiler-test proof; not a published release, old package restoration, Windows or full PR acceptance",
+  "source_commit": "14f7a46a047ab92acfe58398b3cdac25ab7d0312",
+  "source_tree": "342ada78280eaecde5a5a8ffa0845a74a729926d",
+  "compiler_tree": "cfd07642df7236e2ea11bcbee01f5d1372051042",
+  "core_tree": "196221cf052ec880878e25f49b9cf95c3c8fb3d9",
+  "source_files": 3400,
+  "builder_sha256": "6e867c8e5588509286a5709ecdca902e8aaeb6d3db51f1ea4efb1bb09b677d03",
+  "artifact_sha256": "0a43d0a2b91f6c5e36afc8ba1ea586fe938d6fbb39b687acb3e3ee442bcab7dc",
+  "artifact_bytes": 10633736,
+  "raw_pair_equal": true,
+  "raw_pair_members": [
+    "proof/stage3/chibi",
+    "proof/stage4/chibi"
+  ],
+  "tests": {
+    "expected_count": 485,
+    "observed_count": 485,
+    "unique_count": 485,
+    "missing": [],
+    "unexpected": [],
+    "duplicates": [],
+    "summaries": [
+      "485 tests, 0 failed"
+    ],
+    "unexpected_lines": [],
+    "expected_inventory_sha256": "912d86d4b7bfb70b95ae443967b12a5a54bdf4928627c03e510dd903a9c07b9d",
+    "observed_names_sha256": "e95776d16971c7da2deaaa524bfcaa97cfcb192c10b1d040c35cf1c091617169",
+    "passed": true
+  },
+  "phase_seconds": {
+    "stage2": 80.26,
+    "stage3": 85.99,
+    "stage4": 85.648,
+    "compiler-tests": 48.03
+  },
+  "total_phase_seconds": 299.928,
+  "source_and_tool_fences_passed": true,
+  "all_owned_processes_terminal": true,
+  "build_jobs": 2,
+  "test_execution_workers": 2,
+  "test_compile_jobs": 9,
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "phase_bounds_seconds": {
+    "each_build": 120,
+    "compiler_tests": 180
+  },
+  "current_scalar_llvm_compatibility": {
+    "status": "passed",
+    "exit_status": 0,
+    "wall_seconds": 3.782316103002813,
+    "output_bytes": 26428976,
+    "output_sha256": "f2300fc3354cd7d39186b0f2e7adc40ca7cd49f3210794b22941268726beca22",
+    "inputs_unchanged": true
+  },
+  "review_scope": "Parent independently read stage4 and compiler-tests receipts, confirming exact tests, fixed point and clean termination. Stage2 command and bounds reviewed before execution; no claim of complete independent controller audit.",
+  "old_chain": "not signaled, restarted or modified; historical terminal outcome remains unknown",
+  "publication": "none; no release, seed pin, PR hold or platform gate changed"
+}

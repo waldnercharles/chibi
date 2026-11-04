@@ -2,6 +2,8 @@
 
 ## Result
 
+**Superseded availability blocker:** the user confirmed the old package path does not exist and requested a new build. That build now passes a raw fixed point and all 485 compiler tests; see [14F7-REBUILD.md](14F7-REBUILD.md). The observations below remain the record of the earlier retrieval/compatibility investigation.
+
 A retained Linux artifact avoids rebuilding the first bridge just to inspect its compatibility. It does **not** supply an accepted replacement seed or remove the old bootstrap's unresolved terminal state.
 
 The three bounded emit-only probes completed in 4.64 seconds, with all frozen inputs unchanged and no generated output executed:

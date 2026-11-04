@@ -256,6 +256,33 @@ ArrayCookieIsPortable :: (compiler: string, scratch: string) {
     }
 }
 
+// The descriptor fixture consumes native rows as both static data and expressions.
+// archive/src is test-only compatibility evidence, not a production dependency.
+NativeDefaultsArePortable :: (compiler: string, scratch: string) {
+    output := Path([scratch, "/native-default-initializers"]);
+    source := Path([os.Root(), "/test/tools/native_default_initializers.c"]);
+    flags := [compiler, "-std=gnu23", "-O3", "-DNDEBUG", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
+              "-Wno-missing-field-initializers", "-Wno-unused-parameter", "-Wno-unused-function",
+              "-Wno-unused-variable", "-Wno-zero-length-array", "-Wno-string-concatenation",
+              "-I", Path([os.Root(), "/src"]), "-I", Path([os.Root(), "/archive/src"])];
+    command := slice(flags, 0, length(flags));
+    command.extend([source, "-o", output]);
+    built := process.Capture(command, 30000);
+    if (built.status != 0) {
+        os.Print(Path([built.stdout, built.stderr]));
+    }
+    assert(built.status == 0, "native defaults compile with strict static-initializer diagnostics");
+    ran := process.Capture([output], 5000);
+    assert(ran.status == 0 && ran.stdout == "" && ran.stderr == "", "native default fields and expression consumers agree");
+    rejected_object := Path([scratch, "/native-default-wrong-type.o"]);
+    reject := slice(flags, 0, length(flags));
+    reject.extend(["-DNATIVE_DEFAULT_WRONG_TYPE", "-c", source, "-o", rejected_object]);
+    rejected := process.Capture(reject, 30000);
+    // GCC and Clang reject invalid input with status 1; timeout or cancellation is not rejection.
+    assert(rejected.status == 1 && strings.Contains(Path([rejected.stdout, rejected.stderr]), "_Generic") &&
+           !os.Exists(rejected_object), "an unrelated default type is rejected without an object");
+}
+
 LinkResponses :: (scratch: string) {
     quoted := Path([scratch, "/quoted '\"\\ café 雪 directory"]);
     search_dir := Path([quoted, "/", strings.Repeat("l", 200)]);
@@ -274,6 +301,7 @@ LinkResponses :: (scratch: string) {
     compiler := os.FindExecutable(selected);
     assert(compiler != "" && Write(Path([recorder, ".compiler"]), Path([compiler, "\n"])), "a C compiler");
     ArrayCookieIsPortable(compiler, scratch);
+    NativeDefaultsArePortable(compiler, scratch);
     tools: c.Tools = {launcher: "", compiler: compiler, cxx_compiler: "", archiver: "", ranlib: "", jobs: 1};
     captured := tools;
     captured.compiler = recorder;

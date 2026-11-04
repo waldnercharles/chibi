@@ -62,13 +62,39 @@ It retains the unexecuted first launcher proposal and its corrected successor;
 no failed or unrun proposal is counted as acceptance. Full archive member and
 original-identity readback passed. It is retained locally, not a release.
 
+## Permanent regression integration
+
+`test/graph/CTests.chibi` now calls `NativeDefaultsArePortable` from the existing
+`LinkResponses` path, immediately after the array-cookie regression. The 28-line
+addition reuses the existing C fixture and process capture API; no new public
+test selector or production dependency was added.
+
+A copied source tree with a temporary zero-argument entry compiled the exact
+permanent function and exercised it independently. The authored caller passed:
+strict GNU23/O3/NDEBUG warning-as-error build, silent fixture execution, and
+wrong-type rejection with status 1, an `_Generic` diagnostic and no object.
+The temporary entry is not part of the source checkpoint. The whole graph-c
+selector has not run.
+
+The compiled caller returned 0 with empty streams in 0.377461 seconds; its entire
+owned phase took 4.265770 seconds within the original 80-second total bound and
+five-second cleanup reserve. Independent verification accepted the exact source,
+compiler, tools, headers, produced fixture, unchanged inputs and clean child
+cleanup. The fixture bytes equal the earlier accepted standalone executable.
+These three nested outcomes are established by the authored assertions, not
+separate captured child receipts: the capture API removes the nested logs.
+Timings are bounded correctness observations, not performance measurements.
+
+Exact source, artifact and proof hashes are in
+[native-default-regression-results.json](native-default-regression-results.json).
+
 ## Remaining acceptance
 
-Permanent graph-c invocation, complete compiler-host construction, actual
-Windows execution and exact-head integration are separate gates. The focused
-fixture performs no runtime allocation, retention, destruction or union
-ownership investigation. The earlier failed host packet remains a failure,
-preserved in [HOST-INITIALIZER-FAILURE.md](HOST-INITIALIZER-FAILURE.md).
-A subsequent host build passes the initializer units but remains blocked by a
-separate strict-GCC signedness diagnostic in execution/jit.c. No complete host
-acceptance is claimed. PR #1331 remains explicitly not ready to merge.
+Full graph-c execution, complete compiler-host construction, actual Windows
+execution and exact-head integration remain separate gates. The focused fixture
+performs no runtime allocation, retention, destruction or union ownership
+investigation. Earlier failed host packets remain failures. After the published
+`jit.c` correction, the next strict host build reached 46 successful objects and
+stopped on two signedness diagnostics in `jit_memory.c` and `jit_registers.c`.
+It produced no archives or host; those corrections are separate work. PR #1331
+remains explicitly not ready to merge.

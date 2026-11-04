@@ -32,7 +32,12 @@ The archived source-only initializer proposal has a subsequent
 [focused tested correction](NATIVE-DEFAULT-INITIALIZERS.md). The next fresh host
 construction advanced to 44 successful objects before one strict JIT signedness
 error; its [one-line correction and paired strict compile proof](JIT-SIGNED-OPERAND.md)
-are now accepted. No host was produced, and another full construction is pending.
+are now accepted. The following construction reached 46 successful objects,
+then stopped at two signedness diagnostics in `jit_memory.c` and
+`jit_registers.c`. No archives or host were produced. The permanent initializer
+regression now has accepted source, compile and focused runtime evidence, as
+described in [its report](NATIVE-DEFAULT-INITIALIZERS.md); this does not clear
+the full graph-c or host gates.
 Disabled graph-c ownership preparation remains preserved in
 [unvalidated-preparations](unvalidated-preparations/README.md).
 The pointer patch there remains unapplied and has two known findings. The

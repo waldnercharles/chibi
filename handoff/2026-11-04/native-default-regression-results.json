@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "status": "Exact permanent regression source, compile and focused authored runtime independently accepted",
+  "permanent_ctests_sha256": "3d9d5945d591c42e0ab0d4cb704a1c1f0772d53ce2a63894e8b3e2af5bb3a136",
+  "temporary_entry_source_sha256": "574ab75717a4986b0bfaeb95ec56167397713f1f70e57fe16e3b56e05286e59b",
+  "header_sha256": "e9def4364b0523cc5468329efc75803f61860645298dc97af4295ce884fdb22c",
+  "fixture_source_sha256": "717531215cae8e5a0b583149e185ce64f3caa6c52ac16a495db34b0559650478",
+  "caller_bytes": 184648,
+  "caller_sha256": "50578fb549fb7f6734b379203ff28d35f7ead599ae9fb47e67d3c9d7a62482cf",
+  "fixture_bytes": 28504,
+  "fixture_sha256": "f4416ed81f086bae1c9274c5fdfc95cd8bef1e7f4c6dba4230303112c169ebf1",
+  "caller_exit_status": 0,
+  "caller_seconds": 0.37746143341064453,
+  "phase_seconds": 4.265769958496094,
+  "phase_cap_seconds": 80,
+  "cleanup_reserve_seconds": 5,
+  "cleanup_echild": true,
+  "empty_outer_streams": true,
+  "asserted_operations": [
+    "Strict GNU23/O3/NDEBUG warning-as-error fixture build succeeds",
+    "Fixture execution returns 0 with empty output",
+    "Wrong-type compile returns exactly 1 with _Generic diagnostic and no object"
+  ],
+  "nested_child_telemetry": "Not separately retained; these outcomes are asserted by the exact admitted caller. No individual nested timing, observed argv or diagnostic transcript is claimed.",
+  "runtime_controls_sha256": {
+    "launch.sh": "8ada85f054d42002d267cc116413e1898bbd6c2f3fb697d556f6f415e828c373",
+    "owner.py": "eb565285001cef43ed88cf73e5797cc83b726afcf6cf192cf5b4ba10f6078698",
+    "plan.json": "22e5d187215d6f5133dcebcc08d65c0a82c4b8a4af3ae538801a3c7afcfd0a02",
+    "run.py": "0a308d72c62410b190d73d065e9474b0195600f78615afbbb9b580faef079c98"
+  },
+  "compile_artifact_attestation_sha256": "6c96419b615bce198230d75e32d0255b42b0e201fe8cc31c9fc8d100d40ea8fc",
+  "runtime_attestation_sha256": "5cb31b8e504c948a56c138532f8e6b47b40d86ec669985a8afe368be661aed4a",
+  "runtime_review_sha256": "a21bca9446161d3c472bd4fe9f8acedc39e7849759dd5fb734d9e55b4832cf76",
+  "runtime_verification_sha256": "32da3cef16429df0416b8b790133c8230f3feb3c90333fdefe145e3c4f81ef83",
+  "scope": "28-line CTests integration through a temporary focused entry. Not full graph-c, compiler-host, Windows, exact-head CI, PR readiness, merge or release acceptance. No temporary entry is published.",
+  "publication_parent": "3f9923cfe888d0889761b2554c49f58d99d6cbe9"
+}

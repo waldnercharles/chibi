@@ -12,11 +12,10 @@ import math
 import os
 from pathlib import Path
 import platform
-import signal
 import subprocess
 import sys
-import threading
-import time
+
+import owned_process
 
 
 ROOTS = {"project": "tools/compiler", "core": "packages/core"}
@@ -184,8 +183,7 @@ def finite_number(text):
 
 
 def measure(spec_path, run_dir):
-    if os.name != "posix":
-        raise ValueError("measurement currently requires POSIX process groups")
+    owned_process.require_linux()
     spec_bytes = Path(spec_path).read_bytes()
     spec = json.loads(spec_bytes, parse_float=finite_number, parse_constant=finite_number)
     timeout = spec["timeout_seconds"]
@@ -232,10 +230,12 @@ def measure(spec_path, run_dir):
               "environment": env, "host": {"platform": platform.platform(), "machine": platform.machine(),
                                             "logical_cpus": os.cpu_count()},
               "source_census_sha256": spec["source"]["census_sha256"],
-              "timing_boundary": "before process creation through process exit; includes startup, child work waited for by command, finalization and exit",
+              "timing_boundary": "before process creation through observed leader exit; includes startup, child work waited for by command, finalization and exit",
+              "cleanup_boundary": "after leader exit on ordinary runs: watchdog shutdown, group inspection/termination and leader reap; reported separately",
               "filesystem_condition": "uncontrolled/warmed by preflight source and tool reads; not a cold-cache measurement",
               "outside_timing": ["source census and source/tool SHA-256 verification before and after execution",
-                                 "fresh directory creation", "output validation and output SHA-256", "receipt writing"],
+                                 "fresh directory creation", "owned group cleanup after observed leader exit",
+                                 "output validation and output SHA-256", "receipt writing"],
               "limitations": ["arbitrary argv does not prove full non-incremental compilation or correctness",
                               "cache isolation requires command to honor fresh paths and avoid external caches/daemons",
                               "all transitive tools, runtime inputs and thread settings must be declared by the caller",
@@ -243,81 +243,26 @@ def measure(spec_path, run_dir):
               "phase_times": None, "peak_memory_bytes": None, "allocations": None,
               "exit_code": None, "timed_out": False, "elapsed_seconds": None,
               "outputs": [], "errors": []}
-    expired = threading.Event()
-    process = None
-    timer = None
-    interruption_signal = None
-
-    def terminate_owned_group():
-        if process is not None:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-
-    def interrupt(signum, _frame):
-        nonlocal interruption_signal
-        if interruption_signal is None:
-            interruption_signal = signum
-        # Record rather than raise: a signal between launch and assignment, or
-        # during cleanup, must not escape ownership of an already-started child.
-        terminate_owned_group()
-
-    def expire():
-        expired.set()
-        terminate_owned_group()
-
-    # A timer avoids wait(timeout)'s polling delay in short measurements. Only
-    # this command's new process group may be killed; no existing build is touched.
     with (run_dir / "stdout.log").open("xb") as stdout, (run_dir / "stderr.log").open("xb") as stderr:
-        previous_handlers = {}
-        try:
-            for signum in (signal.SIGINT, signal.SIGTERM):
-                previous_handlers[signum] = signal.signal(signum, interrupt)
-            start = time.perf_counter_ns()
-            try:
-                process = subprocess.Popen(expanded, cwd=output_dir, env=env, stdin=subprocess.DEVNULL,
-                                           stdout=stdout, stderr=stderr, start_new_session=True)
-                if interruption_signal is not None:
-                    terminate_owned_group()
-                remaining = max(0, timeout - (time.perf_counter_ns() - start) / 1e9)
-                timer = threading.Timer(remaining, expire)
-                timer.start()
-                result["exit_code"] = process.wait()
-                end = time.perf_counter_ns()
-            except BaseException as error:
-                result["exception"] = {"type": type(error).__name__, "message": str(error)}
-                result["errors"].append(f"process execution failed: {type(error).__name__}: {error}")
-            finally:
-                # Covers launch, timer construction/start and wait failures.
-                # Keep signal handlers/deadline active until the child is reaped.
-                if process is not None and result["exit_code"] is None:
-                    terminate_owned_group()
-                    result["exit_code"] = process.wait()
-                    end = time.perf_counter_ns()
-                if timer is not None:
-                    timer.cancel()
-                    if timer.ident is not None:
-                        timer.join()
-                if process is not None:
-                    result["elapsed_seconds"] = (end - start) / 1e9
-                    result["timed_out"] = expired.is_set() or result["elapsed_seconds"] > timeout
-                    # Reject early leader exit while compiler/linker children
-                    # remain. Detached sessions are explicitly unsupported.
-                    try:
-                        os.killpg(process.pid, 0)
-                    except ProcessLookupError:
-                        pass
-                    else:
-                        result["errors"].append("process group survived command exit; termination requested")
-                        terminate_owned_group()
-        finally:
-            for signum, handler in previous_handlers.items():
-                signal.signal(signum, handler)
-    if interruption_signal is not None:
-        name = signal.Signals(interruption_signal).name
-        result["interruption"] = {"signal": interruption_signal, "name": name}
-        result["errors"].append(f"command interrupted by {name}")
+        execution = owned_process.run(expanded, output_dir, env, stdout, stderr, timeout)
+    for key in ("exit_code", "timed_out", "cleanup_seconds"):
+        result[key] = execution[key]
+    if "pid" in execution:
+        result["elapsed_seconds"] = execution["elapsed_seconds"]
+    if "exception" in execution:
+        result["exception"] = execution["exception"]
+        error = execution["exception"]
+        result["errors"].append(f"process execution failed: {error['type']}: {error['message']}")
+    if execution["surviving_children"]:
+        result["errors"].append("process group survived command exit; termination requested")
+    for key in ("inspection_error", "termination_error"):
+        if key in execution:
+            result[key] = execution[key]
+            result["errors"].append(f"process cleanup failed ({key}): {execution[key]}")
+    result["errors"].extend(f"process cleanup failed: {error}" for error in execution["cleanup_errors"])
+    if "interruption" in execution:
+        result["interruption"] = execution["interruption"]
+        result["errors"].append(f"command interrupted by {execution['interruption']['name']}")
     if result["timed_out"]:
         result["errors"].append("command deadline exceeded")
     if result["exit_code"] is not None and result["exit_code"] != 0:

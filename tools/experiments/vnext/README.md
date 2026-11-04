@@ -5,6 +5,8 @@ accepted current Chibi builder is available for this experiment yet. Do not
 retry an uncertain bootstrap or run compilation without CPU coordination.
 
 Python 3.11+ and Git are the only dependencies. No packages need installing.
+Command measurements additionally require Linux `waitid(WNOWAIT)` and readable
+procfs; other platforms are rejected before launch.
 
 ## Static source census
 
@@ -51,7 +53,10 @@ Python child processes in temporary directories. They do not compile Chibi or
 C, invoke an existing builder, modify source, or create commits. Tests cover
 source/tool mismatches, closure tampering, deadline termination, surviving children, unsuccessful
 processes, preserved logs, fresh output isolation, missing/empty/wrong/symlinked
-outputs, post-run identity changes and honest measurement labeling.
+outputs, post-run identity changes and honest measurement labeling. Regression
+controls also cover kill-before-reap ordering, interrupted Popen assignment,
+timer construction/start failure, procfs read failure, receipt write failure,
+unsupported platforms and the separate cleanup timing boundary.
 
 ## One candidate run, when an accepted builder exists
 
@@ -102,8 +107,11 @@ Only the explicitly specified environment is inherited by the child, plus fresh
 `{cache_dir}` and `{run_dir}` are expanded in arguments. Direct compiler flags
 must point every intermediate/cache to this run or explicitly disable reuse.
 These directories cannot prevent an arbitrary command from using an external
-cache or compiler daemon. The caller must inspect that contract. POSIX process
-groups are required; the deadline kills only the group started by this run.
+cache or compiler daemon. The caller must inspect that contract. The shared
+`owned_process.py` operation uses Linux process groups and procfs; the deadline
+kills only the group started by this run. It reserves the leader PID with
+`waitid(WNOWAIT)`, disables signal callbacks and stops the timer, inspects/kills
+the group, and only then reaps the leader. It never signals a reaped group ID.
 Commands must wait for all required work and must not daemonize or detach work.
 A process group surviving leader exit is rejected and sent SIGKILL. Detached
 sessions are not detected, and the harness cannot reap grandchildren itself.
@@ -112,7 +120,8 @@ sessions are not detected, and the harness cannot reap grandchildren itself.
 SIGINT or SIGTERM during owned process launch/setup/wait terminates and reaps
 the command, records its exit status and signal, and produces a failed-run
 receipt. Timer startup failures use the same ownership cleanup. This requires
-running the harness on the main Python thread. SIGKILL, an abrupt interpreter
+running the harness on the main Python thread, with the default SIGCHLD
+disposition and no other child reaper. SIGKILL, an abrupt interpreter
 crash or host failure cannot be handled: they may leave children or omit the
 receipt. An external supervisor is needed for guarantees across those failures.
 Nonfinite JSON
@@ -125,8 +134,12 @@ failures do not launch the command or create the run directory.
 ## Measurement boundary and limitations
 
 Elapsed monotonic wall time starts immediately before process creation and ends
-when that process exits. It includes process startup, all compiler work and
-children the command waits for, and finalization/linking. Source/tool identity
+when leader exit is observed. It includes process startup, all compiler work and
+children the command waits for, and finalization/linking. Watchdog shutdown,
+procfs group inspection, surviving-child termination and final leader reap are
+reported separately as `cleanup_seconds`; they do not turn an already completed
+command into a timeout. On setup/wait failures, leader-exit observation may
+include termination cleanup, and that failed run is not a timing sample. Source/tool identity
 hashes and static census verification happen before and after that interval;
 output validation/hashing and receipt writing happen afterwards. These are
 harness checks, never compiler precomputation. Any compiler hashing, parsing,

@@ -193,13 +193,8 @@ class BaselineTests(unittest.TestCase):
             self.assertFalse(marker.exists(), "interrupted child outlived the original deadline")
         finally:
             if harness.poll() is None:
-                harness.kill()
-            harness.communicate()
-            if child_pid is not None:
-                try:
-                    os.killpg(child_pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+                harness.terminate()
+            harness.communicate(timeout=10)
 
     def test_external_sigint_terminates_child_and_preserves_receipt(self):
         self.assert_signal_cleanup(signal.SIGINT)
@@ -226,25 +221,113 @@ class BaselineTests(unittest.TestCase):
             child_pid = int(log.read_text().strip())
             raise RuntimeError("injected Timer.start failure")
 
-        try:
-            # Inject only the environment failure; launch/wait/logging are real.
-            with patch.object(baseline.threading.Timer, "start", fail_start):
-                result = self.run_spec()
-            self.assertFalse(result["success"])
-            self.assertEqual(result["exception"], {"type": "RuntimeError", "message": "injected Timer.start failure"})
-            self.assertEqual(result["exit_code"], -signal.SIGKILL)
-            self.assertFalse(result["timed_out"])
-            self.assertEqual(json.loads((self.folder / "run/result.json").read_text()), result)
-            self.assertEqual(int(log.read_text().strip()), child_pid)
-            self.assertEqual({s: signal.getsignal(s) for s in handlers}, handlers)
-            time.sleep(0.8)
-            self.assertFalse(marker.exists(), "timer startup failure left its child running")
-        finally:
-            if child_pid is not None:
-                try:
-                    os.killpg(child_pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+        # Inject only the environment failure; launch/wait/logging are real.
+        with patch.object(baseline.owned_process.threading.Timer, "start", fail_start):
+            result = self.run_spec()
+        self.assertFalse(result["success"])
+        self.assertEqual(result["exception"], {"type": "RuntimeError", "message": "injected Timer.start failure"})
+        self.assertEqual(result["exit_code"], -signal.SIGKILL)
+        self.assertFalse(result["timed_out"])
+        self.assertEqual(json.loads((self.folder / "run/result.json").read_text()), result)
+        self.assertEqual(int(log.read_text().strip()), child_pid)
+        self.assertEqual({s: signal.getsignal(s) for s in handlers}, handlers)
+        time.sleep(0.8)
+        self.assertFalse(marker.exists(), "timer startup failure left its child running")
+
+    def test_group_signals_precede_reap(self):
+        original = os.killpg
+        signals = []
+
+        def signal_unreaped(group, signum):
+            # This raises ChildProcessError if a previous wait reaped the leader.
+            os.waitid(os.P_PID, group, os.WEXITED | os.WNOWAIT | os.WNOHANG)
+            signals.append(signum)
+            return original(group, signum)
+
+        with patch.object(baseline.owned_process.os, "killpg", signal_unreaped):
+            result = self.run_spec()
+        self.assertTrue(result["success"], result)
+        self.assertEqual(signals, [signal.SIGKILL])
+
+    def test_interrupt_during_popen_assignment(self):
+        original = subprocess.Popen
+        handlers = {s: signal.getsignal(s) for s in (signal.SIGINT, signal.SIGTERM)}
+        self.spec["argv"][2] = "import time; time.sleep(10)"
+
+        def launch_then_interrupt(*args, **kwargs):
+            child = original(*args, **kwargs)
+            if kwargs.get("start_new_session"):
+                os.kill(os.getpid(), signal.SIGINT)
+                os.kill(os.getpid(), signal.SIGTERM)
+            return child
+
+        with patch.object(baseline.owned_process.subprocess, "Popen", launch_then_interrupt):
+            result = self.run_spec()
+        self.assertEqual(result["interruption"]["name"], "SIGINT")
+        self.assertEqual(result["exit_code"], -signal.SIGKILL)
+        self.assertEqual({s: signal.getsignal(s) for s in handlers}, handlers)
+
+    def test_timer_construction_failure_preserves_receipt(self):
+        self.spec["argv"][2] = "import time; time.sleep(10)"
+        with patch.object(baseline.owned_process.threading, "Timer", side_effect=RuntimeError("timer construction failed")):
+            result = self.run_spec()
+        self.assertFalse(result["success"])
+        self.assertEqual(result["exception"]["message"], "timer construction failed")
+        self.assertEqual(result["exit_code"], -signal.SIGKILL)
+        self.assertEqual(json.loads((self.folder / "run/result.json").read_text()), result)
+
+    def test_proc_read_failure_cleans_group_and_preserves_receipt(self):
+        original = Path.read_text
+        handlers = {s: signal.getsignal(s) for s in (signal.SIGINT, signal.SIGTERM)}
+
+        def deny_stat(path, *args, **kwargs):
+            if path.parent.parent == Path("/proc") and path.parent.name.isdigit():
+                raise PermissionError("proc stat unavailable")
+            return original(path, *args, **kwargs)
+
+        with patch.object(baseline.owned_process.Path, "read_text", deny_stat):
+            result = self.run_spec()
+        self.assertFalse(result["success"])
+        self.assertEqual(result["exit_code"], 0)
+        self.assertIn("proc stat unavailable", result["inspection_error"])
+        self.assertEqual({s: signal.getsignal(s) for s in handlers}, handlers)
+        self.assertEqual(json.loads((self.folder / "run/result.json").read_text()), result)
+
+    def test_receipt_write_failure_restores_handlers(self):
+        original = baseline.write_json
+        handlers = {s: signal.getsignal(s) for s in (signal.SIGINT, signal.SIGTERM)}
+
+        def fail_receipt(path, value):
+            if Path(path).name == "result.json":
+                raise OSError("receipt storage unavailable")
+            original(path, value)
+
+        with patch.object(baseline, "write_json", fail_receipt):
+            with self.assertRaisesRegex(OSError, "receipt storage unavailable"):
+                self.run_spec()
+        self.assertEqual({s: signal.getsignal(s) for s in handlers}, handlers)
+        self.assertEqual((self.folder / "run/output/program").read_bytes(), b"ok")
+
+    def test_unsupported_platform_rejected_before_launch(self):
+        with patch.object(baseline.owned_process.sys, "platform", "darwin"):
+            with self.assertRaisesRegex(ValueError, "requires Linux"):
+                self.run_spec()
+        self.assertFalse((self.folder / "run").exists())
+
+    def test_cleanup_does_not_extend_elapsed_or_timeout(self):
+        original = Path.glob
+        self.spec["timeout_seconds"] = 0.2
+
+        def slow_inspection(path, pattern):
+            time.sleep(0.3)
+            return original(path, pattern)
+
+        with patch.object(baseline.owned_process.Path, "glob", slow_inspection):
+            result = self.run_spec()
+        self.assertTrue(result["success"], result)
+        self.assertLess(result["elapsed_seconds"], 0.2)
+        self.assertGreaterEqual(result["cleanup_seconds"], 0.3)
+        self.assertFalse(result["timed_out"])
 
     def test_surviving_child_rejects_successful_parent(self):
         marker = self.folder / "escaped-child-work"

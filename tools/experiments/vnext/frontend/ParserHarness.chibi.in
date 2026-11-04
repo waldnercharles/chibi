@@ -1,0 +1,121 @@
+package vnext_parser_probe
+
+import parser "project:source_parser"
+import syntax "project:syntax_diagnostics"
+import token "project:source_tokenizer"
+
+// Caller-first parser probe. Corpus text is inserted by prepare.py, byte for byte.
+// Semantic/link rejection fixtures must parse: no typing or linking occurs here.
+Main :: () -> int {
+    // CORPUS_CALLS
+    echo := "package p\nEcho :: (value: i64) -> i64 { return value; }\n";
+    CheckShape(echo, 1, 0, 0, 0);
+    join := "package p\nJoin :: (choose: bool, left: i64, right: i64) -> i64 {\nresult: i64 = right;\nif (choose) { result = left; }\nreturn result + 1;\n}\n";
+    CheckShape(join, 3, 1, 1, 1);
+    comment_parsed := CheckParsed("package p\n// café\nEcho :: (value: i64) -> i64 { return value; }\n");
+    assert(comment_parsed, "UTF-8 comment ranges");
+    CheckRejected("package demo\n\nimport project:greet\n\nMain :: () {\n}\n", 3, 8);
+    CheckRejected("package demo\n\nMain :: () -> int {\n    x := (1 + 2\n    return x\n}\n", 5, 5);
+    CheckRejected("package demo\n\nMain :: () {\n    a := 1 b := 2\n}\n", 4, 12);
+    CheckRejected("package demo\n\nMain :: () {\n    s := \"open\n}\n", 4, 10);
+    return 0;
+}
+
+CheckParsed :: (text: string) -> bool {
+    switch parser.Parse(text) {
+        case .Parsed(nodes, fields, named, extras, root):
+            count := length(nodes);
+            assert(count > 0 && root == 0, "root index");
+            assert(length(fields) == count && length(named) == count && length(extras) == count, "parallel facts");
+            assert(nodes[root].kind == syntax.SourceFile && nodes[root].parent == -1, "root kind and parent");
+            assert(nodes[root].next_sibling == -1 && nodes[root].end == text_byte_length(text), "root range");
+            // One pass checks preorder edges and byte ranges. Links retain the
+            // current parser's -1 sentinel; this probe does not renumber them.
+            index: int = 0;
+            while (index < count) {
+                node := nodes[index];
+                assert(node.start >= 0 && node.start <= node.end && node.end <= text_byte_length(text), "node range");
+                assert(node.row >= 0 && node.column >= 0, "node location");
+                assert(fields[index] >= syntax.FieldNone && fields[index] < syntax.FieldCount, "field kind");
+                if (node.kind == syntax.FunctionDeclaration || node.kind == syntax.Parameter || node.kind == syntax.TypeName || node.kind == syntax.Identifier) {
+                    assert(named[index] && !extras[index], "named declaration facts");
+                }
+                if (node.kind == syntax.Comment) {
+                    assert(named[index] && extras[index], "comment facts");
+                }
+                if (node.kind == token.OpenParen || node.kind == token.CloseParen || node.kind == token.OpenBrace || node.kind == token.CloseBrace) {
+                    assert(!named[index] && !extras[index], "punctuation facts");
+                }
+                if (index != root) {
+                    assert(node.parent >= 0 && node.parent < index, "parent index");
+                    parent := nodes[node.parent];
+                    assert(parent.start <= node.start && node.end <= parent.end, "parent range");
+                }
+                assert(node.first_child == -1 || (node.first_child > index && node.first_child < count), "child index");
+                if (node.first_child >= 0) {
+                    assert(nodes[node.first_child].parent == index, "child parent");
+                }
+                assert(node.next_sibling == -1 || (node.next_sibling > index && node.next_sibling < count), "sibling index");
+                if (node.next_sibling >= 0) {
+                    assert(nodes[node.next_sibling].parent == node.parent, "sibling parent");
+                    assert(node.end <= nodes[node.next_sibling].start, "sibling range");
+                }
+                index += 1;
+            }
+            return true;
+        case .Rejected(diagnostic): return false;
+    }
+}
+
+// Small pure-transform cases pin the fields the next producer actually needs.
+CheckShape :: (text: string, parameters: int, branches: int, locals: int, assignments: int) {
+    switch parser.Parse(text) {
+        case .Parsed(nodes, fields, named, extras, root):
+            functions: int = 0;
+            parameter_count: int = 0;
+            branch_count: int = 0;
+            local_count: int = 0;
+            assignment_count: int = 0;
+            returns: int = 0;
+            index: int = 0;
+            while (index < length(nodes)) {
+                kind := nodes[index].kind;
+                if (kind == syntax.FunctionDeclaration) {
+                    functions += 1;
+                    assert(HasField(nodes, fields, index, syntax.FieldName));
+                    assert(HasField(nodes, fields, index, syntax.FieldParameters));
+                    assert(HasField(nodes, fields, index, syntax.FieldResults));
+                    assert(HasField(nodes, fields, index, syntax.FieldBody));
+                }
+                if (kind == syntax.Parameter) { parameter_count += 1; }
+                if (kind == syntax.IfStatement) { branch_count += 1; }
+                if (kind == syntax.LocalDeclaration) { local_count += 1; }
+                if (kind == syntax.Assignment) { assignment_count += 1; }
+                if (kind == syntax.ReturnStatement) { returns += 1; }
+                index += 1;
+            }
+            assert(functions == 1 && returns == 1);
+            assert(parameter_count == parameters && branch_count == branches);
+            assert(local_count == locals && assignment_count == assignments);
+        case .Rejected(diagnostic): assert(false, "shape source rejected");
+    }
+}
+
+HasField :: (nodes: syntax.Node[], fields: int[], parent: int, wanted: int) -> bool {
+    child := nodes[parent].first_child;
+    while (child >= 0) {
+        if (fields[child] == wanted) { return true; }
+        child = nodes[child].next_sibling;
+    }
+    return false;
+}
+
+CheckRejected :: (text: string, line: int, column: int) {
+    switch parser.Parse(text) {
+        case .Parsed(nodes, fields, named, extras, root): assert(false, "invalid syntax parsed");
+        case .Rejected(diagnostic):
+            assert(diagnostic.line == line && diagnostic.column == column, "diagnostic location");
+            assert(diagnostic.start >= 0 && diagnostic.end >= diagnostic.start, "diagnostic range");
+            assert(diagnostic.document == 0 && diagnostic.message != "", "diagnostic payload");
+    }
+}

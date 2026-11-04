@@ -1,0 +1,36 @@
+{
+  "status": "failed-in-PE-admission",
+  "source_commit": "02c86287430def964445ec90185961e20319536d",
+  "source_tree": "780ba87ea9f29308f2f20a94381cdce8cc5d26ca",
+  "compiler_sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266",
+  "phase": {
+    "start_utc": "2026-11-04T08:32:17Z",
+    "deadline_utc": "2026-11-04T08:42:17Z"
+  },
+  "controller_sha256": "31f92e83793ff97dfc5ffdd6bdc5918a5b98bee276c6c7f74a641f9b55480cdb",
+  "helper": {
+    "name": "OwnedRecordImages.exe",
+    "sha256": "e338ca99ec95532d43e97a2bbbca0dd8c2fcc6abde919f68dc9c3f503e847d74",
+    "bytes": 11792896,
+    "compile_exit": 0,
+    "compile_seconds": 167.189,
+    "compile_log_bytes": 0,
+    "PE_inspection_exit": 0,
+    "PE_admission": "rejected: unexpected PE library",
+    "bcrypt_symbols": [
+      "BCryptGenRandom"
+    ]
+  },
+  "actual_owner_exit": 1,
+  "owner_cleanup_echild": true,
+  "owner_deadline_respected": true,
+  "owner_errors": [],
+  "accepted_PE_count": 0,
+  "Linux_runtime_case_count": 0,
+  "Windows_execution": false,
+  "receipts": {
+    "controller_sha256": "ffcad41680f7d33cf79cb6628e1610cbbd28ba3a449fc37478060314973d835c",
+    "owner_sha256": "258b0390db58898e7780b0275db8536a942c36aa5a42aef40a85a073705436f2",
+    "raw_log_sha256": "83a9af389d3f7ada84ebe26e7d923667a6dd106a6d4126c809b1510f7c6ed024"
+  }
+}

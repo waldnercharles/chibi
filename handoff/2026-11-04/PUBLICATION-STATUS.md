@@ -21,8 +21,9 @@ The separately validated current compiler has a raw fixed point and 573 exact
 tests. Focused native-runner, command, nested-pointer, image, allocation-audit,
 product-construction, archive, asset-bridge, cold-SDK, Graph, array-cookie and
 equality evidence remains limited to each linked dated report. Actual Windows
-execution, full graph-c runtime, the compiler host and ordinary VM/native/C
-engine integration remain open. Cross-linking and PE inspection are not Windows
+execution, full graph-c runtime and ordinary VM/native/C engine integration
+remain open. Fresh registered compiler-host construction and static inspection
+now pass; host runtime remains separate. Cross-linking and PE inspection are not Windows
 runtime acceptance.
 
 The retained pre-correction strict compiler-host construction failed after 31 successful C
@@ -40,8 +41,10 @@ additional source errors in `jit_suspend.c` and `runner.c`, then stopped on an
 unadmitted canonical header spelling before its final unit. A fresh
 [six-command compile continuation](JIT-PORTABILITY.md) now passes both remaining
 strict pairs and the final two units, with the canonical alias bound in advance.
-The old failure remains preserved. No archives or host were produced; fresh
-registered construction and real runtime parity remain pending. The permanent initializer
+The old failure remains preserved. Those failed attempts produced no archives
+or host. A fresh [complete registered construction](REGISTERED-HOST-CONSTRUCTION.md)
+now passes all 88 compiles, 16 archives and the host link, with independent static
+artifact admission. Real runtime parity remains pending. The permanent initializer
 regression now has accepted source, compile and focused runtime evidence, as
 described in [its report](NATIVE-DEFAULT-INITIALIZERS.md); this does not clear
 the full graph-c or host gates.

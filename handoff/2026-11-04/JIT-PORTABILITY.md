@@ -42,7 +42,7 @@ models and pointer-token tables are pure checks, not target-ABI executions.
 
 This is a narrow source/compile checkpoint. No archive, host link, generated
 program or runtime parity test ran in this diagnostic. A fresh registered host
-construction is next; earlier partial builds and these objects are not combined
-into a host pass. Actual bytecode/SLJIT/native parity, full graph-c, broader C
+[construction now passes separately](REGISTERED-HOST-CONSTRUCTION.md); earlier
+partial builds and these objects were not combined into that host pass. Actual bytecode/SLJIT/native parity, full graph-c, broader C
 integration, sanitizer and Windows coverage, exact-head CI and PR integration
 remain separate. PR #1331 is still not ready to merge.

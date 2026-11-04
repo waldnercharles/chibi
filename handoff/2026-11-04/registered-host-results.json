@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "source_commit": "fc6b44ea3f7e1ab75399f281a250d1520e039826",
+  "scope": "Fresh registered Linux compiler-host construction and static inspection; no host execution",
+  "status": "independently admitted construction and static inspection only",
+  "target": "chibi-compiler-host",
+  "compiler": "GCC 14",
+  "jobs": 2,
+  "compiled_sources": 88,
+  "archives": 16,
+  "staged_headers": 124,
+  "graph_records": 105,
+  "dependency_occurrences": 8002,
+  "dependency_paths": 336,
+  "graph_seconds": 30.298866271972656,
+  "build_phase_seconds": 35.69897389411926,
+  "build_total_bound_seconds": 180,
+  "cleanup_included_seconds": 5,
+  "actual_outer_exit": 0,
+  "cleanup_echild": true,
+  "errors": [],
+  "signals": [],
+  "remaining_owned_children": [],
+  "host": {
+    "bytes": 1337048,
+    "sha256": "e2b679a01af041a2077cf9ef5433063ea2ab876f1f09a9d655e26f61a94552c0",
+    "mode": 493
+  },
+  "needed": [
+    "libm.so.6",
+    "libc.so.6"
+  ],
+  "host_executed": false,
+  "correctness_only_not_benchmark": true,
+  "hashes": {
+    "plan": "35e14f105cfdd5547b26e38fe2a52f3c31f998dcae39d94af18808262eece7e3",
+    "controller": "d72034d6de104feded62b1315df1ee7c782d03a99c1dd6d5998aaf0766acc078",
+    "owner": "eb565285001cef43ed88cf73e5797cc83b726afcf6cf192cf5b4ba10f6078698",
+    "recipe": "39c69cd31ed050f2abb953f748e042aa736ccd241ebbcb192aceb4230339a9bf",
+    "source_manifest": "456e89211ad00a411712ea9905375734a1149d034e7a23a17c3dec1b21dffe9c",
+    "build_worker_result": "2bce16a201600e0636ccaba41dfdf8a3e233e8a11c0ca4a0077846e4d6c93058",
+    "build_admission": "70820fdd30b2642d4da4e44fcd08b15b4ad42abc95a4d499258437fd49be1167",
+    "inspect_worker_result": "425383e0616a78d16956c7017e03784ccba5b19da4f34b81f777cf3e3cd5d33b",
+    "final_inspection_admission": "ed9c5b11320d3f9fcfcff484e5d01b6d8a3e6d071e5bf6d4fa9a7f51d2d791c8",
+    "static_elf_checks": "60b11e77dbbd6df808581fab002b77191e1782ba27d4c10cd77db3379e7c6019",
+    "final_input_fences": "254a13095f3b453ece73ab0d5cf7c9b0ab468700e631d3224d1c954d3abc75b8"
+  },
+  "remaining": [
+    "Separate bytecode/SLJIT/native runtime parity",
+    "Full graph-c runtime and C engine integration",
+    "Existing POSIX stamp precision discrepancy",
+    "Actual Windows execution",
+    "Exact PR-head integration, CI and independent reviews; PR #1331 not-ready hold"
+  ],
+  "source_tree": "5c83665bf5765ce7db18de245de981752dba0851",
+  "static_strong_imports": 99,
+  "build_files": 424,
+  "build_subdirectories": 105
+}

@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "code_commit": "083e82408a337787cfd9f08c1fff1113a1884831",
+  "source_tree": "39424a0ad887d48fc7ccd389716963c375c90c08",
+  "authored_files": 4072,
+  "scope": "Linux native product construction only",
+  "initial_attempt": {
+    "status": "failed",
+    "reason": "source inventory omitted three legitimate Graph runner cache files",
+    "seconds": 108.05152559280396,
+    "companions_started": false,
+    "cleanup_echild": true
+  },
+  "continuation": {
+    "status": "independently_admitted",
+    "total_seconds": 84.79179334640503,
+    "graph_seconds": 75.57097840309143,
+    "total_cap_seconds": 300,
+    "execution_cutoff_seconds": 295,
+    "cleanup_reserve_seconds": 5,
+    "tool_exit": 0,
+    "cleanup_echild": true,
+    "artifact_count": 1253,
+    "asset_receipt_inputs": 248,
+    "archive_receipt_inputs": 275,
+    "compiler_rebuilt": false
+  },
+  "artifact_sha256": {
+    "compiler": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266",
+    "asset_compiler": "99101d9099b052a2d9a35817082631981c87828a108b3245c6c5c1f44f0adf77",
+    "facade_archive": "a80f06616c5f477cf35fecb9b7ac588b6862b0e0f37305142b898955a530d5ac",
+    "facade_receipt": "3391a40300da53c4a4c481cb4dad0b0b7d96c78bfd08c2aeb861d521bdf3cf28",
+    "independent_admission": "93427cf7a1a4a8308af9d34f20089943dbd34d181866e812759672b12b76f059"
+  },
+  "proof_archive": {
+    "name": "chibi-native-products-validated-20261104.tar.gz",
+    "sha256": "fb98425f24eb5e282b6bdcca0932f20715d9d50fff585722610b77863d2a53ee",
+    "bytes": 74266278,
+    "members": 51
+  },
+  "remaining": [
+    "C asset bridge behavior",
+    "archive invalidation",
+    "SDK install and relocation",
+    "ordinary VM/native differential",
+    "C engine integration",
+    "actual Windows runtime",
+    "separate pointer-view WIP",
+    "PR #1331 hold"
+  ]
+}

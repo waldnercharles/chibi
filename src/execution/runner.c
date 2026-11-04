@@ -180,7 +180,7 @@ static int run_compiled(const behavior_function *f, behavior_function_context *c
     void *entry = inspected ? f->artifact->inspection_code
                             : behavior_function_entry(f);
     behavior_run_record(inspected ? EXECUTION_RUN_INSPECTED_SLJIT : EXECUTION_RUN_SLJIT);
-    return ((int (*)(behavior_function_context *))entry)(ctx);
+    return ((int (*)(behavior_function_context *))(uintptr_t)entry)(ctx);
 #endif
 }
 
@@ -210,7 +210,7 @@ int behavior_function_run_once(const behavior_function *f, behavior_function_con
         result = FLOW_ERR_ARGUMENT;
     } else if (scoped) {
         behavior_run_record(EXECUTION_RUN_SLJIT);
-        result = ((int (*)(behavior_function_context *))f->artifact->scoped_code)(ctx);
+        result = ((int (*)(behavior_function_context *))(uintptr_t)f->artifact->scoped_code)(ctx);
     } else {
         result = compiled ? run_compiled(f, ctx)
                           : behavior_function_run_interpreted(f, ctx);

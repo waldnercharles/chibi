@@ -37,8 +37,11 @@ then stopped at two signedness diagnostics in `jit_memory.c` and
 `jit_registers.c`. Their [two-line correction and exact strict compile pairs](JIT-SIGNED-WIDTHS.md)
 are independently accepted. The broader diagnostic remains failed: it found
 additional source errors in `jit_suspend.c` and `runner.c`, then stopped on an
-unadmitted canonical header spelling before its final unit. No archives or host
-were produced. The permanent initializer
+unadmitted canonical header spelling before its final unit. A fresh
+[six-command compile continuation](JIT-PORTABILITY.md) now passes both remaining
+strict pairs and the final two units, with the canonical alias bound in advance.
+The old failure remains preserved. No archives or host were produced; fresh
+registered construction and real runtime parity remain pending. The permanent initializer
 regression now has accepted source, compile and focused runtime evidence, as
 described in [its report](NATIVE-DEFAULT-INITIALIZERS.md); this does not clear
 the full graph-c or host gates.

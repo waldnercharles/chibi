@@ -104,15 +104,16 @@ static void scalar(const behavior_machine *m, int value, bool restore)
     sljit_sw offset = reg       ? 0
                     : local < 0 ? value * sizeof(double)
                                 : m->locals + local * sizeof(double);
+    sljit_sw saved = (sljit_sw)(value * sizeof(uint64_t));
     int op = type == PIN_F32 ? SLJIT_MOV_F32 : SLJIT_MOV_F64;
     if (type == PIN_F32 || type == PIN_F64) {
         sljit_emit_fop1(
             m->compiler,
             op,
             restore ? place : SLJIT_MEM1(SLJIT_R3),
-            restore ? offset : value * sizeof(uint64_t),
+            restore ? offset : saved,
             restore ? SLJIT_MEM1(SLJIT_R3) : place,
-            restore ? value * sizeof(uint64_t) : offset
+            restore ? saved : offset
         );
         return;
     }
@@ -120,9 +121,9 @@ static void scalar(const behavior_machine *m, int value, bool restore)
         m->compiler,
         behavior_jit_integer_move(type),
         restore ? place : SLJIT_MEM1(SLJIT_R3),
-        restore ? offset : value * sizeof(uint64_t),
+        restore ? offset : saved,
         restore ? SLJIT_MEM1(SLJIT_R3) : place,
-        restore ? value * sizeof(uint64_t) : offset
+        restore ? saved : offset
     );
 }
 static void values(const behavior_machine *m, const behavior_function_suspension *s, bool restore)

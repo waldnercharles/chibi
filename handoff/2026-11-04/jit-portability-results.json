@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "publication_parent": "9ef31ea5964f67577b3d770d11242ba9e343a045",
+  "status": "Exact two-source strict compile checkpoint independently accepted",
+  "pairs": [
+    {
+      "source": "src/execution/jit_suspend.c",
+      "baseline_sha256": "769609e2453fd48dcae7e396a4a1f64a8f0202a6500627da79924a21ad425e57",
+      "candidate_sha256": "d4fe2704311db10aff38edcb0acc59829a45cae3b5d8514a01f03788955fe5b6",
+      "baseline_exit": 1,
+      "candidate_exit": 0,
+      "baseline_object_absent": true,
+      "candidate_log_empty": true,
+      "ordered_dependencies_each": 117,
+      "baseline_command_record_sha256": "c9e8a8b663e9f7a48566fce105b349afc3937ed565131c15b78d34c9c12147f2",
+      "candidate_command_record_sha256": "6b2fdaae44e492984809c75099efcdcd339a56b7cfe81d3473654af9be84211a",
+      "baseline_depfile_sha256": "700061a1676baae8d7b008ab2e8e6eb5e4febd2c0e3efa000e8c82998a87137a",
+      "candidate_depfile_sha256": "6ef8dc0083792944280529832421056c2dd4a6a42ef59a39bcd2c7e68e1d1e5b",
+      "candidate_object_sha256": "fda7f24f9ea8e30261f625fd037d0c5fad381bc65c6ab1a5a0b9c9107977692a",
+      "candidate_object_bytes": 7280,
+      "baseline_seconds": 0.17137432098388672,
+      "candidate_seconds": 0.17231535911560059
+    },
+    {
+      "source": "src/execution/runner.c",
+      "baseline_sha256": "025ae57a19baff225dd8672bd178c1067dfe9ffaae6bbbeec299f31df39a8780",
+      "candidate_sha256": "a3dfde13857d2f4ab3b1dbaf575a87f02a9ec908049e1af2a8814b007e3546ff",
+      "baseline_exit": 1,
+      "candidate_exit": 0,
+      "baseline_object_absent": true,
+      "candidate_log_empty": true,
+      "ordered_dependencies_each": 113,
+      "baseline_command_record_sha256": "032aed6933761990ae6da095b79c89d314c30fd849050f5bd83bc74bb6ba74cf",
+      "candidate_command_record_sha256": "fa9567869395423afe9313fdece3280754d14f83881a48851c41779d246304be",
+      "baseline_depfile_sha256": "94f00458060ffdf193a17fabdbdc699bbd4754a10b8e03d0d76d1b07116b0211",
+      "candidate_depfile_sha256": "f3852208840ade3b2378c33b763a4d6dc7eccbbc2ebc6f00385348b1dba27996",
+      "candidate_object_sha256": "d6bcf656c462156fa8a3bf4ab2ed0dfcc8f38f3c93f173a412fa498b2a11eabd",
+      "candidate_object_bytes": 9640,
+      "baseline_seconds": 0.13025379180908203,
+      "candidate_seconds": 0.13036680221557617
+    }
+  ],
+  "remaining_units": [
+    {
+      "source": "src/support/binary_cache.c",
+      "exit_status": 0,
+      "log_empty": true,
+      "ordered_dependencies": 99,
+      "command_record_sha256": "a517e626be2e3f2c2f19973065144fcd7a91db553028c98cda277a808cc34f44",
+      "depfile_sha256": "fdcb8e79fb286627aba0dde2727c88b8b82b63ce4c2f2249f31f2f704f6eba7f",
+      "object_sha256": "76ef28c781dabc7277f4632257f96820fef3da193db0c449e544097a6a4a06ba",
+      "object_bytes": 9816,
+      "seconds": 0.1745913028717041
+    },
+    {
+      "source": "src/toolchain/compiler_main.c",
+      "exit_status": 0,
+      "log_empty": true,
+      "ordered_dependencies": 154,
+      "command_record_sha256": "3bf7a2cc21e42469204fb6c64474e449b040a79db146616e34767c29f34b64db",
+      "depfile_sha256": "b1e30fbf13a7151a4182b130597c6f781c601eb64505730225b02d0e99585e7c",
+      "object_sha256": "9de2688d17cd89fd5b668139f0fa2e7df64cf1b805c8826a2e5fc2cebd9613fc",
+      "object_bytes": 14760,
+      "seconds": 0.21751856803894043
+    }
+  ],
+  "campaign": {
+    "observed_commands": 6,
+    "validated_compiles": 4,
+    "dependency_occurrences": 713,
+    "objects_structurally_parsed": 4,
+    "elapsed_seconds": 4.147270679473877,
+    "actual_outer_exit": 0,
+    "cleanup_echild": true,
+    "owner_errors": [],
+    "owner_signals": [],
+    "owned_survivors": [],
+    "full_post_run_fences_passed": true,
+    "retained_output_entries": 42,
+    "retained_output_bytes": 166758,
+    "host_build_passed": false,
+    "graph_records_created": 0,
+    "runtime_parity_passed": false,
+    "status": "complete",
+    "total_limit_seconds": 180,
+    "execution_cutoff_seconds": 175,
+    "command_limit_seconds": 15,
+    "cleanup_reserve_seconds": 5
+  },
+  "proof_sha256": {
+    "review.json": "0d4d928590c03f8e15e95fca2715bb4ea69baaef5dc1c2c6c6ec5cdfefc8aec5",
+    "terminal-review.json": "d940feae20227e4d76bd2ed7a2c41da1ba008a92f0f6d6b82210186a7005974c",
+    "terminal-verification.json": "c2c1c68a7d02a2eecb96a47e37a579df3d31c2255e566613102adf96bdf746f9",
+    "frozen-post-run.json": "0ebba5835825f125914a570a0f0ac3a41def5f22d38b1a8b61f28eb0e7a031e0",
+    "SOURCE_CHECKPOINT.md": "36a0fc929b6d01a41c27b258b5b7af77e6bc8ea91146878212117dd19ed9c4e2",
+    "plan.json": "dae053d15b9dc144b6e5da25b32c5d5c49c8281e6da3fe8624f98c013fd78502",
+    "run.py": "5b58f8c2c83b854ffb26b53d9880696cb61bea43029a4a67f2f37242ba35c38d",
+    "owner.py": "eb565285001cef43ed88cf73e5797cc83b726afcf6cf192cf5b4ba10f6078698",
+    "change.patch": "1d74e9c74171cc020820b610458a3afddcbe280855f385e0fa6699ad65308323",
+    "dependency-alias.json": "009df4ad3d28634b15f4c6d883b1c764b8d564d4ba36dc33d91ff4393db7c847"
+  },
+  "scope": "Only the exact two-source correction and six strict compile commands. No archive, host link, runtime or cross-target ABI proof, full graph-c, Windows, exact-head CI, PR readiness, merge or release acceptance."
+}

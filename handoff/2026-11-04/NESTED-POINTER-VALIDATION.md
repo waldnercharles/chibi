@@ -27,7 +27,7 @@ All 20 build/emit/test phases passed their source/tool/termination checks. They 
 ## Limits and remaining work
 
 - This establishes the named Linux cases, not the broad managed/task suite, actual Windows behavior, product acceptance or readiness to merge PR #1331.
-- SourceProbe's checked-in assertion path can mask a peak-limit failure when the intentional assertion controls the exit status. This proof independently parses every allocation report and enforces peak ≤ 2,048. A separate checked-in regression fix remains useful.
+- This original proof independently parses every allocation report and enforces peak ≤ 2,048. A subsequent checked-in regression now closes the assertion-path audit masking gap; see [SOURCE-AUDIT-REGRESSION.md](SOURCE-AUDIT-REGRESSION.md) for its separate baseline and corrected evidence.
 - Normal close balance is verified. The deliberately broken close control was not rerun, so no new negative-control detection claim is made.
 - Exact-current ordinary/native differential testing remains separate.
 - Historical failures and terminal-unknown attempts retain their original status. The old union-native leak investigation and ambiguous flagged cases were not selected or declared cleared.

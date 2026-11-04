@@ -1,0 +1,83 @@
+{
+  "status": "accepted-for-focused-cross-link-pe-and-linux-preservation",
+  "source_commit": "02c86287430def964445ec90185961e20319536d",
+  "source_tree": "780ba87ea9f29308f2f20a94381cdce8cc5d26ca",
+  "source_files": 4054,
+  "compiler_sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266",
+  "phase": {
+    "start_utc": "2026-11-04T08:58:15Z",
+    "deadline_utc": "2026-11-04T09:08:15Z"
+  },
+  "completed_utc": "2026-11-04T09:06:48.337212+00:00",
+  "elapsed_seconds": 513.374,
+  "new_commands": 30,
+  "PE_count": 14,
+  "cases": [
+    {
+      "mode": "borrowed",
+      "level": 0,
+      "kind": "writer",
+      "status": 0
+    },
+    {
+      "mode": "borrowed",
+      "level": 0,
+      "kind": "broken",
+      "status": 33
+    },
+    {
+      "mode": "borrowed",
+      "level": 2,
+      "kind": "writer",
+      "status": 0
+    },
+    {
+      "mode": "borrowed",
+      "level": 2,
+      "kind": "broken",
+      "status": 33
+    },
+    {
+      "mode": "owned",
+      "level": 0,
+      "kind": "writer",
+      "status": 0
+    },
+    {
+      "mode": "owned",
+      "level": 0,
+      "kind": "broken",
+      "status": 33
+    },
+    {
+      "mode": "owned",
+      "level": 2,
+      "kind": "writer",
+      "status": 0
+    },
+    {
+      "mode": "owned",
+      "level": 2,
+      "kind": "broken",
+      "status": 33
+    }
+  ],
+  "artifact_count_including_receipt": 137,
+  "source_tool_guards": true,
+  "actual_owner_exit": 0,
+  "raw_root_wait_status": 0,
+  "cleanup_echild": true,
+  "remaining_children": [],
+  "errors": [],
+  "deadline_respected": true,
+  "predecessor_status": "failed, preserved unchanged",
+  "reused_helper_sha256": "e338ca99ec95532d43e97a2bbbca0dd8c2fcc6abde919f68dc9c3f503e847d74",
+  "Windows_execution": false,
+  "ordinary_differential": false,
+  "receipts": {
+    "attempt-01/receipt.json": "e4700e291300e1d6c5b49c4ad531425d6892344309b1f0ea8f32140b85c9703d",
+    "attempt-01-owner/receipt.json": "180ea2c0314e7cc0e84e8523c7f4af5143c7e3dd665ed0deda110495a02db004",
+    "independent-final-admission.json": "c989ba480455c0ab19856488ca8e28cd0e42caedf5c1e8f57138bcef25c51a12"
+  },
+  "archive_sha256": "ce5debe7b53a1339a58d22ce18de923bd0c8a7ab37e813a81b5d48bae19ffc56"
+}

@@ -1,0 +1,52 @@
+{
+  "status": "accepted-for-focused-Linux-harness-correction",
+  "commit": "083e82408a337787cfd9f08c1fff1113a1884831",
+  "tested_source_base": "85057387ab2b88a7b3f112c8a26c5ea7f97cddb9",
+  "tested_patch_sha256": "230f254367e839f3e423c389790d66bda2d8a3fcb47fea0278b00dee215eeaf6",
+  "healthy_executions": 16,
+  "negative_audit_controls": 2,
+  "healthy_peak_range": [
+    1,
+    967
+  ],
+  "live_allocations": 0,
+  "peak_limit": 2048,
+  "original_failed_fixed_attempt": "preserved; callback AssertionCleanup lacks collector",
+  "fresh_phases": {
+    "baseline": {
+      "status": "passed",
+      "elapsed_seconds": 30.61,
+      "deadline_seconds": 120,
+      "actual_owner_exit": 0,
+      "cleanup_echild": true,
+      "deadline_respected": true,
+      "errors": [],
+      "result_sha256": "70e046ac2fc146e17a9f6d970822020a685fb453bc221b26765641acb2e51e56",
+      "owner_sha256": "11b664b340e7538a9bdcf4c2953149800e25678aebaf059f05070e313eeb4549"
+    },
+    "fixed": {
+      "status": "passed",
+      "elapsed_seconds": 33.641,
+      "deadline_seconds": 120,
+      "actual_owner_exit": 0,
+      "cleanup_echild": true,
+      "deadline_respected": true,
+      "errors": [],
+      "result_sha256": "4a4000e0d028768d9ada71b1e07a6d346e3c7a95a76fcd66a0eca5e2a06369d6",
+      "owner_sha256": "2ae2c550698ccb3d646252cca97baab79e13478c99b76893793bcf87e740e66d"
+    }
+  },
+  "reused_mutation": {
+    "scope": "unchanged predicate/compiler/core/tool closure only",
+    "seconds": 23.225,
+    "compile_exit": 0,
+    "oracle_exit": 1,
+    "oracle_output_bytes": 0,
+    "result_sha256": "fc1f39c9f03eb052d4587817b95fc2b56604c7c99244403ab8bf8b74da84464b",
+    "owner_sha256": "56c6453492ef7eee882989696b90c815c301b01efb1153a21aaa18f14702c527"
+  },
+  "admission_sha256": "160cc06bb87b9ff8c1ce44a0e300932c1268ec513405c76b4c7d7c8ee8e6002c",
+  "archive_sha256": "67fc60831f19a9a7a72aa94e8dc97b44055193ab88fe86b21f924036df5a3015",
+  "Windows_execution": false,
+  "broad_suite_execution": false
+}

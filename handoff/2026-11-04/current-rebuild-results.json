@@ -1,0 +1,54 @@
+{
+  "classification": "new local Linux takeover compiler with exact-source fixed point and compiler-test proof; not a published release, Windows or full PR acceptance",
+  "source_commit": "02c86287430def964445ec90185961e20319536d",
+  "source_tree": "780ba87ea9f29308f2f20a94381cdce8cc5d26ca",
+  "compiler_tree": "ba3577278c8de0b3b27d793ee017cc4a0e737b5a",
+  "core_tree": "a48b8dbadc3257a18cc5a3aceb7ca6cfe97c6788",
+  "source_files": 4054,
+  "builder_sha256": "0a43d0a2b91f6c5e36afc8ba1ea586fe938d6fbb39b687acb3e3ee442bcab7dc",
+  "artifact_sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266",
+  "artifact_bytes": 11576992,
+  "raw_pair_equal": true,
+  "raw_pair_members": [
+    "proof/stage3/chibi",
+    "proof/stage4/chibi"
+  ],
+  "tests": {
+    "expected_count": 573,
+    "observed_count": 573,
+    "unique_count": 573,
+    "missing": [],
+    "unexpected": [],
+    "duplicates": [],
+    "summaries": [
+      "573 tests, 0 failed"
+    ],
+    "unexpected_lines": [],
+    "expected_inventory_sha256": "0eb643937bdf7d21007bbf775780c946ce43746d582675ec945771f92cbdf60b",
+    "observed_names_sha256": "f7bcbedc4f9e6113ea60be8dba26155a6d476026375f2687c7d12ab62473e380",
+    "passed": true
+  },
+  "phase_seconds": {
+    "stage2": 97.471,
+    "stage3": 96.616,
+    "stage4": 96.829,
+    "compiler-tests": 63.355
+  },
+  "total_phase_seconds": 354.271,
+  "source_and_tool_fences_passed": true,
+  "all_owned_processes_terminal": true,
+  "build_jobs": 2,
+  "test_execution_workers": 2,
+  "test_compile_jobs": 9,
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "phase_bounds_seconds": {
+    "each_build": 120,
+    "compiler_tests": 180
+  },
+  "review_scope": "Parent independently read stage4 and compiler-tests receipts, confirming the raw fixed point, exact 573-test pass and clean termination. Same source-fenced controller used for the separately admitted intermediate; no claim of complete independent controller audit.",
+  "old_chain": "not signaled, restarted or modified; historical terminal outcome remains unknown",
+  "publication": "none; no release, seed pin, PR hold or platform gate changed"
+}

@@ -1,0 +1,20 @@
+{
+  "status": "passed",
+  "source_commit": "cc5c8346a9c7e0bf2a45a1c1bc015dd29cdf9b00",
+  "compiler_sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266",
+  "script_sha256": "b1bedec906ef9b4e0053c74da6800364ece0156ee592b141c9f8c48f71d454de",
+  "controller_sha256": "c549bb4096fb328480d3304c58b146dca108c3410f6960ee4894663cb15ef3b1",
+  "deadline_seconds": 120,
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "classification": "complete ordinary native-runner regression for jobs-forwarding correction; controlled self-host stage fixtures, no real bootstrap or union leak investigation",
+  "exit_status": 0,
+  "cleanup_complete": true,
+  "elapsed_seconds": 17.155,
+  "log_sha256": "3204a1fe8af0444f319bfd036972ee21135c2e0f1125a0e52d30db4da26aac7b",
+  "tracked_source_files_unchanged": 4062,
+  "tool_fences_unchanged": true,
+  "scope": "Entire test/bootstrap/native-runner.sh, using a separate tracked-source checkout; not only the extracted stage-contract block."
+}

@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "code_commit": "083e82408a337787cfd9f08c1fff1113a1884831",
+  "scope": "Four unchanged focused Linux Graph selector Runs only; not full registered suite or merge admission.",
+  "status": "independently_admitted",
+  "compile_phase_seconds": 18.11375403404236,
+  "run_phase_seconds": 1.879913568496704,
+  "limits_seconds": {
+    "compile_total": 180,
+    "run_total": 60,
+    "cleanup_reserve_each": 5
+  },
+  "commands": [
+    {
+      "elapsed_seconds": 0.05363631248474121,
+      "exit_status": 0,
+      "log_bytes": 2016,
+      "log_sha256": "effb7c42f6ec0422e76681fb75f31b34a24487c79930b674ea40b7dbde24a7fd",
+      "selector": "graph-engine"
+    },
+    {
+      "elapsed_seconds": 0.017335891723632812,
+      "exit_status": 0,
+      "log_bytes": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "selector": "graph-evidence"
+    },
+    {
+      "elapsed_seconds": 0.0025925636291503906,
+      "exit_status": 0,
+      "log_bytes": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "selector": "graph-wasm"
+    },
+    {
+      "elapsed_seconds": 0.0013284683227539062,
+      "exit_status": 0,
+      "log_bytes": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "selector": "graph-os"
+    }
+  ],
+  "artifacts": [
+    {
+      "bytes": 670376,
+      "path": "graph-engine",
+      "sha256": "1cc6bbc063b1ca92856558d0cdc1b761944447032b7070d015911a8053fc92f2"
+    },
+    {
+      "bytes": 388848,
+      "path": "graph-evidence",
+      "sha256": "570f9ed957f1c17239615a91eaa2c1b818e150cc1e9f304e7a0d23bdad99a79e"
+    },
+    {
+      "bytes": 80088,
+      "path": "graph-os",
+      "sha256": "799eeeea764cdf56189cce6b69484151c312709b614827090847711aa29cf742"
+    },
+    {
+      "bytes": 604328,
+      "path": "graph-wasm",
+      "sha256": "c3e46743d780fc381be1c92f66f8a1f4047f12e8d11cab8cdd94cbbe67c8519a"
+    }
+  ],
+  "engine_log_diagnostics": {
+    "bytes": 2016,
+    "exact_text_and_order_verified": true,
+    "invalid_prepared_version": 4,
+    "invalid_project_version": 8
+  },
+  "source_tool_loader_python_unchanged": true,
+  "all_fixture_and_private_scratch_empty": true,
+  "cleanup_echild": true,
+  "run_deadline_margin_seconds": 58.11994647979736,
+  "independent_admission_sha256": "065f7222c64e8fcd41470f492010da613914302daf5814081743846a21faff43",
+  "remaining": [
+    "graph-c/build/discovery",
+    "ordinary VM/native OwnedRecords parity",
+    "full C-driver integration",
+    "actual Windows runtime",
+    "separate pointer-view WIP",
+    "exact-head integration and PR #1331 hold"
+  ],
+  "proof_archive": {
+    "archive": "chibi-graph-regressions-validated-20261104.tar.gz",
+    "sha256": "f86d3f2dbe31b71f23d3283c1b7829df1311c507168ccccc0e7d3e2d1254a093",
+    "bytes": 17510843,
+    "regular_members": 4137,
+    "symlink_members": 1
+  }
+}

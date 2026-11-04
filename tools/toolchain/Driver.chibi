@@ -749,12 +749,12 @@ StageProgram :: (target: string) -> string {
 // --core DIR --output FILE --llvm DIR` writes a native executable with the same
 // interface; exit 1 means the native lane rejected the sources, and the first
 // stderr line then names the first rejected function.
-NativeStage :: (name: string, stage: string, directory: string, llvm: string, target: string, dry: bool) -> int {
+NativeStage :: (name: string, stage: string, directory: string, llvm: string, target: string, jobs: string, dry: bool) -> int {
     status := Step(name, ["sh", "-c", Join(["rm -rf '", directory, "' && mkdir -p '", directory, "'"])], dry)
     if (status != 0) {
         return status
     }
-    command := [stage, "--compiler", Absolute("tools/compiler"), "--core", Absolute("packages/core"), "--output", Join([directory, StageProgram(target)]), "--llvm", llvm, "--target", target]
+    command := [stage, "--compiler", Absolute("tools/compiler"), "--core", Absolute("packages/core"), "--output", Join([directory, StageProgram(target)]), "--llvm", llvm, "--target", target, "--jobs", jobs]
     if (dry) {
         return Step(name, command, dry)
     }
@@ -997,9 +997,10 @@ NativeSelfHost :: (arguments: string[]) -> int {
         target = "aarch64-apple-darwin"
     }
     stage_one := Absolute(prebuilt)
+    jobs := Jobs(arguments)
     two := Join([work, "/stage2"])
     three := Join([work, "/stage3"])
-    status := NativeStage("stage-two", stage_one, two, llvm, target, dry)
+    status := NativeStage("stage-two", stage_one, two, llvm, target, jobs, dry)
     if (status != 0) {
         return status
     }
@@ -1007,7 +1008,7 @@ NativeSelfHost :: (arguments: string[]) -> int {
         os.Print("native-self-host: stage two built")
         return 0
     }
-    status = NativeStage("stage-three", Join([two, "/chibi"]), three, llvm, target, dry)
+    status = NativeStage("stage-three", Join([two, "/chibi"]), three, llvm, target, jobs, dry)
     if (status != 0) {
         return status
     }
@@ -1028,7 +1029,7 @@ NativeSelfHost :: (arguments: string[]) -> int {
         // must reproduce.
         if (digest_two != digest_three) {
             four := Join([work, "/stage4"])
-            status = NativeStage("stage-four", Join([three, "/chibi"]), four, llvm, target, dry)
+            status = NativeStage("stage-four", Join([three, "/chibi"]), four, llvm, target, jobs, dry)
             if (status != 0) {
                 return status
             }
@@ -1050,7 +1051,7 @@ NativeSelfHost :: (arguments: string[]) -> int {
     windows := Option(arguments, "--windows", "")
     if (windows != "") {
         folder := Absolute(windows)
-        status = NativeStage("stage-two-windows", Join([two, "/chibi"]), folder, llvm, "x86_64-pc-windows-msvc", dry)
+        status = NativeStage("stage-two-windows", Join([two, "/chibi"]), folder, llvm, "x86_64-pc-windows-msvc", jobs, dry)
         if (status != 0) {
             return status
         }
@@ -1170,7 +1171,7 @@ Usage :: () -> int {
     os.Print("       build test [--build DIR] [--release-build DIR] [--jobs N] [--timeout SECONDS] [--list] [--dry-run] NAME...")
     os.Print("       build install [--prefix DIR] [--release-build DIR]")
     os.Print("       build format [--check] | clean | census | publish-seed | native-evidence --build DIR --output DIR --nm PATH --sha SHA --sanitizers ON|OFF ...")
-    os.Print("       build native-self-host --llvm DIR [--stage-one PROGRAM] [--windows DIR] [--work DIR] [--release-build DIR] [--build-host PATH --compiler-host PATH] [--stage-two-only] [--compare-vm [--skip-vm-comparison]] [--dry-run]")
+    os.Print("       build native-self-host --llvm DIR [--stage-one PROGRAM] [--jobs N] [--windows DIR] [--work DIR] [--release-build DIR] [--build-host PATH --compiler-host PATH] [--stage-two-only] [--compare-vm [--skip-vm-comparison]] [--dry-run]")
     os.Print("       build native-vendor-sample --llvm DIR --native-driver PROGRAM [--work DIR] [--dry-run]")
     os.Print("       build bootstrap-artifact | bootstrap-recover [--release-build DIR]")
     os.Print("       build sdk-reflect [--reflect-build DIR] [-- NATIVE ARGUMENTS]")

@@ -311,9 +311,13 @@ NativeFixedPoint :: (toolchain: Toolchain) {
     assert(os.Run(["rm", "-rf", scratch]) == 0 && os.MakeDirectory(scratch) == nil, "the scratch root")
     seed := format_text("{}/seed", scratch)
     assert(os.Run(["cp", "test/graph/fixtures/native-stage.sh", seed]) == 0 && os.Run(["chmod", "+x", seed]) == 0, "the controlled seed")
+    assert(os.WriteText(format_text("{}/jobs", scratch), "2") == nil, "the stage worker limit")
+    for (tool in ["opt", "llc", "ld.lld", "ld64.lld"]) {
+        assert(os.WriteText(format_text("{}/{}", scratch, tool), "fixture\n") == nil, "the fingerprinted runner input")
+    }
     for (mode in ["missing-three", "missing-four", "failed-four", "mismatch", "equal", "recovered"]) {
         assert(os.WriteText(format_text("{}/mode", scratch), mode) == nil, "the stage behavior")
-        result := Verb(toolchain, "native-self-host", ["--llvm", scratch, "--work", scratch, "--stage-one", seed])
+        result := Verb(toolchain, "native-self-host", ["--llvm", scratch, "--work", scratch, "--stage-one", seed, "--jobs", "2"])
         log := Output(result)
         assert(result.status != 0, "the fixture never claims a complete native proof")
         assert(!Has(log, "stage-five"), "recovery has only one extra generation")

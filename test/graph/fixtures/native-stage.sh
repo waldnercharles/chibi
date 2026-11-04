@@ -1,19 +1,23 @@
 #!/bin/sh
 # Controlled native stages: these copy scripts, never compile compiler sources.
 set -eu
-output=
+output= jobs=
 while [ "$#" -gt 0 ]; do
     if [ "$1" = --output ]; then
         output=$2
+        shift
+    elif [ "$1" = --jobs ]; then
+        jobs=$2
         shift
     fi
     shift
 done
 case "$output" in
-    */runner/driver|*/runner/graph) echo 'fixture reached runner' >&2; exit 23 ;;
+    */CommandTests-Run) echo 'fixture reached runner' >&2; exit 23 ;;
     */stage[234]/chibi) work=${output%/stage?/*} ;;
     *) exit 24 ;;
 esac
+test "$jobs" = "$(cat "$work/jobs")"
 mode=$(cat "$work/mode")
 case "$output:$mode" in
     */stage3/chibi:missing-three|*/stage4/chibi:missing-four) exit 0 ;;

@@ -156,7 +156,7 @@ chmod +x "$scratch/command-contract"
 cat > "$scratch/stage" <<'STAGE'
 #!/bin/sh
 set -eu
-project= core= output= llvm= target= source= entry= collection=
+project= core= output= llvm= target= source= entry= collection= jobs=
 while [ "$#" -gt 0 ]; do
     test "$#" -ge 2
     case "$1" in
@@ -168,6 +168,7 @@ while [ "$#" -gt 0 ]; do
         --source) source=$2 ;;
         --entry) entry=$2 ;;
         --collection) collection=$2 ;;
+        --jobs) jobs=$2 ;;
         *) echo "unexpected fake-stage option: $1" >&2; exit 92 ;;
     esac
     shift 2
@@ -193,6 +194,7 @@ if [ -n "$source" ]; then
     exit 0
 fi
 test "$project" = "$RUNNER_FIXTURE_ROOT/tools/compiler"
+test "$jobs" = "$RUNNER_FIXTURE_JOBS"
 test "$llvm" = "$RUNNER_FIXTURE_LLVM"
 test -z "$entry$collection"
 case "$output" in
@@ -228,10 +230,10 @@ export RUNNER_FIXTURE_FIXED="$RUNNER_FIXTURE_WORK/stage2/chibi" RUNNER_CONTRACT_
 
 # Stage progress must be visible while the compiler is still running, even
 # when that compiler fails. Preserve the exact status and stop later stages.
-export RUNNER_FIXTURE_PROGRESS="$scratch/stage-progress" RUNNER_STAGE_STATUS=19
+export RUNNER_FIXTURE_PROGRESS="$scratch/stage-progress" RUNNER_STAGE_STATUS=19 RUNNER_FIXTURE_JOBS=1
 : > "$SEED_EVENTS"
 if "$scratch/driver" build native-self-host --llvm "$llvm" --stage-one "$scratch/stage" \
-    --work "$RUNNER_FIXTURE_WORK" > "$RUNNER_FIXTURE_PROGRESS" 2>&1; then exit 1; else test "$?" = 19; fi
+    --work "$RUNNER_FIXTURE_WORK" --jobs 1 > "$RUNNER_FIXTURE_PROGRESS" 2>&1; then exit 1; else test "$?" = 19; fi
 printf 'stage-two\n' > "$scratch/expected-events"
 cmp "$scratch/expected-events" "$SEED_EVENTS"
 grep -Eq '^stage-two: [0-9]+ s, exit 19$' "$RUNNER_FIXTURE_PROGRESS"
@@ -239,15 +241,19 @@ unset RUNNER_FIXTURE_PROGRESS RUNNER_STAGE_STATUS
 
 # The stage-two-only boundary still returns before the mandatory command
 # contract, optional Windows stage, seed or comparison hosts.
+export RUNNER_FIXTURE_JOBS=2
 : > "$SEED_EVENTS"
 "$scratch/driver" build native-self-host --llvm "$llvm" --stage-one "$scratch/stage" \
-    --work "$scratch/stages" --stage-two-only --compare-vm --windows "$RUNNER_FIXTURE_WINDOWS" \
+    --work "$scratch/stages" --jobs 2 --stage-two-only --compare-vm --windows "$RUNNER_FIXTURE_WINDOWS" \
     --build-host "$scratch/legacy-host" --compiler-host "$scratch/legacy-host"
 printf 'stage-two\n' > "$scratch/expected-events"
 cmp "$scratch/expected-events" "$SEED_EVENTS"
 
 export RUNNER_FIXTURE_WORK="$scratch/stages-default" RUNNER_FIXTURE_WINDOWS="$scratch/windows-default"
 export RUNNER_FIXTURE_FIXED="$RUNNER_FIXTURE_WORK/stage2/chibi"
+# An omitted --jobs preserves the platform's online-processor default.
+RUNNER_FIXTURE_JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf '8')
+export RUNNER_FIXTURE_JOBS
 : > "$SEED_EVENTS"
 "$scratch/driver" build native-self-host --llvm "$llvm" --stage-one "$scratch/stage" \
     --work "$RUNNER_FIXTURE_WORK" --windows "$RUNNER_FIXTURE_WINDOWS" \
@@ -258,20 +264,20 @@ cmp "$scratch/expected-events" "$SEED_EVENTS"
 # A failed mandatory contract retains its status and cannot fall back to
 # a VM seed/host. Separate stage paths keep its preparation independently cold.
 export RUNNER_FIXTURE_WORK="$scratch/stages-failed" RUNNER_FIXTURE_WINDOWS="$scratch/windows-failed"
-export RUNNER_FIXTURE_FIXED="$RUNNER_FIXTURE_WORK/stage2/chibi" RUNNER_CONTRACT_STATUS=7
+export RUNNER_FIXTURE_FIXED="$RUNNER_FIXTURE_WORK/stage2/chibi" RUNNER_CONTRACT_STATUS=7 RUNNER_FIXTURE_JOBS=4
 : > "$SEED_EVENTS"
 if "$scratch/driver" build native-self-host --llvm "$llvm" --stage-one "$scratch/stage" \
-    --work "$RUNNER_FIXTURE_WORK" --windows "$RUNNER_FIXTURE_WINDOWS" \
+    --work "$RUNNER_FIXTURE_WORK" --jobs 4 --windows "$RUNNER_FIXTURE_WINDOWS" \
     --build-host "$scratch/legacy-host" --compiler-host "$scratch/legacy-host"; then exit 1; else test "$?" = 7; fi
 cmp "$scratch/expected-events" "$SEED_EVENTS"
 
 # The optional comparator still prepares its seed before either comparison
 # host; seed status23 stops the route before contract/comparator execution.
 export RUNNER_FIXTURE_WORK="$scratch/stages" RUNNER_FIXTURE_FIXED="$scratch/stages/stage2/chibi"
-export RUNNER_CONTRACT_STATUS=0
+export RUNNER_CONTRACT_STATUS=0 RUNNER_FIXTURE_JOBS=2
 : > "$SEED_EVENTS"
 if "$scratch/driver" build native-self-host --llvm "$llvm" --stage-one "$scratch/stage" \
-    --work "$scratch/stages" --compare-vm --build-host "$scratch/legacy-host" \
+    --work "$scratch/stages" --jobs 2 --compare-vm --build-host "$scratch/legacy-host" \
     --compiler-host "$scratch/legacy-host"; then exit 1; else test "$?" = 23; fi
 printf 'stage-two\nstage-three\nseed tools/compiler/bootstrap\n' > "$scratch/expected-events"
 cmp "$scratch/expected-events" "$SEED_EVENTS"

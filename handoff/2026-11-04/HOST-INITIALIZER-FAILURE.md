@@ -34,4 +34,7 @@ Retained evidence:
 
 Archive member bytes, modes, link and unchanged original identities were read
 back. The archive is retained locally, not uploaded as a release. A potential
-source correction is documented separately and was not applied or tested.
+source correction was not applied or tested in this retained failed packet.
+A later [focused initializer correction](NATIVE-DEFAULT-INITIALIZERS.md) passes
+strict compilation and a separate standalone descriptor runtime proof; it does
+not retroactively change this failed result.

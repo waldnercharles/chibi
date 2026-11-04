@@ -1,0 +1,173 @@
+{
+  "schema_version": 1,
+  "status": "Focused compile and standalone runtime proof independently accepted; full host and integration pending",
+  "source_header_sha256": "e9def4364b0523cc5468329efc75803f61860645298dc97af4295ce884fdb22c",
+  "fixture_sha256": "717531215cae8e5a0b583149e185ce64f3caa6c52ac16a495db34b0559650478",
+  "source_review_sha256": "ff29b95919cd07024a27881f77f6d2eb4b4c55c7087d483c01a54729f90acdd6",
+  "compile_terminal_review_sha256": "2c2831002c7ffc76294c9dcfcb6b5526e7a57cefc6a184e92e1e4f378c1fcc35",
+  "phases": [
+    {
+      "name": "baseline-text_definition",
+      "status": "passed",
+      "compiler_exit": 1,
+      "compiler_seconds": 0.03219175338745117,
+      "phase_seconds": 2.68725323677063,
+      "phase_cap_seconds": 20.0,
+      "diagnostic_count": 19,
+      "object_sha256": null,
+      "object_bytes": null,
+      "log_sha256": "02ef9d694d680c1535a4adb6eb6cf249422a5dd8290d05e68a0aa8122664968d",
+      "result_sha256": "b02d83b69776b09cee2183653fbd7ea96ced2fc0c6baf21572040b4b6853e07b",
+      "owner_receipt_sha256": "dd38750925ce9b566ed3c3debf1b9f52733405c0a3432feee314292596a77d69",
+      "cleanup_echild": true,
+      "deadline_respected": true
+    },
+    {
+      "name": "candidate-text_definition",
+      "status": "passed",
+      "compiler_exit": 0,
+      "compiler_seconds": 0.035616397857666016,
+      "phase_seconds": 2.540001392364502,
+      "phase_cap_seconds": 20.0,
+      "diagnostic_count": 0,
+      "object_sha256": "e9021d9799c42083432b209769639bfcdada6465f80974a06cd51233f3c57270",
+      "object_bytes": 9392,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "result_sha256": "b9379848ef412b68dc6100f4ac3990b483002965bad99e928951d75fa2debaa3",
+      "owner_receipt_sha256": "0a4cfef51ac92877f6cb050ee6d06c5a7d626b2e0434f673a57bc11ef9946b01",
+      "cleanup_echild": true,
+      "deadline_respected": true
+    },
+    {
+      "name": "candidate-arrays_definition",
+      "status": "passed",
+      "compiler_exit": 0,
+      "compiler_seconds": 0.07184791564941406,
+      "phase_seconds": 3.9571638107299805,
+      "phase_cap_seconds": 20.0,
+      "diagnostic_count": 0,
+      "object_sha256": "f3b7dec567aaf8e5ff183313fdc7d9f0da93ac259a7fd0ecea21948749d1af2b",
+      "object_bytes": 28736,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "result_sha256": "a1b006b412ba6e26fcb24838ec2bd0be179d7b1454faf5f6e063180a42ae5c7b",
+      "owner_receipt_sha256": "68d9ee9c6bcac4ab4612fb3e23d1164c65027153c1f31e0680b4ffff7e28220d",
+      "cleanup_echild": true,
+      "deadline_respected": true
+    },
+    {
+      "name": "candidate-field-fixture",
+      "status": "passed",
+      "compiler_exit": 0,
+      "compiler_seconds": 0.21468710899353027,
+      "phase_seconds": 3.15042781829834,
+      "phase_cap_seconds": 15.0,
+      "diagnostic_count": 0,
+      "object_sha256": "c12c2eb2f7a497755f7d4e970bde9fab91ae4c66f70e708a71d6faf3d8124d6a",
+      "object_bytes": 20080,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "result_sha256": "5df775d34d366d1a6779e08a3260a50b24abfa532178a8a0580c7f893135277e",
+      "owner_receipt_sha256": "d871fcf9228de7acc77409f9b6ec1fccfc947ccb6529a56a8f19fe865d92bffc",
+      "cleanup_echild": true,
+      "deadline_respected": true
+    },
+    {
+      "name": "candidate-wrong-type",
+      "status": "passed",
+      "compiler_exit": 1,
+      "compiler_seconds": 0.032022714614868164,
+      "phase_seconds": 2.3239188194274902,
+      "phase_cap_seconds": 15.0,
+      "diagnostic_count": 3,
+      "object_sha256": null,
+      "object_bytes": null,
+      "log_sha256": "936d2040435909eb022f3928549621cd5267ec4676fd207145301f0e536dc5e6",
+      "result_sha256": "c74c39e271cb9d90544439f1e9c77de0838a6dd600a1dcb2b4107eb4bd9ed4fb",
+      "owner_receipt_sha256": "152b2aab0fa4f5310de54c47ca0a87ec3cb29b9fdaadcc76b5adb37e389dc406",
+      "cleanup_echild": true,
+      "deadline_respected": true
+    }
+  ],
+  "limitations": [
+    "O3 may fold source checks; no independent instruction-coverage claim",
+    "Permanent graph-c invocation and complete integration remain pending",
+    "No full host or Windows acceptance",
+    "SDK VALUE syntax requires a parenthesized compatible compound literal",
+    "No allocation/retention/destruction/union-ownership coverage"
+  ],
+  "runtime_final_review_sha256": "b2a8aa60d920045a136769215b9dda1a83e4ecf3aabec9896727729f8c281d8a",
+  "runtime_attestation_sha256": "fffb8ef6680ec8a0bf51b93edea0b711a493315961ab1ad99430c0b44a3bbcdb",
+  "runtime_phases": [
+    {
+      "name": "inspect-object",
+      "status": "passed",
+      "action_exit": 0,
+      "action_seconds": 0.0016126632690429688,
+      "phase_seconds": 2.3496851921081543,
+      "phase_cap_seconds": 10.0,
+      "artifact_sha256": "c12c2eb2f7a497755f7d4e970bde9fab91ae4c66f70e708a71d6faf3d8124d6a",
+      "artifact_bytes": 20080,
+      "log_sha256": "59e89a80c9d00f0aa74e226ad03b817dcfc2afff628a02738b0a9d728a4528a3",
+      "result_sha256": "d6789efbe5da2ae44fbcb104a8036842537f2ab6d7cf0b2fce33b52ad7a26b15",
+      "owner_receipt_sha256": "c9743653833f7f25f0dad6c9795c12719d231cd6556f20828b5e5a6d023fefd2",
+      "cleanup_echild": true,
+      "deadline_respected": true
+    },
+    {
+      "name": "link-fixture",
+      "status": "passed",
+      "action_exit": 0,
+      "action_seconds": 0.019195556640625,
+      "phase_seconds": 2.3742496967315674,
+      "phase_cap_seconds": 15.0,
+      "artifact_sha256": "f4416ed81f086bae1c9274c5fdfc95cd8bef1e7f4c6dba4230303112c169ebf1",
+      "artifact_bytes": 28504,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "result_sha256": "1aa35caef1f7f4e2f6aa66281ffac5febe0027c1b0b208e786dc51fec95479e3",
+      "owner_receipt_sha256": "eaf13e2e6aca06c09079d2b8cca6510ef339e16dfdcc6e22a4168a60c52443be",
+      "cleanup_echild": true,
+      "deadline_respected": true
+    },
+    {
+      "name": "inspect-elf",
+      "status": "passed",
+      "action_exit": 0,
+      "action_seconds": 0.0015833377838134766,
+      "phase_seconds": 2.357274055480957,
+      "phase_cap_seconds": 10.0,
+      "artifact_sha256": "f4416ed81f086bae1c9274c5fdfc95cd8bef1e7f4c6dba4230303112c169ebf1",
+      "artifact_bytes": 28504,
+      "log_sha256": "fc04a3dd8f0763ef0365128584a9a489530a1d78172d9b458810e9e797da50cd",
+      "result_sha256": "20b03cbb5865221d2d3a147046b8331a2f46d3707279b03a54688bccf7ed547a",
+      "owner_receipt_sha256": "ac246340d8513ec51300b8a16e8a5775f4fb3974ce7d1b76fc808bdc9a905394",
+      "cleanup_echild": true,
+      "deadline_respected": true
+    },
+    {
+      "name": "run-fixture",
+      "status": "passed",
+      "action_exit": 0,
+      "action_seconds": 0.0017147064208984375,
+      "phase_seconds": 2.671186685562134,
+      "phase_cap_seconds": 10.0,
+      "artifact_sha256": "f4416ed81f086bae1c9274c5fdfc95cd8bef1e7f4c6dba4230303112c169ebf1",
+      "artifact_bytes": 28504,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "result_sha256": "76005da9fd6c969fc639629348a9aa8d42838becfa6abab934fa9bd65d6c7445",
+      "owner_receipt_sha256": "6c557f95f9c2707a19d76bf5cd34975630688e8a1df5045bbaf7e5f4297df51f",
+      "cleanup_echild": true,
+      "deadline_respected": true
+    }
+  ],
+  "archives": [
+    {
+      "name": "chibi-initializer-compile-validated-20261104.tar.gz",
+      "bytes": 1400346,
+      "sha256": "a96857d070141f36d588125f5a130898e62ee943eb7c63c534006d12705dd2a6"
+    },
+    {
+      "name": "chibi-initializer-runtime-validated-20261104.tar.gz",
+      "bytes": 1360545,
+      "sha256": "6db41197d8ce6c0a69d9ad6413c37890551b1952dc02435d6587972a92be4a45"
+    }
+  ]
+}

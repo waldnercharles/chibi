@@ -25,11 +25,13 @@ execution, full graph-c runtime, the compiler host and ordinary VM/native/C
 engine integration remain open. Cross-linking and PE inspection are not Windows
 runtime acceptance.
 
-The latest strict compiler-host construction failed after 31 successful C
+The retained pre-correction strict compiler-host construction failed after 31 successful C
 objects, at 19 nonconstant-initializer diagnostics in `text_definition.c`. It
 produced no archives or host. See [HOST-INITIALIZER-FAILURE.md](HOST-INITIALIZER-FAILURE.md).
-A source-only initializer proposal and disabled graph-c ownership preparation
-are preserved in [unvalidated-preparations](unvalidated-preparations/README.md).
+The archived source-only initializer proposal has a subsequent
+[focused tested correction](NATIVE-DEFAULT-INITIALIZERS.md). Disabled graph-c
+ownership preparation remains preserved in
+[unvalidated-preparations](unvalidated-preparations/README.md).
 The pointer patch there remains unapplied and has two known findings. The
 [sdk-reflect wrapper finding](SDK-REFLECT-OPEN-FINDING.md) has a subsequent
 [focused correction](SDK-REFLECT-WRAPPER-VALIDATION.md); its PR review remains

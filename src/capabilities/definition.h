@@ -24,6 +24,11 @@ typedef struct
     bool has_default, default_owner;
     pin_value default_value;
 } native_parameter_definition;
+/* VALUE must be a parenthesized pin_value compound literal: ((pin_value){ ... }).
+ * Other row consumers need that expression; static definitions need its braces.
+ * The _Generic checks below retain the type check when the cast is removed. */
+#define NATIVE_DEFAULT_INITIALIZER(...) NATIVE_DEFAULT_INITIALIZER_TYPE __VA_ARGS__
+#define NATIVE_DEFAULT_INITIALIZER_TYPE(TYPE)
 /* Maps one X-macro port row onto a parameter definition. Every native pack
  * describes its ports with these ten columns. */
 #define NATIVE_PORT(NAME, KIND, STORAGE, TYPE_NAME, CONTAINER, TYPE_FLAGS, GROUP, REFERENCE, OWNER, VALUE) \
@@ -35,9 +40,9 @@ typedef struct
       .type_flags = TYPE_FLAGS,                                                                            \
       .generic_group = GROUP,                                                                              \
       .reference_kind = REFERENCE,                                                                         \
-      .has_default = true,                                                                                 \
+      .has_default = _Generic(VALUE, pin_value: true),                                                       \
       .default_owner = OWNER,                                                                              \
-      .default_value = VALUE },
+      .default_value = NATIVE_DEFAULT_INITIALIZER VALUE },
 /* Explicit opt-in for native inputs that require C strings. */
 #define NATIVE_CSTRING_PORT(NAME, KIND, STORAGE, TYPE_NAME, CONTAINER, TYPE_FLAGS, GROUP, REFERENCE, OWNER, VALUE) \
     { .name = NAME,                                                                                                \
@@ -50,9 +55,9 @@ typedef struct
       .type_flags = TYPE_FLAGS,                                                                                    \
       .generic_group = GROUP,                                                                                      \
       .reference_kind = REFERENCE,                                                                                 \
-      .has_default = true,                                                                                         \
+      .has_default = _Generic(VALUE, pin_value: true),                                                               \
       .default_owner = OWNER,                                                                                      \
-      .default_value = VALUE },
+      .default_value = NATIVE_DEFAULT_INITIALIZER VALUE },
 /* A port row that also carries graph pin flags, which definitions ignore. */
 #define NATIVE_PORT_FLAGS(NAME, KIND, STORAGE, TYPE_NAME, CONTAINER, TYPE_FLAGS, GROUP, REFERENCE, OWNER, VALUE, GRAPH_FLAGS) \
     NATIVE_PORT(NAME, KIND, STORAGE, TYPE_NAME, CONTAINER, TYPE_FLAGS, GROUP, REFERENCE, OWNER, VALUE)

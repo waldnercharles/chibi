@@ -1,0 +1,18 @@
+[package]
+name = "chibi-slice-backend-probe"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "GPL-3.0-only"
+
+[dependencies]
+cranelift-codegen = "=0.137.1"
+cranelift-frontend = "=0.137.1"
+cranelift-module = "=0.137.1"
+cranelift-native = "=0.137.1"
+cranelift-jit = "=0.137.1"
+cranelift-object = "=0.137.1"
+
+[[bin]]
+name = "chibi-slice-backend-probe"
+path = "main.rs"

@@ -1,0 +1,6 @@
+package modules
+import math "project:slice_cases/modules/math"
+pub Apply :: (value: i64, enabled: bool) -> i64 {
+    if (enabled) { return math.Double(value); }
+    return value;
+}

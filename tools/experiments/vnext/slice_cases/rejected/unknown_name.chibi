@@ -1,0 +1,2 @@
+package rejected
+Main :: () -> i64 { return absent; }

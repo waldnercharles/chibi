@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "project_root": ".",
+  "description": "Acceptance expectations, not recorded compiler results. i64 JSON numbers require an exact integer reader.",
+  "cases": [
+    {"id": "scalars", "files": ["slice_cases/scalars/Main.chibi"], "calls": [
+      ["Echo", [0], 0], ["Echo", [-9223372036854775808], -9223372036854775808], ["Echo", [9223372036854775807], 9223372036854775807],
+      ["Add", [40, 2], 42], ["Add", [9223372036854775807, 1], -9223372036854775808], ["Multiply", [7, -6], -42], ["Multiply", [9223372036854775807, 2], -2],
+      ["Negate", [true], false], ["Negate", [false], true], ["Forward", [41], 42],
+      ["Maximum", [-7, -3], -3], ["Maximum", [9, 2], 9], ["Maximum", [4, 4], 4],
+      ["Join", [true, 8, 20], 9], ["Join", [false, 8, 20], 21]
+    ]},
+    {"id": "modules", "files": ["slice_cases/modules/Main.chibi", "slice_cases/modules/math/Math.chibi"], "calls": [["Apply", [21, true], 42], ["Apply", [21, false], 21]]},
+    {"id": "foreign", "files": ["slice_cases/foreign/Main.chibi"], "foreign_fixture": "slice_probe.c", "calls": [
+      ["Echo", [-9223372036854775808], -9223372036854775808], ["Echo", [9223372036854775807], 9223372036854775807],
+      ["Negate", [true], false], ["Negate", [false], true], ["Many", [], 204], ["Order", [], 512], ["ShortTrace", [false], 0], ["ShortTrace", [true], 1]
+    ]},
+    {"id": "argument_type", "files": ["slice_cases/rejected/argument_type.chibi"], "reject": ["type", "argument type mismatch", "Read(true)"]},
+    {"id": "argument_count", "files": ["slice_cases/rejected/argument_count.chibi"], "reject": ["type", "argument count mismatch", "Read()"]},
+    {"id": "condition_type", "files": ["slice_cases/rejected/condition_type.chibi"], "reject": ["type", "condition requires bool", "if (value)"]},
+    {"id": "result_type", "files": ["slice_cases/rejected/result_type.chibi"], "reject": ["type", "result type mismatch", "return true"]},
+    {"id": "missing_return", "files": ["slice_cases/rejected/missing_return.chibi"], "reject": ["type", "reachable exit lacks result", "Main ::"]},
+    {"id": "unknown_name", "files": ["slice_cases/rejected/unknown_name.chibi"], "reject": ["resolve", "unknown name", "return absent"]},
+    {"id": "private_import", "files": ["slice_cases/rejected/private_import.chibi", "slice_cases/modules/math/Math.chibi"], "reject": ["resolve", "private member", "math.Hidden"]},
+    {"id": "unsupported_array", "files": ["slice_cases/rejected/unsupported_array.chibi"], "reject": ["subset", "array outside slice", "i64[]"]},
+    {"id": "missing_symbol", "files": ["slice_cases/rejected/missing_symbol.chibi"], "foreign_fixture": "slice_probe.c", "reject": ["link", "unresolved foreign symbol", "chibi_slice_absent ::"]},
+    {"id": "literal_range", "files": ["slice_cases/rejected/literal_range.chibi"], "reject": ["type", "integer literal out of range", "9223372036854775808"]},
+    {"id": "duplicate_parameter", "files": ["slice_cases/rejected/duplicate_parameter.chibi"], "reject": ["resolve", "duplicate parameter", "value: i64, value: i64"]}
+  ]
+}

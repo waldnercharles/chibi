@@ -1,0 +1,3 @@
+package rejected
+import math "project:slice_cases/modules/math"
+Main :: () -> i64 { return math.Hidden(1); }

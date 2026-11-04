@@ -1,0 +1,2 @@
+package rejected
+Main :: (value: bool) -> i64 { if (value) { return 1; } }

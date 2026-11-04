@@ -1,0 +1,17 @@
+package scalars
+
+pub Echo :: (value: i64) -> i64 { return value; }
+pub Add :: (left: i64, right: i64) -> i64 { return left + right; }
+pub Multiply :: (left: i64, right: i64) -> i64 { return left * right; }
+pub Negate :: (value: bool) -> bool { return !value; }
+pub Forward :: (value: i64) -> i64 { return Later(value); }
+pub Maximum :: (left: i64, right: i64) -> i64 {
+    if (left > right) { return left; }
+    return right;
+}
+pub Join :: (choose: bool, left: i64, right: i64) -> i64 {
+    result: i64 = right;
+    if (choose) { result = left; }
+    return result + 1;
+}
+Later :: (value: i64) -> i64 { return Add(value, 1); }

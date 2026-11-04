@@ -1,0 +1,4 @@
+package rejected
+foreign import probe "libslice_probe.a"
+foreign probe { chibi_slice_absent :: () -> i64 }
+Main :: () -> i64 { return chibi_slice_absent(); }

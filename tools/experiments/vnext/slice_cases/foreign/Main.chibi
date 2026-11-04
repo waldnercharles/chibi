@@ -1,0 +1,23 @@
+package foreign_calls
+foreign import probe "libslice_probe.a"
+foreign probe {
+    chibi_slice_echo :: (value: i64) -> i64
+    chibi_slice_not :: (value: bool) -> bool
+    chibi_slice_clear :: () -> i64
+    chibi_slice_mark :: (value: i64) -> i64
+    chibi_slice_trace :: () -> i64
+    chibi_slice_weighted8 :: (a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64) -> i64
+}
+pub Echo :: (value: i64) -> i64 { return chibi_slice_echo(value); }
+pub Negate :: (value: bool) -> bool { return chibi_slice_not(value); }
+pub Many :: () -> i64 { return chibi_slice_weighted8(1, 2, 3, 4, 5, 6, 7, 8); }
+pub Order :: () -> i64 {
+    chibi_slice_clear();
+    value := chibi_slice_weighted8(chibi_slice_mark(1), chibi_slice_mark(2), 0, 0, 0, 0, 0, 0);
+    return value * 100 + chibi_slice_trace();
+}
+pub ShortTrace :: (take: bool) -> i64 {
+    chibi_slice_clear();
+    if (take && chibi_slice_mark(1) == 1) { return chibi_slice_trace(); }
+    return chibi_slice_trace();
+}

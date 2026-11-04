@@ -1437,6 +1437,10 @@ CheckForeign :: () {
     unresolved := Accepted(missing_source);
     assert(length(unresolved.foreigns) == 1 && length(unresolved.functions) == 2 && length(unresolved.calls) == 1, "missing_symbol remains a successfully typed module for the link gate");
     assert(NameMatches(unresolved, 0, "chibi_slice_absent"), "missing symbol is never substituted by a fixture implementation");
+    missing_origin := unresolved.origins[int(unresolved.functions[0].origin) - 1];
+    // The retained zero-width semicolon is at '}', after the declaration's space.
+    assert(missing_origin.document == 19 && missing_origin.start == 73 && missing_origin.end == 105,
+           "original missing-symbol origin includes the retained synthetic terminator");
     changed := Accepted(strings.ReplaceAll(source, "chibi_slice_echo", "another_echo"));
     assert(NameMatches(changed, 0, "another_echo") && changed.calls[0].callee == 1, "foreign declaration and call names are source driven");
     inferred := Accepted("package p\nFlag :: (x: bool) -> bool { saved := x; return saved; }\nNumber :: (x: i64) -> i64 { saved := x; return saved; }\n");

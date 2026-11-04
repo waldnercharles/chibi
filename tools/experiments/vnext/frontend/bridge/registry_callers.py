@@ -243,9 +243,12 @@ def generate(template, chosen, signatures, rejected, sources, rejection_sources,
             # Independent fixture oracle: resolution must fail after real source
             # production, before any output or callable is published.
             declaration = b"chibi_slice_absent :: () -> i64"
-            if source[first:first + len(declaration)] != declaration:
-                raise ValueError("missing-symbol fixture requires its exact independent declaration oracle")
             declaration_end = first + len(declaration)
+            if source[first:declaration_end + 2] != declaration + b" }":
+                raise ValueError("missing-symbol fixture requires its exact independent declaration oracle")
+            # The retained tokenizer skips this one space and inserts a
+            # zero-width semicolon at '}'. The parser includes that terminator.
+            declaration_end += 1
             link_lines += [f"    sources{index}: typed.Source[] = {expression};",
                       f"    switch typed.ProduceSources(sources{index}) {{",
                       f"        case .Rejected(diagnostic): assert(false, {label});",

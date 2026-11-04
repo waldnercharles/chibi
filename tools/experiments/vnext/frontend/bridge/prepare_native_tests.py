@@ -692,9 +692,10 @@ class NativePreparationTests(unittest.TestCase):
         self.assertIn("owner := CompileOwned(module);", link)
         self.assertIn("origin.document == 100", link)
         raw = (self.root / "tools/experiments/vnext/slice_cases/rejected/missing_symbol.chibi").read_bytes()
-        declaration = b"chibi_slice_absent :: () -> i64"
-        start = raw.index(declaration)
-        self.assertIn(f"origin.start == u32({start}) && origin.end == u32({start + len(declaration)})", link)
+        # Fixed original-fixture oracle, independent of generator arithmetic:
+        # declaration bytes end at 104; its retained zero-width terminator is 105.
+        self.assertEqual(raw[73:106], b"chibi_slice_absent :: () -> i64 }")
+        self.assertIn("origin.start == u32(73) && origin.end == u32(105)", link)
         self.assertIn(r'format_text("unresolved foreign symbol \"chibi_slice_absent\" in library \"libslice_probe.a\"', link)
         self.assertIn("CheckFailure(owner, expected);", link)
         self.assertIn("chibi_vnext_destroy(owner)", link)
@@ -706,6 +707,19 @@ class NativePreparationTests(unittest.TestCase):
         self.assertEqual(caller.count("    ++checks;"), 8)
         self.assertIn("extern int64_t Order(void);", caller)
         self.assertNotIn("chibi_vnext_test_bindings", caller)
+
+    def test_missing_symbol_oracle_rejects_changed_terminator_context(self):
+        archive = self.base / "fixture.a"
+        archive.write_bytes(b"archive identity only; never loaded")
+        source = self.root / "tools/experiments/vnext/slice_cases/rejected/missing_symbol.chibi"
+        original = source.read_bytes()
+        self.assertEqual(original[104:106], b" }")
+        # A fixture change needs an explicit new oracle, not guessed syntax.
+        for suffix in (b"}", b"  }", b"\t}", b"\n}", b"; }", b" )"):
+            source.write_bytes(original[:104] + suffix + original[106:])
+            with self.subTest(suffix=suffix), self.assertRaisesRegex(ValueError, "exact independent declaration oracle"):
+                self.prepare("foreign", archive)
+            self.assertFalse(self.output.exists())
 
     def test_foreign_archive_is_required_regular_nonempty_and_exclusive_to_case(self):
         archive = self.base / "fixture.a"

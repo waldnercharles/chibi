@@ -7,23 +7,30 @@ root=$(cd "$(dirname "$0")/.." && pwd -P)
 cd "$root"
 [ "${1:-}" = build ] && shift
 # An explicit driver overrides the pinned seed. LLVM comes from --llvm,
-# CHIBI_LLVM_BIN, or the directory containing opt on PATH.
+# CHIBI_LLVM_BIN, or the directory containing opt on PATH. First value wins;
+# every occurrence, including ignored duplicates, needs a nonempty value before --.
 native_driver=
 llvm=
 option=
 native_given=
+llvm_given=
 for argument do
+    [ "$argument" != -- ] || break
+    if [ -n "$option" ] && [ -z "$argument" ]; then break; fi
     case "$option" in
-        --native-driver) native_driver=$argument; option= ;;
-        --llvm) llvm=$argument; option= ;;
+        --native-driver)
+            [ -n "$native_given" ] || native_driver=$argument
+            native_given=yes; option= ;;
+        --llvm)
+            [ -n "$llvm_given" ] || llvm=$argument
+            llvm_given=yes; option= ;;
         *)
             case "$argument" in
-                --native-driver) [ -n "$native_given" ] || option=$argument; native_given=yes ;;
-                --llvm) [ -n "$llvm" ] || option=$argument ;;
+                --native-driver|--llvm) option=$argument ;;
             esac ;;
     esac
 done
-if [ -n "$option" ] || { [ -n "$native_given" ] && [ -z "$native_driver" ]; }; then
+if [ -n "$option" ]; then
     echo 'tools/build.sh: --native-driver and --llvm require a value' >&2
     exit 2
 fi
@@ -37,8 +44,9 @@ if [ -z "$llvm" ]; then
         echo 'tools/build.sh: pass --llvm DIR or set CHIBI_LLVM_BIN to the LLVM tool directory' >&2
         exit 2
     fi
-    set -- "$@" --llvm "$llvm"
 fi
+# Keep the inferred spelling for the graph driver; bootstrap paths are absolute.
+llvm_argument=$llvm
 case "$llvm" in /*) ;; *) llvm=$root/$llvm ;; esac
 case "$(uname -s)-$(uname -m)" in
     Linux-x86_64) platform=linux-x64; triple=x86_64-unknown-linux-gnu; linker=ld.lld ;;
@@ -54,7 +62,6 @@ done
 if [ -z "$native_given" ]; then
     native_driver=$root/.chibi/native-seed/$platform/chibi
     sh tools/bootstrap/native-seed.sh "$platform" "$native_driver"
-    set -- "$@" --native-driver "$native_driver"
 fi
 case "$native_driver" in /*) ;; *) native_driver=$root/$native_driver ;; esac
 if [ ! -x "$native_driver" ]; then
@@ -119,4 +126,14 @@ if [ ! -x "$cached/driver" ]; then
 fi
 rm -rf "$work"
 trap - EXIT
+# Main dispatches on the first argument after build. Put inferred options after
+# that verb, before any `--`, without re-parsing or rebuilding the original tail.
+verb=
+case "${1:-}" in
+    ''|--*) ;;
+    *) verb=$1; shift ;;
+esac
+[ -n "$native_given" ] || set -- --native-driver "$native_driver" "$@"
+[ -n "$llvm_given" ] || set -- --llvm "$llvm_argument" "$@"
+[ -z "$verb" ] || set -- "$verb" "$@"
 exec "$cached/driver" build "$@"

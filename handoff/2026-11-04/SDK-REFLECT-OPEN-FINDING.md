@@ -23,3 +23,10 @@ case does not cover wrapper-inferred defaults. Test explicit and inferred
 bootstrap inputs and flag-looking pass-through tails against the exact changed
 wrapper, without treating a Driver-only test as wrapper coverage. No successful
 fix, test, external bootstrap attempt or review resolution is claimed here.
+
+## Subsequent development-branch correction
+
+The [focused wrapper correction](SDK-REFLECT-WRAPPER-VALIDATION.md) now passes
+independent source review and controlled shell regressions. The finding above
+is retained as the original source observation. The PR review remains open
+until the change is integrated and verified on its exact head.

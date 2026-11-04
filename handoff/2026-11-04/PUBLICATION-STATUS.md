@@ -31,7 +31,9 @@ produced no archives or host. See [HOST-INITIALIZER-FAILURE.md](HOST-INITIALIZER
 A source-only initializer proposal and disabled graph-c ownership preparation
 are preserved in [unvalidated-preparations](unvalidated-preparations/README.md).
 The pointer patch there remains unapplied and has two known findings. The
-[sdk-reflect wrapper finding](SDK-REFLECT-OPEN-FINDING.md) also remains unfixed.
+[sdk-reflect wrapper finding](SDK-REFLECT-OPEN-FINDING.md) has a subsequent
+[focused correction](SDK-REFLECT-WRAPPER-VALIDATION.md); its PR review remains
+open pending exact-head integration.
 
 ## Preservation boundary
 

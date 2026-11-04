@@ -1,0 +1,43 @@
+{
+  "scope": "Focused shell wrapper correctness with local compiler/tool/download stubs only",
+  "base": "9999de575dd8332d7d8153cc3826d8f7b573446a",
+  "files": {
+    "tools/build.sh": "ffc2039a82770efaad76607c339c79126d686cdb9cc7ecb6bf9330ffb5c6f11e",
+    "test/bootstrap/native-entry.sh": "cd75b5d414ee2f1448c7c45d7c3e8e028c5a57a87cf100e6c8171fe1fa090290"
+  },
+  "independent_review_sha256": "8f9f15a1868557cb47fab24c6ef6b5c6d396022c3192785f6271949695e80c7f",
+  "checks": {
+    "shell_syntax": "pass",
+    "focused_whitespace": "pass",
+    "full_stub_fixture": "pass",
+    "additional_dispatch_fixture": "pass",
+    "baseline_new_sdk_reflect_argv_regression": {
+      "exit": 1,
+      "failure": "first new sdk-reflect argv comparison differs at byte21,line3",
+      "fixture_adjustment": "Restore only old census expected-order line so prior census case passes"
+    },
+    "baseline_flag_tail": {
+      "exit": 2,
+      "failure": "forwarded tail-llvm incorrectly selected as bootstrap tool directory"
+    }
+  },
+  "logs": {
+    "baseline.log": "004307d1a813d79fcc94fa5449da5ce293241df4b1af200e90f169afed492fcc",
+    "final-fixture.log": "1887b6ea1bf48e7dfd5032ef763e6e364a321da70ea0e367d5b9fb80bffe8c2c",
+    "extra-fixture.log": "6c96c6bcba9545bcd928a2691b3c30b241e74ad43778fe9e29470eda9470f1a0",
+    "baseline-fixture-variation.diff": "ce2c07e4b8c8cbe5e3da303d48999dfd14854c287c914a138a5e606750437bd8"
+  },
+  "compatibility": [
+    "First explicit bootstrap value still selects inputs; all original arguments retain relative order.",
+    "Inferred options now precede original options and any pass-through delimiter, after a nonempty verb.",
+    "Every bootstrap option occurrence, including ignored duplicates, now requires a nonempty value before the delimiter; empty --llvm no longer silently falls back."
+  ],
+  "not_claimed": [
+    "native compiler execution",
+    "external download",
+    "macOS execution",
+    "full Driver integration",
+    "PR1331 exact-head integration",
+    "merge acceptance"
+  ]
+}

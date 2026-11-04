@@ -151,11 +151,58 @@ next=$((next + 1))
 count "$next"
 test "$(wc -l < "$ENTRY_DOWNLOADS" | tr -d ' ')" = 1
 seed=$checkout/.chibi/native-seed/$platform/chibi
-printf '%s\n' build census --llvm "$checkout/llvm" --native-driver "$seed" > "$scratch/expected"
+printf '%s\n' build census --native-driver "$seed" --llvm "$checkout/llvm" > "$scratch/expected"
 cmp "$scratch/expected" "$ENTRY_RESULT"
 # Environment-selected LLVM uses the same cache, and an irrelevant old host
 # cannot divert execution back to bytecode.
 CHIBI_LLVM_BIN=$checkout/llvm CHIBI_BUILD_HOST=$checkout/missing sh tools/build.sh census
+count "$next"
+test "$(wc -l < "$ENTRY_DOWNLOADS" | tr -d ' ')" = 1
+# sdk-reflect keeps inferred bootstrap options before the pass-through boundary.
+# Compare complete argv, including empty strings, whitespace and shell syntax.
+CHIBI_LLVM_BIN=$checkout/llvm sh tools/build.sh sdk-reflect -- tail
+printf '%s\n' build sdk-reflect --llvm "$checkout/llvm" --native-driver "$seed" -- tail > "$scratch/expected"
+cmp "$scratch/expected" "$ENTRY_RESULT"
+tail='literal * $(not-a-command)'
+CHIBI_LLVM_BIN=$checkout/llvm sh tools/build.sh build sdk-reflect -- '' "$tail" --llvm tail-llvm --native-driver tail-driver --
+printf '%s\n' build sdk-reflect --llvm "$checkout/llvm" --native-driver "$seed" -- '' "$tail" --llvm tail-llvm --native-driver tail-driver -- > "$scratch/expected"
+cmp "$scratch/expected" "$ENTRY_RESULT"
+count "$next"
+# Explicit options win over environment defaults and flag-looking forwarded args.
+CHIBI_LLVM_BIN=$checkout/missing sh tools/build.sh sdk-reflect --native-driver "$checkout/compiler" --llvm "$checkout/llvm" -- '' --llvm --native-driver
+printf '%s\n' build sdk-reflect --native-driver "$checkout/compiler" --llvm "$checkout/llvm" -- '' --llvm --native-driver > "$scratch/expected"
+cmp "$scratch/expected" "$ENTRY_RESULT"
+# Each independently inferred option stays on the build side of the delimiter.
+CHIBI_LLVM_BIN=$checkout/llvm sh tools/build.sh sdk-reflect --native-driver "$checkout/compiler" -- tail
+printf '%s\n' build sdk-reflect --llvm "$checkout/llvm" --native-driver "$checkout/compiler" -- tail > "$scratch/expected"
+cmp "$scratch/expected" "$ENTRY_RESULT"
+sh tools/build.sh sdk-reflect --llvm "$checkout/llvm" -- tail
+printf '%s\n' build sdk-reflect --native-driver "$seed" --llvm "$checkout/llvm" -- tail > "$scratch/expected"
+cmp "$scratch/expected" "$ENTRY_RESULT"
+# PATH inference and default-build dispatch also preserve the complete tail.
+CHIBI_LLVM_BIN= PATH="$checkout/llvm:$PATH" sh tools/build.sh -- '' tail
+printf '%s\n' build --llvm "$checkout/llvm" --native-driver "$seed" -- '' tail > "$scratch/expected"
+cmp "$scratch/expected" "$ENTRY_RESULT"
+CHIBI_LLVM_BIN=llvm sh tools/build.sh
+printf '%s\n' build --llvm llvm --native-driver "$seed" > "$scratch/expected"
+cmp "$scratch/expected" "$ENTRY_RESULT"
+# First explicit values select bootstrap inputs; later duplicates remain intact.
+sh tools/build.sh sdk-reflect --llvm "$checkout/llvm" --llvm "$checkout/missing" --native-driver "$checkout/compiler" --native-driver "$checkout/missing" -- tail
+printf '%s\n' build sdk-reflect --llvm "$checkout/llvm" --llvm "$checkout/missing" --native-driver "$checkout/compiler" --native-driver "$checkout/missing" -- tail > "$scratch/expected"
+cmp "$scratch/expected" "$ENTRY_RESULT"
+for option in --llvm --native-driver; do
+    for malformed in missing empty delimiter; do
+        set -- sdk-reflect --llvm "$checkout/llvm" --native-driver "$checkout/compiler" "$option"
+        case "$malformed" in empty) set -- "$@" '' ;; delimiter) set -- "$@" -- tail ;; esac
+        if sh tools/build.sh "$@" > "$scratch/malformed.log" 2>&1; then exit 1; else test "$?" = 2; fi
+        grep -Fq 'require a value' "$scratch/malformed.log"
+        # The first occurrence has the same required-value contract.
+        set -- sdk-reflect "$option"
+        case "$malformed" in empty) set -- "$@" '' ;; delimiter) set -- "$@" -- tail ;; esac
+        if sh tools/build.sh "$@" > "$scratch/malformed.log" 2>&1; then exit 1; else test "$?" = 2; fi
+        grep -Fq 'require a value' "$scratch/malformed.log"
+    done
+done
 count "$next"
 test "$(wc -l < "$ENTRY_DOWNLOADS" | tr -d ' ')" = 1
 # Manifest validation precedes even a valid warm cache. Match the Windows

@@ -12,12 +12,20 @@ or exported entries. No loader, symbol catalog or backend semantics are added to
 this producer. Original source and byte spans remain the diagnostic authority.
 
 The complete current typed-source regression suite has passed with the admitted
-current compiler, including the 100/400-call argument-span controls. This is
-source-to-typed-IR correctness evidence, not foreign JIT/AOT, full-language or
-throughput acceptance. The complete source-to-v3-Pack suite and seven corrected
-Rust backend tests also pass. A fresh non-test library and original-source
-foreign native integration remain separate open gates. The version-1/2 results below
-remain historical evidence for their exact inputs, not acceptance of version 3.
+current compiler, including the 100/400-call argument-span controls and the
+exact missing-symbol declaration origin (document 19, bytes 73..105). Its
+**294 static assertion sites are not a measured runtime check or named-case
+count**. Independent source-suite acceptance SHA-256 is
+`dca81b00b1dc693f9778f276b80ed9e3efd29d5421287392ef164fdc63aa89b7`.
+This is source-to-typed-IR correctness evidence, not full-language or throughput
+acceptance. The complete source-to-v3-Pack suite, seven corrected Rust backend
+tests and fresh non-test library review also pass. The separate
+[original-source foreign proof](../../slice_backend/README.md#version-3-foreign-native-result)
+passed all five native stages and independent aggregate acceptance.
+The [normalized evidence](../../evidence/foreign-20261104.json) binds these
+separate results. The version-1/2 results below remain historical evidence for
+their exact inputs, not acceptance of the four older native selections under
+current version 3.
 
 ## Historical version-1/2 results
 

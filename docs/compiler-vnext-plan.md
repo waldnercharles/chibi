@@ -1,6 +1,6 @@
 # Chibi vNext compiler: plan and acceptance gates
 
-Status: approved direction, implementation starting on a separate development branch.
+Status: approved direction, bounded implementation underway on a separate development branch.
 Date: 2026-11-04 UTC.
 Starting source: `02c86287430def964445ec90185961e20319536d`, tree
 `780ba87ea9f29308f2f20a94381cdce8cc5d26ca`.
@@ -10,12 +10,18 @@ replace that branch's pending correctness, platform, bootstrap, or release gates
 No release or default-toolchain switch is part of this first checkpoint.
 
 Current experiment status: the
-[package-aware slice](../tools/experiments/vnext/slice_backend/README.md#package-aware-checkpoint)
-passed the unfiltered producer test and all four native cases through linked C
-execution and final independent native acceptance. The
-[normalized evidence](../tools/experiments/vnext/evidence/package-aware-20261104.json)
-keeps this bounded result separate from the unchanged O0/O2 baselines and the
-full-corpus, real-tool, platform and 100,000-lines/second gates below.
+[version-3 foreign slice](../tools/experiments/vnext/slice_backend/README.md#version-3-foreign-native-result)
+has passed all five native stages, including 192 JIT value checks, the exact
+missing-symbol failure and eight linked C assertions. Independent aggregate
+acceptance passed. The complete current typed-source and packing suites, eight
+Arena tests, seven corrected backend tests and fresh non-test library review
+also pass. The [normalized foreign evidence](../tools/experiments/vnext/evidence/foreign-20261104.json)
+keeps their identities and limits distinct. The earlier
+[package-aware checkpoint](../tools/experiments/vnext/slice_backend/README.md#package-aware-checkpoint)
+remains version-2 evidence, not fresh current-v3 acceptance of its four native
+selections. Full current-v3 corpus coverage and a small real tool remain open,
+so phase 2 is not complete. The O0/O2 baselines, platform and non-incremental
+100,000-lines/second gates below are unchanged.
 
 ## Goal
 
@@ -304,7 +310,10 @@ to another talk, not this recording.
 - [Cranelift object output](https://docs.rs/cranelift-object/latest/cranelift_object/struct.ObjectModule.html)
 - [TPDE-LLVM limits](https://docs.tpde.org/tpde-llvm-main.html)
 
-## Initial checkpoint status
+## Initial checkpoint status (historical)
+
+These entries describe the initial plan-only checkpoint, not the current status
+summarized above.
 
 - Plan and separate local branch: prepared.
 - Current baseline: initially unmeasured. The later [O2 baseline](compiler-current-o2-baseline.md)

@@ -1,0 +1,160 @@
+{
+  "schema": 1,
+  "kind": "derived_public_foreign_v3_checkpoint_summary_not_raw_receipts_or_runnable_spec",
+  "date_utc": "2026-11-04",
+  "status": "accepted_bounded_foreign_original_source_native_correctness",
+  "independent_terminal_review": "passed",
+  "final_native_acceptance_sha256": "e5b5d6eacc20e4058801c2ca45b4f93f394ba93d005d00c373d9cb4adf329539",
+  "aggregate_readback_sha256": "06eb927aa3ee55ae67b613024c52d49313e7945bade3fb84855df22e72755a51",
+  "scope": "Bounded original-source Linux x86-64 System V foreign-call correctness through eager JIT and linked C execution; no performance, full phase-2, CI, merge or release claim.",
+  "source": {
+    "commit": "d38edd3a7702ef3a73b5441c19aaaa32549a8aa3",
+    "tree": "702c8e2cc2be80891058ffcb72195a45fea34f01",
+    "native_source_manifest_sha256": "e5fad5fbd9b4748d7e697187e0a888255b1c4fbe54e98b3d160bbf728fdffdb3",
+    "native_input_fence_sha256": "16f55332c6cf30eeaa80034bc1c682888f4eaa1eca4d6c66408ad88dbc0d39cf",
+    "native_source_payloads": 39,
+    "selected_repository_file_sha256": {
+      "tools/experiments/vnext/frontend/typed/Model.chibi": "76162e285f7b01ccd66c981492d0b123b27a148375a5b5d1076cb26fd08864e6",
+      "tools/experiments/vnext/frontend/typed/Produce.chibi": "8940b008fb0cee6ba76bdd250f470c6666114f7611c1b0d48eb409ee94ef7ca9",
+      "tools/experiments/vnext/frontend/typed/Verify.chibi": "da484b2c4945f6b26af965ec97cfdd7a4006e5a70087ee98e8f437da245695ff",
+      "tools/experiments/vnext/frontend/typed/tests/Main.chibi.in": "573b9e2dd16b2ca6af7ac2d5ff5b7fed966e3ba79bda53d3bf07bfd7022bf7e1",
+      "tools/experiments/vnext/frontend/bridge/generated/Pack.chibi": "95457280d21f6cb59266c6037994f95b68c3123a52c57d070ef8a1de219c0170",
+      "tools/experiments/vnext/frontend/bridge/generated/arena.rs": "947e3d1bf9316e9db607c647fb5b43a7cb907ba0daff4f25c76be4b1d7cc10b0",
+      "tools/experiments/vnext/frontend/bridge/registry_callers.py": "999ca2bb790f996bcc9e3145e97dcbdac62922bc76f42dcb7e83981c087675c2",
+      "tools/experiments/vnext/frontend/bridge/tests/NativeMain.chibi.in": "e80f4b4d4e99efb31269b016461fc3284d731579dc66a9fe0a24daea4c079037",
+      "tools/experiments/vnext/frontend/bridge/tests/foreign_bindings.c": "80837e1385194796000dc91908501f9b6616afc7c90cd7f9b24257d076adb8fa",
+      "tools/experiments/vnext/slice_backend/lib.rs": "625f40f6020251be06175a735c57fffd1e456985c40200b2edfa298bcee71947",
+      "tools/experiments/vnext/slice_backend/foreign.h": "1c00f3989da137e91dab5911c901d4cfac440014319c3a60fb13287fc279bb57",
+      "tools/experiments/vnext/slice_backend/Cargo.toml": "50a54aefa2cf3b4bceace2dd5c76437439c2d89c34befc883d76e882ab59afe8",
+      "tools/experiments/vnext/slice_backend/Cargo.lock": "aa8e72f14dc4dcd65652f4504bd56f6c03cd3cdca5323569e68be8a87a2ca54a",
+      "tools/experiments/vnext/slice_cases.json": "3deaa4bc548561774995165fa2230555cca0c692a9858da1ddfe8cadc940ee02",
+      "tools/experiments/vnext/slice_cases/foreign/Main.chibi": "18c45d1d56a0e17dfc9a0dc685cc06c083ad9a6a466336c3ff3221975bd895bf",
+      "tools/experiments/vnext/slice_cases/rejected/missing_symbol.chibi": "db3e079260166c0d149a0027691a2856869b7e3d66f4871ab1334dcc51f0ae3b",
+      "tools/experiments/vnext/slice_probe.c": "1c8e8061b8048cb4f89ca5eb1f590061138d7d17ebb74a2e127cc27129da4e4b"
+    }
+  },
+  "contracts": {
+    "transport_version": 3,
+    "source_path": "ProduceSources -> Verify -> generated Pack -> Cranelift JIT/Object",
+    "chibi_definitions": 5,
+    "c_imports": 6,
+    "original_foreign_registry_calls": 8,
+    "missing_symbol_origin": {"document": 100, "start": 73, "end": 105},
+    "binding": "Exact caller-supplied library/symbol/scalar signature; same real archive in harness and AOT links; no process-symbol fallback."
+  },
+  "prerequisites": {
+    "typed_source": {
+      "status": "accepted_unfiltered",
+      "acceptance_sha256": "dca81b00b1dc693f9778f276b80ed9e3efd29d5421287392ef164fdc63aa89b7",
+      "compile_receipt_sha256": "b7592a35a0456676aaef2cbfb3403f82f117e707cd01774ca7edd65d9ae192f0",
+      "test_receipt_sha256": "4c4a2f06394970a1a5586e2aa56f1661232a49427d0699aa35a4e5026a8ac024",
+      "artifact": {"bytes": 14892648, "sha256": "0857f6077756c1712a86217f0b1a5d0176d604d88b89274553bdd13dda2f04d0"},
+      "static_assertion_sites": 294,
+      "count_limit": "Not a measured runtime assertion or named-case count.",
+      "call_span_controls": [100, 400],
+      "missing_symbol_origin": {"document": 19, "start": 73, "end": 105}
+    },
+    "packing": {"status": "accepted_unfiltered_source_to_v3_pack", "acceptance_sha256": "b4e94df10836878bae872a28d7d39346b2a95e82eed016e91132f806d1cc4bc9", "compile_receipt_sha256": "f83cb106ce77ac8a305a8d342c53087079758ff1f76432777a86e911cd59100f", "test_receipt_sha256": "06f3a68d6983a05e63c29f28c2e130f8463012d14af75369c025e94873f446b7"},
+    "rust_backend_tests": {"passed": 7, "filtered": 0, "receipt_sha256": "c1c50f00bc50b3763f0ebc51646ab294201ed6f5a40c59c4b02be81456d9a709", "acceptance_sha256": "c242fb74c447198c88d290dcf158e4abffbf237abc9be5f5731a0d79d012b4ea"},
+    "arena_tests": {"passed": 8, "filtered": 0, "receipt_sha256": "2adddb45a7954ba0bd46e9fb05aea2835336ad3511380a32bd279ab4e304fcf6", "acceptance_sha256": "b9bb069c2b6e7efc67e0095ad3e1391404413b4a636a2b438c5974e653ddc3c1"},
+    "backend_library": {
+      "status": "accepted_non_test_dev_panic_abort_cdylib",
+      "artifact": {"bytes": 71419800, "sha256": "90f794a3adeea2b82894029b53faaa370f8fa866a09e1a9357e71ea4d05580ca"},
+      "build_receipt_sha256": "f617197ca921549a8dd13aa3ce3aa5d671d7770f5b039489c720461a7252cce9",
+      "construction_and_artifact_acceptance_sha256": "6281c0953e57744d2eba3b985ff20b359bb1d6ad6d3fff0e0b12c6ca8a6b814f"
+    },
+    "c_archive": {
+      "artifact": {"bytes": 5662, "sha256": "d6b16ff09a1bc6a230c727199a24041ca033fc014441e37384e8113011179fee"},
+      "build_receipt_sha256": "dc1cade157d0fcc50f03d9ab41b131f5d4057cde1d6d5403e61580084f11100d",
+      "construction_and_artifact_acceptance_sha256": "d55aaa0b2717aec05486e4820a328d8df6a42ffa52b8559677d2f013c0561725"
+    }
+  },
+  "build_tools": {
+    "chibi_builder_sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266",
+    "chibi_builder_source_commit": "02c86287430def964445ec90185961e20319536d",
+    "prior_builder_admission": "Raw-identical stage3/stage4 outputs and 573 compiler tests; not a rerun here.",
+    "harness_flags": {"level": 0, "jobs": 1, "target": "x86_64-unknown-linux-gnu"},
+    "versions": {"LLVM": "22.1.8", "Rust": "1.99.0", "GCC": "14.2.0", "Cranelift": "0.137.1"},
+    "division": "LLVM builds the Chibi harness; Cranelift compiles its source-produced typed bodies.",
+    "selected_tool_sha256": {
+      "x86_64-linux-gnu-gcc-14": "a23ecab8ff08f09ad8c80602c2c5df7f49e09c25905cb8975902e101bf72635f",
+      "cc1": "02675980109a4a5496cddf67d5286de57942759edc830deaa525e36f9a2a0291",
+      "collect2": "ea31a4cebd9df1b6428c463428d461ccecfe66c897936409d5b2cde0b3af9e27",
+      "x86_64-linux-gnu-as": "07dd8551ea0aa065975e4dddb8e1bb7dc308d12d54eca22c3858db79467c7cb9",
+      "ld.lld": "f50f8b59a2121ff40494c8d9b17b65683dd262068c82371fd9005d615b6242e8",
+      "llvm-as": "c8b9ac9ef05cf0eeeb5381558fd15b7ca282b990abe32a1fcf1fc711830d919c",
+      "llvm-link": "eb97d0c4ed9ba146bd5cebea40a634b85e5fc03161a7a1db30c0502f0087d55e",
+      "opt": "01ada64d5cc1ec9ded6fba4e23cdc852be4e2e4f1454ffa9d8296b98644c6571",
+      "llc": "261ed23dc5cc0ae248995bee47aa2e7658ef7c316d76d23a3d0cfe3103e126dc",
+      "cargo": "e951141cc55a6cd7b9876d187bd30a3720e6086b99413af95e3b8de1cdd72f14",
+      "rustc": "f3834d26669b03f6855fa54bd2381443123e860167bc0c7a8dd137e5cf6e5e4f"
+    },
+    "native_tool_closure_manifest_sha256": "11803907c957a442b0bda2f1bb1b170fa669b4059fbb6ba7f2d87c48890999b2",
+    "private_stage_controller_sha256": "6f9c3c908fbe181521d7f6ef56a2e8926f3d1cc15817dd781644ef53cb5c94fd",
+    "public_runner_sha256": "9c1ac111172a3f384f365439fd0cd965f35a2f43993261a55a4778eb50948d83"
+  },
+  "native_stages": {
+    "chibi_compile": {"status": "passed", "exit_code": 0, "receipt_sha256": "b5d0a952d136f84f875244468f8d5deff59bac73df34a89b377978c3bbda5a05", "observed_terminal_sha256": "f2423db6469ec3a08ac01c4719f9ffeb983131cebf2c355a62c6569a956c48a7"},
+    "jit_normal": {"status": "passed", "exit_code": 0, "receipt_sha256": "4795a6e6ca57968bdb06bb6225b9f7ccf956cd40fdddc0d07776c7af0a14b8cb", "observed_terminal_sha256": "9f17695674af3ea3be4ced3ce930b226dffc74544aedbe294afd40727f1cdedf"},
+    "perf_failure": {"status": "passed", "exit_code": 0, "receipt_sha256": "8a7053bbd04453b5a7ced81eb3634e870a8b5e87632620eac8901c422295cafa", "observed_terminal_sha256": "b5bb10700558be747bdfac46c324934e9ca4ae61e97f51a8fbe3318a3fb89ad4"},
+    "c_link": {"status": "passed", "exit_code": 0, "receipt_sha256": "52b7bf1e507fe84c723fef6afe1adf27211af54fb4a7b41340cf12a289caceba", "observed_terminal_sha256": "85080ae8475c703b333b977793922d99ae900a4db2625254db08596d4c03cd18"},
+    "aot_run": {"status": "passed", "exit_code": 0, "receipt_sha256": "056af4e104ef98a7144b31dd112384e25dda177ca808f7c3faaa4d4ca7120b63", "observed_terminal_sha256": "cfdd245a6e6addaead90293abbdb50ed4d706deb36649aaf641f6fe6689a3518"}
+  },
+  "assertions": {
+    "normal_jit_value_checks": 192,
+    "ready_owners": 9,
+    "normal_missing_symbol_failure_owners": 1,
+    "separate_perf_failure_owners": 1,
+    "linked_c_checks": 8,
+    "failure_outputs": "Both failure controls return owned diagnostics and no callable/object output.",
+    "coverage": [
+      "Full-width i64 and bool C ABI/results",
+      "Eight-argument register/stack passing",
+      "Left-to-right nested call order and discarded-call effects",
+      "Integer equality and both short-circuit edges",
+      "Exact missing-symbol library/symbol/document/span diagnostic",
+      "Repeated owner lifetime and object copy-out"
+    ]
+  },
+  "artifacts": {
+    "chibi_harness": {"bytes": 10593856, "sha256": "39d84d770923e8bbd75ebc2b106e92b877702636c0d79511a3e09c2e0dde6544"},
+    "copied_object": {"bytes": 1696, "sha256": "fee492a2076b08605a6a5d3d50a1af10a9f4043ba31656c83f1f9c1d2b461cbf", "exports": 5, "imports": 6, "code_bytes": 361, "gotpcrel_call_relocations": 12},
+    "linked_c_executable": {
+      "bytes": 8792,
+      "sha256": "c44ac0b17bf7e2c2d96f665781ee49e56e7ccc1e8865ca0e6f72032df7906ae6",
+      "selected_archive_code_bytes": 295,
+      "runtime_dependencies": ["libc.so.6", "ld-linux-x86-64.so.2"]
+    }
+  },
+  "link_and_execution_readback": {
+    "all_five_post_fences_verified": true,
+    "all_five_cleanup": "ECHILD reached, subreaper restored, no timeout/signal/error/surviving child.",
+    "actual_c_link_trace_checked": true,
+    "actual_c_headers": 32,
+    "source_object_and_selected_archive_code_checked_after_relocation": true,
+    "current_builder_transient_linker_trace_claimed": false,
+    "chibi_jit_perf_streams": "Empty stdout and stderr.",
+    "aot_stdout": {"aot_c_caller_checks": 8, "status": "passed", "input": "source-produced-copied-object"},
+    "aot_stderr_bytes": 0,
+    "c_link_stdout": {"bytes": 788, "sha256": "4dbdb2c7e04e8a606d9d74cd5ee08ddd1aebd075ef0e6909b6917bf2cdda1eb3"},
+    "c_link_stderr": {"bytes": 10788, "sha256": "879e95d29a2e16065c1ac5c7a62d69565a571f1c0ee2c00e69941f81378c3cca"},
+    "c_link_warning": "warning: MPFR header version 4.2.1 differs from library version 4.2.2.",
+    "warning_assessment": "Disclosed, already-fenced MPFR runtime/header mismatch; no compile error. O0 integer/bool caller, not MPFR floating-point evaluation. Compilation was not warning-free."
+  },
+  "preserved_failure": {
+    "attempt": "foreign native candidate 01",
+    "runtime_receipt_sha256": "f84f429e4b28d322db2f67a1941cbd04426a0a4414d751a2260a71c3d36f3b37",
+    "closure_sha256": "716c23f5d2b681ab3b2cbacfb915e383f29dc8775f6808b77965069b8891046b",
+    "cause": "Wrong span-end oracle 104 failed before backend compilation; retained parser includes zero-width semicolon at 105.",
+    "correction": "Commit d38edd3a changes only prepare_native_tests.py, registry_callers.py and typed/tests/Main.chibi.in; original fixture and production implementation unchanged.",
+    "historical_metadata": "Some earlier reports rounded nanosecond timestamps; raw receipt hashes are unchanged. New reports preserve integers."
+  },
+  "limits": [
+    "Exact public-preparer output with a separately admitted private five-stage controller; public whole-run workflow not rerun.",
+    "Public runner remains strictly c5-pinned; current-v3 c5 compatibility is not established.",
+    "Historical version-1/2 proofs do not validate current-v3 nativecases, scalars, direct_calls or modules.",
+    "No full current-v3 corpus, small real-tool, full-compiler/runtime, platform, self-hosting, release or default-toolchain acceptance.",
+    "No non-incremental 100,000 LOC/sec or generated-program performance claim; phase 2 remains open.",
+    "Current O0/O2 full-build medians remain 47.001/96.516 seconds; this correctness evidence changes neither baseline."
+  ]
+}

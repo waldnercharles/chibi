@@ -122,10 +122,14 @@ short-circuit `&&`, inferred scalar locals and discarded-call statements. Its
 complete typed-source and packing suites pass. The new `--case foreign`
 preparation selects the original eight foreign calls and the separate
 missing-symbol binding failure, using the same registry and real C archive.
-The seven corrected Rust backend tests also pass. A fresh non-test library and
-original-source foreign JIT/AOT remain open. Neither the entire original
-25-call/11-rejection corpus under this version
-nor a small real tool is fully accepted. Do not synthesize bodies from function
+The seven corrected Rust backend tests and fresh non-test library review also
+pass. The [bounded foreign proof](../slice_backend/README.md#version-3-foreign-native-result)
+has passed all five execution stages: 192 JIT value checks across nine ready
+owners, one exact missing-symbol failure, a separate PERF failure owner and
+eight linked C assertions. Independent aggregate acceptance passed. The four
+older native selections have not been accepted under current version 3; their
+version-1/2 receipts do not establish full current-v3 corpus coverage. A small
+real tool also remains an open gate. Do not synthesize bodies from function
 names or special-case source text. The numbered design below describes the
 shared producer/backend boundary, not a claim that every native gate has passed.
 

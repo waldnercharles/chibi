@@ -27,9 +27,10 @@ focused Rust tests and its production cdylib construction/artifact review. The
 current source then improved descriptor-error context and added seven cases
 inside the existing invalid-argument test. The corrected source now passes
 fresh construction, actual-artifact review and all seven unfiltered Rust tests.
-A fresh non-test library and original-source foreign JIT/AOT remain pending.
-Earlier evidence below applies
-only to its own frozen inputs, not this implementation.
+The corrected source's fresh non-test panic-abort cdylib also passed construction
+and actual-artifact review. The original-source foreign execution result is
+recorded below. Earlier version-1/2 evidence applies only to its own frozen
+inputs, not to the four older native selections under current version 3.
 
 The corrected Rust source SHA-256 is
 `625f40f6020251be06175a735c57fffd1e456985c40200b2edfa298bcee71947`.
@@ -63,10 +64,61 @@ source symbol, library, document label and byte span before any object or JIT
 output exists. The existing explicit JIT free, partial-failure cleanup,
 PERF_BUILDID_DIR rejection and finalization-before-publication rules remain.
 
+## Version-3 foreign native result
+
+On 2026-11-04 the exact original foreign source passed five separately admitted
+stages: Chibi harness compilation, normal JIT, the expected PERF_BUILDID_DIR
+failure, C link and linked C execution. Independent aggregate acceptance passed,
+with SHA-256
+`e5b5d6eacc20e4058801c2ca45b4f93f394ba93d005d00c373d9cb4adf329539`.
+The [normalized evidence](../evidence/foreign-20261104.json) records source,
+tool, prerequisite, receipt and artifact identities without copying raw receipts
+or claiming a runnable reproduction specification.
+
+Five Chibi definitions call six real C imports. Eight registry expectations
+produced **192 JIT value checks across nine ready owners** and **eight linked C
+assertions**. They cover full-width signed values, bool ABI/results, eight-argument
+passing, left-to-right nested calls, discarded-call effects and both short-circuit
+edges. One additional normal-run owner rejected `chibi_slice_absent` with the
+exact document 100/span 73..105 diagnostic and no callable/object output. A
+separate PERF control likewise returned one owned failure without output.
+
+The admitted current builder (`7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266`)
+uses LLVM 22 to compile the O0, jobs=1 Chibi harness. Cranelift 0.137.1 compiles
+the source-produced typed bodies. The non-test backend library SHA-256 is
+`90f794a3adeea2b82894029b53faaa370f8fa866a09e1a9357e71ea4d05580ca`;
+its independent construction/artifact acceptance is
+`6281c0953e57744d2eba3b985ff20b359bb1d6ad6d3fff0e0b12c6ca8a6b814f`.
+Both native links use the same real C archive,
+`d6b16ff09a1bc6a230c727199a24041ca033fc014441e37384e8113011179fee`.
+
+The copied 1,696-byte object has five exports, six imports, 361 code bytes and
+12 GOTPCREL call relocations. The final 8,792-byte executable preserves that
+code and 295 selected archive-code bytes after relocation, and needs only libc
+and the loader. The actual C trace and 32 headers were checked. C-link stderr
+is **not empty**: it includes the disclosed MPFR 4.2.1-header/4.2.2-runtime
+warning. Review found no compile error and retained the already-fenced MPFR
+library; this O0 caller uses integer/bool operations. Chibi/JIT/PERF streams
+and AOT stderr were empty; AOT stdout was the exact eight-check success record.
+
+The first native attempt failed before backend compilation because its test
+oracle expected span end 104; the retained parser includes the zero-width
+semicolon at 105. Commit `d38edd3a7702ef3a73b5441c19aaaa32549a8aa3`
+corrected only three test/generator files and added the pure-source regression.
+Its failed receipt and closure remain preserved; the original fixture and
+production implementation were unchanged.
+
+This is a bounded Linux x86-64 System V correctness result using a separately
+admitted private controller. The public runner remains c5-pinned and its whole-
+run workflow was not rerun. Current-v3 nativecases/scalars/direct_calls/modules
+coverage, a small real tool, full compiler/runtime and platform qualification,
+and non-incremental 100,000 LOC/sec remain open. Phase 2 is not complete; the
+47.001-second O0 and 96.516-second O2 baselines are unchanged.
+
 ## Package-aware checkpoint
 
-The package-aware producer and source transport reuse the unchanged version-2
-Model, Verify, Pack, backend library, C ABI and dependency pins. The exact
+This historical package-aware checkpoint used the unchanged version-2 Model,
+Verify, Pack, backend library, C ABI and dependency pins. The exact
 original [modules Main](../slice_cases/modules/Main.chibi),
 [Math](../slice_cases/modules/math/Math.chibi) and
 [private-import rejection](../slice_cases/rejected/private_import.chibi) now
@@ -101,10 +153,13 @@ The native proof uses exact public-preparer output and a separately admitted
 private controller, the same c5 seed and the same backend library. The public
 whole-run workflow was not rerun. The separately accepted package-aware pure
 producer test used the current O2 builder; neither test admits the complete
-current compiler, self-hosting or a default-toolchain switch. The original
-foreign calls/`missing_symbol`, equality/`&&`, a real C call from Chibi, real
-tool/compiler workloads, non-Linux execution and 100,000 LOC/sec remain open.
-Historical results below and existing O0/O2 baselines are unchanged.
+current compiler, self-hosting or a default-toolchain switch. At that checkpoint
+the original foreign calls/`missing_symbol`, equality/`&&`
+and a real C call from Chibi remained open; the current version-3 result above
+covers that separate bounded gate. These version-2 receipts do not validate
+current-v3 nativecases/scalars/direct_calls/modules. Real tool/compiler workloads,
+non-Linux execution and 100,000 LOC/sec remain open. Historical results below
+and existing O0/O2 baselines are unchanged.
 
 ## Version-2 verification status
 
@@ -198,9 +253,9 @@ The accepted version-1 subset was the then-current
 [slice corpus](../slice-design.md), and excluded direct/foreign calls and several
 scalar operations. Version 2 implements direct calls and the remaining original
 scalar operations, with its validation status recorded above. The subsequent
-package-aware implementation has separate proof status; foreign support remains
-pending. The experimental rule that all admitted i64 additions/multiplications wrap, even
-literal-only expressions, is not current-language constant-expression parity.
+package-aware and version-3 foreign implementations have separate proof status
+above; neither broadens this version-1 result. The experimental rule that all
+admitted i64 additions/multiplications wrap, even literal-only expressions, is not current-language constant-expression parity.
 There is no current-compiler, full-compiler, real-tool, cross-platform or
 compilation-speed acceptance.
 
@@ -331,7 +386,8 @@ existing three tests remain, including injected finalization-failure cleanup.
 The [current seven-test result](#version-3-foreign-binding-source-checkpoint)
 passes all of them. The lifetime test executes its generated wrapper against a real Rust C-ABI function;
 its synthetic model is only a focused backend test. The eight original foreign
-oracles and missing-symbol rejection remain separate source integration gates.
+oracles and missing-symbol rejection have the separate source integration
+result above; these focused Rust tests do not establish it themselves.
 
 Current adapter accounting: descriptors occupy 64 bytes each (384 bytes for the
 six-import fixture, 2,048 bytes maximum), with temporary borrowed views and an
@@ -412,11 +468,13 @@ the private proof's full tool/loader admission fences.
 The three version-2 runtime matrices passed as listed in
 [verification status](#version-2-verification-status). The original
 registry still has 25 calls and 11 rejections. The two original package calls
-and `private_import` now have the separate checkpoint above; eight foreign calls
-and `missing_symbol` remain open. The 23 supplemental
-call oracles extend coverage; they do not replace those original gates.
+and `private_import` have the separate historical version-2 checkpoint above;
+eight foreign calls and `missing_symbol` have the current version-3 result.
+The four older selections still need fresh current-v3 native acceptance.
+The 23 supplemental call oracles extend coverage; historical results cannot be
+combined into full current-v3 corpus acceptance.
 
-Full corpus coverage, generated foreign calls, representative real-tool/runtime
-quality, phase/memory measurements, platform qualification and distribution
-notice review remain later gates. No timing from these fixtures establishes
+Full current-v3 corpus coverage, representative real-tool/runtime quality,
+phase/memory measurements, platform qualification and distribution notice review
+remain later gates. No timing from these fixtures establishes
 100,000 LOC/sec or a speedup.

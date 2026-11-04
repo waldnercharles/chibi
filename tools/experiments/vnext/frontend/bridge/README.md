@@ -1,11 +1,14 @@
 # Typed-module scalar transport bindings
 
 Status: version 3 adds explicit foreign membership and integer equality. The
-foreign-call tranche is under review. The current complete typed-source,
-source-to-v3-Pack, eight-test Arena framing and seven-test Rust backend suites
-pass. A fresh non-test backend library and original-source foreign JIT/AOT
-remain separate open gates.
-These results do not establish full-corpus or throughput acceptance.
+current complete typed-source, source-to-v3-Pack, eight-test Arena framing and
+seven-test Rust backend suites pass, as does fresh non-test library review.
+The [original-source foreign proof](../../slice_backend/README.md#version-3-foreign-native-result)
+passed compilation, normal JIT, owned environment failure, C link and linked C
+execution, followed by independent aggregate acceptance. The four older
+native selections are not yet accepted under current version 3. Historical
+version-1/2 receipts do not establish full current-v3 corpus or throughput
+acceptance.
 
 Historical version-2 scalar/direct-call transport passed the native Chibi packing
 and seven standalone Rust framing tests in the [six-stage pure-source proof](../typed/README.md#accepted-version-2-pure-transform-result).
@@ -251,9 +254,10 @@ for the independent terminal readbacks.
 The package selection now transports the original modules Main/Math with
 document labels 19/20 and, independently, private_import/Math with labels
 100/101. Its native stages and final independent admission passed. The eight
-original foreign calls and `missing_symbol` now have prepared callers, with
-integration acceptance still open. `--case foreign` binds the exact independently
-reviewed archive containing the six original C functions and descriptor getters.
+original foreign calls and `missing_symbol` have now passed the separate
+[version-3 native stages](../../slice_backend/README.md#version-3-foreign-native-result),
+including independent aggregate acceptance. `--case foreign` binds the exact
+independently reviewed archive containing the six original C functions and descriptor getters.
 The same archive must be used for both JIT caller linkage and final AOT linkage;
 there is no process-symbol fallback or fabricated replacement implementation. The
 original 25-call/11-rejection
@@ -302,9 +306,11 @@ c5 seed/backend identities. The public `run_native.py` whole-run workflow was
 not rerun for either checkpoint; passing controls do not create a whole-run
 receipt or change its seed pin.
 
-The current version-3 typed-source and packing proofs use the separately
-admitted current compiler. The public runner below still accepts only the
-pinned c5 seed, so it cannot select that current-compiler route. Current-v3
+The current version-3 typed-source, packing and foreign native proofs use the
+separately admitted current compiler. The foreign proof uses exact public-
+preparer output with a separately admitted private five-stage controller;
+the public whole-run workflow was not rerun. The public runner below still
+accepts only the pinned c5 seed, so it cannot select that current-compiler route. Current-v3
 compatibility with c5 has not been established, and the command below is not a
 validated current-v3 reproduction. A current-compiler runner needs its own
 explicit identity contract and fresh execution evidence; do not bypass the pin.

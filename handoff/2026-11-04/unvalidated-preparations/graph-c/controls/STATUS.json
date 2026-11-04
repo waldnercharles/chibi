@@ -1,0 +1,17 @@
+{
+  "status": "UNARMED_SOURCE_PREPARED",
+  "independent_source_review": null,
+  "artifact": null,
+  "execution_acceptance": null,
+  "controls_executed": false,
+  "native_compilation_executed": false,
+  "model_import_or_execution": false,
+  "manifest_sha256": "4c3826010552b3601c57ba554c2cdb986e33abf6f969c07c5ff8eaf941070a27",
+  "plan_sha256": "f7bb19823f4ca9524f3df7114439fc84657d1d52fd679b8891895c44f6195612",
+  "production_source_sha256": {
+    "graph_c_attribution.py": "aeb3759d27e523aeb0257e73790ffce8cca89a1e64feb02290a2442d903914b4",
+    "inner_owner.py": "341367e8272a510ca5d9ba7befb275d6526310ea9497e9cd5c787ce6d9d232f3",
+    "run.py": "f2954c71f273d70af183d5ef3f18a56e5e9876cec8a57ea13c5d3a738a6996da",
+    "guard.py": "3984c03b5562e3a59173858d310d5f1fd4e2ba49f4aa3a3979a56bce73eb45a3"
+  }
+}

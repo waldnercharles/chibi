@@ -1,0 +1,49 @@
+{
+  "candidate_execution_performed": false,
+  "control_enabled": false,
+  "controls": {
+    "case_endpoints_seconds": [
+      5,
+      7,
+      8
+    ],
+    "case_families": 38,
+    "fixture_launch_ceiling": 48,
+    "fixture_roots": 31,
+    "manifest_sha256": "4c3826010552b3601c57ba554c2cdb986e33abf6f969c07c5ff8eaf941070a27",
+    "owner_case_invocations": 32,
+    "plan_sha256": "f7bb19823f4ca9524f3df7114439fc84657d1d52fd679b8891895c44f6195612",
+    "suite_ceiling_seconds": 420
+  },
+  "missing": [
+    "Independent review of the complete frozen caller/controller/guard, narrow successor core and all control source.",
+    "Separate synthetic fixture compiler/artifact and recursive control-runtime closure admission; no fixture ELF exists.",
+    "Exact finite controls execution acceptance and exclusive original suite intent; no control execution is authorized.",
+    "Actual control journals, receipts, counterfactual/model results, independent final reconciliation and external observed actual top-level terminal.",
+    "Independent source/tool validation of exact stderr policy; current candidates remain strict and unreviewed.",
+    "Separate graph-c recursive runtime/source-cwd/dependency admission for the actual compiled ELF and future generated programs.",
+    "Exact graph-c runtime acceptance/window and exclusive original125-second intent, then actual external observed terminal."
+  ],
+  "production_source_sha256": {
+    "graph_c_attribution.py": "aeb3759d27e523aeb0257e73790ffce8cca89a1e64feb02290a2442d903914b4",
+    "guard.py": "3984c03b5562e3a59173858d310d5f1fd4e2ba49f4aa3a3979a56bce73eb45a3",
+    "inner_owner.py": "341367e8272a510ca5d9ba7befb275d6526310ea9497e9cd5c787ce6d9d232f3",
+    "run.py": "f2954c71f273d70af183d5ef3f18a56e5e9876cec8a57ea13c5d3a738a6996da"
+  },
+  "runtime": {
+    "artifact_runtime_admitted": false,
+    "artifact_sha256": "046fabf20b00f394cecf4307c7f1758ff17fad7694b31bc3da9dac889321120f",
+    "endpoints_seconds": [
+      110,
+      115,
+      120,
+      125
+    ],
+    "outer_cleanup_seconds": 5,
+    "runner_cache_key": "1a9a3d0e7ef68922d833f75ac4ca82c0edf11f06f6e05a4620ed5ac71934013f",
+    "total_seconds": 125
+  },
+  "runtime_enabled": false,
+  "status": "FROZEN_SOURCE_ONLY_UNARMED",
+  "unchanged_outer_sha256": "eb565285001cef43ed88cf73e5797cc83b726afcf6cf192cf5b4ba10f6078698"
+}

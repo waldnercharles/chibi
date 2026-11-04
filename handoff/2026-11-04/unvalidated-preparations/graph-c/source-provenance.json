@@ -1,0 +1,50 @@
+{
+  "accepted_delta": {
+    "src/support/array.h": "e2db9f05e7714aef0be38f11afe182e496a2c30077119bb6f58a319fd35c8424",
+    "test/graph/CTests.chibi": "ec0db0756d43a6c0545a4928bce7df744ddd13fc65e666e8a6436e75a7e298b5",
+    "test/graph/fixtures/array_cookie.c": "835ba7281cdf727e703ab6ab776a4194bb4369ea38c8d27c3e545ef19b37753f"
+  },
+  "additional_private_baseline_paths": [
+    ".chibi"
+  ],
+  "base_revision": "2ab08c8a190020fcd13678acce35140c31104ade",
+  "exact_committed_bytes_verified": true,
+  "imported_caches": false,
+  "independent_copy": true,
+  "parent_source_identity": {
+    "bytes": 951,
+    "link": null,
+    "mode": 420,
+    "path": "/workspace/shared/chibi-array-cookie-fix-20261104/source-identity.json",
+    "realpath": "/workspace/shared/chibi-array-cookie-fix-20261104/source-identity.json",
+    "sha256": "f6d48caab5da45d23e743671e4a020d2b19d8a2f6cb42694a6d6954f82f8ad32",
+    "stat": {
+      "ctime_ns": 1793797139043296616,
+      "dev": 27,
+      "ino": 2517843,
+      "mtime_ns": 1793797139043296616
+    }
+  },
+  "parent_source_manifest": {
+    "bytes": 878530,
+    "link": null,
+    "mode": 420,
+    "path": "/workspace/shared/chibi-array-cookie-fix-20261104/source-files.json",
+    "realpath": "/workspace/shared/chibi-array-cookie-fix-20261104/source-files.json",
+    "sha256": "78e9dc3817cd233edd4caeeb5a679b6ff1d3646bb73c83b6a8b8daa909d6488b",
+    "stat": {
+      "ctime_ns": 1793797139030494536,
+      "dev": 27,
+      "ino": 2517837,
+      "mtime_ns": 1793797139030494536
+    }
+  },
+  "refresh_changed_paths": [
+    "handoff/2026-11-04/ARRAY-COOKIE-VALIDATION.md",
+    "handoff/2026-11-04/GRAPH-REGRESSION-VALIDATION.md",
+    "handoff/2026-11-04/array-cookie-results.json",
+    "handoff/2026-11-04/graph-regression-results.json"
+  ],
+  "snapshot_committed_revision": "63f0e52bca036ff93230ff0b7e10a8374442af68",
+  "source_file_count": 4088
+}

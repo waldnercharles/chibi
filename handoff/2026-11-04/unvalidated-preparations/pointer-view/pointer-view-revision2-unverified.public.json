@@ -1,0 +1,36 @@
+{
+  "status": "frozen source-only WIP; not accepted or committed",
+  "base": "02c86287430def964445ec90185961e20319536d",
+  "patch": "pointer-view-revision2-unverified.patch",
+  "patch_sha256": "e646f699630cfdfd4c8de3e439ae7e5d99c36656dcf6d5a0befe5a2ec3f2be31",
+  "bytes": 39221,
+  "files": {
+    "test/native_aot/managed_pointers/README.md": "abbc80d4d0bde1a45115cea172c15eb7f3dc973aa67cf90059c95c558c97d2dd",
+    "tools/compiler/package_compiler/Scalar.chibi": "5c7655260737df2295978bfbf30d4f4c3458094f80bfdd9f32c28c9b571a151b",
+    "tools/compiler/package_compiler/ScalarArrays.chibi": "c74e2acf1931e6a49df14d4a78862550c70edc3e0d80c147c493971d1b4dcc2e",
+    "tools/compiler/package_compiler/ScalarNativeSchemas.chibi": "945f3a1468fa49c93599688228bb14945ffd7f7c524ab7425995e6fa2039eeab",
+    "tools/compiler/package_compiler/ScalarPointers.chibi": "26e6c2c6d520fbf94092b0d0324cbf1b6aaf8755bef52cde4a48f3f14f194b13",
+    "tools/compiler/package_compiler/ScalarViews.chibi": "0a6537cddb8a9a35f6930a0236f33098ea00b5b1b164670b1f890be07b7ee148",
+    "test/native_aot/managed_pointers/pointer-element-schema/Changed.chibi": "ae678193b59fc82e4a6e8b77a4e7aa15cd8e37646c6819c78fdf6261d8edafe1",
+    "test/native_aot/managed_pointers/pointer-element-schema/Nominal.chibi": "c1bf13897a2bc1766d11a1ecc3265342b472f84b465864bea56f0a7f670d5bf2",
+    "test/native_aot/managed_pointers/pointer-element-schema/Nonnullable.chibi": "aced3a770b7a3c12ee02d03a967153a5feb9114847b20e3379f931d48f6cb267",
+    "test/native_aot/managed_pointers/pointer-element-schema/Nullable.chibi": "08de91441f547cd0207a81651c61cd7899fa21e633a2ca8c2626976cddf6f1bc",
+    "test/native_aot/managed_pointers/pointer-element-schema/Original.chibi": "c3e5602a06b7d4d845b697325a14915756d819cf52a9d4d8d1a4609e96bcdb4e",
+    "test/native_aot/managed_pointers/pointer-element-schema/Reindexed.chibi": "004d221d4efa4e9f5daf4214b1050b398cbb89f7db2d8cb1a650c92fb54ec91f",
+    "test/native_aot/managed_pointers/pointer-elements.sh": "07bd174470d9ce64aa4b75969dc58dce3049d2f3fc557b2721b9424dc49a258e",
+    "test/native_aot/managed_pointers/source/PointerElements.chibi": "ebbde6ae0deacdf87bc512af1e7979847c6daec655b56ad754f6128dada7aa5d",
+    "test/native_aot/managed_pointers/source/rejected/PointerViewUnionSchema.chibi": "23cb118c1c24de8a6718ba383f1ab767e7a12dedce5b828e463b2ef36079d21c"
+  },
+  "receipt_sha256": "c28453e54e45b431c2a56fe7fd3d05d39a1001a44e94845236434f530996f0de",
+  "known_findings": [
+    "Guarded nullable pointer inference loses ordinary narrowing and can produce incompatible native array identity.",
+    "Generic Failure assertion oracle can accept the wrong assertion site."
+  ],
+  "not_run": [
+    "Patch reapplication check",
+    "Ordinary/native differential",
+    "Native candidate compiler or runtime tests",
+    "Reload and Windows acceptance"
+  ],
+  "archival_metadata_note": "Sanitized metadata derivative; patch bytes unchanged and not applied. No validation or acceptance is added."
+}

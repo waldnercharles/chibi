@@ -1,0 +1,141 @@
+{
+  "base": "02c86287430def964445ec90185961e20319536d",
+  "local_head": "5a6d81ce3233f448aa6d5752e2427320ee117b2f",
+  "remote_head": "752df281116e74f29642117215e0a766f1e26d2e",
+  "tree": "32b9025f14a76b7dc36e4cc4bcc53a24ea5a7894",
+  "branch": "codex/resume-native-jobs-20261104",
+  "commits": [
+    {
+      "local_commit": "eff3d5ad85b80517596b751645d21d6f75f70d6c",
+      "remote_commit": "4968b99f584bd652e867012e179f1016876df3d7",
+      "tree": "e9a254a167c036e948012f26113876381955a028",
+      "parent": "02c86287430def964445ec90185961e20319536d"
+    },
+    {
+      "local_commit": "0303b5a9e7e7545c0c6e472c0e044a1f22e891f3",
+      "remote_commit": "4c70c337c2965a2e62dd6471780261a6194a8234",
+      "tree": "3bf144babea419fa8ff664377179485c670eeaef",
+      "parent": "4968b99f584bd652e867012e179f1016876df3d7"
+    },
+    {
+      "local_commit": "2b817547642269a7556452ec78137c6bb025f91f",
+      "remote_commit": "ded358a27f8eddb6cbad2e9d5de5fd0f5fdf0e8d",
+      "tree": "7d42e3dc9a7d3dad840e4b14916055f08f15c20f",
+      "parent": "4c70c337c2965a2e62dd6471780261a6194a8234"
+    },
+    {
+      "local_commit": "c723182546b949a7d8ac99d028be8b567dc5aba3",
+      "remote_commit": "083052f350d9c55bd2b36e83e55401fa4cf395e7",
+      "tree": "d85eefd4dc1ef7e1664e85b1d63132b5905afe5e",
+      "parent": "ded358a27f8eddb6cbad2e9d5de5fd0f5fdf0e8d"
+    },
+    {
+      "local_commit": "3fbaae4642cf46cb1c385fb6183a225da7268562",
+      "remote_commit": "2a59852a6f81d005bbbf012745cb54cce1c056ef",
+      "tree": "639a736224d33ad704f1647d2f136246297ba729",
+      "parent": "083052f350d9c55bd2b36e83e55401fa4cf395e7"
+    },
+    {
+      "local_commit": "cc5c8346a9c7e0bf2a45a1c1bc015dd29cdf9b00",
+      "remote_commit": "e05bc00aa4cab877860bcbc37609972cdbb4da2a",
+      "tree": "e95830d33f34ee81306b14939d8d86fcccf5b7a2",
+      "parent": "2a59852a6f81d005bbbf012745cb54cce1c056ef"
+    },
+    {
+      "local_commit": "c9a094ce3aeba880b44db292f8c245f1a402cdca",
+      "remote_commit": "5f8b439b5a8db7e3ceafd86ae0c7cc0c2b47558c",
+      "tree": "0d01a023a9f8f0ec4c3c6a04122967424f4a5307",
+      "parent": "e05bc00aa4cab877860bcbc37609972cdbb4da2a"
+    },
+    {
+      "local_commit": "b8dd1f35f6a8817d6bfc8c883ef15a1c32593eaa",
+      "remote_commit": "b9489a9f816cc36e4523c6112ca285172918a732",
+      "tree": "0f71db75f30ec09bcabb2205757dfc5d57fbdfab",
+      "parent": "5f8b439b5a8db7e3ceafd86ae0c7cc0c2b47558c"
+    },
+    {
+      "local_commit": "af1368540660106bd9b769f151f347bc4155556d",
+      "remote_commit": "f8dca9a976d04daa121848f2b2e1bffb273f444f",
+      "tree": "1fcd57055960b682a85d157beb90cbcbb8b54700",
+      "parent": "b9489a9f816cc36e4523c6112ca285172918a732"
+    },
+    {
+      "local_commit": "85057387ab2b88a7b3f112c8a26c5ea7f97cddb9",
+      "remote_commit": "e789af7b694f3297d2e2917b211f4cbac3dd1a38",
+      "tree": "e20a834c6fde24eb6aab79188599b61c4ed4bb2b",
+      "parent": "f8dca9a976d04daa121848f2b2e1bffb273f444f"
+    },
+    {
+      "local_commit": "00266f14ef58911f6c7909c3b2553122fe30d4c7",
+      "remote_commit": "ff906fe672fccd2ca2eed49f299a88657e867546",
+      "tree": "7aa29c42873efafac6bf6a5e0c350dc0076b785b",
+      "parent": "e789af7b694f3297d2e2917b211f4cbac3dd1a38"
+    },
+    {
+      "local_commit": "083e82408a337787cfd9f08c1fff1113a1884831",
+      "remote_commit": "b5710f8b364c8549ca7251b75efccf07baab34e3",
+      "tree": "39424a0ad887d48fc7ccd389716963c375c90c08",
+      "parent": "ff906fe672fccd2ca2eed49f299a88657e867546"
+    },
+    {
+      "local_commit": "47fe69b978d8a93d30994966210b69bb345b72fc",
+      "remote_commit": "a3715d650e10c84d33613c4bd1d1445d0955f109",
+      "tree": "20c69df91dfa76cfadc95f9a7340d4a90fbb7cc4",
+      "parent": "b5710f8b364c8549ca7251b75efccf07baab34e3"
+    },
+    {
+      "local_commit": "fdd0f101038a355a27ac95a353ef2c6cf388fd77",
+      "remote_commit": "9f5b2a0de8968c044d08512efbd6ab05f5d55f58",
+      "tree": "405a32a8f88c03fefaef62f72241c9fdda9671d7",
+      "parent": "a3715d650e10c84d33613c4bd1d1445d0955f109"
+    },
+    {
+      "local_commit": "60bf56f158ff3c6d196a1cdf88a195411ec9e5b9",
+      "remote_commit": "cb6b67b00f21ebecf481754a0034754a7c1889ed",
+      "tree": "4ab105397449998d576561ee071bdd71668cfbbd",
+      "parent": "9f5b2a0de8968c044d08512efbd6ab05f5d55f58"
+    },
+    {
+      "local_commit": "25a5f23371a0f058386e69489afcfe30bc326a4e",
+      "remote_commit": "009994098c79d48bfbff4af40d5a5ecf1ef4f503",
+      "tree": "819737b7198a0258618b81b93d4a6e08119583b6",
+      "parent": "cb6b67b00f21ebecf481754a0034754a7c1889ed"
+    },
+    {
+      "local_commit": "2ab08c8a190020fcd13678acce35140c31104ade",
+      "remote_commit": "18c482129d979fff24e9c727dccc87aa677c563b",
+      "tree": "7daefefc96573f3699af19a61a3b7aac37caaf00",
+      "parent": "009994098c79d48bfbff4af40d5a5ecf1ef4f503"
+    },
+    {
+      "local_commit": "908c875549c083bada069b1d008d0f846e4866dc",
+      "remote_commit": "31c72381ee4b8180818e17d8cefcc0cc6234fa68",
+      "tree": "13c521a5c65235e8b47a301a8d798e99f055a5b5",
+      "parent": "18c482129d979fff24e9c727dccc87aa677c563b"
+    },
+    {
+      "local_commit": "63f0e52bca036ff93230ff0b7e10a8374442af68",
+      "remote_commit": "bc77f9eeae48250691642de2626823a844a7895e",
+      "tree": "266627436c3358141399c7dd61bf22b88f3e9dba",
+      "parent": "31c72381ee4b8180818e17d8cefcc0cc6234fa68"
+    },
+    {
+      "local_commit": "3ae8057b253335ddff0dae2e7471e695a4ad83ee",
+      "remote_commit": "7ea2674c1a6caa5c5380a4d23961425e71366ffd",
+      "tree": "626d26d6db72b7be53cc7ff5aac7badd34fe0cca",
+      "parent": "bc77f9eeae48250691642de2626823a844a7895e"
+    },
+    {
+      "local_commit": "b5c03fb445fc86430707d4c8dcbe2c06e45a182b",
+      "remote_commit": "02f8989a6abcb569595abef01d46f54cdd7f7444",
+      "tree": "c9cd210a377c17ab5e55d7d047604d200f45c92c",
+      "parent": "7ea2674c1a6caa5c5380a4d23961425e71366ffd"
+    },
+    {
+      "local_commit": "5a6d81ce3233f448aa6d5752e2427320ee117b2f",
+      "remote_commit": "752df281116e74f29642117215e0a766f1e26d2e",
+      "tree": "32b9025f14a76b7dc36e4cc4bcc53a24ea5a7894",
+      "parent": "02f8989a6abcb569595abef01d46f54cdd7f7444"
+    }
+  ]
+}

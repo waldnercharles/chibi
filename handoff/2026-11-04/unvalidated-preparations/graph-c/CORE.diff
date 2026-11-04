@@ -1,0 +1,24 @@
+--- reviewed-original/graph_c_attribution.py
++++ runtime-successor/graph_c_attribution.py
+@@ -147,7 +147,20 @@
+     def ready(self, node):
+         poller = select.poll()
+         poller.register(node['pidfd'], select.POLLIN)
+-        return bool(poller.poll(0))
++        events = poller.poll(0)
++        if not isinstance(events, list) or len(events) > 1:
++            self.record('pidfd_poll_failure', result=repr(events))
++            self.reject('unsupported pidfd poll result')
++        if not events:
++            return False
++        event = events[0]
++        if (not isinstance(event, tuple) or len(event) != 2
++                or type(event[0]) is not int or event[0] != node['pidfd']
++                or type(event[1]) is not int
++                or event[1] not in (select.POLLIN, select.POLLHUP, select.POLLIN | select.POLLHUP)):
++            self.record('pidfd_poll_failure', result=repr(event))
++            self.reject('invalid or unsupported pidfd poll event: ' + repr(event))
++        return True
+ 
+     def bind(self, pid):
+         if pid in self.nodes:

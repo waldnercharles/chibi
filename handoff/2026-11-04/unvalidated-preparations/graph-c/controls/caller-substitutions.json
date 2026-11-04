@@ -1,0 +1,107 @@
+{
+  "status": "UNARMED_SOURCE",
+  "base_path": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/inner_owner.py",
+  "base_sha256": "341367e8272a510ca5d9ba7befb275d6526310ea9497e9cd5c787ce6d9d232f3",
+  "control_owner_sha256": "4d84ec6b6b4a73e6ef3dfec2e02a1e96daed457a6e022173b9478f0aaa4e2cdb",
+  "support_sha256": "7ec2486e3f38af1926f7680b9393518d8ef136f2d60d14ed899eeacda17b1953",
+  "substitutions": [
+    {
+      "label": "fixed control-source root",
+      "before": "H = Path('/workspace/shared/chibi-graph-c-runtime-20261104-revision01')",
+      "after": "H = Path('/workspace/shared/chibi-graph-c-runtime-20261104-revision01/controls')",
+      "count": 1
+    },
+    {
+      "label": "fixed control admission prefix",
+      "before": "    # No payload or mode from argv. These files are absent in the unarmed packet.\n    if len(sys.argv) != 1 or sys.argv[0] != str(H/'inner_owner.py'):\n        raise ValueError('fixed inner-owner argv required')\n    intent = json.loads((H/'runtime-intent.json').read_text())\n    plan_bytes = (H/'plan.json').read_bytes()\n    if hashlib.sha256(plan_bytes).hexdigest() != intent['plan_sha256']:\n        raise ValueError('runtime intent plan differs')\n    plan = json.loads(plan_bytes)\n    if plan['runtime_enabled'] is not True:\n        raise ValueError('UNARMED: independent runtime admission absent')\n    g = load_fixed('guard', plan['pins']['guard.py'])\n    g.set_clock(intent,15)\n    plan['_digest'] = intent['plan_sha256']\n    g.admission(plan,intent)\n    inner_intent = g.read(H/'inner-intent.json')\n    g.need(inner_intent['runtime_intent_sha256'] == g.sha(H/'runtime-intent.json'), 'inner intent differs')\n    g.need(g.identity(os.getppid()) == inner_intent['worker_identity']\n           and g.identity(inner_intent['worker_identity']['ppid']) == intent['outer_identity'], 'inner parent chain differs')\n    worker_argv = [b'/usr/bin/python3',b'-I',b'-S',b'-B',os.fsencode(H/'run.py'),b'--worker']\n    g.need(Path('/proc/'+str(os.getppid())+'/cmdline').read_bytes().split(b'\\0') == worker_argv+[b''], 'worker argv differs')\n    core = load_fixed('graph_c_attribution',g.CORE_SHA256)\n",
+      "after": "    global H\n    if len(sys.argv) != 1 or sys.argv[0] != str(H/'control_owner.py'):\n        raise ValueError('fixed control-owner argv required')\n    g = load_fixed('caller_support', '7ec2486e3f38af1926f7680b9393518d8ef136f2d60d14ed899eeacda17b1953')\n    intent, core = g.initialize()  # Disabled plan and absent admissions refuse.\n    H = g.S  # Unique, closed-set per-case directory, never caller-supplied.\n    g.bind_cancel(receive_cancel)\n    inner_intent = dict(worker_identity=g.identity(os.getppid()))\n",
+      "count": 1
+    },
+    {
+      "label": "per-case fixed intent",
+      "before": "g.sha(H/'runtime-intent.json')",
+      "after": "g.sha(H/'control-intent.json')",
+      "count": 1
+    },
+    {
+      "label": "reserve fixed control descriptors before executable",
+      "before": "    try:\n        g.tick()\n        executable",
+      "after": "    try:\n        g.tick()\n        descriptors.extend(g.prepare_channels())\n        executable",
+      "count": 1
+    },
+    {
+      "label": "case21 before fork",
+      "before": "        if CANCEL is not None:\n            raise RuntimeError('cancelled before fork')",
+      "after": "        if g.CASE_ID == 21:\n            receive_cancel(signal.SIGTERM, None)\n            g.note_fault('before-fork')\n        if CANCEL is not None:\n            raise RuntimeError('cancelled before fork')",
+      "count": 1
+    },
+    {
+      "label": "fixed child fixture descriptors",
+      "before": "                os.dup2(null,0); os.dup2(stdout,1); os.dup2(stderr,2)",
+      "after": "                os.dup2(null,0); os.dup2(stdout,1); os.dup2(stderr,2)\n                g.install_child_channels()",
+      "count": 1
+    },
+    {
+      "label": "case36 descriptor-exec127",
+      "before": "                os.execve(executable,g.ARGV,g.environment())",
+      "after": "                os.execve(-1 if g.CASE_ID == 36 else executable,g.ARGV,g.environment())",
+      "count": 1
+    },
+    {
+      "label": "close parent child-only descriptor copies",
+      "before": "        # Handlers cannot throw between fork return and retaining this child.",
+      "after": "        for fd in g.close_parent_channels():\n            os.close(fd); descriptors.remove(fd)\n        # Handlers cannot throw between fork return and retaining this child.",
+      "count": 1
+    },
+    {
+      "label": "case22 partial initialization",
+      "before": "        owner = core.GraphCancellation.__new__(core.GraphCancellation)",
+      "after": "        owner = core.GraphCancellation.__new__(core.GraphCancellation)\n        if g.CASE_ID == 22:\n            receive_cancel(signal.SIGTERM, None)\n            g.note_fault('retained-root-before-constructor')\n            raise RuntimeError('control cancellation after root retention before constructor')",
+      "count": 1
+    },
+    {
+      "label": "one fixed synthetic drive and scan timing, observe before drain preserved",
+      "before": "            owner.observe(); owner.drain()",
+      "after": "            if g.drive(owner):\n                continue\n            scan_start = time.monotonic()\n            owner.observe()\n            g.note_scan_elapsed(time.monotonic() - scan_start)\n            owner.drain()",
+      "count": 1
+    },
+    {
+      "label": "case16 live-before-zombie completion without replacing first error",
+      "before": "        error = repr(failure)\n",
+      "after": "        error = repr(failure)\n        injection_error = g.on_failure()\n        if injection_error is not None:\n            terminal['control_injection_error'] = injection_error\n",
+      "count": 1
+    },
+    {
+      "label": "capture fixture receipts before descriptor close",
+      "before": "    finally:\n        terminal['cleanup_echild']",
+      "after": "    finally:\n        g.capture_evidence(terminal)\n        terminal['cleanup_echild']",
+      "count": 1
+    },
+    {
+      "label": "earlier original wall cutoff 5",
+      "before": "intent['end_wall']-15",
+      "after": "intent['start_wall']+5",
+      "count": 1
+    },
+    {
+      "label": "earlier original wall cutoff 7",
+      "before": "intent['end_wall']-10",
+      "after": "intent['start_wall']+7",
+      "count": 2
+    },
+    {
+      "label": "earlier original mono cutoff 5",
+      "before": "intent['end_mono']-15",
+      "after": "intent['start_mono']+5",
+      "count": 1
+    },
+    {
+      "label": "earlier original mono cutoff 7",
+      "before": "intent['end_mono']-10",
+      "after": "intent['start_mono']+7",
+      "count": 2
+    }
+  ],
+  "admission": null,
+  "executed": false
+}

@@ -1,0 +1,91 @@
+{
+  "limitations": [
+    "Only byte reads from already pinned tools; no tool executed.",
+    "Literal formats support candidate diagnostic vocabulary but do not prove control flow, path expansion, locale routing, complete output or ordering.",
+    "Exact diagnostic variants remain subject to independent source/tool review."
+  ],
+  "status": "STATIC_LITERAL_EVIDENCE_NOT_OUTPUT_ADMISSION",
+  "tools": [
+    {
+      "literal_strings": [
+        {
+          "bytes_hex": "63616e6e6f742066696e64207363726970742066696c652025730a",
+          "offset": 351100,
+          "text": "cannot find script file %s\n"
+        },
+        {
+          "bytes_hex": "25503a2063616e6e6f742066696e6420257320282573293a2025450a",
+          "offset": 352188,
+          "text": "%P: cannot find %s (%s): %E\n"
+        },
+        {
+          "bytes_hex": "25503a2063616e6e6f742066696e642025733a2025450a",
+          "offset": 352217,
+          "text": "%P: cannot find %s: %E\n"
+        },
+        {
+          "bytes_hex": "25503a2063616e6e6f742066696e6420257320696e736964652025730a",
+          "offset": 352241,
+          "text": "%P: cannot find %s inside %s\n"
+        },
+        {
+          "bytes_hex": "25503a207761726e696e673a2063616e6e6f742066696e6420656e7472792073796d626f6c2025733b2064656661756c74696e6720746f2025560a",
+          "offset": 1677176,
+          "text": "%P: warning: cannot find entry symbol %s; defaulting to %V\n"
+        },
+        {
+          "bytes_hex": "25503a207761726e696e673a2063616e6e6f742066696e6420656e7472792073796d626f6c2025733b206e6f742073657474696e6720737461727420616464726573730a",
+          "offset": 1677240,
+          "text": "%P: warning: cannot find entry symbol %s; not setting start address\n"
+        }
+      ],
+      "tool": {
+        "bytes": 1861256,
+        "link": "x86_64-linux-gnu-ld",
+        "mode": 493,
+        "path": "/usr/bin/ld",
+        "realpath": "/usr/bin/x86_64-linux-gnu-ld.bfd",
+        "sha256": "d2766988b6a1b1d1518cdc09242e726d1f24e151e16410ada3092b11ffd9081b"
+      }
+    },
+    {
+      "literal_strings": [
+        {
+          "bytes_hex": "6c642072657475726e6564202564206578697420737461747573",
+          "offset": 335960,
+          "text": "ld returned %d exit status"
+        },
+        {
+          "bytes_hex": "25732072657475726e6564202564206578697420737461747573",
+          "offset": 337135,
+          "text": "%s returned %d exit status"
+        }
+      ],
+      "tool": {
+        "bytes": 422136,
+        "link": null,
+        "mode": 493,
+        "path": "/usr/libexec/gcc/x86_64-linux-gnu/14/collect2",
+        "realpath": "/usr/libexec/gcc/x86_64-linux-gnu/14/collect2",
+        "sha256": "ea31a4cebd9df1b6428c463428d461ccecfe66c897936409d5b2cde0b3af9e27"
+      }
+    },
+    {
+      "literal_strings": [
+        {
+          "bytes_hex": "4e6f20737563682066696c65206f72206469726563746f7279",
+          "offset": 1729003,
+          "text": "No such file or directory"
+        }
+      ],
+      "tool": {
+        "bytes": 1995216,
+        "link": null,
+        "mode": 493,
+        "path": "/usr/lib/x86_64-linux-gnu/libc.so.6",
+        "realpath": "/usr/lib/x86_64-linux-gnu/libc.so.6",
+        "sha256": "9792e3cbb541c8f44c7acf5f14f4022ea62998ecc787d326bed4d8b6547dfd92"
+      }
+    }
+  ]
+}

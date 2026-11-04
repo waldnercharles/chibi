@@ -1,0 +1,447 @@
+{
+  "schema": "graph-c-controls-source-v1",
+  "status": "UNARMED_SOURCE_READY_FOR_INDEPENDENT_REVIEW",
+  "production_core_sha256": "aeb3759d27e523aeb0257e73790ffce8cca89a1e64feb02290a2442d903914b4",
+  "independent_core_review_sha256": "c18ad9aa4d791499d81c807dc309a9244e5d5b7493431536a1d10593bbb1c718",
+  "admission": null,
+  "fixture_artifact": null,
+  "source_review": null,
+  "source_executed": false,
+  "default_main": "refuse",
+  "budget": {
+    "admitted": false,
+    "suites": 1,
+    "max_fixture_launches": 48,
+    "max_suite_elapsed_seconds": 420,
+    "proposed_complete_launches": 31,
+    "currently_declared_kernel_launches": 31,
+    "normal_seconds": 5,
+    "owned_cleanup_end_seconds": 7,
+    "external_cleanup_end_seconds": 8,
+    "final_outer_reserve_seconds": 5,
+    "retry_until_pass": false,
+    "case_invocations": 32,
+    "max_case_elapsed_total_seconds": 256,
+    "shared_and_final_reserve_seconds": 164
+  },
+  "ordinary_core_substitutions": [
+    "RUNTIME: controls/work/case-NN, journal below work/",
+    "SHELL_ARGV: fixed synthetic fixture command and private marker; exact original script for18/19",
+    "os/select/time private namespace copies for finite explicitly declared faults"
+  ],
+  "cases": [
+    {
+      "id": 1,
+      "name": "Attributed SIGKILL success",
+      "kind": "kernel",
+      "source_status": "prepared",
+      "binding": "fixed_kernel_body: standard shell/branch/leaf",
+      "expected": "inner actual0, registered SIGKILL-only adoptions, zero owner signals, ECHILD",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 2,
+      "name": "Unregistered SIGKILL",
+      "kind": "kernel",
+      "source_status": "prepared",
+      "binding": "apply_kernel_fault: suppress only fixture role3 register",
+      "expected": "irreversible missing-registration failure; exact cleanup",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 3,
+      "name": "Wrong subtree",
+      "kind": "kernel",
+      "source_status": "prepared",
+      "binding": "fixture: compiler-like sibling and leaf share shell group",
+      "expected": "compiler leaf cannot borrow shell ancestry",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 4,
+      "name": "Wrong argv",
+      "kind": "kernel",
+      "source_status": "prepared",
+      "binding": "fixture: only shell argv[3] changes",
+      "expected": "no eligible shell, failure",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 5,
+      "name": "Wrong executable",
+      "kind": "kernel",
+      "source_status": "prepared",
+      "binding": "fixture: same argv executes fixed fixture fake-shell role",
+      "expected": "argv equality cannot override exe mismatch",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 6,
+      "name": "Wrong exit0",
+      "kind": "model",
+      "source_status": "prepared",
+      "binding": "STATUS_VARIANTS: exit0",
+      "expected": "ineligible terminal status",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 7,
+      "name": "Wrong exit7",
+      "kind": "model",
+      "source_status": "prepared",
+      "binding": "STATUS_VARIANTS: exit7",
+      "expected": "ineligible terminal status",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 8,
+      "name": "Wrong SIGTERM",
+      "kind": "model",
+      "source_status": "prepared",
+      "binding": "STATUS_VARIANTS: sigterm",
+      "expected": "ineligible terminal status",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 9,
+      "name": "Status disagreement",
+      "kind": "model",
+      "source_status": "prepared",
+      "binding": "STATUS_VARIANTS: wnowait_status_disagrees, wnowait_pid_disagrees, raw_core_disagrees, raw_signal_disagrees",
+      "expected": "two WNOWAIT mismatches reject before reap; raw mismatches retain original raw status and fail",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 10,
+      "name": "Exit before pidfd open",
+      "kind": "kernel",
+      "source_status": "prepared",
+      "binding": "retire_around_open: R handshake before real pidfd_open",
+      "expected": "real kernel shell retirement; old proc anchor cannot bind replacement",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 11,
+      "name": "Exit after pidfd open",
+      "kind": "kernel",
+      "source_status": "prepared",
+      "binding": "retire_around_open: R handshake after real pidfd_open before second stat",
+      "expected": "real kernel retirement; no reopening by numeric PID",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 12,
+      "name": "Same PID/start alias",
+      "kind": "model",
+      "source_status": "prepared",
+      "binding": "anchored_alias_model",
+      "expected": "second read must use old fd101 and reject; reopening would expose equal replacement",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 13,
+      "name": "Wrong/stale pidfd",
+      "kind": "model",
+      "source_status": "prepared",
+      "binding": "pidfd_model registration variants; retirement_poll_model:3 supported positives and10 invalid/error/shape negatives; cleanup_poll_failure_model preserves first failure and fault-only pidfd_poll_failure event",
+      "expected": "reject all before signal/wait; retired descriptor distinct from POLLNVAL/error",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 14,
+      "name": "Adoption before registration",
+      "kind": "kernel",
+      "source_status": "prepared",
+      "binding": "K command before first observe",
+      "expected": "no retrospective ancestry",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 15,
+      "name": "Adoption during ancestry rounds",
+      "kind": "kernel",
+      "source_status": "prepared",
+      "binding": "S handshake after two first-round live reads",
+      "expected": "no committed witness after parent loss",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 16,
+      "name": "Live-to-zombie latch",
+      "kind": "kernel",
+      "source_status": "prepared",
+      "binding": "S shell retirement then observed live adoption then L descendants",
+      "expected": "first live observation remains failure through terminal ECHILD",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 17,
+      "name": "Live-latch counterfactual",
+      "kind": "model",
+      "source_status": "prepared",
+      "binding": "actual without_live_latch mutation plus live_latch_model and drain; materialized separately hashed core mutant source",
+      "expected": "unchanged latch fails; mutant accepts same SIGKILL victim and reaches ECHILD; outer oracle detects",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 18,
+      "name": "Actual20ms success",
+      "kind": "kernel",
+      "source_status": "prepared-with-measurement-limitation",
+      "binding": "exact REAL_SCRIPT, unbarriered20ms cancel and0.25s check",
+      "expected": "actual registered success or honest miss, no retries; internal births not independently counted; report observed topology honestly",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 19,
+      "name": "Actual20ms missed registration",
+      "kind": "kernel",
+      "source_status": "prepared-with-measurement-limitation",
+      "binding": "exact REAL_SCRIPT; withhold only observe through cancellation",
+      "expected": "failure, no reconstructed ancestry, ECHILD; internal births not independently counted; report observed topology honestly",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 20,
+      "name": "Eligibility counterfactual",
+      "kind": "model",
+      "source_status": "prepared",
+      "binding": "actual without_eligibility two-site mutation plus unregistered drain; materialized separately hashed core mutant source",
+      "expected": "unchanged rejects; mutant actually accepts same unregistered SIGKILL and reaches ECHILD",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 21,
+      "name": "Cancel before fork",
+      "kind": "caller",
+      "source_status": "prepared",
+      "binding": "control_owner.py + caller_support.py: inner_owner.main: immediately before CANCEL pre-fork check",
+      "expected": "no fixture root; original claim consumed; actual nonzero",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 22,
+      "name": "Cancel fork/constructor",
+      "kind": "caller",
+      "source_status": "prepared",
+      "binding": "control_owner.py + caller_support.py: inner_owner.main: after retained root_fd and before/during __init__",
+      "expected": "fallback root handle retained; cleanup and ECHILD",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 23,
+      "name": "Cancel during registration",
+      "kind": "kernel",
+      "source_status": "prepared",
+      "binding": "apply_kernel_fault: cancel before register body",
+      "expected": "first failure before cleanup; no later witness repairs success",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 24,
+      "name": "Cancel during execution",
+      "kind": "kernel",
+      "source_status": "prepared",
+      "binding": "CANCEL in fixed_kernel_body before K",
+      "expected": "original clocks, nonzero actual result, cleanup",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 25,
+      "name": "Cancel terminal write",
+      "kind": "caller",
+      "source_status": "prepared",
+      "binding": "control_owner.py + caller_support.py: inner_owner.main -> guard.save(inner-result)",
+      "expected": "provisional success cannot override cancellation and actual nonzero",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 26,
+      "name": "Cancel terminal fsync/close",
+      "kind": "caller",
+      "source_status": "prepared",
+      "binding": "control_owner.py + caller_support.py: separate guard.save fsync and close source-bound faults",
+      "expected": "both boundaries retain failure and nonzero actual result",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 27,
+      "name": "Wall clock expiry",
+      "kind": "model",
+      "source_status": "prepared",
+      "binding": "clock_model: wall",
+      "expected": "wall-only expiry rejects with same original ends",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 28,
+      "name": "Monotonic expiry",
+      "kind": "model",
+      "source_status": "prepared",
+      "binding": "clock_model: mono",
+      "expected": "mono-only expiry rejects with same original ends",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 29,
+      "name": "Deadline during success I/O",
+      "kind": "caller",
+      "source_status": "prepared",
+      "binding": "control_owner.py + caller_support.py: inner_owner.main terminal save; run.verify_inner actual observation",
+      "expected": "late receipt/exit rejected by actual controller timestamps",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 30,
+      "name": "Ownership read failure",
+      "kind": "kernel",
+      "source_status": "prepared",
+      "binding": "apply_kernel_fault: ownership denial and ownership-only fdinfo mismatch",
+      "expected": "stop exact operation; no numeric/group fallback; unresolved cleanup remains failure",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 31,
+      "name": "Pidfd failure",
+      "kind": "kernel",
+      "source_status": "prepared",
+      "binding": "apply_kernel_fault: simulated pidfd signal denial and pidfd_open denial",
+      "expected": "attempt marked before denial; no duplicate retry/blind signal/reap",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 32,
+      "name": "Journal failure",
+      "kind": "kernel",
+      "source_status": "prepared",
+      "binding": "apply_kernel_fault: reap flush fsync, registration write and provisional-success terminal write failures",
+      "expected": "failure retained; best-effort cleanup never success",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 33,
+      "name": "Cleanup cascade",
+      "kind": "kernel",
+      "source_status": "prepared",
+      "binding": "force failure with root+shell+branch+leaf live",
+      "expected": "root kill yields new adoptions, each proven before signal/reap; ECHILD",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 34,
+      "name": "Unchanged outer rejection",
+      "kind": "caller",
+      "source_status": "prepared",
+      "binding": "control_owner.py + caller_support.py: original pinned outer owner observes deliberately leaked adoption",
+      "expected": "failure persists after eventual ECHILD",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 35,
+      "name": "Root failure",
+      "kind": "kernel",
+      "source_status": "prepared",
+      "binding": "fixture returns7 after normal synthetic cancellation",
+      "expected": "descendant SIGKILLs cannot mask root failure",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 36,
+      "name": "Exec127",
+      "kind": "caller",
+      "source_status": "prepared",
+      "binding": "control_owner.py + caller_support.py: inner_owner child: declared descriptor-exec fault",
+      "expected": "exact root status127, cleanup and ECHILD",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 37,
+      "name": "Empty/missed registry",
+      "kind": "kernel",
+      "source_status": "prepared",
+      "binding": "fixed bare shell, no eligible adoption",
+      "expected": "root0 and ECHILD do not manufacture success",
+      "executed": false,
+      "result": null
+    },
+    {
+      "id": 38,
+      "name": "Admission and terminal tables",
+      "kind": "table",
+      "source_status": "prepared",
+      "binding": "admission_tables.py actual admission read-boundary negatives, actual parent check and exclusive claim; terminal_tables.py actual verify_inner positive +21 negatives; outer-adoption rejection is actual final case34",
+      "expected": "Each finite changed/missing/contradictory input rejects; valid baseline passes before mutations; actual outer rejection remains nonzero",
+      "executed": false,
+      "result": null
+    }
+  ],
+  "source_binding": {
+    "production_owner_sha256": "341367e8272a510ca5d9ba7befb275d6526310ea9497e9cd5c787ce6d9d232f3",
+    "derived_owner_sha256": "4d84ec6b6b4a73e6ef3dfec2e02a1e96daed457a6e022173b9478f0aaa4e2cdb",
+    "substitutions": "caller-substitutions.json",
+    "outer_owner_sha256": "eb565285001cef43ed88cf73e5797cc83b726afcf6cf192cf5b4ba10f6078698",
+    "production_core_sha256": "aeb3759d27e523aeb0257e73790ffce8cca89a1e64feb02290a2442d903914b4"
+  },
+  "case34": {
+    "position": "final",
+    "prior_echild_and_durable_results": true,
+    "suite_subreaper_disabled_only_for_final_case": true,
+    "expected_outer_result": "nonzero adopted_descendant with ECHILD; never relabel as outer pass"
+  },
+  "original_reviewed_core_sha256": "54f1e3e445c4d1750ed77c7ceb012f7c7e084af95e1054c117d933792d95cc6f",
+  "successor_core_review": null,
+  "fresh_ready_delta": "Only ready() changes from the frozen candidate: validate exact descriptor and supported event masks/shapes; record invalid/error detail before irreversible rejection. No kernel failure or execution claimed.",
+  "compile_proposal": {
+    "admitted": false,
+    "argv": [
+      "/usr/bin/gcc-14",
+      "-std=c11",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/controls/fixture.c",
+      "-o",
+      "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/controls/artifacts/fixture"
+    ],
+    "timeout_seconds": 15,
+    "artifact_sha256": null,
+    "closure_admission": null
+  }
+}

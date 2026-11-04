@@ -1,0 +1,79 @@
+{
+  "entries": [
+    "Run",
+    "FailedStep"
+  ],
+  "includes_conditional_branches": true,
+  "ordered_sources": [
+    {
+      "path": "CTests.chibi",
+      "sha256": "ec0db0756d43a6c0545a4928bce7df744ddd13fc65e666e8a6436e75a7e298b5",
+      "source_relative": "test/graph/CTests.chibi"
+    },
+    {
+      "path": "test/graph/native_process/Process.chibi",
+      "sha256": "c7628bde074c700018a1fa110fd049ef1e95f21193cb7ff77cded27f4d05a2ee",
+      "source_relative": "test/graph/native_process/Process.chibi"
+    },
+    {
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/source/packages/core/os/Os.chibi",
+      "sha256": "ca7eb34c1d4a0b46377f2d3148079d741a0bdd6db431cd99ade6570c7f09c63c",
+      "source_relative": "packages/core/os/Os.chibi"
+    },
+    {
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/source/packages/core/strings/Strings.chibi",
+      "sha256": "6fc25eedd2eee12631d2e22c8d075b82d7ee7561ef329e4c76846add13d44586",
+      "source_relative": "packages/core/strings/Strings.chibi"
+    },
+    {
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/source/tools/graph/c/C.chibi",
+      "sha256": "9f48c7cd5a4e5e3080e3f83065a5c81b5b2c78e9e3130723f3bc05e23e8fbb61",
+      "source_relative": "tools/graph/c/C.chibi"
+    },
+    {
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/source/tools/graph/programs/Programs.chibi",
+      "sha256": "46941ddbaa888e1c6636c5be50767393dd1a455c2a19ba31ac2a3c401bc1d994",
+      "source_relative": "tools/graph/programs/Programs.chibi"
+    },
+    {
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/source/packages/core/target/Target.chibi",
+      "sha256": "9c53c8eed58c028f7c575dea4e91978daaa4f996ba37605527caa19b6c151a93",
+      "source_relative": "packages/core/target/Target.chibi"
+    },
+    {
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/source/packages/core/sys/windows/Decimal.chibi",
+      "sha256": "75f9b4492cd791fe1dd7328e859dd856043f7c0a4c7a197295007545c3fa1cd4",
+      "source_relative": "packages/core/sys/windows/Decimal.chibi"
+    },
+    {
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/source/packages/core/sys/windows/Windows.chibi",
+      "sha256": "11652d1d2b3ebd20026f2d5e1090c209e9b74b633680243788b5fb0120a0b6c5",
+      "source_relative": "packages/core/sys/windows/Windows.chibi"
+    },
+    {
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/source/packages/core/sys/posix/Posix.chibi",
+      "sha256": "e6c0af3b80b8347550e3d9566952d71df3d2dfd0a9550040db6919e93adb0ae0",
+      "source_relative": "packages/core/sys/posix/Posix.chibi"
+    },
+    {
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/source/packages/core/hash/sha256/Sha256.chibi",
+      "sha256": "7d214328124b1452b89a17122196d6e32486437c16db4febde7d04f51362409d",
+      "source_relative": "packages/core/hash/sha256/Sha256.chibi"
+    },
+    {
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/source/packages/core/bytes/Bytes.chibi",
+      "sha256": "3face4437c9ebd31073da5c8e2996f956dd1fa0105eefc1fe458c3f17f20bb4b",
+      "source_relative": "packages/core/bytes/Bytes.chibi"
+    },
+    {
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/source/tools/graph/files/Files.chibi",
+      "sha256": "853edb1a09812be48fd29eabe56b4ebde01df46869c503e86da739a18453c3e5",
+      "source_relative": "tools/graph/files/Files.chibi"
+    },
+    {
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/source/tools/graph/install/Files.chibi",
+      "sha256": "0210d9745df712e36f42337d15a41b95d5dfc226983b6b394c3938db4dff5d15",
+      "source_relative": "tools/graph/install/Files.chibi"
+    }
+  ]
+}

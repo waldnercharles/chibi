@@ -1,0 +1,410 @@
+{
+  "argv": [
+    "/workspace/shared/chibi-graph-c-20261104-revision01/artifacts/graph-c",
+    "/workspace/shared/chibi-current-rebuild-20261104/stage4/chibi",
+    "/workspace/scratch/be2d74211a85/chibi-tools-resume-20261103/llvm22/usr/lib/llvm-22/bin"
+  ],
+  "artifact": {
+    "bytes": 293456,
+    "link": null,
+    "mode": 493,
+    "path": "/workspace/shared/chibi-graph-c-20261104-revision01/artifacts/graph-c",
+    "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/artifacts/graph-c",
+    "sha256": "046fabf20b00f394cecf4307c7f1758ff17fad7694b31bc3da9dac889321120f"
+  },
+  "closure_manifests": {
+    "c_roots": {
+      "bytes": 1610135,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-compiler-host-20261104-revision02/c-root-trees.json",
+      "realpath": "/workspace/shared/chibi-compiler-host-20261104-revision02/c-root-trees.json",
+      "sha256": "bd438a1b9eb90f46e8c3e687f6ca1f85ae5f3c230b56bc374b48e981b4aa80c1"
+    },
+    "graph_loader": {
+      "bytes": 180379,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-regressions-20261104-revision01/loader.json",
+      "realpath": "/workspace/shared/chibi-graph-regressions-20261104-revision01/loader.json",
+      "sha256": "c9f47dc5a427f7967188a25dcc262151d2135a33abba7543ad3e669013ec4256"
+    },
+    "graph_tools": {
+      "bytes": 43090,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-regressions-20261104-revision01/tool-facts.json",
+      "realpath": "/workspace/shared/chibi-graph-regressions-20261104-revision01/tool-facts.json",
+      "sha256": "d1198470400742dfb39ded2fc2f882f1d7b3cdb9b09428a95d7c11f9d1ccad58"
+    },
+    "python": {
+      "bytes": 302287,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-compiler-host-20261104-revision02/python-tree.json",
+      "realpath": "/workspace/shared/chibi-compiler-host-20261104-revision02/python-tree.json",
+      "sha256": "0daf0b54f6afe49be6a049e484e0bed8cc5189cd1fe80dc131b9980640fc8ece"
+    },
+    "roots": {
+      "bytes": 1931,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-compiler-host-20261104-revision02/root-identities.json",
+      "realpath": "/workspace/shared/chibi-compiler-host-20261104-revision02/root-identities.json",
+      "sha256": "c774111c2010a44dc1c77cb7656c6d5251760389fc019ffae95c19b7e2a893cf"
+    },
+    "search": {
+      "bytes": 2024679,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-compiler-host-20261104-revision02/search.json",
+      "realpath": "/workspace/shared/chibi-compiler-host-20261104-revision02/search.json",
+      "sha256": "e2440b82e713f5556014fddb4b870ea1a98c284c210f8e98917b8bd751eed199"
+    },
+    "tools": {
+      "bytes": 39236,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-compiler-host-20261104-revision02/tools.json",
+      "realpath": "/workspace/shared/chibi-compiler-host-20261104-revision02/tools.json",
+      "sha256": "dedc71dd4e08f43dc071364f6615a622c7ac6312849f365accae900ade6e8803"
+    }
+  },
+  "compile_artifact_inventory": [
+    {
+      "bytes": 4096,
+      "ctime_ns": 1793799453001426489,
+      "device": 27,
+      "inode": 2625908,
+      "kind": "directory",
+      "mode": 493,
+      "mtime_ns": 1793799453001426489,
+      "path": "."
+    },
+    {
+      "bytes": 293456,
+      "ctime_ns": 1793799452997963355,
+      "device": 27,
+      "inode": 2626170,
+      "kind": "file",
+      "mode": 493,
+      "mtime_ns": 1793799452997963355,
+      "path": "graph-c",
+      "sha256": "046fabf20b00f394cecf4307c7f1758ff17fad7694b31bc3da9dac889321120f"
+    }
+  ],
+  "controls_admission": null,
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "cutoffs": [
+    110,
+    115,
+    120,
+    125
+  ],
+  "cwd": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/source",
+  "environment": {
+    "CC": "/usr/bin/gcc-14",
+    "CHIBI_ASSET_COMPILER_CACHE": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/work/asset-cache",
+    "CHIBI_COMPILER_CACHE": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/work/compiler-cache",
+    "CHIBI_CORE": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/source/packages/core",
+    "CHIBI_TEST_WORKERS": "2",
+    "CXX": "/usr/bin/false",
+    "HOME": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/work/home",
+    "LANG": "C",
+    "LC_ALL": "C",
+    "LD_LIBRARY_PATH": "/workspace/scratch/be2d74211a85/chibi-tools-resume-20261103/llvm22/usr/lib/x86_64-linux-gnu:/workspace/scratch/be2d74211a85/chibi-tools-resume-20261103/llvm22/usr/lib/llvm-22/lib",
+    "PATH": "/usr/bin:/bin",
+    "TMPDIR": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/work/tmp",
+    "XDG_CACHE_HOME": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/work/cache"
+  },
+  "focused_c_proof": {
+    "accepted_source_files": {
+      "src/support/array.h": "e2db9f05e7714aef0be38f11afe182e496a2c30077119bb6f58a319fd35c8424",
+      "test/graph/CTests.chibi": "ec0db0756d43a6c0545a4928bce7df744ddd13fc65e666e8a6436e75a7e298b5",
+      "test/graph/fixtures/array_cookie.c": "835ba7281cdf727e703ab6ab776a4194bb4369ea38c8d27c3e545ef19b37753f"
+    },
+    "files": {
+      "compile_owner": {
+        "bytes": 2036,
+        "link": null,
+        "mode": 420,
+        "path": "/workspace/shared/chibi-array-cookie-fix-20261104/c-compile-owner/receipt.json",
+        "realpath": "/workspace/shared/chibi-array-cookie-fix-20261104/c-compile-owner/receipt.json",
+        "sha256": "f683c7bfa0074a946b6297069fda8eea97c84eca915befacdf2da1c0568bc598"
+      },
+      "compile_terminal": {
+        "bytes": 137,
+        "link": null,
+        "mode": 420,
+        "path": "/workspace/shared/chibi-array-cookie-fix-20261104/c-compile-result.json",
+        "realpath": "/workspace/shared/chibi-array-cookie-fix-20261104/c-compile-result.json",
+        "sha256": "1e41d93db3dfd1e4b7d9d3a5365f4c0c7808afeaf4bfd6a35be6e83077503e18"
+      },
+      "independent_admission": {
+        "bytes": 8363,
+        "link": null,
+        "mode": 420,
+        "path": "/workspace/shared/chibi-array-cookie-independent-review-20261104/FINAL-PROOF.json",
+        "realpath": "/workspace/shared/chibi-array-cookie-independent-review-20261104/FINAL-PROOF.json",
+        "sha256": "8ccc11a3d9459f693d92244be7306e8e7af0a08e42fa2208de65c07113728520"
+      },
+      "run_owner": {
+        "bytes": 2028,
+        "link": null,
+        "mode": 420,
+        "path": "/workspace/shared/chibi-array-cookie-fix-20261104/c-run-owner/receipt.json",
+        "realpath": "/workspace/shared/chibi-array-cookie-fix-20261104/c-run-owner/receipt.json",
+        "sha256": "bd81daaa2a38ddb761c369340ae1061e7ee25de9b7b23b905fcc488625c1734e"
+      },
+      "run_terminal": {
+        "bytes": 134,
+        "link": null,
+        "mode": 420,
+        "path": "/workspace/shared/chibi-array-cookie-fix-20261104/c-run-result.json",
+        "realpath": "/workspace/shared/chibi-array-cookie-fix-20261104/c-run-result.json",
+        "sha256": "b2ca297b338135c078cbf114a20ae9b49465aaa8a456da2118b14e57f9066645"
+      }
+    }
+  },
+  "outer_cleanup_seconds": 5,
+  "packet_names": [
+    "CORE-DELTA.md",
+    "CORE.diff",
+    "INPUTS.sha256",
+    "PREPARATION-CHECK.json",
+    "PREPARATION-REVIEW.md",
+    "README.md",
+    "SHA256SUMS",
+    "STATUS.json",
+    "compiler-source-equivalence.json",
+    "controls",
+    "graph_c_attribution.py",
+    "guard.py",
+    "inner-intent.json",
+    "inner.claim",
+    "inner_owner.py",
+    "launch.sh",
+    "outer",
+    "outer_owner.py",
+    "output-policy.json",
+    "output-tool-strings.json",
+    "plan.json",
+    "result.json",
+    "run.py",
+    "runner-cache.json",
+    "runtime-dependencies.json",
+    "runtime-intent.json",
+    "source",
+    "source-baseline.json",
+    "source-closure.json",
+    "source-mapping.json",
+    "source-provenance.json",
+    "supplemental-utilities.json",
+    "work"
+  ],
+  "pins": {
+    "CORE-DELTA.md": "ebb727cd6b78be002b001ad57ce790c9d05d0150fb3236c3e1e600af2d318665",
+    "CORE.diff": "883c54d567650201952abcee569700a8ed99192edd40e4d43015748bdf61ec17",
+    "INPUTS.sha256": "92c952e231dd302876ac86a33764942ceae60463e84cf46a05d7202feeb70c4a",
+    "PREPARATION-CHECK.json": "59f4bfc02bf3bf97bc507fc07517f1d1a7fa421e738e37051330fa10e8775fc4",
+    "PREPARATION-REVIEW.md": "c6adaff54ea9ea1b6410e8e4dfe2ac10243fe6b53c3d4f9cddfdf12c5b33ad6b",
+    "README.md": "7f0baba8a0e72789ad1eae11db76be61edd3fa91e6c8fb6bf5ca584c2ed6875a",
+    "STATUS.json": "62444c6e18853fc14b738b6736a22333065b8df43a279cb8306f889602fb52bf",
+    "compiler-source-equivalence.json": "2cf232911606bcb9a66aeacf6477b42bcc01e9b53bd7e733b0827a01646a7913",
+    "controls/CONTROL-PLAN.json": "f7bb19823f4ca9524f3df7114439fc84657d1d52fd679b8891895c44f6195612",
+    "controls/README.md": "b3203775b1290d4e0426680083c42c77be76690776ac7b6601c830a028df1f5f",
+    "controls/REVIEW.md": "aa6716f108e795bb16439f1ef5b962cab8aef1324950702b5af266f219098f7b",
+    "controls/SHA256SUMS": "0aecfb5da7b846089e93f8a4d8cd7104154cb52a91fcdd59d691687b9e96b3a4",
+    "controls/STATUS.json": "dc189d8647cceeba184671fdadb6fb3ac9ec14715dfefc047db71d18f0637df8",
+    "controls/admission_tables.py": "ab730d89b439fd3a1e8b195b44fb812267a36273b2877ffc811c54a8cb032ee7",
+    "controls/caller-substitutions.json": "b43bdba5665f21220b8349d9918474a798c6d26189c4d62a71c9bdb93288312b",
+    "controls/caller_support.py": "7ec2486e3f38af1926f7680b9393518d8ef136f2d60d14ed899eeacda17b1953",
+    "controls/control_binding.py": "3da99cb930a9bce907da74a22563b847ac078befedfcb7dc57894edf5213a835",
+    "controls/control_controller.py": "ad31e5e14c8fa93a3736cc443ff3e15d247f3a2d598e09f40075751cdd54b9e9",
+    "controls/control_owner.py": "4d84ec6b6b4a73e6ef3dfec2e02a1e96daed457a6e022173b9478f0aaa4e2cdb",
+    "controls/core_without_eligibility.py": "824c5c00f96c3a85ac2eaed52ea0042d34cff124bc87cf5f1d9dedec3af54c89",
+    "controls/core_without_live_latch.py": "bd63ac5f264b6d9c8e42412a8b68027f124a4d89e84cec22fc07d7d18cc43d64",
+    "controls/fixture.c": "a6f45bf7acaf37f4684536e218324d7db9f2c5e28959d1c345bf95c42b6d5a92",
+    "controls/manifest.json": "4c3826010552b3601c57ba554c2cdb986e33abf6f969c07c5ff8eaf941070a27",
+    "controls/model_binding.py": "2a7e378e7a516e3494de82de476a1509404780bf4ca1ad759a1654315aef313b",
+    "controls/outer_owner.py": "eb565285001cef43ed88cf73e5797cc83b726afcf6cf192cf5b4ba10f6078698",
+    "controls/terminal_tables.py": "33c07938ba7652f0e308e76e33acc020cbb1f918208ab27a487098fdbd3168c7",
+    "graph_c_attribution.py": "aeb3759d27e523aeb0257e73790ffce8cca89a1e64feb02290a2442d903914b4",
+    "guard.py": "3984c03b5562e3a59173858d310d5f1fd4e2ba49f4aa3a3979a56bce73eb45a3",
+    "inner_owner.py": "341367e8272a510ca5d9ba7befb275d6526310ea9497e9cd5c787ce6d9d232f3",
+    "launch.sh": "e760034c437a4cd263077db078fb884619eb4d4b6dccbd0d4e01d1f6220effaf",
+    "outer_owner.py": "eb565285001cef43ed88cf73e5797cc83b726afcf6cf192cf5b4ba10f6078698",
+    "output-policy.json": "32b2dd10576404bd42a774ec6acf80dfc49990078d0adc6ba8a12b6a56c92197",
+    "output-tool-strings.json": "a6f95987de26abf216a0c732ac1e9c704a10d5fe460ca52b93b348d4a486df03",
+    "run.py": "f2954c71f273d70af183d5ef3f18a56e5e9876cec8a57ea13c5d3a738a6996da",
+    "runner-cache.json": "77e1398e65be4887da8846043db4debd1c75c0792a1c74f91f4727e145731f64",
+    "runtime-dependencies.json": "f9453448b8e0d9ad223272b65e43f424b9b32a46fc9019343a824ae03809d242",
+    "source-baseline.json": "bb1ce1e845044c4e4273dab804a88f67e39bd485038725c7e37566c867595c6e",
+    "source-closure.json": "2635c61cddd591bfbe35bbd83d63b0888cdee9f8ee2287554854056e921f3c58",
+    "source-mapping.json": "bd35200f54403887cc04303e29a6d5337bd470ff707133216553a14726792b71",
+    "source-provenance.json": "0a56f7ba356ac1f6138b55731b514f3ec9eedb4116e790392edd79c3b8201b65",
+    "supplemental-utilities.json": "d92cda8b278b3323d54000a63ee3305ae22544ae6d7349abdadcf797629989bd"
+  },
+  "readonly_evidence": [
+    {
+      "bytes": 5374,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-independent-review-20261104-revision01/COMPILE-ARTIFACT-ADMISSION.json",
+      "realpath": "/workspace/shared/chibi-graph-c-independent-review-20261104-revision01/COMPILE-ARTIFACT-ADMISSION.json",
+      "sha256": "d9a7c2ce6e16da3a3e2eeea94bc15184a975e556fcfe28c562417887d6983e7d"
+    },
+    {
+      "bytes": 17675,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-attribution-independent-review-20261104/REVIEW.md",
+      "realpath": "/workspace/shared/chibi-graph-c-attribution-independent-review-20261104/REVIEW.md",
+      "sha256": "c18ad9aa4d791499d81c807dc309a9244e5d5b7493431536a1d10593bbb1c718"
+    },
+    {
+      "bytes": 16539,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-owner-candidate-20261104-revision01/graph_c_attribution.py",
+      "realpath": "/workspace/shared/chibi-graph-c-owner-candidate-20261104-revision01/graph_c_attribution.py",
+      "sha256": "54f1e3e445c4d1750ed77c7ceb012f7c7e084af95e1054c117d933792d95cc6f"
+    },
+    {
+      "bytes": 7539,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/plan.json",
+      "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/plan.json",
+      "sha256": "0e9ebeef3e846a0dcf2596d3aaab328c936504535dc9ef3f1ae6b942d6a31d6e"
+    },
+    {
+      "bytes": 21904,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/run.py",
+      "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/run.py",
+      "sha256": "b557465f4ddaf97c9de645d6ce623b8779337a7744c10be6171277b4306e0e46"
+    },
+    {
+      "bytes": 12551,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/owner.py",
+      "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/owner.py",
+      "sha256": "eb565285001cef43ed88cf73e5797cc83b726afcf6cf192cf5b4ba10f6078698"
+    },
+    {
+      "bytes": 205,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/launch.sh",
+      "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/launch.sh",
+      "sha256": "5756b38bdaf693bb2a8a518647e7b38ca5e39c1e51bc1b29ccfe6d141f977c88"
+    },
+    {
+      "bytes": 1592868,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/source-baseline.json",
+      "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/source-baseline.json",
+      "sha256": "9dc22780b7e53f717111aeddf499bd671312804c19cb74c1d4dc5d5c28855ae9"
+    },
+    {
+      "bytes": 8337,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/RUNTIME-REVIEW.md",
+      "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/RUNTIME-REVIEW.md",
+      "sha256": "c891cbce5c3984400433ebe5132d5d5d84923d8fa26bcbe3a324bf39d51b5ef3"
+    },
+    {
+      "bytes": 13479,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/compiler-source-equivalence.json",
+      "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/compiler-source-equivalence.json",
+      "sha256": "2cf232911606bcb9a66aeacf6477b42bcc01e9b53bd7e733b0827a01646a7913"
+    },
+    {
+      "bytes": 505,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/compile-intent.json",
+      "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/compile-intent.json",
+      "sha256": "7a7fe00edba637e38a9f47ef0f26f0b18319c409fd3138055b76ec6593383032"
+    },
+    {
+      "bytes": 136,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/compile-result.json",
+      "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/compile-result.json",
+      "sha256": "9968c9ea0bf653a6cb2ffeeb0bb8cced4d460ebb9241d291a8909546f7beb609"
+    },
+    {
+      "bytes": 1715,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/compile-work/result.json",
+      "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/compile-work/result.json",
+      "sha256": "26e12c1437a5601d6c722c8f3456b972585abb82fa2b79715cdd296ec2fbecba"
+    },
+    {
+      "bytes": 2038,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/compile-owner/receipt.json",
+      "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/compile-owner/receipt.json",
+      "sha256": "411ff202549c69f33cd517ac98131e63d34e0b1106a926bb5c6aee821fb9114b"
+    },
+    {
+      "bytes": 1398,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/compile-owner/launch.json",
+      "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/compile-owner/launch.json",
+      "sha256": "638f6177a0e0e22f9c12bbe34fdcf6a539a96b5dc0dc394afc8c600289593d9d"
+    },
+    {
+      "bytes": 0,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/compile-owner/raw.log",
+      "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/compile-owner/raw.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 2666,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/compile-work/graph-c.json",
+      "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/compile-work/graph-c.json",
+      "sha256": "4595c87348d9e082a0cf31b8d9c96ba9e4dde46c9510d03e12e88ca597210b68"
+    },
+    {
+      "bytes": 0,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/compile-work/graph-c.stdout",
+      "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/compile-work/graph-c.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-c-20261104-revision01/compile-work/graph-c.stderr",
+      "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/compile-work/graph-c.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "runtime_artifact_admission": null,
+  "runtime_enabled": false,
+  "schema": 1,
+  "status": "FROZEN_SOURCE_ONLY_UNARMED",
+  "total_seconds": 125
+}

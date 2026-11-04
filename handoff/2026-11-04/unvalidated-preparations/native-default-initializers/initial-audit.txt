@@ -1,0 +1,110 @@
+src/execution/function.c:1356:#define PUSH_VALUE(v)                                                          \
+src/execution/prepared_function.c:17:#define VALUE(v) prepared_value(c, &(v))
+src/execution/value_kind.h:2:#define CHIBI_EXECUTION_VALUE_KIND_H
+test/native_aot/math_scalar/README.md:8:The owning definitions in `src/runtime/math_definition.h` explicitly map
+src/toolchain/compiler_host.h:41:#define COMPILER_HOST_MAX_VALUES 4000000
+src/execution/prepared.c:26:#define VALUE(v) prepared_value(c, &(v))
+src/toolchain/compiler_host.c:7:#include "runtime/arrays_definition.h"
+src/toolchain/compiler_host.c:9:#include "runtime/text_definition.h"
+src/capabilities/definition.h:29:#define NATIVE_PORT(NAME, KIND, STORAGE, TYPE_NAME, CONTAINER, TYPE_FLAGS, GROUP, REFERENCE, OWNER, VALUE) \
+src/capabilities/definition.h:40:      .default_value = VALUE },
+src/capabilities/definition.h:42:#define NATIVE_CSTRING_PORT(NAME, KIND, STORAGE, TYPE_NAME, CONTAINER, TYPE_FLAGS, GROUP, REFERENCE, OWNER, VALUE) \
+src/capabilities/definition.h:55:      .default_value = VALUE },
+src/capabilities/definition.h:57:#define NATIVE_PORT_FLAGS(NAME, KIND, STORAGE, TYPE_NAME, CONTAINER, TYPE_FLAGS, GROUP, REFERENCE, OWNER, VALUE, GRAPH_FLAGS) \
+src/execution/integer_report.h:2:#define CHIBI_EXECUTION_INTEGER_REPORT_H
+src/capabilities/definition.c:12:#define DEFINITION_MAX_PORTS 4096
+src/capabilities/definition.c:76:        .default_value = source->default_value,
+src/support/asset_value.h:2:#define CHIBI_ASSET_VALUE_H
+src/support/sha256.h:2:#define CHIBI_SUPPORT_SHA256_H
+src/host/build_catalog.c:347:#define VALUE_CALLBACK(NAME)                                                                       \
+src/host/build_host.c:12:#include "runtime/arrays_definition.h"
+src/host/build_host.c:14:#include "runtime/text_definition.h"
+src/types/value_wire.h:2:#define CHIBI_VALUE_WIRE_H
+src/types/value_document_read.c:16:#define DOCUMENT_MAX_VALUES 1000000
+src/host/native_default.c:3:#include "runtime/arithmetic_definition.h"
+src/host/native_default.c:4:#include "runtime/arrays_definition.h"
+src/host/native_default.c:5:#include "runtime/comparison_definition.h"
+src/host/native_default.c:6:#include "runtime/conversion_definition.h"
+src/host/native_default.c:7:#include "runtime/core_definition.h"
+src/host/native_default.c:8:#include "runtime/math_definition.h"
+src/host/native_default.c:9:#include "runtime/selection_definition.h"
+src/host/native_default.c:10:#include "runtime/sets_definition.h"
+src/host/native_default.c:11:#include "runtime/text_definition.h"
+src/host/native_default.c:12:#include "runtime/vectors_definition.h"
+src/host/build_values.h:2:#define CHIBI_HOST_BUILD_VALUES_H
+src/types/annotate.h:65:#define NODE_RANGE_DEFAULT(VALUE)                                              \
+src/types/query.h:2:#define CHIBI_QUERY_VALUE_H
+test/tools/program_consumer.c:4:#include "runtime/core_definition.h"
+src/types/value_format.h:2:#define CHIBI_VALUE_FORMAT_H
+src/types/value.h:2:#define CHIBI_VALUE_H
+src/types/value_document.h:2:#define CHIBI_VALUE_DOCUMENT_H
+src/types/map.h:2:#define CHIBI_VALUE_MAP_H
+src/types/value_document.c:16:#define DOCUMENT_MAX_VALUES 4000000
+src/types/trace.h:2:#define CHIBI_VALUE_TRACE_H
+src/types/scalar.h:2:#define CHIBI_VALUE_SCALAR_H
+src/types/array.h:2:#define CHIBI_VALUE_ARRAY_H
+src/runtime/text_definition.h:19:#define NATIVE_TEXT_PORT(X, NAME, STORAGE, NOMINAL, FLAGS)                     \
+src/runtime/text_definition.h:40:#define NATIVE_TEXT_VALUE_INPUTS(X)                                            \
+src/runtime/selection.h:4:#include "runtime/selection_definition.h"
+src/runtime/comparison_definition.h:4:#define NATIVE_COMPARE_PORT(X, NAME, TYPE, TYPE_NAME)                          \
+src/runtime/comparison_definition.h:89:#define NATIVE_COMPARE_VALUES(X)                                                                          \
+src/runtime/comparisons.c:82:#define VALUE(KEY, NAME, SOURCE, INPUTS, CATEGORY, KEYWORDS, DESCRIPTION)      \
+src/runtime/arithmetic.h:4:#include "runtime/arithmetic_definition.h"
+src/runtime/math.c:108:#define VALUE(KEY, NAME, SOURCE, INPUTS, RANDOM) ADAPTER(KEY)
+src/runtime/math.c:112:#define FLOAT_VALUE(KEY, NAME, SOURCE, INPUTS, RANDOM) ADAPTER(F32_##KEY)
+src/runtime/sets_definition.h:4:#define NATIVE_SET_PORT(X, NAME, STORAGE, TYPE_NAME, CONTAINER, FLAGS, GROUP)  \
+src/runtime/sets_definition.h:15:#define NATIVE_SET_VALUE(X)                                                    \
+src/runtime/sets_definition.h:20:#define NATIVE_SET_SET_OUTPUTS(X) NATIVE_SET_VALUE(X)
+src/runtime/sets_definition.h:21:#define NATIVE_SET_ONLY_INPUTS(X) NATIVE_SET_VALUE(X)
+src/runtime/sets_definition.h:22:#define NATIVE_SET_ITEM_INPUTS(X) NATIVE_SET_VALUE(X) NATIVE_SET_ITEM(X)
+src/runtime/behaviors/package.h:10:#define PACKAGE_MAX_IMPORT_DEPTH MODULE_SET_MAX_IMPORT_DEPTH
+src/runtime/behaviors/module_set.h:8:#define MODULE_SET_MAX_IMPORT_DEPTH 64
+src/runtime/conversions.h:4:#include "runtime/conversion_definition.h"
+src/runtime/sets.h:5:#include "runtime/sets_definition.h"
+src/runtime/math_definition.c:20:#define VALUE(KEY, NAME, SOURCE, INPUTS, RANDOM)                               \
+src/runtime/math_definition.c:24:#define FLOAT_VALUE(KEY, NAME, SOURCE, INPUTS, RANDOM)                         \
+src/runtime/math_definition.c:47:#define VALUE(KEY, NAME, SOURCE, INPUTS, RANDOM)                               \
+src/runtime/math_definition.c:53:#define FLOAT_VALUE(KEY, NAME, SOURCE, INPUTS, RANDOM)                         \
+src/runtime/math_definition.c:71:#define VALUE(KEY, NAME, SOURCE, INPUTS, RANDOM) BINDING(KEY, NAME, RANDOM)
+src/runtime/math_definition.c:75:#define FLOAT_VALUE(KEY, NAME, SOURCE, INPUTS, RANDOM)                         \
+src/runtime/arrays_definition.h:6:#define NATIVE_ARRAY_PORT(X, NAME, STORAGE, TYPE_NAME, CONTAINER, FLAGS, GROUP) \
+src/runtime/core_definition.h:35:#define CORE_EXEC_PORT(X, NAME)                                                \
+src/runtime/core_definition.h:46:#define CORE_DATA_PORT(X, NAME, STORAGE, TYPE_NAME)                            \
+src/runtime/core_definition.h:57:#define CORE_EXEC_INPUTS(X) CORE_EXEC_PORT(X, "Exec")
+src/runtime/core_definition.h:58:#define CORE_THEN_OUTPUTS(X) CORE_EXEC_PORT(X, "Then")
+src/runtime/core_definition.h:105:#define CORE_DELAY_OUTPUTS(X) CORE_EXEC_PORT(X, "Completed")
+src/runtime/core_definition.h:111:#define CORE_VARIABLE_DATA(X) CORE_DATA_PORT(X, "Value", PIN_I32, "int")
+src/runtime/core_definition.h:114:#define CORE_SELF_OUTPUTS(X) CORE_DATA_PORT(X, "Self", PIN_HANDLE, "ecs.entity")
+src/runtime/core_definition.h:140:#define CORE_COMPONENT_VALUE(X, FLAGS)                                         \
+src/runtime/text_format.h:4:#include "runtime/text_definition.h"
+src/runtime/math_definition.h:5:#define NATIVE_MATH_PORT(X, NAME, TYPE, NOMINAL, VALUE)                        \
+src/runtime/math_definition.h:22:#define NATIVE_MATH_FLOAT(X, NAME, VALUE)                                      \
+src/runtime/math_definition.h:156:#define NATIVE_MATH_VALUES(X)                                                  \
+src/runtime/math_definition.h:164:#define NATIVE_MATH_F32_VALUES(X)                                              \
+src/runtime/vectors.h:4:#include "runtime/vectors_definition.h"
+src/runtime/comparisons.h:4:#include "runtime/comparison_definition.h"
+src/runtime/comparisons.h:11:#define VALUE(KEY, NAME, SOURCE, INPUTS, CATEGORY, KEYWORDS, DESCRIPTION)      \
+src/runtime/conversion_definition.h:4:#define NATIVE_CONVERSION_PORT(X, NAME, TYPE, TYPE_NAME)                       \
+src/runtime/core_definition.c:1:#include "runtime/core_definition.h"
+src/runtime/core_definition.c:5:#define PORTS(NAME, LIST)                                                      \
+src/runtime/selection_definition.c:8:#define INPUTS(KEY, NAME, SOURCE, PORTS, KERNEL)                               \
+src/runtime/selection_definition.c:13:#define SWITCH(KEY, NAME, SOURCE, PORTS, KERNEL)                               \
+src/runtime/selection_definition.c:37:#define BINDING(KEY, NAME, SOURCE, PORTS, KERNEL)                              \
+src/runtime/vectors_definition.h:9:#define NATIVE_VECTOR_PORT(X, NAME, TYPE, NOMINAL, VALUE)                      \
+src/runtime/vectors_definition.h:13:#define NATIVE_VECTOR_VALUE_INPUTS(X) NATIVE_VECTOR_V2(X, "Value")
+src/runtime/math_native.h:4:#include "runtime/math_definition.h"
+src/runtime/math_native.h:12:#define VALUE(KEY, NAME, SOURCE, INPUTS, RANDOM) DECLARE(KEY)
+src/runtime/math_native.h:16:#define FLOAT_VALUE(KEY, NAME, SOURCE, INPUTS, RANDOM) DECLARE(F32_##KEY)
+src/runtime/conversion_definition.c:10:          .default_value = { .type = INPUT },                                     \
+src/runtime/arithmetic_definition.h:4:#define NATIVE_ARITHMETIC_PORT(X, NAME, TYPE, NOMINAL, FLAGS, GROUP)           \
+src/runtime/arithmetic_definition.h:48:#define NATIVE_ARITHMETIC_Bool_PORTS(X)                                        \
+src/runtime/arithmetic_definition.h:52:#define NATIVE_ARITHMETIC_Byte_PORTS(X)                                        \
+src/runtime/arithmetic_definition.h:56:#define NATIVE_ARITHMETIC_Integer_PORTS(X)                                     \
+src/runtime/arithmetic_definition.h:60:#define NATIVE_ARITHMETIC_Integer64_PORTS(X)                                   \
+src/runtime/arithmetic_definition.h:64:#define NATIVE_ARITHMETIC_Real_PORTS(X)                                        \
+src/runtime/arithmetic_definition.h:68:#define NATIVE_ARITHMETIC_Name_PORTS(X)                                        \
+src/runtime/arithmetic_definition.h:72:#define NATIVE_ARITHMETIC_String_PORTS(X)                                      \
+src/runtime/arrays.h:5:#include "runtime/arrays_definition.h"
+src/runtime/comparison_definition.c:9:#define VALUE(KEY, NAME, SOURCE, INPUTS, CATEGORY, KEYWORDS, DESCRIPTION)      \
+src/runtime/comparison_definition.c:28:#define VALUE(KEY, NAME, SOURCE, INPUTS, CATEGORY, KEYWORDS, DESCRIPTION)      \
+src/runtime/comparison_definition.c:45:#define VALUE(KEY, NAME, SOURCE, INPUTS, CATEGORY, KEYWORDS, DESCRIPTION)      \

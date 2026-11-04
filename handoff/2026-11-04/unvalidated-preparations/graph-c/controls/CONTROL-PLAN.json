@@ -1,0 +1,63 @@
+{
+  "schema": "graph-c-control-plan-v1",
+  "enabled": false,
+  "max_fixture_launches": 48,
+  "case_seconds": [
+    5,
+    7,
+    8
+  ],
+  "suite_seconds": 420,
+  "final_outer_seconds": 5,
+  "budget": {
+    "case_invocations": 32,
+    "fixture_launches": 31,
+    "max_fixture_launches": 48,
+    "suite_seconds": 420,
+    "case_normal_seconds": 5,
+    "case_owned_cleanup_end_seconds": 7,
+    "case_external_end_seconds": 8,
+    "outer_final_seconds": 5
+  },
+  "fixture_argv_prefix": [
+    "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/controls/artifacts/fixture",
+    "--root"
+  ],
+  "environment": {
+    "PATH": "/usr/bin:/bin",
+    "LC_ALL": "C",
+    "LANG": "C",
+    "TZ": "UTC"
+  },
+  "working_root": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/controls/work",
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "descriptor_exec": true,
+  "source_sha256": {
+    "admission_tables.py": "ab730d89b439fd3a1e8b195b44fb812267a36273b2877ffc811c54a8cb032ee7",
+    "caller-substitutions.json": "b43bdba5665f21220b8349d9918474a798c6d26189c4d62a71c9bdb93288312b",
+    "caller_support.py": "7ec2486e3f38af1926f7680b9393518d8ef136f2d60d14ed899eeacda17b1953",
+    "control_binding.py": "3da99cb930a9bce907da74a22563b847ac078befedfcb7dc57894edf5213a835",
+    "control_controller.py": "ad31e5e14c8fa93a3736cc443ff3e15d247f3a2d598e09f40075751cdd54b9e9",
+    "control_owner.py": "4d84ec6b6b4a73e6ef3dfec2e02a1e96daed457a6e022173b9478f0aaa4e2cdb",
+    "core_without_eligibility.py": "824c5c00f96c3a85ac2eaed52ea0042d34cff124bc87cf5f1d9dedec3af54c89",
+    "core_without_live_latch.py": "bd63ac5f264b6d9c8e42412a8b68027f124a4d89e84cec22fc07d7d18cc43d64",
+    "fixture.c": "a6f45bf7acaf37f4684536e218324d7db9f2c5e28959d1c345bf95c42b6d5a92",
+    "manifest.json": "4c3826010552b3601c57ba554c2cdb986e33abf6f969c07c5ff8eaf941070a27",
+    "model_binding.py": "2a7e378e7a516e3494de82de476a1509404780bf4ca1ad759a1654315aef313b",
+    "outer_owner.py": "eb565285001cef43ed88cf73e5797cc83b726afcf6cf192cf5b4ba10f6078698",
+    "terminal_tables.py": "33c07938ba7652f0e308e76e33acc020cbb1f918208ab27a487098fdbd3168c7"
+  },
+  "production_source_sha256": {
+    "graph_c_attribution.py": "aeb3759d27e523aeb0257e73790ffce8cca89a1e64feb02290a2442d903914b4",
+    "inner_owner.py": "341367e8272a510ca5d9ba7befb275d6526310ea9497e9cd5c787ce6d9d232f3",
+    "run.py": "f2954c71f273d70af183d5ef3f18a56e5e9876cec8a57ea13c5d3a738a6996da",
+    "guard.py": "3984c03b5562e3a59173858d310d5f1fd4e2ba49f4aa3a3979a56bce73eb45a3"
+  },
+  "fixture": null,
+  "source_admission": null,
+  "artifact_admission": null,
+  "execution_acceptance": null
+}

@@ -1,0 +1,527 @@
+{
+  "purpose": "Public archival payload manifest; no execution or acceptance claim.",
+  "excludes": [
+    "COPIED-FILES.json",
+    "SHA256SUMS"
+  ],
+  "files": [
+    {
+      "path": "graph-c/CORE-DELTA.md",
+      "bytes": 3303,
+      "sha256": "ebb727cd6b78be002b001ad57ce790c9d05d0150fb3236c3e1e600af2d318665",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "CORE-DELTA.md",
+        "bytes": 3303,
+        "sha256": "ebb727cd6b78be002b001ad57ce790c9d05d0150fb3236c3e1e600af2d318665"
+      }
+    },
+    {
+      "path": "graph-c/CORE.diff",
+      "bytes": 1075,
+      "sha256": "883c54d567650201952abcee569700a8ed99192edd40e4d43015748bdf61ec17",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "CORE.diff",
+        "bytes": 1075,
+        "sha256": "883c54d567650201952abcee569700a8ed99192edd40e4d43015748bdf61ec17"
+      }
+    },
+    {
+      "path": "graph-c/INPUTS.sha256",
+      "bytes": 4669,
+      "sha256": "92c952e231dd302876ac86a33764942ceae60463e84cf46a05d7202feeb70c4a",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "INPUTS.sha256",
+        "bytes": 4669,
+        "sha256": "92c952e231dd302876ac86a33764942ceae60463e84cf46a05d7202feeb70c4a"
+      }
+    },
+    {
+      "path": "graph-c/PREPARATION-CHECK.json",
+      "bytes": 11999,
+      "sha256": "59f4bfc02bf3bf97bc507fc07517f1d1a7fa421e738e37051330fa10e8775fc4",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "PREPARATION-CHECK.json",
+        "bytes": 11999,
+        "sha256": "59f4bfc02bf3bf97bc507fc07517f1d1a7fa421e738e37051330fa10e8775fc4"
+      }
+    },
+    {
+      "path": "graph-c/PREPARATION-REVIEW.md",
+      "bytes": 4910,
+      "sha256": "c6adaff54ea9ea1b6410e8e4dfe2ac10243fe6b53c3d4f9cddfdf12c5b33ad6b",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "PREPARATION-REVIEW.md",
+        "bytes": 4910,
+        "sha256": "c6adaff54ea9ea1b6410e8e4dfe2ac10243fe6b53c3d4f9cddfdf12c5b33ad6b"
+      }
+    },
+    {
+      "path": "graph-c/README.md",
+      "bytes": 10496,
+      "sha256": "7f0baba8a0e72789ad1eae11db76be61edd3fa91e6c8fb6bf5ca584c2ed6875a",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "README.md",
+        "bytes": 10496,
+        "sha256": "7f0baba8a0e72789ad1eae11db76be61edd3fa91e6c8fb6bf5ca584c2ed6875a"
+      }
+    },
+    {
+      "path": "graph-c/SHA256SUMS",
+      "bytes": 3674,
+      "sha256": "699d7cd170baa47cc93961e71b9184b1bbb82159361ee1b5d45a8c5209417a90",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "SHA256SUMS",
+        "bytes": 3674,
+        "sha256": "699d7cd170baa47cc93961e71b9184b1bbb82159361ee1b5d45a8c5209417a90"
+      }
+    },
+    {
+      "path": "graph-c/STATUS.json",
+      "bytes": 2337,
+      "sha256": "62444c6e18853fc14b738b6736a22333065b8df43a279cb8306f889602fb52bf",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "STATUS.json",
+        "bytes": 2337,
+        "sha256": "62444c6e18853fc14b738b6736a22333065b8df43a279cb8306f889602fb52bf"
+      }
+    },
+    {
+      "path": "graph-c/compiler-source-equivalence.json",
+      "bytes": 13479,
+      "sha256": "2cf232911606bcb9a66aeacf6477b42bcc01e9b53bd7e733b0827a01646a7913",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "compiler-source-equivalence.json",
+        "bytes": 13479,
+        "sha256": "2cf232911606bcb9a66aeacf6477b42bcc01e9b53bd7e733b0827a01646a7913"
+      }
+    },
+    {
+      "path": "graph-c/controls/CONTROL-PLAN.json",
+      "bytes": 2613,
+      "sha256": "f7bb19823f4ca9524f3df7114439fc84657d1d52fd679b8891895c44f6195612",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "CONTROL-PLAN.json",
+        "bytes": 2613,
+        "sha256": "f7bb19823f4ca9524f3df7114439fc84657d1d52fd679b8891895c44f6195612"
+      }
+    },
+    {
+      "path": "graph-c/controls/README.md",
+      "bytes": 6447,
+      "sha256": "b3203775b1290d4e0426680083c42c77be76690776ac7b6601c830a028df1f5f",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "README.md",
+        "bytes": 6447,
+        "sha256": "b3203775b1290d4e0426680083c42c77be76690776ac7b6601c830a028df1f5f"
+      }
+    },
+    {
+      "path": "graph-c/controls/SHA256SUMS",
+      "bytes": 1424,
+      "sha256": "0aecfb5da7b846089e93f8a4d8cd7104154cb52a91fcdd59d691687b9e96b3a4",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "SHA256SUMS",
+        "bytes": 1424,
+        "sha256": "0aecfb5da7b846089e93f8a4d8cd7104154cb52a91fcdd59d691687b9e96b3a4"
+      }
+    },
+    {
+      "path": "graph-c/controls/STATUS.json",
+      "bytes": 803,
+      "sha256": "dc189d8647cceeba184671fdadb6fb3ac9ec14715dfefc047db71d18f0637df8",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "STATUS.json",
+        "bytes": 803,
+        "sha256": "dc189d8647cceeba184671fdadb6fb3ac9ec14715dfefc047db71d18f0637df8"
+      }
+    },
+    {
+      "path": "graph-c/controls/admission_tables.py",
+      "bytes": 4381,
+      "sha256": "ab730d89b439fd3a1e8b195b44fb812267a36273b2877ffc811c54a8cb032ee7",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "admission_tables.py",
+        "bytes": 4381,
+        "sha256": "ab730d89b439fd3a1e8b195b44fb812267a36273b2877ffc811c54a8cb032ee7"
+      }
+    },
+    {
+      "path": "graph-c/controls/caller-substitutions.json",
+      "bytes": 6754,
+      "sha256": "b43bdba5665f21220b8349d9918474a798c6d26189c4d62a71c9bdb93288312b",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "caller-substitutions.json",
+        "bytes": 6754,
+        "sha256": "b43bdba5665f21220b8349d9918474a798c6d26189c4d62a71c9bdb93288312b"
+      }
+    },
+    {
+      "path": "graph-c/controls/caller_support.py",
+      "bytes": 10079,
+      "sha256": "7ec2486e3f38af1926f7680b9393518d8ef136f2d60d14ed899eeacda17b1953",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "caller_support.py",
+        "bytes": 10079,
+        "sha256": "7ec2486e3f38af1926f7680b9393518d8ef136f2d60d14ed899eeacda17b1953"
+      }
+    },
+    {
+      "path": "graph-c/controls/control_binding.py",
+      "bytes": 8586,
+      "sha256": "3da99cb930a9bce907da74a22563b847ac078befedfcb7dc57894edf5213a835",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "control_binding.py",
+        "bytes": 8586,
+        "sha256": "3da99cb930a9bce907da74a22563b847ac078befedfcb7dc57894edf5213a835"
+      }
+    },
+    {
+      "path": "graph-c/controls/control_controller.py",
+      "bytes": 22244,
+      "sha256": "ad31e5e14c8fa93a3736cc443ff3e15d247f3a2d598e09f40075751cdd54b9e9",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "control_controller.py",
+        "bytes": 22244,
+        "sha256": "ad31e5e14c8fa93a3736cc443ff3e15d247f3a2d598e09f40075751cdd54b9e9"
+      }
+    },
+    {
+      "path": "graph-c/controls/control_owner.py",
+      "bytes": 12831,
+      "sha256": "4d84ec6b6b4a73e6ef3dfec2e02a1e96daed457a6e022173b9478f0aaa4e2cdb",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "control_owner.py",
+        "bytes": 12831,
+        "sha256": "4d84ec6b6b4a73e6ef3dfec2e02a1e96daed457a6e022173b9478f0aaa4e2cdb"
+      }
+    },
+    {
+      "path": "graph-c/controls/core_without_eligibility.py",
+      "bytes": 17189,
+      "sha256": "824c5c00f96c3a85ac2eaed52ea0042d34cff124bc87cf5f1d9dedec3af54c89",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "core_without_eligibility.py",
+        "bytes": 17189,
+        "sha256": "824c5c00f96c3a85ac2eaed52ea0042d34cff124bc87cf5f1d9dedec3af54c89"
+      }
+    },
+    {
+      "path": "graph-c/controls/core_without_live_latch.py",
+      "bytes": 17256,
+      "sha256": "bd63ac5f264b6d9c8e42412a8b68027f124a4d89e84cec22fc07d7d18cc43d64",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "core_without_live_latch.py",
+        "bytes": 17256,
+        "sha256": "bd63ac5f264b6d9c8e42412a8b68027f124a4d89e84cec22fc07d7d18cc43d64"
+      }
+    },
+    {
+      "path": "graph-c/controls/fixture.c",
+      "bytes": 10027,
+      "sha256": "a6f45bf7acaf37f4684536e218324d7db9f2c5e28959d1c345bf95c42b6d5a92",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "fixture.c",
+        "bytes": 10027,
+        "sha256": "a6f45bf7acaf37f4684536e218324d7db9f2c5e28959d1c345bf95c42b6d5a92"
+      }
+    },
+    {
+      "path": "graph-c/controls/manifest.json",
+      "bytes": 15937,
+      "sha256": "4c3826010552b3601c57ba554c2cdb986e33abf6f969c07c5ff8eaf941070a27",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "manifest.json",
+        "bytes": 15937,
+        "sha256": "4c3826010552b3601c57ba554c2cdb986e33abf6f969c07c5ff8eaf941070a27"
+      }
+    },
+    {
+      "path": "graph-c/controls/model_binding.py",
+      "bytes": 14391,
+      "sha256": "2a7e378e7a516e3494de82de476a1509404780bf4ca1ad759a1654315aef313b",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "model_binding.py",
+        "bytes": 14391,
+        "sha256": "2a7e378e7a516e3494de82de476a1509404780bf4ca1ad759a1654315aef313b"
+      }
+    },
+    {
+      "path": "graph-c/controls/outer_owner.py",
+      "bytes": 12551,
+      "sha256": "eb565285001cef43ed88cf73e5797cc83b726afcf6cf192cf5b4ba10f6078698",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "outer_owner.py",
+        "bytes": 12551,
+        "sha256": "eb565285001cef43ed88cf73e5797cc83b726afcf6cf192cf5b4ba10f6078698"
+      }
+    },
+    {
+      "path": "graph-c/controls/terminal_tables.py",
+      "bytes": 5857,
+      "sha256": "33c07938ba7652f0e308e76e33acc020cbb1f918208ab27a487098fdbd3168c7",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "terminal_tables.py",
+        "bytes": 5857,
+        "sha256": "33c07938ba7652f0e308e76e33acc020cbb1f918208ab27a487098fdbd3168c7"
+      }
+    },
+    {
+      "path": "graph-c/graph_c_attribution.py",
+      "bytes": 17242,
+      "sha256": "aeb3759d27e523aeb0257e73790ffce8cca89a1e64feb02290a2442d903914b4",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "graph_c_attribution.py",
+        "bytes": 17242,
+        "sha256": "aeb3759d27e523aeb0257e73790ffce8cca89a1e64feb02290a2442d903914b4"
+      }
+    },
+    {
+      "path": "graph-c/guard.py",
+      "bytes": 19397,
+      "sha256": "3984c03b5562e3a59173858d310d5f1fd4e2ba49f4aa3a3979a56bce73eb45a3",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "guard.py",
+        "bytes": 19397,
+        "sha256": "3984c03b5562e3a59173858d310d5f1fd4e2ba49f4aa3a3979a56bce73eb45a3"
+      }
+    },
+    {
+      "path": "graph-c/inner_owner.py",
+      "bytes": 12652,
+      "sha256": "341367e8272a510ca5d9ba7befb275d6526310ea9497e9cd5c787ce6d9d232f3",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "inner_owner.py",
+        "bytes": 12652,
+        "sha256": "341367e8272a510ca5d9ba7befb275d6526310ea9497e9cd5c787ce6d9d232f3"
+      }
+    },
+    {
+      "path": "graph-c/launch.sh",
+      "bytes": 129,
+      "sha256": "e760034c437a4cd263077db078fb884619eb4d4b6dccbd0d4e01d1f6220effaf",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "launch.sh",
+        "bytes": 129,
+        "sha256": "e760034c437a4cd263077db078fb884619eb4d4b6dccbd0d4e01d1f6220effaf"
+      }
+    },
+    {
+      "path": "graph-c/outer_owner.py",
+      "bytes": 12551,
+      "sha256": "eb565285001cef43ed88cf73e5797cc83b726afcf6cf192cf5b4ba10f6078698",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "outer_owner.py",
+        "bytes": 12551,
+        "sha256": "eb565285001cef43ed88cf73e5797cc83b726afcf6cf192cf5b4ba10f6078698"
+      }
+    },
+    {
+      "path": "graph-c/output-policy.json",
+      "bytes": 7810,
+      "sha256": "32b2dd10576404bd42a774ec6acf80dfc49990078d0adc6ba8a12b6a56c92197",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "output-policy.json",
+        "bytes": 7810,
+        "sha256": "32b2dd10576404bd42a774ec6acf80dfc49990078d0adc6ba8a12b6a56c92197"
+      }
+    },
+    {
+      "path": "graph-c/output-tool-strings.json",
+      "bytes": 3253,
+      "sha256": "a6f95987de26abf216a0c732ac1e9c704a10d5fe460ca52b93b348d4a486df03",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "output-tool-strings.json",
+        "bytes": 3253,
+        "sha256": "a6f95987de26abf216a0c732ac1e9c704a10d5fe460ca52b93b348d4a486df03"
+      }
+    },
+    {
+      "path": "graph-c/plan.json",
+      "bytes": 18670,
+      "sha256": "d1a378ebefa86628b9100428ee509c3cffea418256fb065ffc0beb552755e7ea",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "plan.json",
+        "bytes": 18670,
+        "sha256": "d1a378ebefa86628b9100428ee509c3cffea418256fb065ffc0beb552755e7ea"
+      }
+    },
+    {
+      "path": "graph-c/run.py",
+      "bytes": 17984,
+      "sha256": "f2954c71f273d70af183d5ef3f18a56e5e9876cec8a57ea13c5d3a738a6996da",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "run.py",
+        "bytes": 17984,
+        "sha256": "f2954c71f273d70af183d5ef3f18a56e5e9876cec8a57ea13c5d3a738a6996da"
+      }
+    },
+    {
+      "path": "graph-c/runner-cache.json",
+      "bytes": 14770,
+      "sha256": "77e1398e65be4887da8846043db4debd1c75c0792a1c74f91f4727e145731f64",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "runner-cache.json",
+        "bytes": 14770,
+        "sha256": "77e1398e65be4887da8846043db4debd1c75c0792a1c74f91f4727e145731f64"
+      }
+    },
+    {
+      "path": "graph-c/runtime-dependencies.json",
+      "bytes": 9928,
+      "sha256": "f9453448b8e0d9ad223272b65e43f424b9b32a46fc9019343a824ae03809d242",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "runtime-dependencies.json",
+        "bytes": 9928,
+        "sha256": "f9453448b8e0d9ad223272b65e43f424b9b32a46fc9019343a824ae03809d242"
+      }
+    },
+    {
+      "path": "graph-c/source-closure.json",
+      "bytes": 3724,
+      "sha256": "2635c61cddd591bfbe35bbd83d63b0888cdee9f8ee2287554854056e921f3c58",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "source-closure.json",
+        "bytes": 3724,
+        "sha256": "2635c61cddd591bfbe35bbd83d63b0888cdee9f8ee2287554854056e921f3c58"
+      }
+    },
+    {
+      "path": "graph-c/source-mapping.json",
+      "bytes": 2362,
+      "sha256": "bd35200f54403887cc04303e29a6d5337bd470ff707133216553a14726792b71",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "source-mapping.json",
+        "bytes": 2362,
+        "sha256": "bd35200f54403887cc04303e29a6d5337bd470ff707133216553a14726792b71"
+      }
+    },
+    {
+      "path": "graph-c/source-provenance.json",
+      "bytes": 1871,
+      "sha256": "0a56f7ba356ac1f6138b55731b514f3ec9eedb4116e790392edd79c3b8201b65",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "source-provenance.json",
+        "bytes": 1871,
+        "sha256": "0a56f7ba356ac1f6138b55731b514f3ec9eedb4116e790392edd79c3b8201b65"
+      }
+    },
+    {
+      "path": "graph-c/supplemental-utilities.json",
+      "bytes": 8910,
+      "sha256": "d92cda8b278b3323d54000a63ee3305ae22544ae6d7349abdadcf797629989bd",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "supplemental-utilities.json",
+        "bytes": 8910,
+        "sha256": "d92cda8b278b3323d54000a63ee3305ae22544ae6d7349abdadcf797629989bd"
+      }
+    },
+    {
+      "path": "graph-c/controls/PUBLIC-REVIEW.md",
+      "bytes": 5046,
+      "sha256": "6bf33b6d6bc5bc7fbf58ffa04975b2b2ed6238ec1fcbfb0516a86611177d73db",
+      "kind": "sanitized_derivative",
+      "original_input": {
+        "name": "REVIEW.md",
+        "bytes": 4988,
+        "sha256": "aa6716f108e795bb16439f1ef5b962cab8aef1324950702b5af266f219098f7b"
+      }
+    },
+    {
+      "path": "pointer-view/pointer-view-revision2-unverified.patch",
+      "bytes": 39221,
+      "sha256": "e646f699630cfdfd4c8de3e439ae7e5d99c36656dcf6d5a0befe5a2ec3f2be31",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "pointer-view-revision2-unverified.patch",
+        "bytes": 39221,
+        "sha256": "e646f699630cfdfd4c8de3e439ae7e5d99c36656dcf6d5a0befe5a2ec3f2be31"
+      }
+    },
+    {
+      "path": "pointer-view/pointer-view-revision2-unverified.public.json",
+      "bytes": 2967,
+      "sha256": "0702a068595e85f4e91e06e613d9b2595ee7e016c303ef6763b6bdbdb0193793",
+      "kind": "sanitized_derivative",
+      "original_input": {
+        "name": "pointer-view-revision2-unverified.json",
+        "bytes": 2932,
+        "sha256": "f82508a0ecf4f2b5d2384f69a037838bfeaa7d722c8c38967ec61e88e3bb7ca6"
+      }
+    },
+    {
+      "path": "native-default-initializers/initial-audit.txt",
+      "bytes": 10089,
+      "sha256": "e288decb6f9cfb2199a8889951e8ad7ccdedebc9ace41bc82a3ae839a1d45084",
+      "kind": "exact_copy",
+      "original_input": {
+        "name": "initial-audit.txt",
+        "bytes": 10089,
+        "sha256": "e288decb6f9cfb2199a8889951e8ad7ccdedebc9ace41bc82a3ae839a1d45084"
+      }
+    },
+    {
+      "path": "native-default-initializers/PUBLIC-DIAGNOSIS.md",
+      "bytes": 4349,
+      "sha256": "ec99770878cdf899e58c9c85b86929ad4f7bb25b72a5bddede44b8de66a83bfc",
+      "kind": "sanitized_derivative",
+      "original_input": {
+        "name": "DIAGNOSIS.md",
+        "bytes": 7657,
+        "sha256": "ddfd726f88b3dea5328252f98a8062ab05cbba13131db9fbb15305944f825a9c"
+      }
+    },
+    {
+      "path": "README.md",
+      "bytes": 3421,
+      "sha256": "44007614b862fe6de00602e2f73d400446215e0004f23799bac59f69d4a16dfb",
+      "kind": "new_archive_documentation"
+    },
+    {
+      "path": "ORIGINAL-INPUTS.json",
+      "bytes": 11072,
+      "sha256": "38254645877529c8598849e15106097c402122e1eb2bfa35d074a068ca4aab18",
+      "kind": "new_archive_manifest"
+    }
+  ]
+}

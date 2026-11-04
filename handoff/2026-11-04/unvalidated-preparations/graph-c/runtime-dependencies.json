@@ -1,0 +1,211 @@
+{
+  "authored_source_projection": {
+    "bytes": 3724,
+    "link": null,
+    "mode": 420,
+    "path": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/source-closure.json",
+    "realpath": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/source-closure.json",
+    "sha256": "2635c61cddd591bfbe35bbd83d63b0888cdee9f8ee2287554854056e921f3c58"
+  },
+  "bounded_execution": {
+    "all_paths_under_fixed_source_scratch": true,
+    "authored_timeout_ms": 20,
+    "deadline_shells": 1,
+    "failed_step_executions": 1,
+    "gcc_driver_invocations_at_most": 22,
+    "generated_c_executions_at_most": 10,
+    "generated_sources": "unchanged authored return37/return38, two array cookie modes, fixed partial/recorder shell scripts",
+    "graph_c_roots": 1,
+    "nested_compiler_jobs": "authored getconf default, unchanged; affinity is not a job-count override",
+    "nested_entry": "FailedStep",
+    "nested_native_compilers": 1,
+    "post_cancel_sleep_seconds": 0.25
+  },
+  "closure_manifests": {
+    "c_roots": {
+      "bytes": 1610135,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-compiler-host-20261104-revision02/c-root-trees.json",
+      "realpath": "/workspace/shared/chibi-compiler-host-20261104-revision02/c-root-trees.json",
+      "sha256": "bd438a1b9eb90f46e8c3e687f6ca1f85ae5f3c230b56bc374b48e981b4aa80c1"
+    },
+    "graph_loader": {
+      "bytes": 180379,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-regressions-20261104-revision01/loader.json",
+      "realpath": "/workspace/shared/chibi-graph-regressions-20261104-revision01/loader.json",
+      "sha256": "c9f47dc5a427f7967188a25dcc262151d2135a33abba7543ad3e669013ec4256"
+    },
+    "graph_tools": {
+      "bytes": 43090,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-graph-regressions-20261104-revision01/tool-facts.json",
+      "realpath": "/workspace/shared/chibi-graph-regressions-20261104-revision01/tool-facts.json",
+      "sha256": "d1198470400742dfb39ded2fc2f882f1d7b3cdb9b09428a95d7c11f9d1ccad58"
+    },
+    "python": {
+      "bytes": 302287,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-compiler-host-20261104-revision02/python-tree.json",
+      "realpath": "/workspace/shared/chibi-compiler-host-20261104-revision02/python-tree.json",
+      "sha256": "0daf0b54f6afe49be6a049e484e0bed8cc5189cd1fe80dc131b9980640fc8ece"
+    },
+    "roots": {
+      "bytes": 1931,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-compiler-host-20261104-revision02/root-identities.json",
+      "realpath": "/workspace/shared/chibi-compiler-host-20261104-revision02/root-identities.json",
+      "sha256": "c774111c2010a44dc1c77cb7656c6d5251760389fc019ffae95c19b7e2a893cf"
+    },
+    "search": {
+      "bytes": 2024679,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-compiler-host-20261104-revision02/search.json",
+      "realpath": "/workspace/shared/chibi-compiler-host-20261104-revision02/search.json",
+      "sha256": "e2440b82e713f5556014fddb4b870ea1a98c284c210f8e98917b8bd751eed199"
+    },
+    "tools": {
+      "bytes": 39236,
+      "link": null,
+      "mode": 420,
+      "path": "/workspace/shared/chibi-compiler-host-20261104-revision02/tools.json",
+      "realpath": "/workspace/shared/chibi-compiler-host-20261104-revision02/tools.json",
+      "sha256": "dedc71dd4e08f43dc071364f6615a622c7ac6312849f365accae900ade6e8803"
+    }
+  },
+  "compile_artifact_admission": {
+    "bytes": 5374,
+    "link": null,
+    "mode": 420,
+    "path": "/workspace/shared/chibi-graph-c-independent-review-20261104-revision01/COMPILE-ARTIFACT-ADMISSION.json",
+    "realpath": "/workspace/shared/chibi-graph-c-independent-review-20261104-revision01/COMPILE-ARTIFACT-ADMISSION.json",
+    "sha256": "d9a7c2ce6e16da3a3e2eeea94bc15184a975e556fcfe28c562417887d6983e7d"
+  },
+  "compiler_source_equivalence": {
+    "bytes": 13479,
+    "link": null,
+    "mode": 420,
+    "path": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/compiler-source-equivalence.json",
+    "realpath": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/compiler-source-equivalence.json",
+    "sha256": "2cf232911606bcb9a66aeacf6477b42bcc01e9b53bd7e733b0827a01646a7913"
+  },
+  "finite_behavior_review": {
+    "bytes": 8337,
+    "link": null,
+    "mode": 420,
+    "path": "/workspace/shared/chibi-graph-c-20261104-revision01/RUNTIME-REVIEW.md",
+    "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/RUNTIME-REVIEW.md",
+    "sha256": "c891cbce5c3984400433ebe5132d5d5d84923d8fa26bcbe3a324bf39d51b5ef3"
+  },
+  "finite_behavior_review_correction": "The older read-only review incorrectly describes native graph diagnostics on stdout. Posix.Print writes fd2. See output-policy.json and output-tool-strings.json; exact tool diagnostic variants still need independent review.",
+  "focused_array_cookie_proof": {
+    "accepted_source_files": {
+      "src/support/array.h": "e2db9f05e7714aef0be38f11afe182e496a2c30077119bb6f58a319fd35c8424",
+      "test/graph/CTests.chibi": "ec0db0756d43a6c0545a4928bce7df744ddd13fc65e666e8a6436e75a7e298b5",
+      "test/graph/fixtures/array_cookie.c": "835ba7281cdf727e703ab6ab776a4194bb4369ea38c8d27c3e545ef19b37753f"
+    },
+    "files": {
+      "compile_owner": {
+        "bytes": 2036,
+        "link": null,
+        "mode": 420,
+        "path": "/workspace/shared/chibi-array-cookie-fix-20261104/c-compile-owner/receipt.json",
+        "realpath": "/workspace/shared/chibi-array-cookie-fix-20261104/c-compile-owner/receipt.json",
+        "sha256": "f683c7bfa0074a946b6297069fda8eea97c84eca915befacdf2da1c0568bc598"
+      },
+      "compile_terminal": {
+        "bytes": 137,
+        "link": null,
+        "mode": 420,
+        "path": "/workspace/shared/chibi-array-cookie-fix-20261104/c-compile-result.json",
+        "realpath": "/workspace/shared/chibi-array-cookie-fix-20261104/c-compile-result.json",
+        "sha256": "1e41d93db3dfd1e4b7d9d3a5365f4c0c7808afeaf4bfd6a35be6e83077503e18"
+      },
+      "independent_admission": {
+        "bytes": 8363,
+        "link": null,
+        "mode": 420,
+        "path": "/workspace/shared/chibi-array-cookie-independent-review-20261104/FINAL-PROOF.json",
+        "realpath": "/workspace/shared/chibi-array-cookie-independent-review-20261104/FINAL-PROOF.json",
+        "sha256": "8ccc11a3d9459f693d92244be7306e8e7af0a08e42fa2208de65c07113728520"
+      },
+      "run_owner": {
+        "bytes": 2028,
+        "link": null,
+        "mode": 420,
+        "path": "/workspace/shared/chibi-array-cookie-fix-20261104/c-run-owner/receipt.json",
+        "realpath": "/workspace/shared/chibi-array-cookie-fix-20261104/c-run-owner/receipt.json",
+        "sha256": "bd81daaa2a38ddb761c369340ae1061e7ee25de9b7b23b905fcc488625c1734e"
+      },
+      "run_terminal": {
+        "bytes": 134,
+        "link": null,
+        "mode": 420,
+        "path": "/workspace/shared/chibi-array-cookie-fix-20261104/c-run-result.json",
+        "realpath": "/workspace/shared/chibi-array-cookie-fix-20261104/c-run-result.json",
+        "sha256": "b2ca297b338135c078cbf114a20ae9b49465aaa8a456da2118b14e57f9066645"
+      }
+    }
+  },
+  "limitations": [
+    "No runtime execution or admission.",
+    "Generated program bytes are not invented or claimed pre-inspected; exact source transformations and loader closure require separate recursive runtime acceptance.",
+    "Each actual generated ELF retained after runtime is checked for the expected interpreter/libc-only/no-RPATH closure.",
+    "Transient GCC-produced programs and scripts are admitted by their exact source-bounded graph behavior, not by fabricated byte hashes."
+  ],
+  "output_policy": {
+    "bytes": 7810,
+    "link": null,
+    "mode": 420,
+    "path": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/output-policy.json",
+    "realpath": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/output-policy.json",
+    "sha256": "32b2dd10576404bd42a774ec6acf80dfc49990078d0adc6ba8a12b6a56c92197"
+  },
+  "runner_cache": {
+    "bytes": 14770,
+    "link": null,
+    "mode": 420,
+    "path": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/runner-cache.json",
+    "realpath": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/runner-cache.json",
+    "sha256": "77e1398e65be4887da8846043db4debd1c75c0792a1c74f91f4727e145731f64"
+  },
+  "runtime_source_baseline": {
+    "bytes": 1592868,
+    "link": null,
+    "mode": 420,
+    "path": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/source-baseline.json",
+    "realpath": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/source-baseline.json",
+    "sha256": "bb1ce1e845044c4e4273dab804a88f67e39bd485038725c7e37566c867595c6e"
+  },
+  "source_mapping": {
+    "bytes": 2362,
+    "link": null,
+    "mode": 420,
+    "path": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/source-mapping.json",
+    "realpath": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/source-mapping.json",
+    "sha256": "bd35200f54403887cc04303e29a6d5337bd470ff707133216553a14726792b71"
+  },
+  "status": "UNARMED_RECURSIVE_EXECUTION_PROPOSAL",
+  "supplemental_utilities": {
+    "bytes": 8910,
+    "link": null,
+    "mode": 420,
+    "path": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/supplemental-utilities.json",
+    "realpath": "/workspace/shared/chibi-graph-c-runtime-20261104-revision01/supplemental-utilities.json",
+    "sha256": "d92cda8b278b3323d54000a63ee3305ae22544ae6d7349abdadcf797629989bd"
+  },
+  "top_level_artifact": {
+    "bytes": 293456,
+    "link": null,
+    "mode": 493,
+    "path": "/workspace/shared/chibi-graph-c-20261104-revision01/artifacts/graph-c",
+    "realpath": "/workspace/shared/chibi-graph-c-20261104-revision01/artifacts/graph-c",
+    "sha256": "046fabf20b00f394cecf4307c7f1758ff17fad7694b31bc3da9dac889321120f"
+  }
+}

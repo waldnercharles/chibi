@@ -1,0 +1,55 @@
+{
+  "metadata_tool": {
+    "bytes": 777864,
+    "link": "x86_64-linux-gnu-readelf",
+    "mode": 493,
+    "path": "/usr/bin/readelf",
+    "realpath": "/usr/bin/x86_64-linux-gnu-readelf",
+    "sha256": "4a387d80a70e6e97ef940a666fab59d5c38e7cf19ff907192fa983cb8505a7de",
+    "stat": {
+      "ctime_ns": 1741035682000000000,
+      "dev": 27,
+      "ino": 9223372036855078464,
+      "mtime_ns": 1741035682000000000
+    }
+  },
+  "utilities": {
+    "/usr/bin/chmod": {
+      "dynamic": "\nDynamic section at offset 0x10bd8 contains 27 entries:\n  Tag        Type                         Name/Value\n 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]\n 0x000000000000000c (INIT)               0x2000\n 0x000000000000000d (FINI)               0xbf90\n 0x0000000000000019 (INIT_ARRAY)         0x10990\n 0x000000000000001b (INIT_ARRAYSZ)       8 (bytes)\n 0x000000000000001a (FINI_ARRAY)         0x10998\n 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)\n 0x000000006ffffef5 (GNU_HASH)           0x3b0\n 0x0000000000000005 (STRTAB)             0xbc8\n 0x0000000000000006 (SYMTAB)             0x418\n 0x000000000000000a (STRSZ)              951 (bytes)\n 0x000000000000000b (SYMENT)             24 (bytes)\n 0x0000000000000015 (DEBUG)              0x0\n 0x0000000000000003 (PLTGOT)             0x10dc8\n 0x0000000000000002 (PLTRELSZ)           1488 (bytes)\n 0x0000000000000014 (PLTREL)             RELA\n 0x0000000000000017 (JMPREL)             0x1508\n 0x0000000000000007 (RELA)               0x10b8\n 0x0000000000000008 (RELASZ)             1104 (bytes)\n 0x0000000000000009 (RELAENT)            24 (bytes)\n 0x000000000000001e (FLAGS)              BIND_NOW\n 0x000000006ffffffb (FLAGS_1)            Flags: NOW PIE\n 0x000000006ffffffe (VERNEED)            0x1028\n 0x000000006fffffff (VERNEEDNUM)         1\n 0x000000006ffffff0 (VERSYM)             0xf80\n 0x000000006ffffff9 (RELACOUNT)          34\n 0x0000000000000000 (NULL)               0x0\n",
+      "fact": {
+        "bytes": 72136,
+        "link": null,
+        "mode": 493,
+        "path": "/usr/bin/chmod",
+        "realpath": "/usr/bin/chmod",
+        "sha256": "7e37f672db75ae783260e7565d26218d25cebbc5a6d61118284c9719d246a90e",
+        "stat": {
+          "ctime_ns": 1749050045000000000,
+          "dev": 27,
+          "ino": 9223372036855075478,
+          "mtime_ns": 1749050045000000000
+        }
+      },
+      "program_headers": "\nElf file type is DYN (Position-Independent Executable file)\nEntry point 0x2f40\nThere are 14 program headers, starting at offset 64\n\nProgram Headers:\n  Type           Offset   VirtAddr           PhysAddr           FileSiz  MemSiz   Flg Align\n  PHDR           0x000040 0x0000000000000040 0x0000000000000040 0x000310 0x000310 R   0x8\n  INTERP         0x000394 0x0000000000000394 0x0000000000000394 0x00001c 0x00001c R   0x1\n      [Requesting program interpreter: /lib64/ld-linux-x86-64.so.2]\n  LOAD           0x000000 0x0000000000000000 0x0000000000000000 0x001ad8 0x001ad8 R   0x1000\n  LOAD           0x002000 0x0000000000002000 0x0000000000002000 0x009f99 0x009f99 R E 0x1000\n  LOAD           0x00c000 0x000000000000c000 0x000000000000c000 0x003b20 0x003b20 R   0x1000\n  LOAD           0x010990 0x0000000000010990 0x0000000000010990 0x000710 0x000918 RW  0x1000\n  DYNAMIC        0x010bd8 0x0000000000010bd8 0x0000000000010bd8 0x0001f0 0x0001f0 RW  0x8\n  NOTE           0x000350 0x0000000000000350 0x0000000000000350 0x000020 0x000020 R   0x8\n  NOTE           0x000370 0x0000000000000370 0x0000000000000370 0x000024 0x000024 R   0x4\n  NOTE           0x00fb00 0x000000000000fb00 0x000000000000fb00 0x000020 0x000020 R   0x4\n  GNU_PROPERTY   0x000350 0x0000000000000350 0x0000000000000350 0x000020 0x000020 R   0x8\n  GNU_EH_FRAME   0x00d80c 0x000000000000d80c 0x000000000000d80c 0x000604 0x000604 R   0x4\n  GNU_STACK      0x000000 0x0000000000000000 0x0000000000000000 0x000000 0x000000 RW  0x10\n  GNU_RELRO      0x010990 0x0000000000010990 0x0000000000010990 0x000670 0x000670 R   0x1\n\n Section to Segment mapping:\n  Segment Sections...\n   00     \n   01     .interp \n   02     .note.gnu.property .note.gnu.build-id .interp .gnu.hash .dynsym .dynstr .gnu.version .gnu.version_r .rela.dyn .rela.plt \n   03     .init .plt .plt.got .text .fini \n   04     .rodata .eh_frame_hdr .eh_frame .note.ABI-tag \n   05     .init_array .fini_array .data.rel.ro .dynamic .got .data .bss \n   06     .dynamic \n   07     .note.gnu.property \n   08     .note.gnu.build-id \n   09     .note.ABI-tag \n   10     .note.gnu.property \n   11     .eh_frame_hdr \n   12     \n   13     .init_array .fini_array .data.rel.ro .dynamic .got \n"
+    },
+    "/usr/bin/sleep": {
+      "dynamic": "\nDynamic section at offset 0x9c38 contains 27 entries:\n  Tag        Type                         Name/Value\n 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]\n 0x000000000000000c (INIT)               0x2000\n 0x000000000000000d (FINI)               0x6e80\n 0x0000000000000019 (INIT_ARRAY)         0xab30\n 0x000000000000001b (INIT_ARRAYSZ)       8 (bytes)\n 0x000000000000001a (FINI_ARRAY)         0xab38\n 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)\n 0x000000006ffffef5 (GNU_HASH)           0x3b0\n 0x0000000000000005 (STRTAB)             0xa90\n 0x0000000000000006 (SYMTAB)             0x418\n 0x000000000000000a (STRSZ)              859 (bytes)\n 0x000000000000000b (SYMENT)             24 (bytes)\n 0x0000000000000015 (DEBUG)              0x0\n 0x0000000000000003 (PLTGOT)             0xae28\n 0x0000000000000002 (PLTRELSZ)           1200 (bytes)\n 0x0000000000000014 (PLTREL)             RELA\n 0x0000000000000017 (JMPREL)             0x1240\n 0x0000000000000007 (RELA)               0xef8\n 0x0000000000000008 (RELASZ)             840 (bytes)\n 0x0000000000000009 (RELAENT)            24 (bytes)\n 0x000000000000001e (FLAGS)              BIND_NOW\n 0x000000006ffffffb (FLAGS_1)            Flags: NOW PIE\n 0x000000006ffffffe (VERNEED)            0xe78\n 0x000000006fffffff (VERNEEDNUM)         1\n 0x000000006ffffff0 (VERSYM)             0xdec\n 0x000000006ffffff9 (RELACOUNT)          24\n 0x0000000000000000 (NULL)               0x0\n",
+      "fact": {
+        "bytes": 43432,
+        "link": null,
+        "mode": 493,
+        "path": "/usr/bin/sleep",
+        "realpath": "/usr/bin/sleep",
+        "sha256": "0637e6d47579929cb72efa46f361861b319d62c62fe8a9d10731fd7655eb5936",
+        "stat": {
+          "ctime_ns": 1749050045000000000,
+          "dev": 27,
+          "ino": 9223372036855077692,
+          "mtime_ns": 1749050045000000000
+        }
+      },
+      "program_headers": "\nElf file type is DYN (Position-Independent Executable file)\nEntry point 0x2aa0\nThere are 14 program headers, starting at offset 64\n\nProgram Headers:\n  Type           Offset   VirtAddr           PhysAddr           FileSiz  MemSiz   Flg Align\n  PHDR           0x000040 0x0000000000000040 0x0000000000000040 0x000310 0x000310 R   0x8\n  INTERP         0x000394 0x0000000000000394 0x0000000000000394 0x00001c 0x00001c R   0x1\n      [Requesting program interpreter: /lib64/ld-linux-x86-64.so.2]\n  LOAD           0x000000 0x0000000000000000 0x0000000000000000 0x0016f0 0x0016f0 R   0x1000\n  LOAD           0x002000 0x0000000000002000 0x0000000000002000 0x004e89 0x004e89 R E 0x1000\n  LOAD           0x007000 0x0000000000007000 0x0000000000007000 0x002078 0x002078 R   0x1000\n  LOAD           0x009b30 0x000000000000ab30 0x000000000000ab30 0x000550 0x000738 RW  0x1000\n  DYNAMIC        0x009c38 0x000000000000ac38 0x000000000000ac38 0x0001f0 0x0001f0 RW  0x8\n  NOTE           0x000350 0x0000000000000350 0x0000000000000350 0x000020 0x000020 R   0x8\n  NOTE           0x000370 0x0000000000000370 0x0000000000000370 0x000024 0x000024 R   0x4\n  NOTE           0x009058 0x0000000000009058 0x0000000000009058 0x000020 0x000020 R   0x4\n  GNU_PROPERTY   0x000350 0x0000000000000350 0x0000000000000350 0x000020 0x000020 R   0x8\n  GNU_EH_FRAME   0x007bd0 0x0000000000007bd0 0x0000000000007bd0 0x00039c 0x00039c R   0x4\n  GNU_STACK      0x000000 0x0000000000000000 0x0000000000000000 0x000000 0x000000 RW  0x10\n  GNU_RELRO      0x009b30 0x000000000000ab30 0x000000000000ab30 0x0004d0 0x0004d0 R   0x1\n\n Section to Segment mapping:\n  Segment Sections...\n   00     \n   01     .interp \n   02     .note.gnu.property .note.gnu.build-id .interp .gnu.hash .dynsym .dynstr .gnu.version .gnu.version_r .rela.dyn .rela.plt \n   03     .init .plt .plt.got .text .fini \n   04     .rodata .eh_frame_hdr .eh_frame .note.ABI-tag \n   05     .init_array .fini_array .data.rel.ro .dynamic .got .data .bss \n   06     .dynamic \n   07     .note.gnu.property \n   08     .note.gnu.build-id \n   09     .note.ABI-tag \n   10     .note.gnu.property \n   11     .eh_frame_hdr \n   12     \n   13     .init_array .fini_array .data.rel.ro .dynamic .got \n"
+    }
+  },
+  "utility_execution": false
+}

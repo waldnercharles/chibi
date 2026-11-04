@@ -170,5 +170,23 @@
     "receipt_sha256": "84af806723b67e8893fe2ce23ed9898f99e59b8577d1c03a8a046671cd5cd4d8",
     "worker_sha256": "0a9c2f36900bc8bdfdea538b5dcf077f31c5dfdf14bf41387cc76abcfe5ebabb",
     "terminal_outcome": "unknown; no restart"
+  },
+  "exact14f7_retrieval": {
+    "classification": "payload availability, not download-approval blocker",
+    "origin": "prior local machine, as recorded by the original handoff",
+    "intended_destination": "isolated current cloud workspace directory",
+    "action": "retrieve existing Linux payload and proof archive and verify immutable hashes",
+    "linux_asset_bytes": 10700816,
+    "linux_asset_sha256": "1dd9bf1518645f50f06d4ff1912159945b967e6ad9c7b1f3228fbb32e5d68ab9",
+    "proof_archive_sha256": "bbe71fabe3c6618d4e4b57a1c3ce9c7b519271f0ba236763251b8213aad10114",
+    "recorded_linux_builder_matches_retrieved_7482": true,
+    "exact_release_http_status": 404,
+    "exact_tag_http_status": 404,
+    "exact_head_workflow_runs": 0,
+    "cloud_handoff_files": 8,
+    "cloud_handoff_payloads_present": false,
+    "matching_space_payload_titles_found": false,
+    "user_computer_access_attempted": false,
+    "new_download_approval_required": false
   }
 }

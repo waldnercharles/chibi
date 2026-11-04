@@ -27,6 +27,12 @@ The complete `DriverTests.chibi` suite exposed a stale comparison fixture: it re
 
 Independent review approved the exact patch and controller before the corrected suite passed in 7.819 seconds. Separate test compilations took 6.239 seconds before and 5.314 seconds after. Both runs retained the 120-second cap, two-CPU affinity, unchanged tracked-source/tool fences and clean process termination. These are correctness timings, not an optimization comparison. The nested Driver compilation retains its own default worker selection. `graph-driver-results.json` records the before/after evidence. No production check was removed or weakened.
 
+## Real Driver and Graph command contract
+
+The actual `CommandTests.chibi` entry compiled in 2.425 seconds and passed in 14.900 seconds on exact checkpoint `b8dd1f35f6a8817d6bfc8c883ef15a1c32593eaa`. It compiled the real Graph, Build and Driver programs, compared complete Driver streams and complete Graph compile/link inventories in two build directories, and verified that changing the compiler remains observable. The Build program is only planned, not executed. No product build, download or legacy-seed preparation ran. All 4,066 source files, tools and process-termination checks passed under the existing per-phase 120-second bound and two-CPU affinity.
+
+This independently exercises the current native command contract; it does not turn a historical failed producer into a successful one. The 21 existing CI workflow/lifetime static tests also passed. `command-contract-results.json` records exact hashes and receipts.
+
 ## Remaining gates
 
 This does not establish Windows acceptance, successful historical producer CI, a full product/engine build, or readiness to merge PR #1331. Its explicit hold and independent review requirements remain. The earlier union-native leak investigation has not been rerun or declared cleared. The lost original c5 chain remains terminal-unknown and untouched.

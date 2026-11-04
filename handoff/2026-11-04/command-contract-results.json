@@ -1,0 +1,43 @@
+{
+  "source_commit": "b8dd1f35f6a8817d6bfc8c883ef15a1c32593eaa",
+  "compiler_sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266",
+  "scope": "Real CommandTests Run: three real child-program compilations, exact Driver streams, complete Graph command inventories, and changed-tool discrimination; no product build, network retrieval or legacy-seed preparation.",
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "deadline_seconds_per_phase": 120,
+  "outer_build_jobs": 2,
+  "nested_compile_jobs": "unmodified default selection, bounded by inherited CPU affinity",
+  "phases": {
+    "build": {
+      "status": "passed",
+      "exit_status": 0,
+      "elapsed_seconds": 2.425,
+      "cleanup_complete": true,
+      "controller_sha256": "b5327242249a05d101224c6d607abde121d23bd4225a155035503c17c3f1af4f",
+      "artifact_sha256": "b8c1b2ce01159b5d7dcc67cddae75153a2d95d4410afcc0a29cde06f9ed7363f",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source_files_unchanged": 4066,
+      "tools_unchanged": true
+    },
+    "test": {
+      "status": "passed",
+      "exit_status": 0,
+      "elapsed_seconds": 14.9,
+      "cleanup_complete": true,
+      "controller_sha256": "b5327242249a05d101224c6d607abde121d23bd4225a155035503c17c3f1af4f",
+      "artifact_sha256": null,
+      "log_sha256": "10f9cefed23e2c2c3d08566a15a5979beef4d941c61e6fc158ce9dd5dd06368b",
+      "source_files_unchanged": 4066,
+      "tools_unchanged": true
+    }
+  },
+  "test_log": "PASS exact Driver streams and complete Graph command inventories\n",
+  "ci_static": {
+    "tests": 21,
+    "passed": 21,
+    "failed": 0,
+    "log_sha256": "86c9eefd14fbbe9b86703bd1c1e9610d737206434d0234af6b808ea9614f5e78"
+  }
+}

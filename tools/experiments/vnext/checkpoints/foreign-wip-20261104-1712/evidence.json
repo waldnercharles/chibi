@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "scope": "Recovery and source-specific correctness evidence only; no integrated feature or performance acceptance.",
+  "passed_prior_rust_source": {
+    "lib_rs_sha256": "e4944e367eb448fd330d2bd3163728608eedc55135a9deac8b82063536f13ff6",
+    "unfiltered_tests": 7,
+    "test_artifact_sha256": "c3e1a1abea2e57ae01d6a3e67e2f800f2d4a223944205e0e7fd5da625d67284f",
+    "runtime_review_sha256": "4060ca29f7ee94eac1742a75ea635322ac425001d4ac85f218cb197f9411c9b3",
+    "cdylib_sha256": "1a92c74474ef481ac1a59ebec6a094c39986ebe900c131a6051c2d4c8e934ba2",
+    "cdylib_review_sha256": "baaa937da99f1854f646e9d7d35ff04676c4aae00e09658cfaed6f6e61174405",
+    "exports": 8,
+    "profile": "dev, panic=abort",
+    "current_patch_lib_rs_sha256": "625f40f6020251be06175a735c57fffd1e456985c40200b2edfa298bcee71947",
+    "current_patch_rust_retest_required": true
+  },
+  "unchanged_c_archive": {
+    "bytes": 5662,
+    "sha256": "d6b16ff09a1bc6a230c727199a24041ca033fc014441e37384e8113011179fee",
+    "artifact_review_sha256": "d55aaa0b2717aec05486e4820a328d8df6a42ffa52b8559677d2f013c0561725",
+    "original_probe_functions": 6,
+    "descriptor_getters": 2,
+    "generated_execution": false
+  },
+  "current_data_only_tests": {
+    "generator": 11,
+    "native_preparation": 28,
+    "terminal_chunk": "2cdad0",
+    "native_compilation_or_execution": false
+  },
+  "preserved_failures_and_limits": [
+    "The last typed-source compile failed on an untyped test-count array; this patch supplies its explicit int[] type, but the fresh successor has not run.",
+    "Latest Pack direct-return and call-span/edge allocation corrections await fresh native compilation and full pure suites.",
+    "The prior Rust test-build outer terminal observation was unavailable. Independent Cargo/owned-child/artifact evidence accepted that build; the later seven-test execution and non-test library build each had observed outer exit0.",
+    "All nine ordered engineering passes are not complete. Four completed passes and their focused corrections do not establish final acceptance.",
+    "Original-source foreign JIT/AOT integration, the changed ABI regression matrix, hosted CI, platform qualification and full-corpus/throughput acceptance remain open."
+  ]
+}

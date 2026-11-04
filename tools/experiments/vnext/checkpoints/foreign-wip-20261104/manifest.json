@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "kind": "inactive-incomplete-wip",
+  "base_commit": "0545ef70f7e7610a89346925091dc4d802f6e803",
+  "base_tree": "e4409b32045acba111ba764abe29b0da79e5eb63",
+  "applied_tree": "ddc36e1a46eff75597adf53647154c1b67c72db9",
+  "patch": {
+    "path": "foreign-call.patch",
+    "bytes": 131282,
+    "sha256": "780516788e5cc0534a1bc8c6307e7f0078c0090785f832fa1fe9b808edf1e2c2"
+  },
+  "files": [
+    {
+      "path": "tools/experiments/vnext/frontend/bridge/generate.py",
+      "bytes": 18872,
+      "sha256": "0cf74e12b0c14f396f49117974ca24a69437a419ce559dafa39cb95e6f956f7b"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/bridge/generate_tests.py",
+      "bytes": 14091,
+      "sha256": "e3253959eb7b05e8f860536fe9a4a4e34b2e7e5e1a3402caa5c786cf1d265873"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/bridge/generated/Pack.chibi",
+      "bytes": 5973,
+      "sha256": "2d241f845d9fa1c1fc26fcd104192efc64d540f2349415d4387b644d4c73e1b2"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/bridge/generated/arena.rs",
+      "bytes": 14048,
+      "sha256": "947e3d1bf9316e9db607c647fb5b43a7cb907ba0daff4f25c76be4b1d7cc10b0"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/bridge/tests/Main.chibi.in",
+      "bytes": 12609,
+      "sha256": "3d95e3d76feb34430b8799382b7bee3b18c2b4b5a69ad22fc60e70e1cbc3e286"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/bridge/tests/arena_tests.rs",
+      "bytes": 9046,
+      "sha256": "f813c6139401965bb1b28c48ec6ceafcb176990b2bdac8ecad6022b669fd96ff"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/bridge/tests/foreign_bindings.c",
+      "bytes": 2081,
+      "sha256": "80837e1385194796000dc91908501f9b6616afc7c90cd7f9b24257d076adb8fa"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/typed/Model.chibi",
+      "bytes": 4131,
+      "sha256": "76162e285f7b01ccd66c981492d0b123b27a148375a5b5d1076cb26fd08864e6"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/typed/Produce.chibi",
+      "bytes": 53823,
+      "sha256": "574bc5e32ade0ea1a673f1e3cfeef6a725352ae008f750b9827bb4a35cc7ec6a"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/typed/Verify.chibi",
+      "bytes": 20894,
+      "sha256": "da484b2c4945f6b26af965ec97cfdd7a4006e5a70087ee98e8f437da245695ff"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/typed/prepare.py",
+      "bytes": 8522,
+      "sha256": "89c21395724b8d7e28b825d2a1ed088515637bb7a3733c4168a9c447ff5f8b29"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/typed/prepare_tests.py",
+      "bytes": 12363,
+      "sha256": "8f9c6f7c26285f7add72104906edcec51219b84a542ebd639547e13a53078107"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/typed/tests/Main.chibi.in",
+      "bytes": 90901,
+      "sha256": "bb95dad3fe330ddf1cdd9d07f57ddb8e0dbac1bbadb3551693a2880314dd9503"
+    },
+    {
+      "path": "tools/experiments/vnext/slice_backend/README.md",
+      "bytes": 24401,
+      "sha256": "4f2c6e920708ef894c8ed5b3e4d887c02f089061ebe4788ac20a9c6ac71b5385"
+    },
+    {
+      "path": "tools/experiments/vnext/slice_backend/foreign.h",
+      "bytes": 2852,
+      "sha256": "1c00f3989da137e91dab5911c901d4cfac440014319c3a60fb13287fc279bb57"
+    },
+    {
+      "path": "tools/experiments/vnext/slice_backend/lib.rs",
+      "bytes": 54443,
+      "sha256": "e4944e367eb448fd330d2bd3163728608eedc55135a9deac8b82063536f13ff6"
+    }
+  ],
+  "status": {
+    "integrated": false,
+    "full_engineering_review_complete": false,
+    "rust_compiled": false,
+    "packing_compiled": false,
+    "native_foreign_abi_tested": false,
+    "hosted_ci_claim": false
+  }
+}

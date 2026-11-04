@@ -1,0 +1,2237 @@
+diff --git a/tools/experiments/vnext/frontend/bridge/generate.py b/tools/experiments/vnext/frontend/bridge/generate.py
+index 93a4947d99f14f844b11783f59cb782fa3bac06f..6c1d180cef6481618eac960a6ae07ce1688ad3ce 100644
+--- a/tools/experiments/vnext/frontend/bridge/generate.py
++++ b/tools/experiments/vnext/frontend/bridge/generate.py
+@@ -22,6 +22,7 @@ OUTPUT = HERE / "generated"
+ VERSION_LAYOUTS = {
+     1: "3c80038a06b4ae925e60658a0506a816e8177630b6744367949e1f95d6b6a4bb",
+     2: "9812f63cd2c2d7786cc536d5aed57665c4ab8c75327aaa744e25533039f2a3b1",
++    3: "886b15e405bde5a0cb4223fc8986022797bd38d67946efaa3d6fa43c2fcc3ec6",
+ }
+ IDENT = r"[A-Za-z_][A-Za-z_0-9]*"
+ NUMBER = r"(?:0|[1-9][0-9]*)"
+diff --git a/tools/experiments/vnext/frontend/bridge/generate_tests.py b/tools/experiments/vnext/frontend/bridge/generate_tests.py
+index ce256b3a4fac5cf56017e63be6862c006610c8f1..2571ea3970d9713375fa6c9dbfbc17b4d31a487a 100644
+--- a/tools/experiments/vnext/frontend/bridge/generate_tests.py
++++ b/tools/experiments/vnext/frontend/bridge/generate_tests.py
+@@ -20,12 +20,13 @@ MODEL = generator.parse_model(SOURCE)
+ # Independent layout oracle, not a second schema input. Counts come from the
+ # real EchoJoin producer's CheckPair, including all side-table counts.
+ ECHO_JOIN = [
+-    ("functions", 2, 6, 13), ("signatures", 2, 3, 25),
+-    ("parameter_types", 4, 1, 31), ("blocks", 4, 4, 35),
+-    ("block_parameters", 5, 1, 51), ("values", 7, 2, 56),
+-    ("instructions", 6, 6, 70), ("edges", 3, 3, 106),
+-    ("calls", 0, 2, 115), ("arguments", 2, 1, 115),
+-    ("origins", 7, 3, 117), ("names", 2, 2, 138),
++    ("functions", 2, 6, 14), ("foreigns", 0, 2, 26),
++    ("signatures", 2, 3, 26), ("parameter_types", 4, 1, 32),
++    ("blocks", 4, 4, 36), ("block_parameters", 5, 1, 52),
++    ("values", 7, 2, 57), ("instructions", 6, 6, 71),
++    ("edges", 3, 3, 107), ("calls", 0, 2, 116),
++    ("arguments", 2, 1, 116), ("origins", 7, 3, 118),
++    ("names", 2, 2, 139),
+ ]
+ 
+ 
+@@ -105,9 +106,9 @@ class GenerateTests(unittest.TestCase):
+     def test_enum_groups_are_complete_and_reject_malformed_markers(self):
+         self.assertEqual(MODEL.enums, (("ScalarType", ("Bool", "I64")),
+             ("Opcode", ("ConstantI64", "AddI64", "Jump", "Branch", "Return",
+-                        "ConstantBool", "MultiplyI64", "GreaterI64", "NotBool", "DirectCall"))))
++                        "ConstantBool", "MultiplyI64", "GreaterI64", "NotBool", "DirectCall", "EqualI64"))))
+         values = {name: value for name, _, value in MODEL.constants}
+-        self.assertEqual([values[name] for name in MODEL.enums[1][1]], list(range(1, 11)))
++        self.assertEqual([values[name] for name in MODEL.enums[1][1]], list(range(1, 12)))
+         changes = [
+             ("// vnext-bridge-enum: end", ""),
+             ("// vnext-bridge-enum: Opcode", "// vnext-bridge-enum: ScalarType"),
+@@ -115,7 +116,7 @@ class GenerateTests(unittest.TestCase):
+             ("// vnext-bridge-enum: Opcode", "// vnext-bridge-enum: Empty\n// vnext-bridge-enum: Opcode"),
+             ("// vnext-bridge-enum: ScalarType", "// vnext-bridge-enum: Block"),
+             ("// vnext-bridge-enum: end", "// vnext-bridge-enum: end\n// vnext-bridge-enum: end"),
+-            ("// vnext-bridge-version: 2", "// vnext-bridge-version: 2\n// vnext-bridge-version: nope"),
++            ("// vnext-bridge-version: 3", "// vnext-bridge-version: 3\n// vnext-bridge-version: nope"),
+             ("// vnext-bridge-enum: Opcode", " // vnext-bridge-enum: Opcode"),
+             ("name: u32;", "name: u32;\n// vnext-bridge-enum: Misplaced\n"),
+             ("pub I64: u32 : Bool + 1;", "pub I64: u32 : Bool + 0;"),
+@@ -127,9 +128,9 @@ class GenerateTests(unittest.TestCase):
+ 
+     def test_malformed_schema_fails_closed(self):
+         replacements = [
+-            ("// vnext-bridge-version: 2", ""),
+-            ("// vnext-bridge-version: 2", "// vnext-bridge-version: 2\n// vnext-bridge-version: 2"),
+-            ("// vnext-bridge-version: 2", "// vnext-bridge-version: 3"),
++            ("// vnext-bridge-version: 3", ""),
++            ("// vnext-bridge-version: 3", "// vnext-bridge-version: 3\n// vnext-bridge-version: 3"),
++            ("// vnext-bridge-version: 3", "// vnext-bridge-version: 4"),
+             ("package vnext_typed", "package another"),
+             ('import syntax "project:syntax_diagnostics"', 'import syntax "project:other"'),
+             ("name: u32;", "name: u64;"),
+@@ -170,7 +171,7 @@ class GenerateTests(unittest.TestCase):
+             ("pub MaxFunctions: int : 32;", "pub MaxFunctions: int : 64;"),
+             ("arguments: u32[];", "arguments: u32[]; extra: u32[];"),
+             ("callee: u32; first_argument: u32;", "callee: u32; first_argument: u32; argument_count: u32;"),
+-            ("functions: Function[];\n    signatures: Signature[];", "signatures: Signature[];\n    functions: Function[];"),
++            ("functions: Function[];\n    foreigns: Foreign[];", "foreigns: Foreign[];\n    functions: Function[];"),
+         ]
+         for old, new in changes:
+             with self.subTest(new=new), self.assertRaisesRegex(ValueError, "layout/kinds changed"):
+@@ -182,31 +183,31 @@ class GenerateTests(unittest.TestCase):
+             self.assertEqual((name, len(fields) or 1, cursor), (expected_name, width, start))
+             cursor += count * width
+         self.assertEqual(len(MODEL.word_tables()), len(ECHO_JOIN))
+-        self.assertEqual(cursor, 142)
+-        self.assertEqual((cursor - 13) * 4 + 8 + 8, 532)
+-        self.assertEqual(cursor * 4 + 8 + 8, 584)
++        self.assertEqual(cursor, 143)
++        self.assertEqual((cursor - 14) * 4 + 8 + 8, 532)
++        self.assertEqual(cursor * 4 + 8 + 8, 588)
+         self.assertEqual(dict(MODEL.records)["Value"], (("type", "u32"), ("definition", "u32")))
+         self.assertNotIn("type", dict(dict(MODEL.records)["Instruction"]))
+         self.assertEqual(dict(MODEL.records)["Call"], (("callee", "u32"), ("first_argument", "u32")))
+         self.assertEqual({name: len(fields) * 4 for name, fields in MODEL.records}, {
+-            "Function": 24, "Signature": 12, "Block": 16, "Value": 8,
++            "Function": 24, "Foreign": 8, "Signature": 12, "Block": 16, "Value": 8,
+             "Instruction": 24, "Edge": 12, "Call": 8, "Origin": 12, "Name": 8})
+         pack = generator.chibi_source(MODEL)
+-        self.assertIn("pub HeaderWords: int : 13;", pack)
+-        self.assertIn("words[9] = u32(length(module.calls));", pack)
+-        self.assertIn("words[10] = u32(length(module.arguments));", pack)
++        self.assertIn("pub HeaderWords: int : 14;", pack)
++        self.assertIn("words[10] = u32(length(module.calls));", pack)
++        self.assertIn("words[11] = u32(length(module.arguments));", pack)
+ 
+     def test_conservative_admission_transport_bound(self):
+         # Simultaneous bounds from source/node/function/block admission. This
+         # arithmetic test never creates maximum-sized arrays.
+-        counts = dict(functions=32, signatures=32, parameter_types=1024,
++        counts = dict(functions=32, foreigns=32, signatures=32, parameter_types=1024,
+                       blocks=2048, block_parameters=131072, values=139264,
+                       instructions=10240, edges=4096, calls=8192,
+-                      arguments=524288, origins=8192, names=32)
+-        words = 13 + sum(counts[name] * (len(fields) or 1)
++                      arguments=524288, origins=8192, names=64)
++        words = 14 + sum(counts[name] * (len(fields) or 1)
+                          for name, _, fields in MODEL.word_tables())
+-        self.assertEqual(words, 1058157)
+-        self.assertEqual(words * 4 + 8192 * 8 + 65536, 4363700)
++        self.assertEqual(words, 1058286)
++        self.assertEqual(words * 4 + 8192 * 8 + 65536, 4364216)
+ 
+     def test_deterministic_scalar_roundtrip(self):
+         randomizer = random.Random(20261104)
+@@ -215,9 +216,11 @@ class GenerateTests(unittest.TestCase):
+             for (name, _, fields), (_, count, _, _) in zip(MODEL.word_tables(), ECHO_JOIN):
+                 rows[name] = ([tuple(randomizer.randrange(2 ** 32) for _ in fields) for _ in range(count * multiplier)]
+                               if fields else [randomizer.randrange(2 ** 32) for _ in range(count * multiplier)])
+-            # EchoJoin has no calls, so give the new table independent rows too.
++            # EchoJoin has no calls/imports; exercise both tables independently.
+             rows["calls"] = [(randomizer.randrange(2 ** 32), randomizer.randrange(2 ** 32))
+                              for _ in range(multiplier)]
++            rows["foreigns"] = [(randomizer.randrange(2 ** 32), randomizer.randrange(2 ** 32))
++                                for _ in range(multiplier)]
+             literals = (-(2 ** 63), -1, 0, 1, 2 ** 63 - 1) if multiplier else ()
+             names = b"EchoJoin\x00\xff" if multiplier else b""
+             packed = reference_pack(rows, literals, names)
+@@ -227,20 +230,20 @@ class GenerateTests(unittest.TestCase):
+             # This test encoding is not an on-disk IR format or production step.
+             serialized = struct.pack(f"<{len(packed[0])}I", *packed[0])
+             self.assertEqual(list(struct.unpack(f"<{len(packed[0])}I", serialized)), packed[0])
+-        self.assertEqual(reference_pack({name: [] for name, _, _ in MODEL.word_tables()})[0], [2] + [0] * 12)
++        self.assertEqual(reference_pack({name: [] for name, _, _ in MODEL.word_tables()})[0], [3] + [0] * 13)
+ 
+     def test_boundary_framing_errors(self):
+-        empty = [MODEL.version] + [0] * 12
+-        bad = [([], "header"), ([1] + [0] * 12, "version"), ([0] * 13, "version"), (empty + [0], "word count"),
+-               ([MODEL.version, 1] + [0] * 11, "word count"),
+-               ([MODEL.version, 2 ** 31] + [0] * 11, "count")]
++        empty = [MODEL.version] + [0] * 13
++        bad = [([], "header"), ([1] + [0] * 13, "version"), ([2] + [0] * 13, "version"), ([0] * 14, "version"), (empty + [0], "word count"),
++               ([MODEL.version, 1] + [0] * 12, "word count"),
++               ([MODEL.version, 2 ** 31] + [0] * 12, "count")]
+         for words, diagnostic in bad:
+             with self.subTest(words=words), self.assertRaisesRegex(ValueError, diagnostic):
+                 reference_view(words)
+         with self.assertRaisesRegex(ValueError, "overflow"):
+-            reference_view([MODEL.version, 0x7fffffff] + [0] * 11, max_size=0x7fffffff)
++            reference_view([MODEL.version, 0x7fffffff] + [0] * 12, max_size=0x7fffffff)
+         with self.assertRaisesRegex(ValueError, "extent"):
+-            reference_view(empty, max_size=51)
++            reference_view(empty, max_size=55)
+ 
+ 
+ if __name__ == "__main__":
+diff --git a/tools/experiments/vnext/frontend/bridge/generated/Pack.chibi b/tools/experiments/vnext/frontend/bridge/generated/Pack.chibi
+index 4ff1459ba228adf5cd95657b29ba6d42af6fa5f1..464edc24781c5e3f581ce7098e1632487fde3f63 100644
+--- a/tools/experiments/vnext/frontend/bridge/generated/Pack.chibi
++++ b/tools/experiments/vnext/frontend/bridge/generated/Pack.chibi
+@@ -1,11 +1,11 @@
+ // Generated by ../generate.py from typed/Model.chibi. Do not edit.
+-// Layout SHA-256: 9812f63cd2c2d7786cc536d5aed57665c4ab8c75327aaa744e25533039f2a3b1
++// Layout SHA-256: 886b15e405bde5a0cb4223fc8986022797bd38d67946efaa3d6fa43c2fcc3ec6
+ package vnext_bridge
+ 
+ import typed "project:vnext_typed"
+ 
+-pub Version: u32 : 2;
+-pub HeaderWords: int : 13;
++pub Version: u32 : 3;
++pub HeaderWords: int : 14;
+ // All native scalar array element counts use signed 32-bit Chibi int.
+ MaxWords: i64 : 2147483647;
+ 
+@@ -22,6 +22,10 @@ pub Pack :: (module: typed.Module) -> Result {
+         return Result.TooLarge("functions");
+     }
+     count += i64(length(module.functions)) * 6;
++    if (i64(length(module.foreigns)) > (MaxWords - count) / 2) {
++        return Result.TooLarge("foreigns");
++    }
++    count += i64(length(module.foreigns)) * 2;
+     if (i64(length(module.signatures)) > (MaxWords - count) / 3) {
+         return Result.TooLarge("signatures");
+     }
+@@ -70,17 +74,18 @@ pub Pack :: (module: typed.Module) -> Result {
+     words.resize(int(count));
+     words[0] = Version;
+     words[1] = u32(length(module.functions));
+-    words[2] = u32(length(module.signatures));
+-    words[3] = u32(length(module.parameter_types));
+-    words[4] = u32(length(module.blocks));
+-    words[5] = u32(length(module.block_parameters));
+-    words[6] = u32(length(module.values));
+-    words[7] = u32(length(module.instructions));
+-    words[8] = u32(length(module.edges));
+-    words[9] = u32(length(module.calls));
+-    words[10] = u32(length(module.arguments));
+-    words[11] = u32(length(module.origins));
+-    words[12] = u32(length(module.names));
++    words[2] = u32(length(module.foreigns));
++    words[3] = u32(length(module.signatures));
++    words[4] = u32(length(module.parameter_types));
++    words[5] = u32(length(module.blocks));
++    words[6] = u32(length(module.block_parameters));
++    words[7] = u32(length(module.values));
++    words[8] = u32(length(module.instructions));
++    words[9] = u32(length(module.edges));
++    words[10] = u32(length(module.calls));
++    words[11] = u32(length(module.arguments));
++    words[12] = u32(length(module.origins));
++    words[13] = u32(length(module.names));
+     at: int = HeaderWords;
+     for (row in module.functions) {
+         words[at] = row.name;
+@@ -91,6 +96,11 @@ pub Pack :: (module: typed.Module) -> Result {
+         words[at + 5] = row.exported;
+         at += 6;
+     }
++    for (row in module.foreigns) {
++        words[at] = row.function;
++        words[at + 1] = row.library;
++        at += 2;
++    }
+     for (row in module.signatures) {
+         words[at] = row.first_parameter;
+         words[at + 1] = row.parameter_count;
+diff --git a/tools/experiments/vnext/frontend/bridge/generated/arena.rs b/tools/experiments/vnext/frontend/bridge/generated/arena.rs
+index a4d26997c438742cb7e950dcb940dce20e51cb4b..44f42c1ce6695f4547c4664c08fec576c26ae1aa 100644
+--- a/tools/experiments/vnext/frontend/bridge/generated/arena.rs
++++ b/tools/experiments/vnext/frontend/bridge/generated/arena.rs
+@@ -1,8 +1,8 @@
+ // Generated by ../generate.py from typed/Model.chibi. Do not edit.
+-// Layout SHA-256: 9812f63cd2c2d7786cc536d5aed57665c4ab8c75327aaa744e25533039f2a3b1
++// Layout SHA-256: 886b15e405bde5a0cb4223fc8986022797bd38d67946efaa3d6fa43c2fcc3ec6
+ // Same-process scalar views, not a persistent or endian-neutral format.
+-pub const VERSION: u32 = 2;
+-pub const HEADER_WORDS: usize = 13;
++pub const VERSION: u32 = 3;
++pub const HEADER_WORDS: usize = 14;
+ pub const MAX_ELEMENTS: usize = i32::MAX as usize;
+ pub const BOOL: u32 = 1;
+ pub const I64: u32 = 2;
+@@ -16,8 +16,11 @@ pub const MULTIPLY_I64: u32 = 7;
+ pub const GREATER_I64: u32 = 8;
+ pub const NOT_BOOL: u32 = 9;
+ pub const DIRECT_CALL: u32 = 10;
++pub const EQUAL_I64: u32 = 11;
+ pub const BLOCK_DEFINITION: u32 = 2147483648;
+ pub const MAX_FUNCTIONS: i32 = 32;
++pub const MAX_LIBRARIES: i32 = 32;
++pub const MAX_LIBRARY_BYTES: i32 = 256;
+ pub const MAX_PARAMETERS: i32 = 32;
+ pub const MAX_LOCALS: i32 = 64;
+ pub const MAX_BLOCKS: i32 = 64;
+@@ -59,6 +62,7 @@ pub enum Opcode {
+     GreaterI64,
+     NotBool,
+     DirectCall,
++    EqualI64,
+ }
+ impl Opcode {
+     pub fn decode(value: u32) -> Option<Self> {
+@@ -73,6 +77,7 @@ impl Opcode {
+             GREATER_I64 => Some(Self::GreaterI64),
+             NOT_BOOL => Some(Self::NotBool),
+             DIRECT_CALL => Some(Self::DirectCall),
++            EQUAL_I64 => Some(Self::EqualI64),
+             _ => None,
+         }
+     }
+@@ -85,6 +90,10 @@ pub const FUNCTION_FIRST_BLOCK: usize = 2;
+ pub const FUNCTION_BLOCK_COUNT: usize = 3;
+ pub const FUNCTION_ORIGIN: usize = 4;
+ pub const FUNCTION_EXPORTED: usize = 5;
++pub const FOREIGN_WORDS: usize = 2;
++const _: [(); 8] = [(); std::mem::size_of::<[u32; FOREIGN_WORDS]>()];
++pub const FOREIGN_FUNCTION: usize = 0;
++pub const FOREIGN_LIBRARY: usize = 1;
+ pub const SIGNATURE_WORDS: usize = 3;
+ const _: [(); 12] = [(); std::mem::size_of::<[u32; SIGNATURE_WORDS]>()];
+ pub const SIGNATURE_FIRST_PARAMETER: usize = 0;
+@@ -142,6 +151,7 @@ pub enum FramingError {
+ #[derive(Debug)]
+ pub struct Arena<'a> {
+     pub functions: &'a [[u32; FUNCTION_WORDS]],
++    pub foreigns: &'a [[u32; FOREIGN_WORDS]],
+     pub signatures: &'a [[u32; SIGNATURE_WORDS]],
+     pub parameter_types: &'a [u32],
+     pub blocks: &'a [[u32; BLOCK_WORDS]],
+@@ -183,7 +193,15 @@ impl<'a> Arena<'a> {
+         end = end.checked_add(functions_count.checked_mul(FUNCTION_WORDS).ok_or(FramingError::SizeOverflow)?)
+             .ok_or(FramingError::SizeOverflow)?;
+         let functions_end = end;
+-        let signatures_count = words[2] as usize;
++        let foreigns_count = words[2] as usize;
++        if foreigns_count > MAX_ELEMENTS {
++            return Err(FramingError::CountTooLarge { buffer: "foreigns" });
++        }
++        let foreigns_start = end;
++        end = end.checked_add(foreigns_count.checked_mul(FOREIGN_WORDS).ok_or(FramingError::SizeOverflow)?)
++            .ok_or(FramingError::SizeOverflow)?;
++        let foreigns_end = end;
++        let signatures_count = words[3] as usize;
+         if signatures_count > MAX_ELEMENTS {
+             return Err(FramingError::CountTooLarge { buffer: "signatures" });
+         }
+@@ -191,7 +209,7 @@ impl<'a> Arena<'a> {
+         end = end.checked_add(signatures_count.checked_mul(SIGNATURE_WORDS).ok_or(FramingError::SizeOverflow)?)
+             .ok_or(FramingError::SizeOverflow)?;
+         let signatures_end = end;
+-        let parameter_types_count = words[3] as usize;
++        let parameter_types_count = words[4] as usize;
+         if parameter_types_count > MAX_ELEMENTS {
+             return Err(FramingError::CountTooLarge { buffer: "parameter_types" });
+         }
+@@ -199,7 +217,7 @@ impl<'a> Arena<'a> {
+         end = end.checked_add(parameter_types_count.checked_mul(1).ok_or(FramingError::SizeOverflow)?)
+             .ok_or(FramingError::SizeOverflow)?;
+         let parameter_types_end = end;
+-        let blocks_count = words[4] as usize;
++        let blocks_count = words[5] as usize;
+         if blocks_count > MAX_ELEMENTS {
+             return Err(FramingError::CountTooLarge { buffer: "blocks" });
+         }
+@@ -207,7 +225,7 @@ impl<'a> Arena<'a> {
+         end = end.checked_add(blocks_count.checked_mul(BLOCK_WORDS).ok_or(FramingError::SizeOverflow)?)
+             .ok_or(FramingError::SizeOverflow)?;
+         let blocks_end = end;
+-        let block_parameters_count = words[5] as usize;
++        let block_parameters_count = words[6] as usize;
+         if block_parameters_count > MAX_ELEMENTS {
+             return Err(FramingError::CountTooLarge { buffer: "block_parameters" });
+         }
+@@ -215,7 +233,7 @@ impl<'a> Arena<'a> {
+         end = end.checked_add(block_parameters_count.checked_mul(1).ok_or(FramingError::SizeOverflow)?)
+             .ok_or(FramingError::SizeOverflow)?;
+         let block_parameters_end = end;
+-        let values_count = words[6] as usize;
++        let values_count = words[7] as usize;
+         if values_count > MAX_ELEMENTS {
+             return Err(FramingError::CountTooLarge { buffer: "values" });
+         }
+@@ -223,7 +241,7 @@ impl<'a> Arena<'a> {
+         end = end.checked_add(values_count.checked_mul(VALUE_WORDS).ok_or(FramingError::SizeOverflow)?)
+             .ok_or(FramingError::SizeOverflow)?;
+         let values_end = end;
+-        let instructions_count = words[7] as usize;
++        let instructions_count = words[8] as usize;
+         if instructions_count > MAX_ELEMENTS {
+             return Err(FramingError::CountTooLarge { buffer: "instructions" });
+         }
+@@ -231,7 +249,7 @@ impl<'a> Arena<'a> {
+         end = end.checked_add(instructions_count.checked_mul(INSTRUCTION_WORDS).ok_or(FramingError::SizeOverflow)?)
+             .ok_or(FramingError::SizeOverflow)?;
+         let instructions_end = end;
+-        let edges_count = words[8] as usize;
++        let edges_count = words[9] as usize;
+         if edges_count > MAX_ELEMENTS {
+             return Err(FramingError::CountTooLarge { buffer: "edges" });
+         }
+@@ -239,7 +257,7 @@ impl<'a> Arena<'a> {
+         end = end.checked_add(edges_count.checked_mul(EDGE_WORDS).ok_or(FramingError::SizeOverflow)?)
+             .ok_or(FramingError::SizeOverflow)?;
+         let edges_end = end;
+-        let calls_count = words[9] as usize;
++        let calls_count = words[10] as usize;
+         if calls_count > MAX_ELEMENTS {
+             return Err(FramingError::CountTooLarge { buffer: "calls" });
+         }
+@@ -247,7 +265,7 @@ impl<'a> Arena<'a> {
+         end = end.checked_add(calls_count.checked_mul(CALL_WORDS).ok_or(FramingError::SizeOverflow)?)
+             .ok_or(FramingError::SizeOverflow)?;
+         let calls_end = end;
+-        let arguments_count = words[10] as usize;
++        let arguments_count = words[11] as usize;
+         if arguments_count > MAX_ELEMENTS {
+             return Err(FramingError::CountTooLarge { buffer: "arguments" });
+         }
+@@ -255,7 +273,7 @@ impl<'a> Arena<'a> {
+         end = end.checked_add(arguments_count.checked_mul(1).ok_or(FramingError::SizeOverflow)?)
+             .ok_or(FramingError::SizeOverflow)?;
+         let arguments_end = end;
+-        let origins_count = words[11] as usize;
++        let origins_count = words[12] as usize;
+         if origins_count > MAX_ELEMENTS {
+             return Err(FramingError::CountTooLarge { buffer: "origins" });
+         }
+@@ -263,7 +281,7 @@ impl<'a> Arena<'a> {
+         end = end.checked_add(origins_count.checked_mul(ORIGIN_WORDS).ok_or(FramingError::SizeOverflow)?)
+             .ok_or(FramingError::SizeOverflow)?;
+         let origins_end = end;
+-        let names_count = words[12] as usize;
++        let names_count = words[13] as usize;
+         if names_count > MAX_ELEMENTS {
+             return Err(FramingError::CountTooLarge { buffer: "names" });
+         }
+@@ -276,6 +294,7 @@ impl<'a> Arena<'a> {
+         }
+         Ok(Self {
+             functions: words[functions_start..functions_end].as_chunks::<FUNCTION_WORDS>().0,
++            foreigns: words[foreigns_start..foreigns_end].as_chunks::<FOREIGN_WORDS>().0,
+             signatures: words[signatures_start..signatures_end].as_chunks::<SIGNATURE_WORDS>().0,
+             parameter_types: &words[parameter_types_start..parameter_types_end],
+             blocks: words[blocks_start..blocks_end].as_chunks::<BLOCK_WORDS>().0,
+diff --git a/tools/experiments/vnext/frontend/bridge/tests/Main.chibi.in b/tools/experiments/vnext/frontend/bridge/tests/Main.chibi.in
+index 077e54cc71134b26e8b4d6f55dafbe777ada029a..3bfee272e615b272d217d2ce50013dd9f6f94dfa 100644
+--- a/tools/experiments/vnext/frontend/bridge/tests/Main.chibi.in
++++ b/tools/experiments/vnext/frontend/bridge/tests/Main.chibi.in
+@@ -24,7 +24,7 @@ Main :: () -> int {
+                 case .Packed(buffers):
+                     CheckBuffers(buffers, frozen);
+                     CheckBuffers(Freeze(module), frozen);
+-                    assert(buffers.words[0] == 2 && buffers.words[9] == 3 && buffers.words[10] == 4, "v2 header includes call and argument counts");
++                    assert(buffers.words[0] == 3 && buffers.words[10] == 3 && buffers.words[11] == 4, "v3 header includes call and argument counts");
+                     assert(module.calls[2].first_argument == 0 && module.calls[0].first_argument == 2 && module.calls[1].first_argument == 3, "packing preserves reserved nested spans");
+                     changed := module;
+                     calls := changed.calls;
+@@ -37,7 +37,8 @@ Main :: () -> int {
+                     CheckBuffers(Freeze(module), frozen);
+             }
+     }
+-    empty: typed.Module = {functions: [], signatures: [], parameter_types: [], blocks: [],
++    CheckForeignTransport();
++    empty: typed.Module = {functions: [], foreigns: [], signatures: [], parameter_types: [], blocks: [],
+         block_parameters: [], values: [], instructions: [], edges: [], calls: [], arguments: [],
+         literals: [], origins: [], names: [], name_bytes: []};
+     frozen_empty := Freeze(empty);
+@@ -46,7 +47,7 @@ Main :: () -> int {
+         case .Packed(buffers):
+             CheckBuffers(buffers, frozen_empty);
+             CheckBuffers(Freeze(empty), frozen_empty);
+-            assert(length(buffers.words) == 13 && buffers.words[0] == bridge.Version, "empty transport retains version header");
++            assert(length(buffers.words) == 14 && buffers.words[0] == bridge.Version, "empty transport retains version header");
+             for (word, index in buffers.words) {
+                 if (index > 0) { assert(word == 0, "empty module counts are zero"); }
+             }
+@@ -67,20 +68,20 @@ CheckSource :: (source: string, literal: i64, name_count: int) {
+                 case .Packed(buffers):
+                     CheckBuffers(buffers, frozen);
+                     CheckBuffers(Freeze(module), frozen);
+-                    assert(length(buffers.words) == 142, "129 scalar words plus 13 header words");
+-                    header: u32[] = [2, 2, 2, 4, 4, 5, 7, 6, 3, 0, 2, 7, 2];
++                    assert(length(buffers.words) == 143, "129 scalar words plus 14 header words");
++                    header: u32[] = [3, 2, 0, 2, 4, 4, 5, 7, 6, 3, 0, 2, 7, 2];
+                     for (word, index in header) {
+                         assert(buffers.words[index] == word, "version and table counts in Model order");
+                     }
+                     assert(length(buffers.literals) == 1 && buffers.literals[0] == literal, "source literal side array preserved");
+                     assert(length(buffers.name_bytes) == name_count, "source-driven name bytes preserved");
+-                    assert(buffers.words[56] == typed.I64 && buffers.words[57] == (typed.BlockDefinition | u32(1)), "first Value type and definition");
+-                    assert(buffers.words[58] == typed.Bool && buffers.words[59] == (typed.BlockDefinition | u32(2)), "bool parameter type lives only in Value");
+-                    assert(buffers.words[64] == typed.I64 && buffers.words[65] == (typed.BlockDefinition | u32(4)), "merge Value survives packing");
+-                    assert(buffers.words[70] == typed.Return && buffers.words[72] == 1, "Echo terminator fields");
+-                    assert(buffers.words[94] == typed.AddI64 && buffers.words[96] == 5 && buffers.words[97] == 6, "Join addition fields");
++                    assert(buffers.words[57] == typed.I64 && buffers.words[58] == (typed.BlockDefinition | u32(1)), "first Value type and definition");
++                    assert(buffers.words[59] == typed.Bool && buffers.words[60] == (typed.BlockDefinition | u32(2)), "bool parameter type lives only in Value");
++                    assert(buffers.words[65] == typed.I64 && buffers.words[66] == (typed.BlockDefinition | u32(4)), "merge Value survives packing");
++                    assert(buffers.words[71] == typed.Return && buffers.words[73] == 1, "Echo terminator fields");
++                    assert(buffers.words[95] == typed.AddI64 && buffers.words[97] == 5 && buffers.words[98] == 6, "Join addition fields");
+                     if (name_count == 8) {
+-                        assert(buffers.words[138] == 0 && buffers.words[139] == 4 && buffers.words[140] == 4 && buffers.words[141] == 4, "original fixture name spans");
++                        assert(buffers.words[139] == 0 && buffers.words[140] == 4 && buffers.words[141] == 4 && buffers.words[142] == 4, "original fixture name spans");
+                     }
+                     switch bridge.Pack(module) {
+                         case .TooLarge(table): assert(false, "repeat fixture fits");
+@@ -125,11 +126,11 @@ CheckSource :: (source: string, literal: i64, name_count: int) {
+ 
+ // Independent reference order, deliberately handwritten rather than generated
+ // from the binding generator. This extra test-only copy covers EVERY scalar in
+-// all 12 tables, including edge argument spans, origins and zero-valued fields.
++// all 13 tables, including edge argument spans, origins and zero-valued fields.
+ // Each array is built from scalar values, never assigned from a source array.
+ Freeze :: (module: typed.Module) -> bridge.Buffers {
+-    expected: u32[] = [2,
+-        u32(length(module.functions)), u32(length(module.signatures)),
++    expected: u32[] = [3,
++        u32(length(module.functions)), u32(length(module.foreigns)), u32(length(module.signatures)),
+         u32(length(module.parameter_types)), u32(length(module.blocks)),
+         u32(length(module.block_parameters)), u32(length(module.values)),
+         u32(length(module.instructions)), u32(length(module.edges)), u32(length(module.calls)),
+@@ -137,6 +138,7 @@ Freeze :: (module: typed.Module) -> bridge.Buffers {
+     for (row in module.functions) {
+         expected.extend([row.name, row.signature, row.first_block, row.block_count, row.origin, row.exported]);
+     }
++    for (row in module.foreigns) { expected.extend([row.function, row.library]); }
+     for (row in module.signatures) {
+         expected.extend([row.first_parameter, row.parameter_count, row.result_type]);
+     }
+@@ -176,3 +178,31 @@ CheckBuffers :: (buffers: bridge.Buffers, frozen: bridge.Buffers) {
+         assert(buffers.name_bytes[index] == byte, "every name byte matches frozen value");
+     }
+ }
++
++// Real parser output exercises the new side table independently of codegen.
++CheckForeignTransport :: () {
++    source := "package p\nforeign import probe \"libprobe.a\"\nforeign probe { read :: (x: i64) -> i64 }\npub Call :: (x: i64) -> i64 { return read(x); }\n";
++    switch typed.Produce(source, 31) {
++        case .Rejected(diagnostic): assert(false, "foreign packing source is accepted");
++        case .Produced(module):
++            assert(length(module.foreigns) == 1, "one imported declaration is produced");
++            frozen := Freeze(module);
++            switch bridge.Pack(module) {
++                case .TooLarge(table): assert(false, "foreign transport fits");
++                case .Packed(buffers):
++                    CheckBuffers(buffers, frozen);
++                    assert(buffers.words[0] == 3 && buffers.words[2] == 1, "v3 header retains foreign membership count");
++                    at := bridge.HeaderWords + length(module.functions) * 6;
++                    assert(buffers.words[at] == 1 && buffers.words[at + 1] == module.foreigns[0].library, "foreign function and library scalars survive packing");
++                    changed := module;
++                    imports := changed.foreigns;
++                    imported := imports[0];
++                    imported.library = imported.library + u32(1);
++                    imports[0] = imported;
++                    changed.foreigns = imports;
++                    assert(changed.foreigns[0].library != module.foreigns[0].library, "foreign mutation creates a distinct COW snapshot");
++                    CheckBuffers(buffers, frozen);
++                    CheckBuffers(Freeze(module), frozen);
++            }
++    }
++}
+diff --git a/tools/experiments/vnext/frontend/bridge/tests/arena_tests.rs b/tools/experiments/vnext/frontend/bridge/tests/arena_tests.rs
+index 05a7c77df642b3b188b6e76d51e20391a2c57a29..89525447e87636d4138ff71a77971e3a9036db3c 100644
+--- a/tools/experiments/vnext/frontend/bridge/tests/arena_tests.rs
++++ b/tools/experiments/vnext/frontend/bridge/tests/arena_tests.rs
+@@ -11,6 +11,7 @@ fn empty_frame_and_independent_empty_side_arrays() {
+     words[0] = VERSION;
+     let arena = Arena::from_parts(&words, &[], &[]).unwrap();
+     assert!(arena.functions.is_empty());
++    assert!(arena.foreigns.is_empty());
+     assert!(arena.values.is_empty());
+     assert!(arena.literals.is_empty());
+     assert!(arena.name_bytes.is_empty());
+@@ -23,14 +24,14 @@ fn empty_frame_and_independent_empty_side_arrays() {
+ 
+ #[test]
+ fn echo_join_layout_borrows_every_table_without_copy() {
+-    let counts = [2, 2, 4, 4, 5, 7, 6, 3, 0, 2, 7, 2];
++    let counts = [2, 0, 2, 4, 4, 5, 7, 6, 3, 0, 2, 7, 2];
+     let mut words = vec![VERSION];
+     words.extend(counts);
+     words.extend(0..129);
+     let literals = [i64::MAX];
+     let name_bytes = *b"EchoJoin";
+     let arena = Arena::from_parts(&words, &literals, &name_bytes).unwrap();
+-    assert_eq!(words.len() * 4 + literals.len() * 8 + name_bytes.len(), 584);
++    assert_eq!(words.len() * 4 + literals.len() * 8 + name_bytes.len(), 588);
+     assert_eq!(arena.functions.len(), 2);
+     assert_eq!(arena.instructions.len(), 6);
+     assert_eq!(arena.functions[0], [0, 1, 2, 3, 4, 5]);
+@@ -38,18 +39,19 @@ fn echo_join_layout_borrows_every_table_without_copy() {
+     assert_eq!(arena.instructions[0], [57, 58, 59, 60, 61, 62]);
+     assert_eq!(arena.names[1], [127, 128]);
+     for (actual, offset) in [
+-        (arena.functions.as_ptr().cast::<u32>(), 13),
+-        (arena.signatures.as_ptr().cast::<u32>(), 25),
+-        (arena.parameter_types.as_ptr(), 31),
+-        (arena.blocks.as_ptr().cast::<u32>(), 35),
+-        (arena.block_parameters.as_ptr(), 51),
+-        (arena.values.as_ptr().cast::<u32>(), 56),
+-        (arena.instructions.as_ptr().cast::<u32>(), 70),
+-        (arena.edges.as_ptr().cast::<u32>(), 106),
+-        (arena.calls.as_ptr().cast::<u32>(), 115),
+-        (arena.arguments.as_ptr(), 115),
+-        (arena.origins.as_ptr().cast::<u32>(), 117),
+-        (arena.names.as_ptr().cast::<u32>(), 138),
++        (arena.functions.as_ptr().cast::<u32>(), 14),
++        (arena.foreigns.as_ptr().cast::<u32>(), 26),
++        (arena.signatures.as_ptr().cast::<u32>(), 26),
++        (arena.parameter_types.as_ptr(), 32),
++        (arena.blocks.as_ptr().cast::<u32>(), 36),
++        (arena.block_parameters.as_ptr(), 52),
++        (arena.values.as_ptr().cast::<u32>(), 57),
++        (arena.instructions.as_ptr().cast::<u32>(), 71),
++        (arena.edges.as_ptr().cast::<u32>(), 107),
++        (arena.calls.as_ptr().cast::<u32>(), 116),
++        (arena.arguments.as_ptr(), 116),
++        (arena.origins.as_ptr().cast::<u32>(), 118),
++        (arena.names.as_ptr().cast::<u32>(), 139),
+     ] {
+         assert_eq!(actual, words[offset..].as_ptr());
+     }
+@@ -63,16 +65,18 @@ fn rejects_missing_header_and_unknown_version() {
+     let words = [0; HEADER_WORDS];
+     assert_eq!(Arena::from_parts(&words, &[], &[]).unwrap_err(), FramingError::Version { actual: 0 });
+     let mut old = [0; HEADER_WORDS];
+-    old[0] = 1;
+-    assert_eq!(Arena::from_parts(&old, &[], &[]).unwrap_err(), FramingError::Version { actual: 1 });
++    for version in [1, 2] {
++        old[0] = version;
++        assert_eq!(Arena::from_parts(&old, &[], &[]).unwrap_err(), FramingError::Version { actual: version });
++    }
+ }
+ 
+ #[test]
+ fn bounded_malformed_replay_covers_every_count_position() {
+-    // This v2 layout oracle is test-only. Large counts use a real short header,
++    // This v3 layout oracle is test-only. Large counts use a real short header,
+     // never fabricated slices or allocations proportional to rejected counts.
+     let tables = [
+-        ("functions", FUNCTION_WORDS), ("signatures", SIGNATURE_WORDS),
++        ("functions", FUNCTION_WORDS), ("foreigns", FOREIGN_WORDS), ("signatures", SIGNATURE_WORDS),
+         ("parameter_types", 1), ("blocks", BLOCK_WORDS),
+         ("block_parameters", 1), ("values", VALUE_WORDS),
+         ("instructions", INSTRUCTION_WORDS), ("edges", EDGE_WORDS),
+@@ -138,7 +142,7 @@ fn generated_kinds_have_checked_exhaustive_decoding() {
+             ScalarType::I64 => assert_eq!(value, I64),
+         }
+     }
+-    for value in [CONSTANT_I64, ADD_I64, JUMP, BRANCH, RETURN, CONSTANT_BOOL, MULTIPLY_I64, GREATER_I64, NOT_BOOL, DIRECT_CALL] {
++    for value in [CONSTANT_I64, ADD_I64, JUMP, BRANCH, RETURN, CONSTANT_BOOL, MULTIPLY_I64, GREATER_I64, NOT_BOOL, DIRECT_CALL, EQUAL_I64] {
+         match Opcode::decode(value).unwrap() {
+             Opcode::ConstantI64 => assert_eq!(value, CONSTANT_I64),
+             Opcode::AddI64 => assert_eq!(value, ADD_I64),
+@@ -150,6 +154,7 @@ fn generated_kinds_have_checked_exhaustive_decoding() {
+             Opcode::GreaterI64 => assert_eq!(value, GREATER_I64),
+             Opcode::NotBool => assert_eq!(value, NOT_BOOL),
+             Opcode::DirectCall => assert_eq!(value, DIRECT_CALL),
++            Opcode::EqualI64 => assert_eq!(value, EQUAL_I64),
+         }
+     }
+     assert_eq!(ScalarType::decode(0), None);
+@@ -159,8 +164,9 @@ fn generated_kinds_have_checked_exhaustive_decoding() {
+ 
+ #[test]
+ fn scalar_record_sizes_and_call_rows_are_pinned() {
+-    assert_eq!(HEADER_WORDS * 4, 52);
++    assert_eq!(HEADER_WORDS * 4, 56);
+     assert_eq!(std::mem::size_of::<[u32; FUNCTION_WORDS]>(), 24);
++    assert_eq!(std::mem::size_of::<[u32; FOREIGN_WORDS]>(), 8);
+     assert_eq!(std::mem::size_of::<[u32; SIGNATURE_WORDS]>(), 12);
+     assert_eq!(std::mem::size_of::<[u32; BLOCK_WORDS]>(), 16);
+     assert_eq!(std::mem::size_of::<[u32; VALUE_WORDS]>(), 8);
+@@ -171,8 +177,8 @@ fn scalar_record_sizes_and_call_rows_are_pinned() {
+     assert_eq!(std::mem::size_of::<[u32; NAME_WORDS]>(), 8);
+     let mut words = vec![0; HEADER_WORDS];
+     words[0] = VERSION;
+-    words[9] = 2;
+-    words[10] = 3;
++    words[10] = 2;
++    words[11] = 3;
+     words.extend([7, 0, 9, 1, 11, 13, 17]);
+     let arena = Arena::from_parts(&words, &[], &[]).unwrap();
+     assert_eq!(arena.calls, &[[7, 0], [9, 1]]);
+@@ -180,3 +186,16 @@ fn scalar_record_sizes_and_call_rows_are_pinned() {
+     assert_eq!(arena.calls[1][CALL_CALLEE], 9);
+     assert_eq!(arena.calls[1][CALL_FIRST_ARGUMENT], 1);
+ }
++
++#[test]
++fn imported_membership_rows_borrow_their_exact_scalars() {
++    let mut words = vec![0; HEADER_WORDS];
++    words[0] = VERSION;
++    words[2] = 2;
++    words.extend([1, 7, 3, 9]);
++    let arena = Arena::from_parts(&words, &[], &[]).unwrap();
++    assert_eq!(arena.foreigns, &[[1, 7], [3, 9]]);
++    assert_eq!(arena.foreigns.as_ptr().cast::<u32>(), words[HEADER_WORDS..].as_ptr());
++    assert_eq!(arena.foreigns[1][FOREIGN_FUNCTION], 3);
++    assert_eq!(arena.foreigns[1][FOREIGN_LIBRARY], 9);
++}
+diff --git a/tools/experiments/vnext/frontend/bridge/tests/foreign_bindings.c b/tools/experiments/vnext/frontend/bridge/tests/foreign_bindings.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..cd3517998c501e3253aade19dee9d25964a3d89c
+--- /dev/null
++++ b/tools/experiments/vnext/frontend/bridge/tests/foreign_bindings.c
+@@ -0,0 +1,44 @@
++/* SPDX-License-Identifier: GPL-3.0-only */
++/* Test-only metadata for the unmodified slice_probe.c implementation. */
++#include <stdbool.h>
++#include <stdint.h>
++#include "foreign.h"
++
++#if !defined(__linux__) || !defined(__x86_64__)
++#error "this fixture is admitted only for Linux x86-64 System V"
++#endif
++
++extern int64_t chibi_slice_echo(int64_t value);
++extern bool chibi_slice_not(bool value);
++extern int64_t chibi_slice_clear(void);
++extern int64_t chibi_slice_mark(int64_t value);
++extern int64_t chibi_slice_trace(void);
++extern int64_t chibi_slice_weighted8(int64_t a, int64_t b, int64_t c, int64_t d,
++                                   int64_t e, int64_t f, int64_t g, int64_t h);
++
++/* Independent fixture expectations for Model v3's scalar IDs, not a second
++ * generic schema. A signature mismatch must reject before any callable cast. */
++static const uint32_t i64_parameters[8] = {2, 2, 2, 2, 2, 2, 2, 2};
++static const uint32_t bool_parameter[1] = {1};
++static const uint8_t library_name[] = "libslice_probe.a";
++
++/* GCC's function-to-object pointer conversion is target-specific here. Both
++ * pointer representations and the descriptor layout are pinned for this ABI.
++ * The original code and immutable metadata stay live for the caller process. */
++_Static_assert(sizeof(void (*)(void)) == sizeof(void *), "System V code pointer width");
++#define BIND(symbol, parameters, count, result) \
++    {library_name, sizeof(library_name) - 1, \
++     (const uint8_t *)#symbol, sizeof(#symbol) - 1, \
++     parameters, count, result, (const void *)(symbol)}
++static const ChibiVnextForeignBinding bindings[] = {
++    BIND(chibi_slice_echo, i64_parameters, 1, 2),
++    BIND(chibi_slice_not, bool_parameter, 1, 1),
++    BIND(chibi_slice_clear, NULL, 0, 2),
++    BIND(chibi_slice_mark, i64_parameters, 1, 2),
++    BIND(chibi_slice_trace, NULL, 0, 2),
++    BIND(chibi_slice_weighted8, i64_parameters, 8, 2),
++};
++#undef BIND
++
++const ChibiVnextForeignBinding *chibi_vnext_test_bindings(void) { return bindings; }
++uint64_t chibi_vnext_test_binding_count(void) { return sizeof(bindings) / sizeof(bindings[0]); }
+diff --git a/tools/experiments/vnext/frontend/typed/Model.chibi b/tools/experiments/vnext/frontend/typed/Model.chibi
+index 59de0181d65e0b4f1ac4305301ee06e0a08a6a54..4aed9b2c587901f8a4c873f2266b00ecf888b341 100644
+--- a/tools/experiments/vnext/frontend/typed/Model.chibi
++++ b/tools/experiments/vnext/frontend/typed/Model.chibi
+@@ -1,6 +1,6 @@
+ package vnext_typed
+ 
+-// vnext-bridge-version: 2
++// vnext-bridge-version: 3
+ 
+ import syntax "project:syntax_diagnostics"
+ 
+@@ -24,9 +24,12 @@ pub MultiplyI64: u32 : ConstantBool + 1;
+ pub GreaterI64: u32 : MultiplyI64 + 1;
+ pub NotBool: u32 : GreaterI64 + 1;
+ pub DirectCall: u32 : NotBool + 1;
++pub EqualI64: u32 : DirectCall + 1;
+ // vnext-bridge-enum: end
+ pub BlockDefinition: u32 : 2147483648;
+ pub MaxFunctions: int : 32;
++pub MaxLibraries: int : 32;
++pub MaxLibraryBytes: int : 256;
+ pub MaxParameters: int : 32;
+ pub MaxLocals: int : 64;
+ pub MaxBlocks: int : 64;
+@@ -42,6 +45,10 @@ pub Function :: struct {
+     origin: u32;
+     exported: u32;
+ }
++// Target: 8 scalar bytes. Each imported function belongs to exactly one row,
++// in FunctionID order. library is a nonempty NameID, not a loader path.
++// Imported functions have zero body spans and no published entry.
++pub Foreign :: struct { function: u32; library: u32; }
+ pub Signature :: struct {
+     first_parameter: u32;
+     parameter_count: u32;
+@@ -57,7 +64,7 @@ pub Block :: struct {
+ // block ID | BlockDefinition for a block parameter. Type lives only here.
+ pub Value :: struct { type: u32; definition: u32; }
+ // Target: 24 scalar bytes. ConstantI64 payload is a literal ID; ConstantBool
+-// payload is 0/1. AddI64/MultiplyI64/GreaterI64 read left/right; NotBool reads
++// payload is 0/1. AddI64/MultiplyI64/GreaterI64/EqualI64 read left/right; NotBool reads
+ // left. DirectCall payload is a CallID. Jump payload is an edge ID. Branch
+ // reads left and payload names two consecutive edges (true, false). Return
+ // reads left. Unused fields are zero; result type lives only in Value.
+@@ -73,6 +80,7 @@ pub Origin :: struct { document: u32; start: u32; end: u32; }
+ pub Name :: struct { start: u32; count: u32; }
+ pub Module :: struct {
+     functions: Function[];
++    foreigns: Foreign[];
+     signatures: Signature[];
+     parameter_types: u32[];
+     blocks: Block[];
+diff --git a/tools/experiments/vnext/frontend/typed/Produce.chibi b/tools/experiments/vnext/frontend/typed/Produce.chibi
+index c3e2e4f5d07ccd678a95ca0c8b4a3ffec11abbef..ae2eb5c466c44d62ed4f830f19bb43cb0a6de8be 100644
+--- a/tools/experiments/vnext/frontend/typed/Produce.chibi
++++ b/tools/experiments/vnext/frontend/typed/Produce.chibi
+@@ -32,6 +32,7 @@ Document :: struct {
+     node_base: int;
+ }
+ Header :: struct { source: int; declaration: int; name: int; public: bool; }
++Library :: struct { alias: int; path: string; name: u32; }
+ 
+ // One invocation owns this scratch state and a separate Module. Output helpers
+ // take both as direct scoped parameters: the old seed rejected the version
+@@ -61,7 +62,7 @@ State :: struct {
+ }
+ 
+ EmptyModule :: () -> Module {
+-    return {functions: [], signatures: [], parameter_types: [], blocks: [],
++    return {functions: [], foreigns: [], signatures: [], parameter_types: [], blocks: [],
+             block_parameters: [], values: [], instructions: [], edges: [], calls: [],
+             arguments: [], literals: [], origins: [], names: [], name_bytes: []};
+ }
+@@ -219,101 +220,174 @@ ReadType :: (s: ^State, node: int, owner: int) -> u32 {
+     }
+ }
+ 
+-Headers :: (s: ^State, output: ^Module, root: int) {
+-    declaration := First(s, root);
+-    if (!reader.Kind(s.tree, declaration, syntax.PackageHeader)) {
+-        Fail(s, root, "vNext scalar slice requires one package header");
++// Both authored and foreign declarations use the retained annotation reader.
++FunctionHeader :: (s: ^State, output: ^Module, declaration: int, library_id: u32) {
++    if (length(s.headers) == MaxFunctions) {
++        Fail(s, declaration, "vNext scalar slice exceeds 32 functions");
+         return;
+     }
+-    declaration = Next(s, declaration);
+-    while (declaration >= 0 && length(s.diagnostics) == 0) {
+-        if (reader.Kind(s.tree, declaration, syntax.ImportDeclaration)) {
+-            declaration = Next(s, declaration);
+-            continue;
++    if (reader.Field(s.tree, declaration, syntax.FieldAttribute) >= 0) {
++        Fail(s, declaration, "attributes are unsupported in vNext scalar slice");
++        return;
++    }
++    name := reader.Field(s.tree, declaration, syntax.FieldName);
++    if (!AdmitName(s, name)) { return; }
++    for (header in s.headers) {
++        if (s.packages[header.source] == s.packages[s.source] && HeaderMatches(s, header, name)) {
++            Fail(s, name, "duplicate function name");
++            return;
+         }
+-        if (!reader.Kind(s.tree, declaration, syntax.FunctionDeclaration)) {
+-            Fail(s, declaration, "unsupported declaration in vNext scalar slice");
++    }
++    parameter_first := length(output.parameter_types);
++    parameters := reader.Field(s.tree, declaration, syntax.FieldParameters);
++    parameter := First(s, parameters);
++    s.bindings = [];
++    while (parameter >= 0 && length(s.diagnostics) == 0) {
++        if (length(s.bindings) == MaxParameters) {
++            Fail(s, parameter, "vNext scalar slice exceeds 32 parameters");
+             return;
+         }
+-        if (length(s.headers) == MaxFunctions) {
+-            Fail(s, declaration, "vNext scalar slice exceeds 32 functions");
++        if (!reader.Kind(s.tree, parameter, syntax.Parameter) ||
++            reader.Field(s.tree, parameter, syntax.FieldComptime) >= 0 ||
++            reader.Field(s.tree, parameter, syntax.FieldValue) >= 0 ||
++            reader.Field(s.tree, parameter, syntax.FieldSource) >= 0) {
++            Fail(s, parameter, "vNext scalar slice requires ordinary explicit parameters");
+             return;
+         }
+-        if (reader.Field(s.tree, declaration, syntax.FieldAttribute) >= 0) {
+-            Fail(s, declaration, "attributes are unsupported in vNext scalar slice");
++        parameter_name := reader.Field(s.tree, parameter, syntax.FieldName);
++        if (!AdmitName(s, parameter_name)) { return; }
++        if (FindBinding(s, parameter_name) >= 0) {
++            Fail(s, parameter_name, "duplicate parameter name");
+             return;
+         }
+-        name := reader.Field(s.tree, declaration, syntax.FieldName);
+-        if (!AdmitName(s, name)) { return; }
+-        for (header in s.headers) {
+-            if (s.packages[header.source] == s.packages[s.source] && HeaderMatches(s, header, name)) {
+-                Fail(s, name, "duplicate function name");
+-                return;
+-            }
++        type := ReadType(s, reader.Field(s.tree, parameter, syntax.FieldType), parameter);
++        if (type == 0) { return; }
++        s.bindings.append(parameter_name);
++        s.parameter_names.append(parameter_name);
++        output.parameter_types.append(type);
++        parameter = Next(s, parameter);
++    }
++    result_type := ReadType(s, reader.Field(s.tree, declaration, syntax.FieldResults), declaration);
++    if (result_type == 0) { return; }
++    count := length(s.bindings);
++    if (count == 0) { parameter_first = 0; }
++    signature: Signature = {first_parameter: u32(parameter_first), parameter_count: u32(count), result_type: result_type};
++    output.signatures.append(signature);
++    source := s.nodes[name];
++    first_name := length(output.name_bytes);
++    entry_package := s.packages[s.source] == s.packages[0];
++    if (entry_package || library_id != 0) {
++        for (index in source.start..<source.end) {
++            output.name_bytes.append(u8(text_byte_at(s.text, index)));
++        }
++    } else {
++        // A dot cannot be part of a source Identifier. Global IDs keep
++        // dependency names unique without hashing or backend resolution.
++        symbol := format_text(".vnext.{}", length(s.headers) + 1);
++        for (index in 0..<text_byte_length(symbol)) {
++            output.name_bytes.append(u8(text_byte_at(symbol, index)));
++        }
++    }
++    // Each <=9-byte dependency name is shorter than its declaration;
++    // entry names are disjoint source spans within the aggregate byte cap.
++    assert(length(output.name_bytes) <= MaxSourceBytes, "admitted source bounds emitted names");
++    function_name: Name = {start: u32(first_name), count: u32(length(output.name_bytes) - first_name)};
++    output.names.append(function_name);
++    public := reader.Field(s.tree, declaration, syntax.FieldVisibility) >= 0;
++    exported: u32 = 0;
++    if (entry_package && public && library_id == 0) { exported = 1; }
++    function: Function = {name: u32(length(output.names)), signature: u32(length(output.signatures)),
++                          first_block: 0, block_count: 0, origin: OriginID(s, output, declaration), exported: exported};
++    // At most 32 function names are compared per admitted header. Native names
++    // must be unique even across libraries: AOT cannot distinguish two C symbols.
++    for (previous in output.functions) {
++        a := output.names[int(previous.name) - 1];
++        b := output.names[int(function.name) - 1];
++        equal := a.count == b.count;
++        for (index in 0..<int(a.count)) {
++            if (!equal) { break; }
++            if (output.name_bytes[int(a.start) + index] != output.name_bytes[int(b.start) + index]) { equal = false; }
+         }
+-        parameter_first := length(output.parameter_types);
+-        parameters := reader.Field(s.tree, declaration, syntax.FieldParameters);
+-        parameter := First(s, parameters);
+-        s.bindings = [];
+-        while (parameter >= 0 && length(s.diagnostics) == 0) {
+-            if (length(s.bindings) == MaxParameters) {
+-                Fail(s, parameter, "vNext scalar slice exceeds 32 parameters");
++        if (equal) { Fail(s, name, "duplicate native symbol name"); return; }
++    }
++    output.functions.append(function);
++    if (library_id != 0) {
++        imported: Foreign = {function: u32(length(output.functions)), library: library_id};
++        output.foreigns.append(imported);
++    }
++    header: Header = {source: s.source, declaration: declaration, name: name, public: public};
++    s.headers.append(header);
++}
++
++Headers :: (s: ^State, output: ^Module, root: int) {
++    declaration := First(s, root);
++    if (!reader.Kind(s.tree, declaration, syntax.PackageHeader)) {
++        Fail(s, root, "vNext scalar slice requires one package header");
++        return;
++    }
++    // Foreign aliases are file-local and precede their blocks, matching the
++    // current compiler. At most 32 rows are scanned once per foreign block.
++    libraries: Library[] = [];
++    declaration = Next(s, declaration);
++    while (declaration >= 0 && length(s.diagnostics) == 0) {
++        kind := s.nodes[declaration].kind;
++        if (kind == syntax.FunctionDeclaration) {
++            FunctionHeader(s, output, declaration, 0);
++        } else if (kind == syntax.ForeignImportDeclaration) {
++            if (length(libraries) == MaxLibraries) {
++                Fail(s, declaration, "vNext scalar slice exceeds 32 foreign libraries per source");
+                 return;
+             }
+-            if (!reader.Kind(s.tree, parameter, syntax.Parameter) ||
+-                reader.Field(s.tree, parameter, syntax.FieldComptime) >= 0 ||
+-                reader.Field(s.tree, parameter, syntax.FieldValue) >= 0 ||
+-                reader.Field(s.tree, parameter, syntax.FieldSource) >= 0) {
+-                Fail(s, parameter, "vNext scalar slice requires ordinary explicit parameters");
+-                return;
++            alias := reader.Field(s.tree, declaration, syntax.FieldAlias);
++            if (!AdmitName(s, alias)) { return; }
++            for (foreign_library in libraries) {
++                if (SameName(s, alias, foreign_library.alias)) { Fail(s, alias, "duplicate foreign library alias"); return; }
+             }
+-            parameter_name := reader.Field(s.tree, parameter, syntax.FieldName);
+-            if (!AdmitName(s, parameter_name)) { return; }
+-            if (FindBinding(s, parameter_name) >= 0) {
+-                Fail(s, parameter_name, "duplicate parameter name");
+-                return;
++            path_node := reader.Field(s.tree, declaration, syntax.FieldPath);
++            switch reader.Name(s.tree, path_node, s.document) {
++                case .Name(path, diagnostics):
++                    if (length(diagnostics) != 0) { s.diagnostics.append(diagnostics[0]); return; }
++                    if (text_byte_length(path) == 0 || text_byte_length(path) > MaxLibraryBytes) {
++                        Fail(s, path_node, "foreign library identity requires 1..256 bytes"); return;
++                    }
++                    for (index in 0..<text_byte_length(path)) {
++                        if (text_byte_at(path, index) == 0) { Fail(s, path_node, "foreign library identity contains a zero byte"); return; }
++                    }
++                    foreign_library: Library = {alias: alias, path: path, name: 0};
++                    libraries.append(foreign_library);
+             }
+-            type := ReadType(s, reader.Field(s.tree, parameter, syntax.FieldType), parameter);
+-            if (type == 0) { return; }
+-            s.bindings.append(parameter_name);
+-            s.parameter_names.append(parameter_name);
+-            output.parameter_types.append(type);
+-            parameter = Next(s, parameter);
+-        }
+-        result_type := ReadType(s, reader.Field(s.tree, declaration, syntax.FieldResults), declaration);
+-        if (result_type == 0) { return; }
+-        count := length(s.bindings);
+-        if (count == 0) { parameter_first = 0; }
+-        signature: Signature = {first_parameter: u32(parameter_first), parameter_count: u32(count), result_type: result_type};
+-        output.signatures.append(signature);
+-        source := s.nodes[name];
+-        first_name := length(output.name_bytes);
+-        entry_package := s.packages[s.source] == s.packages[0];
+-        if (entry_package) {
+-            for (index in source.start..<source.end) {
+-                output.name_bytes.append(u8(text_byte_at(s.text, index)));
++        } else if (kind == syntax.ForeignBlock) {
++            alias := reader.Field(s.tree, declaration, syntax.FieldLibrary);
++            if (!reader.Kind(s.tree, alias, syntax.Identifier)) {
++                Fail(s, declaration, "vNext scalar slice requires an explicit foreign library alias"); return;
+             }
+-        } else {
+-            // A dot cannot be part of a source Identifier. Global IDs keep
+-            // dependency names unique without hashing or backend resolution.
+-            symbol := format_text(".vnext.{}", length(s.headers) + 1);
+-            for (index in 0..<text_byte_length(symbol)) {
+-                output.name_bytes.append(u8(text_byte_at(symbol, index)));
+-            }
+-        }
+-        // Each <=9-byte dependency name is shorter than its declaration;
+-        // entry names are disjoint source spans within the aggregate byte cap.
+-        assert(length(output.name_bytes) <= MaxSourceBytes, "admitted source bounds emitted names");
+-        function_name: Name = {start: u32(first_name), count: u32(length(output.name_bytes) - first_name)};
+-        output.names.append(function_name);
+-        public := reader.Field(s.tree, declaration, syntax.FieldVisibility) >= 0;
+-        exported: u32 = 0;
+-        if (entry_package && public) { exported = 1; }
+-        function: Function = {name: u32(length(output.names)), signature: u32(length(output.signatures)),
+-                              first_block: 0, block_count: 0, origin: OriginID(s, output, declaration), exported: exported};
+-        output.functions.append(function);
+-        header: Header = {source: s.source, declaration: declaration, name: name, public: public};
+-        s.headers.append(header);
++            slot: int = -1;
++            for (foreign_library, index in libraries) {
++                if (SameName(s, alias, foreign_library.alias)) { slot = index; break; }
++            }
++            if (slot < 0) { Fail(s, alias, "unknown foreign library alias"); return; }
++            foreign_library := libraries[slot];
++            member := Next(s, alias);
++            while (member >= 0 && length(s.diagnostics) == 0) {
++                if (!reader.Kind(s.tree, member, syntax.ForeignFunction)) {
++                    Fail(s, member, "unsupported foreign declaration in vNext scalar slice"); return;
++                }
++                if (foreign_library.name == 0) {
++                    start := length(output.name_bytes);
++                    for (index in 0..<text_byte_length(foreign_library.path)) {
++                        output.name_bytes.append(u8(text_byte_at(foreign_library.path, index)));
++                    }
++                    name: Name = {start: u32(start), count: u32(text_byte_length(foreign_library.path))};
++                    output.names.append(name);
++                    foreign_library.name = u32(length(output.names));
++                    libraries[slot] = foreign_library;
++                }
++                FunctionHeader(s, output, member, foreign_library.name);
++                member = Next(s, member);
++            }
++        } else if (kind != syntax.ImportDeclaration) {
++            Fail(s, declaration, "unsupported declaration in vNext scalar slice"); return;
++        }
+         declaration = Next(s, declaration);
+     }
+ }
+@@ -427,13 +501,17 @@ Expression :: (s: ^State, output: ^Module, node: int, depth: int) -> u32 {
+     }
+     if (kind == syntax.BinaryExpression) {
+         operator := reader.Field(s.tree, node, syntax.FieldOperator);
++        if (reader.Kind(s.tree, operator, token.CmpAnd)) {
++            return Conjunction(s, output, node, depth);
++        }
+         op: u32 = 0;
+         result_type: u32 = I64;
+         if (reader.Kind(s.tree, operator, token.Add)) { op = AddI64; }
+         else if (reader.Kind(s.tree, operator, token.Mul)) { op = MultiplyI64; }
+         else if (reader.Kind(s.tree, operator, token.Gt)) { op = GreaterI64; result_type = Bool; }
++        else if (reader.Kind(s.tree, operator, token.CmpEq)) { op = EqualI64; result_type = Bool; }
+         else {
+-            Fail(s, operator, "vNext scalar slice supports only i64 +, * and > binary operations");
++            Fail(s, operator, "vNext scalar slice supports only i64 +, *, >, == and bool && binary operations");
+             return 0;
+         }
+         left_node := reader.Field(s.tree, node, syntax.FieldLeft);
+@@ -577,6 +655,34 @@ FinishEdge :: (output: ^Module, edge: u32, target: u32, arguments: u32[]) {
+     output.edges[int(edge) - 1] = row;
+ }
+ 
++// The false edge carries left, already false. The right expression is emitted
++// only in the true block; nested conjunctions finish before this merge exists.
++Conjunction :: (s: ^State, output: ^Module, node: int, depth: int) -> u32 {
++    left_node := reader.Field(s.tree, node, syntax.FieldLeft);
++    left := Expression(s, output, left_node, depth + 1);
++    if (left == 0) { return 0; }
++    if (output.values[int(left) - 1].type != Bool) { Fail(s, left_node, "bool && requires a bool operand"); return 0; }
++    true_edge := NewEdge(output);
++    false_edge := NewEdge(output);
++    Emit(s, output, Branch, 0, left, 0, true_edge, node);
++    right_block := NewBlock(s, output, node);
++    if (right_block == 0) { return 0; }
++    empty: u32[] = [];
++    FinishEdge(output, true_edge, right_block, empty);
++    right_node := reader.Field(s.tree, node, syntax.FieldRight);
++    right := Expression(s, output, right_node, depth + 1);
++    if (right == 0) { return 0; }
++    if (output.values[int(right) - 1].type != Bool) { Fail(s, right_node, "bool && requires a bool operand"); return 0; }
++    right_exit := NewEdge(output);
++    Emit(s, output, Jump, 0, 0, 0, right_exit, node);
++    merge := NewBlock(s, output, node);
++    if (merge == 0) { return 0; }
++    result := NewParameter(s, output, Bool);
++    FinishEdge(output, false_edge, merge, [left]);
++    FinishEdge(output, right_exit, merge, [right]);
++    return result;
++}
++
+ // Acyclic source if becomes branch/true/[else]/merge. Without an else, the
+ // branch's false edge supplies the pre-branch values directly to the merge.
+ // Each authored arm has an isolated snapshot; differing values get parameters.
+@@ -683,16 +789,26 @@ Statements :: (s: ^State, output: ^Module, parent: int, depth: int) {
+                 Fail(s, name, "duplicate scalar local name");
+                 return;
+             }
+-            type := ReadType(s, reader.Field(s.tree, statement, syntax.FieldType), statement);
+-            if (type == 0) { return; }
++            annotation := reader.Field(s.tree, statement, syntax.FieldType);
++            type: u32 = 0;
++            if (annotation >= 0) {
++                type = ReadType(s, annotation, statement);
++                if (type == 0) { return; }
++            }
+             value := Expression(s, output, reader.Field(s.tree, statement, syntax.FieldValue), 0);
+             if (value == 0) { return; }
+-            if (output.values[int(value) - 1].type != type) {
++            if (type != 0 && output.values[int(value) - 1].type != type) {
+                 Fail(s, statement, "scalar local initializer type does not match annotation");
+                 return;
+             }
+             s.bindings.append(name);
+             s.current_values.append(value);
++        } else if (kind == syntax.ExpressionStatement) {
++            expression := First(s, statement);
++            if (!reader.Kind(s.tree, expression, syntax.CallExpression)) {
++                Fail(s, statement, "vNext scalar slice permits only a discarded call statement"); return;
++            }
++            Expression(s, output, expression, 0);
+         } else if (kind == syntax.Assignment) {
+             target := reader.Field(s.tree, statement, syntax.FieldTarget);
+             operator := reader.Field(s.tree, statement, syntax.FieldOperator);
+@@ -868,7 +984,9 @@ pub ProduceSources :: (sources: Source[]) -> Result {
+                                 import_rows.append(row);
+                                 import_nodes.append(declaration);
+                         }
+-                    } else if (!reader.Kind(tree, declaration, syntax.FunctionDeclaration)) {
++                    } else if (!reader.Kind(tree, declaration, syntax.FunctionDeclaration) &&
++                               !reader.Kind(tree, declaration, syntax.ForeignImportDeclaration) &&
++                               !reader.Kind(tree, declaration, syntax.ForeignBlock)) {
+                         return Result.Rejected(reader.Diagnostic(tree, declaration, source.document, "unsupported declaration in vNext scalar slice"));
+                     }
+                     declaration = reader.NextMember(tree, nodes[declaration].next_sibling);
+@@ -962,7 +1080,12 @@ pub ProduceSources :: (sources: Source[]) -> Result {
+     }
+ 
+     // No body is visited until every package's signatures and aliases exist.
++    foreign_index: int = 0;
+     for (header, function_index in pass_state.headers) {
++        if (foreign_index < length(output.foreigns) && output.foreigns[foreign_index].function == u32(function_index + 1)) {
++            foreign_index += 1;
++            continue;
++        }
+         SelectSource(&pass_state, header.source);
+         declaration := header.declaration;
+         function := output.functions[function_index];
+diff --git a/tools/experiments/vnext/frontend/typed/Verify.chibi b/tools/experiments/vnext/frontend/typed/Verify.chibi
+index 29e30135c238011602b318e56566d8df3612e87b..fc71f839a879caf79ff163790613d90d6bf49312 100644
+--- a/tools/experiments/vnext/frontend/typed/Verify.chibi
++++ b/tools/experiments/vnext/frontend/typed/Verify.chibi
+@@ -37,7 +37,7 @@ pub Verify :: (module: Module) -> int {
+     block_limit := MaxFunctions * MaxBlocks;
+     parameter_limit := block_limit * MaxLocals;
+     if (length(module.functions) > MaxFunctions || length(module.signatures) > MaxFunctions ||
+-        length(module.names) > MaxFunctions || length(module.parameter_types) > MaxFunctions * MaxParameters ||
++        length(module.names) > MaxFunctions + MaxLibraries || length(module.foreigns) > MaxFunctions || length(module.parameter_types) > MaxFunctions * MaxParameters ||
+         length(module.blocks) > block_limit || length(module.block_parameters) > parameter_limit ||
+         length(module.values) > parameter_limit + MaxNodes || length(module.instructions) > block_limit + MaxNodes ||
+         length(module.edges) > block_limit * 2 || length(module.calls) > MaxNodes ||
+@@ -53,6 +53,7 @@ pub Verify :: (module: Module) -> int {
+     arguments_used := resize([false], length(module.arguments));
+     defining_blocks := resize([u32(0)], length(module.values));
+     dominators := resize([u64(0)], length(module.blocks));
++    imported_functions := resize([false], length(module.functions));
+ 
+     // Side-table spans own all their scalar storage, including empty spans'
+     // canonical zero start. Shared row references do not duplicate ownership.
+@@ -102,15 +103,34 @@ pub Verify :: (module: Module) -> int {
+     }
+     // Call spans are checked after callee/signature IDs below.
+ 
+-    // Functions partition the block table. Their shared metadata IDs must
+-    // exist before any lookup; their entry signatures are checked below.
++    // Imported membership is sparse, unique and ordered. Libraries own names,
++    // not bodies; their actual symbols are resolved only at native admission.
++    previous_foreign: u32 = 0;
++    for (imported in module.foreigns) {
++        if (!Present(imported.function, length(module.functions)) || imported.function <= previous_foreign ||
++            !Present(imported.library, length(module.names))) { return InvalidSpan; }
++        library_name := module.names[int(imported.library) - 1];
++        if (library_name.count == 0 || library_name.count > u32(MaxLibraryBytes)) { return InvalidSpan; }
++        for (index in int(library_name.start)..<int(library_name.start + library_name.count)) {
++            if (module.name_bytes[index] == 0) { return InvalidSpan; }
++        }
++        previous_foreign = imported.function;
++        imported_functions[int(imported.function) - 1] = true;
++        names_used[int(imported.library) - 1] = true;
++    }
++    // Authored functions partition the block table; imported functions have
++    // canonical empty bodies and cannot publish an entry address.
+     next_block: int = 0;
+-    for (function in module.functions) {
+-        if (function.block_count == 0 || function.block_count > u32(MaxBlocks) ||
+-            !OwnedSpan(function.first_block, function.block_count, length(module.blocks), next_block)) {
+-            return InvalidSpan;
++    for (function, index in module.functions) {
++        if (imported_functions[index]) {
++            if (function.first_block != 0 || function.block_count != 0 || function.exported != 0) { return InvalidSpan; }
++        } else {
++            if (function.block_count == 0 || function.block_count > u32(MaxBlocks) ||
++                !OwnedSpan(function.first_block, function.block_count, length(module.blocks), next_block)) {
++                return InvalidSpan;
++            }
++            next_block += int(function.block_count);
+         }
+-        next_block += int(function.block_count);
+         if (!Present(function.name, length(module.names)) ||
+             !Present(function.signature, length(module.signatures)) ||
+             !Present(function.origin, length(module.origins)) || function.exported > 1) {
+@@ -173,7 +193,7 @@ pub Verify :: (module: Module) -> int {
+         for (at in int(block.first_instruction)..<next_instruction) {
+             instruction := module.instructions[at];
+             instruction_id := u32(at + 1);
+-            if (instruction.op < ConstantI64 || instruction.op > DirectCall) { return InvalidInstruction; }
++            if (instruction.op < ConstantI64 || instruction.op > EqualI64) { return InvalidInstruction; }
+             terminator := instruction.op == Jump || instruction.op == Branch || instruction.op == Return;
+             if (terminator != (at == next_instruction - 1)) { return InvalidTerminator; }
+             if (!Present(instruction.origin, length(module.origins))) { return InvalidSpan; }
+@@ -195,6 +215,9 @@ pub Verify :: (module: Module) -> int {
+                 case GreaterI64:
+                     if (instruction.payload != 0) { return InvalidInstruction; }
+                     result_type = Bool;
++                case EqualI64:
++                    if (instruction.payload != 0) { return InvalidInstruction; }
++                    result_type = Bool;
+                 case NotBool:
+                     if (instruction.right != 0 || instruction.payload != 0) { return InvalidInstruction; }
+                     result_type = Bool;
+@@ -253,6 +276,7 @@ pub Verify :: (module: Module) -> int {
+     // final when a block is visited. Every reachable mask contains entry's
+     // bit, so zero is an unambiguous missing-predecessor sentinel.
+     for (function in module.functions) {
++        if (function.block_count == 0) { continue; }
+         first_block := int(function.first_block);
+         block_end := first_block + int(function.block_count);
+         signature := module.signatures[int(function.signature) - 1];
+@@ -284,6 +308,7 @@ pub Verify :: (module: Module) -> int {
+                     case AddI64: operand_count = 2;
+                     case MultiplyI64: operand_count = 2;
+                     case GreaterI64: operand_count = 2;
++                    case EqualI64: operand_count = 2;
+                     case NotBool:
+                         operand_count = 1;
+                         operand_type = Bool;
+diff --git a/tools/experiments/vnext/frontend/typed/prepare.py b/tools/experiments/vnext/frontend/typed/prepare.py
+index 235ce5538d8afa9417715db86a3e69c40c192b95..2dc712676a77171b93001b1de4d87d0e07e2af6f 100644
+--- a/tools/experiments/vnext/frontend/typed/prepare.py
++++ b/tools/experiments/vnext/frontend/typed/prepare.py
+@@ -32,6 +32,8 @@ FIXTURES = (
+     (b"FIXTURE_SOURCE", TYPED_ROOT + "/fixtures/EchoJoin.chibi", "inputs/EchoJoin.chibi"),
+     (b"PACKAGE_MAIN_SOURCE", "tools/experiments/vnext/slice_cases/modules/Main.chibi", "inputs/modules/Main.chibi"),
+     (b"PACKAGE_MATH_SOURCE", "tools/experiments/vnext/slice_cases/modules/math/Math.chibi", "inputs/modules/math/Math.chibi"),
++    (b"FOREIGN_SOURCE", "tools/experiments/vnext/slice_cases/foreign/Main.chibi", "inputs/foreign/Main.chibi"),
++    (b"MISSING_SYMBOL_SOURCE", "tools/experiments/vnext/slice_cases/rejected/missing_symbol.chibi", "inputs/missing_symbol.chibi"),
+     (b"PRIVATE_IMPORT_SOURCE", "tools/experiments/vnext/slice_cases/rejected/private_import.chibi", "inputs/private_import.chibi"),
+ )
+ INPUT_MAP = [(TYPED_ROOT + "/tests/Main.chibi.in", "inputs/Main.chibi.in"),
+diff --git a/tools/experiments/vnext/frontend/typed/prepare_tests.py b/tools/experiments/vnext/frontend/typed/prepare_tests.py
+index c66ef860380b2ff7f911cbf237d3dfc4cbf9f8bb..5a9eee09d19296709a33883f9c9c4da832fc374a 100644
+--- a/tools/experiments/vnext/frontend/typed/prepare_tests.py
++++ b/tools/experiments/vnext/frontend/typed/prepare_tests.py
+@@ -66,6 +66,8 @@ class PreparationTests(unittest.TestCase):
+             b"FIXTURE_SOURCE": self.typed / "fixtures/EchoJoin.chibi",
+             b"PACKAGE_MAIN_SOURCE": self.root / "tools/experiments/vnext/slice_cases/modules/Main.chibi",
+             b"PACKAGE_MATH_SOURCE": self.root / "tools/experiments/vnext/slice_cases/modules/math/Math.chibi",
++            b"FOREIGN_SOURCE": self.root / "tools/experiments/vnext/slice_cases/foreign/Main.chibi",
++            b"MISSING_SYMBOL_SOURCE": self.root / "tools/experiments/vnext/slice_cases/rejected/missing_symbol.chibi",
+             b"PRIVATE_IMPORT_SOURCE": self.root / "tools/experiments/vnext/slice_cases/rejected/private_import.chibi",
+         }
+         literals = {marker: json.dumps(path.read_bytes().decode("utf-8"), ensure_ascii=False).encode()
+@@ -81,7 +83,7 @@ class PreparationTests(unittest.TestCase):
+     def test_exact_sources_literal_and_relative_manifest(self):
+         result = self.subject.prepare(self.output)
+         self.assertEqual(len(self.subject.SOURCE_MAP), 19)
+-        self.assertEqual(len(result["files"]), 25)
++        self.assertEqual(len(result["files"]), 27)
+         self.assertEqual(result["compile"], "not_run")
+         self.assertEqual(result["typed_tests"], "not_run")
+         for row in result["files"]:
+@@ -97,7 +99,8 @@ class PreparationTests(unittest.TestCase):
+         self.assertIn("project:package_graph", result["imports"]["project:vnext_typed"])
+         generated = next(row for row in result["files"] if row["path"] == "Main.chibi")
+         self.assertEqual(generated["generated_from"], ["inputs/Main.chibi.in", "inputs/EchoJoin.chibi",
+-                         "inputs/modules/Main.chibi", "inputs/modules/math/Math.chibi", "inputs/private_import.chibi"])
++                         "inputs/modules/Main.chibi", "inputs/modules/math/Math.chibi",
++                         "inputs/foreign/Main.chibi", "inputs/missing_symbol.chibi", "inputs/private_import.chibi"])
+         serialized = (self.output / "source-manifest.json").read_text()
+         self.assertNotIn(str(self.base), serialized)
+         self.assertEqual(json.loads(serialized), result)
+@@ -116,7 +119,7 @@ class PreparationTests(unittest.TestCase):
+     def test_missing_or_duplicate_marker(self):
+         path = self.typed / "tests/Main.chibi.in"
+         original = path.read_bytes()
+-        for marker in (b"FIXTURE_SOURCE", b"PACKAGE_MAIN_SOURCE", b"PACKAGE_MATH_SOURCE", b"PRIVATE_IMPORT_SOURCE"):
++        for marker in (b"FIXTURE_SOURCE", b"PACKAGE_MAIN_SOURCE", b"PACKAGE_MATH_SOURCE", b"FOREIGN_SOURCE", b"MISSING_SYMBOL_SOURCE", b"PRIVATE_IMPORT_SOURCE"):
+             for value in (b'"absent"', marker + b" " + marker):
+                 with self.subTest(marker=marker, value=value):
+                     path.write_bytes(original.replace(marker, value))
+diff --git a/tools/experiments/vnext/frontend/typed/tests/Main.chibi.in b/tools/experiments/vnext/frontend/typed/tests/Main.chibi.in
+index 0e2e994ca44f2fc7d85efe3e24d4f4bf4b0f7bc0..490e247eb0f44694555e74f8c5167425af62505e 100644
+--- a/tools/experiments/vnext/frontend/typed/tests/Main.chibi.in
++++ b/tools/experiments/vnext/frontend/typed/tests/Main.chibi.in
+@@ -158,6 +158,7 @@ Main :: () -> int {
+     assert(wrapping.instructions[3].op == typed.Return && wrapping.instructions[3].left == 3, "wrapping result is returned without evaluator substitution");
+     CheckScalarCalls();
+     CheckPackages();
++    CheckForeign();
+     CheckCallMutations();
+     CheckMutations(original, both);
+     CheckLimits();
+@@ -190,7 +191,6 @@ Main :: () -> int {
+         "package p\nBad :: (x: i64 = 1) -> i64 { return x; }\n",
+         "package p\nBad :: ($x: i64) -> i64 { return x; }\n",
+         "package p\nBad :: (x: i64) -> i64 { return absent; }\n",
+-        "package p\nBad :: (x: i64) -> i64 { local := x; return local; }\n",
+         "package p\nBad :: (x: i64) -> i64 { local: bool = x; return x; }\n",
+         "package p\nBad :: (b: bool, x: i64) -> i64 { x = b; return x; }\n",
+         "package p\nBad :: (b: bool) -> i64 { return b + 1; }\n",
+@@ -227,7 +227,7 @@ Accepted :: (text: string) -> typed.Module {
+             return module;
+         case .Rejected(diagnostic):
+             assert(false, "valid scalar transform rejected");
+-            return {functions: [], signatures: [], parameter_types: [], blocks: [],
++            return {functions: [], foreigns: [], signatures: [], parameter_types: [], blocks: [],
+                     block_parameters: [], values: [], instructions: [], edges: [], calls: [],
+                     arguments: [], literals: [], origins: [], names: [], name_bytes: []};
+     }
+@@ -298,6 +298,11 @@ CheckEqual :: (left: typed.Module, right: typed.Module) {
+         b := right.functions[index];
+         assert(a.name == b.name && a.signature == b.signature && a.first_block == b.first_block && a.block_count == b.block_count && a.origin == b.origin && a.exported == b.exported, "deterministic functions rows");
+     }
++    assert(length(left.foreigns) == length(right.foreigns), "deterministic foreign membership count");
++    for (a, index in left.foreigns) {
++        b := right.foreigns[index];
++        assert(a.function == b.function && a.library == b.library, "deterministic foreign membership rows");
++    }
+     assert(length(left.signatures) == length(right.signatures), "deterministic signatures count");
+     for (a, index in left.signatures) {
+         b := right.signatures[index];
+@@ -664,11 +669,9 @@ CheckScalarCalls :: () {
+         "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return Read(x: i64 = 1); }\n",
+         "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return (Read)(1); }\n",
+         "package p\nF :: () -> i64 { return other.Read(1); }\n",
+-        "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { Read(1); return 7; }\n",
+         "package p\nF :: () -> bool { return !1; }\n",
+         "package p\nF :: () -> i64 { return true * 7; }\n",
+         "package p\nF :: () -> bool { return 7 > false; }\n",
+-        "package p\nF :: () -> bool { return true && false; }\n"
+     ];
+     for (text in negatives) { Rejected(text); }
+     CheckRejectedAt("package p\nF :: () -> i64 { return Missing(); }\n", "unknown direct callee", "Missing");
+@@ -1136,7 +1139,7 @@ AcceptedSources :: (sources: typed.Source[]) -> typed.Module {
+             return module;
+         case .Rejected(diagnostic):
+             assert(false, "valid package transform rejected");
+-            return {functions: [], signatures: [], parameter_types: [], blocks: [],
++            return {functions: [], foreigns: [], signatures: [], parameter_types: [], blocks: [],
+                     block_parameters: [], values: [], instructions: [], edges: [], calls: [],
+                     arguments: [], literals: [], origins: [], names: [], name_bytes: []};
+     }
+@@ -1376,3 +1379,134 @@ CheckSourcesFailure :: (sources: typed.Source[], message: string, document: int)
+                    "source admission preserves the exact reason and offending document");
+     }
+ }
++
++// These exact original inputs are read only by the retained source parser.
++// Missing symbols are deliberately accepted here: resolution is a link gate.
++CheckForeign :: () {
++    source := FOREIGN_SOURCE;
++    missing_source := MISSING_SYMBOL_SOURCE;
++    module := Accepted(source);
++    CheckEqual(module, Accepted(source));
++    assert(length(module.functions) == 11 && length(module.foreigns) == 6, "six foreign signatures and five real source bodies are retained");
++    assert(length(module.parameter_types) == 14 && length(module.calls) == 12, "original foreign signatures and all effectful calls are produced");
++    assert(length(module.names) == 12, "one library name is shared by six foreign declarations");
++    library_id := module.foreigns[0].library;
++    path := module.names[int(library_id) - 1];
++    expected := "libslice_probe.a";
++    assert(path.count == u32(text_byte_length(expected)), "foreign library identity length comes from source");
++    for (index in 0..<int(path.count)) {
++        assert(module.name_bytes[int(path.start) + index] == u8(text_byte_at(expected, index)), "foreign library identity bytes come from source");
++    }
++    symbols := ["chibi_slice_echo", "chibi_slice_not", "chibi_slice_clear", "chibi_slice_mark", "chibi_slice_trace", "chibi_slice_weighted8"];
++    for (symbol, index in symbols) {
++        imported := module.foreigns[index];
++        function := module.functions[index];
++        assert(imported.function == u32(index + 1) && imported.library == library_id && NameMatches(module, index, symbol), "foreign names and dense IDs follow source order");
++        assert(function.first_block == 0 && function.block_count == 0 && function.exported == 0, "foreign declarations have no authored body or native export");
++        origin := module.origins[int(function.origin) - 1];
++        assert(origin.document == 19 && origin.start < origin.end && origin.end <= u32(text_byte_length(source)), "foreign origin retains the original declaration bytes");
++    }
++    for (index in 6..<11) {
++        function := module.functions[index];
++        assert(function.block_count > 0 && function.exported == 1, "all five original exports have produced bodies");
++    }
++    order := module.functions[9];
++    entry_block := module.blocks[int(order.first_block)];
++    first := module.instructions[int(entry_block.first_instruction)];
++    assert(first.op == typed.DirectCall && module.calls[int(first.payload) - 1].callee == 3, "discarded clear is still the first emitted effect");
++    // The call table records source evaluation order, not argument-list nesting.
++    assert(module.calls[3].callee == 3 && module.calls[4].callee == 4 && module.calls[5].callee == 4 && module.calls[6].callee == 6 && module.calls[7].callee == 5, "Order emits clear, mark1, mark2, weighted8 and trace in order");
++    weighted := module.calls[6];
++    left := DefiningInstruction(module, module.arguments[int(weighted.first_argument)]);
++    right := DefiningInstruction(module, module.arguments[int(weighted.first_argument) + 1]);
++    assert(left.op == typed.DirectCall && right.op == typed.DirectCall && left.payload == 5 && right.payload == 6, "outer foreign arguments retain separate nested call results");
++    short := module.functions[10];
++    condition := Terminator(module, short.first_block + 1);
++    assert(condition.op == typed.Branch, "short circuit branches before its effectful RHS");
++    rhs := module.edges[int(condition.payload) - 1];
++    skipped := module.edges[int(condition.payload)];
++    assert(rhs.target < skipped.target && skipped.argument_count == 1, "false path skips RHS and supplies its false value");
++    merge := module.blocks[int(skipped.target) - 1];
++    assert(merge.parameter_count == 1 && module.values[int(module.block_parameters[int(merge.first_parameter)]) - 1].type == typed.Bool, "short circuit merges one bool value");
++    rhs_exit := Terminator(module, rhs.target);
++    assert(rhs_exit.op == typed.Jump, "RHS reaches the bool merge");
++    rhs_value := EdgeArgument(module, module.edges[int(rhs_exit.payload) - 1]);
++    equality := DefiningInstruction(module, rhs_value);
++    assert(equality.op == typed.EqualI64, "original equality is typed explicitly inside RHS");
++
++    unresolved := Accepted(missing_source);
++    assert(length(unresolved.foreigns) == 1 && length(unresolved.functions) == 2 && length(unresolved.calls) == 1, "missing_symbol remains a successfully typed module for the link gate");
++    assert(NameMatches(unresolved, 0, "chibi_slice_absent"), "missing symbol is never substituted by a fixture implementation");
++    changed := Accepted(strings.ReplaceAll(source, "chibi_slice_echo", "another_echo"));
++    assert(NameMatches(changed, 0, "another_echo") && changed.calls[0].callee == 1, "foreign declaration and call names are source driven");
++    inferred := Accepted("package p\nFlag :: (x: bool) -> bool { saved := x; return saved; }\nNumber :: (x: i64) -> i64 { saved := x; return saved; }\n");
++    assert(length(inferred.values) == 2, "initialized inferred scalar locals preserve their typed values");
++    nested := Accepted("package p\nBoth :: (a: bool, b: bool, c: bool) -> bool { return a && (b && c); }\n");
++    assert(length(nested.blocks) == 5 && length(nested.edges) == 6, "nested short circuits retain topological RHS and merge blocks");
++    for (text in [
++        "package p\nBad :: () -> bool { return 1 && true; }\n",
++        "package p\nBad :: () -> bool { return true && 1; }\n",
++        "package p\nBad :: () -> bool { return true == false; }\n",
++        "package p\nBad :: () -> i64 { 1; return 1; }\n",
++        "package p\nforeign missing { f :: () -> i64 }\n",
++        "package p\nforeign { f :: () -> i64 }\n",
++        "package p\nforeign import probe \"one.a\"\nforeign import probe \"two.a\"\n",
++        "package p\nforeign import probe \"one.a\"\nforeign probe { f :: () -> i64 f :: () -> i64 }\n"
++    ]) { Rejected(text); }
++    discarded := Accepted("package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { Read(1); return 7; }\n");
++    assert(length(discarded.calls) == 1, "discarded authored calls remain effectful too");
++    collision: typed.Source[] = [
++        {path: "Main.chibi", text: "package p\nimport q \"project:q\"\nforeign import a \"one.a\"\nforeign a { same :: () -> i64 }\npub Main :: () -> i64 { return same(); }\n", document: 41},
++        {path: "q/Q.chibi", text: "package q\nforeign import b \"two.a\"\nforeign b { same :: () -> i64 }\n", document: 42}
++    ];
++    CheckSourcesRejected(collision, "duplicate native symbol name", 1, "same");
++    CheckForeignMutations(module);
++}
++
++CheckForeignMutations :: (original: typed.Module) {
++    changed := original;
++    rows := changed.foreigns;
++    row := rows[0];
++    row.function = 0;
++    rows[0] = row;
++    changed.foreigns = rows;
++    assert(typed.Verify(changed) == typed.InvalidSpan, "foreign function ID must exist");
++    changed = original;
++    rows = changed.foreigns;
++    rows[1] = rows[0];
++    changed.foreigns = rows;
++    assert(typed.Verify(changed) == typed.InvalidSpan, "foreign membership cannot repeat");
++    changed = original;
++    rows = changed.foreigns;
++    row = rows[0];
++    row.library = u32(length(changed.names) + 1);
++    rows[0] = row;
++    changed.foreigns = rows;
++    assert(typed.Verify(changed) == typed.InvalidSpan, "foreign library ID must exist");
++    changed = original;
++    functions := changed.functions;
++    function := functions[0];
++    function.block_count = 1;
++    functions[0] = function;
++    changed.functions = functions;
++    assert(typed.Verify(changed) == typed.InvalidSpan, "foreign declarations cannot own body blocks");
++    changed = original;
++    functions = changed.functions;
++    function = functions[0];
++    function.exported = 1;
++    functions[0] = function;
++    changed.functions = functions;
++    assert(typed.Verify(changed) == typed.InvalidSpan, "foreign declarations cannot publish entries");
++    changed = original;
++    instructions := changed.instructions;
++    for (instruction, index in instructions) {
++        if (instruction.op == typed.EqualI64) {
++            changed_instruction := instruction;
++            changed_instruction.left = 3;
++            instructions[index] = changed_instruction;
++            break;
++        }
++    }
++    changed.instructions = instructions;
++    assert(typed.Verify(changed) == typed.InvalidType, "equality rejects a bool operand");
++}
+diff --git a/tools/experiments/vnext/slice_backend/README.md b/tools/experiments/vnext/slice_backend/README.md
+index 0a81f8e878bf096f5101e4738b52c9b205510331..abfb9451f5ce809b980f60fcf8062ab149a04dd9 100644
+--- a/tools/experiments/vnext/slice_backend/README.md
++++ b/tools/experiments/vnext/slice_backend/README.md
+@@ -7,13 +7,34 @@ Pack → one Cranelift lowering for eager JIT and object output. The backend nev
+ reads source, interprets an IR, runs a prepared VM or converts LLVM text. The
+ pinned old c5 seed uses LLVM to build the Chibi test caller; that is distinct
+ from compiling the caller's source-produced typed bodies with Cranelift.
+-Only Linux x86-64 System V is admitted. The current version-2 source adds bool
++Only Linux x86-64 System V is admitted. The historical version-2 source added bool
+ literals, wrapping multiply, signed greater-than, bool not and direct calls.
+ Its pure-source proof, focused Rust backend tests, production library build
+ and three exact-source private native proofs passed, including JIT,
+ owned environment-failure handling and linked C execution. The subsequent
+ package-aware checkpoint below also passed independent full-chain acceptance.
+ 
++## Version-3 foreign-binding source checkpoint
++
++The current source consumes version 3 and adds integer equality plus imported
++functions through the same DirectCall lowering used for local calls. The sparse
++ordered Foreign table drives Linkage::Import declarations; imports have no body
++and publish no entry. Every source import must resolve against an exact
++caller-supplied library, symbol and scalar signature before either native
++consumer is constructed. This source checkpoint is not compiled or accepted;
++all new focused tests, production build, original-source JIT/AOT proofs and
++independent engineering review remain pending. Earlier evidence below applies
++only to its own frozen inputs, not this implementation.
++
++The backend contains no fixture symbol catalog, loader or process-symbol
++fallback. It registers real, nonnull caller-owned code addresses for resolved
++imports. Cranelift 0.137.1 installs dlsym in with_isa, so a newest-first lookup
++guard panics on any unexpected backend lookup rather than falling through.
++Missing/mismatched bindings instead return ordinary owned diagnostics with the
++source symbol, library, document label and byte span before any object or JIT
++output exists. The existing explicit JIT free, partial-failure cleanup,
++PERF_BUILDID_DIR rejection and finalization-before-publication rules remain.
++
+ ## Package-aware checkpoint
+ 
+ The package-aware producer and source transport reuse the unchanged version-2
+@@ -165,9 +186,11 @@ all handles are opaque `void *` (Chibi rawptr).
+ 
+ 1. `chibi_vnext_compile_both(words: const uint32_t *, word_count: uint64_t,
+    literals: const int64_t *, literal_count: uint64_t,
+-   names: const uint8_t *, name_byte_count: uint64_t) -> void *`.
++   names: const uint8_t *, name_byte_count: uint64_t,
++   bindings: const ChibiVnextForeignBinding *, binding_count: uint64_t) -> void *`.
+    Return an owned result after eager object and JIT completion, or an owned
+-   failure diagnostic. OOM aborts. No input pointers survive this call.
++   failure diagnostic. OOM aborts. Metadata borrows end during this call;
++   imported code remains caller-owned until every JIT owner is destroyed.
+ 2. `chibi_vnext_status(owner) -> uint32_t`: 0 ready, 1 bad public argument,
+    2 bad framing, 3 unsupported target, 4 backend/environment failure.
+ 3. `chibi_vnext_diagnostic_length(owner) -> uint64_t` and
+@@ -196,8 +219,29 @@ with no concurrent mutation during compile. Output destinations likewise name
+ writable, nonoverlapping caller storage. Checks cannot prove pointer validity,
+ prevent forged/stale handles or make double destruction safe.
+ 
+-The current frame decoder requires version 2 and checks counts/exact framing.
+-Version-1 input is rejected, with no compatibility translation. This is explicitly
++[foreign.h](foreign.h) is the common C declaration and layout contract. Append
++`bindings: rawptr, binding_count: u64` to the six existing Chibi foreign-call
++parameters. A descriptor is 64 bytes/alignment 8 on Linux x86-64 System V:
++library pointer/length at offsets 0/8, symbol pointer/length at 16/24,
++parameter-type pointer/count at 32/40, u32 result type at 48, natural four-byte
++padding, then code pointer at 56. Both Rust and C pin every offset. Scalar IDs
++come from the generated typed schema: bool=1, i64=2. Code addresses must have
++the exact declared System V signature, including zero-extended bool parameters
++and results. Pointer checks cannot prove executable storage or signature truth.
++
++At most 32 descriptors are accepted, including unused bindings. Every supplied
++descriptor is validated: library spelling is 1..256 UTF-8 bytes, symbol spelling
++is 1..65,536 UTF-8 bytes, neither contains NUL, parameter count is at most 32,
++all parameter/result types are scalar, and code addresses are nonnull. Repeated
++symbols are rejected even across libraries or with identical signatures,
++because AOT link names cannot distinguish them. NULL/zero descriptor arrays
++support modules without imports. Metadata is never retained; the caller must
++keep imported code loaded and callable through all generated calls and owner
++destructions. The copied object contains ordinary external relocations, not
++copied code addresses, and requires its own native link against the provider.
++
++The current frame decoder requires version 3 and checks counts/exact framing.
++Version-1 and version-2 input is rejected, with no compatibility translation. This is explicitly
+ an already-verified same-process model contract: the producer has run Chibi
+ Verify before packing. The backend does not accept or semantically validate
+ arbitrary unverified frames. It checks IDs/spans, admission bounds, kind decoding
+@@ -233,8 +277,8 @@ library is compiled with panic=abort; no panic may unwind through Chibi/C.
+ 
+ ## Focused tests and accounting
+ 
+-All three focused Rust tests in lib.rs passed without filtering in both the
+-historical version-1 proof and the separate version-2 proof above. Public framing/count
++The three earlier focused Rust tests in lib.rs passed without filtering in both
++the historical version-1 proof and the separate version-2 proof above. Public framing/count
+ rejection covers null/nonzero pairs for each scalar buffer and
+ excessive counts on actual small buffers, with shared owned-diagnostic,
+ no-output and destroy checks; byte copy is exact or leaves
+@@ -250,7 +294,29 @@ gate recorded under each version's result. Generated enum/framing tests are owne
+ frontend/bridge/tests/arena_tests.rs. A production library requires panic=abort;
+ Rust's unit-test harness uses its ordinary test panic behavior.
+ 
+-Current adapter accounting: borrowed name adaptation, then one instruction
++Four new source-only tests cover malformed descriptor pointers/counts and
++metadata, duplicate symbols across libraries, exact library/symbol/signature
++resolution with source-origin diagnostics and no outputs, a compiled import/call
++and equality wrapper after every metadata buffer is poisoned/dropped, and the
++no-fallback lookup guard. The
++existing three tests remain, including injected finalization-failure cleanup.
++The seven-test current suite has not run at this source checkpoint. The future
++lifetime test executes its generated wrapper against a real Rust C-ABI function;
++its synthetic model is only a focused backend test. The eight original foreign
++oracles and missing-symbol rejection remain separate source integration gates.
++
++Current adapter accounting: descriptors occupy 64 bytes each (384 bytes for the
++six-import fixture, 2,048 bytes maximum), with temporary borrowed views and an
++8-byte resolved address per import. Metadata validation runs once. Duplicate
++checking costs at most 496 symbol comparisons and source resolution at most
++1,024 library/symbol comparisons; signatures compare at most 32 scalar IDs per
++match. These bounded scans never occur per instruction. Symbol lengths remain
++bounded by the 65,536-byte source admission; pathological long common prefixes
++can raise duplicate comparison traffic to about 31 MiB, and are not measured
++here. Both function passes consume sparse import membership/declaration linkage
++without adding a function flag table. No speed claim follows from these counts.
++
++The retained adapter does borrowed name adaptation, then one instruction
+ traversal for Object and one for JIT. Duplicate semantic verification and its
+ 4-bytes/value plus 1-byte/block scratch are removed. Each lowering reserves a
+ block map, a statically pinned 4-byte PackedOption<Value> per value, declaration
+diff --git a/tools/experiments/vnext/slice_backend/foreign.h b/tools/experiments/vnext/slice_backend/foreign.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..ad0ed3fc143d712b2eac2f1eb080ab7687af0784
+--- /dev/null
++++ b/tools/experiments/vnext/slice_backend/foreign.h
+@@ -0,0 +1,53 @@
++// SPDX-License-Identifier: GPL-3.0-only
++#ifndef CHIBI_VNEXT_FOREIGN_H
++#define CHIBI_VNEXT_FOREIGN_H
++
++#include <stddef.h>
++#include <stdint.h>
++
++// Process-local metadata, borrowed only until compile_both returns. Parameter
++// and result types use the generated typed Model's scalar IDs (bool=1, i64=2).
++// address is a real function address with this exact System V scalar signature;
++// its code remains caller-owned and loaded until every JIT owner is destroyed.
++typedef struct ChibiVnextForeignBinding {
++    const uint8_t *library;
++    uint64_t library_length;
++    const uint8_t *symbol;
++    uint64_t symbol_length;
++    const uint32_t *parameter_types;
++    uint64_t parameter_count;
++    uint32_t result_type;
++    const void *address;
++} ChibiVnextForeignBinding;
++
++#if defined(__linux__) && defined(__x86_64__)
++_Static_assert(sizeof(ChibiVnextForeignBinding) == 64, "foreign descriptor byte budget");
++_Static_assert(_Alignof(ChibiVnextForeignBinding) == 8, "foreign descriptor alignment");
++_Static_assert(offsetof(ChibiVnextForeignBinding, library) == 0, "library offset");
++_Static_assert(offsetof(ChibiVnextForeignBinding, library_length) == 8, "library length offset");
++_Static_assert(offsetof(ChibiVnextForeignBinding, symbol) == 16, "symbol offset");
++_Static_assert(offsetof(ChibiVnextForeignBinding, symbol_length) == 24, "symbol length offset");
++_Static_assert(offsetof(ChibiVnextForeignBinding, parameter_types) == 32, "parameter types offset");
++_Static_assert(offsetof(ChibiVnextForeignBinding, parameter_count) == 40, "parameter count offset");
++_Static_assert(offsetof(ChibiVnextForeignBinding, result_type) == 48, "result type offset");
++_Static_assert(offsetof(ChibiVnextForeignBinding, address) == 56, "code address offset");
++#endif
++
++// Every nonempty input buffer must be readable, aligned, live and unchanged
++// throughout this call. At most 32 bindings; NULL with count zero is allowed.
++// Returns one owned ready/failure result; no metadata borrow is retained.
++void *chibi_vnext_compile_both(const uint32_t *words, uint64_t word_count,
++    const int64_t *literals, uint64_t literal_count,
++    const uint8_t *names, uint64_t name_byte_count,
++    const ChibiVnextForeignBinding *bindings, uint64_t binding_count);
++uint32_t chibi_vnext_status(const void *owner);
++uint64_t chibi_vnext_diagnostic_length(const void *owner);
++int32_t chibi_vnext_diagnostic_copy(const void *owner, uint8_t *destination, uint64_t capacity);
++const void *chibi_vnext_entry(const void *owner, uint32_t function_id);
++uint64_t chibi_vnext_object_length(const void *owner);
++int32_t chibi_vnext_object_copy(const void *owner, uint8_t *destination, uint64_t capacity);
++// Destroy exactly once, after every generated call finishes. This invalidates
++// all entries; copying an object does not retain a JIT/code dependency.
++int32_t chibi_vnext_destroy(void *owner);
++
++#endif
+diff --git a/tools/experiments/vnext/slice_backend/lib.rs b/tools/experiments/vnext/slice_backend/lib.rs
+index a83ba07293e69396f82d172f3870a304578ff668..dde4e2c649bb79eb120c6853e4df96624a02b011 100644
+--- a/tools/experiments/vnext/slice_backend/lib.rs
++++ b/tools/experiments/vnext/slice_backend/lib.rs
+@@ -1,6 +1,7 @@
+ // SPDX-License-Identifier: GPL-3.0-only
+ //! Same-process typed-frame backend. See README.md for the C caller contract.
+-//! No input borrow survives compile_both; only complete output is published.
++//! Metadata borrows end during compile_both; imported code stays caller-owned.
++//! Only complete output is published.
+ #![deny(unsafe_op_in_unsafe_fn)]
+ 
+ #[cfg(all(not(test), not(panic = "abort")))]
+@@ -26,6 +27,46 @@ use std::{mem, ptr, slice, str};
+ const _: () = assert!(mem::size_of::<PackedOption<Value>>() == 4);
+ const _: () = assert!(mem::size_of::<PackedOption<FuncRef>>() == 4);
+ 
++// The descriptor is a process-local C ABI, never a serialized frame. Metadata
++// borrows end at compile_both; code must remain callable until owner destruction.
++#[derive(Clone, Copy, Debug)]
++#[repr(C)]
++pub struct ForeignBinding {
++    pub library: *const u8,
++    pub library_length: u64,
++    pub symbol: *const u8,
++    pub symbol_length: u64,
++    pub parameter_types: *const u32,
++    pub parameter_count: u64,
++    pub result_type: u32,
++    pub address: *const c_void,
++}
++
++// Linux x86-64 System V: 4 bytes of ABI padding precede the code pointer.
++#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
++const _: () = {
++    assert!(mem::size_of::<ForeignBinding>() == 64);
++    assert!(mem::align_of::<ForeignBinding>() == 8);
++    assert!(mem::offset_of!(ForeignBinding, library) == 0);
++    assert!(mem::offset_of!(ForeignBinding, library_length) == 8);
++    assert!(mem::offset_of!(ForeignBinding, symbol) == 16);
++    assert!(mem::offset_of!(ForeignBinding, symbol_length) == 24);
++    assert!(mem::offset_of!(ForeignBinding, parameter_types) == 32);
++    assert!(mem::offset_of!(ForeignBinding, parameter_count) == 40);
++    assert!(mem::offset_of!(ForeignBinding, result_type) == 48);
++    assert!(mem::offset_of!(ForeignBinding, address) == 56);
++};
++
++// Validated views avoid repeating UTF-8/type checks during bounded resolution.
++#[derive(Debug)]
++struct Binding<'a> {
++    library: &'a str,
++    symbol: &'a str,
++    parameter_types: &'a [u32],
++    result_type: u32,
++    address: *const u8,
++}
++
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+ #[repr(u32)]
+ enum Status {
+@@ -138,7 +179,10 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
+     let mut context = module.make_context();
+     // Declare the whole module before any body, preserving dense source IDs.
+     // Forward, self and mutual calls share this same eager compilation path.
+-    for function in a.functions {
++    let mut foreigns = a.foreigns.iter().peekable();
++    for (at, function) in a.functions.iter().enumerate() {
++        let imported = foreigns.peek().is_some_and(|row| row[FOREIGN_FUNCTION] == at as u32 + 1);
++        if imported { foreigns.next(); }
+         let source = &a.signatures[index(function[FUNCTION_SIGNATURE], a.signatures.len())];
+         assert!(source[SIGNATURE_PARAMETER_COUNT] <= MAX_PARAMETERS as u32,
+                 "typed signature parameter admission");
+@@ -150,7 +194,9 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
+         for &type_id in &a.parameter_types[parameters] { signature.params.push(abi_parameter(type_id)); }
+         signature.returns.push(abi_parameter(source[SIGNATURE_RESULT_TYPE]));
+         assert!(function[FUNCTION_EXPORTED] <= 1, "typed export membership");
+-        let linkage = if function[FUNCTION_EXPORTED] == 1 { Linkage::Export } else { Linkage::Local };
++        let linkage = if imported { Linkage::Import }
++            else if function[FUNCTION_EXPORTED] == 1 { Linkage::Export }
++            else { Linkage::Local };
+         let name = names[index(function[FUNCTION_NAME], names.len())];
+         let id = module.declare_function(name, linkage, signature)
+             .expect("verified typed function declaration");
+@@ -158,6 +204,8 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
+         module.clear_signature(&mut context.func.signature);
+     }
+ 
++    assert!(foreigns.next().is_none(), "typed foreign function order");
++
+     let mut builder_context = FunctionBuilderContext::new();
+     let mut blocks = Vec::with_capacity(a.blocks.len());
+     let mut values = vec![PackedOption::<Value>::default(); a.values.len()];
+@@ -168,7 +216,9 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
+     for (&id, function) in declarations.iter().zip(a.functions) {
+         // Reuse the declaration's ABI facts and the context's signature storage.
+         // Signature::clone would allocate fresh parameter/return buffers here.
+-        let signature = &module.declarations().get_function_decl(id).signature;
++        let declaration = module.declarations().get_function_decl(id);
++        if declaration.linkage == Linkage::Import { continue; }
++        let signature = &declaration.signature;
+         context.func.signature.params.extend_from_slice(&signature.params);
+         context.func.signature.returns.extend_from_slice(&signature.returns);
+         context.func.signature.call_conv = signature.call_conv;
+@@ -218,6 +268,9 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
+                     Opcode::GreaterI64 => Some((builder.ins().icmp(IntCC::SignedGreaterThan,
+                         value(&values, instruction[INSTRUCTION_LEFT]),
+                         value(&values, instruction[INSTRUCTION_RIGHT])), BOOL)),
++                    Opcode::EqualI64 => Some((builder.ins().icmp(IntCC::Equal,
++                        value(&values, instruction[INSTRUCTION_LEFT]),
++                        value(&values, instruction[INSTRUCTION_RIGHT])), BOOL)),
+                     Opcode::NotBool => Some((builder.ins().icmp_imm(IntCC::Equal,
+                         value(&values, instruction[INSTRUCTION_LEFT]), 0), BOOL)),
+                     Opcode::DirectCall => {
+@@ -331,7 +384,62 @@ fn native_isa() -> Result<OwnedTargetIsa, Failure> {
+     })
+ }
+ 
+-fn compile(a: &Arena<'_>) -> Result<Compiled, Failure> {
++// At most 32 imports by 32 bindings, once before either native consumer.
++// Source verification owns semantic validity; these assertions protect adapter
++// invariants, while absent/mismatched external bindings are ordinary failures.
++fn resolve_imports(a: &Arena<'_>, names: &[&str], bindings: &[Binding<'_>])
++    -> Result<Vec<*const u8>, Failure>
++{
++    assert!(a.foreigns.len() <= MAX_FUNCTIONS as usize, "typed foreign admission");
++    let mut addresses = Vec::with_capacity(a.foreigns.len());
++    let mut previous = 0;
++    for foreign in a.foreigns {
++        let function_id = foreign[FOREIGN_FUNCTION];
++        assert!(function_id > previous, "typed foreign function order");
++        previous = function_id;
++        let function = &a.functions[index(function_id, a.functions.len())];
++        assert_eq!(function[FUNCTION_FIRST_BLOCK], 0, "imported body starts at zero");
++        assert_eq!(function[FUNCTION_BLOCK_COUNT], 0, "imported function has no body");
++        assert_eq!(function[FUNCTION_EXPORTED], 0, "imported function is not exported");
++        let symbol = names[index(function[FUNCTION_NAME], names.len())];
++        let library = names[index(foreign[FOREIGN_LIBRARY], names.len())];
++        let signature = &a.signatures[index(function[FUNCTION_SIGNATURE], a.signatures.len())];
++        let parameters = model_span(signature[SIGNATURE_FIRST_PARAMETER],
++                                    signature[SIGNATURE_PARAMETER_COUNT], a.parameter_types.len());
++        let binding = bindings.iter().find(|binding| binding.library == library && binding.symbol == symbol);
++        let reason = match binding {
++            Some(binding) if binding.parameter_types == &a.parameter_types[parameters]
++                && binding.result_type == signature[SIGNATURE_RESULT_TYPE] => {
++                    addresses.push(binding.address);
++                    continue;
++                }
++            Some(_) => "signature mismatch",
++            None => "no matching library and symbol binding",
++        };
++        let origin = &a.origins[index(function[FUNCTION_ORIGIN], a.origins.len())];
++        return Err(Failure { status: Status::BackendFailure, message: format!(
++            "unresolved foreign symbol {symbol:?} in library {library:?} at document {} span {}..{}: {reason}",
++            origin[ORIGIN_DOCUMENT], origin[ORIGIN_START], origin[ORIGIN_END]) });
++    }
++    Ok(addresses)
++}
++
++fn jit_builder(isa: OwnedTargetIsa, a: &Arena<'_>, names: &[&str], addresses: &[*const u8]) -> JITBuilder {
++    assert_eq!(a.foreigns.len(), addresses.len(), "every import was resolved");
++    let mut builder = JITBuilder::with_isa(isa, default_libcall_names());
++    for (foreign, &address) in a.foreigns.iter().zip(addresses) {
++        assert!(!address.is_null(), "resolved code address is nonnull");
++        let function = &a.functions[index(foreign[FOREIGN_FUNCTION], a.functions.len())];
++        builder.symbol(names[index(function[FUNCTION_NAME], names.len())], address);
++    }
++    // with_isa installs dlsym; callbacks run newest-first and None falls through.
++    // All admitted symbols are registered above. Unexpected helper/import lookup
++    // is a compiler bug, never permission to resolve process-global symbols.
++    builder.symbol_lookup_fn(Box::new(|name| panic!("unexpected JIT symbol lookup: {name}")));
++    builder
++}
++
++fn compile(a: &Arena<'_>, bindings: &[Binding<'_>]) -> Result<Compiled, Failure> {
+     // Upstream perf-map creation uses unwrap. This bounded compiler admits
+     // no perf-map side effects; return an owned environment error before JIT.
+     if std::env::var_os("PERF_BUILDID_DIR").is_some() {
+@@ -339,6 +447,7 @@ fn compile(a: &Arena<'_>) -> Result<Compiled, Failure> {
+             message: "PERF_BUILDID_DIR profiling is unsupported by this backend".into() });
+     }
+     let names = borrow_names(a);
++    let addresses = resolve_imports(a, &names, bindings)?;
+     let isa = native_isa()?;
+     // Finish object bytes first; a later JIT error drops them without ever
+     // publishing a partial result. No semantic body is copied or retained.
+@@ -349,7 +458,7 @@ fn compile(a: &Arena<'_>) -> Result<Compiled, Failure> {
+     let object = object.finish().emit().map_err(|error| Failure {
+         status: Status::BackendFailure, message: format!("object emission: {error}"),
+     })?;
+-    let mut jit = JitOwner(Some(JITModule::new(JITBuilder::with_isa(isa, default_libcall_names()))));
++    let mut jit = JitOwner(Some(JITModule::new(jit_builder(isa, a, &names, &addresses))));
+     let functions = define_bodies(jit.module(), a, &names)?;
+     jit.module().finalize_definitions().map_err(|error| module_failure(error, "JIT finalization"))?;
+     let entries = functions.iter().zip(a.functions).map(|(&id, source)| {
+@@ -359,7 +468,7 @@ fn compile(a: &Arena<'_>) -> Result<Compiled, Failure> {
+     Ok(Compiled { _jit: jit, entries, object })
+ }
+ 
+-// Called for three scalar input types. This checks only what raw pointers can
++// Used for all public input arrays. This checks only what raw pointers can
+ // prove; valid readable storage and no concurrent mutation remain obligations.
+ fn input_length<T>(pointer: *const T, count: u64) -> Result<usize, Failure> {
+     let count = usize::try_from(count).ok().filter(|count| *count <= MAX_ELEMENTS)
+@@ -377,24 +486,78 @@ unsafe fn input_slice<'a, T>(pointer: *const T, count: usize) -> &'a [T] {
+     if count == 0 { &[] } else { unsafe { slice::from_raw_parts(pointer, count) } }
+ }
+ 
++// SAFETY: each admitted nonempty metadata pointer names a readable allocation
++// for this call. Null/count, alignment and extents are checked before borrowing.
++unsafe fn borrow_bindings<'a>(descriptors: &[ForeignBinding]) -> Result<Vec<Binding<'a>>, Failure> {
++    let mut bindings: Vec<Binding<'a>> = Vec::with_capacity(descriptors.len());
++    for (at, descriptor) in descriptors.iter().enumerate() {
++        let invalid = |reason: &str| Failure { status: Status::InvalidArgument,
++            message: format!("foreign binding {}: {reason}", at + 1) };
++        let library_count = input_length(descriptor.library, descriptor.library_length)?;
++        let symbol_count = input_length(descriptor.symbol, descriptor.symbol_length)?;
++        let parameter_count = input_length(descriptor.parameter_types, descriptor.parameter_count)?;
++        if library_count == 0 || library_count > MAX_LIBRARY_BYTES as usize {
++            return Err(invalid("library length must be 1..256 bytes"));
++        }
++        if symbol_count == 0 || symbol_count > MAX_SOURCE_BYTES as usize {
++            return Err(invalid("symbol length exceeds source-name admission"));
++        }
++        if parameter_count > MAX_PARAMETERS as usize {
++            return Err(invalid("parameter count exceeds scalar signature admission"));
++        }
++        if descriptor.address.is_null() { return Err(invalid("nonnull code address required")); }
++        if ScalarType::decode(descriptor.result_type).is_none() {
++            return Err(invalid("result type must be bool or i64"));
++        }
++        let (library, symbol, parameter_types) = unsafe {
++            (input_slice(descriptor.library, library_count), input_slice(descriptor.symbol, symbol_count),
++             input_slice(descriptor.parameter_types, parameter_count))
++        };
++        if library.contains(&0) || symbol.contains(&0) {
++            return Err(invalid("library and symbol must not contain NUL"));
++        }
++        let library = str::from_utf8(library).map_err(|_| invalid("library must be UTF-8"))?;
++        let symbol = str::from_utf8(symbol).map_err(|_| invalid("symbol must be UTF-8"))?;
++        if parameter_types.iter().any(|&type_id| ScalarType::decode(type_id).is_none()) {
++            return Err(invalid("parameter types must be bool or i64"));
++        }
++        // AOT link names are bare C symbols: even different libraries cannot
++        // disambiguate duplicate symbols. Bound: at most 32 descriptors.
++        if bindings.iter().any(|binding| binding.symbol == symbol) {
++            return Err(invalid(&format!("duplicate native symbol {symbol:?}")));
++        }
++        bindings.push(Binding { library, symbol, parameter_types,
++            result_type: descriptor.result_type, address: descriptor.address.cast() });
++    }
++    Ok(bindings)
++}
++
+ #[unsafe(no_mangle)]
+ pub unsafe extern "C" fn chibi_vnext_compile_both(
+     words: *const u32, word_count: u64, literals: *const i64, literal_count: u64,
+     names: *const u8, name_byte_count: u64,
++    bindings: *const ForeignBinding, binding_count: u64,
+ ) -> *mut c_void {
+     // Check every pointer/count pair before constructing any input slice.
+     let result = (|| {
+         let word_count = input_length(words, word_count)?;
+         let literal_count = input_length(literals, literal_count)?;
+         let name_byte_count = input_length(names, name_byte_count)?;
++        let binding_count = input_length(bindings, binding_count)?;
++        if binding_count > MAX_FUNCTIONS as usize {
++            return Err(Failure { status: Status::InvalidArgument,
++                message: "foreign binding count exceeds 32".into() });
++        }
+         // SAFETY: counts were checked; remaining validity is the caller contract.
+-        let (words, literals, names) = unsafe {
+-            (input_slice(words, word_count), input_slice(literals, literal_count), input_slice(names, name_byte_count))
++        let (words, literals, names, descriptors) = unsafe {
++            (input_slice(words, word_count), input_slice(literals, literal_count),
++             input_slice(names, name_byte_count), input_slice(bindings, binding_count))
+         };
++        let bindings = unsafe { borrow_bindings(descriptors) }?;
+         let arena = Arena::from_parts(words, literals, names).map_err(|error| Failure {
+             status: Status::InvalidFrame, message: format!("typed frame: {error:?}"),
+         })?;
+-        compile(&arena)
++        compile(&arena, &bindings)
+     })();
+     let owner = match result { Ok(compiled) => Owner::Compiled(compiled), Err(error) => Owner::Failed(error) };
+     Box::into_raw(Box::new(owner)).cast()
+@@ -507,29 +670,230 @@ mod tests {
+         ];
+         for (words, word_count, literals, literal_count, names, name_count, expected) in cases {
+             let handle = unsafe {
+-                chibi_vnext_compile_both(words, word_count, literals, literal_count, names, name_count)
++                chibi_vnext_compile_both(words, word_count, literals, literal_count, names, name_count, ptr::null(), 0)
+             };
+-            assert!(!handle.is_null());
+-            unsafe {
+-                assert_eq!(chibi_vnext_status(handle), expected as u32);
+-                assert!(chibi_vnext_entry(handle, 1).is_null());
+-                assert_eq!(chibi_vnext_object_length(handle), 0);
+-                assert_eq!(chibi_vnext_object_copy(handle, ptr::null_mut(), 0), 4);
+-                let count = chibi_vnext_diagnostic_length(handle) as usize;
+-                assert!(count > 0);
+-                let mut destination = vec![0x7f; count];
+-                let too_small = chibi_vnext_diagnostic_copy(handle, destination.as_mut_ptr(), count as u64 - 1);
+-                assert_eq!(too_small, 2);
+-                assert!(destination.iter().all(|byte| *byte == 0x7f));
+-                let copied = chibi_vnext_diagnostic_copy(handle, destination.as_mut_ptr(), count as u64);
+-                assert_eq!(copied, 0);
+-                assert!(str::from_utf8(&destination).is_ok());
+-                let closed = chibi_vnext_destroy(handle);
+-                assert_eq!(closed, 0);
+-            }
++            assert!(!failed_owner(handle, expected).is_empty());
+         }
+     }
+ 
++    // Exercise the public failure owner, byte-copy and destruction contract for
++    // both old framing failures and the foreign-input/resolution failures.
++    fn failed_owner(handle: *mut c_void, expected: Status) -> String {
++        assert!(!handle.is_null());
++        unsafe {
++            assert_eq!(chibi_vnext_status(handle), expected as u32);
++            assert!(chibi_vnext_entry(handle, 1).is_null());
++            assert_eq!(chibi_vnext_object_length(handle), 0);
++            assert_eq!(chibi_vnext_object_copy(handle, ptr::null_mut(), 0), 4);
++            let count = chibi_vnext_diagnostic_length(handle) as usize;
++            assert!(count > 0);
++            let mut destination = vec![0x7f; count];
++            let too_small = chibi_vnext_diagnostic_copy(handle, destination.as_mut_ptr(), count as u64 - 1);
++            assert_eq!(too_small, 2);
++            assert!(destination.iter().all(|byte| *byte == 0x7f));
++            let copied = chibi_vnext_diagnostic_copy(handle, destination.as_mut_ptr(), count as u64);
++            assert_eq!(copied, 0);
++            let diagnostic = String::from_utf8(destination).unwrap();
++            let closed = chibi_vnext_destroy(handle);
++            assert_eq!(closed, 0);
++            diagnostic
++        }
++    }
++
++    extern "C" fn foreign_echo(value: i64) -> i64 { value }
++    extern "C" fn foreign_flag() -> bool { true }
++
++    fn descriptor(library: &[u8], symbol: &[u8], parameter_types: &[u32], result_type: u32) -> ForeignBinding {
++        ForeignBinding {
++            library: library.as_ptr(), library_length: library.len() as u64,
++            symbol: symbol.as_ptr(), symbol_length: symbol.len() as u64,
++            parameter_types: parameter_types.as_ptr(), parameter_count: parameter_types.len() as u64,
++            result_type, address: foreign_echo as *const () as *const c_void,
++        }
++    }
++
++    // One import-only model checks binding admission without compiling or
++    // executing native code. Original-source acceptance is a separate gate.
++    fn import_frame() -> (Vec<u32>, Vec<u8>) {
++        let symbol = b"ForeignEcho";
++        let library = b"test:binding";
++        let mut words = vec![VERSION, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 2];
++        assert_eq!(words.len(), HEADER_WORDS);
++        words.extend_from_slice(&[1, 1, 0, 0, 1, 0]); // function
++        words.extend_from_slice(&[1, 2]); // foreign
++        words.extend_from_slice(&[0, 1, I64]); // signature
++        words.push(I64);
++        words.extend_from_slice(&[17, 23, 47]); // original document/span
++        words.extend_from_slice(&[0, symbol.len() as u32]);
++        words.extend_from_slice(&[symbol.len() as u32, library.len() as u32]);
++        let mut names = symbol.to_vec();
++        names.extend_from_slice(library);
++        (words, names)
++    }
++
++    #[test]
++    fn public_foreign_arguments_reject_before_output_construction() {
++        let parameter = [I64];
++        let invalid_parameter = [0];
++        let base = descriptor(b"test:binding", b"ForeignEcho", &parameter, I64);
++        let cases = [
++            ForeignBinding { library: ptr::null(), ..base },
++            ForeignBinding { library_length: 0, ..base },
++            ForeignBinding { library_length: MAX_LIBRARY_BYTES as u64 + 1, ..base },
++            ForeignBinding { library_length: u64::MAX, ..base },
++            ForeignBinding { symbol: ptr::null(), ..base },
++            ForeignBinding { symbol_length: 0, ..base },
++            ForeignBinding { symbol_length: MAX_SOURCE_BYTES as u64 + 1, ..base },
++            ForeignBinding { symbol_length: u64::MAX, ..base },
++            ForeignBinding { parameter_types: ptr::null(), ..base },
++            ForeignBinding { parameter_count: MAX_PARAMETERS as u64 + 1, ..base },
++            ForeignBinding { parameter_count: u64::MAX, ..base },
++            ForeignBinding { parameter_types: invalid_parameter.as_ptr(), ..base },
++            ForeignBinding { result_type: 0, ..base },
++            ForeignBinding { address: ptr::null(), ..base },
++            descriptor(b"a\0b", b"ForeignEcho", &parameter, I64),
++            descriptor(b"test:binding", b"a\0b", &parameter, I64),
++            descriptor(b"\xff", b"ForeignEcho", &parameter, I64),
++            descriptor(b"test:binding", b"\xff", &parameter, I64),
++        ];
++        // Every pointer is null or comes from actual live storage. Oversized
++        // counts must reject before constructing a slice beyond that storage.
++        for binding in &cases {
++            let handle = unsafe { chibi_vnext_compile_both(ptr::null(), 0, ptr::null(), 0,
++                ptr::null(), 0, binding, 1) };
++            failed_owner(handle, Status::InvalidArgument);
++        }
++        for (bindings, count) in [(ptr::null(), 1), (&base as *const _, 33), (&base as *const _, u64::MAX)] {
++            let handle = unsafe { chibi_vnext_compile_both(ptr::null(), 0, ptr::null(), 0,
++                ptr::null(), 0, bindings, count) };
++            failed_owner(handle, Status::InvalidArgument);
++        }
++        for library in [b"test:binding".as_slice(), b"another:library".as_slice()] {
++            let duplicates = [base, descriptor(library, b"ForeignEcho", &parameter, I64)];
++            let handle = unsafe { chibi_vnext_compile_both(ptr::null(), 0, ptr::null(), 0,
++                ptr::null(), 0, duplicates.as_ptr(), 2) };
++            assert!(failed_owner(handle, Status::InvalidArgument).contains("duplicate native symbol"));
++        }
++        let valid = [base, ForeignBinding {
++            address: foreign_flag as *const () as *const c_void,
++            ..descriptor(b"test:binding", b"ZeroArity", &[], BOOL)
++        }];
++        let views = unsafe { borrow_bindings(&valid) }.unwrap();
++        assert_eq!(views.len(), 2);
++        assert_eq!(views[0].parameter_types, &[I64]);
++        assert!(views[1].parameter_types.is_empty());
++    }
++
++    #[test]
++    fn foreign_resolution_requires_exact_library_symbol_and_signature() {
++        let (words, names) = import_frame();
++        let arena = Arena::from_parts(&words, &[], &names).unwrap();
++        let parameter = [I64];
++        let base = descriptor(b"test:binding", b"ForeignEcho", &parameter, I64);
++        let valid = [base];
++        let bindings = unsafe { borrow_bindings(&valid) }.unwrap();
++        let resolved = resolve_imports(&arena, &borrow_names(&arena), &bindings).unwrap();
++        assert_eq!(resolved, vec![base.address.cast::<u8>()]);
++        assert!(std::env::var_os("PERF_BUILDID_DIR").is_none(), "test requires profiling disabled");
++        let absent = unsafe { chibi_vnext_compile_both(words.as_ptr(), words.len() as u64,
++            ptr::null(), 0, names.as_ptr(), names.len() as u64, ptr::null(), 0) };
++        let message = failed_owner(absent, Status::BackendFailure);
++        assert!(message.contains("ForeignEcho") && message.contains("test:binding"));
++        assert!(message.contains("document 17 span 23..47"));
++        let wrong_parameter = [BOOL];
++        let too_many_parameters = [I64, I64];
++        let cases = [
++            descriptor(b"other:binding", b"ForeignEcho", &parameter, I64),
++            descriptor(b"test:binding", b"OtherSymbol", &parameter, I64),
++            descriptor(b"test:binding", b"ForeignEcho", &wrong_parameter, I64),
++            descriptor(b"test:binding", b"ForeignEcho", &[], I64),
++            descriptor(b"test:binding", b"ForeignEcho", &too_many_parameters, I64),
++            ForeignBinding { result_type: BOOL, ..base },
++        ];
++        for (at, binding) in cases.iter().enumerate() {
++            let handle = unsafe { chibi_vnext_compile_both(words.as_ptr(), words.len() as u64,
++                ptr::null(), 0, names.as_ptr(), names.len() as u64, binding, 1) };
++            let message = failed_owner(handle, Status::BackendFailure);
++            assert!(message.contains("ForeignEcho") && message.contains("document 17 span 23..47"));
++            assert!(message.contains(if at < 2 { "no matching" } else { "signature mismatch" }));
++        }
++    }
++
++    #[test]
++    fn compiled_owner_outlives_all_borrowed_metadata() {
++        // A generic import plus a two-parameter equality wrapper exercises
++        // DirectCall/EqualI64 in both consumers. It is not a source substitute.
++        let symbol = b"ForeignEcho";
++        let library = b"test:binding";
++        let exported = b"CompareForeign";
++        let mut words = vec![VERSION, 2, 1, 2, 3, 1, 2, 4, 3, 0, 1, 1, 3, 3];
++        words.extend_from_slice(&[1, 1, 0, 0, 1, 0, 3, 2, 0, 1, 2, 1]); // functions
++        words.extend_from_slice(&[1, 2]); // foreign
++        words.extend_from_slice(&[0, 1, I64, 1, 2, BOOL]); // signatures
++        words.extend_from_slice(&[I64, I64, I64]);
++        words.extend_from_slice(&[0, 2, 0, 3]); // block
++        words.extend_from_slice(&[1, 2]); // block parameters
++        words.extend_from_slice(&[I64, BLOCK_DEFINITION | 1, I64, BLOCK_DEFINITION | 1, I64, 1, BOOL, 2]);
++        words.extend_from_slice(&[DIRECT_CALL, 3, 0, 0, 1, 3,
++                                 EQUAL_I64, 4, 3, 2, 0, 3, RETURN, 0, 4, 0, 0, 3]);
++        words.extend_from_slice(&[1, 0]); // call
++        words.push(1); // call argument
++        words.extend_from_slice(&[17, 23, 47, 17, 50, 80, 17, 60, 75]); // origins
++        words.extend_from_slice(&[0, symbol.len() as u32, symbol.len() as u32, library.len() as u32,
++            (symbol.len() + library.len()) as u32, exported.len() as u32]);
++        let mut names = [symbol.as_slice(), library.as_slice(), exported.as_slice()].concat();
++        let mut parameters = vec![I64];
++        let mut binding_library = library.to_vec();
++        let mut binding_symbol = symbol.to_vec();
++        let mut descriptors = vec![descriptor(&binding_library, &binding_symbol, &parameters, I64)];
++        let handle = unsafe { chibi_vnext_compile_both(words.as_ptr(), words.len() as u64,
++            ptr::null(), 0, names.as_ptr(), names.len() as u64, descriptors.as_ptr(), descriptors.len() as u64) };
++        assert!(!handle.is_null());
++        // Poison the actual borrowed storage, then free it. The real function's
++        // code remains loaded for the test process; there is no global state.
++        words.fill(0);
++        names.fill(0);
++        parameters.fill(0);
++        binding_library.fill(0);
++        binding_symbol.fill(0);
++        for descriptor in &mut descriptors { descriptor.address = ptr::null(); }
++        drop((words, names, parameters, binding_library, binding_symbol, descriptors));
++        // Keep an owned Rust guard even if an assertion fails. No generated
++        // address escapes this scope or survives destruction of the owner.
++        let owner = unsafe { Box::from_raw(handle.cast::<Owner>()) };
++        assert_eq!(unsafe { chibi_vnext_status(handle) }, Status::Ready as u32);
++        assert!(unsafe { chibi_vnext_entry(handle, 1) }.is_null());
++        let entry = unsafe { chibi_vnext_entry(handle, 2) };
++        assert!(!entry.is_null());
++        let compare: extern "C" fn(i64, i64) -> bool = unsafe { mem::transmute(entry) };
++        for (left, right) in [(0, 0), (0, 1), (i64::MIN, i64::MIN), (i64::MIN, i64::MAX),
++                              (i64::MAX, i64::MAX), (1_i64 << 40, 0)] {
++            assert_eq!(compare(left, right), left == right);
++        }
++        let object_length = unsafe { chibi_vnext_object_length(handle) };
++        assert!(object_length > 0);
++        let mut object = vec![0; object_length as usize];
++        assert_eq!(unsafe { chibi_vnext_object_copy(handle, object.as_mut_ptr(), object_length) }, 0);
++        assert!(object.starts_with(b"\x7fELF"));
++        assert_eq!(unsafe { chibi_vnext_destroy(Box::into_raw(owner).cast()) }, 0);
++    }
++
++    #[test]
++    #[should_panic(expected = "unexpected JIT symbol lookup: malloc")]
++    fn jit_lookup_guard_cannot_fall_through_to_process_symbols() {
++        let (words, names) = import_frame();
++        let arena = Arena::from_parts(&words, &[], &names).unwrap();
++        let parameters = [I64];
++        let descriptors = [descriptor(b"test:binding", b"ForeignEcho", &parameters, I64)];
++        let bindings = unsafe { borrow_bindings(&descriptors) }.unwrap();
++        let names = borrow_names(&arena);
++        let addresses = resolve_imports(&arena, &names, &bindings).unwrap();
++        let mut jit = JitOwner(Some(JITModule::new(jit_builder(native_isa().unwrap(), &arena, &names, &addresses))));
++        let signature = jit.module().make_signature();
++        let unexpected = jit.module().declare_function("malloc", Linkage::Import, &signature).unwrap();
++        jit.module().get_address(&unexpected.into());
++    }
++
+     #[test]
+     fn copy_is_exact_or_leaves_destination_unchanged() {
+         let source = [0u8, 128, 255];
+@@ -641,7 +1005,7 @@ mod tests {
+         let mut names = [[0; NAME_WORDS]];
+         names[0][NAME_COUNT] = name.len() as u32;
+         let arena = Arena {
+-            functions: &functions, signatures: &signatures, parameter_types: &[],
++            functions: &functions, foreigns: &[], signatures: &signatures, parameter_types: &[],
+             blocks: &blocks, block_parameters: &[], values: &values, instructions: &instructions,
+             edges: &[], calls: &[], arguments: &[], origins: &origins, names: &names,
+             literals: &[7], name_bytes: name,

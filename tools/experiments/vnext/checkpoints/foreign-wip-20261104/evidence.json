@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "scope": "inactive recovery checkpoint; partial validation only",
+  "typed_source": {
+    "checkpoint_sha256": "f0283889b83648f67eca67ad42b6fa3fae2bbac7304a8b0a8c6b96b004535f6a",
+    "compile_result_sha256": "d15f5a69f17d63c27799113333fa6626fb7dd42c498d530bddaf41da3f6732a7",
+    "artifact_sha256": "ec54bbcdb9ae4187de1721d7718129564914bd6dc14d7e26d3048a63bae7370c",
+    "tests_result_sha256": "c24b5462aaa70e3d66812b98763682751f52691807b23485ad196bb39558e9b2",
+    "independent_terminal_acceptance_sha256": "9d620ee5adbf201957d415279e179579b7e3245203cca7f79e8ef8e580929dd9",
+    "status": "accepted_early_pure_source_suite",
+    "test_seconds": 0.432755898,
+    "exit_code": 0,
+    "empty_stdout_stderr": true,
+    "complete_unfiltered_suite": true
+  },
+  "generator": {
+    "tests": 10,
+    "exit_code": 0,
+    "reported_seconds": 0.14
+  },
+  "history": [
+    {
+      "attempt": 1,
+      "outcome": "source review rejected before compilation: reserved local entry"
+    },
+    {
+      "attempt": 2,
+      "outcome": "compile failed: reserved local library",
+      "result_sha256": "e767d27b7746c53be26e410fb75d0bf06d3dae8df7987418c4499197d6bf4f2a"
+    },
+    {
+      "attempt": 3,
+      "outcome": "compile failed: immutable loop binding mutation",
+      "result_sha256": "fcfb2c89aad7ded7437615d119f6b2117a324fe6ee71c04c4a76d6cddfa06f73"
+    },
+    {
+      "attempt": 4,
+      "outcome": "compile and complete pure typed-source suite passed"
+    }
+  ],
+  "remaining": [
+    "packing compile and tests",
+    "Rust and C compilation",
+    "native caller ABI integration",
+    "real foreign JIT/AOT and missing-symbol rejection",
+    "prior-case regression under changed ABI",
+    "complete engineering review",
+    "hosted platform acceptance"
+  ],
+  "raw_local_receipts_included": false
+}

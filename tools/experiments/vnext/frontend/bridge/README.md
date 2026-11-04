@@ -309,11 +309,12 @@ receipt or change its seed pin.
 The current version-3 typed-source, packing and foreign native proofs use the
 separately admitted current compiler. The foreign proof uses exact public-
 preparer output with a separately admitted private five-stage controller;
-the public whole-run workflow was not rerun. The public runner below still
-accepts only the pinned c5 seed, so it cannot select that current-compiler route. Current-v3
-compatibility with c5 has not been established, and the command below is not a
-validated current-v3 reproduction. A current-compiler runner needs its own
-explicit identity contract and fresh execution evidence; do not bypass the pin.
+the public whole-run workflow was not rerun. The public runner now has two
+explicit, mutually exclusive compiler routes: `--seed` retains the exact c5
+pin, while `--current-compiler` admits the exact current artifact below.
+Current-v3 compatibility with c5 remains unverified. The new current route
+also needs fresh whole-run execution evidence; selection controls alone do
+not establish native acceptance.
 
 After the earlier three-case native proofs closed, a generator docstring-only
 cleanup changed no behavior. All three preparations were regenerated and their compiled source
@@ -332,9 +333,32 @@ python3 -I -B -S "$NATIVE_PROOF/controller/run_native.py" "$NATIVE_PROOF" \
   --seed "$SEED" --llvm-bin "$LLVM_BIN" --cc "$CC"
 ```
 
+For an already-held exact current artifact, replace `--seed` with
+`--current-compiler` in a fresh prepared directory:
+
+```sh
+: "${CURRENT_COMPILER:?set the absolute existing exact current compiler}"
+python3 -I -B -S "$NATIVE_PROOF/controller/run_native.py" "$NATIVE_PROOF" \
+  --current-compiler "$CURRENT_COMPILER" --llvm-bin "$LLVM_BIN" --cc "$CC"
+```
+
+This Linux x86-64 artifact is 11,576,992 bytes, SHA-256
+`7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266`,
+with historical source attribution to commit
+`02c86287430def964445ec90185961e20319536d`, tree
+`780ba87ea9f29308f2f20a94381cdce8cc5d26ca`; see the
+[current compiler baseline](../../../../../docs/compiler-current-o2-baseline.md).
+The runner rejects crossed or unknown compiler identities before reserving
+outputs. `attempt/attempt.json` records the selected route and resolved path,
+plus historical source attribution for the current route; actual file facts
+remain in `inputs[path]`. This does not repeat source-build admission or
+change any release/bootstrap pin. A verified public download or source-rebuild
+route for these exact bytes remains open. These instructions are for readers
+who already possess the artifact, not a self-contained public replay bundle.
+
 Use repeated `--library-dir /absolute/reviewed/directory` options when the
 already installed tools/backend require explicit runtime library search paths.
-The seed must match SHA-256
+The `--seed` route must match SHA-256
 `1d1d289a2429fe2ee2a75a71a959bf21590a02ff3ebf7cd8af1037a11bf1268e`.
 Use existing authorized tools and cached dependencies only; no installation or
 dependency fetching belongs to this path. The runner records source/backend

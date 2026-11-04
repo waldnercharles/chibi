@@ -75,6 +75,218 @@ class NativeRunnerTests(unittest.TestCase):
             self.assertTrue(all("TEST_ONLY" not in row["environment"] for i, row in enumerate(plan) if i != 2))
         self.assertEqual(dict(os.environ), original)
 
+    def test_compiler_selection_policy_table(self):
+        # Pure identity policy, not proof that fabricated records are executables.
+        c5 = "1d1d289a2429fe2ee2a75a71a959bf21590a02ff3ebf7cd8af1037a11bf1268e"
+        current = "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266"
+        path = Path("/explicit/compiler")
+        for kind, digest, size, accepted in (
+                ("c5", c5, 9233584, True),  # The existing c5 policy pins its hash only.
+                ("current-02c8628", current, 11576992, True),
+                ("c5", current, 11576992, False),
+                ("current-02c8628", c5, 9233584, False),
+                ("c5", "0" * 64, 9233584, False),
+                ("current-02c8628", "0" * 64, 11576992, False),
+                ("c5", "0" + c5[1:], 9233584, False),
+                ("current-02c8628", "0" + current[1:], 11576992, False),
+                ("current-02c8628", current, 11576991, False),
+                ("current-02c8628", current, 11576993, False),
+                ("unknown", current, 11576992, False)):
+            identity = {"sha256": digest, "bytes": size}
+            with self.subTest(kind=kind, digest=digest, size=size):
+                if not accepted:
+                    with self.assertRaisesRegex(ValueError, kind) as error:
+                        SUBJECT.compiler_selection(path, identity, kind)
+                    self.assertIn(str(path), str(error.exception))
+                    if kind != "unknown":
+                        self.assertIn(c5 if kind == "c5" else current, str(error.exception))
+                        self.assertIn(digest, str(error.exception))
+                        self.assertIn(str(size), str(error.exception))
+                    continue
+                expected = {"selection": kind, "path": str(path)}
+                if kind == "current-02c8628":
+                    expected.update(source_commit="02c86287430def964445ec90185961e20319536d",
+                                    source_tree="780ba87ea9f29308f2f20a94381cdce8cc5d26ca")
+                self.assertEqual(SUBJECT.compiler_selection(path, identity, kind), expected)
+                self.assertEqual(identity, {"sha256": digest, "bytes": size})
+
+    def compiler_snapshot(self):
+        prepare = types.ModuleType("compiler_selection_preparation")
+        prepare.__file__ = str(HERE / "prepare_native.py")
+        exec(compile(Path(prepare.__file__).read_bytes(), prepare.__file__, "exec"), prepare.__dict__)
+        backend = self.base / "inert-backend.so"
+        backend.write_bytes(b"identity only, never loaded")
+        directory = self.base / "prepared"
+        prepare.prepare(directory, backend)
+        tools = self.base / "inert-tools"
+        tools.mkdir()
+        for name in ("compiler", "cc", "opt", "llc", "llvm-as", "llvm-link", "ld.lld"):
+            path = tools / name
+            path.write_bytes(b"inert executable-permission data; never launch\n")
+            path.chmod(0o700)
+        return directory, tools / "compiler", tools, tools / "cc"
+
+    def compiler_cli(self, directory, arguments, style="cli"):
+        # Only a bounded Python child runs. Stop even an admitted compiler at
+        # log creation, before the supervisor can attempt its first native stage.
+        script = """import ctypes, json, os, runpy, sys
+from pathlib import Path
+root, style = Path(sys.argv[1]), sys.argv[2]
+arguments = sys.argv[3:]
+state = {'launches': [], 'prelaunch_stops': 0}
+def audit(event, args):
+    if (event in ('subprocess.Popen', 'os.system', 'ctypes.dlopen')
+            or event.startswith(('os.exec', 'os.spawn', 'os.posix_spawn', 'os.fork'))):
+        state['launches'].append(event)
+        raise AssertionError('native execution/loading is forbidden: ' + event)
+    if event == 'open' and isinstance(args[0], (str, bytes, os.PathLike)):
+        if os.fsdecode(args[0]) == str(root / 'attempt/chibi_compile.stdout'):
+            state['prelaunch_stops'] += 1
+            raise RuntimeError('control stopped before native launch')
+sys.addaudithook(audit)
+controller = str(root / 'controller/run_native.py')
+try:
+    if style == 'cli':
+        sys.argv = [controller, str(root), *arguments]
+        runpy.run_path(controller, run_name='__main__')
+    else:
+        subject = runpy.run_path(controller)
+        try:
+            options = {'compiler_kind': 'unknown'} if style == 'unknown-kind' else {}
+            result = subject['run'](root, *map(Path, arguments), [], **options)
+        except (OSError, ValueError) as error:
+            print('native reproduction: ' + str(error), file=sys.stderr)
+            raise SystemExit(1)
+        print(json.dumps(result))
+        raise SystemExit(0 if result['status'] == 'passed' else 1)
+finally:
+    print('compiler-control: ' + json.dumps(state), file=sys.stderr)
+"""
+        result = subprocess.run([sys.executable, "-I", "-B", "-S", "-c", script,
+                                 str(directory), style, *map(str, arguments)],
+                                capture_output=True, timeout=15, check=False)
+        lines = result.stderr.decode().splitlines()
+        self.assertTrue(lines and lines[-1].startswith("compiler-control: "), result.stderr.decode())
+        state = json.loads(lines[-1].removeprefix("compiler-control: "))
+        self.assertEqual(state["launches"], [])
+        self.assertNotIn(b"Traceback", result.stderr)
+        return result, state
+
+    def reject_compiler_cli(self, directory, arguments, diagnostic, code=1, style="cli"):
+        before = {str(path.relative_to(directory)): path.read_bytes()
+                  for path in directory.rglob("*") if path.is_file()}
+        members = sorted(str(path.relative_to(directory)) for path in directory.rglob("*"))
+        result, state = self.compiler_cli(directory, arguments, style)
+        self.assertEqual(result.returncode, code, result.stderr.decode())
+        self.assertIn(diagnostic.encode(), result.stderr)
+        self.assertEqual(result.stdout, b"")
+        self.assertEqual(state["prelaunch_stops"], 0)
+        self.assertEqual(sorted(str(path.relative_to(directory)) for path in directory.rglob("*")), members)
+        self.assertEqual({str(path.relative_to(directory)): path.read_bytes()
+                          for path in directory.rglob("*") if path.is_file()}, before)
+        for name in ("attempt", "output", "run", "home", "tmp", "cache"):
+            if name not in members:
+                self.assertFalse((directory / name).exists())
+                self.assertFalse((directory / name).is_symlink())
+
+    def test_cli_requires_exactly_one_compiler_option(self):
+        directory, compiler, llvm, cc = self.compiler_snapshot()
+        common = ["--llvm-bin", llvm, "--cc", cc]
+        for options, diagnostic in (([], "required"),
+                (["--seed", compiler, "--current-compiler", compiler], "not allowed"),
+                (["--current-compiler"], "expected one argument"),
+                (["--seed", compiler, "--current-complier", compiler], "unrecognized arguments")):
+            with self.subTest(options=options):
+                self.reject_compiler_cli(directory, [*common, *options], diagnostic, code=2)
+
+    def test_cli_rejects_dummy_missing_and_nonexecutable_compilers(self):
+        directory, compiler, llvm, cc = self.compiler_snapshot()
+        common = ["--llvm-bin", llvm, "--cc", cc]
+        for option, kind in (("--seed", "c5"), ("--current-compiler", "current-02c8628")):
+            with self.subTest(option=option):
+                self.reject_compiler_cli(directory, [*common, option, compiler], kind)
+                self.reject_compiler_cli(directory, [*common, option, compiler.with_name("missing")], "missing")
+                compiler.chmod(0o600)
+                self.reject_compiler_cli(directory, [*common, option, compiler], "not executable")
+                compiler.chmod(0o700)
+
+    def test_legacy_positional_api_keeps_c5_and_unknown_kind_rejects(self):
+        directory, compiler, llvm, cc = self.compiler_snapshot()
+        for style, diagnostic in (("positional", "c5"), ("unknown-kind", "unknown")):
+            with self.subTest(style=style):
+                self.reject_compiler_cli(directory, [compiler, llvm, cc], diagnostic, style=style)
+
+    def test_cli_crossed_real_compilers_are_rejected(self):
+        paths = [os.environ.get(key) for key in
+                 ("CHIBI_NATIVE_CONTROL_SEED", "CHIBI_NATIVE_CONTROL_CURRENT_COMPILER")]
+        if not all(paths):
+            self.skipTest("explicit real c5 and current compiler paths not supplied")
+        seed, current = (Path(path).resolve(strict=True) for path in paths)
+        self.assertEqual(SUBJECT.file_identity(seed)["sha256"], SUBJECT.SEED_SHA256)
+        identity = SUBJECT.file_identity(current)
+        self.assertEqual((identity["sha256"], identity["bytes"]),
+                         (SUBJECT.CURRENT_SHA256, SUBJECT.CURRENT_BYTES))
+        directory, _, llvm, cc = self.compiler_snapshot()
+        for option, compiler, kind in (("--seed", current, "c5"),
+                                       ("--current-compiler", seed, "current-02c8628")):
+            with self.subTest(option=option):
+                self.reject_compiler_cli(directory, [option, compiler, "--llvm-bin", llvm, "--cc", cc], kind)
+
+    def test_cli_mutated_real_current_compiler_is_rejected(self):
+        path = os.environ.get("CHIBI_NATIVE_CONTROL_CURRENT_COMPILER")
+        if not path:
+            self.skipTest("explicit real current compiler path not supplied")
+        source = Path(path).resolve(strict=True)
+        identity = SUBJECT.file_identity(source)
+        self.assertEqual((identity["sha256"], identity["bytes"]),
+                         (SUBJECT.CURRENT_SHA256, SUBJECT.CURRENT_BYTES))
+        directory, compiler, llvm, cc = self.compiler_snapshot()
+        raw = source.read_bytes()
+        compiler.write_bytes(raw[:-1] + bytes([raw[-1] ^ 1]))
+        self.assertEqual(compiler.stat().st_size, SUBJECT.CURRENT_BYTES)
+        self.reject_compiler_cli(directory, ["--current-compiler", compiler,
+                                 "--llvm-bin", llvm, "--cc", cc], "current-02c8628")
+        self.assertEqual(SUBJECT.file_identity(source), identity)
+
+    def test_current_cli_receipt_and_existing_output_preservation(self):
+        path = os.environ.get("CHIBI_NATIVE_CONTROL_CURRENT_COMPILER")
+        if not path:
+            self.skipTest("explicit real current compiler path not supplied")
+        current = Path(path).resolve(strict=True)
+        identity = SUBJECT.file_identity(current)
+        self.assertEqual((identity["sha256"], identity["bytes"]),
+                         (SUBJECT.CURRENT_SHA256, SUBJECT.CURRENT_BYTES))
+        directory, alias, llvm, cc = self.compiler_snapshot()
+        alias.unlink()
+        alias.symlink_to(current)
+        arguments = ["--current-compiler", alias, "--llvm-bin", llvm, "--cc", cc]
+        for name in ("attempt", "output"):
+            sentinel = directory / name
+            sentinel.mkdir()
+            (sentinel / "keep").write_bytes(b"preexisting output")
+            self.reject_compiler_cli(directory, arguments, "unused preparation")
+            (sentinel / "keep").unlink()
+            sentinel.rmdir()
+        result, state = self.compiler_cli(directory, arguments)
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        self.assertEqual(state["prelaunch_stops"], 1)
+        receipt = json.loads((directory / "attempt/attempt.json").read_bytes())
+        self.assertEqual(receipt["compiler"], {
+            "selection": "current-02c8628", "path": str(current),
+            "source_commit": "02c86287430def964445ec90185961e20319536d",
+            "source_tree": "780ba87ea9f29308f2f20a94381cdce8cc5d26ca"})
+        self.assertEqual(receipt["inputs"][str(current)], identity)
+        self.assertEqual(receipt["tool_aliases"][str(alias)], str(current))
+        self.assertEqual(receipt["plan"], SUBJECT.stage_plan(directory, current, llvm, cc, []))
+        terminal = json.loads(result.stdout)
+        self.assertEqual(terminal, json.loads((directory / "attempt/result.json").read_bytes()))
+        self.assertEqual(terminal["status"], "failed")
+        self.assertEqual(len(terminal["stages"]), 1)
+        self.assertIn("control stopped before native launch", terminal["stages"][0]["error"])
+        self.assertTrue(terminal["stages"][0]["inputs_unchanged"])
+        self.assertEqual(terminal["not_run"], self.stage_names[1:])
+        self.assertEqual(SUBJECT.file_identity(current), identity)
+
     def test_next_stage_stops_at_every_failed_prefix_and_at_five(self):
         for count in range(6):
             results = [{"status": "passed"} for _ in range(count)]
@@ -428,6 +640,11 @@ print(json.dumps({'result': result, 'control': state}))
         if attempted:
             self.assertTrue((attempt / "attempt.json").is_file())
             self.assertTrue((attempt / "chibi_compile-result.json").is_file())
+            metadata = json.loads((attempt / "attempt.json").read_bytes())
+            compiler = str(Path(paths[0]).resolve(strict=True))
+            self.assertEqual(metadata["compiler"], {"selection": "c5", "path": compiler})
+            self.assertEqual(metadata["inputs"][compiler]["sha256"], SUBJECT.SEED_SHA256)
+            self.assertEqual(metadata["plan"][0]["argv"][0], compiler)
         for name in self.stage_names[attempted:]:
             self.assertFalse((attempt / (name + "-launch.json")).exists())
         with self.assertRaises(FileExistsError):

@@ -109,8 +109,9 @@ Its failed receipt and closure remain preserved; the original fixture and
 production implementation were unchanged.
 
 This is a bounded Linux x86-64 System V correctness result using a separately
-admitted private controller. The public runner remains c5-pinned and its whole-
-run workflow was not rerun. Current-v3 nativecases/scalars/direct_calls/modules
+admitted private controller. The public runner now offers separate exact c5
+and current-artifact selections; its current-v3 whole-run workflow has not yet
+been rerun. Current-v3 nativecases/scalars/direct_calls/modules
 coverage, a small real tool, full compiler/runtime and platform qualification,
 and non-incremental 100,000 LOC/sec remain open. Phase 2 is not complete; the
 47.001-second O0 and 96.516-second O2 baselines are unchanged.

@@ -18,6 +18,12 @@ import types
 
 HERE = Path(__file__).resolve().parent
 SEED_SHA256 = "1d1d289a2429fe2ee2a75a71a959bf21590a02ff3ebf7cd8af1037a11bf1268e"
+C5_COMPILER = "c5"
+CURRENT_COMPILER = "current-02c8628"
+CURRENT_SHA256 = "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266"
+CURRENT_BYTES = 11576992
+CURRENT_SOURCE_COMMIT = "02c86287430def964445ec90185961e20319536d"
+CURRENT_SOURCE_TREE = "780ba87ea9f29308f2f20a94381cdce8cc5d26ca"
 AOT_SUCCESS = b'{"aot_c_caller_checks":45,"status":"passed","input":"source-produced-copied-object"}\n'
 # Independent admission policy for the frozen runner. Preparation tests compare
 # this boundary with the caller generator; the runner never executes that input.
@@ -57,6 +63,24 @@ def write_new(path, value):
     payload = json.dumps(value, indent=2, allow_nan=False) + "\n"
     with path.open("x", encoding="utf-8") as stream:
         stream.write(payload)
+
+
+def compiler_selection(path, identity, kind):
+    """Check one fixed artifact; actual file facts remain in inputs[path]."""
+    selection = {"selection": kind, "path": str(path)}
+    if kind == C5_COMPILER:
+        digest, size = SEED_SHA256, None
+    elif kind == CURRENT_COMPILER:
+        digest, size = CURRENT_SHA256, CURRENT_BYTES
+        # Historical source attribution, not a fresh source-build proof.
+        selection.update(source_commit=CURRENT_SOURCE_COMMIT, source_tree=CURRENT_SOURCE_TREE)
+    else:
+        raise ValueError(f"unknown compiler selection {kind!r}: {path}")
+    if identity["sha256"] != digest or (size is not None and identity["bytes"] != size):
+        expected_size = "" if size is None else f", bytes {size}"
+        raise ValueError(f"{kind} compiler {path}: expected SHA-256 {digest}{expected_size}; "
+                         f"observed SHA-256 {identity['sha256']}, bytes {identity['bytes']}")
+    return selection
 
 
 def stage_plan(directory, seed, llvm_bin, cc, library_dirs, foreign_archive=None):
@@ -307,7 +331,7 @@ def check_stage_outputs(stage, directory, attempt, expectations):
                 raise ValueError("AOT caller did not emit the exact prepared source-produced-object success record")
 
 
-def run(directory, seed, llvm_bin, cc, library_dirs):
+def run(directory, seed, llvm_bin, cc, library_dirs, *, compiler_kind=C5_COMPILER):
     directory = Path(directory).absolute()
     if directory.resolve(strict=True) != directory or Path(__file__).resolve() != directory / "controller/run_native.py":
         raise ValueError("launch the frozen controller/run_native.py in its original prepared directory")
@@ -347,8 +371,7 @@ def run(directory, seed, llvm_bin, cc, library_dirs):
         if not os.access(resolved, os.X_OK):
             raise ValueError(f"tool is not executable: {resolved}")
     seed, cc = (Path(aliases[str(Path(path).absolute())]) for path in (seed, cc))
-    if inputs[str(seed)]["sha256"] != SEED_SHA256:
-        raise ValueError("seed does not match the pinned c5 public seed")
+    compiler = compiler_selection(seed, inputs[str(seed)], compiler_kind)
     llvm_bin = Path(llvm_bin).absolute()
     libraries = [Path(path).absolute() for path in library_dirs]
     for path in [llvm_bin, *libraries]:
@@ -386,6 +409,7 @@ def run(directory, seed, llvm_bin, cc, library_dirs):
         if controller_signals:
             raise InterruptedError("controller stopped during attempt reservation")
         write_new(attempt / "attempt.json", {"plan": plan, "inputs": inputs, "tool_aliases": aliases,
+                                            "compiler": compiler,
                                             "claim": "developer correctness reproduction; not independent tool/loader/backend admission"})
         for name in ("output", "run", "run/normal", "run/perf", "run/aot", "home", "tmp", "cache"):
             (directory / name).mkdir()
@@ -495,13 +519,18 @@ def run(directory, seed, llvm_bin, cc, library_dirs):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
-    parser.add_argument("--seed", required=True, type=Path)
+    compilers = parser.add_mutually_exclusive_group(required=True)
+    compilers.add_argument("--seed", type=Path, help="exact pinned c5 public seed")
+    compilers.add_argument("--current-compiler", type=Path,
+                           help="exact Linux current artifact from source " + CURRENT_SOURCE_COMMIT)
     parser.add_argument("--llvm-bin", required=True, type=Path)
     parser.add_argument("--cc", required=True, type=Path)
     parser.add_argument("--library-dir", action="append", default=[], type=Path)
     args = parser.parse_args()
     try:
-        result = run(args.directory, args.seed, args.llvm_bin, args.cc, args.library_dir)
+        compiler = args.seed if args.seed is not None else args.current_compiler
+        kind = C5_COMPILER if args.seed is not None else CURRENT_COMPILER
+        result = run(args.directory, compiler, args.llvm_bin, args.cc, args.library_dir, compiler_kind=kind)
     except (OSError, ValueError) as error:
         parser.exit(1, f"native reproduction: {error}\n")
     print(json.dumps(result, allow_nan=False))

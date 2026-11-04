@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "date_utc": "2026-11-04",
+  "base_commit": "02c86287430def964445ec90185961e20319536d",
+  "source_commit": "eff3d5ad85b80517596b751645d21d6f75f70d6c",
+  "classification": "focused Driver jobs-forwarding correctness; not native compiler proof, benchmark, platform acceptance or merge certification",
+  "source_sha256": {
+    "tools/toolchain/Driver.chibi": "7d9ebaf2b9fd66cadde0254114e93d1737973a287d5430756e8ccc254d36c381",
+    "test/bootstrap/native-runner.sh": "b1bedec906ef9b4e0053c74da6800364ece0156ee592b141c9f8c48f71d454de",
+    "test/graph/DriverTests.chibi": "ddeb5d5b19fb1e6392707701b6955e64cd745a5a264da20fcd1486fac6441b71",
+    "test/graph/fixtures/native-stage.sh": "5686f881889cc375b3cba7de9402cf6582eaf0763495c53d79e4ecf99a76dd74"
+  },
+  "local_evidence_sha256": {
+    "fixed/driver": "c9e855c60bc04f29a501a1ef215b03fbf036289b614ee5f6b9cdd3ab71175c57",
+    "baseline/driver": "12e1dd61677700a856d34b70dc7502263a0818d0c209578686e12e218c4b0425",
+    "focused-runner.sh": "afe63e9e3ac6bd276dc27b4ab242c8956cc52d49b78f9f026c2bd8cd87d3aebd",
+    "native-runner-stage-block.sh": "8805b48b7ea5e72d5683820c0f391a783e26c7506ab504279b2c29cee2c1d3fd",
+    "fixed-runner.stdout": "6eb3f689d720116046066134c2e8e72af42031254a9f87a7c79c9b266823e959",
+    "fixed-runner.stderr": "de9e3f8f60869b601c4c9f8548364841d891d15e1590765378bcb8d6988ed903",
+    "baseline-runner.result": "e93176b9cdf866ef0c78d24b2eae43327a3a79c44849a0a5e00140124cbfe5a6",
+    "fixed-dry-run.log": "91329851f52eb8f0980ca9334bca6edd91aac5e77f328b65fb47ff3c31688d26",
+    "baseline-dry-run.log": "d9da3493f768a5beb3fca25e2911d2694a81b11eeef18edb68dcb9286c8bc107",
+    "check-fixed-point.py": "e5e39f141465c62786cbdb3352ee5eaa365c5ce9b4f409459d64da49cd21af54",
+    "fixed-point-cases/receipt.json": "0ba3ec172d35f32e4443801e3b0ae57d436273135ebae133ca6e8644232676c9",
+    "static-workflow.tap": "6c7f349c4b7ed7816048cc2faf28a7eb64dc4dec4754d343976bb538a9375eab",
+    "static-workflow.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "seed_sha256": "1d1d289a2429fe2ee2a75a71a959bf21590a02ff3ebf7cd8af1037a11bf1268e",
+  "bounded_compilation": {
+    "native_jobs": 2,
+    "work_deadline_seconds": 119,
+    "cleanup_reserve_seconds": 1,
+    "fixed_status": 0,
+    "baseline_status": 0,
+    "scope": "Driver.chibi and its graph/core closure only"
+  },
+  "tests": {
+    "focused_native_runner_stage_block": "passed",
+    "unchanged_baseline_same_block": "failed at jobs assertion, expected",
+    "controlled_fixed_point_cases": 6,
+    "static_workflow_tests": {
+      "passed": 21,
+      "failed": 0
+    },
+    "shell_syntax": "passed",
+    "diff_check": "passed"
+  },
+  "not_run": [
+    "complete native-runner.sh",
+    "broader DriverTests suite",
+    "whole-compiler bootstrap",
+    "real Windows compiler build or execution",
+    "merge acceptance"
+  ]
+}

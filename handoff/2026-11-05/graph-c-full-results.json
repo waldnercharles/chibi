@@ -1,0 +1,115 @@
+{
+  "classification": "Independently accepted complete Graph CTests.Run on Linux x86-64; not full Graph, PR, Windows or stronger per-Capture proof acceptance",
+  "source": {
+    "commit": "a8d16f54ce664bbc077558f01f16365f1c7f899d",
+    "tree": "9432a0d8292216b4221d24864b1b9b40a543b325",
+    "entries": 4176,
+    "regular_bytes": 50985568,
+    "published_commit": "bd31dc875805c64ebdb1584345cd321a584b693d",
+    "publication_note": "The published source commit has exactly the tested source tree; only commit metadata differs from the local tested commit."
+  },
+  "entry": "test/graph/CTests.chibi::Run",
+  "compiler": {
+    "bytes": 11576992,
+    "mode": 384,
+    "sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266"
+  },
+  "main_program": {
+    "bytes": 322872,
+    "mode": 448,
+    "sha256": "d7d998c142e5114683a2c46ab346bcf3b3f4a206611babe969e7cef3cccbf267"
+  },
+  "construction_exit_code": 0,
+  "suite_exit_code": 0,
+  "outer_exit_code": 0,
+  "outer_elapsed_seconds": 11.359128285999759,
+  "owner_elapsed_seconds": 11.281744476998938,
+  "total_bound_seconds": 300,
+  "cleanup_reserve_seconds": 10,
+  "affinity": [
+    0,
+    1
+  ],
+  "compiler_jobs": "Unchanged normal driver selection; two-CPU affinity is not a jobs limit",
+  "whole_suite_ownership": {
+    "worker_exit_code": 0,
+    "echild": true,
+    "pipe_eof": true,
+    "owner_signals": 0,
+    "owner_errors": 0,
+    "surviving_children": 0,
+    "authored_timeout_zombies_reaped": 2,
+    "post_echild_source_tool_output_cleanup_fences": true
+  },
+  "closure": {
+    "file_facts": 584,
+    "directory_inventories": 36,
+    "required_absences": 884
+  },
+  "streams": {
+    "compile/stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "compile/stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "run/stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "run/stderr.log": {
+      "bytes": 2435,
+      "sha256": "c99f9954f7e95b51403999607b2077b44ebe4e9d1e3e5795140de821219547c6"
+    },
+    "raw.log": {
+      "bytes": 2435,
+      "sha256": "c99f9954f7e95b51403999607b2077b44ebe4e9d1e3e5795140de821219547c6"
+    }
+  },
+  "diagnostics": "All 2435 stderr bytes independently matched nine authored negative-case blocks; other split streams are empty",
+  "evidence_sha256": {
+    "owner-receipt.json": "bbfc9bfbd63c319fc4d0c1ec4ba449bd3d27c0c3668be11ff9cd4f32b9793b12",
+    "quiescent-fences.json": "204c0f83813c7704b1de88cebd2aa73f40f33291697c65e60537ab82095905a2",
+    "suite-result.json": "f32510c232a75a205de979874a89807642e4f31435d944add452d11083026863",
+    "program-identity.json": "007b2c5391544308a8eed7306d1de3bb0986f277e1983f0f6bcdf9807ae90477"
+  },
+  "independent_terminal_acceptance_sha256": "f47c98ede95da3c5c6a08c712c84a03ea7eec59f6b6e8c7aba28ef79e9970adc",
+  "prior_attempt": {
+    "source_commit": "eb7f71ac4d16909ae1bc16971a94042108598cc7",
+    "construction_exit_code": 0,
+    "suite_exit_code": 134,
+    "outer_exit_code": 1,
+    "outer_elapsed_seconds": 7.616852006000045,
+    "reason": "GCC collect2 posix_spawn Argument list too long at the first LongLinks assertion",
+    "independent_failure_review_sha256": "514bb090106a74dc418c27fc5d378c76d5e235e9244ae6e0f86f3f919537ad7f",
+    "still_failed": true
+  },
+  "fixture_correction": {
+    "ctests_sha256": "d6ad63ff773ee31c09317ef6ac9522c7ab5c365573c39a08724325ab703eb5b3",
+    "source_assertion_sites_unchanged": 85,
+    "command_arguments_unchanged": 405,
+    "search_flags_unchanged": 400,
+    "fixed_padding_bytes_including_nuls": 80997,
+    "independent_cold_checks": 18,
+    "source_review_sha256": "92692d29791c3d1efd3784acdef9b5b6d74e02c4e6120b1deb9f296f3ec10c02",
+    "production_code_changed": false
+  },
+  "remaining_gates": [
+    "Build, Driver and Discovery Graph suites and final-source focused Graph regression refresh",
+    "Windows and broader current product, runtime and C integration",
+    "Historical stronger per-Capture descendant-drain proof remains failed or unproven",
+    "PR #1331 explicit hold, original unknown c5 bootstrap and excluded native union leak investigation unchanged"
+  ],
+  "timing_note": "Bounded correctness observation, not a quiet performance benchmark",
+  "local_preservation": {
+    "file": "chibi-graph-c-a8d16f54-source-proof-20261105.tar.gz",
+    "sha256": "fc585b5c4950264eac826900e47a40f9b4cd284e4226907ab7534341b56c9c48",
+    "bytes": 22309669,
+    "members": 10492,
+    "live_input_facts_verified": 23042,
+    "explicit_duplicate_file_mappings": 12552,
+    "upload_performed": false
+  }
+}

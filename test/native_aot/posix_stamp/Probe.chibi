@@ -1,0 +1,13 @@
+package posix_stamp_probe
+
+import posix "core:sys/posix"
+
+Main :: () -> int {
+    arguments := posix.Arguments();
+    for index in 1..<length(arguments) {
+        stamp := posix.Stamp(arguments[index]);
+        written := posix.WriteOutput(format_text("{}\n", stamp));
+        assert(written, "the real-path stamp reaches the comparison oracle");
+    }
+    return 0;
+}

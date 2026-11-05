@@ -609,42 +609,78 @@ pub RealPath :: (path: string) -> string {
     return Terminated(buffer);
 }
 
-// The little-endian integer of `size` bytes at `at`.
-Word :: (bytes: u8[], at: int, size: int) -> int {
-    value := 0;
+// The unsigned little-endian word of up to eight bytes at `at`.
+Word :: (bytes: u8[], at: int, size: int) -> u64 {
+    value: u64 = 0;
     for index in 0..<size {
-        value += int(bytes[at + index]) << u32(8 * index);
+        value |= u64(bytes[at + index]) << u32(8 * index);
     }
     return value;
 }
 
-// `value` in octal.
-Octal :: (value: int) -> string {
-    if value == 0 {
-        return "0";
+DigitZero: u8 : 48;
+
+// Stamps need exact integer text, without the general formatter's scalar path.
+// Keep this small conversion local; the Windows package has its own callers.
+UnsignedDecimal :: (value: u64) -> string {
+    digits := Block(20);
+    cursor := 20;
+    remaining := value;
+    while true {
+        cursor -= 1;
+        digits[cursor] = u8(remaining % 10) + DigitZero;
+        remaining /= 10;
+        if remaining == 0 { break; }
     }
-    reversed: u8[] = [];
-    rest := value;
-    while rest > 0 {
-        reversed.append(u8(48 + rest % 8));
-        rest = rest / 8;
+    return text_from_bytes(slice(digits, cursor, 20 - cursor));
+}
+
+SignedDecimal :: (value: i64) -> string {
+    magnitude := u64(wrap: value);
+    if value < 0 {
+        // Unsigned subtraction also handles the minimum signed word.
+        return format_text("-{}", UnsignedDecimal(u64(0) - magnitude));
     }
-    digits: u8[] = [];
-    at := length(reversed) - 1;
-    while at >= 0 {
-        digits.append(reversed[at]);
-        at -= 1;
+    return UnsignedDecimal(magnitude);
+}
+
+// C's unsigned mode in octal, at most eleven digits.
+Octal :: (value: u32) -> string {
+    digits := Block(11);
+    cursor := 11;
+    remaining := value;
+    while true {
+        cursor -= 1;
+        digits[cursor] = u8(remaining % 8) + DigitZero;
+        remaining /= 8;
+        if remaining == 0 { break; }
+    }
+    return text_from_bytes(slice(digits, cursor, 11 - cursor));
+}
+
+// A POSIX timespec's nanoseconds, 0..999999999, as exactly nine digits.
+Nanoseconds :: (value: u64) -> string {
+    digits := Block(9);
+    remaining := value;
+    for index in 0..<9 {
+        digits[8 - index] = u8(remaining % 10) + DigitZero;
+        remaining /= 10;
     }
     return text_from_bytes(digits);
 }
 
-// `value`, a count of nanoseconds, as nine digits.
-Nanoseconds :: (value: int) -> string {
-    text := format_text("{}", value);
-    while text_byte_length(text) < 9 {
-        text = format_text("0{}", text);
+// Reads the platform's stat bytes without modifying them. The C host prints
+// unsigned device/inode, signed size/seconds, unsigned octal mode and nanos.
+StatStamp :: (buffer: u8[]) -> string {
+    device := Word(buffer, 0, DeviceBytes);
+    if target.Os == target.Darwin {
+        // Darwin dev_t is signed 32-bit; C widens it before uintmax_t's wrap.
+        device = u64(wrap: i64(i32(wrap: device)));
     }
-    return text;
+    return format_text("{}:{}:{}:{}:{}.{}:{}.{}", UnsignedDecimal(device), UnsignedDecimal(Word(buffer, InodeOffset, 8)),
+                       SignedDecimal(i64(wrap: Word(buffer, SizeOffset, 8))), Octal(u32(Word(buffer, ModeOffset, ModeBytes))),
+                       SignedDecimal(i64(wrap: Word(buffer, ModifiedOffset, 8))), Nanoseconds(Word(buffer, ModifiedOffset + 8, 8)),
+                       SignedDecimal(i64(wrap: Word(buffer, ChangedOffset, 8))), Nanoseconds(Word(buffer, ChangedOffset + 8, 8)));
 }
 
 // The file's identity and metadata for change detection, not a content hash.
@@ -658,10 +694,7 @@ pub Stamp :: (path: string) -> string {
     if stat(path, buffer) != 0 {
         return "";
     }
-    return format_text("{}:{}:{}:{}:{}.{}:{}.{}", Word(buffer, 0, DeviceBytes), Word(buffer, InodeOffset, 8),
-                       Word(buffer, SizeOffset, 8), Octal(Word(buffer, ModeOffset, ModeBytes)),
-                       Word(buffer, ModifiedOffset, 8), Nanoseconds(Word(buffer, ModifiedOffset + 8, 8)),
-                       Word(buffer, ChangedOffset, 8), Nanoseconds(Word(buffer, ChangedOffset + 8, 8)));
+    return StatStamp(buffer);
 }
 
 // Copies the file's bytes and permission bits to the destination, whose folder

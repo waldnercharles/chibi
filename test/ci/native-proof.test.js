@@ -15,13 +15,13 @@ for (const [full, bootstrapRun] of [['false', ''], ['false', '123'], ['true', ''
       fs.mkdirSync(root);
       fs.mkdirSync(logs);
       const checks = ['native_aot/native_driver/run.sh', 'native_aot/native_driver/cache.sh',
-        'native_aot/native_driver/minimum.sh', 'native_aot/text_format/run.sh', 'native_aot/link/memory.sh', 'native_aot/directories/run.sh', 'native_aot/output/run.sh',
+        'native_aot/native_driver/minimum.sh', 'native_aot/text_format/run.sh', 'native_aot/link/memory.sh', 'native_aot/directories/run.sh', 'native_aot/posix_stamp/run.sh', 'native_aot/output/run.sh',
         'native_aot/diagnostics/run.sh', 'native_aot/generations/run.sh', 'native_aot/test_attributes/run.sh',
         'native_aot/failures/run.sh', 'native_aot/task_busy/run.sh', 'native_aot/optionals/run.sh',
         'native_aot/fallible/run.sh', 'native_aot/patterns/run.sh', 'native_aot/host_clock/run.sh',
         'bootstrap/native-entry.sh', 'bootstrap/native-runner.sh', 'native_aot/tasks/run.sh',
         'native_aot/math_scalar/run.sh', 'native_aot/math_builtin/select.sh', 'native_aot/math_builtin/run.sh', 'native_aot/characters/run.sh', 'native_aot/array_operations/run.sh', 'native_aot/remove_item/run.sh', 'native_aot/text_arguments/run.sh', 'native_aot/nested_arrays/run.sh', 'native_aot/managed_values/run.sh',
-        'native_aot/managed_pointers/run.sh', 'native_aot/maps/run.sh',
+        'native_aot/managed_pointers/source-audit.sh', 'native_aot/managed_pointers/run.sh', 'native_aot/maps/run.sh',
         'native_cli/run.sh', 'native_cli/watch.sh'];
       for (const directory of ['tools/bootstrap', 'tools/graph', 'packages/core', 'llvm', '.github/ci', 'build/sdk', 'build-release/sdk',
         'test/native_aot/asset_compiler',
@@ -83,13 +83,15 @@ exit 93
       const selected = fs.readFileSync(path.join(logs, 'selected'), 'utf8').trim().split('\n');
       assert.deepEqual(selected, full === 'true' ? ['native', 'native', 'native'] : ['native']);
       const commands = fs.readFileSync(path.join(logs, 'commands'), 'utf8').trim().split('\n');
-      assert.ok(commands[0].startsWith(`build native-self-host --llvm ${root}/llvm `));
+      assert.ok(commands[0].startsWith('build native-self-host '));
+      assert.ok(commands[0].includes(` --llvm ${root}/llvm `));
       for (const option of ['--build-host', '--compiler-host', '--compare-vm', '--skip-vm-comparison', '--skip-vm']) {
         assert.equal(commands[0].split(' ').includes(option), false, option);
       }
       assert.equal(commands[0].includes(`--windows ${logs}/windows`), bootstrapRun === '');
       if (full === 'true') {
-        assert.ok(commands[1].includes('build --release --target chibi --target chibi-asset-compiler'));
+        assert.ok(commands[1].startsWith('build '));
+        assert.ok(commands[1].includes(' --release --target chibi --target chibi-asset-compiler '));
         assert.ok(commands[2].includes('graph-sdk-install'));
       }
       assert.deepEqual(fs.readFileSync(path.join(logs, 'checks'), 'utf8').trim().split('\n'),

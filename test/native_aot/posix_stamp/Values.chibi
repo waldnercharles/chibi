@@ -1,0 +1,86 @@
+package posix
+
+// Assemble the platform's byte record without passing through Word.
+PutWord :: (bytes: ^(u8[]), at: int, size: int, value: u64) {
+    for index in 0..<size {
+        bytes^[at + index] = u8((value >> u32(8 * index)) & 255);
+    }
+}
+
+Main :: () -> int {
+    words: u64[] = [0, 1, 2147483647, 2147483648, 4294967295, 4294967296,
+                    81985529216486895, 9223372036854775807, 9223372036854775808, 18446744073709551615];
+    unsigned_text := ["0", "1", "2147483647", "2147483648", "4294967295", "4294967296",
+                      "81985529216486895", "9223372036854775807", "9223372036854775808", "18446744073709551615"];
+    signed_text := ["0", "1", "2147483647", "2147483648", "4294967295", "4294967296",
+                    "81985529216486895", "9223372036854775807", "-9223372036854775808", "-1"];
+    for index in 0..<length(words) {
+        bytes := resize([u8(165)], 16);
+        PutWord(&bytes, 3, 8, words[index]);
+        before := bytes;
+        decoded := Word(bytes, 3, 8);
+        assert(decoded == words[index], "POSIX words retain every bit at a nonzero offset");
+        unsigned := UnsignedDecimal(decoded);
+        signed := SignedDecimal(i64(wrap: decoded));
+        assert(unsigned == unsigned_text[index], "POSIX unsigned decimal retains all 64 bits");
+        assert(signed == signed_text[index], "POSIX signed words reinterpret the sign bit without clamping");
+        for byte in 0..<length(bytes) {
+            assert(bytes[byte] == before[byte], "word decoding leaves its input unchanged");
+        }
+
+        record := Block(StatBytes);
+        PutWord(&record, 0, DeviceBytes, 1);
+        PutWord(&record, InodeOffset, 8, words[index]);
+        PutWord(&record, SizeOffset, 8, words[index]);
+        PutWord(&record, ModeOffset, ModeBytes, 33188);
+        PutWord(&record, ModifiedOffset, 8, words[index]);
+        PutWord(&record, ModifiedOffset + 8, 8, 1);
+        PutWord(&record, ChangedOffset, 8, 9223372036854775808);
+        PutWord(&record, ChangedOffset + 8, 8, 999999999);
+        saved := record;
+        stamp := StatStamp(record);
+        expected := format_text("1:{}:{}:100644:{}.000000001:-9223372036854775808.999999999",
+                                unsigned_text[index], signed_text[index], signed_text[index]);
+        assert(stamp == expected, "the complete POSIX stamp matches the C host's field contract");
+        repeated := StatStamp(record);
+        assert(repeated == stamp, "unchanged metadata produces the same stamp");
+        for byte in 0..<length(record) {
+            assert(record[byte] == saved[byte], "stamp formatting leaves the stat record unchanged");
+        }
+    }
+    short_words: u8[] = [165, 255, 255, 255, 255, 165];
+    half := Word(short_words, 1, 2);
+    full := Word(short_words, 1, 4);
+    assert(half == u64(65535) && full == u64(4294967295), "short words zero-extend without reading neighbours");
+
+    signed: i64[] = [-9223372036854775808, -4294967296, -2147483649, -10, -1];
+    negative_text := ["-9223372036854775808", "-4294967296", "-2147483649", "-10", "-1"];
+    for index in 0..<length(signed) {
+        rendered := SignedDecimal(signed[index]);
+        assert(rendered == negative_text[index], "negative seconds include the minimum signed word");
+    }
+    modes: u32[] = [0, 33188, 65535, 2147483648, 4294967295];
+    mode_text := ["0", "100644", "177777", "20000000000", "37777777777"];
+    for index in 0..<length(modes) {
+        rendered := Octal(modes[index]);
+        assert(rendered == mode_text[index], "mode is unsigned octal without a prefix");
+    }
+    nanos: u64[] = [0, 1, 9, 10, 99, 100, 999999999];
+    nano_text := ["000000000", "000000001", "000000009", "000000010", "000000099", "000000100", "999999999"];
+    for index in 0..<length(nanos) {
+        rendered := Nanoseconds(nanos[index]);
+        assert(rendered == nano_text[index], "valid nanoseconds always have nine decimal digits");
+    }
+
+    record := Block(StatBytes);
+    PutWord(&record, 0, DeviceBytes, 18446744073709551615);
+    PutWord(&record, InodeOffset, 8, 18446744073709551615);
+    PutWord(&record, ModeOffset, ModeBytes, 4294967295);
+    expected := "18446744073709551615:18446744073709551615:0:37777777777:0.000000000:0.000000000";
+    if target.Os == target.Darwin {
+        expected = "18446744073709551615:18446744073709551615:0:177777:0.000000000:0.000000000";
+    }
+    stamp := StatStamp(record);
+    assert(stamp == expected, "device and inode stay unsigned, including Darwin's signed dev_t cast");
+    return 0;
+}

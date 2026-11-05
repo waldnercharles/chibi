@@ -52,3 +52,20 @@ A useful positive witness would identify either an invalid consume followed by t
 This is not an aggregate rerun, a loop, a hardening patch or permission for automatic retries. Native construction, diagnostic execution, artifact lifetime evidence and cleanup remain separately gated. A targeted success or non-reproduction would not clear the full CLI gate.
 
 After a demonstrated repair, validation still needs the unchanged complete CLI/terminal suite, real regressions for the repaired boundary and isolated child-stop behavior, and applicable platform validation. The separate archive/link/runtime and other holds in the validation record remain unchanged. No merge or release readiness is claimed.
+
+## Additional validation checkpoint
+
+Further validation work now has separately completed, independently accepted results:
+
+- 77 finite semantic controls covering digest APIs, ELF data, path grammar, schemas and trace interpretation.
+- 16 archive pure-control outcomes. Synthetic receipts and predicates do not establish production archive execution or descriptor ownership.
+- A standalone read-only proc backing-file access check for a pinned Python child, with observed cleanup. This is not a native generated-image identity proof.
+- 24 builtin SHA1/SHA256 and in-memory stream cases. These establish finite correctness checks, not real-file acquisition or large-file hashing throughput.
+- 17 ownership/PTY controls: four positive outcomes and thirteen intended negative rejections, including retained pipe and PTY handling. These are diagnostic-support controls, not the original terminal suite.
+- Eight log-lifecycle controls: two positive inner cases, five intended rejections and one scalar exception-path/umask-restoration case.
+
+These are separate scopes, not a combined product-suite pass. The source-only diagnostic instrumentation and builtin hash replacement preserve the original assertions, signals and deadlines. They do not establish a product fix or full diagnostic integration. CLI case 4 remains failed at its original five-second completion assertion; case 5 remains NOT_RUN.
+
+Runtime evidence is still incomplete for the exact selected ps/libproc2 initialization and configuration. Source review also identifies a possible LLVM handled-fault path that can invoke a sibling llvm-symbolizer with a libcurl dependency, outside the complete runtime evidence gathered so far. This is potential crash-path behavior, not an observed crash, symbolizer invocation or network use. Archive format/source review narrows conditional routes; generic format fallback is not demonstrated plugin loading. Native archive assembly remains blocked on official binutils package provenance and the unresolved hard resource contract.
+
+No new native compiler, fixture or archive execution is reported by this checkpoint. The previously accepted SDK suite (13 cases, 96 assertion tokens) and 87-command C compilation result remain historical, separately scoped evidence, not new reruns. The separate text-object record and historical identity qualifications remain unchanged. Full current-head integration, the unchanged complete CLI/terminal suite and the other existing holds remain open; no merge or release readiness is established.

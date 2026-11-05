@@ -227,9 +227,13 @@ LongLinks :: (fixture: LinkFixture, source: string, quoted: string) {
     output := Path([quoted, "/program '\"\\ name"]);
     record := Path([output, ".chibi-record"]);
     response := Path([output, ".chibi-link.rsp"]);
-    libraries: string[] = [];
-    for (i in 0..<400) {
-        libraries.append(Path(["-L", fixture.search_dir]));
+    // Repeat a fixed spelling of the current directory, not the absolute
+    // fixture path: GCC also packs options into one bounded environment string.
+    // Keep the quoted search path once and 405 arguments in the original argv.
+    libraries := [Path(["-L", fixture.search_dir])];
+    padding := Path(["-L", strings.Repeat("./", 100)]);
+    for (i in 0..<399) {
+        libraries.append(padding);
     }
     command := c.LinkCommand(tools, output, [object], flags, libraries);
     bytes := 0;

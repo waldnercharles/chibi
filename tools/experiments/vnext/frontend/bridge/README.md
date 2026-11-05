@@ -5,10 +5,12 @@ current complete typed-source, source-to-v3-Pack, eight-test Arena framing and
 seven-test Rust backend suites pass, as does fresh non-test library review.
 The [original-source foreign proof](../../slice_backend/README.md#version-3-foreign-native-result)
 passed compilation, normal JIT, owned environment failure, C link and linked C
-execution, followed by independent aggregate acceptance. The four older
-native selections are not yet accepted under current version 3. Historical
-version-1/2 receipts do not establish full current-v3 corpus or throughput
-acceptance.
+execution, followed by independent aggregate acceptance. The fresh
+[five-case current-v3 replay](../../evidence/source-native-replay-20261105.md)
+now also accepts all four older selections: 93 source-derived AOT value checks
+and 2,232 JIT value checks in total, plus separate rejection/ABI/lifetime/failure
+controls. Historical version-1/2 receipts remain limited to their own inputs.
+No fixture result establishes compiler throughput.
 
 Historical version-2 scalar/direct-call transport passed the native Chibi packing
 and seven standalone Rust framing tests in the [six-stage pure-source proof](../typed/README.md#accepted-version-2-pure-transform-result).
@@ -309,12 +311,12 @@ receipt or change its seed pin.
 The current version-3 typed-source, packing and foreign native proofs use the
 separately admitted current compiler. The foreign proof uses exact public-
 preparer output with a separately admitted private five-stage controller;
-the public whole-run workflow was not rerun. The public runner now has two
+that earlier result did not rerun the public whole-run workflow. The public runner now has two
 explicit, mutually exclusive compiler routes: `--seed` retains the exact c5
 pin, while `--current-compiler` admits the exact current artifact below.
-Current-v3 compatibility with c5 remains unverified. The new current route
-also needs fresh whole-run execution evidence; selection controls alone do
-not establish native acceptance.
+Current-v3 compatibility with c5 remains unverified. The fresh five-case replay
+linked above subsequently passed the current route's whole-run workflow. Selection
+controls alone do not establish native acceptance.
 
 After the earlier three-case native proofs closed, a generator docstring-only
 cleanup changed no behavior. All three preparations were regenerated and their compiled source

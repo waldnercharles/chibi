@@ -1,0 +1,176 @@
+{
+  "schema": 1,
+  "date_utc": "2026-11-05",
+  "status": "accepted_scoped_public_current_v3_replay",
+  "scope": "Five distinct once-only source-native developer correctness runs; not throughput or compiler/platform admission.",
+  "source": {
+    "implementation_commit": "5b283f5873173f845e2120820711ac1461a2ad1f",
+    "implementation_tree": "03e3ecf37eb76232d433ff8864c0a5027d7ae04a",
+    "owner_checkpoint": "383d67bfd1da1b95fb514d9c01c5ed1c11e2f69c",
+    "owner_sha256": "de5fc0ae0288a2c6b0850853d5518fd3db5066294a52912455743b68eb3979eb",
+    "runner_sha256": "15713b09643bf1df6626b51d85a44983e868e6512d5af562b6a5893a15e30389",
+    "transport_version": 3,
+    "layout_sha256": "886b15e405bde5a0cb4223fc8986022797bd38d67946efaa3d6fa43c2fcc3ec6"
+  },
+  "tools": {
+    "compiler_source_commit": "02c86287430def964445ec90185961e20319536d",
+    "compiler_sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266",
+    "backend_sha256": "3a89eca55f0ada484ca71fcb38a5a7bfd6f5b1c9136fcc8bae62d162c882ec08",
+    "foreign_archive_sha256": "d6b16ff09a1bc6a230c727199a24041ca033fc014441e37384e8113011179fee",
+    "llvm": "22.1.8",
+    "rust": "1.99.0",
+    "cranelift": "0.137.1"
+  },
+  "totals": {
+    "cases": 5,
+    "aot_value_checks": 93,
+    "jit_value_checks": 2232,
+    "stages": 25,
+    "skipped_stages": 0,
+    "retries": 0
+  },
+  "cases": [
+    {
+      "case": "nativecases",
+      "status": "accepted_scoped_developer_correctness",
+      "aot_value_checks": 45,
+      "jit_value_checks": 1080,
+      "outer_exit_code": 0,
+      "independent_acceptance_sha256": "35f252450154950884638221d0347599baeb5e420ba6a621ce48f0797adcce0e",
+      "result_sha256": "8cd115ed2adea1c668f4c34568fe4541f769764eab18312eed0433cdb549707f",
+      "source_manifest_sha256": "f423b341e6c3b011c794bae6cb7e8d28633ac041cac73c12170ff6f0e445e497",
+      "artifacts": [
+        {"name": "native-main", "bytes": 10684840, "sha256": "b68a478637fe41ebffba2de1862f31c696da5184ba04bc3c75cc8457387b5efe"},
+        {"name": "source-native.o", "bytes": 1568, "sha256": "511b42b70b7df9fa0a79fc3ea6dced716e4b7b0bac864d70d41ec30fa278bbb8"},
+        {"name": "native-aot", "bytes": 11432, "sha256": "931837c1efff57fe256c1edb66c7eff91220bee76f3815e8d1f12c24f483aa82"}
+      ],
+      "stages": [
+        {"name": "chibi_compile", "status": "passed", "work_seconds": 11.629458075, "cleanup_seconds": 0.00152778, "overall_limit_seconds": 180.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "jit_normal", "status": "passed", "work_seconds": 0.235965982, "cleanup_seconds": 0.000676636, "overall_limit_seconds": 120.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "perf_failure", "status": "passed", "work_seconds": 0.021135217, "cleanup_seconds": 0.001150063, "overall_limit_seconds": 30.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "c_link", "status": "passed", "work_seconds": 0.057473799, "cleanup_seconds": 0.000591601, "overall_limit_seconds": 60.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "aot_run", "status": "passed", "work_seconds": 0.00586154, "cleanup_seconds": 0.000601766, "overall_limit_seconds": 30.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []}
+      ],
+      "manifest_additional_rejection_labels": []
+    },
+    {
+      "case": "scalars",
+      "status": "accepted_scoped_developer_correctness",
+      "aot_value_checks": 15,
+      "jit_value_checks": 360,
+      "outer_exit_code": 0,
+      "independent_acceptance_sha256": "a367e51fd4e50ba7501160f1c2dc1b6fd259cbaeb6cdf6f04913a49de246c06d",
+      "result_sha256": "f221434ef0f312ee0e65a11972ff11d6a32752f822c4fdbc2189ee0eaa2bf28f",
+      "source_manifest_sha256": "6c5feb73fb04d6fca09e836833965e196fd01284d621b25857a0fe65228b45be",
+      "artifacts": [
+        {"name": "native-main", "bytes": 11126992, "sha256": "16261f0c227c02dcf633f24dba11b5755ef61aac22d2e8701d60022010d6f1a3"},
+        {"name": "source-native.o", "bytes": 1080, "sha256": "59e2ac2a6a5dfe87b1221f6db3db2fb1a6da189988218e93afec73e9d2496ee4"},
+        {"name": "native-aot", "bytes": 8480, "sha256": "cfe589ad1c006c44c126dd3bf9349c1efd08fb6e3e2bfbaef3b7bf1610174ce2"}
+      ],
+      "stages": [
+        {"name": "chibi_compile", "status": "passed", "work_seconds": 11.871473426, "cleanup_seconds": 0.000993912, "overall_limit_seconds": 180.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "jit_normal", "status": "passed", "work_seconds": 0.087404011, "cleanup_seconds": 0.00057202, "overall_limit_seconds": 120.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "perf_failure", "status": "passed", "work_seconds": 0.010625215, "cleanup_seconds": 0.00054486, "overall_limit_seconds": 30.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "c_link", "status": "passed", "work_seconds": 0.051500511, "cleanup_seconds": 0.00091911, "overall_limit_seconds": 60.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "aot_run", "status": "passed", "work_seconds": 0.005668064, "cleanup_seconds": 0.000537168, "overall_limit_seconds": 30.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []}
+      ],
+      "manifest_additional_rejection_labels": [
+        "argument_type",
+        "argument_count",
+        "condition_type",
+        "result_type",
+        "missing_return",
+        "unknown_name",
+        "unsupported_array",
+        "literal_range",
+        "duplicate_parameter"
+      ]
+    },
+    {
+      "case": "direct_calls",
+      "status": "accepted_scoped_developer_correctness",
+      "aot_value_checks": 23,
+      "jit_value_checks": 552,
+      "outer_exit_code": 0,
+      "independent_acceptance_sha256": "6556eda26c6e50a7c6a9b1bc2652a24d2d362b13bbc220a3e0517dec55485a09",
+      "result_sha256": "d40cb7eaad526da18b44b24cad63e786d05747ba4270d27068a4e653101eebf1",
+      "source_manifest_sha256": "6d6eb295decc5a80b313c5f686dbc212b960530e08891d06f881fb77700f47d9",
+      "artifacts": [
+        {"name": "native-main", "bytes": 10592360, "sha256": "eb8696ea115f72165765d888db3e777120022a376df19ab3fffc6271ba74f139"},
+        {"name": "source-native.o", "bytes": 4360, "sha256": "f314fa1982a03c8ba68fdc7e7ad91b322b4d3b0d19c97ea3eef040b4a5f3a636"},
+        {"name": "native-aot", "bytes": 12816, "sha256": "d38aebefeb6f7cc54467eb85b20e7ca902be00a7286d5a6a7895edb50a782a36"}
+      ],
+      "stages": [
+        {"name": "chibi_compile", "status": "passed", "work_seconds": 11.025248334, "cleanup_seconds": 0.00125569, "overall_limit_seconds": 180.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "jit_normal", "status": "passed", "work_seconds": 0.374026626, "cleanup_seconds": 0.003735652, "overall_limit_seconds": 120.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "perf_failure", "status": "passed", "work_seconds": 0.031068691, "cleanup_seconds": 0.000529771, "overall_limit_seconds": 30.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "c_link", "status": "passed", "work_seconds": 0.051654431, "cleanup_seconds": 0.000596529, "overall_limit_seconds": 60.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "aot_run", "status": "passed", "work_seconds": 0.005937394, "cleanup_seconds": 0.000634595, "overall_limit_seconds": 30.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []}
+      ],
+      "manifest_additional_rejection_labels": []
+    },
+    {
+      "case": "modules",
+      "status": "accepted_scoped_developer_correctness",
+      "aot_value_checks": 2,
+      "jit_value_checks": 48,
+      "outer_exit_code": 0,
+      "independent_acceptance_sha256": "62a05bbc16e083b3cdb34e1215cd7a3c1a625bc3ef55c57ca7e51a92ac4e429b",
+      "result_sha256": "cc9ac84007ebbef1d41e1c3977863a16d54bc544f0fba116d22ab8212d94d6f9",
+      "source_manifest_sha256": "f6ecb95b83ff21f7c3c2dee2052e9cf838f9f4f29788252cc294b4fb835717b9",
+      "artifacts": [
+        {"name": "native-main", "bytes": 10608408, "sha256": "29002e1f4832c05920a9982cede35981282287eac5adc4996ae3e15a341fb245"},
+        {"name": "source-native.o", "bytes": 816, "sha256": "ea3ef1ddbdbcdf4e8c5f7435f17437c8a87f39c4bd0d4608a9efa6f248c5b79b"},
+        {"name": "native-aot", "bytes": 6720, "sha256": "fd29df1fb094e2ab36a2e222e9186c9089e2e03bc304685bb601f37b2ad56368"}
+      ],
+      "stages": [
+        {"name": "chibi_compile", "status": "passed", "work_seconds": 11.404169301, "cleanup_seconds": 0.00157471, "overall_limit_seconds": 180.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "jit_normal", "status": "passed", "work_seconds": 0.080468396, "cleanup_seconds": 0.000730262, "overall_limit_seconds": 120.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "perf_failure", "status": "passed", "work_seconds": 0.010999289, "cleanup_seconds": 0.000703021, "overall_limit_seconds": 30.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "c_link", "status": "passed", "work_seconds": 0.04665055, "cleanup_seconds": 0.000769909, "overall_limit_seconds": 60.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "aot_run", "status": "passed", "work_seconds": 0.005625824, "cleanup_seconds": 0.000660489, "overall_limit_seconds": 30.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []}
+      ],
+      "manifest_additional_rejection_labels": [
+        "private_import"
+      ]
+    },
+    {
+      "case": "foreign",
+      "status": "accepted_scoped_developer_correctness",
+      "aot_value_checks": 8,
+      "jit_value_checks": 192,
+      "outer_exit_code": 0,
+      "independent_acceptance_sha256": "6cb9130f7995aa2660a0f0305703152790c6f99c1b0f11954456fe3eca6cae72",
+      "result_sha256": "708290f83deebd1a87288920fe2228513adfbe967c5347dbb7ab0f5c7c480606",
+      "source_manifest_sha256": "e21ca70b3d1234b89bd679c2db0fafb402de1df81db36f1b3e0320e9b23a2343",
+      "artifacts": [
+        {"name": "native-main", "bytes": 10593888, "sha256": "39677bd596a469f5099ddfa1f9b2fe4cedc63fb5e00daf88b65dd177b8738c79"},
+        {"name": "source-native.o", "bytes": 1696, "sha256": "fee492a2076b08605a6a5d3d50a1af10a9f4043ba31656c83f1f9c1d2b461cbf"},
+        {"name": "native-aot", "bytes": 8792, "sha256": "c44ac0b17bf7e2c2d96f665781ee49e56e7ccc1e8865ca0e6f72032df7906ae6"}
+      ],
+      "stages": [
+        {"name": "chibi_compile", "status": "passed", "work_seconds": 11.528219831, "cleanup_seconds": 0.002402696, "overall_limit_seconds": 180.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "jit_normal", "status": "passed", "work_seconds": 0.082685691, "cleanup_seconds": 0.000620679, "overall_limit_seconds": 120.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "perf_failure", "status": "passed", "work_seconds": 0.010780705, "cleanup_seconds": 0.00054719, "overall_limit_seconds": 30.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "c_link", "status": "passed", "work_seconds": 0.051612499, "cleanup_seconds": 0.000643008, "overall_limit_seconds": 60.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []},
+        {"name": "aot_run", "status": "passed", "work_seconds": 0.006069247, "cleanup_seconds": 0.001023648, "overall_limit_seconds": 30.0, "exit_code": 0, "cleanup_echild": true, "surviving_children": false, "cleanup_errors": []}
+      ],
+      "manifest_additional_rejection_labels": [
+        "missing_symbol"
+      ]
+    }
+  ],
+  "boundaries": [
+    "Successful bodies come from retained source parsing and Produce/Verify/Pack, not hand-built IR.",
+    "Source rejection snippets are separate from ABI, entry lookup, ownership, copied-object lifetime and deliberate backend-failure controls.",
+    "Per case, work caps are179/119/29/59/29 seconds plus one second cleanup per stage. Outer hashing and receipt I/O are not claimed inside those native-stage caps.",
+    "Independent terminal inspection verifies actual artifacts and traces; it is not pre-execution admission of generated artifacts.",
+    "Deleted successful compiler/linker temporary products have no retained-byte proof.",
+    "Linux x86-64 System V only; no Windows/macOS execution or full language/runtime parity.",
+    "No compiler throughput result, backend winner/default change, CI success, merge or release acceptance.",
+    "Nine optional identity-dependent Python integration selectors remain explicitly skipped in their separate regression proof.",
+    "The inactive version-4 source-census candidate is not covered by any result here.",
+    "Manifest rejection labels are additional registry labels, not the complete internal source-rejection inventory. missing_symbol is a backend-resolution failure, not a parser rejection."
+  ],
+  "aggregate_acceptance_sha256": "025dc8e562a46c36ab9bef44bbb8e87dfb85ca4db67fcdb76ade91e16c41ff59"
+}

@@ -1,0 +1,2504 @@
+diff --git a/tools/experiments/vnext/frontend/bridge/generate.py b/tools/experiments/vnext/frontend/bridge/generate.py
+index 83c092d1e..d39787ca1 100644
+--- a/tools/experiments/vnext/frontend/bridge/generate.py
++++ b/tools/experiments/vnext/frontend/bridge/generate.py
+@@ -1,5 +1,5 @@
+ #!/usr/bin/env python3
+-"""Generate this experiment's scalar transport bindings from typed/Model.chibi.
++"""Generate this experiment's typed transport bindings from typed/Model.chibi.
+ 
+ This recognizes a closed declaration subset, not Chibi programs. It executes no
+ Chibi expressions or input code. Unknown syntax and same-version layout drift
+@@ -31,7 +31,7 @@ NUMBER = r"(?:0|[1-9][0-9]*)"
+ @dataclass(frozen=True)
+ class Model:
+     version: int
+-    constants: tuple[tuple[str, str, int], ...]
++    constants: tuple[tuple[str, str, int | str], ...]
+     records: tuple[tuple[str, tuple[tuple[str, str], ...]], ...]
+     tables: tuple[tuple[str, str], ...]
+     enums: tuple[tuple[str, tuple[str, ...]], ...]
+@@ -93,6 +93,7 @@ def parse_model(text: str) -> Model:
+                 active_enum = marker
+                 enums.append((marker, []))
+         constant = re.match(rf"pub ({IDENT}): (u32|int) : ({NUMBER}|{IDENT})(?: \+ ({NUMBER}))?;", source[cursor:])
++        descriptor = re.match(rf'pub ({IDENT}) :: \(\) -> string\s*\{{\s*return "([A-Za-z_][A-Za-z_0-9.]*)";\s*\}}', source[cursor:])
+         record = re.match(rf"pub ({IDENT}) :: struct\s*\{{([^{{}}]*)\}}", source[cursor:])
+         result = re.match(r"pub Result :: union\s*\{\s*Produced\(module: Module\)\s*\|\s*Rejected\(diagnostic: syntax\.Diagnostic\)\s*\}", source[cursor:])
+         if constant:
+@@ -115,6 +116,12 @@ def parse_model(text: str) -> Model:
+                 enums[-1][1].append(name)
+             values[name] = (scalar, value)
+             size = constant.end()
++        elif descriptor:
++            name, value = descriptor.groups()
++            if phase != "constants" or active_enum is not None:
++                raise ValueError(f"misplaced descriptor: {name}")
++            constants.append((name, "string", value))
++            size = descriptor.end()
+         elif record:
+             name, body = record.groups()
+             if active_enum is not None:
+@@ -184,7 +191,7 @@ def parse_model(text: str) -> Model:
+                   tuple((name, tuple(members)) for name, members in enums))
+     expected = VERSION_LAYOUTS.get(model.version)
+     if expected is None:
+-        raise ValueError(f"unreviewed bridge version: {model.version}")
++        raise ValueError(f"unreviewed bridge version: {model.version}; candidate layout SHA-256: {model.digest()}")
+     if model.digest() != expected:
+         raise ValueError(f"Model layout/kinds changed without a reviewed version bump: {model.digest()}")
+     return model
+@@ -242,7 +249,10 @@ def rust_source(model: Model) -> str:
+              f"pub const VERSION: u32 = {model.version};", f"pub const HEADER_WORDS: usize = {header};",
+              "pub const MAX_ELEMENTS: usize = i32::MAX as usize;"]
+     for name, kind, value in model.constants:
+-        lines.append(f"pub const {upper(name)}: {'u32' if kind == 'u32' else 'i32'} = {value};")
++        if kind == "string":
++            lines.append(f'pub const {upper(name)}: &str = "{value}";')
++        else:
++            lines.append(f"pub const {upper(name)}: {'u32' if kind == 'u32' else 'i32'} = {value};")
+     for name, members in model.enums:
+         lines += ["", "#[derive(Debug, Clone, Copy, PartialEq, Eq)]", f"pub enum {name} {{"]
+         lines.extend(f"    {member}," for member in members)
+diff --git a/tools/experiments/vnext/frontend/bridge/generate_tests.py b/tools/experiments/vnext/frontend/bridge/generate_tests.py
+index f9243bcf2..9cfc395ac 100644
+--- a/tools/experiments/vnext/frontend/bridge/generate_tests.py
++++ b/tools/experiments/vnext/frontend/bridge/generate_tests.py
+@@ -104,19 +104,19 @@ class GenerateTests(unittest.TestCase):
+             self.assertEqual(target.read_text(encoding="utf-8"), "stale\n")
+ 
+     def test_enum_groups_are_complete_and_reject_malformed_markers(self):
+-        self.assertEqual(MODEL.enums, (("ScalarType", ("Bool", "I64")),
++        self.assertEqual(MODEL.enums, (("TypeKind", ("Bool", "I64", "BorrowedBytes")),
+             ("Opcode", ("ConstantI64", "AddI64", "Jump", "Branch", "Return",
+-                        "ConstantBool", "MultiplyI64", "GreaterI64", "NotBool", "DirectCall", "EqualI64"))))
++                        "ConstantBool", "MultiplyI64", "GreaterI64", "NotBool", "DirectCall", "EqualI64", "SubI64", "ByteLength", "ByteReadChecked"))))
+         values = {name: value for name, _, value in MODEL.constants}
+-        self.assertEqual([values[name] for name in MODEL.enums[1][1]], list(range(1, 12)))
++        self.assertEqual([values[name] for name in MODEL.enums[1][1]], list(range(1, 15)))
+         changes = [
+             ("// vnext-bridge-enum: end", ""),
+-            ("// vnext-bridge-enum: Opcode", "// vnext-bridge-enum: ScalarType"),
++            ("// vnext-bridge-enum: Opcode", "// vnext-bridge-enum: TypeKind"),
+             ("// vnext-bridge-enum: Opcode", "// vnext-bridge-enum: end"),
+             ("// vnext-bridge-enum: Opcode", "// vnext-bridge-enum: Empty\n// vnext-bridge-enum: Opcode"),
+-            ("// vnext-bridge-enum: ScalarType", "// vnext-bridge-enum: Block"),
++            ("// vnext-bridge-enum: TypeKind", "// vnext-bridge-enum: Block"),
+             ("// vnext-bridge-enum: end", "// vnext-bridge-enum: end\n// vnext-bridge-enum: end"),
+-            ("// vnext-bridge-version: 3", "// vnext-bridge-version: 3\n// vnext-bridge-version: nope"),
++            ("// vnext-bridge-version: 4", "// vnext-bridge-version: 4\n// vnext-bridge-version: nope"),
+             ("// vnext-bridge-enum: Opcode", " // vnext-bridge-enum: Opcode"),
+             ("name: u32;", "name: u32;\n// vnext-bridge-enum: Misplaced\n"),
+             ("pub I64: u32 : Bool + 1;", "pub I64: u32 : Bool + 0;"),
+@@ -128,9 +128,9 @@ class GenerateTests(unittest.TestCase):
+ 
+     def test_malformed_schema_fails_closed(self):
+         replacements = [
+-            ("// vnext-bridge-version: 3", ""),
+-            ("// vnext-bridge-version: 3", "// vnext-bridge-version: 3\n// vnext-bridge-version: 3"),
+-            ("// vnext-bridge-version: 3", "// vnext-bridge-version: 4"),
++            ("// vnext-bridge-version: 4", ""),
++            ("// vnext-bridge-version: 4", "// vnext-bridge-version: 4\n// vnext-bridge-version: 4"),
++            ("// vnext-bridge-version: 4", "// vnext-bridge-version: 5"),
+             ("package vnext_typed", "package another"),
+             ('import syntax "project:syntax_diagnostics"', 'import syntax "project:other"'),
+             ("name: u32;", "name: u64;"),
+@@ -177,6 +177,30 @@ class GenerateTests(unittest.TestCase):
+             with self.subTest(new=new), self.assertRaisesRegex(ValueError, "layout/kinds changed"):
+                 generator.parse_model(SOURCE.replace(old, new, 1))
+ 
++    def test_canonical_descriptors_are_single_source_and_fail_closed(self):
++        constants = {name: value for name, _, value in MODEL.constants}
++        self.assertEqual(constants["BorrowedBytesIdentity"], "vnext.BorrowedBytes")
++        self.assertEqual(constants["BorrowedBytesStorage"], 15)
++        self.assertEqual(constants["ByteReadCheckedLeft"], constants["BorrowedBytes"])
++        self.assertEqual(constants["ByteReadCheckedRight"], constants["I64"])
++        self.assertEqual(constants["ByteReadCheckedResult"], constants["I64"])
++        rust = generator.rust_source(MODEL)
++        self.assertIn('pub const BORROWED_BYTES_IDENTITY: &str = "vnext.BorrowedBytes";', rust)
++        for changed in ('"other.BorrowedBytes"', '"vnext/BorrowedBytes"', '""', '"escaped\\n"'):
++            with self.subTest(changed=changed), self.assertRaises(ValueError):
++                generator.parse_model(SOURCE.replace('"vnext.BorrowedBytes"', changed, 1))
++        descriptor = 'pub BorrowedBytesName :: () -> string { return "BorrowedBytes"; }'
++        for changed in (
++            'pub BorrowedBytesName :: (x: int) -> string { return "BorrowedBytes"; }',
++            'pub BorrowedBytesName :: () -> string { extra(); return "BorrowedBytes"; }',
++            'pub BorrowedBytesName :: () -> string { return OtherName; }',
++            'pub BorrowedBytesName: string : "BorrowedBytes";',
++        ):
++            with self.subTest(changed=changed), self.assertRaises(ValueError):
++                generator.parse_model(SOURCE.replace(descriptor, changed, 1))
++        self.assertEqual(generator.VERSION_LAYOUTS[3],
++                         "886b15e405bde5a0cb4223fc8986022797bd38d67946efaa3d6fa43c2fcc3ec6")
++
+     def test_fixture_layout_budget(self):
+         cursor = len(MODEL.word_tables()) + 1
+         for (name, _, fields), (expected_name, count, width, start) in zip(MODEL.word_tables(), ECHO_JOIN):
+@@ -241,11 +265,11 @@ class GenerateTests(unittest.TestCase):
+             # This test encoding is not an on-disk IR format or production step.
+             serialized = struct.pack(f"<{len(packed[0])}I", *packed[0])
+             self.assertEqual(list(struct.unpack(f"<{len(packed[0])}I", serialized)), packed[0])
+-        self.assertEqual(reference_pack({name: [] for name, _, _ in MODEL.word_tables()})[0], [3] + [0] * 13)
++        self.assertEqual(reference_pack({name: [] for name, _, _ in MODEL.word_tables()})[0], [4] + [0] * 13)
+ 
+     def test_boundary_framing_errors(self):
+         empty = [MODEL.version] + [0] * 13
+-        bad = [([], "header"), ([1] + [0] * 13, "version"), ([2] + [0] * 13, "version"), ([0] * 14, "version"), (empty + [0], "word count"),
++        bad = [([], "header"), ([1] + [0] * 13, "version"), ([2] + [0] * 13, "version"), ([3] + [0] * 13, "version"), ([0] * 14, "version"), (empty + [0], "word count"),
+                ([MODEL.version, 1] + [0] * 12, "word count"),
+                ([MODEL.version, 2 ** 31] + [0] * 12, "count")]
+         for words, diagnostic in bad:
+diff --git a/tools/experiments/vnext/frontend/bridge/tests/arena_tests.rs b/tools/experiments/vnext/frontend/bridge/tests/arena_tests.rs
+index 89525447e..214482d9b 100644
+--- a/tools/experiments/vnext/frontend/bridge/tests/arena_tests.rs
++++ b/tools/experiments/vnext/frontend/bridge/tests/arena_tests.rs
+@@ -65,7 +65,7 @@ fn rejects_missing_header_and_unknown_version() {
+     let words = [0; HEADER_WORDS];
+     assert_eq!(Arena::from_parts(&words, &[], &[]).unwrap_err(), FramingError::Version { actual: 0 });
+     let mut old = [0; HEADER_WORDS];
+-    for version in [1, 2] {
++    for version in [1, 2, 3] {
+         old[0] = version;
+         assert_eq!(Arena::from_parts(&old, &[], &[]).unwrap_err(), FramingError::Version { actual: version });
+     }
+@@ -136,13 +136,14 @@ fn canonical_empty_and_checked_nonempty_spans() {
+ 
+ #[test]
+ fn generated_kinds_have_checked_exhaustive_decoding() {
+-    for value in [BOOL, I64] {
+-        match ScalarType::decode(value).unwrap() {
+-            ScalarType::Bool => assert_eq!(value, BOOL),
+-            ScalarType::I64 => assert_eq!(value, I64),
++    for value in [BOOL, I64, BORROWED_BYTES] {
++        match TypeKind::decode(value).unwrap() {
++            TypeKind::Bool => assert_eq!(value, BOOL),
++            TypeKind::I64 => assert_eq!(value, I64),
++            TypeKind::BorrowedBytes => assert_eq!(value, BORROWED_BYTES),
+         }
+     }
+-    for value in [CONSTANT_I64, ADD_I64, JUMP, BRANCH, RETURN, CONSTANT_BOOL, MULTIPLY_I64, GREATER_I64, NOT_BOOL, DIRECT_CALL, EQUAL_I64] {
++    for value in [CONSTANT_I64, ADD_I64, JUMP, BRANCH, RETURN, CONSTANT_BOOL, MULTIPLY_I64, GREATER_I64, NOT_BOOL, DIRECT_CALL, EQUAL_I64, SUB_I64, BYTE_LENGTH, BYTE_READ_CHECKED] {
+         match Opcode::decode(value).unwrap() {
+             Opcode::ConstantI64 => assert_eq!(value, CONSTANT_I64),
+             Opcode::AddI64 => assert_eq!(value, ADD_I64),
+@@ -155,9 +156,12 @@ fn generated_kinds_have_checked_exhaustive_decoding() {
+             Opcode::NotBool => assert_eq!(value, NOT_BOOL),
+             Opcode::DirectCall => assert_eq!(value, DIRECT_CALL),
+             Opcode::EqualI64 => assert_eq!(value, EQUAL_I64),
++            Opcode::SubI64 => assert_eq!(value, SUB_I64),
++            Opcode::ByteLength => assert_eq!(value, BYTE_LENGTH),
++            Opcode::ByteReadChecked => assert_eq!(value, BYTE_READ_CHECKED),
+         }
+     }
+-    assert_eq!(ScalarType::decode(0), None);
++    assert_eq!(TypeKind::decode(0), None);
+     assert_eq!(Opcode::decode(0), None);
+     assert_eq!(Opcode::decode(BLOCK_DEFINITION), None);
+ }
+diff --git a/tools/experiments/vnext/frontend/typed/Model.chibi b/tools/experiments/vnext/frontend/typed/Model.chibi
+index 4aed9b2c5..7018e166f 100644
+--- a/tools/experiments/vnext/frontend/typed/Model.chibi
++++ b/tools/experiments/vnext/frontend/typed/Model.chibi
+@@ -1,6 +1,6 @@
+ package vnext_typed
+ 
+-// vnext-bridge-version: 3
++// vnext-bridge-version: 4
+ 
+ import syntax "project:syntax_diagnostics"
+ 
+@@ -10,9 +10,10 @@ import syntax "project:syntax_diagnostics"
+ // including zero, through 2147483647. Span starts are zero-based offsets and an
+ // empty span has start/count zero. Arrays own their storage through the returned
+ // Module; no source tree is retained.
+-// vnext-bridge-enum: ScalarType
++// vnext-bridge-enum: TypeKind
+ pub Bool: u32 : 1;
+ pub I64: u32 : Bool + 1;
++pub BorrowedBytes: u32 : I64 + 1;
+ // vnext-bridge-enum: Opcode
+ pub ConstantI64: u32 : 1;
+ pub AddI64: u32 : ConstantI64 + 1;
+@@ -25,13 +26,43 @@ pub GreaterI64: u32 : MultiplyI64 + 1;
+ pub NotBool: u32 : GreaterI64 + 1;
+ pub DirectCall: u32 : NotBool + 1;
+ pub EqualI64: u32 : DirectCall + 1;
++pub SubI64: u32 : EqualI64 + 1;
++pub ByteLength: u32 : SubI64 + 1;
++pub ByteReadChecked: u32 : ByteLength + 1;
+ // vnext-bridge-enum: end
++// Canonical capability descriptors, not per-Module records. These constants
++// are consumed by retained-reader catalog admission and generated Rust bindings.
++// String descriptors use literal functions because retained native compilation
++// rejects nonnumeric top-level constants. The generator accepts only this exact
++// zero-argument/literal-return form, not arbitrary executable schema code.
++pub BorrowedBytesName :: () -> string { return "BorrowedBytes"; }
++pub BorrowedBytesIdentity :: () -> string { return "vnext.BorrowedBytes"; }
++pub BorrowedBytesStorage: int : 15;
++pub BorrowedBytesContainer: int : 0;
++pub BorrowedBytesFlags: int : 0;
++pub BorrowedBytesParameter: int : 0;
++pub BorrowedBytesCollection: int : 0;
++pub ByteLengthName :: () -> string { return "byte_length"; }
++pub ByteLengthIdentity :: () -> string { return "vnext.byte_length"; }
++pub ByteLengthArity: int : 1;
++pub ByteLengthLeft: u32 : BorrowedBytes;
++pub ByteLengthRight: u32 : 0;
++pub ByteLengthResult: u32 : I64;
++pub ByteReadCheckedName :: () -> string { return "byte_read_checked"; }
++pub ByteReadCheckedIdentity :: () -> string { return "vnext.byte_read_checked"; }
++pub ByteReadCheckedArity: int : 2;
++pub ByteReadCheckedLeft: u32 : BorrowedBytes;
++pub ByteReadCheckedRight: u32 : I64;
++pub ByteReadCheckedResult: u32 : I64;
++// One logical borrow expands to two machine parameters; no foreign borrow ABI.
++pub MaxMachineParameters: int : 64;
+ pub BlockDefinition: u32 : 2147483648;
+ pub MaxFunctions: int : 32;
+ pub MaxLibraries: int : 32;
+ pub MaxLibraryBytes: int : 256;
+ pub MaxParameters: int : 32;
+ pub MaxLocals: int : 64;
++// Keep 64 until cyclic verification and 128/129 tests have executed.
+ pub MaxBlocks: int : 64;
+ pub MaxDepth: int : 32;
+ pub MaxNodes: int : 8192;
+@@ -64,7 +95,9 @@ pub Block :: struct {
+ // block ID | BlockDefinition for a block parameter. Type lives only here.
+ pub Value :: struct { type: u32; definition: u32; }
+ // Target: 24 scalar bytes. ConstantI64 payload is a literal ID; ConstantBool
+-// payload is 0/1. AddI64/MultiplyI64/GreaterI64/EqualI64 read left/right; NotBool reads
++// payload is 0/1. AddI64/SubI64/MultiplyI64/GreaterI64/EqualI64 read left/right.
++// ByteLength reads borrowed left; ByteReadChecked reads borrowed left/i64 right.
++// Both return i64 and have zero payload. NotBool reads
+ // left. DirectCall payload is a CallID. Jump payload is an edge ID. Branch
+ // reads left and payload names two consecutive edges (true, false). Return
+ // reads left. Unused fields are zero; result type lives only in Value.
+diff --git a/tools/experiments/vnext/frontend/typed/Produce.chibi b/tools/experiments/vnext/frontend/typed/Produce.chibi
+index 3efd38651..3e23055de 100644
+--- a/tools/experiments/vnext/frontend/typed/Produce.chibi
++++ b/tools/experiments/vnext/frontend/typed/Produce.chibi
+@@ -33,6 +33,13 @@ Document :: struct {
+ }
+ Header :: struct { source: int; declaration: int; name: int; public: bool; }
+ Library :: struct { alias: int; path: string; name: u32; }
++// Two compiler-owned callable descriptors, resolved after ordinary local,
++// package-function and import shadowing. Identity is never supplied by source.
++Intrinsic :: struct { name: string; identity: u64; op: u32; arity: int; left: u32; right: u32; result: u32; }
++// Sparse prepass results in statement visitation order. No per-node payload is
++// reserved for sources without assignments or loops. Cursors consume each once.
++AssignmentTarget :: struct { node: int; slot: int; }
++LoopWrite :: struct { node: int; bindings: int; mask: u64; }
+ 
+ // One invocation owns this scratch state and a separate Module. Output helpers
+ // take both as direct scoped parameters: the old seed rejected the version
+@@ -42,6 +49,13 @@ Library :: struct { alias: int; path: string; name: u32; }
+ State :: struct {
+     tree: reader.Tree;
+     environment: reader.Environment;
++    borrowed_nominal: u64;
++    intrinsics: Intrinsic[];
++    assignment_targets: AssignmentTarget[];
++    loop_writes: LoopWrite[];
++    active_loops: int[];
++    next_assignment: int;
++    next_loop: int;
+     nodes: syntax.Node[];
+     text: string;
+     document: int;
+@@ -69,22 +83,36 @@ EmptyModule :: () -> Module {
+ 
+ // Retain the real annotation reader without broad callable-header publication,
+ // prepared emission, scalar lowering or a second type interpretation.
+-SignatureEnvironment :: () -> reader.Environment {
++SignatureEnvironment :: (nominal: u64, intrinsics: Intrinsic[]) -> reader.Environment {
+     scope: binding.Scope = {parent: -1, function: -1, start: 0, end: 0,
+                             line: 1, column: 1, document: 0};
+     symbols: binding.Symbol[] = [];
+     functions: binding.Function[] = [];
+-    ids: u64[] = [];
++    lexical_ids: u64[] = [];
+     keys: string[] = [];
+-    lexical := binding.Environment.Tables([scope], symbols, functions, ids, keys);
+-    types: named.Type[] = [];
+-    entries: named.Entry[] = [];
++    for (intrinsic, index in intrinsics) {
++        symbol: binding.Symbol = {name: intrinsic.name, kind: binding.FunctionKind,
++                                  scope: 0, id_slot: index, start: 0, end: 0,
++                                  line: 1, column: 1, document: 0};
++        function: binding.Function = {symbol: index, scope: 0};
++        symbols.append(symbol);
++        functions.append(function);
++        lexical_ids.append(intrinsic.identity);
++    }
++    lexical := binding.Environment.Tables([scope], symbols, functions, lexical_ids, keys);
++    ids: u64[] = [nominal];
++    types: named.Type[] = [{storage: BorrowedBytesStorage, container: BorrowedBytesContainer,
++                           flags: BorrowedBytesFlags, nominal_slot: 0, parameter_slot: -1,
++                           collection: u64(BorrowedBytesCollection)}];
++    entries: named.Entry[] = [{name: BorrowedBytesName(), source_name: "", key: "", id_slot: 0,
++                              type: 0, has_source_name: false, has_key: false,
++                              internal: false, component: false}];
+     indices: int[] = [];
+     imports: named.Import[] = [];
+     exports: named.Export[] = [];
+     uses: named.Use[] = [];
+     names := named.Environment.Tables(lexical, types, ids, entries, entries, entries,
+-                                      indices, imports, exports, uses, "vnext-scalar", 0, false, true, 0);
++                                      indices, imports, exports, uses, "vnext", 0, false, true, 0);
+     definitions: constructors.Definition[] = [];
+     variants: constructors.RawVariant[] = [];
+     capabilities: constructors.Capability[] = [];
+@@ -189,33 +217,60 @@ OriginID :: (s: ^State, output: ^Module, node: int) -> u32 {
+ }
+ ReadType :: (s: ^State, node: int, owner: int) -> u32 {
+     if (node < 0) { node = owner; }
+-    // Ordinary scalar annotations only. Reject modifiers, constructors, units,
+-    // nominal types and parameter types before they can expand the closure.
+     if (!reader.Kind(s.tree, node, syntax.Type)) {
+-        Fail(s, node, "vNext scalar slice requires an explicit i64 or bool type");
++        Fail(s, node, "vNext requires an ordinary i64, bool or BorrowedBytes type");
+         return 0;
+     }
+-    spelling := reader.Text(s.tree, node);
+-    if (spelling != "i64" && spelling != "bool") {
+-        Fail(s, node, "vNext scalar slice supports only ordinary i64 and bool types");
+-        return 0;
++    // Local and package names cannot silently acquire a canonical type identity.
++    // Type declarations/constructors are outside this bounded source language.
++    if (FindBinding(s, node) >= 0) {
++        Fail(s, node, "binding shadows an annotation type"); return 0;
++    }
++    for (header in s.headers) {
++        if (s.packages[header.source] == s.packages[s.source] && HeaderMatches(s, header, node)) {
++            Fail(s, node, "function shadows an annotation type"); return 0;
++        }
++    }
++    for (imported in s.imports) {
++        if (imported.file == s.source && SpellingMatches(s, node, imported.name)) {
++            Fail(s, node, "package alias shadows an annotation type"); return 0;
++        }
+     }
+     switch reader.Signature(s.environment, s.tree, node, 0, s.document) {
+         case .Read(value, has_unit, unit, updated, diagnostics, uses, publications, collection):
+-            if (length(diagnostics) != 0) {
+-                s.diagnostics.append(diagnostics[0]);
+-                return 0;
+-            }
++            if (length(diagnostics) != 0) { s.diagnostics.append(diagnostics[0]); return 0; }
+             switch value {
+                 case .Typed(storage, container, flags, nominal, parameter):
+-                    if ((storage != 1 && storage != 8) || container != 0 || flags != 0 ||
+-                        nominal != 0 || parameter != 0 || has_unit || unit != "" || collection != 0 ||
+-                        length(uses) != 0 || length(publications) != 0) {
+-                        Fail(s, node, "vNext scalar slice rejected a nonordinary scalar signature");
+-                        return 0;
++                    if (container != 0 || flags != 0 || parameter != 0 || has_unit ||
++                        unit != "" || collection != 0 || length(publications) != 0) {
++                        Fail(s, node, "vNext rejected a modified or constructed signature"); return 0;
++                    }
++                    if (nominal == 0 && length(uses) == 0) {
++                        if (storage == 1) { return Bool; }
++                        if (storage == 8) { return I64; }
++                    }
++                    if (nominal == s.borrowed_nominal && storage == BorrowedBytesStorage &&
++                        container == BorrowedBytesContainer && flags == BorrowedBytesFlags &&
++                        parameter == u64(BorrowedBytesParameter) && collection == u64(BorrowedBytesCollection) &&
++                        SpellingMatches(s, node, BorrowedBytesName()) && length(uses) == 1) {
++                        // The retained reader publishes a real nominal-use row.
++                        // Check that row in its returned catalog, not by spelling.
++                        use := uses[0];
++                        switch updated {
++                            case .Tables(names, construction, pointer_size):
++                                switch names {
++                                    case .Tables(lexical, types, ids, merged, own, native, symbol_types,
++                                                 imports, exports, all_uses, identity, package_scope,
++                                                 has_native, has_documents, entity_id):
++                                        if (use.kind == 4 && use.symbol == -1 &&
++                                            named.IDAt(ids, use.member_slot) == nominal &&
++                                            use.document == s.document && use.start == s.nodes[node].start &&
++                                            use.end == s.nodes[node].end) { return BorrowedBytes; }
++                                }
++                        }
+                     }
+-                    if (storage == 1) { return Bool; }
+-                    return I64;
++                    Fail(s, node, "vNext requires canonical ordinary i64, bool or BorrowedBytes");
++                    return 0;
+             }
+     }
+ }
+@@ -262,6 +317,9 @@ FunctionHeader :: (s: ^State, output: ^Module, declaration: int, library_id: u32
+         }
+         type := ReadType(s, reader.Field(s.tree, parameter, syntax.FieldType), parameter);
+         if (type == 0) { return; }
++        if (library_id != 0 && type == BorrowedBytes) {
++            Fail(s, parameter, "foreign declarations cannot accept borrowed bytes"); return;
++        }
+         s.bindings.append(parameter_name);
+         s.parameter_names.append(parameter_name);
+         output.parameter_types.append(type);
+@@ -269,6 +327,9 @@ FunctionHeader :: (s: ^State, output: ^Module, declaration: int, library_id: u32
+     }
+     result_type := ReadType(s, reader.Field(s.tree, declaration, syntax.FieldResults), declaration);
+     if (result_type == 0) { return; }
++    if (result_type == BorrowedBytes) {
++        Fail(s, declaration, "borrowed bytes cannot escape as a function result"); return;
++    }
+     count := length(s.bindings);
+     if (count == 0) { parameter_first = 0; }
+     signature: Signature = {first_parameter: u32(parameter_first), parameter_count: u32(count), result_type: result_type};
+@@ -507,11 +568,12 @@ Expression :: (s: ^State, output: ^Module, node: int, depth: int) -> u32 {
+         op: u32 = 0;
+         result_type: u32 = I64;
+         if (reader.Kind(s.tree, operator, token.Add)) { op = AddI64; }
++        else if (reader.Kind(s.tree, operator, token.Sub)) { op = SubI64; }
+         else if (reader.Kind(s.tree, operator, token.Mul)) { op = MultiplyI64; }
+         else if (reader.Kind(s.tree, operator, token.Gt)) { op = GreaterI64; result_type = Bool; }
+         else if (reader.Kind(s.tree, operator, token.CmpEq)) { op = EqualI64; result_type = Bool; }
+         else {
+-            Fail(s, operator, "vNext scalar slice supports only i64 +, *, >, == and bool && binary operations");
++            Fail(s, operator, "vNext scalar slice supports only i64 +, -, *, >, == and bool && binary operations");
+             return 0;
+         }
+         left_node := reader.Field(s.tree, node, syntax.FieldLeft);
+@@ -579,6 +641,23 @@ Expression :: (s: ^State, output: ^Module, node: int, depth: int) -> u32 {
+                 break;
+             }
+         }
++        if (callee == 0 && !qualified) {
++            // An import alias is an ordinary package name, never an intrinsic.
++            for (imported in s.imports) {
++                if (imported.file == s.source && SpellingMatches(s, name, imported.name)) {
++                    Fail(s, name, "package alias is not callable"); return 0;
++                }
++            }
++            identity := IntrinsicIdentity(s, name);
++            if (identity != 0) {
++                for (intrinsic in s.intrinsics) {
++                    if (intrinsic.identity == identity) {
++                        return IntrinsicCall(s, output, node, intrinsic, depth);
++                    }
++                }
++                assert(false, "resolved compiler-owned callable has a descriptor");
++            }
++        }
+         if (callee == 0) {
+             message := "unknown direct callee";
+             if (qualified) { message = "unknown imported function"; }
+@@ -643,6 +722,54 @@ Expression :: (s: ^State, output: ^Module, node: int, depth: int) -> u32 {
+     return 0;
+ }
+ 
++// Resolve through the same retained lexical catalog installed in the type
++// reader environment. Descriptor dispatch is by canonical ID, never spelling.
++// FindCallable scans two symbols plus the root scope. Text materializes one
++// <=source-byte identifier only on this rare non-user-function call path.
++IntrinsicIdentity :: (s: ^State, node: int) -> u64 {
++    switch s.environment {
++        case .Tables(names, construction, pointer_size):
++            switch names {
++                case .Tables(lexical, types, ids, merged, own, native, symbol_types,
++                             imports, exports, uses, identity, package_scope,
++                             has_native, has_documents, entity_id):
++                    found := binding.FindCallable(lexical, package_scope, reader.Text(s.tree, node));
++                    if (found < 0) { return 0; }
++                    switch lexical {
++                        case .Tables(scopes, symbols, functions, lexical_ids, keys):
++                            return named.IDAt(lexical_ids, symbols[found].id_slot);
++                    }
++            }
++    }
++}
++
++IntrinsicCall :: (s: ^State, output: ^Module, node: int, intrinsic: Intrinsic, depth: int) -> u32 {
++    assert(intrinsic.identity != 0, "canonical intrinsic identity");
++    list := reader.Field(s.tree, node, syntax.FieldArguments);
++    argument := First(s, list);
++    left: u32 = 0;
++    right: u32 = 0;
++    count: int = 0;
++    while (argument >= 0) {
++        if (count == intrinsic.arity) { Fail(s, list, "intrinsic argument count does not match signature"); return 0; }
++        if (reader.Kind(s.tree, argument, syntax.NamedArgument) || reader.Kind(s.tree, argument, syntax.TypedArgument)) {
++            Fail(s, argument, "intrinsic requires positional arguments"); return 0;
++        }
++        value := Expression(s, output, argument, depth + 1);
++        if (value == 0) { return 0; }
++        expected := intrinsic.left;
++        if (count == 1) { expected = intrinsic.right; }
++        if (output.values[int(value) - 1].type != expected) {
++            Fail(s, argument, "intrinsic argument type does not match signature"); return 0;
++        }
++        if (count == 0) { left = value; } else { right = value; }
++        count += 1;
++        argument = Next(s, argument);
++    }
++    if (count != intrinsic.arity) { Fail(s, list, "intrinsic argument count does not match signature"); return 0; }
++    return Emit(s, output, intrinsic.op, intrinsic.result, left, right, 0, node);
++}
++
+ NewEdge :: (output: ^Module) -> u32 {
+     edge: Edge = {target: 0, first_argument: 0, argument_count: 0};
+     output.edges.append(edge);
+@@ -773,6 +900,114 @@ Conditional :: (s: ^State, output: ^Module, node: int, depth: int) {
+     if (false_exit != 0) { FinishEdge(output, false_exit, merge, false_arguments); }
+ }
+ 
++// This prepass visits statements only, never expressions or inferred types.
++// It resolves each assignment once and sets only enclosing loops' entry slots.
++// Cost <= statements + assignments*(64 name comparisons + 32 loop bits).
++CollectWrite :: (s: ^State, statement: int, depth: int) {
++    if (depth >= MaxDepth) { Fail(s, statement, "vNext scalar slice exceeds statement nesting 32"); return; }
++    kind := s.nodes[statement].kind;
++    if (kind == syntax.LocalDeclaration) {
++        name := reader.Field(s.tree, statement, syntax.FieldName);
++        if (length(s.bindings) == MaxLocals) { Fail(s, name, "vNext scalar slice exceeds 64 visible bindings"); return; }
++        if (!AdmitName(s, name)) { return; }
++        if (FindBinding(s, name) >= 0) { Fail(s, name, "duplicate scalar local name"); return; }
++        s.bindings.append(name);
++    } else if (kind == syntax.Assignment) {
++        target := reader.Field(s.tree, statement, syntax.FieldTarget);
++        operator := reader.Field(s.tree, statement, syntax.FieldOperator);
++        if (!reader.Kind(s.tree, target, syntax.Identifier) || !reader.Kind(s.tree, operator, token.Eq)) {
++            Fail(s, statement, "vNext scalar slice requires plain scalar assignment"); return;
++        }
++        slot := FindBinding(s, target);
++        if (slot < 0) { Fail(s, target, "assignment to unknown scalar name"); return; }
++        target_row: AssignmentTarget = {node: statement, slot: slot};
++        s.assignment_targets.append(target_row);
++        for (index in s.active_loops) {
++            row := s.loop_writes[index];
++            if (slot < row.bindings) {
++                row.mask |= u64(1) << u32(slot);
++                s.loop_writes[index] = row;
++            }
++        }
++    } else if (kind == syntax.IfStatement) {
++        CollectBlockWrites(s, reader.Field(s.tree, statement, syntax.FieldConsequence), depth + 1);
++        alternative := reader.Field(s.tree, statement, syntax.FieldAlternative);
++        if (alternative >= 0) {
++            if (reader.Kind(s.tree, alternative, syntax.IfStatement)) { CollectWrite(s, alternative, depth + 1); }
++            else { CollectBlockWrites(s, alternative, depth + 1); }
++        }
++    } else if (kind == syntax.WhileStatement) {
++        loops := s.active_loops;
++        s.active_loops.append(length(s.loop_writes));
++        row: LoopWrite = {node: statement, bindings: length(s.bindings), mask: 0};
++        s.loop_writes.append(row);
++        CollectBlockWrites(s, reader.Field(s.tree, statement, syntax.FieldBody), depth + 1);
++        s.active_loops = loops;
++    }
++}
++CollectBlockWrites :: (s: ^State, parent: int, depth: int) {
++    before := s.bindings;
++    statement := First(s, parent);
++    while (statement >= 0 && length(s.diagnostics) == 0) {
++        CollectWrite(s, statement, depth);
++        statement = Next(s, statement);
++    }
++    s.bindings = before;
++}
++
++// Only resolved writes to loop-entry bindings become header parameters.
++// The condition/body each emit once; the false path sees header values, never
++// definitions from a body that might execute zero times. A returned body has
++// no backedge, but its zero-trip continuation still exists.
++While :: (s: ^State, output: ^Module, node: int, depth: int) {
++    bindings := s.bindings;
++    before := s.current_values;
++    assert(s.next_loop < length(s.loop_writes), "while was visited by write prepass");
++    row := s.loop_writes[s.next_loop];
++    s.next_loop += 1;
++    assert(row.node == node && row.bindings == length(before), "while entry binding identity matches prepass");
++    writes := row.mask;
++    entry_edge := NewEdge(output);
++    Emit(s, output, Jump, 0, 0, 0, entry_edge, node);
++    header := NewBlock(s, output, node);
++    if (header == 0) { return; }
++    entry_arguments: u32[] = [];
++    for (value, slot in before) {
++        if ((writes & (u64(1) << u32(slot))) != 0) {
++            entry_arguments.append(value);
++            s.current_values[slot] = NewParameter(s, output, output.values[int(value) - 1].type);
++        }
++    }
++    FinishEdge(output, entry_edge, header, entry_arguments);
++    header_values := s.current_values;
++    condition := Expression(s, output, reader.Field(s.tree, node, syntax.FieldCondition), 0);
++    if (condition == 0) { return; }
++    if (output.values[int(condition) - 1].type != Bool) { Fail(s, node, "while condition requires bool"); return; }
++    body_edge := NewEdge(output);
++    false_edge := NewEdge(output);
++    Emit(s, output, Branch, 0, condition, 0, body_edge, node);
++    body := NewBlock(s, output, node);
++    if (body == 0) { return; }
++    empty: u32[] = [];
++    FinishEdge(output, body_edge, body, empty);
++    Statements(s, output, reader.Field(s.tree, node, syntax.FieldBody), depth + 1);
++    if (length(s.diagnostics) != 0) { return; }
++    if (s.block != 0) {
++        back_arguments: u32[] = [];
++        for (value, slot in before) {
++            if ((writes & (u64(1) << u32(slot))) != 0) { back_arguments.append(s.current_values[slot]); }
++        }
++        back_edge := NewEdge(output);
++        Emit(s, output, Jump, 0, 0, 0, back_edge, node);
++        FinishEdge(output, back_edge, header, back_arguments);
++    }
++    s.bindings = bindings;
++    s.current_values = header_values;
++    continuation := NewBlock(s, output, node);
++    if (continuation == 0) { return; }
++    FinishEdge(output, false_edge, continuation, empty);
++}
++
+ Statements :: (s: ^State, output: ^Module, parent: int, depth: int) {
+     if (depth >= MaxDepth) {
+         Fail(s, parent, "vNext scalar slice exceeds statement nesting 32");
+@@ -823,11 +1058,12 @@ Statements :: (s: ^State, output: ^Module, parent: int, depth: int) {
+                 Fail(s, statement, "vNext scalar slice requires plain scalar assignment");
+                 return;
+             }
+-            slot := FindBinding(s, target);
+-            if (slot < 0) {
+-                Fail(s, target, "assignment to unknown scalar name");
+-                return;
+-            }
++            assert(s.next_assignment < length(s.assignment_targets), "assignment was visited by write prepass");
++            resolved := s.assignment_targets[s.next_assignment];
++            s.next_assignment += 1;
++            assert(resolved.node == statement && resolved.slot >= 0 && resolved.slot < length(s.bindings),
++                   "assignment binding identity matches write prepass");
++            slot := resolved.slot;
+             value := Expression(s, output, reader.Field(s.tree, statement, syntax.FieldValue), 0);
+             if (value == 0) { return; }
+             if (output.values[int(value) - 1].type != output.values[int(s.current_values[slot]) - 1].type) {
+@@ -837,6 +1073,8 @@ Statements :: (s: ^State, output: ^Module, parent: int, depth: int) {
+             s.current_values[slot] = value;
+         } else if (kind == syntax.IfStatement) {
+             Conditional(s, output, statement, depth);
++        } else if (kind == syntax.WhileStatement) {
++            While(s, output, statement, depth);
+         } else if (kind == syntax.ReturnStatement) {
+             if (reader.Field(s.tree, statement, syntax.FieldOutcome) >= 0) {
+                 Fail(s, statement, "named return outcomes are unsupported in vNext scalar slice");
+@@ -1058,7 +1296,16 @@ pub ProduceSources :: (sources: Source[]) -> Result {
+ 
+     output := EmptyModule();
+     first := documents[0];
+-    pass_state: State = {tree: first.tree, environment: SignatureEnvironment(),
++    borrowed_nominal := binding.ID("type", BorrowedBytesIdentity());
++    intrinsic_catalog: Intrinsic[] = [
++        {name: ByteLengthName(), identity: binding.ID("function", ByteLengthIdentity()), op: ByteLength,
++         arity: ByteLengthArity, left: ByteLengthLeft, right: ByteLengthRight, result: ByteLengthResult},
++        {name: ByteReadCheckedName(), identity: binding.ID("function", ByteReadCheckedIdentity()), op: ByteReadChecked,
++         arity: ByteReadCheckedArity, left: ByteReadCheckedLeft, right: ByteReadCheckedRight, result: ByteReadCheckedResult}
++    ];
++    pass_state: State = {tree: first.tree, environment: SignatureEnvironment(borrowed_nominal, intrinsic_catalog),
++                        borrowed_nominal: borrowed_nominal, intrinsics: intrinsic_catalog,
++                        assignment_targets: [], loop_writes: [], active_loops: [], next_assignment: 0, next_loop: 0,
+                         nodes: first.nodes, text: first.text, document: first.document,
+                         source: 0, node_base: 0, documents: documents, packages: package_ids,
+                         imports: imports, headers: [], diagnostics: [], parameter_names: [], bindings: [],
+@@ -1111,8 +1358,17 @@ pub ProduceSources :: (sources: Source[]) -> Result {
+             pass_state.current_values.append(value);
+             parameter += 1;
+         }
+-        Statements(&pass_state, &output, reader.Field(pass_state.tree, declaration, syntax.FieldBody), 0);
++        body := reader.Field(pass_state.tree, declaration, syntax.FieldBody);
++        pass_state.assignment_targets = [];
++        pass_state.loop_writes = [];
++        pass_state.next_assignment = 0;
++        pass_state.next_loop = 0;
++        CollectBlockWrites(&pass_state, body, 0);
++        if (length(pass_state.diagnostics) != 0) { return Result.Rejected(pass_state.diagnostics[0]); }
++        Statements(&pass_state, &output, body, 0);
+         if (length(pass_state.diagnostics) != 0) { return Result.Rejected(pass_state.diagnostics[0]); }
++        assert(pass_state.next_assignment == length(pass_state.assignment_targets) &&
++               pass_state.next_loop == length(pass_state.loop_writes), "emission consumed every write-prepass row once");
+         if (pass_state.block != 0) {
+             return Result.Rejected(reader.Diagnostic(pass_state.tree, declaration, pass_state.document, "function has a reachable exit without return"));
+         }
+diff --git a/tools/experiments/vnext/frontend/typed/Verify.chibi b/tools/experiments/vnext/frontend/typed/Verify.chibi
+index fc71f839a..c585409bc 100644
+--- a/tools/experiments/vnext/frontend/typed/Verify.chibi
++++ b/tools/experiments/vnext/frontend/typed/Verify.chibi
+@@ -19,18 +19,22 @@ AllUsed :: (used: bool[]) -> bool {
+ // A block parameter is available at entry; an instruction result is available
+ // only after its instruction. Other blocks must be in this function's mask.
+ DefinedBefore :: (definition: u32, defining_block: u32, block: u32,
+-                  instruction: u32, first_block: u32, dominators: u64) -> bool {
++                  instruction: u32, first_block: u32, block_end: u32,
++                  dominators_low: u64, dominators_high: u64) -> bool {
+     if (defining_block == block) {
+         return (definition & BlockDefinition) != 0 || definition < instruction;
+     }
+-    if (defining_block <= first_block || defining_block > block) { return false; }
+-    return (dominators & (u64(1) << (defining_block - first_block - 1))) != 0;
++    if (defining_block <= first_block || defining_block > block_end) { return false; }
++    bit := defining_block - first_block - 1;
++    if (bit < 64) { return (dominators_low & (u64(1) << bit)) != 0; }
++    return (dominators_high & (u64(1) << (bit - 64))) != 0;
+ }
+ 
+-// Linear in table rows, operands and edge/call arguments. Scratch is one defining
+-// block ID/value, one u64/block and ownership/usage flags for side rows. Forward
+-// edges and the explicit 64-block/function experiment bound make one-pass u64
+-// dominance possible; this is not a scalable general CFG algorithm.
++// Ownership/use checks are linear in table rows and operands. Cyclic dominance
++// uses two u64 words/block, predecessor lists and a deduplicated successor stack.
++// For B <= 128 and E <= 2B, monotone removal permits at most B*(B-1) changed
++// masks, B + 2B*(B-1) pops (32640), and a loose 16711680 word intersections.
++// This bound is not a linear-time claim. MaxBlocks stays separately admission-gated.
+ pub Verify :: (module: Module) -> int {
+     // Source admission bounds all derived tables. Reject impossible mutation
+     // sizes before allocating scratch or narrowing any table reference.
+@@ -52,7 +56,14 @@ pub Verify :: (module: Module) -> int {
+     calls_used := resize([false], length(module.calls));
+     arguments_used := resize([false], length(module.arguments));
+     defining_blocks := resize([u32(0)], length(module.values));
+-    dominators := resize([u64(0)], length(module.blocks));
++    dominators_low := resize([u64(0)], length(module.blocks));
++    dominators_high := resize([u64(0)], length(module.blocks));
++    // Predecessor links are one-based EdgeIDs; zero ends a list.
++    predecessor_heads := resize([u32(0)], length(module.blocks));
++    predecessor_next := resize([u32(0)], length(module.edges));
++    predecessor_sources := resize([0], length(module.edges));
++    queued := resize([false], length(module.blocks));
++    worklist := resize([0], 128);
+     imported_functions := resize([false], length(module.functions));
+ 
+     // Side-table spans own all their scalar storage, including empty spans'
+@@ -75,13 +86,18 @@ pub Verify :: (module: Module) -> int {
+                        length(module.parameter_types), next_parameter_type)) {
+             return InvalidSpan;
+         }
++        machine_parameters: int = 0;
++        for (ordinal in 0..<int(signature.parameter_count)) {
++            type := module.parameter_types[next_parameter_type + ordinal];
++            if (!ScalarType(type) && type != BorrowedBytes) { return InvalidType; }
++            machine_parameters += 1;
++            if (type == BorrowedBytes) { machine_parameters += 1; }
++        }
++        if (machine_parameters > MaxMachineParameters) { return InvalidSpan; }
+         next_parameter_type += int(signature.parameter_count);
+         if (!ScalarType(signature.result_type)) { return InvalidType; }
+     }
+     if (next_parameter_type != length(module.parameter_types)) { return InvalidSpan; }
+-    for (type in module.parameter_types) {
+-        if (!ScalarType(type)) { return InvalidType; }
+-    }
+     // An outer branch's exit edge can precede nested edges but receive its
+     // arguments after them. Check disjoint coverage, not edge-table ordering.
+     for (edge in module.edges) {
+@@ -125,7 +141,7 @@ pub Verify :: (module: Module) -> int {
+         if (imported_functions[index]) {
+             if (function.first_block != 0 || function.block_count != 0 || function.exported != 0) { return InvalidSpan; }
+         } else {
+-            if (function.block_count == 0 || function.block_count > u32(MaxBlocks) ||
++            if (function.block_count == 0 || function.block_count > u32(MaxBlocks) || function.block_count > 128 ||
+                 !OwnedSpan(function.first_block, function.block_count, length(module.blocks), next_block)) {
+                 return InvalidSpan;
+             }
+@@ -136,6 +152,13 @@ pub Verify :: (module: Module) -> int {
+             !Present(function.origin, length(module.origins)) || function.exported > 1) {
+             return InvalidSpan;
+         }
++        if (imported_functions[index]) {
++            signature := module.signatures[int(function.signature) - 1];
++            for (ordinal in 0..<int(signature.parameter_count)) {
++                type := module.parameter_types[int(signature.first_parameter) + ordinal];
++                if (type == BorrowedBytes) { return InvalidType; }
++            }
++        }
+         names_used[int(function.name) - 1] = true;
+         signatures_used[int(function.signature) - 1] = true;
+         origins_used[int(function.origin) - 1] = true;
+@@ -193,7 +216,7 @@ pub Verify :: (module: Module) -> int {
+         for (at in int(block.first_instruction)..<next_instruction) {
+             instruction := module.instructions[at];
+             instruction_id := u32(at + 1);
+-            if (instruction.op < ConstantI64 || instruction.op > EqualI64) { return InvalidInstruction; }
++            if (instruction.op < ConstantI64 || instruction.op > ByteReadChecked) { return InvalidInstruction; }
+             terminator := instruction.op == Jump || instruction.op == Branch || instruction.op == Return;
+             if (terminator != (at == next_instruction - 1)) { return InvalidTerminator; }
+             if (!Present(instruction.origin, length(module.origins))) { return InvalidSpan; }
+@@ -210,6 +233,12 @@ pub Verify :: (module: Module) -> int {
+                     result_type = Bool;
+                 case AddI64:
+                     if (instruction.payload != 0) { return InvalidInstruction; }
++                case SubI64:
++                    if (instruction.payload != 0) { return InvalidInstruction; }
++                case ByteLength:
++                    if (instruction.right != 0 || instruction.payload != 0) { return InvalidInstruction; }
++                case ByteReadChecked:
++                    if (instruction.payload != 0) { return InvalidInstruction; }
+                 case MultiplyI64:
+                     if (instruction.payload != 0) { return InvalidInstruction; }
+                 case GreaterI64:
+@@ -265,16 +294,15 @@ pub Verify :: (module: Module) -> int {
+         next_instruction != length(module.instructions)) { return InvalidSpan; }
+     for (value, index in module.values) {
+         if (defining_blocks[index] == 0) { return InvalidDefinition; }
+-        if (!ScalarType(value.type)) { return InvalidType; }
++        if (!ScalarType(value.type) && value.type != BorrowedBytes) { return InvalidType; }
+     }
+     if (!AllUsed(names_used) || !AllUsed(signatures_used) || !AllUsed(origins_used) ||
+         !AllUsed(literals_used)) { return InvalidSpan; }
+     if (!AllUsed(edges_used)) { return InvalidEdge; }
+     if (!AllUsed(calls_used)) { return InvalidInstruction; }
+ 
+-    // The block IDs are a topological ordering. Incoming intersections are
+-    // final when a block is visited. Every reachable mask contains entry's
+-    // bit, so zero is an unambiguous missing-predecessor sentinel.
++    // Validate the complete CFG before reachability or dominance. Entry has no
++    // incoming edges; all other edges may point in either physical direction.
+     for (function in module.functions) {
+         if (function.block_count == 0) { continue; }
+         first_block := int(function.first_block);
+@@ -287,14 +315,109 @@ pub Verify :: (module: Module) -> int {
+             expected := module.parameter_types[int(signature.first_parameter) + ordinal];
+             if (module.values[int(id) - 1].type != expected) { return InvalidType; }
+         }
+-        dominators[first_block] = 1;
++        for (block_index in first_block..<block_end) {
++            block := module.blocks[block_index];
++            terminator := module.instructions[int(block.first_instruction + block.instruction_count) - 1];
++            edge_count: int = 0;
++            if (terminator.op == Jump) { edge_count = 1; }
++            if (terminator.op == Branch) { edge_count = 2; }
++            for (ordinal in 0..<edge_count) {
++                edge_index := int(terminator.payload) - 1 + ordinal;
++                edge := module.edges[edge_index];
++                if (edge.target <= u32(first_block + 1) || edge.target > u32(block_end)) { return InvalidEdge; }
++                target := int(edge.target) - 1;
++                if (edge.argument_count != module.blocks[target].parameter_count) { return InvalidEdge; }
++                predecessor_next[edge_index] = predecessor_heads[target];
++                predecessor_sources[edge_index] = block_index;
++                predecessor_heads[target] = u32(edge_index + 1);
++            }
++        }
++
++        // Entry reachability is independent of masks: disconnected cycles fail.
++        worklist[0] = first_block;
++        work_count: int = 1;
++        reached: int = 1;
++        queued[first_block] = true;
++        while (work_count != 0) {
++            work_count -= 1;
++            block := module.blocks[worklist[work_count]];
++            terminator := module.instructions[int(block.first_instruction + block.instruction_count) - 1];
++            edge_count: int = 0;
++            if (terminator.op == Jump) { edge_count = 1; }
++            if (terminator.op == Branch) { edge_count = 2; }
++            for (ordinal in 0..<edge_count) {
++                target := int(module.edges[int(terminator.payload) - 1 + ordinal].target) - 1;
++                if (!queued[target]) {
++                    queued[target] = true;
++                    worklist[work_count] = target;
++                    work_count += 1;
++                    reached += 1;
++                }
++            }
++        }
++        if (reached != int(function.block_count)) { return InvalidDominance; }
++
++        // Initialize the greatest fixed point, then only remove bits. Build the
++        // top masks without ever shifting by 64, including at 64/128 boundaries.
++        all_low: u64 = 0;
++        all_high: u64 = 0;
++        for (bit in 0..<int(function.block_count)) {
++            if (bit < 64) { all_low |= u64(1) << u32(bit); }
++            else { all_high |= u64(1) << u32(bit - 64); }
++        }
++        dominators_low[first_block] = 1;
++        queued[first_block] = false;
++        for (block_index in first_block + 1..<block_end) {
++            dominators_low[block_index] = all_low;
++            dominators_high[block_index] = all_high;
++            // Reachability left membership true for every block. Pop the usual
++            // forward layout first; arbitrary layouts still converge normally.
++            worklist[block_end - block_index - 1] = block_index;
++            work_count += 1;
++        }
++        while (work_count != 0) {
++            work_count -= 1;
++            block_index := worklist[work_count];
++            queued[block_index] = false;
++            low := all_low;
++            high := all_high;
++            predecessor := predecessor_heads[block_index];
++            while (predecessor != 0) {
++                edge_index := int(predecessor) - 1;
++                source := predecessor_sources[edge_index];
++                low &= dominators_low[source];
++                high &= dominators_high[source];
++                predecessor = predecessor_next[edge_index];
++            }
++            bit := block_index - first_block;
++            if (bit < 64) { low |= u64(1) << u32(bit); }
++            else { high |= u64(1) << u32(bit - 64); }
++            if (low != dominators_low[block_index] || high != dominators_high[block_index]) {
++                dominators_low[block_index] = low;
++                dominators_high[block_index] = high;
++                block := module.blocks[block_index];
++                terminator := module.instructions[int(block.first_instruction + block.instruction_count) - 1];
++                edge_count: int = 0;
++                if (terminator.op == Jump) { edge_count = 1; }
++                if (terminator.op == Branch) { edge_count = 2; }
++                for (ordinal in 0..<edge_count) {
++                    target := int(module.edges[int(terminator.payload) - 1 + ordinal].target) - 1;
++                    if (!queued[target]) {
++                        queued[target] = true;
++                        worklist[work_count] = target;
++                        work_count += 1;
++                    }
++                }
++            }
++        }
++
++        // Use checks see converged masks, including backedge arguments at their
++        // source terminator. Same-block definitions retain instruction ordering.
+         for (block_index in first_block..<block_end) {
+             block := module.blocks[block_index];
+             block_id := u32(block_index + 1);
+-            mask := dominators[block_index];
+-            if (mask == 0) { return InvalidDominance; }
+-            mask |= u64(1) << u32(block_index - first_block);
+-            dominators[block_index] = mask;
++            low := dominators_low[block_index];
++            high := dominators_high[block_index];
+             instruction_end := int(block.first_instruction) + int(block.instruction_count);
+             for (at in int(block.first_instruction)..<instruction_end) {
+                 instruction := module.instructions[at];
+@@ -306,7 +429,14 @@ pub Verify :: (module: Module) -> int {
+                     case ConstantI64: continue;
+                     case ConstantBool: continue;
+                     case AddI64: operand_count = 2;
++                    case SubI64: operand_count = 2;
+                     case MultiplyI64: operand_count = 2;
++                    case ByteLength:
++                        operand_count = 1;
++                        operand_type = BorrowedBytes;
++                    case ByteReadChecked:
++                        operand_count = 2;
++                        operand_type = BorrowedBytes;
+                     case GreaterI64: operand_count = 2;
+                     case EqualI64: operand_count = 2;
+                     case NotBool:
+@@ -324,7 +454,7 @@ pub Verify :: (module: Module) -> int {
+                             expected := module.parameter_types[int(callee_signature.first_parameter) + argument];
+                             if (value.type != expected) { return InvalidType; }
+                             if (!DefinedBefore(value.definition, defining_blocks[slot], block_id,
+-                                               instruction_id, function.first_block, mask)) {
++                                               instruction_id, function.first_block, u32(block_end), low, high)) {
+                                 return InvalidDominance;
+                             }
+                         }
+@@ -344,18 +474,18 @@ pub Verify :: (module: Module) -> int {
+                     if (!Present(id, length(module.values))) { return InvalidDefinition; }
+                     slot := int(id) - 1;
+                     value := module.values[slot];
+-                    if (value.type != operand_type) { return InvalidType; }
++                    expected := operand_type;
++                    if (instruction.op == ByteReadChecked && operand != 0) { expected = I64; }
++                    if (value.type != expected) { return InvalidType; }
+                     if (!DefinedBefore(value.definition, defining_blocks[slot], block_id,
+-                                       instruction_id, function.first_block, mask)) {
++                                       instruction_id, function.first_block, u32(block_end), low, high)) {
+                         return InvalidDominance;
+                     }
+                 }
+                 for (ordinal in 0..<edge_count) {
+                     edge := module.edges[int(instruction.payload) - 1 + ordinal];
+-                    if (edge.target <= block_id || edge.target > u32(block_end)) { return InvalidEdge; }
+                     target := int(edge.target) - 1;
+                     target_block := module.blocks[target];
+-                    if (edge.argument_count != target_block.parameter_count) { return InvalidEdge; }
+                     for (argument in 0..<int(edge.argument_count)) {
+                         id := module.arguments[int(edge.first_argument) + argument];
+                         parameter := module.block_parameters[int(target_block.first_parameter) + argument];
+@@ -364,12 +494,10 @@ pub Verify :: (module: Module) -> int {
+                         value := module.values[slot];
+                         if (value.type != module.values[int(parameter) - 1].type) { return InvalidType; }
+                         if (!DefinedBefore(value.definition, defining_blocks[slot], block_id,
+-                                           instruction_id, function.first_block, mask)) {
++                                           instruction_id, function.first_block, u32(block_end), low, high)) {
+                             return InvalidDominance;
+                         }
+                     }
+-                    if (dominators[target] == 0) { dominators[target] = mask; }
+-                    else { dominators[target] &= mask; }
+                 }
+             }
+         }
+diff --git a/tools/experiments/vnext/frontend/typed/prepare.py b/tools/experiments/vnext/frontend/typed/prepare.py
+index 2dc712676..3d6be4bc5 100644
+--- a/tools/experiments/vnext/frontend/typed/prepare.py
++++ b/tools/experiments/vnext/frontend/typed/prepare.py
+@@ -29,6 +29,7 @@ SOURCE_MAP = [("tools/compiler/" + name, "project/" + name) for name in COMPILER
+ SOURCE_MAP += [("packages/core/strings/Strings.chibi", "core/strings/Strings.chibi")]
+ SOURCE_MAP += [(TYPED_ROOT + "/" + name, "project/vnext_typed/" + name) for name in TYPED_FILES]
+ FIXTURES = (
++    (b"CENSUS_SOURCE", "tools/experiments/vnext/source_census/Main.chibi", "inputs/source_census/Main.chibi"),
+     (b"FIXTURE_SOURCE", TYPED_ROOT + "/fixtures/EchoJoin.chibi", "inputs/EchoJoin.chibi"),
+     (b"PACKAGE_MAIN_SOURCE", "tools/experiments/vnext/slice_cases/modules/Main.chibi", "inputs/modules/Main.chibi"),
+     (b"PACKAGE_MATH_SOURCE", "tools/experiments/vnext/slice_cases/modules/math/Math.chibi", "inputs/modules/math/Math.chibi"),
+diff --git a/tools/experiments/vnext/frontend/typed/prepare_tests.py b/tools/experiments/vnext/frontend/typed/prepare_tests.py
+index 5a9eee09d..3c183ce6e 100644
+--- a/tools/experiments/vnext/frontend/typed/prepare_tests.py
++++ b/tools/experiments/vnext/frontend/typed/prepare_tests.py
+@@ -63,6 +63,7 @@ class PreparationTests(unittest.TestCase):
+ 
+     def expected_main(self):
+         paths = {
++            b"CENSUS_SOURCE": self.root / "tools/experiments/vnext/source_census/Main.chibi",
+             b"FIXTURE_SOURCE": self.typed / "fixtures/EchoJoin.chibi",
+             b"PACKAGE_MAIN_SOURCE": self.root / "tools/experiments/vnext/slice_cases/modules/Main.chibi",
+             b"PACKAGE_MATH_SOURCE": self.root / "tools/experiments/vnext/slice_cases/modules/math/Math.chibi",
+@@ -83,7 +84,7 @@ class PreparationTests(unittest.TestCase):
+     def test_exact_sources_literal_and_relative_manifest(self):
+         result = self.subject.prepare(self.output)
+         self.assertEqual(len(self.subject.SOURCE_MAP), 19)
+-        self.assertEqual(len(result["files"]), 27)
++        self.assertEqual(len(result["files"]), 28)
+         self.assertEqual(result["compile"], "not_run")
+         self.assertEqual(result["typed_tests"], "not_run")
+         for row in result["files"]:
+@@ -119,7 +120,7 @@ class PreparationTests(unittest.TestCase):
+     def test_missing_or_duplicate_marker(self):
+         path = self.typed / "tests/Main.chibi.in"
+         original = path.read_bytes()
+-        for marker in (b"FIXTURE_SOURCE", b"PACKAGE_MAIN_SOURCE", b"PACKAGE_MATH_SOURCE", b"FOREIGN_SOURCE", b"MISSING_SYMBOL_SOURCE", b"PRIVATE_IMPORT_SOURCE"):
++        for marker in (b"FIXTURE_SOURCE", b"PACKAGE_MAIN_SOURCE", b"PACKAGE_MATH_SOURCE", b"FOREIGN_SOURCE", b"MISSING_SYMBOL_SOURCE", b"PRIVATE_IMPORT_SOURCE", b"CENSUS_SOURCE"):
+             for value in (b'"absent"', marker + b" " + marker):
+                 with self.subTest(marker=marker, value=value):
+                     path.write_bytes(original.replace(marker, value))
+diff --git a/tools/experiments/vnext/frontend/typed/tests/Main.chibi.in b/tools/experiments/vnext/frontend/typed/tests/Main.chibi.in
+index 392d623d2..fe92543ec 100644
+--- a/tools/experiments/vnext/frontend/typed/tests/Main.chibi.in
++++ b/tools/experiments/vnext/frontend/typed/tests/Main.chibi.in
+@@ -157,6 +157,9 @@ Main :: () -> int {
+     assert(wrapping.instructions[2].op == typed.AddI64 && wrapping.instructions[2].left == 1 && wrapping.instructions[2].right == 2, "literal-only addition follows the explicit wrapping operation");
+     assert(wrapping.instructions[3].op == typed.Return && wrapping.instructions[3].left == 3, "wrapping result is returned without evaluator substitution");
+     CheckScalarCalls();
++    CheckByteCapability();
++    CheckWhileCapability();
++    CheckCensusSource();
+     CheckPackages();
+     CheckForeign();
+     CheckCallMutations();
+@@ -1244,7 +1247,7 @@ CheckPackageRules :: (original: typed.Source[]) {
+     row.text = strings.ReplaceAll(row.text, "value: i64", "value: i64[]");
+     bad_body := original[0];
+     bad_body.text = strings.ReplaceAll(bad_body.text, "math.Double(value)", "absent");
+-    CheckSourcesRejected([bad_body, row], "vNext scalar slice supports only ordinary i64 and bool types", 1, "i64[]");
++    CheckSourcesRejected([bad_body, row], "vNext rejected a modified or constructed signature", 1, "i64[]");
+     row = original[1];
+     row.text = "package math\npub Double :: (";
+     switch typed.ProduceSources([original[0], row]) {
+@@ -1529,3 +1532,170 @@ CheckForeignMutations :: (original: typed.Module) {
+     changed.instructions = instructions;
+     assert(typed.Verify(changed) == typed.InvalidType, "equality rejects a bool operand");
+ }
++
++// Candidate v4 tests. These are source assertions, not an execution receipt.
++CheckByteCapability :: () {
++    source := "package p\nRead :: (input: BorrowedBytes, at: i64) -> i64 { return byte_read_checked(input, at); }\npub Extent :: (input: BorrowedBytes) -> i64 { alias := input; return byte_length(alias) + Read(input, 0); }\n";
++    module := Accepted(source);
++    assert(module.parameter_types[0] == typed.BorrowedBytes && module.parameter_types[1] == typed.I64 &&
++           module.parameter_types[2] == typed.BorrowedBytes, "nominal borrow remains one logical parameter");
++    borrowed: int = 0;
++    lengths: int = 0;
++    reads: int = 0;
++    for (value in module.values) { if (value.type == typed.BorrowedBytes) { borrowed += 1; } }
++    for (instruction in module.instructions) {
++        if (instruction.op == typed.ByteLength) {
++            lengths += 1;
++            assert(instruction.right == 0 && instruction.payload == 0, "length owns no call payload");
++        }
++        if (instruction.op == typed.ByteReadChecked) {
++            reads += 1;
++            assert(instruction.payload == 0, "checked byte read is an intrinsic, not a foreign call");
++        }
++    }
++    assert(borrowed == 2 && lengths == 1 && reads == 1 && length(module.calls) == 1,
++           "two borrowed definitions and one authored forward call, with no alias allocation");
++    shadow := Accepted("package p\nbyte_length :: (x: i64) -> i64 { return x + 7; }\nF :: () -> i64 { return byte_length(3); }\n");
++    assert(length(shadow.calls) == 1, "ordinary package declaration shadows intrinsic");
++    for (instruction in shadow.instructions) { assert(instruction.op != typed.ByteLength, "same spelling does not confer intrinsic semantics"); }
++    for (text in [
++        "package p\nBad :: (x: UnknownBytes) -> i64 { return 0; }\n",
++        "package p\nBad :: (x: borrowed_bytes) -> i64 { return 0; }\n",
++        "package p\nBad :: (x: BorrowedBytes[]) -> i64 { return 0; }\n",
++        "package p\nBad :: (x: ^BorrowedBytes) -> i64 { return 0; }\n",
++        "package p\nBad :: (x: BorrowedBytes) -> BorrowedBytes { return x; }\n",
++        "package p\nforeign import a \"a.a\"\nforeign a { f :: (x: BorrowedBytes) -> i64 }\n",
++        "package p\nBad :: (x: BorrowedBytes) -> i64 { return x + 1; }\n",
++        "package p\nBad :: () -> i64 { return byte_length(1); }\n",
++        "package p\nBad :: (x: BorrowedBytes) -> i64 { return byte_read_checked(x, true); }\n",
++        "package p\nBad :: (x: BorrowedBytes) -> i64 { return byte_length(x, 0); }\n",
++        "package p\nBad :: (x: BorrowedBytes) -> i64 { return byte_read_checked(x); }\n",
++        "package p\nBad :: (x: BorrowedBytes) -> i64 { byte_length: i64 = 0; return byte_length(x); }\n",
++        "package p\nBad :: () -> i64 { return BorrowedBytes(); }\n",
++        "package p\nBad :: (x: BorrowedBytes) -> i64 { return i64(x); }\n"
++    ]) { Rejected(text); }
++    changed := module;
++    instructions := changed.instructions;
++    row := instructions[0];
++    assert(row.op == typed.ByteReadChecked, "first helper instruction is checked read");
++    row.left = 2;
++    instructions[0] = row;
++    changed.instructions = instructions;
++    assert(typed.Verify(changed) == typed.InvalidType, "checked read rejects scalar in its borrowed slot");
++    changed = module;
++    signatures := changed.signatures;
++    signature := signatures[0];
++    signature.result_type = typed.BorrowedBytes;
++    signatures[0] = signature;
++    changed.signatures = signatures;
++    assert(typed.Verify(changed) == typed.InvalidType, "borrowed returns rejected even in mutated IR");
++    subtract := Accepted("package p\nSub :: (a: i64, b: i64) -> i64 { return a - b; }\nLiteral :: () -> i64 { return 0 - 9223372036854775807 - 2; }\n");
++    row = subtract.instructions[0];
++    assert(row.op == typed.SubI64 && row.left == 1 && row.right == 2, "subtraction preserves operand order");
++    subs: int = 0;
++    for (instruction in subtract.instructions) { if (instruction.op == typed.SubI64) { subs += 1; } }
++    assert(subs == 3, "literal subtraction remains explicit wrapping operations");
++}
++
++CheckWhileCapability :: () {
++    source := "package p\npub Sum :: (limit: i64) -> i64 { at: i64 = 0; sum: i64 = 0; while (limit > at) { sum = sum + at; at = at + 1; } return sum; }\n";
++    module := Accepted(source);
++    assert(length(module.blocks) == 4, "plain while has entry/header/body/continuation");
++    assert(module.blocks[1].parameter_count == 2, "only assigned entry bindings become loop parameters");
++    header := module.blocks[1];
++    at_parameter := module.block_parameters[int(header.first_parameter)];
++    sum_parameter := module.block_parameters[int(header.first_parameter) + 1];
++    assert(module.values[int(at_parameter) - 1].type == typed.I64 &&
++           module.values[int(sum_parameter) - 1].type == typed.I64, "loop parameter types come from canonical values");
++    entry := Terminator(module, 1);
++    back := Terminator(module, 3);
++    assert(entry.op == typed.Jump && back.op == typed.Jump, "while entry and body exit are edges");
++    edge := module.edges[int(back.payload) - 1];
++    assert(edge.target == 2 && edge.argument_count == 2, "backedge points to the same logical header");
++    at_update := DefiningInstruction(module, module.arguments[int(edge.first_argument)]);
++    sum_update := DefiningInstruction(module, module.arguments[int(edge.first_argument) + 1]);
++    assert(at_update.op == typed.AddI64 && at_update.left == at_parameter,
++           "first backedge argument is the distinct at update");
++    assert(sum_update.op == typed.AddI64 && sum_update.left == sum_parameter && sum_update.right == at_parameter,
++           "second backedge argument is the distinct sum update");
++    continuation := Terminator(module, 4);
++    assert(continuation.left == sum_parameter, "zero-trip exit uses header value, never body value");
++    alias := Accepted("package p\nF :: (b: bool, x: i64, y: i64) -> i64 { while (b) { x = y; y = y; } return x; }\n");
++    back = Terminator(alias, 3);
++    edge = alias.edges[int(back.payload) - 1];
++    assert(edge.argument_count == 2 && alias.arguments[int(edge.first_argument)] == alias.arguments[int(edge.first_argument) + 1],
++           "intentional alias forwarding may repeat a ValueID in a valid owned span");
++    for (text in [
++        "package p\nF :: () -> i64 { x: i64 = 0; while (false) { x = x + 1; } return x; }\n",
++        "package p\nF :: () -> i64 { while (false) { temporary: i64 = 1; } return 0; }\n",
++        "package p\nF :: (n: i64) -> i64 { x: i64 = 0; b: bool = true; while (b) { if (n > x) { x = x + 1; } else { b = false; } } return x; }\n",
++        "package p\nF :: (n: i64) -> i64 { x: i64 = 0; while (n > x) { y: i64 = 0; while (n > y) { x = x + 1; y = y + 1; } } return x; }\n",
++        "package p\nF :: () -> i64 { x: i64 = 0; while (false) { local: i64 = 1; x = local; } while (false) { local: bool = true; if (local) { x = 2; } } return x; }\n",
++        "package p\nF :: (b: bool) -> i64 { while (b) { return 7; } return 0; }\n"
++    ]) { Accepted(text); }
++    for (text in [
++        "package p\nF :: () -> i64 { while (1) { } return 0; }\n",
++        "package p\nF :: () -> i64 { while (true) { break; } return 0; }\n",
++        "package p\nF :: () -> i64 { while (true) { continue; } return 0; }\n",
++        "package p\nF :: () -> i64 { while (false) { local: i64 = 1; } return local; }\n"
++    ]) { Rejected(text); }
++    // Mutations keep ownership intact unless ownership itself is the target.
++    changed := module;
++    edges := changed.edges;
++    row := edges[int(entry.payload) - 1];
++    row.target = 1;
++    edges[int(entry.payload) - 1] = row;
++    changed.edges = edges;
++    assert(typed.Verify(changed) == typed.InvalidEdge, "incoming entry edge is rejected");
++    changed = module;
++    instructions := changed.instructions;
++    last := length(instructions) - 1;
++    instruction := instructions[last];
++    instruction.left = at_update.result;
++    instructions[last] = instruction;
++    changed.instructions = instructions;
++    assert(typed.Verify(changed) == typed.InvalidDominance, "body definition unavailable on zero-trip continuation");
++    disconnected := Accepted("package p\nF :: (b: bool) -> i64 { while (b) { } return 0; }\n");
++    edges = disconnected.edges;
++    row = edges[0];
++    row.target = 4;
++    edges[0] = row;
++    disconnected.edges = edges;
++    assert(typed.Verify(disconnected) == typed.InvalidDominance, "unreachable header/body cycle is rejected");
++    changed = module;
++    edges = changed.edges;
++    back = Terminator(module, 3);
++    // Missing argument ownership must fail even if the edge still points home.
++    row = edges[int(back.payload) - 1];
++    row.first_argument = 0;
++    row.argument_count = 0;
++    edges[int(back.payload) - 1] = row;
++    changed.edges = edges;
++    assert(typed.Verify(changed) != 0, "missing backedge arguments are rejected");
++}
++
++CheckCensusSource :: () {
++    source := CENSUS_SOURCE;
++    // Before the separate 128-block admission gate, the exact retained-parser
++    // caller must reach that deliberate limit rather than fail an earlier type,
++    // intrinsic, source, parameter-count or loop-admission check.
++    if (typed.MaxBlocks == 64) {
++        message := Rejected(source);
++        assert(message == "vNext scalar slice exceeds 64 blocks in one function", "exact census reaches deliberate block gate");
++        return;
++    }
++    module := Accepted(source);
++    assert(length(module.functions) == 3 && length(module.foreigns) == 1, "exact census has helper/entry/report");
++    signature := module.signatures[0];
++    assert(signature.parameter_count == 16 && signature.result_type == typed.I64, "report has sixteen logical i64 positions");
++    for (ordinal in 0..<16) {
++        assert(module.parameter_types[int(signature.first_parameter) + ordinal] == typed.I64, "every report position is i64");
++    }
++    borrowed: int = 0;
++    report_calls: int = 0;
++    for (value in module.values) { if (value.type == typed.BorrowedBytes) { borrowed += 1; } }
++    for (call in module.calls) { if (call.callee == 1) { report_calls += 1; } }
++    assert(borrowed == 2 && report_calls == 1, "exact source has two borrowed definitions and one report call");
++    assert(module.functions[1].block_count == 1 && module.functions[2].block_count == 121,
++           "review actual emission if the source CFG projection changes");
++}
+diff --git a/tools/experiments/vnext/slice_backend/lib.rs b/tools/experiments/vnext/slice_backend/lib.rs
+index 413dbc27b..08be24f77 100644
+--- a/tools/experiments/vnext/slice_backend/lib.rs
++++ b/tools/experiments/vnext/slice_backend/lib.rs
+@@ -10,7 +10,7 @@ compile_error!("the C backend library requires panic=abort");
+ #[path = "../frontend/bridge/generated/arena.rs"]
+ mod schema;
+ 
+-use cranelift_codegen::ir::{self, condcodes::IntCC, types, AbiParam, BlockArg, FuncRef, InstBuilder, Value};
++use cranelift_codegen::ir::{self, condcodes::IntCC, types, AbiParam, BlockArg, FuncRef, InstBuilder, MemFlags, Value};
+ use cranelift_codegen::isa::OwnedTargetIsa;
+ use cranelift_codegen::packed_option::PackedOption;
+ use cranelift_codegen::settings::{self, Configurable};
+@@ -122,8 +122,8 @@ fn model_span(first: u32, count: u32, total: usize) -> Range<usize> {
+     schema::span(first, count, total).expect("typed model span out of range")
+ }
+ 
+-fn scalar(type_id: u32) -> ScalarType {
+-    ScalarType::decode(type_id).expect("typed model scalar type")
++fn type_kind(type_id: u32) -> TypeKind {
++    TypeKind::decode(type_id).expect("typed model type")
+ }
+ 
+ fn opcode(instruction: &[u32; INSTRUCTION_WORDS]) -> Opcode {
+@@ -142,17 +142,19 @@ fn borrow_names<'a>(a: &Arena<'a>) -> Vec<&'a str> {
+ }
+ 
+ fn clif_type(type_id: u32) -> ir::Type {
+-    match scalar(type_id) {
+-        ScalarType::Bool => types::I8,
+-        ScalarType::I64 => types::I64,
++    match type_kind(type_id) {
++        TypeKind::Bool => types::I8,
++        TypeKind::I64 => types::I64,
++        TypeKind::BorrowedBytes => panic!("borrow pair is not a scalar CLIF type"),
+     }
+ }
+ 
+ fn abi_parameter(type_id: u32) -> AbiParam {
+     let parameter = AbiParam::new(clif_type(type_id));
+-    match scalar(type_id) {
+-        ScalarType::Bool => parameter.uext(),
+-        ScalarType::I64 => parameter,
++    match type_kind(type_id) {
++        TypeKind::Bool => parameter.uext(),
++        TypeKind::I64 => parameter,
++        TypeKind::BorrowedBytes => unreachable!("borrow pair is expanded before scalar ABI lowering"),
+     }
+ }
+ 
+@@ -160,12 +162,63 @@ fn value(values: &[PackedOption<Value>], id: u32) -> Value {
+     values[index(id, values.len())].expect("typed operand has a CLIF definition")
+ }
+ 
++// Rare nonescaping logical values have two machine definitions. The common
++// scalar slot remains four bytes; pairs are compile-time-only, sorted by ID.
++#[derive(Clone, Copy)]
++struct LoweredPair { id: u32, pointer: Value, length: Value }
++const _: () = assert!(mem::size_of::<LoweredPair>() == 12);
++fn pair(pairs: &[LoweredPair], id: u32) -> LoweredPair {
++    pairs[pairs.binary_search_by_key(&id, |row| row.id).expect("typed borrow has a lowered pair")]
++}
++
+ fn edge_arguments(a: &Arena<'_>, edge: &[u32; EDGE_WORDS], values: &[PackedOption<Value>],
+-                  output: &mut Vec<BlockArg>) {
++                  pairs: &[LoweredPair], output: &mut Vec<BlockArg>) {
+     assert!(edge[EDGE_ARGUMENT_COUNT] <= MAX_LOCALS as u32, "typed edge argument admission");
+     output.clear();
+     let arguments = model_span(edge[EDGE_FIRST_ARGUMENT], edge[EDGE_ARGUMENT_COUNT], a.arguments.len());
+-    for &id in &a.arguments[arguments] { output.push(value(values, id).into()); }
++    for &id in &a.arguments[arguments] {
++        if a.values[index(id, a.values.len())][VALUE_TYPE] == BORROWED_BYTES {
++            let borrowed = pair(pairs, id);
++            output.extend([borrowed.pointer.into(), borrowed.length.into()]);
++        } else { output.push(value(values, id).into()); }
++    }
++    assert!(output.len() <= MAX_LOCALS as usize * 2, "expanded edge admission");
++}
++
++// Verified CFG scheduling, not semantic inference. DFS completion order is
++// reversed once; every dominator is emitted before its ordinary instruction
++// uses even if packed blocks were physically permuted. At most 2B edges/B marks.
++fn reverse_postorder(a: &Arena<'_>, blocks: Range<usize>, order: &mut Vec<usize>,
++                     visited: &mut Vec<bool>, stack: &mut Vec<(usize, bool)>) {
++    order.clear();
++    visited.clear();
++    visited.resize(blocks.len(), false);
++    stack.clear();
++    stack.push((blocks.start, false));
++    while let Some((at, finish)) = stack.pop() {
++        assert!(blocks.contains(&at), "typed edge stays within its function");
++        if finish { order.push(at); continue; }
++        if visited[at - blocks.start] { continue; }
++        visited[at - blocks.start] = true;
++        stack.push((at, true));
++        let block = &a.blocks[at];
++        let end = block[BLOCK_FIRST_INSTRUCTION] + block[BLOCK_INSTRUCTION_COUNT];
++        let terminator = &a.instructions[end as usize - 1];
++        let count = match opcode(terminator) {
++            Opcode::Jump => 1,
++            Opcode::Branch => 2,
++            Opcode::Return => 0,
++            _ => panic!("typed block ends with a terminator"),
++        };
++        if count != 0 {
++            let first = index(terminator[INSTRUCTION_PAYLOAD], a.edges.len());
++            for edge in a.edges[first..first + count].iter().rev() {
++                stack.push((index(edge[EDGE_TARGET], a.blocks.len()), false));
++            }
++        }
++    }
++    assert_eq!(order.len(), blocks.len(), "all typed blocks are reachable");
++    order.reverse();
+ }
+ 
+ // Two concrete consumers instantiate this one lowering. There is no mode
+@@ -189,9 +242,18 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
+         let signature = &mut context.func.signature;
+         let parameters = model_span(source[SIGNATURE_FIRST_PARAMETER], source[SIGNATURE_PARAMETER_COUNT],
+                                     a.parameter_types.len());
+-        signature.params.reserve_exact(parameters.len());
++        let expanded = a.parameter_types[parameters.clone()].iter()
++            .map(|&kind| if kind == BORROWED_BYTES { 2 } else { 1 }).sum::<usize>();
++        assert!(expanded <= MAX_MACHINE_PARAMETERS as usize, "expanded machine signature admission");
++        signature.params.reserve_exact(expanded);
+         signature.returns.reserve_exact(1);
+-        for &type_id in &a.parameter_types[parameters] { signature.params.push(abi_parameter(type_id)); }
++        for &type_id in &a.parameter_types[parameters] {
++            if type_id == BORROWED_BYTES {
++                assert!(!imported, "arbitrary foreign borrows are forbidden");
++                signature.params.push(AbiParam::new(module.target_config().pointer_type()));
++                signature.params.push(AbiParam::new(types::I64));
++            } else { signature.params.push(abi_parameter(type_id)); }
++        }
+         signature.returns.push(abi_parameter(source[SIGNATURE_RESULT_TYPE]));
+         assert!(function[FUNCTION_EXPORTED] <= 1, "typed export membership");
+         let linkage = if imported { Linkage::Import }
+@@ -209,9 +271,16 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
+     let mut builder_context = FunctionBuilderContext::new();
+     let mut blocks = Vec::with_capacity(a.blocks.len());
+     let mut values = vec![PackedOption::<Value>::default(); a.values.len()];
+-    let mut yes_arguments = Vec::with_capacity(MAX_LOCALS as usize);
+-    let mut no_arguments = Vec::with_capacity(MAX_LOCALS as usize);
+-    let mut call_arguments = Vec::with_capacity(MAX_PARAMETERS as usize);
++    // Grow only for rare pairs, rather than scan every scalar value to size an
++    // optional table. The source-census caller appends precisely two rows.
++    let mut pairs = Vec::new();
++    let mut yes_arguments = Vec::with_capacity(MAX_LOCALS as usize * 2);
++    let mut no_arguments = Vec::with_capacity(MAX_LOCALS as usize * 2);
++    let mut call_arguments = Vec::with_capacity(MAX_MACHINE_PARAMETERS as usize);
++    let mut order = Vec::with_capacity(MAX_BLOCKS as usize);
++    let mut visited = Vec::with_capacity(MAX_BLOCKS as usize);
++    let mut stack = Vec::with_capacity(MAX_BLOCKS as usize * 3);
++    let pointer_type = module.target_config().pointer_type();
+     let mut callees = vec![PackedOption::<FuncRef>::default(); a.functions.len()];
+     for (&id, function) in declarations.iter().zip(a.functions) {
+         // Reuse the declaration's ABI facts and the context's signature storage.
+@@ -240,12 +309,20 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
+                 let slot = index(parameter, a.values.len());
+                 assert_eq!(a.values[slot][VALUE_DEFINITION], BLOCK_DEFINITION | (at as u32 + 1),
+                            "block parameter definition mismatch");
+-                let defined = builder.append_block_param(blocks[at], clif_type(a.values[slot][VALUE_TYPE]));
+-                let previous = mem::replace(&mut values[slot], defined.into());
+-                assert!(previous.is_none(), "duplicate CLIF parameter definition");
++                if a.values[slot][VALUE_TYPE] == BORROWED_BYTES {
++                    pairs.push(LoweredPair { id: parameter,
++                        pointer: builder.append_block_param(blocks[at], pointer_type),
++                        length: builder.append_block_param(blocks[at], types::I64) });
++                } else {
++                    let defined = builder.append_block_param(blocks[at], clif_type(a.values[slot][VALUE_TYPE]));
++                    let previous = mem::replace(&mut values[slot], defined.into());
++                    assert!(previous.is_none(), "duplicate CLIF parameter definition");
++                }
+             }
+         }
+-        for at in function_blocks {
++        pairs.sort_unstable_by_key(|row| row.id);
++        reverse_postorder(a, function_blocks, &mut order, &mut visited, &mut stack);
++        for &at in &order {
+             let source = &a.blocks[at];
+             builder.switch_to_block(blocks[at]);
+             let instructions = model_span(source[BLOCK_FIRST_INSTRUCTION], source[BLOCK_INSTRUCTION_COUNT], a.instructions.len());
+@@ -263,6 +340,35 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
+                     }
+                     Opcode::AddI64 => Some((builder.ins().iadd(value(&values, instruction[INSTRUCTION_LEFT]),
+                                                               value(&values, instruction[INSTRUCTION_RIGHT])), I64)),
++                    Opcode::SubI64 => Some((builder.ins().isub(value(&values, instruction[INSTRUCTION_LEFT]),
++                                                              value(&values, instruction[INSTRUCTION_RIGHT])), I64)),
++                    Opcode::ByteLength => Some((pair(&pairs, instruction[INSTRUCTION_LEFT]).length, I64)),
++                    Opcode::ByteReadChecked => {
++                        let borrowed = pair(&pairs, instruction[INSTRUCTION_LEFT]);
++                        let offset = value(&values, instruction[INSTRUCTION_RIGHT]);
++                        let nonnegative = builder.ins().icmp_imm(IntCC::SignedGreaterThanOrEqual, offset, 0);
++                        let below_length = builder.ins().icmp(IntCC::SignedLessThan, offset, borrowed.length);
++                        let valid = builder.ins().band(nonnegative, below_length);
++                        let read = builder.create_block();
++                        let invalid = builder.create_block();
++                        let merge = builder.create_block();
++                        let result = builder.append_block_param(merge, types::I64);
++                        builder.ins().brif(valid, read, &[], invalid, &[]);
++                        builder.switch_to_block(read);
++                        // No address arithmetic or load exists on the invalid
++                        // path. Host promises a live immutable allocation; a
++                        // range check cannot validate an arbitrary C pointer.
++                        assert_eq!(pointer_type, types::I64, "admitted x86-64 borrow ABI");
++                        let address = builder.ins().iadd(borrowed.pointer, offset);
++                        let byte = builder.ins().load(types::I8, MemFlags::new(), address, 0);
++                        let byte = builder.ins().uextend(types::I64, byte);
++                        builder.ins().jump(merge, &[byte.into()]);
++                        builder.switch_to_block(invalid);
++                        let absent = builder.ins().iconst(types::I64, -1);
++                        builder.ins().jump(merge, &[absent.into()]);
++                        builder.switch_to_block(merge);
++                        Some((result, I64))
++                    }
+                     Opcode::MultiplyI64 => Some((builder.ins().imul(value(&values, instruction[INSTRUCTION_LEFT]),
+                                                                    value(&values, instruction[INSTRUCTION_RIGHT])), I64)),
+                     Opcode::GreaterI64 => Some((builder.ins().icmp(IntCC::SignedGreaterThan,
+@@ -289,8 +395,12 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
+                         let arguments = model_span(call[CALL_FIRST_ARGUMENT], source[SIGNATURE_PARAMETER_COUNT],
+                                                    a.arguments.len());
+                         for &argument in &a.arguments[arguments] {
+-                            call_arguments.push(value(&values, argument));
++                            if a.values[index(argument, a.values.len())][VALUE_TYPE] == BORROWED_BYTES {
++                                let borrowed = pair(&pairs, argument);
++                                call_arguments.extend([borrowed.pointer, borrowed.length]);
++                            } else { call_arguments.push(value(&values, argument)); }
+                         }
++                        assert!(call_arguments.len() <= MAX_MACHINE_PARAMETERS as usize, "expanded call admission");
+                         let emitted = builder.ins().call(reference, &call_arguments);
+                         let results = builder.inst_results(emitted);
+                         assert_eq!(results.len(), 1, "typed call has one scalar result");
+@@ -298,7 +408,7 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
+                     }
+                     Opcode::Jump => {
+                         let edge = &a.edges[index(instruction[INSTRUCTION_PAYLOAD], a.edges.len())];
+-                        edge_arguments(a, edge, &values, &mut yes_arguments);
++                        edge_arguments(a, edge, &values, &pairs, &mut yes_arguments);
+                         builder.ins().jump(blocks[index(edge[EDGE_TARGET], blocks.len())], &yes_arguments);
+                         None
+                     }
+@@ -307,8 +417,8 @@ fn define_bodies<M: Module>(module: &mut M, a: &Arena<'_>, names: &[&str])
+                         let edges = a.edges.get(first..first + 2).expect("typed branch edge pair");
+                         let yes = &edges[0];
+                         let no = &edges[1];
+-                        edge_arguments(a, yes, &values, &mut yes_arguments);
+-                        edge_arguments(a, no, &values, &mut no_arguments);
++                        edge_arguments(a, yes, &values, &pairs, &mut yes_arguments);
++                        edge_arguments(a, no, &values, &pairs, &mut no_arguments);
+                         builder.ins().brif(value(&values, instruction[INSTRUCTION_LEFT]),
+                             blocks[index(yes[EDGE_TARGET], blocks.len())], &yes_arguments,
+                             blocks[index(no[EDGE_TARGET], blocks.len())], &no_arguments);
+@@ -511,7 +621,7 @@ unsafe fn borrow_bindings<'a>(descriptors: &[ForeignBinding]) -> Result<Vec<Bind
+             return Err(invalid("parameter count exceeds scalar signature admission"));
+         }
+         if descriptor.address.is_null() { return Err(invalid("nonnull code address required")); }
+-        if ScalarType::decode(descriptor.result_type).is_none() {
++        if !matches!(TypeKind::decode(descriptor.result_type), Some(TypeKind::Bool | TypeKind::I64)) {
+             return Err(invalid("result type must be bool or i64"));
+         }
+         let (library, symbol, parameter_types) = unsafe {
+@@ -523,7 +633,7 @@ unsafe fn borrow_bindings<'a>(descriptors: &[ForeignBinding]) -> Result<Vec<Bind
+         }
+         let library = str::from_utf8(library).map_err(|_| invalid("library must be UTF-8"))?;
+         let symbol = str::from_utf8(symbol).map_err(|_| invalid("symbol must be UTF-8"))?;
+-        if parameter_types.iter().any(|&type_id| ScalarType::decode(type_id).is_none()) {
++        if parameter_types.iter().any(|&type_id| !matches!(TypeKind::decode(type_id), Some(TypeKind::Bool | TypeKind::I64))) {
+             return Err(invalid("parameter types must be bool or i64"));
+         }
+         // AOT link names are bare C symbols: even different libraries cannot
+diff --git a/tools/experiments/vnext/source_census/HOST-STATUS.md b/tools/experiments/vnext/source_census/HOST-STATUS.md
+new file mode 100644
+index 000000000..605af5865
+--- /dev/null
++++ b/tools/experiments/vnext/source_census/HOST-STATUS.md
+@@ -0,0 +1,92 @@
++# Source-only host and oracle checkpoint
++
++Prepared against the reviewed proposal tree
++`73b5dc67f3b9c0e6104426017b59adcd7939c4c6` (remote checkpoint `383fe844`).
++These four new files have not been compiled or executed. They do not change the
++reviewed `Main.chibi`, README, or ABI header and do not upgrade the proposal's
++acceptance status. Compiler implementation, bridge generation, native linking,
++independent review, actual closure matching, and all native gates remain pending.
++
++## Host boundary
++
++`host.c` is one Linux x86-64 System V AOT executable entry, linked to the actual
++compiled `Census` symbol. It opens one regular file, checks its representable
++extent, allocates once, reads that exact opaque extent, checks EOF and closes the
++file before invoking `Census(pointer, length)`. The storage remains allocated and
++unchanged throughout the call, then is explicitly freed. Empty input uses NULL
++with length zero. Actual allocation plus completed reads establishes storage;
++integer bounds alone cannot establish a foreign pointer's validity.
++
++The foreign hook captures 16 i64 values and returns its status unchanged. After
++return the host checks exactly one callback and return/status agreement. Success
++prints the 16 values in ABI order, separated by spaces. Rejection prints the input
++filename, byte offset, status, and frame extent to stderr. The captured tuple is
++not re-counted or interpreted as a second census. Output errors are separate from
++census rejection, including delayed close failure and a closed output pipe.
++
++Exit codes: 0 success, 1 census rejection, 2 usage, 3 input/environment I/O,
++4 report-call/return contract failure, 5 output I/O. Output failure takes
++precedence over other exit codes. Allocation failure closes owned resources and
++aborts, following repository policy. Reads retry EINTR; Linux close is not
++retried because its descriptor is already consumed. Extent checks detect growth
++or truncation while reading, not same-sized external rewrites or repository
++identity. The owned buffer is immutable during Census regardless of later file
++changes. There is no JIT adapter, frame preparer, sidecar builder, or new runner.
++
++## Oracle and authored controls
++
++`reference.census(bytes_or_readonly_mmap)` returns the same 16-integer tuple.
++Standard little-endian `struct` unpacking follows statuses 1 through 19 in the
++specified order; every failure zeros the 13 counters. Byte LF splitting handles
++physical lines, omits the artificial trailing segment, and carries a boolean
++across bounded chunks. A byte regex recognizes exactly the complement of ASCII
++whitespace 9..13 and 32. No Unicode line/space rules or Chibi byte loop is used.
++
++The CLI maps an already prepared file read-only and prints the tuple even on a
++census error. Its input must remain unchanged while mapped. A mapping is an
++oracle memory tradeoff, not the host's ownership model or a provenance proof.
++
++The ordinary `reference_tests.py` suite covers every named byte-line case,
++multi-package and replacement accounting, field mutation/truncation, package
++reordering, trailing junk, first-error precedence, all small malformed statuses,
++4096/4097 packages, 16384/16385 originals, generated counts 0/1/2 and bytes 256/257.
++Large tests are explicitly selected with `CHIBI_CENSUS_LARGE_TESTS=1` and cover
++statuses 2/13/14, 16 MiB and 256 MiB minus/at/plus one, and full original capacity
++plus the permitted generated record at the exact 268632348-byte frame cap. They
++construct sparse temporary files from record iterators only when executed.
++Neither test set has been run. Default execution skips the large class; it must
++not be reported as full-domain coverage without the explicit large run.
++
++## Source review and cost estimate
++
++- Transform/consumers: one opaque file into one live borrow for compiled Census;
++  exact bytes into a 16-value independent oracle report for later native matching.
++- Minimum host work: O(B) kernel-to-owned-buffer copy, one allocation/free,
++  one Census call and one 128-byte scalar capture. No frame parse or payload
++  census is in C. At the admitted frame cap B is 268632348 bytes; oversized input
++  still needs real storage if passed to Census rather than a forged extent.
++- Oracle work: O(B + R) unpacking, chunk splitting and byte-regex searches, with
++  up to 16385 records. Each chunk is at most 64 KiB, with at most 65537 segment
++  references. Split may copy a chunk once in addition to the chunk slice, but
++  never repeatedly copies a full large payload or retains all frame lines.
++  Object overhead is Python-version dependent and bounded by the chunk, while
++  mapped pages can still occupy up to the whole input's resident size.
++- On the documented historical 3.8 MB frame, native memory work should fit a
++  frame-to-subsecond scale; the independent Python oracle should be on a
++  subsecond-to-seconds scale. At 256 MiB, expect seconds to a minute for dense-LF
++  inputs rather than promise throughput. Actual I/O, regex, Python-loop and resident-memory
++  costs are unknown until measured. This is a cold correctness oracle.
++
++Source inspection found and addressed output SIGPIPE handling, buffered close
++failure, a retained chunk segment list, and avoidable per-record tuple updates.
++No runtime result is claimed. Before acceptance, execute ordinary and full-domain
++tests, compare every report field through real JIT/AOT, test zero/multiple report
++calls and mismatched return, distinct ABI positions, empty/NULL and guard-page
++borrows, host I/O/allocation/close/output failure controls, and minimized fuzz
++replays. Native execution and hostile-pointer testing belong to the coordinating
++gate; forged or freed pointers are not valid safe-rejection tests.
++
++What to delete: no old implementation is replaced by these sources. What to
++measure: the listed unknown costs and native/host failures. What to leave alone:
++the reviewed caller/ABI and repository identity preparation, which needs another
++actual consumer before sharing preparation machinery.
+diff --git a/tools/experiments/vnext/source_census/IMPLEMENTATION.md b/tools/experiments/vnext/source_census/IMPLEMENTATION.md
+new file mode 100644
+index 000000000..1287e62d0
+--- /dev/null
++++ b/tools/experiments/vnext/source_census/IMPLEMENTATION.md
+@@ -0,0 +1,128 @@
++# Source implementation checkpoint (not executed)
++
++This worktree is an untested v4 candidate based on verified remote tree
++73b5dc67f3b9c0e6104426017b59adcd7939c4c6. The old detached HEAD and preexisting
++staged changes are not this checkpoint's delta. Compare against that tree.
++
++Model.chibi remains the single authority. TypeKind appends BorrowedBytes=3;
++opcodes append SubI64=12, ByteLength=13, ByteReadChecked=14. Canonical nominal
++and intrinsic descriptors are restricted Model constants/literal functions,
++not new Module tables.
++The retained reader resolves the exact nominal; the backend sees only TypeKind.
++The generator admits restricted zero-argument string-literal functions and
++emits their Rust constant identities. V3 digest/history and generated v3 files are deliberately untouched.
++V4 is NOT in VERSION_LAYOUTS yet: generation fails closed with its candidate
++layout digest until independent review authorizes that digest. There is no
++fallback accepting a v3 packet as v4 and no handwritten generated output.
++
++All ten ordinary record widths stay unchanged, particularly Value=8 and
++Instruction=24 scalar bytes. No per-module descriptor rows or runtime pointers
++are serialized. The planned backend pair rows are 12 bytes per logical borrow;
++this exact caller needs two rows, 24 bytes. Ordinary scalar map slots remain four
++bytes. Caller input owns the allocation for one synchronous invocation.
++
++The active block cap remains 64 until bounded cyclic-verifier tests, parser
++inventory, and 128/129 controls execute. At 64 the v3 derived ceilings remain
++4,364,216 transport payload bytes. At the proposed 128, unchanged row/table
++shapes imply 4096 blocks, 262144 parameters, 270336 values, 12288 instructions,
++8192 edges/calls, 786432 arguments and 7,116,728 transport bytes. These are
++arithmetic ceilings, not capacity reservations or measured layouts.
++
++Named consumers: Produce reads Model descriptors and retained reader results;
++Verify checks canonical values/operations/CFG; generated Pack and Arena carry
++the same rows; define_bodies lowers that Arena twice for JIT and linked-object
++proof; source_census/Main.chibi is the real-byte caller. No production compiler,
++default toolchain, owned_process.py, or run_native.py is changed.
++
++## Required execution and review gates
++
++Nothing in this checkpoint has been compiled, generated, or tested. First review
++the complete delta, then authorize bounded generation: run generate.py once to
++obtain the unreviewed v4 candidate digest, independently inspect/recompute it,
++record that digest in VERSION_LAYOUTS, generate, and run generate.py --check.
++Run generate_tests.py and retained typed/packing preparation tests only after
++review. Compile the exact retained-parser caller and typed mutations under the
++coordinator's existing owned execution fences. Only then consider raising the
++cap to 128 with its own reviewed digest (or fold that change into the first v4
++publication before any v4 acceptance). Do not publish active mismatched bindings.
++
++Native gates remain the source-census README acceptance sequence: guards and
++live allocations including guard pages; distinct sixteen-position JIT/AOT ABI;
++independent CCN1 oracle and malformed limits; actual immutable closure matching;
++all five current public selections; exact-head nine ordered independent reviews.
++Historical v3 proofs accept none of these additions.
++
++## First coherent source checkpoint
++
++Implemented candidate paths, without execution:
++- Real retained named.Type/Entry/ID catalog admission for BorrowedBytes, exact
++  nominal and unmodified shape, canonical spelling, and checked reader use rows.
++- Two retained lexical Symbol/Function entries for intrinsic identities. Ordinary
++  local/header/import shadowing runs first. FindCallable resolves the catalog ID;
++  ID selects the Model descriptor, rather than an unused ID beside spelling tests.
++  FindCallable scans two symbols; reader.Text materializes one identifier on the
++  intrinsic path (six static sites), not on runtime payload reads.
++- One statement-only write prepass resolves assignments to visible declaration
++  slots once. Slot identity is stable across each loop's entry prefix; locals
++  declared inside that loop cannot enter its write mask. Nested assignment writes
++  visit at most 32 loop masks. No expression/type prepass or nested source rescan.
++  Sparse source-order side rows use 8 scalar bytes/assignment and 16/loop,
++  plus at most 32 active-loop indices. Cursors consume each row once in emission
++  order. No per-node optional payload is cleared for loop-free sources; combined
++  assignment/loop rows cannot exceed admitted syntax nodes (131,072 payload-byte
++  loose ceiling). Existing syntax rows are unchanged; native layouts are unknown.
++- While emits header parameters only for the write set, then condition/body once,
++  a typed backedge when the body continues, and a zero-trip-safe continuation.
++- Verify validates complete CFG, rejects incoming entry/unreachable cycles, builds
++  predecessor lists, converges two-word dominance with a deduplicated successor
++  worklist, then checks uses and edges. At B=128 the documented loose maximum is
++  32,640 pops and 16,711,680 mask-word intersections, not a linear-time claim.
++- Backend uses reverse postorder and predeclared parameters; BorrowedBytes expands
++  at signatures/block parameters/calls/edges. LoweredPair is statically pinned to
++  12 bytes, ordinary scalar slots remain 4. The exact caller creates two pair rows.
++  A pair vector grows only when a borrow is actually lowered, with no extra scan
++  of all scalar values to reserve an optional table. Capacity is not measured.
++- ByteReadChecked emits signed checks, true/false branches, and a u8 load plus
++  zero extension only in the valid block. No address arithmetic/load occurs on
++  the invalid path, which returns -1. SubI64 maps to wrapping machine subtraction.
++- The existing typed test registration gains borrow/shadow/nonescape/subtraction,
++  zero-trip/nested/mixed-type/alias-loop and mutation cases. Typed preparation
++  carries the unchanged exact Main.chibi bytes as a seventh fixture, 28 files.
++  The exact caller currently expects the deliberate 64-block admission failure;
++  its 3 functions/2 borrowed definitions/1 report/121-block Census assertions await
++  the separately reviewed cap increase. Rust framing/generator tests track v4.
++
++Clarification approved during implementation: a repeated ValueID is valid in an
++owned backedge span when parameters intentionally receive the same value. The
++README now distinguishes duplicate ownership from valid repeated operands.
++Tests assert both intentional alias forwarding and distinct-update correspondence.
++No other caller/format/failure contract was intentionally changed.
++
++Still missing from this partial checkpoint: reviewed v4 digest and regeneration;
++actual parser/producer counts; cap 128 activation and 128/129 boundary coverage;
++full physical block permutation tests; exhaustive borrow/catalog spoof mutations;
++test-only n/4n counters and dominance counters; all guarded-memory/JIT/AOT/report
++ABI execution; complete native census harness integration. Existing scalar and
++all five public replay cases remain required. The C host/oracle companion source
++is owned separately and is not part of this compiler checkpoint.
++
++The generated files intentionally remain v3 and therefore the working source is
++NOT a runnable active compiler tree. Preserve this as an inactive patch only.
++Do not describe source inspection or git whitespace checks as test execution.
++
++## Source-inspection correction after the first recovery freeze
++
++The first inactive patch used six typed string constants. Source inspection of
++package_compiler/Compile.chibi:2257 showed that retained compilation rejects
++nonnumeric top-level constants. The live candidate now uses six zero-argument
++functions returning exact string literals in Model; the closed schema parser
++recognizes only that literal form and never executes it. Catalog setup calls
++these functions. The layout descriptor values and generated Rust constants are
++unchanged. This corrects the implementation, not the reviewed borrow contract.
++The first immutable recovery packet is preserved without rewriting its evidence.
++
++A second source-only cleanup replaces the initial node-indexed assignment/loop
++scratch arrays with sparse rows consumed in source order. It removes 12 bytes
++of zeroed scratch per syntax node on ordinary scalar input, while preserving
++single target resolution and bounded ancestor-loop updates. The two census loops
++need 32 scalar payload bytes of loop rows, not 8 bytes for every parsed node.
+diff --git a/tools/experiments/vnext/source_census/README.md b/tools/experiments/vnext/source_census/README.md
+index 7352d17bb..c925c48f5 100644
+--- a/tools/experiments/vnext/source_census/README.md
++++ b/tools/experiments/vnext/source_census/README.md
+@@ -355,10 +355,16 @@ bytes and has 44 peak bindings, while actual parser-node counts remain unmeasure
+ New verifier tests must include zero-trip/many-trip/nested loops, unmodified
+ bindings, multiple assigned scalar types, branch writes in a loop, two loops
+ with different local bindings, early return, source rejection for unsupported
+-break/continue, swapped physical block order, missing/wrong/duplicate backedge
+-arguments, wrong loop-parameter types, cross-function edges, body-defined values
++break/continue, swapped physical block order, missing/wrong backedge arguments,
++duplicate argument-span ownership, wrong loop-parameter types, cross-function
++edges, body-defined values
+ used on the zero-trip exit, same-block future uses, unreachable self-cycles,
+-incoming entry edges, and 64/65 plus 128/129 block boundaries. Keep all existing
++incoming entry edges, and 64/65 plus 128/129 block boundaries.
++Repeated ValueIDs in a correctly owned argument span are valid when two
++parameters intentionally receive the same value. Assert source-produced argument
++correspondence for distinct updates, and separately accept intentional alias
++forwarding; do not reject repeated operands merely for being equal. Keep all
++existing
+ DAG/mutation tests and source diagnostic spans. Reject illegal escape operations
+ at source and verifier layers where representable; malformed input is not UB.
+ 
+diff --git a/tools/experiments/vnext/source_census/host.c b/tools/experiments/vnext/source_census/host.c
+new file mode 100644
+index 000000000..892b62fad
+--- /dev/null
++++ b/tools/experiments/vnext/source_census/host.c
+@@ -0,0 +1,211 @@
++/* AOT entry for one opaque frame. Census owns framing and every byte count.
++ * Source preparation and repository identity checks are deliberately elsewhere.
++ * This first host targets the contract's Linux x86-64 System V ABI.
++ */
++#define _POSIX_C_SOURCE 200809L
++#include "host-contract.h"
++
++#include <errno.h>
++#include <fcntl.h>
++#include <inttypes.h>
++#include <limits.h>
++#include <signal.h>
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/stat.h>
++#include <unistd.h>
++
++enum {
++    HOST_REJECTED = 1,
++    HOST_USAGE = 2,
++    HOST_INPUT_IO = 3,
++    HOST_REPORT_CONTRACT = 4,
++    HOST_OUTPUT_IO = 5
++};
++
++/* One process-wide foreign hook, used synchronously by the one Census call.
++ * No pointer into the allocation is captured. Saturation preserves duplicate
++ * detection without making the call counter itself capable of overflowing.
++ */
++static struct {
++    unsigned calls;
++    int64_t fields[16];
++} report;
++
++int64_t chibi_census_report(int64_t status, int64_t error_offset, int64_t packages,
++    int64_t original_files, int64_t original_bytes,
++    int64_t original_lines, int64_t original_nonblank,
++    int64_t replaced_files, int64_t replaced_bytes,
++    int64_t replaced_lines, int64_t replaced_nonblank,
++    int64_t generated_files, int64_t generated_bytes,
++    int64_t generated_lines, int64_t generated_nonblank,
++    int64_t frame_bytes)
++{
++    if (report.calls == 0) {
++        const int64_t fields[16] = {
++            status, error_offset, packages,
++            original_files, original_bytes, original_lines, original_nonblank,
++            replaced_files, replaced_bytes, replaced_lines, replaced_nonblank,
++            generated_files, generated_bytes, generated_lines, generated_nonblank,
++            frame_bytes
++        };
++        memcpy(report.fields, fields, sizeof fields);
++        report.calls = 1;
++    } else {
++        report.calls = 2;
++    }
++    return status;
++}
++
++/* Output errors take precedence over input/rejection/contract exit codes.
++ * Closing both streams also catches delayed buffered-write failures.
++ */
++static int finish(int result)
++{
++    if (fclose(stdout) == EOF) {
++        result = HOST_OUTPUT_IO;
++        if (fprintf(stderr, "source-census: closing stdout failed\n") < 0)
++            result = HOST_OUTPUT_IO;
++    }
++    if (fclose(stderr) == EOF)
++        result = HOST_OUTPUT_IO;
++    return result;
++}
++
++static int input_error(const char *path, const char *operation, int error)
++{
++    if (fprintf(stderr, "%s: %s: %s\n", path, operation,
++            error == 0 ? "file extent changed during read" : strerror(error)) < 0)
++        return HOST_OUTPUT_IO;
++    return HOST_INPUT_IO;
++}
++
++int main(int argc, char **argv)
++{
++    /* A closed output pipe must produce HOST_OUTPUT_IO, not a SIGPIPE exit. */
++    if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
++        return finish(input_error("source-census", "ignore SIGPIPE", errno));
++    if (argc != 2) {
++        const int written = fprintf(stderr, "usage: source-census FRAME\n");
++        return finish(written < 0 ? HOST_OUTPUT_IO : HOST_USAGE);
++    }
++
++    const char *path = argv[1];
++    int result = HOST_INPUT_IO;
++    /* O_NONBLOCK prevents waiting on a FIFO before fstat can reject it;
++     * it has no effect on regular-file reads on this Linux target.
++     */
++    int file = open(path, O_RDONLY | O_CLOEXEC | O_NONBLOCK);
++    uint8_t *bytes = NULL;
++    bool out_of_memory = false;
++    if (file < 0)
++        return finish(input_error(path, "open", errno));
++
++    struct stat metadata;
++    if (fstat(file, &metadata) < 0) {
++        result = input_error(path, "stat", errno);
++        goto cleanup;
++    }
++    if (!S_ISREG(metadata.st_mode) || metadata.st_size < 0 ||
++            (uintmax_t)metadata.st_size > SIZE_MAX ||
++            (uintmax_t)metadata.st_size > INT64_MAX) {
++        const int written = fprintf(stderr,
++            "%s: expected a regular file whose extent fits size_t and i64\n", path);
++        result = written < 0 ? HOST_OUTPUT_IO : HOST_INPUT_IO;
++        goto cleanup;
++    }
++
++    const size_t length = (size_t)metadata.st_size;
++    if (length != 0) {
++        bytes = malloc(length);
++        if (bytes == NULL) {
++            out_of_memory = true;
++            if (fprintf(stderr, "%s: cannot allocate %zu input bytes\n", path, length) < 0)
++                result = HOST_OUTPUT_IO;
++            goto cleanup;
++        }
++    }
++
++    size_t at = 0;
++    while (at != length) {
++        const size_t remaining = length - at;
++        const size_t wanted = remaining > (size_t)SSIZE_MAX ? (size_t)SSIZE_MAX : remaining;
++        const ssize_t count = read(file, bytes + at, wanted);
++        if (count < 0) {
++            if (errno == EINTR)
++                continue;
++            result = input_error(path, "read", errno);
++            goto cleanup;
++        }
++        if (count == 0) {
++            result = input_error(path, "read", 0);
++            goto cleanup;
++        }
++        at += (size_t)count;
++    }
++
++    /* Check EOF, not frame contents. Never silently census a prefix of a file
++     * that grew after fstat. This is not a provenance or atomic-snapshot proof.
++     */
++    uint8_t extra;
++    ssize_t tail;
++    do {
++        tail = read(file, &extra, 1);
++    } while (tail < 0 && errno == EINTR);
++    if (tail != 0) {
++        result = input_error(path, "read past measured extent", tail < 0 ? errno : 0);
++        goto cleanup;
++    }
++    if (close(file) < 0) {
++        file = -1; /* Linux consumes the descriptor even when close reports EINTR. */
++        result = input_error(path, "close", errno);
++        goto cleanup;
++    }
++    file = -1;
++
++    /* malloc/read established actual readable storage, not merely integer
++     * bounds. No writer or reallocator runs while Census borrows it. NULL is
++     * used only at length zero; ownership and lifetime end after return.
++     */
++    const int64_t returned = Census(bytes, (int64_t)length);
++    free(bytes);
++    bytes = NULL;
++    if (report.calls != 1 || returned != report.fields[0]) {
++        const int written = fprintf(stderr,
++            "%s: report contract failure: calls=%u%s return=%" PRId64
++            " reported_status=%" PRId64 "\n", path, report.calls,
++            report.calls == 2 ? " (at least)" : "", returned, report.fields[0]);
++        result = written < 0 ? HOST_OUTPUT_IO : HOST_REPORT_CONTRACT;
++        goto cleanup;
++    }
++    if (returned != 0) {
++        const int written = fprintf(stderr,
++            "%s:%" PRId64 ": census status=%" PRId64 " frame_bytes=%" PRId64 "\n",
++            path, report.fields[1], returned, report.fields[15]);
++        result = written < 0 ? HOST_OUTPUT_IO : HOST_REJECTED;
++        goto cleanup;
++    }
++
++    result = 0;
++    for (size_t field = 0; field != 16; ++field) {
++        if (printf("%" PRId64 "%c", report.fields[field], field == 15 ? '\n' : ' ') < 0) {
++            result = HOST_OUTPUT_IO;
++            break;
++        }
++    }
++
++cleanup:
++    if (file >= 0 && close(file) < 0) {
++        const int close_result = input_error(path, "close", errno);
++        if (result != HOST_OUTPUT_IO)
++            result = close_result;
++    }
++    free(bytes);
++    result = finish(result);
++    if (out_of_memory)
++        abort(); /* Repository policy: allocation failure is not invalid input. */
++    return result;
++}
+diff --git a/tools/experiments/vnext/source_census/reference.py b/tools/experiments/vnext/source_census/reference.py
+new file mode 100644
+index 000000000..e1d541030
+--- /dev/null
++++ b/tools/experiments/vnext/source_census/reference.py
+@@ -0,0 +1,167 @@
++#!/usr/bin/env python3
++"""Independent CCN1 byte oracle, not a source-closure/preparation tool.
++
++The result is the contract's sixteen integers. Input is bytes or a read-only
++mmap kept unchanged through the call. No decoding, Unicode line/space rules,
++Chibi byte loop, or compiler/backend module participates in the answer.
++"""
++
++import mmap
++import re
++import struct
++import sys
++
++
++MAGIC = 827212611
++PACKAGE_LIMIT = 4096
++ORIGINAL_FILE_COUNT_LIMIT = 16384
++ORIGINAL_FILE_LIMIT = 16 * 1024 * 1024
++ORIGINAL_TOTAL_LIMIT = 256 * 1024 * 1024
++GENERATED_COUNT_LIMIT = 1
++GENERATED_TOTAL_LIMIT = 256
++FRAME_LIMIT = 16 + 12 * (ORIGINAL_FILE_COUNT_LIMIT + GENERATED_COUNT_LIMIT) + ORIGINAL_TOTAL_LIMIT + GENERATED_TOTAL_LIMIT
++
++HEADER = struct.Struct("<4I")
++RECORD = struct.Struct("<3I")
++NONBLANK = re.compile(rb"[^\x09-\x0d\x20]")
++LINE_CHUNK = 64 * 1024
++
++
++def count_lines(frame: bytes | mmap.mmap, start: int, stop: int) -> tuple[int, int]:
++    """Split on LF only, bounded to 64 KiB plus its line-segment list.
++
++    Split copies at most one chunk's bytes, not a complete large payload. At
++    most 65,537 segment references exist per chunk, independent of frame size.
++    A boolean carries a line spanning chunks. The regex searches bytes for the
++    exact non-whitespace set without another stripped/translated payload copy.
++    """
++    physical = nonblank = 0
++    pending_text = False
++    for at in range(start, stop, LINE_CHUNK):
++        parts = frame[at:min(at + LINE_CHUNK, stop)].split(b"\n")
++        tail = parts.pop()
++        physical += len(parts)
++        for line in parts:
++            nonblank += pending_text or NONBLANK.search(line) is not None
++            pending_text = False
++        pending_text = pending_text or NONBLANK.search(tail) is not None
++        del parts  # Release this bounded list before constructing the next one.
++    if stop > start and frame[stop - 1] != 10:
++        physical += 1
++        nonblank += pending_text
++    return physical, nonblank
++
++
++def census(frame: bytes | mmap.mmap) -> tuple[int, ...]:
++    """Validate in specified first-failure order; errors zero all 13 counters."""
++    size = len(frame)
++
++    def failure(status: int, offset: int) -> tuple[int, ...]:
++        return (status, offset, *(0,) * 13, size)
++
++    if size < HEADER.size:
++        return failure(1, 0)
++    if size > FRAME_LIMIT:
++        return failure(2, 0)
++    magic, declared_packages, declared_originals, declared_generated = HEADER.unpack_from(frame)
++    if magic != MAGIC:
++        return failure(3, 0)
++    if not (1 <= declared_packages <= PACKAGE_LIMIT and
++            1 <= declared_originals <= ORIGINAL_FILE_COUNT_LIMIT and
++            declared_generated <= GENERATED_COUNT_LIMIT):
++        return failure(4, 0)
++
++    packages = 0
++    # Four counters per category: files, bytes, physical lines, nonblank lines.
++    original = [0, 0, 0, 0]
++    replaced = [0, 0, 0, 0]
++    generated = [0, 0, 0, 0]
++    pending_package = 0
++    at = HEADER.size
++    while at < size:
++        if size - at < RECORD.size:
++            return failure(5, at)
++        tag, package, length = RECORD.unpack_from(frame, at)
++        start = at + RECORD.size
++        if tag not in (1, 2, 3):
++            return failure(6, at)
++        if length > size - start:
++            return failure(7, at)
++        if ((pending_package and (tag != 3 or package != pending_package)) or
++                (not pending_package and tag == 3)):
++            return failure(8, at)
++        if tag == 3:
++            if generated[0] >= declared_generated:
++                return failure(9, at)
++            if length > GENERATED_TOTAL_LIMIT - generated[1]:
++                return failure(10, at)
++        else:
++            if not (1 <= package <= declared_packages and
++                    (package == packages or package == packages + 1)):
++                return failure(11, at)
++            if original[0] >= declared_originals:
++                return failure(12, at)
++            if length > ORIGINAL_FILE_LIMIT:
++                return failure(13, at)
++            if length > ORIGINAL_TOTAL_LIMIT - original[1]:
++                return failure(14, at)
++            if tag == 2 and replaced[0]:
++                return failure(15, at)
++
++        stop = start + length
++        physical, nonblank = count_lines(frame, start, stop)
++        if tag == 3:
++            generated[0] += 1
++            generated[1] += length
++            generated[2] += physical
++            generated[3] += nonblank
++            pending_package = 0
++        else:
++            packages = package
++            original[0] += 1
++            original[1] += length
++            original[2] += physical
++            original[3] += nonblank
++            if tag == 2:
++                replaced[:] = (1, length, physical, nonblank)
++                pending_package = package
++        at = stop
++
++    if pending_package:
++        return failure(16, size)
++    if packages != declared_packages:
++        return failure(17, size)
++    if original[0] != declared_originals:
++        return failure(18, size)
++    if generated[0] != declared_generated:
++        return failure(19, size)
++    return (0, 0, packages, *original, *replaced, *generated, size)
++
++
++def main() -> int:
++    if len(sys.argv) != 2:
++        print("usage: reference.py FRAME", file=sys.stderr)
++        return 2
++    path = sys.argv[1]
++    try:
++        with open(path, "rb") as source:
++            # Empty files cannot be mapped; their exact bytes still reach census.
++            if source.seek(0, 2) == 0:
++                report = census(b"")
++            else:
++                with mmap.mmap(source.fileno(), 0, access=mmap.ACCESS_READ) as frame:
++                    report = census(frame)
++    except (OSError, ValueError) as error:
++        print(f"{path}: input I/O: {error}", file=sys.stderr)
++        return 3
++    try:
++        print(*report)
++        sys.stdout.flush()
++    except OSError as error:
++        print(f"{path}: output I/O: {error}", file=sys.stderr)
++        return 5
++    return 0 if report[0] == 0 else 1
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/tools/experiments/vnext/source_census/reference_tests.py b/tools/experiments/vnext/source_census/reference_tests.py
+new file mode 100644
+index 000000000..cd406f7f5
+--- /dev/null
++++ b/tools/experiments/vnext/source_census/reference_tests.py
+@@ -0,0 +1,311 @@
++#!/usr/bin/env python3
++"""Authored tests, not an execution receipt. No compiler or host is invoked.
++
++Ordinary tests use small exact-byte fixtures. Set CHIBI_CENSUS_LARGE_TESTS=1
++when deliberately running the full bounds: the large class maps temporary
++sparse files sequentially and scans roughly 1 GiB in total. It never embeds or
++materializes a 256 MiB Python bytes literal or retains a high-count record list.
++"""
++
++from contextlib import contextmanager
++import mmap
++import os
++import tempfile
++import unittest
++
++from reference import (
++    FRAME_LIMIT, GENERATED_TOTAL_LIMIT, HEADER, LINE_CHUNK, MAGIC,
++    ORIGINAL_FILE_COUNT_LIMIT, ORIGINAL_FILE_LIMIT, ORIGINAL_TOTAL_LIMIT,
++    PACKAGE_LIMIT, RECORD, census,
++)
++
++
++def record(tag: int = 1, package: int = 1, payload: bytes = b"") -> bytes:
++    return RECORD.pack(tag, package, len(payload)) + payload
++
++
++def frame(records, packages: int = 1, originals: int = 1, generated: int = 0) -> bytes:
++    """Small fixture convenience only; large cases use sparse_frame below."""
++    return HEADER.pack(MAGIC, packages, originals, generated) + b"".join(records)
++
++
++@contextmanager
++def sparse_frame(records, packages=1, originals=1, generated=0, extent=None):
++    """Generate NUL payloads by seeking, with O(1) Python record storage.
++
++    records yields (tag, package, length), not payloads. truncate commits the
++    last sparse extent; a read-only mmap supplies real bytes to the oracle.
++    This fixture builder is not a repository closure preparer.
++    """
++    with tempfile.TemporaryFile() as output:
++        output.write(HEADER.pack(MAGIC, packages, originals, generated))
++        for tag, package, length in records:
++            output.write(RECORD.pack(tag, package, length))
++            output.seek(length, 1)
++        output.truncate(output.tell() if extent is None else extent)
++        output.flush()
++        with mmap.mmap(output.fileno(), 0, access=mmap.ACCESS_READ) as data:
++            yield data
++
++
++class CensusTests(unittest.TestCase):
++    def assert_failure(self, data, status, offset):
++        self.assertEqual(census(data), (status, offset, *(0,) * 13, len(data)))
++
++    def test_literal_little_endian_frame(self):
++        # Literal golden bytes do not inherit the oracle's magic or unpackers.
++        data = (b"CCN1\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00"
++                b"\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00")
++        self.assertEqual(census(data),
++            (0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 28))
++
++    def test_named_line_semantics(self):
++        cases = (
++            ("empty", b"", 0, 0),
++            ("unterminated", b"source", 1, 1),
++            ("only LF", b"\n", 1, 0),
++            ("repeated LF", b"\n\n\n", 3, 0),
++            ("CRLF", b"a\r\n\r\nb\r\n", 3, 2),
++            ("exact whitespace", b"\t \v\f\r\n \n", 2, 0),
++            ("VT and FF are not line endings", b"\v\f", 1, 0),
++            ("bare CR is not a line ending", b"a\rb", 1, 1),
++            ("bare CR is whitespace", b"\r", 1, 0),
++            ("NUL is text", b"\0\n\0", 2, 2),
++            ("all 256 byte values", bytes(range(256)), 2, 2),
++            ("Unicode separators are text", "\u0085\u2028\u2029\u00a0".encode("utf-8"), 1, 1),
++            ("comment is nonblank", b"// comment\n", 1, 1),
++            ("trailing LF adds no line", b"a\n", 1, 1),
++            ("trailing whitespace line", b"a\n\t\r", 2, 1),
++        )
++        for name, payload, physical, nonblank in cases:
++            with self.subTest(name=name):
++                data = frame((record(payload=payload),))
++                self.assertEqual(census(data),
++                    (0, 0, 1, 1, len(payload), physical, nonblank,
++                     0, 0, 0, 0, 0, 0, 0, 0, len(data)))
++
++    def test_long_lines_and_chunk_boundaries(self):
++        cases = (
++            (b"x" * (LINE_CHUNK * 2 + 7), 1, 1),
++            (b" " * (LINE_CHUNK * 2) + b"x\n", 1, 1),
++            (b"x" + b" " * (LINE_CHUNK * 2) + b"\n", 1, 1),
++            (b" " * (LINE_CHUNK - 1) + b"\n\nx", 3, 1),
++            (b"\n" * (LINE_CHUNK + 1), LINE_CHUNK + 1, 0),
++            (b"\t" * LINE_CHUNK + b"\r", 1, 0),
++        )
++        for payload, physical, nonblank in cases:
++            with self.subTest(length=len(payload), physical=physical):
++                report = census(frame((record(payload=payload),)))
++                self.assertEqual(report[:7], (0, 0, 1, 1, len(payload), physical, nonblank))
++
++    def test_multi_package_without_replacement(self):
++        data = frame((record(1, 1, b"a\n"), record(1, 1), record(1, 2, b"b\n\n")),
++                     packages=2, originals=3)
++        self.assertEqual(census(data),
++            (0, 0, 2, 3, 5, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, len(data)))
++
++    def test_replacement_is_an_original_subset(self):
++        data = frame((record(1, 1, b"a\n"), record(2, 1, b"\nold"),
++                      record(3, 1, b"new\n\n"), record(1, 2, b"  \n")),
++                     packages=2, originals=3, generated=1)
++        self.assertEqual(census(data),
++            (0, 0, 2, 3, 9, 4, 2, 1, 4, 2, 1, 1, 5, 2, 1, len(data)))
++
++    def test_zero_byte_replacement_and_generated_target(self):
++        data = frame((record(2), record(3)), generated=1)
++        self.assertEqual(census(data),
++            (0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, len(data)))
++
++    def test_small_malformed_statuses(self):
++        # 2, 13, and 14 need real large extents and are in LargeCensusTests.
++        cases = (
++            ("1 truncated header", b"CCN1", 1, 0),
++            ("3 magic", b"BAD!" + HEADER.pack(MAGIC, 1, 1, 0)[4:], 3, 0),
++            ("4 declared counts", frame((), packages=0), 4, 0),
++            ("5 record header", frame((b"x",)), 5, 16),
++            ("6 tag", frame((record(0),)), 6, 16),
++            ("7 payload extent", frame((RECORD.pack(1, 1, 1),)), 7, 16),
++            ("8 unpaired generated", frame((record(3),), generated=1), 8, 16),
++            ("9 generated count", frame((record(2), record(3))), 9, 28),
++            ("10 generated bytes", frame((record(2), record(3, 1, b"x" * 257)), generated=1), 10, 28),
++            ("11 package", frame((record(1, 0),)), 11, 16),
++            ("12 originals", frame((record(), record())), 12, 28),
++            ("15 duplicate replaced", frame((record(2), record(3), record(2)), originals=2, generated=1), 15, 40),
++            ("16 missing generated", frame((record(2),), generated=1), 16, 28),
++            ("17 packages", frame((record(),), packages=2), 17, 28),
++            ("18 originals", frame((record(),), originals=2), 18, 28),
++            ("19 generated", frame((record(),), generated=1), 19, 28),
++        )
++        for name, data, status, offset in cases:
++            with self.subTest(name=name):
++                self.assert_failure(data, status, offset)
++
++    def test_every_header_field_mutated_and_truncated(self):
++        valid_header = HEADER.pack(MAGIC, 1, 1, 0)
++        for length in range(16):
++            with self.subTest(main_header_length=length):
++                self.assert_failure(valid_header[:length], 1, 0)
++        field_values = (
++            (0, (0, MAGIC + 1, 0xffffffff), 3),
++            (1, (0, PACKAGE_LIMIT + 1, 0xffffffff), 4),
++            (2, (0, ORIGINAL_FILE_COUNT_LIMIT + 1, 0xffffffff), 4),
++            (3, (2, 0xffffffff), 4),
++        )
++        for field, values, status in field_values:
++            for value in values:
++                fields = [MAGIC, 1, 1, 0]
++                fields[field] = value
++                with self.subTest(main_field=field, value=value):
++                    self.assert_failure(HEADER.pack(*fields), status, 0)
++
++        for length in range(1, 12):
++            with self.subTest(record_header_length=length):
++                self.assert_failure(valid_header + record()[:length], 5, 16)
++        self.assert_failure(valid_header, 17, 16)
++        for field, values, status in (
++                (0, (0, 4, 0xffffffff), 6),
++                (1, (0, 2, 0xffffffff), 11),
++                (2, (1, 0xffffffff), 7)):
++            for value in values:
++                fields = [1, 1, 0]
++                fields[field] = value
++                with self.subTest(record_field=field, value=value):
++                    self.assert_failure(valid_header + RECORD.pack(*fields), status, 16)
++        complete = frame((record(payload=b"payload"),))
++        for missing in range(1, 8):
++            with self.subTest(missing_payload_bytes=missing):
++                self.assert_failure(complete[:-missing], 7, 16)
++
++    def test_package_order_and_replacement_pairing(self):
++        self.assert_failure(frame((record(1, 2),), packages=2), 11, 16)
++        self.assert_failure(frame((record(1, 1), record(1, 3)), packages=3, originals=2), 11, 28)
++        self.assert_failure(frame((record(1, 1), record(1, 2), record(1, 1)),
++                                  packages=2, originals=3), 11, 40)
++        self.assert_failure(frame((record(2), record(1)), originals=2, generated=1), 8, 28)
++        self.assert_failure(frame((record(2), record(3, 2)), packages=2, generated=1), 8, 28)
++        self.assert_failure(frame((record(2), record(3), record(3)), generated=1), 8, 40)
++
++    def test_trailing_junk(self):
++        valid = frame((record(),))
++        for count in range(1, 12):
++            with self.subTest(trailing=count):
++                self.assert_failure(valid + b"\0" * count, 5, 28)
++        self.assert_failure(valid + b"\0" * 12, 6, 28)
++        self.assert_failure(valid + record(), 12, 28)
++
++    def test_first_failure_precedence(self):
++        cases = (
++            (b"BAD!", 1, 0),
++            (HEADER.pack(0, 0, 0, 2), 3, 0),
++            (frame((b"x",), packages=0), 4, 0),
++            (frame((RECORD.pack(0, 0, 0xffffffff),)), 6, 16),
++            (frame((RECORD.pack(3, 0, 0xffffffff),)), 7, 16),
++            (frame((record(3, 0, b"x" * 257),)), 8, 16),
++            (frame((record(2), record(3, 1, b"x" * 257))), 9, 28),
++            (frame((record(), record(1, 0))), 11, 28),
++            (frame((record(2), record(3), record(2)), generated=1), 12, 40),
++            (frame((record(2),), packages=2, originals=2, generated=0), 16, 28),
++            (frame((record(),), packages=2, originals=2, generated=1), 17, 28),
++            (frame((record(),), originals=2, generated=1), 18, 28),
++        )
++        for data, status, offset in cases:
++            with self.subTest(status=status):
++                self.assert_failure(data, status, offset)
++
++    def test_package_and_original_count_boundaries(self):
++        with sparse_frame(((1, package, 0) for package in range(1, PACKAGE_LIMIT + 1)),
++                          packages=PACKAGE_LIMIT, originals=PACKAGE_LIMIT) as data:
++            self.assertEqual(census(data),
++                (0, 0, PACKAGE_LIMIT, PACKAGE_LIMIT, 0, 0, 0,
++                 0, 0, 0, 0, 0, 0, 0, 0, len(data)))
++        with sparse_frame(((1, 1, 0) for _ in range(ORIGINAL_FILE_COUNT_LIMIT)),
++                          originals=ORIGINAL_FILE_COUNT_LIMIT) as data:
++            self.assertEqual(census(data),
++                (0, 0, 1, ORIGINAL_FILE_COUNT_LIMIT, 0, 0, 0,
++                 0, 0, 0, 0, 0, 0, 0, 0, len(data)))
++        with sparse_frame(((1, 1, 0) for _ in range(ORIGINAL_FILE_COUNT_LIMIT + 1)),
++                          originals=ORIGINAL_FILE_COUNT_LIMIT) as data:
++            self.assert_failure(data, 12, 16 + 12 * ORIGINAL_FILE_COUNT_LIMIT)
++        self.assert_failure(frame((), packages=PACKAGE_LIMIT + 1), 4, 0)
++        self.assert_failure(frame((), originals=ORIGINAL_FILE_COUNT_LIMIT + 1), 4, 0)
++
++    def test_generated_boundaries(self):
++        for length in (0, 255, 256):
++            with self.subTest(length=length):
++                data = frame((record(2), record(3, 1, b"x" * length)), generated=1)
++                self.assertEqual(census(data),
++                    (0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0,
++                     1, length, int(length > 0), int(length > 0), len(data)))
++        self.assert_failure(frame((), generated=2), 4, 0)
++        self.assert_failure(frame((record(2), record(3, 1, b"x" * 257)), generated=1), 10, 28)
++
++
++@unittest.skipUnless(os.environ.get("CHIBI_CENSUS_LARGE_TESTS") == "1",
++                     "set CHIBI_CENSUS_LARGE_TESTS=1 for mapped full-domain bounds")
++class LargeCensusTests(unittest.TestCase):
++    def assert_failure(self, data, status, offset):
++        self.assertEqual(census(data), (status, offset, *(0,) * 13, len(data)))
++
++    def test_status_2_extent_precedes_counts(self):
++        with sparse_frame((), packages=0, originals=0, extent=FRAME_LIMIT + 1) as data:
++            self.assert_failure(data, 2, 0)
++
++    def test_original_file_limit_minus_at_plus(self):
++        for length in (ORIGINAL_FILE_LIMIT - 1, ORIGINAL_FILE_LIMIT, ORIGINAL_FILE_LIMIT + 1):
++            with self.subTest(length=length):
++                with sparse_frame(((1, 1, length),)) as data:
++                    if length > ORIGINAL_FILE_LIMIT:
++                        self.assert_failure(data, 13, 16)
++                    else:
++                        self.assertEqual(census(data),
++                            (0, 0, 1, 1, length, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, len(data)))
++
++    def test_total_original_limit_minus_at_plus(self):
++        for total in (ORIGINAL_TOTAL_LIMIT - 1, ORIGINAL_TOTAL_LIMIT, ORIGINAL_TOTAL_LIMIT + 1):
++            whole, tail = divmod(total, ORIGINAL_FILE_LIMIT)
++            def records():
++                for _ in range(whole):
++                    yield 1, 1, ORIGINAL_FILE_LIMIT
++                if tail:
++                    yield 1, 1, tail
++            originals = whole + int(tail > 0)
++            with self.subTest(total=total):
++                with sparse_frame(records(), originals=originals) as data:
++                    if total > ORIGINAL_TOTAL_LIMIT:
++                        self.assert_failure(data, 14, 16 + whole * (12 + ORIGINAL_FILE_LIMIT))
++                    else:
++                        self.assertEqual(census(data),
++                            (0, 0, 1, originals, total, originals, originals,
++                             0, 0, 0, 0, 0, 0, 0, 0, len(data)))
++
++    def test_full_original_domain_plus_generated_at_frame_cap(self):
++        def records():
++            for index in range(ORIGINAL_FILE_COUNT_LIMIT):
++                package = index // 4 + 1
++                yield (2 if index == 0 else 1), package, (ORIGINAL_FILE_LIMIT if index < 16 else 0)
++                if index == 0:
++                    yield 3, package, GENERATED_TOTAL_LIMIT
++        with sparse_frame(records(), packages=PACKAGE_LIMIT,
++                          originals=ORIGINAL_FILE_COUNT_LIMIT, generated=1) as data:
++            self.assertEqual(len(data), FRAME_LIMIT)
++            self.assertEqual(census(data),
++                (0, 0, PACKAGE_LIMIT, ORIGINAL_FILE_COUNT_LIMIT, ORIGINAL_TOTAL_LIMIT, 16, 16,
++                 1, ORIGINAL_FILE_LIMIT, 1, 1, 1, GENERATED_TOTAL_LIMIT, 1, 1, FRAME_LIMIT))
++
++    def test_large_first_failure_precedence(self):
++        # A record over its per-file limit is not scanned. Earlier pairing,
++        # package and count checks must still win over its large length.
++        length = ORIGINAL_FILE_LIMIT + 1
++        with sparse_frame(((2, 1, 0), (1, 0, length)), originals=1, generated=1) as data:
++            self.assert_failure(data, 8, 28)
++        with sparse_frame(((1, 1, 0), (1, 0, length)), originals=1) as data:
++            self.assert_failure(data, 11, 28)
++        with sparse_frame(((1, 1, 0), (1, 1, length)), originals=1) as data:
++            self.assert_failure(data, 12, 28)
++        with sparse_frame(((2, 1, 0), (3, 1, 0), (2, 1, length)),
++                          originals=2, generated=1) as data:
++            self.assert_failure(data, 13, 40)
++
++
++if __name__ == "__main__":
++    unittest.main()

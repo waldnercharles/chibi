@@ -30,7 +30,8 @@ fresh construction, actual-artifact review and all seven unfiltered Rust tests.
 The corrected source's fresh non-test panic-abort cdylib also passed construction
 and actual-artifact review. The original-source foreign execution result is
 recorded below. Earlier version-1/2 evidence applies only to its own frozen
-inputs, not to the four older native selections under current version 3.
+inputs. The fresh five-case current-v3 replay below now covers all five public
+selections using one recovered library and compiler.
 
 The corrected Rust source SHA-256 is
 `625f40f6020251be06175a735c57fffd1e456985c40200b2edfa298bcee71947`.
@@ -109,11 +110,11 @@ Its failed receipt and closure remain preserved; the original fixture and
 production implementation were unchanged.
 
 This is a bounded Linux x86-64 System V correctness result using a separately
-admitted private controller. The public runner now offers separate exact c5
-and current-artifact selections; its current-v3 whole-run workflow has not yet
-been rerun. Current-v3 nativecases/scalars/direct_calls/modules
-coverage, a small real tool, full compiler/runtime and platform qualification,
-and non-incremental 100,000 LOC/sec remain open. Phase 2 is not complete; the
+admitted private controller. The public runner offers separate exact c5
+and current-artifact selections. The fresh five-case replay below subsequently
+passed its current-v3 whole-run workflow for every public selection. A small
+real tool, full compiler/runtime and platform qualification, and non-incremental
+100,000 LOC/sec remain open. Phase 2 is not complete; the
 47.001-second O0 and 96.516-second O2 baselines are unchanged.
 
 ## Package-aware checkpoint
@@ -471,11 +472,11 @@ The three version-2 runtime matrices passed as listed in
 registry still has 25 calls and 11 rejections. The two original package calls
 and `private_import` have the separate historical version-2 checkpoint above;
 eight foreign calls and `missing_symbol` have the current version-3 result.
-The four older selections still need fresh current-v3 native acceptance.
-The 23 supplemental call oracles extend coverage; historical results cannot be
-combined into full current-v3 corpus acceptance.
+The fresh five-case replay below now accepts all five selections under current
+version 3. The 23 supplemental call oracles extend coverage; this result is a
+new shared-source proof, not a combination of historical version-1/2 receipts.
 
-Full current-v3 corpus coverage, representative real-tool/runtime quality,
+Broader language/runtime coverage, representative real-tool/runtime quality,
 phase/memory measurements, platform qualification and distribution notice review
 remain later gates. No timing from these fixtures establishes
 100,000 LOC/sec or a speedup.
@@ -487,10 +488,26 @@ with official Rust 1.99.0 and the locked Cranelift 0.137.1 dependencies, offline
 and in fresh output directories. All seven backend tests passed unfiltered,
 including the expected symbol-lookup panic. Production construction and static
 ELF/link review passed separately, with the root using panic=abort and exactly
-eight C exports. The production library has not yet been loaded.
+eight C exports. That exact production library has now been loaded successfully
+by all five fresh source-native replay selections below.
 
 The initial construction recorder failed on mixed Cargo JSON/build-script text;
 that failure was preserved and the existing test artifact was independently
 reconciled, rather than rebuilt. See the [normalized recovery evidence](../evidence/backend-recovery-20261105.json)
 for exact source/artifact identities, warnings and limitations. This does not
-close current-route source/JIT/AOT replay, platform or compiler-speed gates.
+by itself close source/JIT/AOT replay, platform or compiler-speed gates.
+
+## Fresh five-case source-native replay, 2026-11-05
+
+The [independently accepted replay](../evidence/source-native-replay-20261105.md)
+ran nativecases, scalars, direct_calls, modules and foreign once each. All 25
+stages and five actual outer exits passed: 93 source-derived AOT value checks
+and 2,232 JIT value checks, plus separate source-rejection, ABI/copy/lifetime
+and backend-failure controls. Actual linked artifacts, foreign archive/GOT
+resolution, GCC traces, retained inventories and process cleanup were checked.
+The production library SHA-256 is
+`3a89eca55f0ada484ca71fcb38a5a7bfd6f5b1c9136fcc8bae62d162c882ec08`.
+
+This closes the bounded public current-v3 replay selections. It is not a
+throughput benchmark, other-platform or full compiler qualification, or merge
+acceptance. The inactive v4 census candidate is a separate untested change.

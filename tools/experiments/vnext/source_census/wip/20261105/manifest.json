@@ -1,0 +1,124 @@
+{
+  "status": "inactive_untested_partial_source_checkpoint",
+  "base_commit": "383fe844f8fa0353a6cfa3faeca1808ee6d49d74",
+  "base_tree": "73b5dc67f3b9c0e6104426017b59adcd7939c4c6",
+  "candidate_tree": "4d119ffae6c8877712a192c3482f3f1ce9b93734",
+  "patch_sha256": "5120ea0fe6dc772e6cfeb6d6e41c7aa09722bb02afd6f9c99a89f174a75e8497",
+  "patch_bytes": 138894,
+  "files": [
+    {
+      "path": "tools/experiments/vnext/frontend/typed/Model.chibi",
+      "bytes": 5884,
+      "sha256": "dd157ed822eda9840c5895a48e9bb59beea559b48d2995fb340b8a89263b16eb",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/typed/Produce.chibi",
+      "bytes": 68610,
+      "sha256": "f6be66c3fbbff40bb5b898a6b5f4ecc0d1a792c50a1ba3910281cf58da563f98",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/typed/Verify.chibi",
+      "bytes": 27499,
+      "sha256": "a1dec04720b43309c700b2bb24ee4d242fbef1ac0697e1efcce168f7b24c01dc",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/typed/prepare.py",
+      "bytes": 8633,
+      "sha256": "43e61548d749e28a7e6e54530307faead4e12710965bb7a11cf3f16b9776d135",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/typed/prepare_tests.py",
+      "bytes": 12475,
+      "sha256": "674ac141dfbe862eb6980c95bb6d888c50dc875181ebac3da2ef34ac25bd71bb",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/typed/tests/Main.chibi.in",
+      "bytes": 102788,
+      "sha256": "0a09a60c207468cf4ec90c828b34a047e33b2dfda6c4c795ee3eb1acba493e51",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/bridge/generate.py",
+      "bytes": 19336,
+      "sha256": "57f0885705a4b3a7706fcccfcf2032692fdeb98e6b29dfc637df7677d6fa7bf7",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/bridge/generate_tests.py",
+      "bytes": 16558,
+      "sha256": "9fe0cc80d9f0cbafc472afb0342dbfea5e7f2af1a115ceda1e1259dc3885173b",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/bridge/tests/arena_tests.rs",
+      "bytes": 9373,
+      "sha256": "397a2850d0eff877a0bb743c1a3136b92939ec1e7b5f91a629788dee220a390b",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/slice_backend/lib.rs",
+      "bytes": 63144,
+      "sha256": "876e2fdc809dc9fd5f8ec4037238debb3c2054f74af8f3e7974696c34db5b46a",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/source_census/README.md",
+      "bytes": 29842,
+      "sha256": "9c11aa22e89e06806e95b203fb2a50554dda36e16aa6ae667bc1dda009350e1d",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/source_census/IMPLEMENTATION.md",
+      "bytes": 8610,
+      "sha256": "db7aef50fff25c1c0e31a4c00e7585277db76d0319083634fc295b4eac1ad731",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/source_census/host.c",
+      "bytes": 7236,
+      "sha256": "868b4f18574fbe45cb5c7218adb1661c8057b78401a23fec70974b140404ff6c",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/source_census/reference.py",
+      "bytes": 6014,
+      "sha256": "ee2ebfe4075fd9410bf195add164cacd186f030888c8fefa5ebdfab6e5699de0",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/source_census/reference_tests.py",
+      "bytes": 15650,
+      "sha256": "d91c5986d661e20a2d8e694bd38f766443cb760593fb6e9d20ecec387eed575e",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/source_census/HOST-STATUS.md",
+      "bytes": 5979,
+      "sha256": "b6093d7f6504978863d89f2b3e36ed3dd093222056c70e9a756ccbecd09122c1",
+      "mode": "100644"
+    }
+  ],
+  "validation": {
+    "source_snapshot_hashes": "verified",
+    "whitespace_check": "passed",
+    "independent_implementation_reviews": "not_run",
+    "generation": "not_run",
+    "compilation": "not_run",
+    "tests": "not_run",
+    "native": "not_run",
+    "fresh_index_patch_application": "passed"
+  },
+  "known_gaps": [
+    "Generated bindings remain version3; this candidate requests version4 with an unreviewed/unrecorded digest.",
+    "The block cap stays64, so the full source-census caller is not yet admitted.",
+    "Backend/producer changes and host/reference sources are untested.",
+    "All nine independent engineering reviews and native differential/ABI/ownership gates remain.",
+    "Full-domain reference tests are opt-in and have not run."
+  ],
+  "publication_boundary": "Only this inactive patch and status/manifest are published. No candidate source is applied to active project files."
+}

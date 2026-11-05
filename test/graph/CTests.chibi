@@ -140,7 +140,8 @@ EmptyArguments :: (fixture: LinkFixture, quoted: string) {
     assert(!os.Exists(Path([output, ".chibi-link.rsp"])), "the empty argument's response is removed");
 }
 
-// Empty option operands stay between their surrounding response runs.
+// Empty option operands preserve the driver's result, including rejection.
+// Successful segmented links use include operands in an object-only link.
 EmptyOperands :: (fixture: LinkFixture, quoted: string) {
     tools := fixture.tools;
     captured := fixture.captured;
@@ -152,13 +153,38 @@ EmptyOperands :: (fixture: LinkFixture, quoted: string) {
     }
     flags.extend(["-B", "", ""]);
     command := c.LinkCommand(captured, output, [object], flags, []);
-    assert(length(command) == 16 && command[10] == "-B" && command[11] == "" && command[12] == "", "the empty operands stay in the command");
-    assert(os.Run(c.LinkCommand(tools, output, [object], flags, [])) == 0, "the direct link with empty operands");
-    assert(c.Link(captured, output, [object], flags, []) == 1 && os.Run([output]) == 37, "empty -B operands keep link semantics");
+    assert(length(command) == 16 && command[10] == "-B" && command[11] == "" && command[12] == "", "the empty prefix operand and argument stay in the command");
+    direct := os.Run(c.LinkCommand(tools, output, [object], flags, []));
+    linked := c.Link(captured, output, [object], flags, []);
+    assert((direct == 0 && linked == 1) || (direct != 0 && linked == -1), "empty prefix transport keeps driver semantics");
     assert(TransportMatches(fixture.root, command, 2), "the transport neither grows argv nor drops an empty argument");
     record := Path([output, ".chibi-record"]);
     response := Path([output, ".chibi-link.rsp"]);
     numbered := Path([response, ".1"]);
+    if (direct == 0) {
+        assert(os.Run([output]) == 37 && Records(record, command), "accepted empty prefix arguments keep the original argv");
+        assert(c.Link(captured, output, [object], flags, []) == 0, "empty prefix arguments keep the cache identity");
+    } else {
+        assert(!os.Exists(record), "rejected empty prefix arguments leave no success record");
+    }
+    assert(!os.Exists(response) && !os.Exists(numbered), "empty prefix transport removes its responses");
+
+    // An empty -I operand is harmless in an object-only link: it changes no
+    // compiler tool prefix or linked image metadata.
+    output = Path([quoted, "/segmented-empty-operand"]);
+    flags = slice(fixture.flags, 0, length(fixture.flags));
+    for (i in 0..<8) {
+        flags.append(Path(["-L", fixture.search_dir]));
+    }
+    flags.extend(["-I", "", "-I", ""]);
+    command = c.LinkCommand(captured, output, [object], flags, []);
+    assert(length(command) == 17 && command[10] == "-I" && command[11] == "" && command[12] == "-I" && command[13] == "", "the empty include operands stay in the command");
+    assert(os.Run(c.LinkCommand(tools, output, [object], flags, [])) == 0, "the direct link with empty include operands");
+    assert(c.Link(captured, output, [object], flags, []) == 1 && os.Run([output]) == 37, "empty include operands keep link semantics");
+    assert(TransportMatches(fixture.root, command, 2), "segmented transport keeps both empty include operands without growing argv");
+    record = Path([output, ".chibi-record"]);
+    response = Path([output, ".chibi-link.rsp"]);
+    numbered = Path([response, ".1"]);
     assert(Records(record, command) && c.Link(captured, output, [object], flags, []) == 0, "a segmented link keeps provenance and cache");
     assert(!os.Exists(response) && !os.Exists(numbered), "a segmented link removes its responses");
     assert(Gone(record) && Make(numbered), "a blocked numbered response");
@@ -177,9 +203,19 @@ EmptyOperands :: (fixture: LinkFixture, quoted: string) {
         tiny_flags.extend(["-B", ""]);
     }
     tiny_command := c.LinkCommand(captured, tiny_output, [object], tiny_flags, []);
-    assert(os.Run(c.LinkCommand(tools, tiny_output, [object], tiny_flags, [])) == 0, "the direct link with many empty operands");
-    assert(c.Link(captured, tiny_output, [object], tiny_flags, []) == 1 && os.Run([tiny_output]) == 37, "many empty operands keep link semantics");
+    direct = os.Run(c.LinkCommand(tools, tiny_output, [object], tiny_flags, []));
+    linked = c.Link(captured, tiny_output, [object], tiny_flags, []);
+    assert((direct == 0 && linked == 1) || (direct != 0 && linked == -1), "many empty prefix operands keep driver semantics");
     assert(TransportMatches(fixture.root, tiny_command, 64), "short empty-separated runs keep their admission");
+    record = Path([tiny_output, ".chibi-record"]);
+    if (direct == 0) {
+        assert(os.Run([tiny_output]) == 37 && Records(record, tiny_command), "accepted empty prefix runs keep the original argv");
+        assert(c.Link(captured, tiny_output, [object], tiny_flags, []) == 0, "empty prefix runs keep the cache identity");
+    } else {
+        assert(!os.Exists(record), "rejected empty prefix runs leave no success record");
+    }
+    response = Path([tiny_output, ".chibi-link.rsp"]);
+    assert(!os.Exists(response) && !os.Exists(Path([response, ".1"])), "short empty-separated runs remove their responses");
 }
 
 // A real link exceeds the host's argv byte limit; failures and retries keep

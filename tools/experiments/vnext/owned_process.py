@@ -88,11 +88,13 @@ def run(argv, cwd, env, stdout, stderr, limit):
     def interrupted(signum, _frame):
         nonlocal interruption, last_interruption
         with gate:
+            # Stops remain terminal throughout cleanup, but cannot signal a
+            # group after callbacks have stopped and its leader may be reaped.
+            if interruption is None:
+                interruption = signum
+            last_interruption = signum
             if callbacks_active:
                 # Never raise across Popen's return/assignment ownership gap.
-                if interruption is None:
-                    interruption = signum
-                last_interruption = signum
                 kill_group()
 
     def deadline():
@@ -131,7 +133,13 @@ def run(argv, cwd, env, stdout, stderr, limit):
         if interruption is not None:
             kill_group()
         timer = threading.Timer(max(0, limit - (time.perf_counter_ns() - start) / 1e9), deadline)
-        timer.start()
+        # The sole worker inherits blocked stops. Even if join fails, it cannot
+        # receive a process stop during main's final masked handler handoff.
+        old_mask = signal.pthread_sigmask(signal.SIG_BLOCK, handlers)
+        try:
+            timer.start()
+        finally:
+            signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
         # Reserve the leader PID/PGID until every possible group signal ends.
         # Polling also bounds a failed kill: blocking waitid could wait forever.
         while True:
@@ -154,11 +162,6 @@ def run(argv, cwd, env, stdout, stderr, limit):
         try:
             with gate:
                 callbacks_active = False
-            for signum in handlers:
-                try:
-                    signal.signal(signum, signal.SIG_IGN)
-                except BaseException as error:
-                    result["cleanup_errors"].append(f"signal disable: {type(error).__name__}: {error}")
             if timer is not None:
                 try:
                     timer.cancel()
@@ -259,9 +262,14 @@ def run(argv, cwd, env, stdout, stderr, limit):
                         raise RuntimeError("previous self subreaper state was not restored")
                 except BaseException as error:
                     result["cleanup_errors"].append(f"subreaper restoration: {type(error).__name__}: {error}")
-            # Receipt I/O is outside this scope, so it cannot strand handlers.
-            for signum, handler in handlers.items():
-                signal.signal(signum, handler)
+            # A restored caller may raise on a stop. Defer that handoff until
+            # both handlers are restored; all owned cleanup is already done.
+            old_mask = signal.pthread_sigmask(signal.SIG_BLOCK, handlers)
+            try:
+                for signum, handler in handlers.items():
+                    signal.signal(signum, handler)
+            finally:
+                signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
         finish = time.perf_counter_ns()
         result["elapsed_seconds"] = ((end if end is not None else cleanup_start) - start) / 1e9
         result["cleanup_seconds"] = (finish - cleanup_start) / 1e9

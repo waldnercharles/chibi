@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "scope": "Linux Python supervisor correctness only; no compiler, backend or generated native execution.",
+  "source_base": "5b283f5873173f845e2120820711ac1461a2ad1f",
+  "fixed_owner_sha256": "de5fc0ae0288a2c6b0850853d5518fd3db5066294a52912455743b68eb3979eb",
+  "tests_sha256": "e85f3d5e935c55ccd072262e03c229bcb334d7e331fab444ec1cb77698109c38",
+  "changes": [
+    "Record first/last stop during cleanup without signalling a reaped group.",
+    "Keep stop handlers through cleanup; mask only the final two-handler handoff.",
+    "Mask stops around Timer.start so a failed-join timer cannot receive a process stop during main-thread handoff."
+  ],
+  "limits": {
+    "each_diagnostic_outer_work_seconds": 29,
+    "cleanup_seconds": 1,
+    "each_harmless_inner_python_work_seconds": 2,
+    "inner_cleanup_seconds": 1
+  },
+  "outcomes": [
+    {
+      "case": "original",
+      "result_sha256": "9b662576b56f4b767bd53d5692f9282ced8ea5e04bf64ab1a6f62870d4459e19",
+      "stderr_sha256": "508603ff18d0897ed67b2d7c5fb02ab4701905880d7609735e04ec7024311fda",
+      "status": "expected_failure_requires_assertion_review",
+      "elapsed_seconds": 0.27597023,
+      "cleanup_seconds": 0.000910549,
+      "inner_exit": 1
+    },
+    {
+      "case": "fixed",
+      "result_sha256": "ef269586831183ceda1d03f56326314b50b8004c2f3f0d214a21ace38d92adfe",
+      "stderr_sha256": "d1c87ef1d1a241ce6f9189888cacb68bccea624c3169936dd889cc667b7b681f",
+      "status": "passed",
+      "elapsed_seconds": 0.256032879,
+      "cleanup_seconds": 0.001128329,
+      "inner_exit": 0
+    },
+    {
+      "case": "handoff-revision01",
+      "result_sha256": "e334a6f34ad391359e77c3b626b0116f88acddfe4527e586ddd679f4a290db4e",
+      "stderr_sha256": "eeff8dfd57a20b20bab8cc8879dd7493f621fc1903cff5b6da533f4f323d8e58",
+      "status": "expected_failure_requires_assertion_review",
+      "elapsed_seconds": 0.19423974,
+      "cleanup_seconds": 0.000953202,
+      "inner_exit": 1
+    },
+    {
+      "case": "handoff-fixed",
+      "result_sha256": "9990790609dba247e685dbaa5875be3ded1aa8827abe68b39c786befb58181d0",
+      "stderr_sha256": "d7de734658f9ed4ac81bcb86b77ecdc286b3413e28ea837186619a724dcd42f6",
+      "status": "passed",
+      "elapsed_seconds": 0.164565118,
+      "cleanup_seconds": 0.001299962,
+      "inner_exit": 0
+    }
+  ],
+  "positive_subcases": 9,
+  "counterfactual_subcases": 9,
+  "observed_guards": [
+    "All four adapters exited normally with the exact intended inner outcome.",
+    "No owner errors, survivors, timeout or input drift; ECHILD and restored subreaper for all outer runs.",
+    "Original lost-stop control failed at successor selection in all seven subcases.",
+    "Revision01 timer control failed at inherited stop-mask equality in both subcases.",
+    "Fixed controls passed all seven cleanup and two live-timer subcases."
+  ],
+  "runtime_fence": {
+    "system_hashes_and_aliases": 740,
+    "existing_pyc_files": 611,
+    "full_python_tree_entries": 1282,
+    "isolated_no_site_no_bytecode_writes": true,
+    "claim": "Pre/post identities and listed lookup conditions, not continuous isolation or exhaustive historical loader proof."
+  },
+  "preserved_prelaunch_issue": "The first outer membership check compared the full Python tree with its code-only subset. It stopped before any diagnostic; the admitted full-tree manifest then matched. No input was changed.",
+  "review": "Independent whole-change source review and exact terminal assertion/ownership readback accepted. No scoped publication blocker.",
+  "remaining": [
+    "Broader baseline/frontend/bridge suites have not run for this change.",
+    "Optional actual-controller identity-dependent controls have not run; exact c5 identity is unavailable.",
+    "No native toolchain, ABI, throughput, platform or merge acceptance follows from these Python controls."
+  ],
+  "terminal_acceptance_sha256": "cae4ed89078d29a000c874561e0474666e68a40ca0ee479438ae1c956b29fe15"
+}

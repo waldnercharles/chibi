@@ -6,11 +6,13 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
 import types
 import unittest
+from unittest.mock import patch
 
 HERE = Path(__file__).resolve().parent
 SUBJECT = types.ModuleType("native_runner_test_subject")
@@ -560,6 +562,204 @@ finally:
                 self.assertFalse(marker.exists())
                 self.assertFalse((directory / "attempt").exists())
 
+    def test_owned_cleanup_stops_reject_successor(self):
+        owner = types.ModuleType("cleanup_stop_owner")
+        owner.__file__ = str(HERE.parent.parent / "owned_process.py")
+        source = Path(owner.__file__).read_text()
+        exec(compile(source, owner.__file__, "exec"), owner.__dict__)
+        lines = source.splitlines()
+        timer_line, restored_line = [next(i for i, line in enumerate(lines, 1) if line.strip() == text)
+                                    for text in ("if timer is not None:", 'if not result["subreaper_restored"]:')]
+        stops = (signal.SIGINT, signal.SIGTERM)
+        prior_handlers = {sig: signal.getsignal(sig) for sig in stops}
+        prior_mask = signal.pthread_sigmask(signal.SIG_BLOCK, [])
+        self.assertFalse(set(stops) & prior_mask, "control requires unblocked stop signals")
+        prior_trace, killpg = sys.gettrace(), os.killpg
+        cases = [(phase, (sig,)) for phase in ("disabled", "timer", "restored") for sig in stops]
+        cases.append(("timer", (signal.SIGTERM, signal.SIGINT, signal.SIGTERM, signal.SIGINT)))
+        for index, (phase, sent) in enumerate(cases):
+            with self.subTest(phase=phase, signals=sent):
+                observed, group_signals, injected = [], [], []
+
+                def outer(signum, _frame):
+                    observed.append(signum)
+
+                def reserved_group(group, signum):
+                    # Refuse the OS operation if cleanup already reaped this ID.
+                    os.waitid(os.P_PID, group, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+                    group_signals.append(signum)
+                    return killpg(group, signum)
+
+                def trace(frame, event, _argument):
+                    if frame.f_code is not owner.run.__code__:
+                        return None
+                    hit = (frame.f_locals.get("callbacks_active") is False if phase == "disabled"
+                           else frame.f_lineno == (timer_line if phase == "timer" else restored_line))
+                    if event == "line" and not injected and hit:
+                        injected.extend(sent)
+                        for signum in sent:
+                            os.kill(os.getpid(), signum)
+                    return trace
+
+                try:
+                    for signum in stops:
+                        signal.signal(signum, outer)
+                    with (self.base / f"cleanup-{index}.stdout").open("xb") as out, (
+                            self.base / f"cleanup-{index}.stderr").open("xb") as err:
+                        with patch.object(os, "killpg", reserved_group):
+                            sys.settrace(trace)
+                            execution = owner.run([sys.executable, "-I", "-B", "-S", "-c", "pass"],
+                                                  self.base, {}, out, err, 2)
+                    sys.settrace(prior_trace)
+                    self.assertEqual({sig: signal.getsignal(sig) for sig in stops},
+                                     {sig: outer for sig in stops})
+                finally:
+                    sys.settrace(prior_trace)
+                    for signum, handler in prior_handlers.items():
+                        signal.signal(signum, handler)
+                self.assertEqual(signal.pthread_sigmask(signal.SIG_BLOCK, []), prior_mask)
+                with self.assertRaises(ChildProcessError):
+                    os.waitid(os.P_ALL, 0, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+                self.assertEqual(injected, list(sent))
+                self.assertEqual(observed, [])
+                self.assertEqual(group_signals, [signal.SIGKILL])
+                self.assertEqual(execution["exit_code"], 0, execution)
+                self.assertEqual(execution["cleanup_errors"], [], execution)
+                self.assertTrue(execution["cleanup_echild"], execution)
+                self.assertTrue(execution["subreaper_restored"], execution)
+                self.assertFalse(execution["surviving_children"], execution)
+                self.assertFalse(execution["timed_out"], execution)
+                self.assertLessEqual(execution["cleanup_seconds"], 1, execution)
+                self.assertLessEqual(execution["elapsed_seconds"], 2, execution)
+                clean = dict(execution, status="passed")
+                clean.pop("interruption", None)
+                SUBJECT.require_success(clean, 2)
+                receipt = {"status": "passed"}
+                try:
+                    SUBJECT.require_success(execution, 2)
+                except ValueError:
+                    receipt["status"] = "failed"
+                self.assertIsNone(SUBJECT.next_stage(self.plan, [receipt]), execution)
+                self.assertEqual(execution["status"], "interrupted", execution)
+                self.assertEqual(execution["interruption"],
+                                 {"signal": sent[0], "name": signal.Signals(sent[0]).name})
+                self.assertEqual(execution["last_signal"], signal.Signals(sent[-1]).name)
+
+    def test_live_timer_stop_mask_survives_failed_join(self):
+        owner = types.ModuleType("live_timer_owner")
+        owner.__file__ = str(HERE.parent.parent / "owned_process.py")
+        source = Path(owner.__file__).read_text()
+        exec(compile(source, owner.__file__, "exec"), owner.__dict__)
+        restore_line = next(i for i, line in enumerate(source.splitlines(), 1)
+                            if line.strip() == "signal.signal(signum, handler)")
+        stops = (signal.SIGINT, signal.SIGTERM)
+        prior_handlers = {sig: signal.getsignal(sig) for sig in stops}
+        prior_mask = signal.pthread_sigmask(signal.SIG_BLOCK, [])
+        self.assertFalse(set(stops) & prior_mask)
+        prior_trace, killpg = sys.gettrace(), os.killpg
+        timer_run, timer_join = owner.threading.Timer.run, owner.threading.Timer.join
+        for raising in (False, True):
+            with self.subTest(raising=raising):
+                ready, release, delivered = (owner.threading.Event() for _ in range(3))
+                state, timers, observed, group_signals = {}, [], [], []
+
+                def held_timer(timer):
+                    timers.append(timer)
+                    state["worker_mask"] = signal.pthread_sigmask(signal.SIG_BLOCK, [])
+                    timer_run(timer)  # Preserve the real deadline and cancellation.
+                    ready.set()
+                    state["hold_released"] = release.wait(4)
+                    timer.function()  # Deliberately late: the callback gate must forbid a kill.
+
+                def failed_join(timer, timeout=None):
+                    state["ready_before_join_failure"] = ready.wait(timeout)
+                    raise RuntimeError("injected join failure with live timer")
+
+                def outer(signum, _frame):
+                    observed.append((signum, all(signal.getsignal(sig) is outer for sig in stops)))
+                    delivered.set()
+                    # An unmasked counterfactual already fails the invariant;
+                    # do not let its delivery race escape the test's cleanup.
+                    if raising and set(stops).issubset(state["worker_mask"]):
+                        raise InterruptedError("stop after complete handler handoff")
+
+                def reserved_group(group, signum):
+                    os.waitid(os.P_PID, group, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+                    group_signals.append(signum)
+                    return killpg(group, signum)
+
+                def trace(frame, event, _argument):
+                    if frame.f_code is not owner.run.__code__:
+                        return None
+                    if (event == "line" and frame.f_lineno == restore_line
+                            and frame.f_locals.get("signum") == signal.SIGTERM):
+                        state["alive_at_handoff"] = bool(timers and timers[0].is_alive())
+                        state["cleanup_at_handoff"] = dict(frame.f_locals["result"])
+                        os.kill(os.getpid(), signal.SIGINT)
+                    return trace
+
+                execution, interruption = None, None
+                try:
+                    signal.pthread_sigmask(signal.SIG_BLOCK, [signal.SIGUSR1])
+                    expected_mask = prior_mask | {signal.SIGUSR1}
+                    for signum in stops:
+                        signal.signal(signum, outer)
+                    with (self.base / f"live-{raising}.stdout").open("xb") as out, (
+                            self.base / f"live-{raising}.stderr").open("xb") as err:
+                        with patch.object(owner.threading.Timer, "run", held_timer), patch.object(
+                                owner.threading.Timer, "join", failed_join), patch.object(os, "killpg", reserved_group):
+                            sys.settrace(trace)
+                            try:
+                                execution = owner.run([sys.executable, "-I", "-B", "-S", "-c", "pass"],
+                                                      self.base, {}, out, err, 2)
+                            except InterruptedError as error:
+                                interruption = error
+                            finally:
+                                sys.settrace(prior_trace)
+                                release.set()
+                                for timer in timers:
+                                    timer_join(timer, timeout=1)
+                                state["stop_delivered"] = delivered.wait(1)
+                    restored_handlers = {sig: signal.getsignal(sig) for sig in stops}
+                    restored_mask = signal.pthread_sigmask(signal.SIG_BLOCK, [])
+                finally:
+                    sys.settrace(prior_trace)
+                    release.set()
+                    for timer in timers:
+                        timer_join(timer, timeout=1)
+                    for signum, handler in prior_handlers.items():
+                        signal.signal(signum, handler)
+                    signal.pthread_sigmask(signal.SIG_SETMASK, prior_mask)
+                self.assertEqual(len(timers), 1, state)
+                self.assertFalse(timers[0].is_alive(), state)
+                self.assertTrue(state["hold_released"], state)
+                self.assertTrue(state["ready_before_join_failure"], state)
+                self.assertTrue(state["alive_at_handoff"], state)
+                self.assertTrue(state["stop_delivered"], state)
+                self.assertEqual(state["worker_mask"], expected_mask | set(stops), state)
+                self.assertEqual(restored_mask, expected_mask, state)
+                self.assertEqual(restored_handlers, {sig: outer for sig in stops})
+                self.assertEqual(observed, [(signal.SIGINT, True)], state)
+                self.assertEqual(group_signals, [signal.SIGKILL], state)
+                with self.assertRaises(ChildProcessError):
+                    os.waitid(os.P_ALL, 0, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+                self.assertTrue(state["cleanup_at_handoff"]["cleanup_echild"], state)
+                self.assertTrue(state["cleanup_at_handoff"]["subreaper_restored"], state)
+                self.assertEqual(state["cleanup_at_handoff"]["cleanup_errors"],
+                                 ["timer shutdown: RuntimeError: injected join failure with live timer"])
+                if raising:
+                    self.assertIsInstance(interruption, InterruptedError)
+                    self.assertIsNone(execution)
+                else:
+                    self.assertIsNone(interruption)
+                    self.assertEqual(execution["status"], "cleanup_error", execution)
+                    self.assertEqual(execution["cleanup_errors"],
+                                     ["timer shutdown: RuntimeError: injected join failure with live timer"])
+                    self.assertFalse(execution["timed_out"], execution)
+                    self.assertLessEqual(execution["cleanup_seconds"], 1, execution)
+                    self.assertLessEqual(execution["elapsed_seconds"], 2, execution)
+                    self.assertIsNone(SUBJECT.next_stage(self.plan, [execution]))
+
     def signal_control(self, phase):
         keys = ("CHIBI_NATIVE_CONTROL_SEED", "CHIBI_NATIVE_CONTROL_LLVM_BIN", "CHIBI_NATIVE_CONTROL_CC")
         paths = [os.environ.get(key) for key in keys]
@@ -573,16 +773,38 @@ finally:
             row = next(row for row in manifest["implementation"] if row["path"] == "controller/" + name)
             row.update(SUBJECT.file_identity(destination))
         (directory / "source-manifest.json").write_text(json.dumps(manifest))
-        script = """import json, os, runpy, signal, sys
+        script = """import json, os, runpy, signal, subprocess, sys
 from pathlib import Path
 root = Path(sys.argv[1])
 phase = sys.argv[2]
 subject = runpy.run_path(str(root / 'controller/run_native.py'))
-state = {'popen': 0, 'signal_sent': False}
+cleanup = phase in ('cleanup_timer', 'cleanup_handoff')
+state = {'popen': 0, 'signal_sent': False, 'launch_attempts': 0, 'group_signals': []}
+if cleanup:
+    # Keep the real controller/owner path and pins. Replace only its first
+    # workload with a bounded Python child; its inert marker is never executed.
+    command = [sys.executable, '-I', '-B', '-S', '-c',
+               "from pathlib import Path; p=Path('native-main'); "
+               "p.write_bytes(b'control marker; never execute'); p.chmod(0o700)"]
+    original_popen = subprocess.Popen
+    def launch(argv, **kwargs):
+        state['launch_attempts'] += 1
+        if state['launch_attempts'] != 1 or argv[0] != str(Path(sys.argv[3]).resolve()):
+            raise AssertionError('successor/native launch forbidden by cleanup control')
+        return original_popen(command, **kwargs)
+    subprocess.Popen = launch
+    owner_lines = (root / 'controller/owned_process.py').read_text().splitlines()
+    timer_line, restore_line = [next(i for i, line in enumerate(owner_lines, 1) if line.strip() == text)
+                               for text in ('if timer is not None:', 'signal.signal(signum, handler)')]
 def audit(event, args):
     if event == 'subprocess.Popen':
         state['popen'] += 1
+        if cleanup and state['popen'] == 1 and args[0] == command[0] and args[1] == command:
+            return
         raise RuntimeError('native child execution is forbidden by this control')
+    if cleanup and event == 'os.killpg':
+        os.waitid(os.P_PID, args[0], os.WEXITED | os.WNOHANG | os.WNOWAIT)
+        state['group_signals'].append(args[1])
     if event != 'open' or state['signal_sent']:
         return
     target = args[0]
@@ -597,6 +819,18 @@ def audit(event, args):
         os.kill(os.getpid(), signal.SIGTERM)
 sys.addaudithook(audit)
 def trace(frame, event, argument):
+    if (cleanup and not state['signal_sent'] and event == 'line'
+            and frame.f_code.co_filename == str(root / 'controller/owned_process.py')
+            and frame.f_code.co_name == 'run'
+            and ((phase == 'cleanup_timer' and frame.f_lineno == timer_line)
+                 or (phase == 'cleanup_handoff' and frame.f_lineno == restore_line
+                     and frame.f_locals.get('signum') == signal.SIGTERM))):
+        state['signal_sent'] = True
+        os.kill(os.getpid(), signal.SIGTERM if phase == 'cleanup_timer' else signal.SIGINT)
+    if (phase == 'cleanup_handoff' and event == 'call' and frame.f_code.co_name == 'stop'
+            and frame.f_code.co_filename == str(root / 'controller/run_native.py')):
+        state['handlers_at_delivery'] = [getattr(signal.getsignal(sig), '__name__', '')
+                                         for sig in (signal.SIGINT, signal.SIGTERM)]
     if (phase == 'reservation' and not state['signal_sent'] and event == 'line'
             and frame.f_code.co_filename == str(root / 'controller/run_native.py')
             and frame.f_code.co_name == 'run'
@@ -605,7 +839,7 @@ def trace(frame, event, argument):
         state['signal_sent'] = True
         os.kill(os.getpid(), signal.SIGTERM)
     return trace
-if phase == 'reservation':
+if phase == 'reservation' or cleanup:
     sys.settrace(trace)
 prior_handlers = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
 prior_mask = signal.pthread_sigmask(signal.SIG_BLOCK, [])
@@ -621,15 +855,30 @@ else:
     raise AssertionError('unexpected child or descendant remains')
 print(json.dumps({'result': result, 'control': state}))
 """
-        result = subprocess.run([sys.executable, "-B", "-c", script, str(directory), phase, *paths],
-                                capture_output=True, timeout=45, check=False)
+        cleanup = phase in ("cleanup_timer", "cleanup_handoff")
+        result = subprocess.run([sys.executable, "-I", "-B", "-S", "-c", script, str(directory), phase, *paths],
+                                capture_output=True, timeout=185 if cleanup else 45, check=False)
         self.assertEqual(result.returncode, 0, result.stderr.decode())
         facts = json.loads(result.stdout)
         self.assertTrue(facts["control"]["signal_sent"])
         self.assertTrue(facts["control"]["cleanup_echild"])
         self.assertEqual(facts["control"]["popen"], 0 if phase in ("reservation", "prelaunch") else 1)
         self.assertEqual(facts["result"]["status"], "failed")
-        self.assertEqual(facts["result"]["controller_signals"], ["SIGTERM"])
+        expected_signals = [] if phase == "cleanup_timer" else ["SIGINT" if phase == "cleanup_handoff" else "SIGTERM"]
+        self.assertEqual(facts["result"]["controller_signals"], expected_signals)
+        if cleanup:
+            self.assertEqual(facts["control"]["launch_attempts"], 1, facts)
+            self.assertEqual(facts["control"]["group_signals"], [signal.SIGKILL], facts)
+        if phase == "cleanup_timer":
+            execution = facts["result"]["stages"][0]["execution"]
+            self.assertEqual(execution["status"], "interrupted", facts)
+            self.assertEqual(execution["exit_code"], 0, facts)
+            self.assertEqual(execution["interruption"]["name"], "SIGTERM", facts)
+            self.assertEqual(execution["cleanup_errors"], [], facts)
+            self.assertTrue(execution["cleanup_echild"], facts)
+            self.assertTrue(execution["subreaper_restored"], facts)
+        if phase == "cleanup_handoff":
+            self.assertEqual(facts["control"].get("handlers_at_delivery"), ["stop", "stop"], facts)
         attempted = 0 if phase == "reservation" else 1
         self.assertEqual(len(facts["result"]["stages"]), attempted)
         if attempted:
@@ -662,6 +911,12 @@ print(json.dumps({'result': result, 'control': state}))
 
     def test_signal_during_receipt_preserves_failed_receipt(self):
         self.signal_control("receipt")
+
+    def test_signal_during_owned_cleanup_stops_controller(self):
+        self.signal_control("cleanup_timer")
+
+    def test_signal_during_owner_handler_handoff_restores_both(self):
+        self.signal_control("cleanup_handoff")
 
     def test_stage_output_checks_require_empty_perf_directory(self):
         perf = self.base / "run/perf"

@@ -81,6 +81,102 @@ def live_group_members(group):
             if int(child_group) == group and not state.startswith("Z")]
 
 
+def process_state(stat, status):
+    # Linux stat's command can contain spaces and ')'; only numeric identity
+    # fields after its final ')' are relevant, not the command itself.
+    prefix, separator, tail = stat.rpartition(") ")
+    fields = tail.split()
+    if not separator or len(fields) < 20 or len(fields[0]) != 1:
+        raise ValueError("invalid proc stat")
+    identity = [int(prefix.split(" ", 1)[0]), *map(int, fields[1:4]), int(fields[19])]
+    if identity[0] <= 0 or any(value < 0 for value in identity[1:]):
+        raise ValueError("invalid proc identity")
+    result = dict(zip(("pid", "ppid", "pgid", "sid", "start_ticks"), identity))
+    result["state"] = fields[0]
+    masks = ("SigPnd", "ShdPnd", "SigBlk", "SigIgn", "SigCgt")
+    for line in status.splitlines():
+        key, separator, value = line.partition(":")
+        if separator and key in masks:
+            value = value.strip()
+            if key in result or not 1 <= len(value) <= 32 or any(
+                    byte not in "0123456789abcdefABCDEF" for byte in value):
+                raise ValueError("invalid proc signal mask")
+            result[key] = value
+    if any(key not in result for key in masks):
+        raise ValueError("missing proc signal mask")
+    return result
+
+
+def terminal_failure_state(parent, group):
+    # Failure-only observations, never signals/waits. The time budget is
+    # cooperative: /proc reads and the existing stderr sink are not interruptible.
+    report = {"terminal_failure": {"parent": parent, "group": group}, "processes": [], "errors": []}
+    if sys.platform != "linux":
+        report["errors"].append("proc diagnostics require Linux")
+        return report
+    deadline = time.monotonic() + 0.25
+    remaining = 131072
+
+    def read(path):
+        nonlocal remaining
+        if time.monotonic() >= deadline:
+            raise ValueError("diagnostic time budget exhausted")
+        if remaining < 4097:
+            raise ValueError("diagnostic byte budget exhausted")
+        with open(path, "rb", buffering=0) as stream:
+            data = stream.read(4097)
+        remaining -= len(data)
+        if len(data) > 4096:
+            raise ValueError("proc file exceeds 4096 bytes")
+        if time.monotonic() >= deadline:
+            raise ValueError("diagnostic time budget exhausted")
+        return data.decode("ascii")
+
+    pending = [parent] + ([group] if group > 0 and group != parent else [])
+    seen = set(pending)
+    for pid in pending:
+        try:
+            base = f"/proc/{pid}"
+            first = read(base + "/stat")
+            state = process_state(first, read(base + "/status"))
+            if state["pid"] != pid or state["sid"] != parent:
+                raise ValueError("process identity/session mismatch")
+            try:
+                channel = read(base + "/wchan").strip()
+                if len(channel) > 256:
+                    raise ValueError("proc wait channel exceeds 256 characters")
+                state["wchan"] = channel
+            except (OSError, ValueError) as error:
+                report["errors"].append({"pid": pid, "field": "wchan",
+                                         "error": type(error).__name__, "detail": str(error)[:160]})
+            # A second identity read detects PID reuse during this observation.
+            after = process_state(read(base + "/stat"), read(base + "/status"))
+            if any(after[key] != state[key] for key in ("pid", "sid", "start_ticks")):
+                raise ValueError("process identity changed during observation")
+            state["state_after"] = after["state"]
+            report["processes"].append(state)
+            # Some Linux environments omit task/children. Keep the verified
+            # row above and still sample the other independently known PID.
+            children = read(base + f"/task/{pid}/children").split()
+            if len(children) > 32:
+                raise ValueError("diagnostic child count exceeds 32")
+            for child in children:
+                number = int(child)
+                if number <= 0:
+                    raise ValueError("invalid child pid")
+                if number not in seen:
+                    if len(seen) >= 32:
+                        raise ValueError("diagnostic process count exceeds 32")
+                    seen.add(number)
+                    pending.append(number)
+        except (OSError, ValueError) as error:
+            report["errors"].append({"pid": pid, "error": type(error).__name__,
+                                     "detail": str(error)[:160]})
+            if time.monotonic() >= deadline or remaining < 4097:
+                break
+    return report
+
+
 def kill_owned(session):
     # Both launch paths create a fresh session. Find its verified groups even
     # when readiness failed before the child printed its PID, or the CLI was
@@ -209,6 +305,17 @@ with tempfile.TemporaryDirectory(prefix="chibi-native-foreground-") as temporary
                     finished = True
                     break
                 time.sleep(0.01)
+            if not finished:
+                try:
+                    diagnostic = json.dumps(terminal_failure_state(parent, group), sort_keys=True)
+                    if len(diagnostic) > 32768:
+                        diagnostic = '{"terminal_failure": "diagnostic output exceeds 32768 bytes"}'
+                    print(diagnostic, file=sys.stderr, flush=True)
+                except Exception as error:
+                    try:
+                        print("terminal failure diagnostic error: " + type(error).__name__, file=sys.stderr)
+                    except Exception:
+                        pass  # A broken diagnostic sink must not replace the assertion.
             assert finished, "the CLI did not finish after its terminal child"
             assert os.WIFEXITED(status), status
             assert os.WEXITSTATUS(status) == (0 if watching else 130), status

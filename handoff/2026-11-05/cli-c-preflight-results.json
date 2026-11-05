@@ -1,0 +1,122 @@
+{
+  "c_preflight": {
+    "actual_C_host_compile_link_completed": false,
+    "asset_bridge_runtime_completed": false,
+    "bridge_dry": {
+      "acceptance_sha256": "4ec5d2b773814dada7121843f3d3c023c4fccbe4bd7063e33f5c96e88b60dc58",
+      "observed_seconds": 0.5680930480011739,
+      "scope": "Exact C11 pthread GCC printed commands; cc1/as/collect2 were not executed in this stage.",
+      "status": "independently_accepted"
+    },
+    "bridge_preprocess": {
+      "acceptance_sha256": "62a8e4d3633aa54e1f4a1eacefb9eb85df758407d87795ba9cad4a1003c87450",
+      "active_dependency_files_verified": 67,
+      "macro_count": 931,
+      "native_seconds": 0.040553003000241006,
+      "observed_seconds": 0.6056730849995802,
+      "ordered_include_directories": 5,
+      "scope": "Exact C11 bridge effective macro/search/dependency preprocessing only; no compile/assemble/link/runtime",
+      "status": "independently_accepted",
+      "stdc_version": "201112L"
+    },
+    "controls_acceptance_sha256": "60c7c07177f33ba6ca9567d86bb80d9c7aa98ed0d54613d93dbe1a702d845635",
+    "controls_cases": 12,
+    "host_builtins": {
+      "acceptance_sha256": "28e9106c20dda8bc6eba13bf0034a51939e2f5f326dc38cfc5e2958804ef8021",
+      "gcc_version": "14.2.0",
+      "language_flags": [
+        "-O3",
+        "-DNDEBUG",
+        "-std=gnu23"
+      ],
+      "observed_seconds": 0.4669274289990426,
+      "scope": "Pinned host metadata and ordered include search, not C23 feature capability or all translation-unit headers.",
+      "status": "independently_accepted",
+      "stdc_version": "202000L"
+    },
+    "per_stage_cleanup_seconds": 5,
+    "per_stage_total_seconds": 20,
+    "prior_failed_attempts_preserved": [
+      {
+        "reason": "Validator expected final C23 macro202311L; pinned GCC14.2.0 reports experimental202000L. Native command exited0, stage remained failed.",
+        "stage": "host-builtins r3"
+      },
+      {
+        "reason": "Exact validator expected split -D _REENTRANT and omitted assembler -I argument; real pinned driver prints -D_REENTRANT and the include operand. Native driver exited0, stage remained failed.",
+        "stage": "bridge-dry r3"
+      }
+    ],
+    "source_commit": "a661626d48172e3bfcda82c9dcde3018edf53eef",
+    "source_flags_and_assertions_weakened": false,
+    "source_tree": "1ecc136fc8ab2a059430cfb6cefcd88217cf3710"
+  },
+  "cli": {
+    "cleanup": {
+      "adopted_descendants_reaped": 14,
+      "full_private_metadata_before_after_available": false,
+      "original_supplier_exact_stat_unchanged_0600": true,
+      "owner_errors": [],
+      "owner_signals": [],
+      "pipe_eof": true,
+      "quarantined_extant_targets": 4,
+      "remaining_children": [],
+      "source_and_product_bytes_modes_unchanged": true,
+      "whole_owner_echild": true,
+      "worker_success_evidence_available": false
+    },
+    "compiler_sha256": "a0ded77510f72650cf9484b63721ecd980c41d9847bedaa6e512ec68f03c3cb3",
+    "controls": {
+      "acceptance_sha256": "fd6d5b365dfd8c3fac97c1be63ca066a44eb1ddbbaa1eb1444bf44339bf326dd",
+      "cases": 16,
+      "known_placeholder_leaves_quarantined": 113,
+      "negative_cases": 12,
+      "observed_seconds": 4.360975104998943,
+      "positive_cases": 4,
+      "real_pty_control_executed": true
+    },
+    "diagnosis": "Possible duplicate wrapper stop around group resume; source-level hypothesis, not proven cause. Failure-only state diagnostics are the next step.",
+    "full_authored_suite": {
+      "cleanup_seconds": 30,
+      "exit_code": 1,
+      "failed_stage": "PTY case2: ordinary non-watch tty child after stop/resume; CLI did not terminate within5 seconds after Ctrl-C (foreground.py:212).",
+      "failure_review_sha256": "6575e4e292588167f9d53d3e1c9d4ccff2dc0dcfe44914dbd1a7ddef7cb9f5a4",
+      "full_cli_passed": false,
+      "not_reached": [
+        "case2 exit-kind/status and retirement assertions",
+        "PTY case3 watch stop/resume",
+        "PTY case4 redirected stdin /dev/tty stop/resume",
+        "PTY case5 prior os.Run true then cat",
+        "final full foreground success marker and worker success fences"
+      ],
+      "observed_seconds": 130.79986828200344,
+      "owner_seconds": 130.46911067600013,
+      "passed_stages": [
+        "full unchanged ChibiCliTests via successful first shell command",
+        "foreground scope fixture compilation and four scope-signal invocations",
+        "tty child fixture compilation",
+        "all four parent-only INT/TERM signal/descendant cases",
+        "PTY case0 ordinary cat fully passed",
+        "PTY case1 watch cat fully passed",
+        "PTY case2 readiness, pre-stop echo, stopped CLI state, terminal reclaim, resume echo, foreground-regain assertions"
+      ],
+      "total_limit_seconds": 930,
+      "work_seconds": 900
+    },
+    "source_commit": "a26027facc2c0de6e92abc71a2641186da730544",
+    "source_tree": "c8afcdc07a07f9983a4f56b95f95cd44b4e9faf3"
+  },
+  "holds": [
+    "PR1331",
+    "terminal-unknown c5 bootstrap",
+    "excluded native16-byte union investigation",
+    "stronger per-Capture proof remains failed/unproven"
+  ],
+  "merge_or_release_ready": false,
+  "remaining": [
+    "Investigate and repair CLI terminal case2, then rerun full unchanged behavior and six PTY cases.",
+    "SDK installation/relocation remains held.",
+    "Real C host compile/link and asset bridge runtime.",
+    "Ordinary VM/SLJIT/native differential, actual Windows execution, full exact-head integration and independent review."
+  ],
+  "status": "CLI_failed_C_preflight_accepted_no_full_integration_acceptance"
+}

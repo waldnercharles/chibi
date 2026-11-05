@@ -1,0 +1,125 @@
+{
+  "classification": "Freshly recovered frozen 02c Linux current compiler; not development-head, Windows, historical runner, release, or PR #1331 acceptance",
+  "source": {
+    "commit": "02c86287430def964445ec90185961e20319536d",
+    "tree": "780ba87ea9f29308f2f20a94381cdce8cc5d26ca",
+    "entries": 4054
+  },
+  "compiler": {
+    "bytes": 11576992,
+    "sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266",
+    "mode": 384
+  },
+  "elf": {
+    "interpreter": "/lib64/ld-linux-x86-64.so.2",
+    "needed": [
+      "libc.so.6"
+    ],
+    "rpath": [],
+    "runpath": []
+  },
+  "raw_stage3_stage4_equal": true,
+  "matches_historical_current_sha256": true,
+  "tests": {
+    "count": 573,
+    "unique_count": 573,
+    "summary": "573 tests, 0 failed",
+    "sorted_newline_sha256": "f7bcbedc4f9e6113ea60be8dba26155a6d476026375f2687c7d12ab62473e380",
+    "compiler_stderr_bytes": 0,
+    "per_test_stderr": "not retained by canonical driver",
+    "stdout_bytes": 33873,
+    "stdout_sha256": "626608a8fc1e19d75c5e09dc2bd2c92ca81a1528239ca912b0bc9d9e1a7f5f5d"
+  },
+  "phases": {
+    "stage2": {
+      "elapsed_seconds": 114.1123001220003,
+      "total_bound_seconds": 120,
+      "cleanup_reserve_seconds": 2,
+      "outer_exit_code": 0,
+      "echild": true,
+      "signals": 0,
+      "surviving_children": 0,
+      "errors": 0,
+      "owner_receipt_sha256": "1b99164d996cc0e90cdade7ea4fa7cf5be8f48819477171d09e7497d4a1def84",
+      "artifact": {
+        "bytes": 11484328,
+        "sha256": "1173828b2f6e9b4876aded401ef6e9b4d8ebe781f6877bd164686d95a30bbf35",
+        "mode": 384
+      }
+    },
+    "stage3": {
+      "elapsed_seconds": 104.26939879100064,
+      "total_bound_seconds": 120,
+      "cleanup_reserve_seconds": 2,
+      "outer_exit_code": 0,
+      "echild": true,
+      "signals": 0,
+      "surviving_children": 0,
+      "errors": 0,
+      "owner_receipt_sha256": "01d70826821d2e77a98416260d4d71dd1da88e225f7f3d69be5621154a321344",
+      "artifact": {
+        "bytes": 11576992,
+        "sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266",
+        "mode": 384
+      }
+    },
+    "stage4": {
+      "elapsed_seconds": 109.26922820099935,
+      "total_bound_seconds": 120,
+      "cleanup_reserve_seconds": 2,
+      "outer_exit_code": 0,
+      "echild": true,
+      "signals": 0,
+      "surviving_children": 0,
+      "errors": 0,
+      "owner_receipt_sha256": "8780faab7d1a3d421325034b94a1e8b3c6f2699cbf825d970bfea5dfef660ce0",
+      "artifact": {
+        "bytes": 11576992,
+        "sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266",
+        "mode": 384
+      }
+    },
+    "compiler_tests": {
+      "elapsed_seconds": 69.41010616400035,
+      "total_bound_seconds": 180,
+      "cleanup_reserve_seconds": 10,
+      "outer_exit_code": 0,
+      "echild": true,
+      "signals": 0,
+      "surviving_children": 0,
+      "errors": 0,
+      "owner_receipt_sha256": "352a253c77d51dc520a0c44008752f28025bfa5ece0b043d87554996704196af"
+    }
+  },
+  "build_jobs": 2,
+  "test_execution_workers": 2,
+  "test_compile_jobs": 8,
+  "test_compile_jobs_reason": "Canonical Jobs([]) falls back to 8 under explicit empty PATH; test CLI has no --jobs flag",
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "source_tool_runtime_fences_passed": true,
+  "copied_test_source_restored_and_verified": true,
+  "independent_current_acceptance_sha256": "10aa227f4f0df194b7558a7b2506aceeedbcc020db037b403f6fcdee8c5f5715",
+  "accepted_builder": {
+    "source_commit": "14f7a46a047ab92acfe58398b3cdac25ab7d0312",
+    "sha256": "0a43d0a2b91f6c5e36afc8ba1ea586fe938d6fbb39b687acb3e3ee442bcab7dc",
+    "acceptance_sha256": "1c11195faeb22a2ce55165807ad22404194160543d43fd4aff47ecd63f73caf1",
+    "tests": 485
+  },
+  "scope_limits": [
+    "Frozen 02c compiler only; later development-branch changes require their own tests.",
+    "Original unknown c5 bootstrap was not restarted or signaled.",
+    "Historical 7482 runner failure and excluded native union leak investigation remain separate.",
+    "Windows, broader runtime/integration and PR #1331 hold remain open."
+  ],
+  "local_preservation": {
+    "file": "chibi-current-02c862-source-proof-20261105.tar.gz",
+    "bytes": 32541186,
+    "sha256": "f19a074c44d3fe37dc5f59f769b4cc86800e37d650a297907be850bee345de5e",
+    "members": 4170,
+    "external_upload_performed_by_packager": false
+  },
+  "timing_note": "Observed bounded correctness phases, not a quiet performance benchmark."
+}

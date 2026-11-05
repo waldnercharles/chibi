@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "status": "accepted_focused_tests_and_production_static_artifact",
+  "date": "2026-11-05",
+  "source_commit": "5b283f5873173f845e2120820711ac1461a2ad1f",
+  "source_tree": "03e3ecf37eb76232d433ff8864c0a5027d7ae04a",
+  "scope": "Fresh Linux x86-64 Rust backend recovery after loss of local artifacts; not a source-to-native replay or throughput measurement.",
+  "toolchain": {
+    "rust": "1.99.0",
+    "cranelift": "0.137.1",
+    "cargo_lock_sha256": "aa8e72f14dc4dcd65652f4504bd56f6c03cd3cdca5323569e68be8a87a2ca54a",
+    "construction": "locked, offline, jobs=2, fresh target directory, incremental disabled"
+  },
+  "test_artifact": {
+    "bytes": 76230944,
+    "sha256": "90681335e18588a0e0b35e0e5111b8da7d515214de308876b83b48fa7baaa597"
+  },
+  "tests": {
+    "passed": 7,
+    "failed": 0,
+    "ignored": 0,
+    "measured": 0,
+    "filtered": 0,
+    "names": [
+      "compiled_owner_outlives_all_borrowed_metadata",
+      "copy_is_exact_or_leaves_destination_unchanged",
+      "failed_finalization_releases_finalized_and_current_mappings",
+      "foreign_resolution_requires_exact_library_symbol_and_signature",
+      "jit_lookup_guard_cannot_fall_through_to_process_symbols",
+      "public_foreign_arguments_reject_before_output_construction",
+      "public_framing_failures_have_owned_diagnostics_and_no_outputs"
+    ],
+    "expected_should_panic": "jit_lookup_guard_cannot_fall_through_to_process_symbols",
+    "stderr": "empty",
+    "ownership": "clean ECHILD, no surviving children, prior subreaper state restored",
+    "input_integrity": "preflight and postflight passed",
+    "bound_seconds": {
+      "execution": 30,
+      "cleanup": 1
+    }
+  },
+  "preserved_failure": "Cargo test construction succeeded, but the first outer recorder rejected verbose build-script text mixed with Cargo JSON. Its failed receipt remains unchanged. A separately reviewed decoder and artifact reconciliation admitted the exact existing executable; construction was not repeated.",
+  "limitations": [
+    "Earlier public results are historical, not newly recovered raw evidence.",
+    "All five public current-v3 selections still need fresh whole-run replay.",
+    "No new Windows/macOS execution, full compiler performance result, or merge-readiness claim.",
+    "The construction emitted 38 warning messages; this is not a warning-free build claim.",
+    "Removed Rust compiler temporaries and its linker version script have trace provenance but no retained byte hashes.",
+    "This normalized summary does not distribute the new binary or replace the separate caller, toolchain and execution admission required for integration."
+  ],
+  "production_artifact": {
+    "bytes": 70486616,
+    "sha256": "3a89eca55f0ada484ca71fcb38a5a7bfd6f5b1c9136fcc8bae62d162c882ec08",
+    "format": "Linux x86-64 System V shared object",
+    "panic": "abort",
+    "exports": 8,
+    "resolved_strong_imports": 53,
+    "rpath_runpath": [],
+    "writable_executable_segments": false,
+    "compiler_warning_messages": 38,
+    "link_traces": 10,
+    "link_stderr": "empty",
+    "unreviewed_external_link_inputs": [],
+    "loaded": false
+  },
+  "evidence_sha256": {
+    "seven_test_acceptance": "7224ab947785293dce9ba879b4e3aa31b44975a86e3134240cdb9243e0d6ef62",
+    "production_static_acceptance": "f987a5f6a9a407aa793fafb5302be6f25b326d7f4b4f3e36cfd32b02e483b2bc",
+    "seven_test_stdout": "c930285bc600d44c9930972bf73e59a4f7f0d64c0cdcb88a8c76af60da9cff94"
+  }
+}

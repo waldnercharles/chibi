@@ -479,3 +479,18 @@ Full current-v3 corpus coverage, representative real-tool/runtime quality,
 phase/memory measurements, platform qualification and distribution notice review
 remain later gates. No timing from these fixtures establishes
 100,000 LOC/sec or a speedup.
+
+## Fresh backend recovery, 2026-11-05
+
+After the local artifacts were lost, the unchanged published source was rebuilt
+with official Rust 1.99.0 and the locked Cranelift 0.137.1 dependencies, offline
+and in fresh output directories. All seven backend tests passed unfiltered,
+including the expected symbol-lookup panic. Production construction and static
+ELF/link review passed separately, with the root using panic=abort and exactly
+eight C exports. The production library has not yet been loaded.
+
+The initial construction recorder failed on mixed Cargo JSON/build-script text;
+that failure was preserved and the existing test artifact was independently
+reconciled, rather than rebuilt. See the [normalized recovery evidence](../evidence/backend-recovery-20261105.json)
+for exact source/artifact identities, warnings and limitations. This does not
+close current-route source/JIT/AOT replay, platform or compiler-speed gates.

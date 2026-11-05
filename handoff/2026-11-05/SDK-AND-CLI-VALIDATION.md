@@ -28,6 +28,8 @@ CLI failure-review SHA256: `b4ae3a59b31160f5369ebdcf6981d30106224a8220c6436e764a
 
 These actual outcomes supersede earlier pending SDK/CLI descriptions, without changing earlier failed attempts or accepting full current-head integration. The [earlier CLI r3 failure](CLI-AND-C-PREFLIGHT.md) and [separate C-object evidence](C-OBJECT-VALIDATION.md) remain scoped historical records. Separate C evidence does not establish all 88 C files compiled in one integrated build.
 
-Official libdep package provenance still blocks archive execution. The 16 C-project archives, linking and host runtime remain unrun. Actual Windows validation, full current-head integration, ordinary VM/SLJIT/native differential and excluded native 16-byte union/corpus acceptance are not established. PR #1331, terminal-unknown c5 bootstrap and stronger per-Capture descendant proof remain held or unproven. No merge or release readiness is claimed.
+The approved LLVM alternative supersedes the GNU/libdep provenance blocker for the planned archive route; the GNU route remains unvalidated. The [investigation checkpoint](CLI-JOB-CONTROL-INVESTIGATION.md#additional-validation-checkpoint) records the checked package/runtime evidence, accepted focused regressions for the root-directory correction, resource-contract clarification and separately scoped control results.
+
+The 16 C-project archives, linking and host runtime remain unrun. Actual Windows validation, full current-head integration, ordinary VM/SLJIT/native differential and excluded native 16-byte union/corpus acceptance are not established. PR #1331, terminal-unknown c5 bootstrap and stronger per-Capture descendant proof remain held or unproven. No merge or release readiness is claimed.
 
 This documentation-only checkpoint publishes no binaries, private workspace paths or raw proof archives. The adjacent [JSON](sdk-cli-validation-results.json) records exact scoped outcomes and limitations.

@@ -85,7 +85,7 @@
   },
   "remaining": [
     "CLI full-suite success and demonstrated root cause remain unestablished.",
-    "Official libdep package provenance blocks archive execution.",
+    "Approved LLVM archive alternative is prepared but unrun; GNU route remains unvalidated.",
     "16 C-project archives, linking and host runtime remain unrun.",
     "Actual Windows, full current-head integration and ordinary VM/SLJIT/native differential remain unestablished."
   ],

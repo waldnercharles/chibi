@@ -1,0 +1,174 @@
+{
+  "date_utc": "2026-11-05",
+  "status": "complete_authored_entry_independently_accepted",
+  "platform": "Linux x86-64",
+  "entry": "test/graph/DiscoveryTests.chibi::Run",
+  "registered_selector": "graph-discovery",
+  "registry_adapter_exercised": false,
+  "source": {
+    "commit": "d65f29d4106a85e416e72570b619157780f5ba66",
+    "tree": "6df05ece0bb708a7ed970fe96ce82595729f48d2",
+    "entries": 4178,
+    "regular_files": 4177,
+    "regular_bytes": 50994791,
+    "manifest_sha256": "1a80098682656f8fcd240e2197ba23b6c93cb3a6785063f63727b9c07d6016a7",
+    "discovery_tests_sha256": "407689052fc9f31f213d8bb82b4474d19a7f3ac040fefbfcb265992f6afec1ac",
+    "later_base_checkpoint": "5bec249d2d98375d17ae5e8bf96b0239786643a2",
+    "later_base_difference": "Build/Driver documentation only; not a different native test run"
+  },
+  "authored_scope": {
+    "static_assertion_sites": 50,
+    "child_invocations": 11,
+    "nested_native_entries": [
+      "Drivers",
+      "Prefixes",
+      "PathSpelling",
+      "BasenamePaths"
+    ],
+    "instrumented_dynamic_assertion_count": false,
+    "filtering": false,
+    "compiler_jobs_and_level": "normal defaults unchanged"
+  },
+  "bounds": {
+    "total_seconds": 600,
+    "cleanup_seconds": 10,
+    "affinity": [
+      0,
+      1
+    ],
+    "max_log": 1048576,
+    "max_files": 8192,
+    "max_bytes": 1073741824,
+    "max_file_bytes": 134217728
+  },
+  "terminal": {
+    "construction_exit": 0,
+    "runtime_exit": 0,
+    "worker_raw_status": 0,
+    "outer_exit": 0,
+    "outer_elapsed_seconds": 37.07266485100081,
+    "owner_elapsed_seconds": 37.00562029499997,
+    "echild": true,
+    "pipe_eof": true,
+    "signals": [],
+    "errors": [],
+    "survivors": [],
+    "adopted": [],
+    "all_five_top_level_streams_empty": true,
+    "output_including_receipt": {
+      "entries": 5748,
+      "bytes": 65672167
+    }
+  },
+  "fences": {
+    "pinned_files": 891,
+    "directory_inventories": 60,
+    "required_absences": 915,
+    "source_tool_compiler_external_output_and_post_echild_cleanup": true,
+    "authored_scratch_removed": true,
+    "private_directories_empty": true,
+    "retained_symlinks": false,
+    "original_and_private_compiler_mode": "0600"
+  },
+  "compiler": {
+    "sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266",
+    "bytes": 11576992,
+    "acceptance_sha256": "10aa227f4f0df194b7558a7b2506aceeedbcc020db037b403f6fcdee8c5f5715"
+  },
+  "program": {
+    "sha256": "f6d539adb9b44b7a67acaec4d53796052899a117d84eaf7f24c3a4f46b201a61",
+    "bytes": 619552
+  },
+  "fresh_python_controls": {
+    "status": "independently_accepted",
+    "outer_exit": 0,
+    "outer_elapsed_seconds": 5.252125087999957,
+    "total_seconds": 30,
+    "cleanup_seconds": 3,
+    "each_total_seconds": 3,
+    "each_cleanup_seconds": 1,
+    "outcomes": [
+      {
+        "name": "clean",
+        "status": "ownership_passed",
+        "reason": null
+      },
+      {
+        "name": "dead_adopted",
+        "status": "ownership_passed",
+        "reason": null
+      },
+      {
+        "name": "late_adopted",
+        "status": "failed",
+        "reason": "live descendant after worker terminal"
+      },
+      {
+        "name": "worker_timeout",
+        "status": "failed",
+        "reason": "owner exception"
+      },
+      {
+        "name": "worker_failure",
+        "status": "failed",
+        "reason": "worker failed"
+      },
+      {
+        "name": "post_fence_failure",
+        "status": "failed",
+        "reason": "post-quiescence fences failed"
+      }
+    ],
+    "acceptance_sha256": "2a44c0ec27b69a407c1e16e72088e60564123287c562c8cc6c3d6c8a376bbc8c"
+  },
+  "discovery_fallback": {
+    "provider": "https://apt.llvm.org/trixie/",
+    "llvm_version": "22.1.8",
+    "extracted_entries": 306,
+    "extracted_regular_bytes": 50402964,
+    "host_prefix_modified": false,
+    "package_driver_executed": false,
+    "libclang_loaded_or_linked": false,
+    "selection_evidence": "Completed authored assertions and pinned search precedence; successful paths were not printed as runtime telemetry.",
+    "relative_include": "usr/lib/llvm-22/include",
+    "relative_library": "usr/lib/llvm-22/lib/libclang.so",
+    "relative_resource_include": "usr/lib/llvm-22/lib/clang/22/include",
+    "header_sha256": "c6da7700c03512904ccabe919ce0e1a6f8c358697f4d547d53ef7c7f93d2e9ef",
+    "resolved_library_sha256": "1b261074e6552fb9bfb96975ce781b74588a35fafb109100e85a37d9befadc05",
+    "stdbool_sha256": "48655faf4ebd4ca0af26a1ee8e3e16f8dc68385c9cd550ffb3629320681305b3",
+    "extraction_manifest_sha256": "c27611029fcf26710f7f666a9657d7fcdbf74ca503af50b828bfcc6b90c22605",
+    "extraction_review_sha256": "870d650c46149ee0c2bf2522bf909b05db496599dd7fef168fe3e04a5efb662c"
+  },
+  "reviews": {
+    "prospective_native_sha256": "8874932a7c9a016acebe63865cdc732712fb59abc079e26211fd8c5869078ab4",
+    "terminal_sha256": "d62d7f7098bbd149b35c4412cf373abe23207936f5cdebe822e8021fbd2b9a66",
+    "terminal_report_sha256": "d37ff086f09f95cd8f6774088dfa4e53e3a7bcc90015e436980770c64b26f0fa",
+    "packet_sha256": "1a139e727134942d6188744b24d80614a4987b3107ebe9fb18521b74529c71dc",
+    "suite_plan_sha256": "d8f69c71d72048d9de27cc1cb07cec525245e8db203a1785f355825492ae3dbe",
+    "suite_admission_sha256": "8dc85bd61c5edeffe05bf2205052ce4d60f2a67d7525186f295a2c26ed5a1efa",
+    "outer_terminal_sha256": "5beab6e2f7ec06f9a5a8dacedb69c2c7e209bcc65a9fd6b8e66fad7053ad8da7"
+  },
+  "local_preservation": {
+    "filename": "chibi-graph-discovery-d65f29d4-source-proof-20261105.tar.gz",
+    "sha256": "2e773e36403995d7ea5e2486cd306b326baba117fb8e577e09cee0a2448d0ca0",
+    "bytes": 22007223,
+    "member_count": 8907,
+    "inventoried_entries": 17276,
+    "omitted_identical_regular_files": 8371,
+    "inventory_sha256": "ec55b8337b02081a36e2cd3d1f4144e37bb31ecb951e42f2accda827a989c2c4",
+    "every_archive_member_and_live_fact_reverified": true,
+    "external_dependencies": "Pinned, not embedded; not a portable rebuild bundle",
+    "uploaded": false
+  },
+  "remaining": {
+    "other_final_source_graph_entries": true,
+    "current_products_and_c_integration": true,
+    "actual_windows_validation": true,
+    "full_pr_pass": false,
+    "stronger_historical_per_capture_descendant_drain_proof": "failed/unproven; not revived",
+    "pr_1331_hold": "unchanged",
+    "original_unknown_c5_bootstrap": "untouched",
+    "excluded_native_union_leak_investigation": "not run",
+    "merge_or_release": false
+  }
+}

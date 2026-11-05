@@ -1,0 +1,122 @@
+{
+  "acceptance_sha256": "7a9386ea3e901da31fecce9203bc042a69be25194f0a1ade9b63b6f52892812a",
+  "affinity": [
+    0,
+    1
+  ],
+  "artifacts": [
+    {
+      "bytes": 11576744,
+      "elf": {
+        "interpreter": "/lib64/ld-linux-x86-64.so.2",
+        "needed": [
+          "libc.so.6"
+        ],
+        "rpath": [],
+        "runpath": []
+      },
+      "mode": "0600",
+      "path": "build-release/sdk/chibi",
+      "sha256": "a0ded77510f72650cf9484b63721ecd980c41d9847bedaa6e512ec68f03c3cb3"
+    },
+    {
+      "bytes": 8180240,
+      "elf": {
+        "interpreter": "/lib64/ld-linux-x86-64.so.2",
+        "needed": [
+          "libc.so.6"
+        ],
+        "rpath": [],
+        "runpath": []
+      },
+      "mode": "0600",
+      "path": "build-release/sdk/chibi-asset-compiler",
+      "sha256": "b8bb8049a4bb63b167149062d36cc20691b07bc2ee8c4961f0ce0f537747bd6b"
+    },
+    {
+      "bytes": 146978,
+      "mode": "0600",
+      "path": "build-release/lib/libchibi_asset_compiler_host.a",
+      "sha256": "04dfb126de5701fb7c2cd405a14d1a01161b24d59fe7ed479b55e7b3ba338006"
+    },
+    {
+      "bytes": 304,
+      "mode": "0600",
+      "path": "build-release/lib/libchibi_asset_compiler_host.a.json",
+      "sha256": "b1f1a25c33b3e8739c054ec3cad1aba89741c88faef0b0b97305593e2b054c98"
+    }
+  ],
+  "cleanup_seconds": 10,
+  "control_cases": 9,
+  "control_evidence_files": 104,
+  "echild": true,
+  "errors": [],
+  "graph_record_input_counts": [
+    248,
+    248,
+    275
+  ],
+  "holds": [
+    "PR #1331",
+    "original unknown c5 untouched",
+    "excluded native 16-byte union investigation",
+    "stronger per-Capture descendant proof remains failed/unproven"
+  ],
+  "independent_output_review_sha256": "4145f3e8cd4b3443ad361eece93b9347e8e9504762e3e298cfc99ae5d2acb5d8",
+  "jobs": 2,
+  "later_runtime_tests_executed": false,
+  "loader_directory_censuses": 34,
+  "omitted_documentation_link": "CLAUDE.md -> AGENTS.md",
+  "outer_exit": 0,
+  "outer_seconds": 188.94534621600178,
+  "owner_seconds": 188.87243299300098,
+  "pipe_eof": true,
+  "private_proof_archive": {
+    "compressed_bytes": 93791722,
+    "external_tool_provenance_identities": 385,
+    "member_bytes": 201086384,
+    "members": 4302,
+    "name": "chibi-native-product-a661626d-proof-20261105.tar.gz",
+    "scope": "Private data-only proof archive, not a portable execution environment. Independent data-only preservation review accepted the archive; review SHA256 c2a0af951464e8932de7649d43c697d0a6777636827264f55401fbfad9d19cf3.",
+    "sha256": "b2bfc6ecce3907289c427afe4ae58c5a1486d6e706f5200b9386e786abfd457e"
+  },
+  "profile": "release",
+  "record_state": "Genuine pre-quarantine fingerprints independently reconciled. All records remain byte-for-byte unchanged and stale after executable mode/ctime quarantine.",
+  "regular_source_files": 4183,
+  "remaining": [
+    "fresh current-compiler tests/fixed point",
+    "whole archive invalidation",
+    "asset bridge",
+    "SDK installation and relocation",
+    "CLI and PTY tests",
+    "C integration",
+    "ordinary VM/SLJIT/native differential",
+    "actual Windows runtime",
+    "final exact-head integration and independent review"
+  ],
+  "remaining_children": [],
+  "report_sha256": "6e57ac98bf68a1a93e25d0f84f621232d384c81315ccf94596cc219253ba1365",
+  "required_absences": 946,
+  "resource_bytes": 1147880,
+  "resource_files": 3,
+  "resource_use": "Real pinned FreeType archive and two license files copied as data; no vendor code execution or complete-cache marker.",
+  "signals": [],
+  "source_commit": "a661626d48172e3bfcda82c9dcde3018edf53eef",
+  "source_entries": 4184,
+  "source_tool_file_pins": 613,
+  "source_tree": "1ecc136fc8ab2a059430cfb6cefcd88217cf3710",
+  "staged_source_bytes": 5215577,
+  "staged_source_files": 274,
+  "status": "independently_accepted_native_product_construction",
+  "targets": [
+    "chibi",
+    "chibi-asset-compiler",
+    "chibi_asset_compiler_host"
+  ],
+  "terminal_inventory": {
+    "bytes": 92611575,
+    "entries": 6168
+  },
+  "terminal_inventory_is_not_peak": true,
+  "total_seconds": 300
+}

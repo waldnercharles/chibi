@@ -72,9 +72,68 @@
   "preserved_prelaunch_issue": "The first outer membership check compared the full Python tree with its code-only subset. It stopped before any diagnostic; the admitted full-tree manifest then matched. No input was changed.",
   "review": "Independent whole-change source review and exact terminal assertion/ownership readback accepted. No scoped publication blocker.",
   "remaining": [
-    "Broader baseline/frontend/bridge suites have not run for this change.",
-    "Optional actual-controller identity-dependent controls have not run; exact c5 identity is unavailable.",
-    "No native toolchain, ABI, throughput, platform or merge acceptance follows from these Python controls."
+    "Nine optional actual-controller identity-dependent integrations were explicitly skipped; required identity variables were not supplied.",
+    "Five full source-native replay selections are separate pending work.",
+    "No ABI, throughput, platform, CI or merge acceptance follows from these Python regression results."
   ],
-  "terminal_acceptance_sha256": "cae4ed89078d29a000c874561e0474666e68a40ca0ee479438ae1c956b29fe15"
+  "terminal_acceptance_sha256": "cae4ed89078d29a000c874561e0474666e68a40ca0ee479438ae1c956b29fe15",
+  "broader_regressions": {
+    "date_utc": "2026-11-05",
+    "tests": 93,
+    "passes": 84,
+    "skips": 9,
+    "failures": 0,
+    "errors": 0,
+    "cases": [
+      {
+        "status": "coordinator_terminal_readback_passed",
+        "case": "baseline",
+        "tests": 27,
+        "passes": 27,
+        "skipped": [],
+        "elapsed_seconds": 14.246967733,
+        "cleanup_seconds": 0.003125187,
+        "result_sha256": "2575e8a2c01a59b756630281d2d0148fcc9e5f2c2ffe69450e34fe32b08c257e",
+        "stderr_sha256": "0ca92d44e8d73b21c8177f411e43be4e4b70fd8904169f1d5129ad6351992ee4"
+      },
+      {
+        "status": "coordinator_terminal_readback_passed",
+        "case": "frontend",
+        "tests": 29,
+        "passes": 29,
+        "skipped": [],
+        "elapsed_seconds": 5.572158193,
+        "cleanup_seconds": 0.001528245,
+        "result_sha256": "207206e34ad571873ea89e5a18fbecef524f1ad72bd6d43c1d179f934ba850bf",
+        "stderr_sha256": "eec64d51b8f3217128505445a73d85f4addcfe0f39c75112ce68e9f4fd58c8fd"
+      },
+      {
+        "status": "coordinator_terminal_readback_passed",
+        "case": "bridge",
+        "tests": 37,
+        "passes": 28,
+        "skipped": [
+          "NativeRunnerTests.test_cli_crossed_real_compilers_are_rejected",
+          "NativeRunnerTests.test_cli_mutated_real_current_compiler_is_rejected",
+          "NativeRunnerTests.test_current_cli_receipt_and_existing_output_preservation",
+          "NativeRunnerTests.test_signal_before_launch_preserves_failed_receipt",
+          "NativeRunnerTests.test_signal_during_attempt_reservation_preserves_failed_receipt",
+          "NativeRunnerTests.test_signal_during_owned_cleanup_stops_controller",
+          "NativeRunnerTests.test_signal_during_owner_handler_handoff_restores_both",
+          "NativeRunnerTests.test_signal_during_postflight_preserves_failed_receipt",
+          "NativeRunnerTests.test_signal_during_receipt_preserves_failed_receipt"
+        ],
+        "elapsed_seconds": 2.179409472,
+        "cleanup_seconds": 0.001098677,
+        "result_sha256": "406e3ab79bfffbed71c287b283f19178b6aded16f01071096591816e5692ea35",
+        "stderr_sha256": "00dba7db70e410948d0aea7f9ea2f78fc894f368354938c70765cdfef0d5ed8a"
+      }
+    ],
+    "work_seconds_per_suite": 119,
+    "cleanup_seconds_per_suite": 1,
+    "independent_terminal_acceptance_sha256": "2213a55bdb2c4d0504930ac670bd02644a01d65f35387a89f30db93a72eff716",
+    "all_normal_outer_exits_zero": true,
+    "all_ownership_and_input_fences_passed": true,
+    "scope": "Existing baseline/frontend/bridge Python suites, including harmless Python subprocesses and read-only Git/uname; no compiler or backend execution."
+  }
 }

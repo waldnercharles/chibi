@@ -19,7 +19,7 @@ Suite :: struct {
     // root/bin/chibi: a copy of the launcher with the build's apps and core in
     // root/share/chibi and a stub chibi-compile beside it. The stub appends a
     // line to root/compiles for each call, exits 37 while root/fail exists and
-    // otherwise runs the build's chibi-compile.
+    // otherwise runs the supplied native compiler/CLI.
     launcher: string;
     // The launcher in place, beside its build's own companions.
     built: string;
@@ -184,8 +184,8 @@ NewSuite :: (folder: string, built: string) -> Suite {
     Write(Path([folder, "/game with spaces/project.kdl"]), Path(["version ", project, "\nname \"CLI proof\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n"]));
     Write(Path([folder, "/game with spaces/content/scenes/Start.kdl"]), "version 1\nname \"Start\"\n(array)entities\n");
     stub := Path([folder, "/bin/chibi-compile"]);
-    Write(stub, Path(["#!/bin/sh\nset -eu\nbase=$(dirname \"$0\")/..\necho compile >> \"$base/compiles\"\n[ ! -f \"$base/fail\" ] || exit 37\nexec \"", bin,
-                      "/chibi-compile\" \"$@\"\n"]));
+    Write(stub, Path(["#!/bin/sh\nset -eu\nbase=$(dirname \"$0\")/..\necho compile >> \"$base/compiles\"\n[ ! -f \"$base/fail\" ] || exit 37\nexec \"", built,
+                      "\" \"$@\"\n"]));
     assert(os.Run(["/bin/chmod", "700", stub]) == 0, "the stub compiler runs");
     return suite;
 }
@@ -498,7 +498,8 @@ RelocatedLauncherRunsAProgram :: (suite: Suite) {
     cwd := Path([suite.root, "/unrelated-program-cwd"]);
     Make(cwd);
     Clone(suite.built, Path([sdk, "/bin/chibi"]));
-    Clone(Path([bin, "/chibi-compile"]), Path([sdk, "/bin/chibi-compile"]));
+    // SDK.Entries publishes the same native executable under both names.
+    Clone(suite.built, Path([sdk, "/bin/chibi-compile"]));
     for (shared in ["apps", "core", "engine.json"]) {
         Clone(Path([bin, "/../share/chibi/", shared]), Path([sdk, "/share/chibi/", shared]));
     }

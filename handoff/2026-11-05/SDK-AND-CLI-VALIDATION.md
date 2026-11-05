@@ -1,4 +1,4 @@
-# SDK, LLVM archives and C-host link accepted; CLI gate remains failed
+# SDK, LLVM archives and scoped C-host validation accepted; CLI gate remains failed
 
 ## Full SDK installation suite: accepted
 
@@ -36,7 +36,7 @@ The first instrumented diagnostic (r1, distinct from full-suite r4 above) failed
 
 The successor renames that counter and its five uses to `trace_sequence`, preserving the trace layout and original assertions, signals and deadlines. The corrected r8 source was exercised by enabled-r2: genuine A construction and the isolated instrumented original case-4 assertions passed, with external and fixture exits zero. Independent review reconciled 4,466 immutable inputs, 4,487 retained files and whole-owner ECHILD/EOF with no survivors or owner errors/signals. Owner elapsed time was 122.57693434201065 seconds.
 
-The 25 valid trace records provide a positive witness of stop, terminal reclaim, self-stop, resume, terminal restoration, group continuation and SIGINT/exit-130 handling in this run. They do not establish the cause of the prior uninstrumented failure or a globally loss-free trace; missing events prove nothing. B/C backing images were sampled before unlinking and cannot now be independently rehashed. Instrumentation changes scheduling. The rename is validated as a correction to diagnostic construction, not a demonstrated product repair or full CLI pass. Original full-suite case 4 remains FAILED and case 5 remains NOT_RUN. The next uninstrumented reproduction is only in preparation.
+The 25 valid trace records provide a positive witness of stop, terminal reclaim, self-stop, resume, terminal restoration, group continuation and SIGINT/exit-130 handling in this run. They do not establish the cause of the prior uninstrumented failure or a globally loss-free trace; missing events prove nothing. B/C backing images were sampled before unlinking and cannot now be independently rehashed. Instrumentation changes scheduling. The rename is validated as a correction to diagnostic construction, not a demonstrated product repair or full CLI pass. Original full-suite case 4 remains FAILED and case 5 remains NOT_RUN. The subsequent uninstrumented sample reproduced the failure, as recorded below.
 
 CLI scoped acceptance SHA256: `cc7aa2d39b4b89e7c2e47c8991b82bbaf7204f0c782379b421b8b243922e7f7b`.
 
@@ -52,7 +52,37 @@ The unchanged original GCC response-file link, using the accepted LLVM archives,
 
 The output is ELF64 little-endian x86-64 PIE, with exactly libm.so.6 and libc.so.6 as direct dependencies, no RPATH/RUNPATH or TEXTREL, no writable-executable LOAD segment and a non-executable stack. All 99 strong undefined imports and both COPY imports have compatible versioned providers in the checked installed candidates. GLIBC_2.38 imports prevent claiming compatibility with older glibc. Static compatibility is not observed runtime loading or initializer execution.
 
-The host has not executed. A narrow `--target-json` startup is only in preparation. This is accepted link/static evidence, not startup, authored Graph/C.Link execution, a full current-head build or bootstrap recovery. Separate source/object history and unresolved installed-libdep package provenance remain qualified; actual libdep loading is not established. Link/static acceptance SHA256: `c46ee6e0c2bf8774b60b3698cf7a9f0b61659eada663620047d8819bdf6de21f`.
+The host was not executed during link/static review; separately accepted startup evidence is recorded below. Link/static evidence does not establish authored Graph/C.Link execution, a full current-head build or bootstrap recovery. Separate source/object history and unresolved installed-libdep package provenance remain qualified; actual libdep loading is not established. Link/static acceptance SHA256: `c46ee6e0c2bf8774b60b3698cf7a9f0b61659eada663620047d8819bdf6de21f`.
+
+## C-host startup and target serialization: accepted
+
+One fresh private copy of the accepted host completed `--target-json` with exit zero and empty stderr. Its complete 10,371-byte stdout matched all six source-derived components under type-preserving comparison: 21 layout integers, the prepared ABI, 121 ordered instruction names, 29 native declarations, 82 ports and 58 native ID/ABI words. The expectation was fixed before execution. Owner elapsed time was 0.046376340003916994 seconds; ECHILD/EOF, no remaining children and quarantine of the executed copy to 0600 were independently reconciled. The original host stayed non-executable.
+
+This accepts startup and exact target serialization only, not bootstrap, seed loading, compilation, VM/SLJIT parity or full recovery. The separate bootstrap `--validate` result is recorded below. Existing source/object, installed-libdep provenance and runtime-observation qualifications remain unchanged. Startup acceptance SHA256: `d721eb83d621eb60e521c4fa9a5e5544f511dea2e5dd8180076f50002e1f418e`.
+
+## C-host bootstrap validation: accepted
+
+One fresh private host copy completed `--validate` with exit zero, empty stderr and exactly `the artifact admits the sources; 61 changed since it was written` followed by a newline (65 bytes). The 61 is an ordinal/path/hash comparison against the older manifest, not a count of semantic edits. Native elapsed time was 2.6390313290030463 seconds and owner elapsed time was 2.814429744001245 seconds. Independent review reconciled all 66 original/copy pairs, the exact 66-file/30-directory private tree, 28 bound evidence/source/runtime identities, ECHILD/EOF and no remaining children. Original inputs remained unchanged; the executed host copy returned to 0600.
+
+This accepts seed admission, prepared decoding/verification and default-SLJIT function emission only. It does not invoke `CompileClosure` or establish stage-one execution, fixed-point recovery, current-source compilation, Graph integration or VM/SLJIT parity. The separate direct fixed-point recovery result is recorded below. Existing source/object, installed-libdep provenance and runtime-observation qualifications remain unchanged. Bootstrap-validation acceptance SHA256: `06a08d1db9cb4c0abb0e8629666f92e32ef80f53ed12c996603331237c3afd61`.
+
+## Direct C-host fixed-point recovery: accepted
+
+The reviewed direct default-SLJIT recovery of 61 exact compiler sources completed with exit zero, exact 265-byte stdout and empty stderr. The complete source-defined diagnostic reports “after a second compiler”: the seed produced a first compiler, that compiler produced different second bytes, and the second produced identical third bytes. This establishes three `CompileClosure` invocations and second/third byte equality through the reviewed source path, not an independent runtime invocation trace. The retained second compiler is a 15,590,690-byte closure, SHA256 `f91a24856b95f80223ef7621d42c132eec27d5b008f303c2dad2ee5ffb2e3bd4`.
+
+Native elapsed time was 417.58848103099444 seconds; owner elapsed time was 417.88663534799707 seconds. Independent review reconciled the retained output, all 66 original/private input pairs and 44 evidence/source/runtime bindings, ECHILD/EOF, no remaining children, signals, errors or cancellation, and host-copy quarantine to 0600. This is exact-source fixed-point recovery, not a registered `test_tools` selector pass, full CLI integration, current-head Graph build, backend parity or Windows acceptance. Existing provenance qualifications and holds remain unchanged; no additional retained-closure invocation occurred. Recovery acceptance SHA256: `de7781d23db5377a4214f1fb0c7cd1b8341f5147a83c20c022284fbee82b8deb`.
+
+## Uninstrumented isolated case-4 sample: failed
+
+The three-iteration sample stopped on its first failure: iteration 1 PASSED, iteration 2 FAILED at the original five-second CLI completion assertion after terminal Ctrl-C, and iteration 3 was NOT_RUN. Iteration 2 reached resumed input and foreground ownership checks; its exit-130 and final no-live-group assertions were not reached. Identity-preserving samples found A and B stopped, with SIGINT pending on B. They do not identify the stopping signal, event order or cause, and are not a complete descendant census.
+
+Independent review reconciled the failure and cleanup: owner elapsed 24.92001563300437 seconds, ECHILD/EOF, no remaining children and all six compiler/CLI copies quarantined to 0600. Fixture cleanup did signal and reap processes; an empty owner-signal list does not mean no signals occurred. The original aggregate case 4 remains FAILED and case 5 NOT_RUN. This isolated failure shows preceding aggregate cases are not necessary for reproduction, but supplies neither a reliability estimate nor a demonstrated fix. The earlier instrumented pass remains separately scoped. See the [source-path distinction and investigation](CLI-JOB-CONTROL-INVESTIGATION.md#uninstrumented-reproduction).
+
+## Repeated instrumented case-4 sample: three scoped passes
+
+Three genuine instrumented original-case-4 interactions passed unchanged assertions and deadlines, including terminal Ctrl-C, exit 130 within five seconds and both no-live-group assertions. Each produced exactly 174 stdout bytes and empty stderr. All three 25-record traces were structurally valid. Iteration 1 lacks accepted C identity/executable evidence; only iterations 2 and 3 have complete sampled A/B/C identities. Sampled B/C backing files were subsequently unlinked and cannot now be independently rehashed. This is not three fully identified traces or globally loss-free observation.
+
+Independent review reconciled owner elapsed time of 31.631693464005366 seconds, ECHILD/EOF, no remaining children and six exact copies quarantined to 0600. Neither the historical stopped-child-result ordering nor an invalid A consume followed by an actual stop was witnessed. Three instrumented passes are finite non-reproduction, not a causal explanation, reliability estimate, repair or full-suite pass. The uninstrumented iteration-2 failure and original aggregate case-4 failure/case-5 NOT_RUN remain unresolved. Repeated-sample acceptance SHA256: `e73fe6bc3ab042b224675ec346f68a9153751cb1edbea32a12fef3197f6ec34f`.
 
 ## Remaining gates and unchanged holds
 
@@ -60,6 +90,6 @@ These actual outcomes supersede earlier pending SDK/CLI descriptions, without ch
 
 The approved LLVM alternative supersedes the GNU/libdep provenance blocker for the accepted LLVM archive route; the GNU archive route remains unvalidated. The [investigation checkpoint](CLI-JOB-CONTROL-INVESTIGATION.md#additional-validation-checkpoint) records the checked package/runtime evidence, accepted focused regressions for the root-directory correction, resource-contract clarification and separately scoped control results.
 
-The 16 LLVM archives and subsequent C-host link/static ELF are accepted separately; host startup/runtime remain unvalidated. Actual Windows validation, full current-head integration, ordinary VM/SLJIT/native differential and excluded native 16-byte union/corpus acceptance are not established. PR #1331, terminal-unknown c5 bootstrap and stronger per-Capture descendant proof remain held or unproven. No merge or release readiness is claimed.
+The 16 LLVM archives and subsequent C-host link/static ELF are accepted separately; host startup/target serialization and narrow bootstrap validation are accepted separately. Direct fixed-point recovery is also accepted for its exact sources, while broader runtime integration remains unvalidated. Actual Windows validation, full current-head integration, ordinary VM/SLJIT/native differential and excluded native 16-byte union/corpus acceptance are not established. PR #1331, terminal-unknown c5 bootstrap and stronger per-Capture descendant proof remain held or unproven. No merge or release readiness is claimed.
 
 This documentation-only checkpoint publishes no binaries, private workspace paths or raw proof archives. The adjacent [JSON](sdk-cli-validation-results.json) records exact scoped outcomes and limitations.

@@ -27,6 +27,14 @@ Two distinct wait paths can mirror stops:
 
 `os.Wait` is a separate asynchronous `WaitFor` API; it is not ordinary `Posix.Wait`. `os.Run`, direct low-level Spawn/Wait, and Capture's final wait reach the ordinary path. Capture drains its output pipes before that final wait, so this source audit does not establish prompt stop propagation while a stopped child still holds those pipes open.
 
+## Uninstrumented reproduction
+
+A later isolated three-iteration sample passed iteration 1, reproduced the original five-second post-Ctrl-C CLI completion failure in iteration 2, and did not run iteration 3. Cleanup was independently reconciled. A/B were sampled stopped with SIGINT pending on B, but those observations do not establish the stopping event or its ordering. This failure does not require preceding aggregate cases, and the earlier instrumented success does not resolve it.
+
+The relevant distinction remains A's `ForegroundWait` versus B's ordinary wait: native `Os.Run` calls `sys.Run`, then `Posix.Spawn`/`Wait`. The alternate non-native `build.run` branch is not B's native path. B's interval between returning a stopped-child status from `waitpid` and self-stopping is a source-supported candidate to investigate alongside A's group continuation. No execution witness yet proves that ordering or a consuming-wait error. No product fix, relaxed assertion or full-suite pass follows.
+
+The follow-up instrumented three-iteration sample passed all three original interactions, with structurally valid traces but no witness of either hypothesized failure mechanism. Iteration 1 lacks accepted C identity/executable evidence; iterations 2 and 3 have complete sampled identities. This finite non-reproduction neither explains nor repairs the uninstrumented failure. See the [scoped repeated-sample result](SDK-AND-CLI-VALIDATION.md#repeated-instrumented-case-4-sample-three-scoped-passes).
+
 ## Two source questions, neither a proven cause
 
 A possible schedule is that B receives C's stopped status, is stopped by terminal group job control, resumes, then acts on its already-returned status by stopping itself again. A can mirror that second stop. This hypothesis concerns a result already returned to user space; it does not require an unread kernel notification to survive SIGCONT. The failed snapshot does not establish that ordering.
@@ -43,13 +51,17 @@ A terminal Ctrl-Z normally stops both B and C independently. A direct stop of C 
 
 The six terminal scenarios include three suspend/resume cases, but the inspected tests contain no identified child-only SIGSTOP regression. Existing end-to-end assertions require a usable single stop/resume cycle; they do not require another stop for every historical returned notification. Any repair must distinguish those obligations rather than deleting one to make the other pass.
 
-## Next discriminating evidence
+## Initial diagnostic design (historical)
 
-The prepared diagnostic scope is one original case-4 interaction, with bounded ordered records at the actual A/B wait, self-stop and continue sites. A must be rebuilt as the real native CLI to instrument its own wait implementation. Passing a changed core path to the existing CLI only changes code it subsequently compiles.
+The initial diagnostic scope was one original case-4 interaction, with bounded ordered records at the actual A/B wait, self-stop and continue sites. That design required rebuilding A as the real native CLI to instrument its own wait implementation. Passing a changed core path to the existing CLI only changes code it subsequently compiles.
 
 A useful positive witness would identify either an invalid consume followed by the corresponding self-stop intent, or a B stop result recorded before A's group continuation followed by B's self-stop intent after that continuation returns. Further genuine stop observations and process identities would be needed to connect that ordering to a later mirrored stop. A BEFORE record alone does not prove that a syscall was issued or delivered. Missing events never prove an event did not happen, and instrumentation changes scheduling.
 
-This is not an aggregate rerun, a loop, a hardening patch or permission for automatic retries. Native construction, diagnostic execution, artifact lifetime evidence and cleanup remain separately gated. A targeted success or non-reproduction would not clear the full CLI gate.
+That initial design was not an aggregate rerun, a loop, a hardening patch or permission for automatic retries. Native construction, diagnostic execution, artifact lifetime evidence and cleanup remain separately gated. A targeted success or non-reproduction would not clear the full CLI gate.
+
+## Current next step: source-only controlled diagnostic preparation
+
+The current next step is source-only preparation of a separately reviewed B-only historical-result diagnostic: hold B immediately after a genuine stopped-C result returns from `waitpid`, establish A's first stop/resume and successful group continuation, then release B's held result without an extra continue. Actual subsequent B/A stop observations and relevant actor/source identities would be required to support the mechanism. This preparation is not an admitted run, a demonstrated reproduction or a product repair. Any compilation/execution requires its own exact review and bounded ownership/cleanup; repeated random sampling is not the next gate.
 
 After a demonstrated repair, validation still needs the unchanged complete CLI/terminal suite, real regressions for the repaired boundary and isolated child-stop behavior, and applicable platform validation. The separate archive/link/runtime and other holds in the validation record remain unchanged. No merge or release readiness is claimed.
 

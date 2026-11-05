@@ -1,0 +1,215 @@
+package sha256
+
+import bytes "core:bytes"
+
+// SHA-256 as FIPS 180-4 defines it. The digest is a cryptographic hash of raw
+// bytes: use it to identify content, never as a lookup hash (use fnv for that).
+// Results do not depend on the host's byte order.
+// https://csrc.nist.gov/pubs/fips/180-4/upd1/view
+
+pub DigestBytes: int : 32;
+BlockBytes: int : 64;
+MaxBytes: u64 : 2305843009213693951;
+
+// The 64 round constants: the first 32 bits of the fractional parts of the
+// cube roots of the first 64 primes.
+RoundConstants :: () -> u32[] {
+    k: u32[] = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+    ];
+    return k;
+}
+
+// The initial hash value: the first 32 bits of the fractional parts of the
+// square roots of the first eight primes.
+InitialHash :: () -> u32[] {
+    chain: u32[] = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+    ];
+    return chain;
+}
+
+RotateRight :: (value: u32, count: u32) -> u32 {
+    return (value >> count) | (value << (u32(32) - count));
+}
+
+// One hash owns fixed scratch arrays. Update borrows input only for the call;
+// Finish takes a value snapshot, so the original stream can keep receiving data.
+pub State :: struct {
+    chain: u32[];
+    constants: u32[];
+    schedule: u32[];
+    block: u8[];
+    used: int;
+    total: u64;
+}
+pub Begin :: () -> State {
+    return {chain: InitialHash(), constants: RoundConstants(), schedule: resize([u32(0)], 64),
+            block: resize([u8(0)], BlockBytes), used: 0, total: 0};
+}
+
+// All blocks reuse the schedule and chain; no allocation occurs per block.
+Compress :: (stream: ^State, data: u8[], offset: int) {
+    i := 0;
+    while i < 16 {
+        at := offset + i * 4;
+        stream^.schedule[i] = (u32(data[at]) << u32(24)) | (u32(data[at + 1]) << u32(16)) |
+                             (u32(data[at + 2]) << u32(8)) | u32(data[at + 3]);
+        i += 1;
+    }
+    while i < 64 {
+        w15 := stream^.schedule[i - 15];
+        w2 := stream^.schedule[i - 2];
+        s0 := RotateRight(w15, u32(7)) ^ RotateRight(w15, u32(18)) ^ (w15 >> u32(3));
+        s1 := RotateRight(w2, u32(17)) ^ RotateRight(w2, u32(19)) ^ (w2 >> u32(10));
+        stream^.schedule[i] = stream^.schedule[i - 16] + s0 + stream^.schedule[i - 7] + s1;
+        i += 1;
+    }
+    initial0 := stream^.chain[0];
+    a := initial0;
+    initial1 := stream^.chain[1];
+    b := initial1;
+    initial2 := stream^.chain[2];
+    c := initial2;
+    initial3 := stream^.chain[3];
+    d := initial3;
+    initial4 := stream^.chain[4];
+    e := initial4;
+    initial5 := stream^.chain[5];
+    f := initial5;
+    initial6 := stream^.chain[6];
+    g := initial6;
+    initial7 := stream^.chain[7];
+    h := initial7;
+    i = 0;
+    while i < 64 {
+        big1 := RotateRight(e, u32(6)) ^ RotateRight(e, u32(11)) ^ RotateRight(e, u32(25));
+        choose := (e & f) ^ (~e & g);
+        first := h + big1 + choose + stream^.constants[i] + stream^.schedule[i];
+        big0 := RotateRight(a, u32(2)) ^ RotateRight(a, u32(13)) ^ RotateRight(a, u32(22));
+        majority := (a & b) ^ (a & c) ^ (b & c);
+        second := big0 + majority;
+        h = g;
+        g = f;
+        f = e;
+        e = d + first;
+        d = c;
+        c = b;
+        b = a;
+        a = first + second;
+        i += 1;
+    }
+    stream^.chain[0] = initial0 + a;
+    stream^.chain[1] = initial1 + b;
+    stream^.chain[2] = initial2 + c;
+    stream^.chain[3] = initial3 + d;
+    stream^.chain[4] = initial4 + e;
+    stream^.chain[5] = initial5 + f;
+    stream^.chain[6] = initial6 + g;
+    stream^.chain[7] = initial7 + h;
+}
+
+// Hash count bytes from first, or the remaining bytes when count is -1. Invalid
+// counts or messages beyond SHA-256's 64-bit bit length leave stream unchanged.
+// Whole blocks are read in place; at most 63 trailing bytes are copied.
+pub Update :: (stream: ^State, data: u8[], first: int = 0, count: int = -1) -> bool {
+    if (first < 0 || first > length(data)) { return false; }
+    size := count;
+    if (size == -1) { size = length(data) - first; }
+    if (size < 0 || size > length(data) - first || stream^.total > MaxBytes || u64(size) > MaxBytes - stream^.total) { return false; }
+    if (length(stream^.chain) == 0) { stream^ = Begin(); }
+    stream^.total += u64(size);
+    at := first;
+    end := first + size;
+    if (stream^.used > 0) {
+        take := BlockBytes - stream^.used;
+        if (take > size) { take = size; }
+        for (index in 0..<take) { stream^.block[stream^.used + index] = data[first + index]; }
+        stream^.used += take;
+        at += take;
+        if (stream^.used == BlockBytes) {
+            Compress(stream, stream^.block, 0);
+            stream^.used = 0;
+        }
+    }
+    while end - at >= BlockBytes {
+        Compress(stream, data, at);
+        at += BlockBytes;
+    }
+    while at < end {
+        stream^.block[stream^.used] = data[at];
+        stream^.used += 1;
+        at += 1;
+    }
+    return true;
+}
+
+// Snapshot the 32-byte digest without consuming stream. Value semantics keep
+// the snapshot's padding writes separate from subsequent Update calls.
+pub Finish :: (stream: State) -> u8[] {
+    view := stream;
+    if (length(view.chain) == 0) { view = Begin(); }
+    view.block[view.used] = u8(128);
+    view.used += 1;
+    if (view.used > 56) {
+        for (index in view.used..<BlockBytes) { view.block[index] = u8(0); }
+        Compress(&view, view.block, 0);
+        view.used = 0;
+    }
+    for (index in view.used..<56) { view.block[index] = u8(0); }
+    bits := view.total * u64(8);
+    for (index in 0..<8) { view.block[56 + index] = u8((bits >> u32(56 - index * 8)) & u64(255)); }
+    Compress(&view, view.block, 0);
+    digest := resize([u8(0)], DigestBytes);
+    for (index in 0..<8) {
+        word := view.chain[index];
+        digest[index * 4] = u8(word >> u32(24));
+        digest[index * 4 + 1] = u8((word >> u32(16)) & u32(255));
+        digest[index * 4 + 2] = u8((word >> u32(8)) & u32(255));
+        digest[index * 4 + 3] = u8(word & u32(255));
+    }
+    return digest;
+}
+
+// The 32-byte digest of data, most significant byte first. Whole blocks are
+// read from data in place; only the final one or two padded blocks are copied.
+// O(n) work with fixed scratch reused across every block.
+pub Sum :: (data: u8[]) -> u8[] {
+    stream := Begin();
+    added := Update(&stream, data);
+    assert(added, "a native byte array fits the SHA-256 message length");
+    return Finish(stream);
+}
+
+Spelling :: (digest: u8[]) -> string {
+    digits: u8[] = [];
+    index := 0;
+    while index < length(digest) {
+        for nibble in [digest[index] / 16, digest[index] % 16] {
+            if nibble < 10 {
+                digits.append(48 + nibble);
+            } else {
+                digits.append(87 + nibble);
+            }
+        }
+        index += 1;
+    }
+    return bytes.ToString(digits);
+}
+
+// Snapshot the digest as 64 lowercase hexadecimal digits.
+pub FinishHex :: (stream: State) -> string { return Spelling(Finish(stream)); }
+// The digest of the bytes as 64 lowercase hexadecimal digits. Same work as Sum.
+pub HexOf :: (data: u8[]) -> string { return Spelling(Sum(data)); }
+
+// The digest of the text's bytes as 64 lowercase hexadecimal digits.
+pub Hex :: (text: string) -> string {
+    return HexOf(bytes.FromString(text));
+}

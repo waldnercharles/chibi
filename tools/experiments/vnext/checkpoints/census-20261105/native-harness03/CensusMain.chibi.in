@@ -1,0 +1,345 @@
+package vnext_native_tests
+
+import typed "project:vnext_typed"
+import bridge "project:vnext_bridge"
+import os "core:os"
+
+foreign import backend "LIBRARY_PATH"
+foreign backend {
+    chibi_vnext_compile_both :: (words: u32[], word_count: u64, literals: i64[], literal_count: u64, names: u8[], name_byte_count: u64, bindings: rawptr, binding_count: u64) -> rawptr
+    chibi_vnext_status :: (owner: rawptr) -> u32
+    chibi_vnext_diagnostic_length :: (owner: rawptr) -> u64
+    chibi_vnext_diagnostic_copy :: (owner: rawptr, destination: u8[], capacity: u64) -> i32
+    chibi_vnext_entry :: (owner: rawptr, function_id: u32) -> rawptr
+    chibi_vnext_object_length :: (owner: rawptr) -> u64
+    chibi_vnext_object_copy :: (owner: rawptr, destination: u8[], capacity: u64) -> i32
+    chibi_vnext_destroy :: (owner: rawptr) -> i32
+}
+
+// BEGIN FOREIGN_DECLARATIONS
+foreign import census_tests "ADAPTER_PATH"
+foreign census_tests {
+    chibi_census_test_bindings :: () -> rawptr
+    chibi_census_test_binding_count :: () -> u64
+    chibi_census_test_corpus :: (census: rawptr) -> i32
+    chibi_census_test_lifetime :: (census: rawptr, read: rawptr, size: rawptr, merge: rawptr, sub: rawptr, loops: rawptr, report: rawptr) -> i32
+}
+// END FOREIGN_DECLARATIONS
+
+// Preparation replaces the source marker with the ordered original source files,
+// each with its exact UTF-8 bytes, canonical path and document label. It replaces
+// the library marker with the accepted backend CDylib
+// path, and the output marker with one escaped absolute filename in the parent's fresh,
+// exclusively owned output directory. core:os.WriteBytes is not exclusive;
+// no other writer may touch that directory, and an existing path is refused.
+//
+// Ordinary launch requires PERF_BUILDID_DIR absent. A separate parent-launched
+// process sets it and passes the sole argument "expect-perf-buildid-failure".
+// This program never changes environment variables or launches a process.
+// Prepared tests are not acceptance and contain no throughput measurement.
+Main :: () -> int {
+    sources: typed.Source[] = FIXTURE_SOURCES;
+    arguments := os.Arguments();
+    if (length(arguments) == 1 && arguments[0] == "expect-perf-buildid-failure") {
+        return PerfBuildIdFailure(sources);
+    }
+    if (length(arguments) != 0) { return 2; }
+    output_path := OUTPUT_PATH;
+    if (os.Kind(output_path) != os.KindNone) { return 3; }
+    CheckSourceRejections();
+    switch typed.ProduceSources(sources) {
+        case .Rejected(diagnostic):
+            assert(false, "native fixture must pass the retained source producer");
+            return 4;
+        case .Produced(module):
+// BEGIN FIXTURE_CHECKS
+            verification := typed.Verify(module);
+            assert(verification == 0, "verify exact retained source before Pack");
+// END FIXTURE_CHECKS
+            anchor := CompileOwned(module);
+            if (!Ready(anchor)) {
+                closed := chibi_vnext_destroy(anchor);
+                assert(closed == 0, "close failed anchor result");
+                return 5;
+            }
+            anchor_object := CopyObject(anchor);
+            // Every compile poisons and drops its actual borrowed inputs before
+            // returning. Keep one JIT owner alive throughout eight bounded lifetime cycles.
+            for (iteration in 0..<8) {
+                peer := CompileOwned(module);
+                if (!Ready(peer)) {
+                    peer_closed := chibi_vnext_destroy(peer);
+                    anchor_closed := chibi_vnext_destroy(anchor);
+                    assert(peer_closed == 0 && anchor_closed == 0, "close both owned results on failure");
+                    return 6;
+                }
+                assert(peer != anchor, "two independent live owners coexist");
+                peer_checks := CheckLifetime(module, peer);
+                anchor_checks := CheckLifetime(module, anchor);
+                peer_object := CopyObject(peer);
+                CheckBytes(peer_object, anchor_object);
+                peer_closed := chibi_vnext_destroy(peer);
+                assert(peer_closed == 0, "destroy peer after its last generated call");
+                // CheckLifetime retains no address beyond its synchronous return.
+                surviving_checks := CheckLifetime(module, anchor);
+                if (peer_checks != 0 || anchor_checks != 0 || surviving_checks != 0) {
+                    anchor_closed := chibi_vnext_destroy(anchor);
+                    assert(anchor_closed == 0, "close surviving owner after a lifetime check failure");
+                    return 7;
+                }
+            }
+            // One differential pass, outside the bounded lifetime loop. The
+            // verified entry and its owner remain live through the entire call.
+            corpus_checks := CheckCorpus(module, anchor);
+            if (corpus_checks != 0) {
+                anchor_closed := chibi_vnext_destroy(anchor);
+                assert(anchor_closed == 0, "close anchor after corpus failure");
+                return 11;
+            }
+            copied := CopyObject(anchor);
+            CheckBytes(copied, anchor_object);
+            closed := chibi_vnext_destroy(anchor);
+            assert(closed == 0, "destroy anchor after calls and object copies finish");
+            // Only the independent object bytes remain; never use anchor again.
+            if (os.Kind(output_path) != os.KindNone) { return 8; }
+            written := os.WriteBytes(output_path, copied);
+            if (written != nil) { return 9; }
+            read := os.ReadBytes(output_path);
+            if (read.error != nil || length(read.data) == 0) { return 10; }
+            CheckBytes(read.data, copied);
+            return 0;
+    }
+}
+
+// The sole successful source-to-native pipeline is ProduceSources -> Pack -> this
+// one call. Scalar copies here deliberately remove all COW aliases to the
+// actual foreign input arrays, so poisoning writes the exact borrowed storage
+// rather than silently detaching from the retained module's side arrays.
+CompileOwned :: (module: typed.Module) -> rawptr {
+    buffers := bridge.Pack(module);
+    words: u32[] = [];
+    literals: i64[] = [];
+    names: u8[] = [];
+    words.resize(length(buffers.words));
+    literals.resize(length(buffers.literals));
+    names.resize(length(buffers.name_bytes));
+    for (word, index in buffers.words) { words[index] = word; }
+    for (literal, index in buffers.literals) { literals[index] = literal; }
+    for (byte, index in buffers.name_bytes) { names[index] = byte; }
+// BEGIN FOREIGN_ARGUMENTS
+    binding_pointer := chibi_census_test_bindings();
+    binding_count := chibi_census_test_binding_count();
+// END FOREIGN_ARGUMENTS
+    owner := chibi_vnext_compile_both(words, u64(length(words)), literals, u64(length(literals)), names, u64(length(names)), binding_pointer, binding_count);
+    assert(owner != 0, "backend returns an owned ready or failure result");
+    for (index in 0..<length(words)) { words[index] = 0; }
+    for (index in 0..<length(literals)) { literals[index] = 0; }
+    for (index in 0..<length(names)) { names[index] = 0; }
+    words = [];
+    literals = [];
+    names = [];
+    return owner;
+}
+
+Ready :: (owner: rawptr) -> bool {
+    status := chibi_vnext_status(owner);
+    if (status != u32(0)) {
+        os.Print(format_text("native backend status {}", status));
+        count := chibi_vnext_diagnostic_length(owner);
+        if (count == u64(0)) {
+            os.Print("native backend diagnostic is empty");
+            return false;
+        }
+        // A broken result must not make this tiny fixture allocate unboundedly.
+        if (count > u64(16384)) {
+            os.Print(format_text("native backend diagnostic length {} exceeds the 16384-byte test limit; not copied", count));
+            return false;
+        }
+        bytes: u8[] = [];
+        bytes.resize(int(count));
+        copied := chibi_vnext_diagnostic_copy(owner, bytes, count);
+        if (copied != 0) {
+            os.Print(format_text("native backend diagnostic copy failed with status {}", copied));
+        } else {
+            os.Print(text_from_bytes(bytes));
+        }
+        return false;
+    }
+    diagnostic_length := chibi_vnext_diagnostic_length(owner);
+    empty: u8[] = [];
+    copied := chibi_vnext_diagnostic_copy(owner, empty, u64(0));
+    assert(diagnostic_length == u64(0) && copied == 0, "success has an empty owned diagnostic");
+    return true;
+}
+
+// The bounded fixture has at most 32 functions. This test-only linear name lookup is
+// outside backend lowering and compares the actual produced UTF-8 name bytes.
+FindFunction :: (module: typed.Module, expected: string) -> u32 {
+    for (function, index in module.functions) {
+        name := module.names[int(function.name) - 1];
+        equal := int(name.count) == text_byte_length(expected);
+        if (equal) {
+            for (at in 0..<int(name.count)) {
+                if (int(module.name_bytes[int(name.start) + at]) != text_byte_at(expected, at)) { equal = false; }
+            }
+        }
+        if (equal) { return u32(index + 1); }
+    }
+    return 0;
+}
+
+// A mismatch returns no address, never casts and never calls generated code.
+// Export, name, ordered parameter types and result type all come from the same
+// produced module supplied to Pack. No signature is inferred from an address.
+ExpectedEntry :: (module: typed.Module, owner: rawptr, name: string, parameters: u32[], result_type: u32) -> rawptr {
+    id := FindFunction(module, name);
+    if (id == 0) { return 0; }
+    function := module.functions[int(id) - 1];
+    if (function.exported != u32(1)) { return 0; }
+    signature := module.signatures[int(function.signature) - 1];
+    if (signature.result_type != result_type || int(signature.parameter_count) != length(parameters)) { return 0; }
+    for (parameter, index in parameters) {
+        if (module.parameter_types[int(signature.first_parameter) + index] != parameter) { return 0; }
+    }
+    return chibi_vnext_entry(owner, id);
+}
+
+// BEGIN FIXTURE_CALLS
+CheckLifetime :: (module: typed.Module, owner: rawptr) -> int {
+    wrong := ExpectedEntry(module, owner, "Census", [typed.I64, typed.I64], typed.I64);
+    assert(wrong == 0, "logical borrow is not two scalar parameters");
+    wrong = ExpectedEntry(module, owner, "Census", [typed.I64], typed.I64);
+    assert(wrong == 0, "scalar cannot impersonate nominal borrow");
+    wrong = ExpectedEntry(module, owner, "Census", [typed.BorrowedBytes], typed.Bool);
+    assert(wrong == 0, "wrong result rejects before address use");
+    wrong = ExpectedEntry(module, owner, "ReadU32", [typed.BorrowedBytes, typed.I64], typed.I64);
+    assert(wrong == 0, "private helper is not callable from host");
+    wrong = ExpectedEntry(module, owner, "Missing", [], typed.I64);
+    assert(wrong == 0, "absent export rejects before address use");
+    wrong = ExpectedEntry(module, owner, "ProbeMerge", [typed.BorrowedBytes, typed.Bool, typed.BorrowedBytes, typed.I64], typed.I64);
+    assert(wrong == 0, "reordered logical types reject before address use");
+    census := ExpectedEntry(module, owner, "Census", [typed.BorrowedBytes], typed.I64);
+    read := ExpectedEntry(module, owner, "ProbeRead", [typed.BorrowedBytes, typed.I64], typed.I64);
+    size := ExpectedEntry(module, owner, "ProbeLength", [typed.BorrowedBytes], typed.I64);
+    merge := ExpectedEntry(module, owner, "ProbeMerge", [typed.BorrowedBytes, typed.BorrowedBytes, typed.Bool, typed.I64], typed.I64);
+    sub := ExpectedEntry(module, owner, "ProbeSub", [typed.I64, typed.I64], typed.I64);
+    loops := ExpectedEntry(module, owner, "ProbeLoops", [typed.I64, typed.I64], typed.I64);
+    report := ExpectedEntry(module, owner, "ProbeReport", [], typed.I64);
+    if (census == 0 || read == 0 || size == 0 || merge == 0 || sub == 0 || loops == 0 || report == 0) { return 1; }
+    // The C consumer owns all actual buffer storage. It retains no address.
+    status := chibi_census_test_lifetime(census, read, size, merge, sub, loops, report);
+    return int(status);
+}
+// A fresh logical-signature check precedes the sole corpus invocation. The
+// synchronous adapter retains neither the entry nor any borrowed storage.
+CheckCorpus :: (module: typed.Module, owner: rawptr) -> int {
+    census := ExpectedEntry(module, owner, "Census", [typed.BorrowedBytes], typed.I64);
+    if (census == 0) { return 1; }
+    status := chibi_census_test_corpus(census);
+    return int(status);
+}
+// END FIXTURE_CALLS
+
+CheckBytes :: (actual: u8[], expected: u8[]) {
+    assert(length(actual) == length(expected), "exact byte length");
+    for (byte, index in expected) { assert(actual[index] == byte, "exact byte value"); }
+}
+CheckSentinel :: (bytes: u8[]) {
+    for (byte in bytes) { assert(byte == u8(165), "copy destination or retained COW alias is unchanged"); }
+}
+CopyObject :: (owner: rawptr) -> u8[] {
+    count := chibi_vnext_object_length(owner);
+    assert(count > u64(0) && count <= u64(4194304), "bounded fixture object must fit the 4 MiB test limit");
+    bytes: u8[] = [];
+    bytes.resize(int(count));
+    for (index in 0..<length(bytes)) { bytes[index] = u8(165); }
+    retained := bytes;
+    short_copy := chibi_vnext_object_copy(owner, bytes, count - u64(1));
+    assert(short_copy == 2, "short object copy is rejected without truncation");
+    CheckSentinel(bytes);
+    CheckSentinel(retained);
+    retained_for_copy := bytes;
+    copied := chibi_vnext_object_copy(owner, bytes, count);
+    assert(copied == 0, "exact-capacity object copy succeeds");
+    CheckSentinel(retained);
+    CheckSentinel(retained_for_copy);
+    again: u8[] = [];
+    again.resize(int(count));
+    repeated := chibi_vnext_object_copy(owner, again, count);
+    copied_length := chibi_vnext_object_length(owner);
+    assert(repeated == 0 && copied_length == count, "object length and bytes are retained across copies");
+    CheckBytes(bytes, again);
+    assert(length(bytes) >= 4 && bytes[0] == u8(127) && bytes[1] == u8(69) && bytes[2] == u8(76) && bytes[3] == u8(70), "admitted Linux target emits ELF object bytes");
+    return bytes;
+}
+
+// BEGIN FIXTURE_REJECTIONS
+CheckSourceRejections :: () {
+    rejected_sources: string[] = [
+        "package p\npub Bad :: (value: i64) -> i64 { return value / 7; }\n",
+        "package p\npub Bad :: (value: bool) -> i64 { return value; }\n",
+        "package p\npub Bad :: () -> i64 { return 9223372036854775808; }\n",
+        "package p\npub Bad :: (value: i64[]) -> i64 { return 1; }\n",
+        "package p\npub Bad :: () -> i64 { return missing; }\n",
+        "package p\npub Bad :: (value: i64) -> i64 { value = 1; }\n",
+        "package p\npub Good :: (value: i64) -> i64 { return value; }\npub Bad :: (value: i64) -> i64 { return value / 7; }\n"
+    ];
+    for (source in rejected_sources) {
+        // There is no Pack or backend call on either arm of this control.
+        switch typed.Produce(source, 23) {
+            case .Produced(module): assert(false, "unsupported source must not reach native compilation");
+            case .Rejected(diagnostic):
+                assert(diagnostic.document == 23 && diagnostic.message != "", "source rejection retains its diagnostic");
+                assert(diagnostic.start >= 0 && diagnostic.end >= diagnostic.start && diagnostic.end <= text_byte_length(source), "rejected source range stays inside the exact input");
+        }
+    }
+}
+
+// END FIXTURE_REJECTIONS
+
+// Failure metadata checks for the profiling-failure control.
+// Copying failure metadata never publishes or casts an entry; the caller closes
+// the owner exactly once after these checks return.
+CheckFailure :: (owner: rawptr, expected: string) {
+    status := chibi_vnext_status(owner);
+    object_length := chibi_vnext_object_length(owner);
+    failure_entry := chibi_vnext_entry(owner, u32(1));
+    assert(status == u32(4) && object_length == u64(0) && failure_entry == 0, "owned BackendFailure has no partial output");
+    unavailable := [u8(165)];
+    retained_unavailable := unavailable;
+    absent_copy := chibi_vnext_object_copy(owner, unavailable, u64(1));
+    assert(absent_copy == 4, "failure has no copyable object");
+    CheckSentinel(unavailable);
+    CheckSentinel(retained_unavailable);
+    count := chibi_vnext_diagnostic_length(owner);
+    assert(count == u64(text_byte_length(expected)), "failure owns the exact expected diagnostic length");
+    bytes: u8[] = [];
+    bytes.resize(int(count));
+    for (index in 0..<length(bytes)) { bytes[index] = u8(165); }
+    retained := bytes;
+    short_copy := chibi_vnext_diagnostic_copy(owner, bytes, count - u64(1));
+    assert(short_copy == 2, "short diagnostic copy rejects before writing");
+    CheckSentinel(bytes);
+    CheckSentinel(retained);
+    retained_for_copy := bytes;
+    copied := chibi_vnext_diagnostic_copy(owner, bytes, count);
+    assert(copied == 0, "owned failure diagnostic copies exactly");
+    CheckSentinel(retained);
+    CheckSentinel(retained_for_copy);
+    assert(text_from_bytes(bytes) == expected, "failure retains the exact expected diagnostic");
+}
+
+PerfBuildIdFailure :: (sources: typed.Source[]) -> int {
+    CheckSourceRejections();
+    switch typed.ProduceSources(sources) {
+        case .Rejected(diagnostic):
+            assert(false, "environment control still uses the real accepted source producer");
+            return 1;
+        case .Produced(module):
+            owner := CompileOwned(module);
+            CheckFailure(owner, "PERF_BUILDID_DIR profiling is unsupported by this backend");
+            closed := chibi_vnext_destroy(owner);
+            assert(closed == 0, "failure owner destroys successfully");
+            return 0;
+    }
+}

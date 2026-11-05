@@ -1,0 +1,312 @@
+{
+  "schema": 1,
+  "classification": "inactive-source-archive-not-acceptance",
+  "base_tree": "73b5dc67f3b9c0e6104426017b59adcd7939c4c6",
+  "candidate_tree": "f73f0115652bc06325de8f78bff11775a193b3eb",
+  "replayed_tree": "f73f0115652bc06325de8f78bff11775a193b3eb",
+  "patch_sha256": "a12f6cee8700a53e3130457bc15a4cc5de75f626c96f9483c09d4d08687266af",
+  "changed_files": [
+    {
+      "path": "tools/experiments/vnext/frontend/typed/Model.chibi",
+      "bytes": 5884,
+      "sha256": "dd157ed822eda9840c5895a48e9bb59beea559b48d2995fb340b8a89263b16eb",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/typed/Produce.chibi",
+      "bytes": 71445,
+      "sha256": "cd668a0fd2fa8ce0cecdc5bd0cae5540c5c4f9387838a7baca698c74b7e2b714",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/typed/Verify.chibi",
+      "bytes": 27509,
+      "sha256": "f21adba7cb2795e3223e0f647129eff4bf3b1224fa9e2b3eef931aca3ca61487",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/typed/prepare.py",
+      "bytes": 8633,
+      "sha256": "43e61548d749e28a7e6e54530307faead4e12710965bb7a11cf3f16b9776d135",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/typed/prepare_tests.py",
+      "bytes": 12510,
+      "sha256": "03c7fd87ddc8edbfcfb80bb4d8ace0e4b4472326f892bfb5d15dfafb86ab4f4e",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/typed/tests/Main.chibi.in",
+      "bytes": 119457,
+      "sha256": "3394f025cd3423c7878c1d09dd6cabe071848f419cd5ba69ed399cd6f3ef10b9",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/bridge/generate.py",
+      "bytes": 19336,
+      "sha256": "57f0885705a4b3a7706fcccfcf2032692fdeb98e6b29dfc637df7677d6fa7bf7",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/bridge/generate_tests.py",
+      "bytes": 16558,
+      "sha256": "9fe0cc80d9f0cbafc472afb0342dbfea5e7f2af1a115ceda1e1259dc3885173b",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/frontend/bridge/tests/arena_tests.rs",
+      "bytes": 9373,
+      "sha256": "397a2850d0eff877a0bb743c1a3136b92939ec1e7b5f91a629788dee220a390b",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/slice_backend/lib.rs",
+      "bytes": 63144,
+      "sha256": "876e2fdc809dc9fd5f8ec4037238debb3c2054f74af8f3e7974696c34db5b46a",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/source_census/README.md",
+      "bytes": 29842,
+      "sha256": "9c11aa22e89e06806e95b203fb2a50554dda36e16aa6ae667bc1dda009350e1d",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/source_census/IMPLEMENTATION.md",
+      "bytes": 8610,
+      "sha256": "db7aef50fff25c1c0e31a4c00e7585277db76d0319083634fc295b4eac1ad731",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/source_census/host.c",
+      "bytes": 7236,
+      "sha256": "868b4f18574fbe45cb5c7218adb1661c8057b78401a23fec70974b140404ff6c",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/source_census/reference.py",
+      "bytes": 6014,
+      "sha256": "ee2ebfe4075fd9410bf195add164cacd186f030888c8fefa5ebdfab6e5699de0",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/source_census/reference_tests.py",
+      "bytes": 16159,
+      "sha256": "58621213e5f2345daa996fd6432d814101413ab2f135ebb3122929e986b9f7ff",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/experiments/vnext/source_census/HOST-STATUS.md",
+      "bytes": 5979,
+      "sha256": "b6093d7f6504978863d89f2b3e36ed3dd093222056c70e9a756ccbecd09122c1",
+      "mode": "100644"
+    }
+  ],
+  "source_archives": [
+    {
+      "path": "native-harness03/Capabilities.chibi",
+      "source_checkpoint": "census-native-harness03-20261105",
+      "source_path": "Capabilities.chibi",
+      "bytes": 1106,
+      "sha256": "575abc52d240c8b4c767b1ee7c14fa9e438c18b251687709a3e21dedebc5a260",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "native-harness03/CensusMain.chibi.in",
+      "source_checkpoint": "census-native-harness03-20261105",
+      "source_path": "CensusMain.chibi.in",
+      "bytes": 17657,
+      "sha256": "e9caac94b729700fd3ac330eab1c37ae0865feeb6ab6406fddeff05c47c2be1e",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "native-harness03/Main.chibi",
+      "source_checkpoint": "census-native-harness03-20261105",
+      "source_path": "Main.chibi",
+      "bytes": 7982,
+      "sha256": "0e44190699438f78b223c71a380a903f71526941f0a5dc700c655b62be341f16",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "native-harness03/aot_main.c",
+      "source_checkpoint": "census-native-harness03-20261105",
+      "source_path": "aot_main.c",
+      "bytes": 737,
+      "sha256": "49432ef488fe5d3e34a9e94989263fbce50f0a4c6dac32903e810557b0e85fe8",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "native-harness03/host-contract.h",
+      "source_checkpoint": "census-native-harness03-20261105",
+      "source_path": "host-contract.h",
+      "bytes": 1228,
+      "sha256": "09ebe692408b367accaf11a2daef2f8f4a43ed34d0f114b6292ed48b814b7db0",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "native-harness03/native_adapter.c",
+      "source_checkpoint": "census-native-harness03-20261105",
+      "source_path": "native_adapter.c",
+      "bytes": 10999,
+      "sha256": "d48da0fead027d8aa5c72bd9f693e1d231997909112b558310b32c2db5ad9695",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "native-harness03/native_adapter.h",
+      "source_checkpoint": "census-native-harness03-20261105",
+      "source_path": "native_adapter.h",
+      "bytes": 859,
+      "sha256": "8bfa7fc886097aa490615cf9e6042c96bd5c8250c09c62cffb5b9746d25b6969",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "native-harness03/preparation_tests.py",
+      "source_checkpoint": "census-native-harness03-20261105",
+      "source_path": "preparation_tests.py",
+      "bytes": 9927,
+      "sha256": "2242d444bfdd82eb163adb3fb2dee457ebdc24657ce4bce2719b8ea5a93df6de",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "native-harness03/prepare_cases.py",
+      "source_checkpoint": "census-native-harness03-20261105",
+      "source_path": "prepare_cases.py",
+      "bytes": 9924,
+      "sha256": "3b0882caaa63c48250850381e96a9d8d76fb0595baed53ecf106347cccd3c046",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "native-harness03/prepare_sources.py",
+      "source_checkpoint": "census-native-harness03-20261105",
+      "source_path": "prepare_sources.py",
+      "bytes": 7475,
+      "sha256": "3f30f5c5761fa193ee7e81e666c5a94fc435e775fa4da64210a3c706a7d09f95",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "native-harness03/reference.py",
+      "source_checkpoint": "census-native-harness03-20261105",
+      "source_path": "reference.py",
+      "bytes": 6014,
+      "sha256": "ee2ebfe4075fd9410bf195add164cacd186f030888c8fefa5ebdfab6e5699de0",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "work-counters02/Counts.chibi",
+      "source_checkpoint": "census-work-counters02-20261105",
+      "source_path": "Counts.chibi",
+      "bytes": 1194,
+      "sha256": "d8239e6b86d41b9acf6aadbff2288a0638cf6f7585da6940fd0003d98177f0da",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "work-counters02/OUTPUT-SCHEMA.md",
+      "source_checkpoint": "census-work-counters02-20261105",
+      "source_path": "OUTPUT-SCHEMA.md",
+      "bytes": 4471,
+      "sha256": "efaef3a0e07ad96809b8eb9766d6206126f973651b917f229ba373dbfbe8ff73",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "work-counters02/WorkOutput.chibi",
+      "source_checkpoint": "census-work-counters02-20261105",
+      "source_path": "WorkOutput.chibi",
+      "bytes": 5006,
+      "sha256": "8cf21bd8e7a012da10f92e56ce1cf4ceac2e0758f180d80b2dacdb2899e01ff1",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "work-counters02/WorkProbe.chibi.in",
+      "source_checkpoint": "census-work-counters02-20261105",
+      "source_path": "WorkProbe.chibi.in",
+      "bytes": 8427,
+      "sha256": "7c53334d900682c6bdacd9f4882a5098a20dbec98684fa83dc4ad37857459442",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "work-counters02/core-snapshot/bytes/Bytes.chibi",
+      "source_checkpoint": "census-work-counters02-20261105",
+      "source_path": "core-snapshot/bytes/Bytes.chibi",
+      "bytes": 4222,
+      "sha256": "3face4437c9ebd31073da5c8e2996f956dd1fa0105eefc1fe458c3f17f20bb4b",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "work-counters02/core-snapshot/hash/sha256/Sha256.chibi",
+      "source_checkpoint": "census-work-counters02-20261105",
+      "source_path": "core-snapshot/hash/sha256/Sha256.chibi",
+      "bytes": 8093,
+      "sha256": "7d214328124b1452b89a17122196d6e32486437c16db4febde7d04f51362409d",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "work-counters02/core-snapshot/os/Os.chibi",
+      "source_checkpoint": "census-work-counters02-20261105",
+      "source_path": "core-snapshot/os/Os.chibi",
+      "bytes": 19495,
+      "sha256": "ca7eb34c1d4a0b46377f2d3148079d741a0bdd6db431cd99ade6570c7f09c63c",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "work-counters02/core-snapshot/sys/posix/Posix.chibi",
+      "source_checkpoint": "census-work-counters02-20261105",
+      "source_path": "core-snapshot/sys/posix/Posix.chibi",
+      "bytes": 52702,
+      "sha256": "e6c0af3b80b8347550e3d9566952d71df3d2dfd0a9550040db6919e93adb0ae0",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "work-counters02/core-snapshot/sys/windows/Decimal.chibi",
+      "source_checkpoint": "census-work-counters02-20261105",
+      "source_path": "core-snapshot/sys/windows/Decimal.chibi",
+      "bytes": 845,
+      "sha256": "75f9b4492cd791fe1dd7328e859dd856043f7c0a4c7a197295007545c3fa1cd4",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "work-counters02/core-snapshot/sys/windows/Windows.chibi",
+      "source_checkpoint": "census-work-counters02-20261105",
+      "source_path": "core-snapshot/sys/windows/Windows.chibi",
+      "bytes": 44561,
+      "sha256": "11652d1d2b3ebd20026f2d5e1090c209e9b74b633680243788b5fb0120a0b6c5",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "work-counters02/core-snapshot/target/Target.chibi",
+      "source_checkpoint": "census-work-counters02-20261105",
+      "source_path": "core-snapshot/target/Target.chibi",
+      "bytes": 688,
+      "sha256": "9c53c8eed58c028f7c575dea4e91978daaa4f996ba37605527caa19b6c151a93",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "work-counters02/instrument_prepared.py",
+      "source_checkpoint": "census-work-counters02-20261105",
+      "source_path": "instrument_prepared.py",
+      "bytes": 16068,
+      "sha256": "9ad677c0a70ba0f886be6c81794c80669dc50ba1329f49c816878365e27f92dc",
+      "preservation": "byte-identical"
+    },
+    {
+      "path": "native-harness03/AUTHORED-CONTEXT.md",
+      "source_checkpoint": "census-native-harness03-20261105",
+      "source_path": "README.md",
+      "source_sha256": "38817086502dab33c921d7a3127fc294320bc7371c2a99c78b32804f67ca94d5",
+      "sha256": "2663f784b773bc4576bdbf350313be6eda2c0922bf6a2c578fcdee966999ee7e",
+      "preservation": "non-executable documentation prefixed with archival notice; original text retained"
+    },
+    {
+      "path": "work-counters02/AUTHORED-CONTEXT.md",
+      "source_checkpoint": "census-work-counters02-20261105",
+      "source_path": "README.md",
+      "source_sha256": "37534f4856ba0678d344130e1dbe4396ce50cc68d084e3b788118b977a42dd4d",
+      "sha256": "df5c93b666b7b5da89700373a803c042b07bc63559465bc17ae42479d28b9821",
+      "preservation": "non-executable documentation prefixed with archival notice; original text retained"
+    }
+  ],
+  "model_requested_version": 4,
+  "generated_bridge_version": 3,
+  "max_blocks": 64,
+  "accepted_v4_digest": "unassigned"
+}

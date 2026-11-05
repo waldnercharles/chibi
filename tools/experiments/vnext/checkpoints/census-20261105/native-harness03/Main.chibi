@@ -1,0 +1,179 @@
+package source_census
+
+// PROPOSAL ONLY. Current v3 does not admit BorrowedBytes, these intrinsics,
+// subtraction or while. This is a new caller, not recovered historical source.
+foreign import census "libchibi_census_host.a"
+foreign census {
+    chibi_census_report :: (status: i64, error_offset: i64, packages: i64,
+        original_files: i64, original_bytes: i64, original_lines: i64, original_nonblank: i64,
+        replaced_files: i64, replaced_bytes: i64, replaced_lines: i64, replaced_nonblank: i64,
+        generated_files: i64, generated_bytes: i64, generated_lines: i64, generated_nonblank: i64,
+        frame_bytes: i64) -> i64
+}
+
+// Caller proves four bytes remain. Each read still has checked semantics.
+// The maximum result is 4294967295, comfortably inside i64.
+ReadU32 :: (input: BorrowedBytes, at: i64) -> i64 {
+    a := byte_read_checked(input, at);
+    b := byte_read_checked(input, at + 1);
+    c := byte_read_checked(input, at + 2);
+    d := byte_read_checked(input, at + 3);
+    return a + b * 256 + c * 65536 + d * 16777216;
+}
+
+// One synchronous borrow covers the invocation. No byte crosses into C.
+// Success reports original totals, their replaced subset, and generated totals.
+// On rejection all census counters are zero; status/offset/extent identify input.
+pub Census :: (input: BorrowedBytes) -> i64 {
+    frame_magic: i64 = 827212611; // Little-endian ASCII CCN1.
+    original_file_limit: i64 = 16777216;
+    original_total_limit: i64 = 268435456;
+    generated_total_limit: i64 = 256;
+    frame_limit: i64 = 268632348;
+    replaced_tag: i64 = 2;
+    generated_tag: i64 = 3;
+    line_feed: i64 = 10;
+    space: i64 = 32;
+    before_tab: i64 = 8;
+    after_carriage_return: i64 = 14;
+    size := byte_length(input);
+    status: i64 = 0;
+    error_at: i64 = 0;
+    declared_packages: i64 = 0;
+    declared_originals: i64 = 0;
+    declared_generated: i64 = 0;
+    packages: i64 = 0;
+    original_files: i64 = 0;
+    original_bytes: i64 = 0;
+    original_lines: i64 = 0;
+    original_nonblank: i64 = 0;
+    replaced_files: i64 = 0;
+    replaced_bytes: i64 = 0;
+    replaced_lines: i64 = 0;
+    replaced_nonblank: i64 = 0;
+    generated_files: i64 = 0;
+    generated_bytes: i64 = 0;
+    generated_lines: i64 = 0;
+    generated_nonblank: i64 = 0;
+    pending_package: i64 = 0;
+    at: i64 = 16;
+
+    // Header validation precedes every four-byte header read.
+    if (16 > size) { status = 1; }
+    else if (size > frame_limit) { status = 2; }
+    else if (!(ReadU32(input, 0) == frame_magic)) { status = 3; }
+    else {
+        declared_packages = ReadU32(input, 4);
+        declared_originals = ReadU32(input, 8);
+        declared_generated = ReadU32(input, 12);
+        if (!(declared_packages > 0 && !(declared_packages > 4096))) { status = 4; }
+        else if (!(declared_originals > 0 && !(declared_originals > 16384))) { status = 4; }
+        else if (declared_generated > 1) { status = 4; }
+    }
+
+    while (status == 0 && size > at) {
+        error_at = at;
+        if (12 > size - at) { status = 5; }
+        else {
+            tag := ReadU32(input, at);
+            package_id := ReadU32(input, at + 4);
+            count := ReadU32(input, at + 8);
+            payload := at + 12;
+            if (!(tag > 0 && !(tag > generated_tag))) { status = 6; }
+            else if (count > size - payload) { status = 7; }
+            else {
+                // A replaced original must be followed immediately by its one
+                // generated target record in the same package.
+                if (pending_package > 0) {
+                    if (!(tag == generated_tag && package_id == pending_package)) { status = 8; }
+                } else if (tag == generated_tag) { status = 8; }
+                if (status == 0) {
+                    if (tag == generated_tag) {
+                        if (!(declared_generated > generated_files)) { status = 9; }
+                        else if (count > generated_total_limit - generated_bytes) { status = 10; }
+                    } else {
+                        if (!(package_id > 0 && !(package_id > declared_packages))) { status = 11; }
+                        else if (!(package_id == packages) && !(package_id == packages + 1)) { status = 11; }
+                        else if (!(declared_originals > original_files)) { status = 12; }
+                        else if (count > original_file_limit) { status = 13; }
+                        else if (count > original_total_limit - original_bytes) { status = 14; }
+                        else if (tag == replaced_tag && replaced_files > 0) { status = 15; }
+                    }
+                }
+            }
+            if (status == 0) {
+                file_lines: i64 = 0;
+                file_nonblank: i64 = 0;
+                line_has_text: bool = false;
+                last_byte := line_feed;
+                cursor := payload;
+                stop := payload + count;
+                // One read per payload byte, no allocations, hashes or FFI.
+                while (stop > cursor) {
+                    byte := byte_read_checked(input, cursor);
+                    if (byte == line_feed) {
+                        file_lines = file_lines + 1;
+                        if (line_has_text) { file_nonblank = file_nonblank + 1; }
+                        line_has_text = false;
+                    } else if (!(byte == space) && !(byte > before_tab && after_carriage_return > byte)) {
+                        line_has_text = true;
+                    }
+                    last_byte = byte;
+                    cursor = cursor + 1;
+                }
+                if (!(last_byte == line_feed)) {
+                    file_lines = file_lines + 1;
+                    if (line_has_text) { file_nonblank = file_nonblank + 1; }
+                }
+                if (tag == generated_tag) {
+                    generated_files = generated_files + 1;
+                    generated_bytes = generated_bytes + count;
+                    generated_lines = generated_lines + file_lines;
+                    generated_nonblank = generated_nonblank + file_nonblank;
+                    pending_package = 0;
+                } else {
+                    packages = package_id;
+                    original_files = original_files + 1;
+                    original_bytes = original_bytes + count;
+                    original_lines = original_lines + file_lines;
+                    original_nonblank = original_nonblank + file_nonblank;
+                    if (tag == replaced_tag) {
+                        replaced_files = replaced_files + 1;
+                        replaced_bytes = replaced_bytes + count;
+                        replaced_lines = replaced_lines + file_lines;
+                        replaced_nonblank = replaced_nonblank + file_nonblank;
+                        pending_package = package_id;
+                    }
+                }
+                at = stop;
+            }
+        }
+    }
+    if (status == 0) {
+        error_at = size;
+        if (pending_package > 0) { status = 16; }
+        else if (!(packages == declared_packages)) { status = 17; }
+        else if (!(original_files == declared_originals)) { status = 18; }
+        else if (!(generated_files == declared_generated)) { status = 19; }
+    }
+    if (status == 0) { error_at = 0; }
+    else {
+        packages = 0;
+        original_files = 0;
+        original_bytes = 0;
+        original_lines = 0;
+        original_nonblank = 0;
+        replaced_files = 0;
+        replaced_bytes = 0;
+        replaced_lines = 0;
+        replaced_nonblank = 0;
+        generated_files = 0;
+        generated_bytes = 0;
+        generated_lines = 0;
+        generated_nonblank = 0;
+    }
+    return chibi_census_report(status, error_at, packages,
+        original_files, original_bytes, original_lines, original_nonblank,
+        replaced_files, replaced_bytes, replaced_lines, replaced_nonblank,
+        generated_files, generated_bytes, generated_lines, generated_nonblank, size);
+}

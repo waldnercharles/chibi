@@ -1,0 +1,26 @@
+package vnext_typed
+
+// Test-copy-only state. A fresh value is required for each producer/verifier call.
+// No field belongs to Model or its serialized/native interface.
+pub WorkFunction :: struct {
+    function_id: int; complete: bool;
+    blocks: int; values: int; instructions: int; edges: int;
+    arguments: int; parameters: int; signature_parameters: int;
+    assignment_rows: int; loop_rows: int;
+    write_masks: u64[];
+}
+pub WorkCounts :: struct {
+    prepass_statements: int; assignment_resolutions: int; mask_updates: int;
+    emitted_statements: int; expression_entries: int; emit_calls: int;
+    while_conditions: int; while_bodies: int; parser_nodes: int;
+    reachability_pops: int; dominance_pops: int;
+    predecessor_reads: int; word_intersections: int;
+    functions: WorkFunction[];
+}
+pub EmptyWorkCounts :: () -> WorkCounts {
+    return {prepass_statements: 0, assignment_resolutions: 0, mask_updates: 0,
+            emitted_statements: 0, expression_entries: 0, emit_calls: 0,
+            while_conditions: 0, while_bodies: 0, parser_nodes: 0,
+            reachability_pops: 0, dominance_pops: 0,
+            predecessor_reads: 0, word_intersections: 0, functions: []};
+}

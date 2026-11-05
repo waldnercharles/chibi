@@ -1,0 +1,77 @@
+package vnext_typed_tests
+
+import typed "project:vnext_typed"
+import strings "core:strings"
+import work_os "core:os"
+import work_target "core:target"
+
+// One cold batch per completed report. No producer/verifier operation prints.
+// All numeric payloads below come from the returned report, never expectations.
+WorkCountLines :: (lines: ^string[], category: string, ordinal: int, meter: typed.WorkCounts) {
+    prefix := format_text("CW1\tcount\t{}\t{}\t", category, ordinal);
+    lines.append(format_text("{}prepass_statements\t{}\n", prefix, meter.prepass_statements));
+    lines.append(format_text("{}assignment_resolutions\t{}\n", prefix, meter.assignment_resolutions));
+    lines.append(format_text("{}mask_updates\t{}\n", prefix, meter.mask_updates));
+    lines.append(format_text("{}emitted_statements\t{}\n", prefix, meter.emitted_statements));
+    lines.append(format_text("{}expression_entries\t{}\n", prefix, meter.expression_entries));
+    lines.append(format_text("{}emit_calls\t{}\n", prefix, meter.emit_calls));
+    lines.append(format_text("{}while_conditions\t{}\n", prefix, meter.while_conditions));
+    lines.append(format_text("{}while_bodies\t{}\n", prefix, meter.while_bodies));
+    lines.append(format_text("{}parser_nodes\t{}\n", prefix, meter.parser_nodes));
+    lines.append(format_text("{}reachability_pops\t{}\n", prefix, meter.reachability_pops));
+    lines.append(format_text("{}dominance_pops\t{}\n", prefix, meter.dominance_pops));
+    lines.append(format_text("{}predecessor_reads\t{}\n", prefix, meter.predecessor_reads));
+    lines.append(format_text("{}word_intersections\t{}\n", prefix, meter.word_intersections));
+    lines.append(format_text("{}functions\t{}\n", prefix, length(meter.functions)));
+    for (function, index in meter.functions) {
+        row_prefix := format_text("CW1\tfunction\t{}\t{}\t{}\t", category, ordinal, index);
+        completed: int = 0;
+        if (function.complete) { completed = 1; }
+        lines.append(format_text("{}function_id\t{}\n", row_prefix, function.function_id));
+        lines.append(format_text("{}complete\t{}\n", row_prefix, completed));
+        lines.append(format_text("{}blocks\t{}\n", row_prefix, function.blocks));
+        lines.append(format_text("{}values\t{}\n", row_prefix, function.values));
+        lines.append(format_text("{}instructions\t{}\n", row_prefix, function.instructions));
+        lines.append(format_text("{}edges\t{}\n", row_prefix, function.edges));
+        lines.append(format_text("{}arguments\t{}\n", row_prefix, function.arguments));
+        lines.append(format_text("{}parameters\t{}\n", row_prefix, function.parameters));
+        lines.append(format_text("{}signature_parameters\t{}\n", row_prefix, function.signature_parameters));
+        lines.append(format_text("{}assignment_rows\t{}\n", row_prefix, function.assignment_rows));
+        lines.append(format_text("{}loop_rows\t{}\n", row_prefix, function.loop_rows));
+        lines.append(format_text("{}write_masks\t{}\n", row_prefix, length(function.write_masks)));
+        for (mask, mask_index in function.write_masks) {
+            lines.append(format_text("CW1\tmask\t{}\t{}\t{}\t{}\t{}\n", category, ordinal, index, mask_index, mask));
+        }
+    }
+}
+
+PrintWorkReport :: (report: WorkReport) {
+    // VM/build core:os routes text to stderr. Only native Linux x86-64 is an
+    // admitted output destination for this independently reviewed probe packet.
+    assert(work_target.Native == 1 && work_target.Os == work_target.Linux &&
+           work_target.Arch == work_target.X86_64 && work_target.PointerBits == 64,
+           "work report requires native Linux x86-64 stdout capture");
+    assert(length(report.verifier) == length(report.verifier_labels), "each verifier record has a label");
+    lines: string[] = [format_text("CW1\tbegin\t{}\n", typed.MaxBlocks)];
+    lines.append(format_text("CW1\tgroups\tproducer\t{}\n", length(report.producer)));
+    lines.append(format_text("CW1\tgroups\tverifier\t{}\n", length(report.verifier)));
+    lines.append("CW1\tgroups\tcensus\t1\n");
+    lines.append(format_text("CW1\tskipped-count\t{}\n", length(report.skipped_blocks)));
+    for (meter, ordinal in report.producer) { WorkCountLines(&lines, "producer", ordinal, meter); }
+    for (meter, ordinal in report.verifier) {
+        lines.append(format_text("CW1\tlabel\tverifier\t{}\t{}\n", ordinal, report.verifier_labels[ordinal]));
+        WorkCountLines(&lines, "verifier", ordinal, meter);
+    }
+    WorkCountLines(&lines, "census", 0, report.census);
+    for (size, ordinal in report.skipped_blocks) {
+        lines.append(format_text("CW1\tskipped\t{}\t{}\n", ordinal, size));
+    }
+    lines.append("CW1\treport-end\n");
+    work_os.WriteOutput(strings.Concatenate(lines));
+}
+
+WorkRegressionPassed :: () {
+    // Appended to the existing Main's successful return path, not the probe's
+    // path. An early failure cannot produce this terminal regression marker.
+    work_os.WriteOutput("CW1\tregressions\tpassed\n");
+}

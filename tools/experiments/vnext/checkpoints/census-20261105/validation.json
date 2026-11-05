@@ -1,0 +1,386 @@
+{
+  "schema": 1,
+  "source_revision": "revision04",
+  "packet_sha256": "c8599fedd3d1c5d600320d4ce2afb87a0378497d2cf453f14ae64f5e41e7771e",
+  "source_inventory_sha256": "664efe9ea7c02e7d333d1e900b8f6b337cc28ea7d14e8395196deb99069d71be",
+  "stages": [
+    {
+      "name": "prepare-tests",
+      "status": "passed",
+      "receipt_sha256": "6b5209a9f07b65602fbde918927012b807757e1a4d74d0b7dd91d845984fb90d",
+      "execution": {
+        "exit_code": 0,
+        "status": "passed",
+        "timed_out": false,
+        "elapsed_seconds": 0.511443771,
+        "cleanup_seconds": 0.00105166,
+        "surviving_children": false,
+        "cleanup_errors": [],
+        "cleanup_echild": true,
+        "subreaper_restored": true,
+        "cleanup_limit_seconds": 1.0,
+        "overall_limit_seconds": 120.0
+      },
+      "cleanup_status": "closed",
+      "tests": {
+        "selected": 14,
+        "passed": 14,
+        "skipped": 0,
+        "failures": 0,
+        "errors": 0
+      },
+      "test_result_sha256": "d66634b7dba44bd5c8a833cb45de55f618a08cc1f80b3343981c753e01861d36"
+    },
+    {
+      "name": "oracle-ordinary",
+      "status": "passed",
+      "receipt_sha256": "be09d7d4bf569ae83f532cdc628d49464ad469d9e8c27473ebc853a09f29d2d5",
+      "execution": {
+        "exit_code": 0,
+        "status": "passed",
+        "timed_out": false,
+        "elapsed_seconds": 0.159456743,
+        "cleanup_seconds": 0.000979223,
+        "surviving_children": false,
+        "cleanup_errors": [],
+        "cleanup_echild": true,
+        "subreaper_restored": true,
+        "cleanup_limit_seconds": 1.0,
+        "overall_limit_seconds": 120.0
+      },
+      "cleanup_status": "closed",
+      "tests": {
+        "selected": 19,
+        "passed": 14,
+        "skipped": 5,
+        "failures": 0,
+        "errors": 0
+      },
+      "test_result_sha256": "e4fda04df88bec9d923275ba2fc8532ddcd1cff87545376d74f25c13a5311fc9"
+    },
+    {
+      "name": "oracle-large",
+      "status": "passed",
+      "receipt_sha256": "b6b46c542d80cde8b2a1f2d1e307be368189d145172efbca0dbe08a018699f05",
+      "execution": {
+        "exit_code": 0,
+        "status": "passed",
+        "timed_out": false,
+        "elapsed_seconds": 1.633945191,
+        "cleanup_seconds": 0.007662148,
+        "surviving_children": false,
+        "cleanup_errors": [],
+        "cleanup_echild": true,
+        "subreaper_restored": true,
+        "cleanup_limit_seconds": 1.0,
+        "overall_limit_seconds": 180.0
+      },
+      "cleanup_status": "closed",
+      "tests": {
+        "selected": 5,
+        "passed": 5,
+        "skipped": 0,
+        "failures": 0,
+        "errors": 0
+      },
+      "test_result_sha256": "75b10a44189ec954506a65715e523aa02d275134ce17152ba6dc0c23f72e74df"
+    },
+    {
+      "name": "capacity-mutation",
+      "status": "passed",
+      "receipt_sha256": "0b86e913b69d0a5d680dbc35411cfaa3a32281eb3686c681913ba2e29d7dce64",
+      "execution": {
+        "exit_code": 0,
+        "status": "passed",
+        "timed_out": false,
+        "elapsed_seconds": 0.062081294,
+        "cleanup_seconds": 0.000929226,
+        "surviving_children": false,
+        "cleanup_errors": [],
+        "cleanup_echild": true,
+        "subreaper_restored": true,
+        "cleanup_limit_seconds": 1.0,
+        "overall_limit_seconds": 120.0
+      },
+      "cleanup_status": "closed",
+      "tests": {
+        "selected": 1,
+        "passed": 0,
+        "skipped": 0,
+        "failures": 1,
+        "errors": 0
+      },
+      "test_result_sha256": "f1826780dbe88c4a3407ab2a9d967e01b30a7ac6986713650620bb6e17fea6e5",
+      "meaning": "One intended literal-contract assertion fails under coherent capacity reduction. This is successful mutation detection, not a passing assertion."
+    },
+    {
+      "name": "prepare",
+      "status": "passed",
+      "receipt_sha256": "66c0915171df7f7b808a33e956262377bc7b6b351a7d62e105904900571352f6",
+      "execution": {
+        "exit_code": 0,
+        "status": "passed",
+        "timed_out": false,
+        "elapsed_seconds": 0.067601054,
+        "cleanup_seconds": 0.001086348,
+        "surviving_children": false,
+        "cleanup_errors": [],
+        "cleanup_echild": true,
+        "subreaper_restored": true,
+        "cleanup_limit_seconds": 1.0,
+        "overall_limit_seconds": 120.0
+      },
+      "cleanup_status": "closed"
+    },
+    {
+      "name": "compile",
+      "status": "passed",
+      "receipt_sha256": "a3b0c724a8eecde73550c308c266528e67daa2a5b9f1585c04d086b068a8141a",
+      "execution": {
+        "exit_code": 0,
+        "status": "passed",
+        "timed_out": false,
+        "elapsed_seconds": 18.754858685,
+        "cleanup_seconds": 0.001577584,
+        "surviving_children": false,
+        "cleanup_errors": [],
+        "cleanup_echild": true,
+        "subreaper_restored": true,
+        "cleanup_limit_seconds": 1.0,
+        "overall_limit_seconds": 180.0
+      },
+      "cleanup_status": "closed"
+    },
+    {
+      "name": "run",
+      "status": "failed",
+      "receipt_sha256": "cc842458f2863b551c9240bb0c1bd87b9b0dbd696e2a9ed7180f4bf771bb7ef5",
+      "execution": {
+        "exit_code": -11,
+        "status": "failed",
+        "timed_out": false,
+        "elapsed_seconds": 0.425247585,
+        "cleanup_seconds": 0.001151142,
+        "surviving_children": false,
+        "cleanup_errors": [],
+        "cleanup_echild": true,
+        "subreaper_restored": true,
+        "cleanup_limit_seconds": 1.0,
+        "overall_limit_seconds": 120.0
+      },
+      "cleanup_status": "closed",
+      "signal": "SIGSEGV",
+      "stdout_bytes": 0,
+      "stderr_bytes": 0,
+      "cause": "unknown",
+      "typed_suite_accepted": false
+    }
+  ],
+  "compiled_elf": {
+    "bytes": 17657120,
+    "sha256": "3de360696cd9d2df82ba9ea99e0c7de9fc4081369ff043d6f7d53a19c1085b62",
+    "independent_review": "passed before once-only execution; not runtime acceptance"
+  },
+  "prepared_files": [
+    {
+      "path": "Main.chibi",
+      "kind": "file",
+      "bytes": 129318,
+      "sha256": "0ed825c94cc5557bedd45989615570ce91ca053a50a2b9a9216ee4d80edbcec9"
+    },
+    {
+      "path": "core/strings/Strings.chibi",
+      "kind": "file",
+      "bytes": 17248,
+      "sha256": "6fc25eedd2eee12631d2e22c8d075b82d7ee7561ef329e4c76846add13d44586"
+    },
+    {
+      "path": "inputs/EchoJoin.chibi",
+      "kind": "file",
+      "bytes": 215,
+      "sha256": "12e0c98624d659c81157fa762bd01d40b2316eb742eef79806949dbc0bc36bfd"
+    },
+    {
+      "path": "inputs/Main.chibi.in",
+      "kind": "file",
+      "bytes": 119457,
+      "sha256": "3394f025cd3423c7878c1d09dd6cabe071848f419cd5ba69ed399cd6f3ef10b9"
+    },
+    {
+      "path": "inputs/foreign/Main.chibi",
+      "kind": "file",
+      "bytes": 970,
+      "sha256": "18c45d1d56a0e17dfc9a0dc685cc06c083ad9a6a466336c3ff3221975bd895bf"
+    },
+    {
+      "path": "inputs/missing_symbol.chibi",
+      "kind": "file",
+      "bytes": 158,
+      "sha256": "db3e079260166c0d149a0027691a2856869b7e3d66f4871ab1334dcc51f0ae3b"
+    },
+    {
+      "path": "inputs/modules/Main.chibi",
+      "kind": "file",
+      "bytes": 181,
+      "sha256": "86ded16117e844c3c57a7aca9191617ab148c9aa9c237a8502f397e75377e4cf"
+    },
+    {
+      "path": "inputs/modules/math/Math.chibi",
+      "kind": "file",
+      "bytes": 117,
+      "sha256": "6fe411ca68648829984aa48f7b8c08da049d99c0f7792b379b9bcb70269c39be"
+    },
+    {
+      "path": "inputs/private_import.chibi",
+      "kind": "file",
+      "bytes": 109,
+      "sha256": "450d919e432a1913473410fbf8eea6fa1f8d9d249ced4cba18e322d35c2b2e4c"
+    },
+    {
+      "path": "inputs/source_census/Main.chibi",
+      "kind": "file",
+      "bytes": 7982,
+      "sha256": "0e44190699438f78b223c71a380a903f71526941f0a5dc700c655b62be341f16"
+    },
+    {
+      "path": "project/json_string/JsonString.chibi",
+      "kind": "file",
+      "bytes": 10675,
+      "sha256": "3a57f8b5b66ec6f3f067e5e8613eadf8f7a2010dc76638744ae854e61de36b06"
+    },
+    {
+      "path": "project/lexical_binding/Binding.chibi",
+      "kind": "file",
+      "bytes": 8673,
+      "sha256": "d39acdf6f1aaa3f7a43f7505daee4676401288f4b7ea9934a587e3f2e01a52a1"
+    },
+    {
+      "path": "project/named_binding/Binding.chibi",
+      "kind": "file",
+      "bytes": 16367,
+      "sha256": "2a4b5c1ff602b49c7699f8e2609768ea52e113831f77525d8a14109a8f214e2b"
+    },
+    {
+      "path": "project/package_graph/Graph.chibi",
+      "kind": "file",
+      "bytes": 13990,
+      "sha256": "c1fbae5b37b4667e1972a6a4685d37e7385623e643cf4402ebb0c6c8e7ff18e0"
+    },
+    {
+      "path": "project/signature_reader/Reader.chibi",
+      "kind": "file",
+      "bytes": 44643,
+      "sha256": "9a64c01947c19d4ab5fd89fcc34a6f3666efa4f3c38ed9247a4a04015c6b91bf"
+    },
+    {
+      "path": "project/source_parser/Declarations.chibi",
+      "kind": "file",
+      "bytes": 22604,
+      "sha256": "7ff7c69935978858b666b71809944286bf37fd6327e6b4934f1a4aecacdd7028"
+    },
+    {
+      "path": "project/source_parser/Expressions.chibi",
+      "kind": "file",
+      "bytes": 18832,
+      "sha256": "73fca2c7e098cf0f7d0b1581f92ba52ed36e363e7fde1586a63847685e9fde8e"
+    },
+    {
+      "path": "project/source_parser/Parser.chibi",
+      "kind": "file",
+      "bytes": 6473,
+      "sha256": "6bcf35fc78143b66d09b092d07cb72a19d8f5b39914e60c383e946607732dd64"
+    },
+    {
+      "path": "project/source_parser/Statements.chibi",
+      "kind": "file",
+      "bytes": 13382,
+      "sha256": "71866bcd5565b25e3debe27fff8a805de3daaad6ca5cc855110ec33c4f1c6041"
+    },
+    {
+      "path": "project/source_parser/Tree.chibi",
+      "kind": "file",
+      "bytes": 9716,
+      "sha256": "eab14b818a037349b04cfa045220fa9df669470306773795a9a4b61647efb80c"
+    },
+    {
+      "path": "project/source_parser/Types.chibi",
+      "kind": "file",
+      "bytes": 11047,
+      "sha256": "05eca2e83b3f1635a699c42953bbc7b4e8381e4dd20876fd258dfe85122df397"
+    },
+    {
+      "path": "project/source_tokenizer/Tokenizer.chibi",
+      "kind": "file",
+      "bytes": 30253,
+      "sha256": "88234ded25b3278c591602ae0346be3ce63c90130f4b8b0869a0f80c3a5e6072"
+    },
+    {
+      "path": "project/syntax_diagnostics/Diagnostics.chibi",
+      "kind": "file",
+      "bytes": 12254,
+      "sha256": "381d054bf4dc939c2dde091acd30d810a383b936b6f573988d4eac29015bd7c1"
+    },
+    {
+      "path": "project/type_constructors/Constructors.chibi",
+      "kind": "file",
+      "bytes": 17035,
+      "sha256": "f6136b7f2f72b8fc3bd356fa3d153aa3bce2188c64f4d5ca34310f876fbea232"
+    },
+    {
+      "path": "project/unit_algebra/Units.chibi",
+      "kind": "file",
+      "bytes": 8833,
+      "sha256": "d18c78a05a58ee6e3d0b3c4b53f11e3dab285c3fc4d29c4c28a6f6ed93c0ec48"
+    },
+    {
+      "path": "project/vnext_typed/Model.chibi",
+      "kind": "file",
+      "bytes": 5884,
+      "sha256": "dd157ed822eda9840c5895a48e9bb59beea559b48d2995fb340b8a89263b16eb"
+    },
+    {
+      "path": "project/vnext_typed/Produce.chibi",
+      "kind": "file",
+      "bytes": 71445,
+      "sha256": "cd668a0fd2fa8ce0cecdc5bd0cae5540c5c4f9387838a7baca698c74b7e2b714"
+    },
+    {
+      "path": "project/vnext_typed/Verify.chibi",
+      "kind": "file",
+      "bytes": 27509,
+      "sha256": "f21adba7cb2795e3223e0f647129eff4bf3b1224fa9e2b3eef931aca3ca61487"
+    },
+    {
+      "path": "source-manifest.json",
+      "kind": "file",
+      "bytes": 8816,
+      "sha256": "3976af3dea1f4b22d9e89f1aaafc7a7e9400bcca5bd885180dd3b9c922d210f0"
+    }
+  ],
+  "prepared_source_file_count": 28,
+  "inventory_note": "28 prepared source/input files plus source-manifest.json; all 29 inventory file entries retained.",
+  "large_oracle_frame_cap_bytes": 268632348,
+  "earlier_attempts": [
+    {
+      "packet": "02",
+      "outcome": "failed: reserved entry test local"
+    },
+    {
+      "packet": "03",
+      "outcome": "not executed: prospective reserved branch local finding"
+    },
+    {
+      "packet": "04",
+      "outcome": "failed: untyped Verify scratch arrays"
+    }
+  ],
+  "not_run": [
+    "v4 generation",
+    "backend build",
+    "Census native execution",
+    "native-harness03 preparation tests",
+    "work-counters02 transformer and runtime probes"
+  ],
+  "performance_claim": false,
+  "normalization": "Selected non-private fields from existing receipts; no commands re-executed while archiving. Receipt hashes identify original records, which are not published."
+}

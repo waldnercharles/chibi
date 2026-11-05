@@ -1,5 +1,5 @@
 {
-  "status": "CLI_failed_SDK_accepted_no_full_integration_acceptance",
+  "status": "LLVM_archives_and_SDK_accepted_CLI_failed_no_full_integration_acceptance",
   "sdk": {
     "status": "independently_accepted",
     "source_commit": "a661626d48172e3bfcda82c9dcde3018edf53eef",
@@ -85,8 +85,8 @@
   },
   "remaining": [
     "CLI full-suite success and demonstrated root cause remain unestablished.",
-    "Approved LLVM archive alternative is prepared but unrun; GNU route remains unvalidated.",
-    "16 C-project archives, linking and host runtime remain unrun.",
+    "LLVM archive route accepted; GNU archive route remains unvalidated.",
+    "C-host link/static ELF accepted; host startup/runtime remain unvalidated.",
     "Actual Windows, full current-head integration and ordinary VM/SLJIT/native differential remain unestablished."
   ],
   "holds": [
@@ -96,5 +96,104 @@
     "Stronger per-Capture descendant proof remains unproven"
   ],
   "all_88_C_files_in_one_integrated_build_established": false,
-  "merge_or_release_ready": false
+  "merge_or_release_ready": false,
+  "llvm_archives": {
+    "status": "independently_accepted_actual_run",
+    "route": "LLVM ar/ranlib",
+    "external_exit_code": 0,
+    "genuine_commands_completed": 32,
+    "archives": 16,
+    "members": 87,
+    "ELF_derived_indexed_symbols": 898,
+    "archive_bytes": 2061156,
+    "immutable_snapshots_verified": 32,
+    "exact_archive_bytes_reconstructed_from_original_objects": true,
+    "ranlib_identity_and_digest_unchanged": true,
+    "whole_owner_echild_and_native_stream_eof": true,
+    "quiescent_completion": "independently_reconciled",
+    "current_original_objects_sources_and_declared_runtime_bindings_unchanged": true,
+    "GNU_archive_route_validated": false,
+    "host_link_or_runtime_validated": false,
+    "historical_qualifications_upgraded": false
+  },
+  "instrumented_cli_diagnostic": {
+    "attempt": "enabled_r1",
+    "status": "failed_during_genuine_A_construction_cleanup_independently_reconciled",
+    "reason": "Private StopTrace retained local used reserved identifier sequence.",
+    "B_C_construction_reached": false,
+    "foreground_interaction_reached": false,
+    "trace_acquisition_reached": false,
+    "new_original_case_4_outcome": false,
+    "successor": {
+      "source_revision": "r8",
+      "diagnostic_revision": "enabled_r2",
+      "change": "Rename the retained local and its five uses to trace_sequence.",
+      "status": "independently_accepted_scoped_instrumented_case4_pass",
+      "trace_layout_assertions_signals_and_deadlines_unchanged": true,
+      "genuine_A_build_exit_code": 0,
+      "fixture_exit_code": 0,
+      "external_exit_code": 0,
+      "original_isolated_case4_assertions_passed": true,
+      "owner_elapsed_seconds": 122.57693434201065,
+      "immutable_inputs_reconciled": 4466,
+      "retained_files_reconciled": 4487,
+      "whole_owner_echild_and_eof": true,
+      "remaining_children": [],
+      "owner_errors": [],
+      "owner_signals": [],
+      "valid_trace_records": 25,
+      "trace_qualification": "Positive ordering witness for this instrumented run only; no globally loss-free trace or cause of the prior uninstrumented failure established.",
+      "B_C_image_qualification": "Backing images were sampled before unlinking and cannot now be independently rehashed.",
+      "acceptance_sha256": "cc7aa2d39b4b89e7c2e47c8991b82bbaf7204f0c782379b421b8b243922e7f7b"
+    },
+    "product_repair_demonstrated": false,
+    "original_full_suite_case_4": "FAILED",
+    "original_full_suite_case_5": "NOT_RUN",
+    "next_uninstrumented_reproduction": "in_preparation_only"
+  },
+  "c_host_link_preflight": {
+    "status": "independently_accepted_print_only",
+    "compiler": "GCC 14.2",
+    "mode": "-### response-file invocation",
+    "external_exit_code": 0,
+    "whole_owner_echild_and_eof": true,
+    "input_and_response_checks": "passed",
+    "generated_host_output": false,
+    "linker_subprocess_executed": false,
+    "nested_temporary_response_contents_observed": false,
+    "original_response_bytes_and_order_verified": true,
+    "actual_library_resolution_or_plugin_loading_established": false,
+    "installed_libdep_package_provenance": "unresolved",
+    "actual_link_generated_ELF_host_runtime_or_Graph_acceptance": false,
+    "acceptance_sha256": "61fccbda7d07a3b61a39812130b981ff1442d29bc1b2c17b617618058036eced"
+  },
+  "c_host_link": {
+    "status": "independently_accepted_actual_link_and_static_ELF",
+    "route": "Unchanged original GCC response-file link using accepted LLVM archives.",
+    "external_exit_code": 0,
+    "native_seconds": 0.09234945800562855,
+    "owner_seconds": 0.1344935029919725,
+    "host_bytes": 1337048,
+    "host_sha256": "e2b679a01af041a2077cf9ef5433063ea2ab876f1f09a9d655e26f61a94552c0",
+    "quarantined_mode": "0600",
+    "whole_owner_echild_and_eof": true,
+    "input_and_response_checks": "passed",
+    "ELF": "ELF64 little-endian x86-64 PIE",
+    "direct_dependencies": [
+      "libm.so.6",
+      "libc.so.6"
+    ],
+    "RPATH_RUNPATH_TEXTREL_present": false,
+    "writable_executable_LOAD_segment": false,
+    "executable_stack": false,
+    "strong_undefined_imports_with_versioned_providers": 99,
+    "COPY_imports_with_versioned_providers": 2,
+    "installed_candidate_closure": "statically_compatible_not_observed_runtime_selection",
+    "older_glibc_portability_claimed": false,
+    "host_executed": false,
+    "target_json_startup": "in_preparation_only",
+    "authored_Graph_or_full_current_head_build_accepted": false,
+    "historical_source_object_qualifications": "preserved",
+    "acceptance_sha256": "c46ee6e0c2bf8774b60b3698cf7a9f0b61659eada663620047d8819bdf6de21f"
+  }
 }

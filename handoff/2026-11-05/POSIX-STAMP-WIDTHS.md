@@ -28,8 +28,9 @@ with no skips and no actual native compiler or proof program execution.
 The first two launcher runs failed on those stale expectations and remain recorded
 as failures, not discarded repetitions.
 
-Pure-data reference checks and shell/Python syntax checks pass. These checks do
-not execute the changed Chibi code. Native O0/O2, real C/Python parity, Darwin
-execution and affected Graph/Driver/source-bound validation are still pending
-recovery and admission of a compatible compiler. Earlier proofs do not certify
-this changed core source. This is a reviewed source checkpoint, not merge readiness.
+At this source checkpoint, pure-data reference and shell/Python syntax checks
+passed, but did not execute the changed Chibi code. After compatible compiler
+recovery, the complete unchanged Linux O0/O2 synthetic and actual C/native/Python
+suite passed and was independently accepted; see [POSIX-STAMP-VALIDATION.md](POSIX-STAMP-VALIDATION.md).
+Darwin execution and affected Graph/Driver/product/integration validation remain
+separate. This focused result does not imply merge readiness.

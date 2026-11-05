@@ -1,0 +1,115 @@
+{
+  "status": "accepted_full_posix_stamp_linux",
+  "platform": "Linux x86-64",
+  "exact_source": {
+    "commit": "1f2e912b617e3cd6e832e3cbdabc04076a4ef695",
+    "entries": 4172,
+    "tree": "e8845b0a7b2e9ff8f2edb838ca01f4728543ee03"
+  },
+  "compiler_source": {
+    "commit": "02c86287430def964445ec90185961e20319536d",
+    "entries": 4054,
+    "tree": "780ba87ea9f29308f2f20a94381cdce8cc5d26ca"
+  },
+  "compiler_acceptance_sha256": "10aa227f4f0df194b7558a7b2506aceeedbcc020db037b403f6fcdee8c5f5715",
+  "coverage": {
+    "actual_production_c_host": true,
+    "c_compilations": 1,
+    "c_probe_launches": 4,
+    "chibi_compilations": 4,
+    "chibi_compile_jobs": 1,
+    "complete_unchanged_authored_run_sh": true,
+    "exact_byte_comparisons": true,
+    "four_nonempty_three_empty_paths": true,
+    "native_levels": [
+      0,
+      2
+    ],
+    "native_probe_launches": 4,
+    "paths_per_probe": 7,
+    "post_probe_stat_stability_and_content_checks": true,
+    "repetitions_per_implementation_per_level": 2,
+    "synthetic_cases": true,
+    "synthetic_native_runs": 2,
+    "synthetic_target_layout": "Linux x86-64 only; authored Darwin target branch not executed"
+  },
+  "owner_elapsed_seconds": 5.62460324299991,
+  "total_bound_seconds": 180,
+  "cleanup_reserve_seconds": 10,
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "stdout_bytes": 114,
+  "stdout_sha256": "9c3d91e39494863252ef11e946e413aa780a4082ee4c61aee2b486e2129a639e",
+  "exact_stdout": "PASS full-width POSIX stamps and C/native/Python stat O0\nPASS full-width POSIX stamps and C/native/Python stat O2\n",
+  "stderr_bytes": 0,
+  "echild": true,
+  "pipe_eof": true,
+  "signals": [],
+  "errors": [],
+  "survivors": [],
+  "final_live_fences": {
+    "directory_inventories": 30,
+    "file_facts": 508,
+    "required_absences": 714,
+    "seconds": 0.7488977550001437
+  },
+  "fixture_sha256": {
+    "packages/core/sys/posix/Posix.chibi": "ccf520b4e469955595069b8fada01fb8833c8abdf20aab80cf06ce8dcbfb354f",
+    "test/native_aot/posix_stamp/Probe.chibi": "732e4fdd9be418206a09b730c9e92d5fcd93170e7531a27850e9631c1fd94615",
+    "test/native_aot/posix_stamp/Values.chibi": "b2280d0fc7a3d9746e206ca5f587e25d7ad0e4ef4736dcae4bb4f401df4ddea3",
+    "test/native_aot/posix_stamp/host.c": "31322f531596e1c80e8687f1a2f54581d6c42a3e1b0336d5330cdfd5ccbfa81f",
+    "test/native_aot/posix_stamp/run.sh": "7bc6c3ed008a3d24182367c09dbb03683452a7127ca14945aaddbb973cee944a"
+  },
+  "proof_sha256": {
+    "coordinator-launch.json": "0c7aae0976957f5a635b3d2e041c21e59d3f3f229c5e9bc08e1b661a46e87ad5",
+    "observed-terminal.json": "d91c689b49aa0d9e595c75946c03c110bc4f41c36f4390b300a516e68e1274d5",
+    "suite-admission.json": "5d1cd5034396438fbd6e258bc5cb7af4d3aa39eaaec342a9f829ccfaffe3b7c0",
+    "suite-attempt/launch.json": "af2485d5a86d7a0015b60a7871ffb69e4f0bb64018bf7585a40d48e6981be370",
+    "suite-attempt/owner-receipt.json": "7a64844854d1902eb6fa416b2c572a13b1407621bcf80205eeec74309c763b56",
+    "suite-attempt/raw.log": "9c3d91e39494863252ef11e946e413aa780a4082ee4c61aee2b486e2129a639e",
+    "suite-attempt/stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "suite-attempt/stdout.log": "9c3d91e39494863252ef11e946e413aa780a4082ee4c61aee2b486e2129a639e",
+    "suite-attempt/suite-result.json": "074f6eb04c011cafb9e6646bda6fec34f1d9d3f1cfa7cf95ce817fbdc5411241",
+    "suite-attempt/suite-terminal.json": "e81439e2ce42efe915bb1d15aa528331b44eed8dd85fdbe7d492b22cfe3e5a0c"
+  },
+  "reviewed_packet_sha256": {
+    "capture.py": "625812d4cd5fd0cb984efe98a52e9b117f4026576f1b4ce55040f70890c4090e",
+    "fences.py": "dd0a4457d5522f42693952d200c6d37748b829cb86f5be33c51761e194e5133e",
+    "fixture_boundary.py": "4da7ad68addf82a18977254018b17128c69d66f9ac23765250a2f731053f59e6",
+    "owner.py": "3738eb8806c01da86328b75ad07499d960e4c23a89076bc8bfd13e45657a4e0d",
+    "run_suite.py": "f8cf6902997d825de1432f0e74889ecc5aee7307e02ad19fdd71fbc3f42ab4f6",
+    "suite-plan.json": "81d7eb17dc4a81ddce83257315cf570cb2aa61315c70cb7e927dbd8eeb42009f",
+    "suite_owner.py": "e2510f4fb48effc5328fc6f42493558b5f65ed862636c0da20a9cdc036e3c66e"
+  },
+  "final_verification_checks": 27,
+  "darwin_acceptance": false,
+  "windows_acceptance": false,
+  "full_integration_acceptance": false,
+  "pr_readiness": false,
+  "pr1331_hold_unchanged": true,
+  "compiler": {
+    "bytes": 11576992,
+    "sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266",
+    "mode": 384
+  },
+  "actual_outer_exit_code": 0,
+  "independent_acceptance_sha256": "74cd5a2bd0f4b8c9d89c6abd281d0af61134bd3f931e9df91f0230d04bc57fbc",
+  "source_fix_commit": "ad85a74b8ea0617e41667ff5632ac783be66d0e6",
+  "actual_c_oracle_commit": "15bfb6f766c864df96e49d8394b0c8ab06434c41",
+  "local_preservation": {
+    "file": "chibi-posix-stamp-source-proof-20261105.tar.gz",
+    "bytes": 23150196,
+    "sha256": "533de6d7e3f815469feec6bb9f55d6472843dcea56870a26fd65a7b786387aef",
+    "members": 4216,
+    "external_upload": false,
+    "generated_execution": false
+  },
+  "limits": [
+    "Linux target layout only; authored Darwin branch did not execute.",
+    "Whole unchanged suite proof, not preservation of transient fixture executables removed by authored cleanup.",
+    "Changed-source Graph, Driver, product and integration gates remain separate.",
+    "Unknown original c5 chain and excluded union-native leak investigation remain untouched."
+  ]
+}

@@ -1,0 +1,128 @@
+{
+  "classification": "Freshly recovered Linux x86-64 intermediate compiler; not a release, Windows pass, historical runner acceptance, or PR #1331 readiness",
+  "source": {
+    "commit": "14f7a46a047ab92acfe58398b3cdac25ab7d0312",
+    "tree": "342ada78280eaecde5a5a8ffa0845a74a729926d",
+    "entries": 3400
+  },
+  "compiler": {
+    "bytes": 10633736,
+    "sha256": "0a43d0a2b91f6c5e36afc8ba1ea586fe938d6fbb39b687acb3e3ee442bcab7dc",
+    "mode": 384
+  },
+  "elf": {
+    "interpreter": "/lib64/ld-linux-x86-64.so.2",
+    "needed": [
+      "libc.so.6"
+    ],
+    "rpath": [],
+    "runpath": []
+  },
+  "raw_stage3_stage4_equal": true,
+  "matches_historical_intermediate_sha256": true,
+  "tests": {
+    "count": 485,
+    "unique_count": 485,
+    "summary": "485 tests, 0 failed",
+    "sorted_newline_sha256": "e95776d16971c7da2deaaa524bfcaa97cfcb192c10b1d040c35cf1c091617169",
+    "compiler_stderr_bytes": 0,
+    "per_test_stderr": "not retained by canonical driver",
+    "stdout_bytes": 27401,
+    "stdout_sha256": "1fe1d03b3b87c9ddd9e20f5ddc3ac0265d8a70f38d70e58e53681e9dece271cb"
+  },
+  "phases": {
+    "stage2": {
+      "elapsed_seconds": 95.50467112899992,
+      "total_bound_seconds": 120,
+      "cleanup_reserve_seconds": 10,
+      "outer_exit_code": 0,
+      "echild": true,
+      "signals": 0,
+      "surviving_children": 0,
+      "errors": 0,
+      "owner_receipt_sha256": "dada55b466659a44f1a378432d4ae1712ec5c3e5265e780fd92c2f2c02cf4aef",
+      "artifact": {
+        "bytes": 10606640,
+        "sha256": "8437e7d063882e0831daa3e42a711ba77be2a9fb48be74246f4a8b58e04531f7",
+        "mode": 384
+      }
+    },
+    "stage3": {
+      "elapsed_seconds": 98.67196172600006,
+      "total_bound_seconds": 120,
+      "cleanup_reserve_seconds": 10,
+      "outer_exit_code": 0,
+      "echild": true,
+      "signals": 0,
+      "surviving_children": 0,
+      "errors": 0,
+      "owner_receipt_sha256": "4cf4cc65223940a99c6dd45680c6293e731167bc141407d5446aeb7fd34c263f",
+      "artifact": {
+        "bytes": 10633736,
+        "sha256": "0a43d0a2b91f6c5e36afc8ba1ea586fe938d6fbb39b687acb3e3ee442bcab7dc",
+        "mode": 384
+      }
+    },
+    "stage4": {
+      "elapsed_seconds": 101.32162151700004,
+      "total_bound_seconds": 120,
+      "cleanup_reserve_seconds": 10,
+      "outer_exit_code": 0,
+      "echild": true,
+      "signals": 0,
+      "surviving_children": 0,
+      "errors": 0,
+      "owner_receipt_sha256": "85d798acfe974a56fc4697cc2433996cb5b8eb5f487672d8876341c83c9b1401",
+      "artifact": {
+        "bytes": 10633736,
+        "sha256": "0a43d0a2b91f6c5e36afc8ba1ea586fe938d6fbb39b687acb3e3ee442bcab7dc",
+        "mode": 384
+      }
+    },
+    "compiler_tests": {
+      "elapsed_seconds": 49.880383214000176,
+      "total_bound_seconds": 180,
+      "cleanup_reserve_seconds": 10,
+      "outer_exit_code": 0,
+      "echild": true,
+      "signals": 0,
+      "surviving_children": 0,
+      "errors": 0,
+      "owner_receipt_sha256": "d42b2785aec9aef00736116bce6e8ea2d0077c2c046048982609fca143c4e07d"
+    }
+  },
+  "build_jobs": 2,
+  "test_execution_workers": 2,
+  "test_compile_jobs": 8,
+  "test_compile_jobs_reason": "Canonical Jobs([]) falls back to 8 under the explicit empty PATH; no --jobs option exists in this test CLI",
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "source_tool_and_runtime_fences_passed": true,
+  "copied_test_source_restored_and_verified": true,
+  "independent_intermediate_acceptance_sha256": "1c11195faeb22a2ce55165807ad22404194160543d43fd4aff47ecd63f73caf1",
+  "seed": {
+    "commit": "7482",
+    "artifact_id": 13204584163,
+    "url": "https://github.com/waldnercharles/chibi/actions/runs/41574174752/job/125714037928",
+    "archive_sha256": "0c7fe2018c3b77085edf3708e99adc28279ab2f606a85f422595bbb2a4f4e5b6",
+    "provisional_builder_sha256": "6e867c8e5588509286a5709ecdca902e8aaeb6d3db51f1ea4efb1bb09b677d03",
+    "historical_failed_runner_contract_retained": true
+  },
+  "scope_limits": [
+    "Original unknown c5 bootstrap was not restarted or signaled.",
+    "Excluded native union leak investigation was not run.",
+    "Current 02c862 compiler reconstruction and 573 tests remain separate.",
+    "Changed development-branch POSIX source is not part of this 14f7 compiler proof.",
+    "PR #1331, Windows and broader integration gates remain open."
+  ],
+  "local_preservation": {
+    "file": "chibi-intermediate-14f7-source-proof-20261105.tar.gz",
+    "bytes": 28067599,
+    "sha256": "04ed5a13b5caed2a0cfb75716fc1d342111acb324f636ff1d765e761ccb69f2e",
+    "members": 3503,
+    "uploaded": false
+  },
+  "timing_note": "Observed bounded correctness phases, not a quiet performance benchmark."
+}

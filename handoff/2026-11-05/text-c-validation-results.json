@@ -1,0 +1,97 @@
+{
+  "date": "2026-11-05",
+  "scope": "One authored src/types/text.c translation unit, GNU23 Release; no linking, loading or execution of its object.",
+  "frozen_source_commit": "a661626d48172e3bfcda82c9dcde3018edf53eef",
+  "frozen_source_tree": "1ecc136fc8ab2a059430cfb6cefcd88217cf3710",
+  "source": {
+    "bytes": 6746,
+    "sha256": "1a709d488def6b3729b2d5fd033521454a29863b09fcb8b935beee73547ae83b"
+  },
+  "compile_flags": [
+    "-O3",
+    "-DNDEBUG",
+    "-std=gnu23",
+    "-Wall",
+    "-Wextra",
+    "-Wpedantic",
+    "-Werror",
+    "-Wno-missing-field-initializers",
+    "-Wno-unused-parameter",
+    "-Wno-unused-function",
+    "-Wno-unused-variable",
+    "-Wno-zero-length-array",
+    "-Wno-string-concatenation"
+  ],
+  "staging": {
+    "files": 26,
+    "bytes": 101336
+  },
+  "stages": {
+    "preprocess": {
+      "status": "independently_accepted",
+      "outer_exit": 0,
+      "outer_elapsed_seconds": 1.011279561000265,
+      "native_exit": 0,
+      "native_elapsed_seconds": 0.032256878999760374,
+      "acceptance_sha256": "1e0bd011f72ce4eca4201cd70ac488d378e61aba61a6b4d1dc2cb8d8f9d619cb"
+    },
+    "print_only": {
+      "status": "independently_accepted",
+      "outer_exit": 0,
+      "outer_elapsed_seconds": 0.7283580989969778,
+      "native_exit": 0,
+      "native_elapsed_seconds": 0.011711268001818098,
+      "acceptance_sha256": "610ca4b85820978ac5d6af8f2c7f9103d0681b022b6de7175971f59c59b0f14c"
+    },
+    "object_compile": {
+      "status": "independently_accepted",
+      "outer_exit": 0,
+      "outer_elapsed_seconds": 0.9953358069979004,
+      "native_exit": 0,
+      "native_elapsed_seconds": 0.1319561039999826,
+      "acceptance_sha256": "f269096b629170d3cf5b9e8822ae7b40cf089b07239af1c7bec38340d33335e2"
+    }
+  },
+  "object_controls": {
+    "status": "independently_accepted",
+    "count": 32,
+    "acceptance_sha256": "ad88f0b77a6161d08c317447f82ff9a8dd0e058babd3e0252b2f39e09b2f90f5",
+    "packet_seal_sha256": "b51b33d0ca93cc8d0c8c331ec313bb1f2d22263fcfdbd2bbda23863b4e110cb9"
+  },
+  "object": {
+    "bytes": 7896,
+    "sha256": "e2f4e86674e8d845390ad2170d506a0fad84193b9f7cbd856b5bb21dfd001baa",
+    "format": "ELF64-LSB-x86-64-ET_REL",
+    "defined_global_functions": 9,
+    "loaded_or_executed": false
+  },
+  "compile_dependency_file": {
+    "bytes": 3632,
+    "sha256": "60f353b7e59943301907a4d7a0c858caa328b7695914403cf02326b557ba741a"
+  },
+  "active_dependency_preprocessing": {
+    "candidate_count": 70,
+    "active_count": 63,
+    "inactive_count": 7,
+    "macro_count": 976,
+    "ordered_include_directories": 7,
+    "acceptance_sha256": "e599af8fcc1ed9a02174fb424eafdb06a2535c12b650010fdc1a895033c88b75"
+  },
+  "ownership": {
+    "outcome": "whole_owner_ECHILD_EOF_passed",
+    "stronger_per_capture_descendant_proof": false
+  },
+  "remaining": {
+    "other_translation_units_unpassed": 87,
+    "archives_unpassed": 16,
+    "host_link_and_runtime": "unpassed",
+    "cli_r3": "failed_preserved",
+    "cli_r4": "held_not_rerun",
+    "sdk": "held_not_rerun",
+    "pr_1331": "held",
+    "c5_bootstrap": "held_terminal_unknown",
+    "native_union16_investigation": "held",
+    "exact_public_head_integration": "not_established",
+    "merge_or_release_readiness": false
+  }
+}

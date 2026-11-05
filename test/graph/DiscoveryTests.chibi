@@ -112,8 +112,8 @@ Matches :: (root: string, explicit: string, expected: string, relative: string) 
     return true;
 }
 
-// Run sets CMAKE_PREFIX_PATH, CMAKE_INCLUDE_PATH and CMAKE_LIBRARY_PATH to
-// the prefixes below, relative to the source root.
+// Run puts the relative fixture paths before inherited CMAKE_LIBRARY_PATH
+// entries, which can supply a real installation for the final fallback.
 pub Prefixes :: () -> int {
     root := os.Arguments()[0];
     first := Path([root, "/first prefix"]);
@@ -195,7 +195,7 @@ DriversCase :: (toolchain: Toolchain, scratch: string) {
 PrefixesCase :: (toolchain: Toolchain, relative: string) {
     prefixes := Path(["CMAKE_PREFIX_PATH=:", relative, "/missing prefix::", relative, "/first prefix:", relative, "/second prefix:", relative, "/semicolon;prefix:"]);
     includes := Path(["CMAKE_INCLUDE_PATH=", relative, "/direct prefix/include/"]);
-    libraries := Path(["CMAKE_LIBRARY_PATH=", relative, "/direct prefix/lib64/"]);
+    libraries := Path(["CMAKE_LIBRARY_PATH=", relative, "/direct prefix/lib64/:", os.Getenv("CMAKE_LIBRARY_PATH")]);
     root := Path([os.Root(), "/", relative]);
     Check(toolchain, [prefixes, includes, libraries], os.Root(), "Prefixes", [root]);
     spelling := Path([root, "/spelling"]);

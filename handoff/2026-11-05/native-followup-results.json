@@ -1,0 +1,133 @@
+{
+  "archive_invalidation": {
+    "acceptance_sha256": "4cbe03de700baedd8157384cdf1afab2683da680157fd4cbb2452459dcb618e1",
+    "cases": [
+      [
+        "cold",
+        1
+      ],
+      [
+        "warm",
+        0
+      ],
+      [
+        "edited",
+        1
+      ],
+      [
+        "edited-warm",
+        0
+      ],
+      [
+        "missing",
+        -1
+      ],
+      [
+        "restored",
+        1
+      ],
+      [
+        "restored-warm",
+        0
+      ]
+    ],
+    "individual_case_timings_available": false,
+    "observed_seconds": 29.495706018999044,
+    "owner_seconds": 29.330444953997358,
+    "proof_archive": {
+      "bytes": 22579503,
+      "independent_review_sha256": "03d8c63ac257cb0dee29db17f1a5026e2367bd4258f7b0e07223900eb9f3d83f",
+      "member_mode": "0600",
+      "name": "chibi-archive-invalidation-a661626d-proof-20261105.tar.gz",
+      "regular_members": 4104,
+      "sha256": "d458f93e7053e7f48a5c447954ff4980a6b133dff321be967e0d4e3c809e86c8"
+    },
+    "retained_per_case_outputs": false,
+    "scope": "unchanged_whole_authored_suite",
+    "stderr_bytes": 0,
+    "stdout": "PASS native archive cold/warm, Windows template edit/deletion, prior output and recovery\n"
+  },
+  "compiler": {
+    "bytes": 11576744,
+    "sha256": "a0ded77510f72650cf9484b63721ecd980c41d9847bedaa6e512ec68f03c3cb3"
+  },
+  "compiler_controls": {
+    "acceptance_sha256": "3c94a039ab723230d8c676b2ca6d23aa1cc18b450f67b9706f7e3ae8cc6a61b2",
+    "cases": 10,
+    "final_mode": "0600",
+    "inert_executable_leaves": 640
+  },
+  "compiler_tests": {
+    "acceptance_sha256": "d7e752ca7eec78b60f5b65436a1bd32052fa22e73965ebcea3834de6eac85722",
+    "compiler_stderr_bytes": 0,
+    "failed": 0,
+    "names_sorted_newline_sha256": "f7bcbedc4f9e6113ea60be8dba26155a6d476026375f2687c7d12ab62473e380",
+    "observed_seconds": 69.15868060399953,
+    "owner_seconds": 68.88875979600198,
+    "packages": 20,
+    "per_test_stderr": "not retained by canonical driver",
+    "source_folders": 70,
+    "stdout_bytes": 33873,
+    "summary": "573 tests, 0 failed",
+    "tests": 573,
+    "unique_passes": 573
+  },
+  "containment": {
+    "errors": [],
+    "pipe_eof": true,
+    "private_executables_quarantined": true,
+    "remaining_children": [],
+    "signals": [],
+    "stronger_per_capture": "failed/unproven",
+    "whole_owner_echild": true
+  },
+  "head_scope": {
+    "changes_since_tested_source": [
+      "handoff/2026-11-05/NATIVE-PRODUCT-VALIDATION.md",
+      "handoff/2026-11-05/native-product-results.json",
+      "test/graph/ChibiCliTests.chibi"
+    ],
+    "compiler_core_and_compiler_tests_unchanged": true,
+    "full_exact_head_integration": false,
+    "later_checkpoint": "a26027facc2c0de6e92abc71a2641186da730544"
+  },
+  "holds": [
+    "PR1331",
+    "terminal-unknown c5 bootstrap",
+    "excluded native16-byte union investigation",
+    "stronger per-Capture proof"
+  ],
+  "limits": {
+    "affinity": [
+      0,
+      1
+    ],
+    "archive_cleanup_seconds": 10,
+    "archive_total_seconds": 300,
+    "compiler_phase_cleanup_seconds": 10,
+    "compiler_phase_total_seconds": 240,
+    "process_memory_peak": "not measured",
+    "storage_bounds": "sampled, not a transient peak measurement"
+  },
+  "merge_or_release_ready": false,
+  "remaining": [
+    "SDK installation/relocation",
+    "full CLI and real PTY suite",
+    "asset bridge",
+    "C integration",
+    "ordinary VM/SLJIT/native differential",
+    "actual Windows execution",
+    "final exact-head integration and independent review"
+  ],
+  "self_compilation": {
+    "acceptance_sha256": "6d28793f0b25d37bcbe16c533bdfd4278368cea6f46b479a6bf7a387189775ba",
+    "generated_output_executed": false,
+    "independently_repeated": true,
+    "observed_seconds": 119.95170822100044,
+    "owner_seconds": 119.74429480300023,
+    "raw_byte_equality": true
+  },
+  "source_commit": "a661626d48172e3bfcda82c9dcde3018edf53eef",
+  "source_tree": "1ecc136fc8ab2a059430cfb6cefcd88217cf3710",
+  "status": "independently_accepted_current_compiler_and_archive_validation"
+}

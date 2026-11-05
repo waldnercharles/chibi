@@ -1,0 +1,38 @@
+{
+  "status": "inputs restored; no native execution in the recovered workspace",
+  "published_source_commit": "5d64ce8d5a97e4df2cbbcc0bd0fbbba17f724b41",
+  "restored_tracked_entries": 4162,
+  "candidate": {
+    "artifact_id": 13204584163,
+    "archive_sha256": "0c7fe2018c3b77085edf3708e99adc28279ab2f606a85f422595bbb2a4f4e5b6",
+    "bytes": 10062736,
+    "sha256": "6e867c8e5588509286a5709ecdca902e8aaeb6d3db51f1ea4efb1bb09b677d03",
+    "accepted_compiler": false,
+    "historical_runner_failure_retained": true
+  },
+  "source_inventory": [
+    {
+      "name": "intermediate",
+      "commit": "14f7a46a047ab92acfe58398b3cdac25ab7d0312",
+      "tree": "342ada78280eaecde5a5a8ffa0845a74a729926d",
+      "tracked_entries": 3400,
+      "test_names": 485,
+      "sorted_test_names_sha256": "e95776d16971c7da2deaaa524bfcaa97cfcb192c10b1d040c35cf1c091617169",
+      "tests_executed": false
+    },
+    {
+      "name": "current",
+      "commit": "02c86287430def964445ec90185961e20319536d",
+      "tree": "780ba87ea9f29308f2f20a94381cdce8cc5d26ca",
+      "tracked_entries": 4054,
+      "test_names": 573,
+      "sorted_test_names_sha256": "f7bcbedc4f9e6113ea60be8dba26155a6d476026375f2687c7d12ab62473e380",
+      "tests_executed": false
+    }
+  ],
+  "native_builds_executed": 0,
+  "native_tests_executed": 0,
+  "prior_writer_launched": false,
+  "merge_ready": false,
+  "scope": "existing takeover track; separate vNext/Rust work is not described"
+}

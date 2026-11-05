@@ -1,0 +1,135 @@
+--- a/WorkProbe.chibi.in
++++ b/WorkProbe.chibi.in
+@@ -50,7 +50,20 @@
+         meter := typed.EmptyWorkCounts();
+         result := WorkCompareSource(source, &meter);
+         switch result {
+-            case .Produced(module): assert(length(module.blocks) == 1 + 3 * size, "disjoint loop fixture blocks");
++            case .Produced(module):
++                assert(length(module.blocks) == 1 + 3 * size, "disjoint loop fixture blocks");
++                assert(length(meter.functions) == 1, "one successful function inventory");
++                row := meter.functions[0];
++                assert(row.function_id == 1 && row.complete && row.signature_parameters == 1,
++                       "completed function with one bool parameter");
++                assert(row.blocks == length(module.blocks) && row.values == length(module.values) &&
++                       row.instructions == length(module.instructions) && row.edges == length(module.edges) &&
++                       row.arguments == length(module.arguments) && row.parameters == length(module.block_parameters),
++                       "single function inventory covers the produced module tables");
++                assert(row.assignment_rows == size && row.loop_rows == size && length(row.write_masks) == size,
++                       "one assignment and write-mask row per disjoint loop");
++                // The bool parameter b occupies slot 0; only x in slot 1 is written.
++                for (mask in row.write_masks) { assert(mask == u64(2), "each loop writes only x"); }
+             case .Rejected(diagnostic): assert(false, "disjoint loop fixture must produce");
+         }
+         assert(meter.prepass_statements == 2 * size + 2 && meter.emitted_statements == 2 * size + 2,
+@@ -96,6 +109,9 @@
+                     for (layout, ordinal in layouts) {
+                         counts := WorkVerify(layout, 0);
+                         assert(counts.reachability_pops == size, "deduplicated reachability visits each reachable block");
++                        // Every nonentry block is initially queued and has a predecessor.
++                        assert(counts.dominance_pops >= size - 1 && counts.predecessor_reads >= size - 1,
++                               "reachable nonentry blocks require dominance and predecessor work");
+                         pop_bound := size + 2 * size * (size - 1);
+                         assert(counts.dominance_pops <= pop_bound && counts.word_intersections <= 4 * size * pop_bound,
+                                "bounded fixed point, not a linear dominance claim");
+@@ -115,6 +131,14 @@
+                     invalid_layouts: typed.Module[] = [changed, ReverseBlockLayout(changed)];
+                     for (layout, ordinal in invalid_layouts) {
+                         counts := WorkVerify(layout, typed.InvalidDominance);
++                        // The unchanged CFG converges before the invalid return use is checked.
++                        assert(counts.reachability_pops == size, "invalid use preserves reachable blocks");
++                        assert(counts.dominance_pops >= size - 1 && counts.predecessor_reads >= size - 1,
++                               "invalid use still requires dominance and predecessor work");
++                        pop_bound := size + 2 * size * (size - 1);
++                        assert(counts.dominance_pops <= pop_bound && counts.word_intersections <= 4 * size * pop_bound,
++                               "invalid use retains the bounded fixed point");
++                        assert(counts.word_intersections == 2 * counts.predecessor_reads, "two words per predecessor");
+                         report.verifier.append(counts);
+                         report.verifier_labels.append(format_text("blocks={} reversed={} invalid-use", size, ordinal));
+                     }
+@@ -128,12 +152,51 @@
+                             "package p\nF :: () -> i64 { return ; }",
+                             "package p\nF :: () -> i64 { return unknown; }",
+                             "package p\nF :: (b: bool) -> i64 { return b; }"];
+-    for (source in bad_sources) {
++    for (source, index in bad_sources) {
+         meter := typed.EmptyWorkCounts();
+         result := WorkCompareSource(source, &meter);
+         switch result {
+             case .Produced(module): assert(false, "negative fixture unexpectedly accepted");
+             case .Rejected(diagnostic): assert(text_byte_length(diagnostic.message) > 0, "negative fixture has a diagnostic");
++        }
++        // These five paths neither emit an instruction nor enter a loop or the
++        // separately instrumented verifier. Expectations are fixture-derived;
++        // native execution is still required to establish actual observations.
++        assert(meter.emit_calls == 0 && meter.mask_updates == 0 &&
++               meter.while_conditions == 0 && meter.while_bodies == 0 &&
++               meter.reachability_pops == 0 && meter.dominance_pops == 0 &&
++               meter.predecessor_reads == 0 && meter.word_intersections == 0,
++               "rejected fixtures do not invent later-phase work");
++        if (index == 0) {
++            // Parse rejects before its Parsed arm updates the caller's meter.
++            assert(meter.parser_nodes == 0 && meter.prepass_statements == 0 &&
++                   meter.assignment_resolutions == 0 && meter.emitted_statements == 0 &&
++                   meter.expression_entries == 0 && length(meter.functions) == 0,
++                   "parser rejection leaves the fresh meter empty");
++        } else {
++            assert(meter.parser_nodes > 0 && meter.prepass_statements == 1,
++                   "one visited statement survives post-State rejection publication");
++            if (index == 1) {
++                // The unknown assignment stops the prepass before return 0.
++                assert(meter.assignment_resolutions == 1 && meter.emitted_statements == 0 &&
++                       meter.expression_entries == 0 && length(meter.functions) == 0,
++                       "prepass rejection publishes its lookup without a body inventory");
++            } else {
++                expected_expressions: int = 1;
++                if (index == 2) { expected_expressions = 0; }
++                assert(meter.assignment_resolutions == 0 && meter.emitted_statements == 1 &&
++                       meter.expression_entries == expected_expressions && length(meter.functions) == 1,
++                       "body rejection publishes reached statements, expressions and inventory");
++                row := meter.functions[0];
++                expected_parameters: int = 0;
++                if (index == 4) { expected_parameters = 1; }
++                assert(row.function_id == 1 && !row.complete && row.blocks == 1 &&
++                       row.values == expected_parameters && row.parameters == expected_parameters &&
++                       row.signature_parameters == expected_parameters && row.instructions == 0 &&
++                       row.edges == 0 && row.arguments == 0 && row.assignment_rows == 0 &&
++                       row.loop_rows == 0 && length(row.write_masks) == 0,
++                       "failed body inventory retains only its entry and optional bool parameter");
++            }
+         }
+     }
+     census_source := WORK_CENSUS_LITERAL;
+--- a/instrument_prepared.py
++++ b/instrument_prepared.py
+@@ -63,22 +63,24 @@
+     source = once(source, 'pass_state: State = {tree:', 'pass_state: State = {meter: meter^, tree:')
+     source = once(source, 'node_count += length(nodes);',
+                   'node_count += length(nodes);\n                meter.parser_nodes += length(nodes);')
++    # Address the inline meter for this increment only; implicit nested scalar
++    # assignment reads a record value in stage one, not its writable location.
+     for signature, counter in (
+         ('CollectWrite :: (s: ^State, statement: int, depth: int) {', 'prepass_statements'),
+         ('Expression :: (s: ^State, output: ^Module, node: int, depth: int) -> u32 {', 'expression_entries'),
+         ('Emit :: (s: ^State, output: ^Module, op: u32, type: u32, left: u32, right: u32, payload: u32, node: int) -> u32 {', 'emit_calls'),
+     ):
+-        source = once(source, signature, signature + '\n    s.meter.' + counter + ' += 1;')
++        source = once(source, signature, signature + '\n    (&s.meter).' + counter + ' += 1;')
+     source = once(source, '        slot := FindBinding(s, target);',
+-                  '        s.meter.assignment_resolutions += 1;\n        slot := FindBinding(s, target);')
++                  '        (&s.meter).assignment_resolutions += 1;\n        slot := FindBinding(s, target);')
+     source = once(source, '                row.mask |= u64(1) << u32(slot);',
+-                  '                s.meter.mask_updates += 1;\n                row.mask |= u64(1) << u32(slot);')
++                  '                (&s.meter).mask_updates += 1;\n                row.mask |= u64(1) << u32(slot);')
+     source = once(source, '        kind := s.nodes[statement].kind;',
+-                  '        s.meter.emitted_statements += 1;\n        kind := s.nodes[statement].kind;')
++                  '        (&s.meter).emitted_statements += 1;\n        kind := s.nodes[statement].kind;')
+     source = once(source, '    header_values := s.current_values;\n    condition := Expression',
+-                  '    header_values := s.current_values;\n    s.meter.while_conditions += 1;\n    condition := Expression')
++                  '    header_values := s.current_values;\n    (&s.meter).while_conditions += 1;\n    condition := Expression')
+     source = once(source, '    FinishEdge(output, body_edge, body, empty);\n    Statements',
+-                  '    FinishEdge(output, body_edge, body, empty);\n    s.meter.while_bodies += 1;\n    Statements')
++                  '    FinishEdge(output, body_edge, body, empty);\n    (&s.meter).while_bodies += 1;\n    Statements')
+     source = once(source, '        pass_state.first_block = length(output.blocks);', '''        meter_values := length(output.values);
+         meter_instructions := length(output.instructions);
+         meter_edges := length(output.edges);

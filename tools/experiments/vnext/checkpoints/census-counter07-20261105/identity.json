@@ -1,0 +1,135 @@
+{
+  "status": "SOURCE_AND_ARCHIVE_REVIEW_COMPLETE_PRESERVATION_ONLY",
+  "kind": "inactive_source_delta_not_runtime_acceptance",
+  "base_repository": "waldnercharles/chibi",
+  "base_commit": "bbb3ee6d2e415d592c49f93a3f100dc2d533fe7c",
+  "base_tree": "51c3dd5fc302904849b748466691b0e46412cdde",
+  "base_directory": "tools/experiments/vnext/checkpoints/census-refined-20261105/work-counters04",
+  "patch": "counter04-to-counter07.patch",
+  "patch_sha256": "868b979b519ca8294bbb47c573d03cf58bb77bf1a3a1a66049580e3dcd41a427",
+  "source_payload_manifest_sha256": "0d709424adb1556c6a6abf3b324e21ae0d65416fedef40ec3e0d54f59b960055",
+  "source_identity_note": "The source payload manifest identifies the reviewed author input, including historical records not distributed here. Reconstruction preserves its executable source and templates, not its private documentation or historical audits. README.md is normalized separately.",
+  "source_readme_sha256": "4448f56db00f884cc6d95f1f78aa04ff61b41fe0c3587ba5e996c344e3b70ed0",
+  "files": [
+    {
+      "path": "Counts.chibi",
+      "changed_by_patch": false,
+      "before_bytes": 1194,
+      "before_sha256": "d8239e6b86d41b9acf6aadbff2288a0638cf6f7585da6940fd0003d98177f0da",
+      "before_git_blob": "78d429f1a3a71efcd2e86b3cd6a17c6b01a4253d",
+      "after_bytes": 1194,
+      "after_sha256": "d8239e6b86d41b9acf6aadbff2288a0638cf6f7585da6940fd0003d98177f0da"
+    },
+    {
+      "path": "OUTPUT-SCHEMA.md",
+      "changed_by_patch": false,
+      "before_bytes": 4471,
+      "before_sha256": "efaef3a0e07ad96809b8eb9766d6206126f973651b917f229ba373dbfbe8ff73",
+      "before_git_blob": "4bb1b70d2e20a4af0518822cf4bc16bcdea4133a",
+      "after_bytes": 4471,
+      "after_sha256": "efaef3a0e07ad96809b8eb9766d6206126f973651b917f229ba373dbfbe8ff73"
+    },
+    {
+      "path": "WorkOutput.chibi.in",
+      "changed_by_patch": false,
+      "before_bytes": 5006,
+      "before_sha256": "8cf21bd8e7a012da10f92e56ce1cf4ceac2e0758f180d80b2dacdb2899e01ff1",
+      "before_git_blob": "1266ce46ebfa66411fc320abc215668a546d4b3a",
+      "after_bytes": 5006,
+      "after_sha256": "8cf21bd8e7a012da10f92e56ce1cf4ceac2e0758f180d80b2dacdb2899e01ff1"
+    },
+    {
+      "path": "WorkProbe.chibi.in",
+      "changed_by_patch": true,
+      "before_bytes": 8427,
+      "before_sha256": "7c53334d900682c6bdacd9f4882a5098a20dbec98684fa83dc4ad37857459442",
+      "before_git_blob": "f311c08b46f8345cb031517dbacfa73e85460229",
+      "after_bytes": 13362,
+      "after_sha256": "e6c4f894e918d7b6ca0e58df16d05cbf5d341db57fd085e4b5a4f3cee4658271"
+    },
+    {
+      "path": "core-snapshot/bytes/Bytes.chibi",
+      "changed_by_patch": false,
+      "before_bytes": 4222,
+      "before_sha256": "3face4437c9ebd31073da5c8e2996f956dd1fa0105eefc1fe458c3f17f20bb4b",
+      "before_git_blob": "49ce199882c0adc4c6ce734c2bcd7fd6caf639dd",
+      "after_bytes": 4222,
+      "after_sha256": "3face4437c9ebd31073da5c8e2996f956dd1fa0105eefc1fe458c3f17f20bb4b"
+    },
+    {
+      "path": "core-snapshot/hash/sha256/Sha256.chibi",
+      "changed_by_patch": false,
+      "before_bytes": 8093,
+      "before_sha256": "7d214328124b1452b89a17122196d6e32486437c16db4febde7d04f51362409d",
+      "before_git_blob": "a02041de97ef0eb0a751fce502362b96449afaec",
+      "after_bytes": 8093,
+      "after_sha256": "7d214328124b1452b89a17122196d6e32486437c16db4febde7d04f51362409d"
+    },
+    {
+      "path": "core-snapshot/os/Os.chibi",
+      "changed_by_patch": false,
+      "before_bytes": 19495,
+      "before_sha256": "ca7eb34c1d4a0b46377f2d3148079d741a0bdd6db431cd99ade6570c7f09c63c",
+      "before_git_blob": "70cf2d2c78ea4f5538446ae471d558cf6a4fe168",
+      "after_bytes": 19495,
+      "after_sha256": "ca7eb34c1d4a0b46377f2d3148079d741a0bdd6db431cd99ade6570c7f09c63c"
+    },
+    {
+      "path": "core-snapshot/sys/posix/Posix.chibi",
+      "changed_by_patch": false,
+      "before_bytes": 52702,
+      "before_sha256": "e6c0af3b80b8347550e3d9566952d71df3d2dfd0a9550040db6919e93adb0ae0",
+      "before_git_blob": "5d436aed343a7503e9c6710b1881eaee43abd111",
+      "after_bytes": 52702,
+      "after_sha256": "e6c0af3b80b8347550e3d9566952d71df3d2dfd0a9550040db6919e93adb0ae0"
+    },
+    {
+      "path": "core-snapshot/sys/windows/Decimal.chibi",
+      "changed_by_patch": false,
+      "before_bytes": 845,
+      "before_sha256": "75f9b4492cd791fe1dd7328e859dd856043f7c0a4c7a197295007545c3fa1cd4",
+      "before_git_blob": "852e188886aa6f053ccd0f8fbfaba7fac4d89eb2",
+      "after_bytes": 845,
+      "after_sha256": "75f9b4492cd791fe1dd7328e859dd856043f7c0a4c7a197295007545c3fa1cd4"
+    },
+    {
+      "path": "core-snapshot/sys/windows/Windows.chibi",
+      "changed_by_patch": false,
+      "before_bytes": 44561,
+      "before_sha256": "11652d1d2b3ebd20026f2d5e1090c209e9b74b633680243788b5fb0120a0b6c5",
+      "before_git_blob": "41e4f1d91c026024bfbe66a39e7d7d755a9520f9",
+      "after_bytes": 44561,
+      "after_sha256": "11652d1d2b3ebd20026f2d5e1090c209e9b74b633680243788b5fb0120a0b6c5"
+    },
+    {
+      "path": "core-snapshot/target/Target.chibi",
+      "changed_by_patch": false,
+      "before_bytes": 688,
+      "before_sha256": "9c53c8eed58c028f7c575dea4e91978daaa4f996ba37605527caa19b6c151a93",
+      "before_git_blob": "30300ba599d0c0278ef0fd8c8619cce32635a529",
+      "after_bytes": 688,
+      "after_sha256": "9c53c8eed58c028f7c575dea4e91978daaa4f996ba37605527caa19b6c151a93"
+    },
+    {
+      "path": "instrument_prepared.py",
+      "changed_by_patch": true,
+      "before_bytes": 19079,
+      "before_sha256": "3b5e3fd334fd35b5b6353359fb2de25f60e9bed524a73f74a8a7a7a5439db6ca",
+      "before_git_blob": "ab3363761281ae3999b39f5b70088cf41dc78a97",
+      "after_bytes": 19255,
+      "after_sha256": "7aaddf8486eb5d2b7ddc196a46b988b7c1e89c782ddcea49a717a71c669c3414"
+    },
+    {
+      "path": "test_publication.py",
+      "changed_by_patch": false,
+      "before_bytes": 8771,
+      "before_sha256": "820a6638fe5793053172b7d98fbdede07282ce4c2d783ee4ff12b0d1fa9d5047",
+      "before_git_blob": "5be7634b30ba9b55450018ba12c3cd38c415fe83",
+      "after_bytes": 8771,
+      "after_sha256": "820a6638fe5793053172b7d98fbdede07282ce4c2d783ee4ff12b0d1fa9d5047"
+    }
+  ],
+  "execution": "Held; no transformer, tests, compiler or native execution; no observed counts.",
+  "base_readme_sha256": "3766ec20152be0e8f19aa5720ef1494a147f78596edfe4e535f140a41ac5e794",
+  "review_scope": "Nine ordered source passes across revisions, plus targeted staging, scalar-projection/negative-case and positive-coverage correction reviews; final Style on counter07. No execution acceptance."
+}

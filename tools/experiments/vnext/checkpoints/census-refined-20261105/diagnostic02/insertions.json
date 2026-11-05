@@ -1,0 +1,238 @@
+[
+  {
+    "original_byte_offset": 92,
+    "inserted_text": "import diagnostic_os \"core:os\"\nimport diagnostic_target \"core:target\"\n"
+  },
+  {
+    "original_byte_offset": 269,
+    "inserted_text": "    assert(diagnostic_target.Native == 1 && diagnostic_target.Os == diagnostic_target.Linux &&\n           diagnostic_target.Arch == diagnostic_target.X86_64 && diagnostic_target.PointerBits == 64,\n           \"crash diagnostic requires native Linux x86-64 stdout capture\");\n    diagnostic_os.WriteOutput(\"CD2\\tbegin\\tnon-acceptance\\n\");\n    diagnostic_os.WriteOutput(\"CD2\\tstage-enter\\tdocument-labels\\n\");\n"
+  },
+  {
+    "original_byte_offset": 1440,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tstage-done\\tdocument-labels\\n\");\n    diagnostic_os.WriteOutput(\"CD2\\tstage-enter\\tfixture-variants\\n\");\n"
+  },
+  {
+    "original_byte_offset": 2562,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tstage-done\\tfixture-variants\\n\");\n    diagnostic_os.WriteOutput(\"CD2\\tstage-enter\\tscalar-expressions\\n\");\n"
+  },
+  {
+    "original_byte_offset": 3542,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tstage-done\\tscalar-expressions\\n\");\n    diagnostic_os.WriteOutput(\"CD2\\tstage-enter\\tbranch-returns\\n\");\n"
+  },
+  {
+    "original_byte_offset": 6551,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tstage-done\\tbranch-returns\\n\");\n    diagnostic_os.WriteOutput(\"CD2\\tstage-enter\\tnested-branches\\n\");\n"
+  },
+  {
+    "original_byte_offset": 9678,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tstage-done\\tnested-branches\\n\");\n    diagnostic_os.WriteOutput(\"CD2\\tstage-enter\\tscopes-multiple-wrapping\\n\");\n"
+  },
+  {
+    "original_byte_offset": 12003,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tstage-done\\tscopes-multiple-wrapping\\n\");\n    diagnostic_os.WriteOutput(\"CD2\\tstage-enter\\tcheck-functions\\n\");\n"
+  },
+  {
+    "original_byte_offset": 12340,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tstage-done\\tcheck-functions\\n\");\n    diagnostic_os.WriteOutput(\"CD2\\tstage-enter\\tinline-dominance\\n\");\n"
+  },
+  {
+    "original_byte_offset": 13031,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tstage-done\\tinline-dominance\\n\");\n    diagnostic_os.WriteOutput(\"CD2\\tstage-enter\\tinline-negative-sources\\n\");\n"
+  },
+  {
+    "original_byte_offset": 15470,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tstage-done\\tinline-negative-sources\\n\");\n    diagnostic_os.WriteOutput(\"CD2\\tstage-enter\\theader-order\\n\");\n"
+  },
+  {
+    "original_byte_offset": 15825,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tstage-done\\theader-order\\n\");\n    diagnostic_os.WriteOutput(\"CD2\\tsuite-done\\tnon-acceptance\\n\");\n"
+  },
+  {
+    "original_byte_offset": 18052,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckAdd:269\\n\");\n"
+  },
+  {
+    "original_byte_offset": 18412,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckAdd:269\\n\");\n"
+  },
+  {
+    "original_byte_offset": 18847,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckPair:283\\n\");\n"
+  },
+  {
+    "original_byte_offset": 20864,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckPair:283\\n\");\n"
+  },
+  {
+    "original_byte_offset": 20924,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckEqual:302\\n\");\n"
+  },
+  {
+    "original_byte_offset": 25232,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckEqual:302\\n\");\n"
+  },
+  {
+    "original_byte_offset": 25297,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckMutations:374\\n\");\n"
+  },
+  {
+    "original_byte_offset": 30270,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckMutations:374\\n\");\n"
+  },
+  {
+    "original_byte_offset": 30293,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckLimits:509\\n\");\n"
+  },
+  {
+    "original_byte_offset": 34631,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckLimits:509\\n\");\n"
+  },
+  {
+    "original_byte_offset": 35280,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckScalarCalls:590\\n\");\n"
+  },
+  {
+    "original_byte_offset": 44528,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckScalarCalls:590\\n\");\n"
+  },
+  {
+    "original_byte_offset": 44558,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckCallMutations:689\\n\");\n"
+  },
+  {
+    "original_byte_offset": 58430,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckCallMutations:689\\n\");\n"
+  },
+  {
+    "original_byte_offset": 58500,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckRejectedAt:1015\\n\");\n"
+  },
+  {
+    "original_byte_offset": 59141,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckRejectedAt:1015\\n\");\n"
+  },
+  {
+    "original_byte_offset": 59322,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckPackages:1028\\n\");\n"
+  },
+  {
+    "original_byte_offset": 66469,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckPackages:1028\\n\");\n"
+  },
+  {
+    "original_byte_offset": 67246,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckSourcesRejected:1147\\n\");\n"
+  },
+  {
+    "original_byte_offset": 69038,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckSourcesRejected:1147\\n\");\n"
+  },
+  {
+    "original_byte_offset": 69091,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckPackageRules:1179\\n\");\n"
+  },
+  {
+    "original_byte_offset": 77151,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckPackageRules:1179\\n\");\n"
+  },
+  {
+    "original_byte_offset": 77257,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckPackageLimits:1290\\n\");\n"
+  },
+  {
+    "original_byte_offset": 82253,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckPackageLimits:1290\\n\");\n"
+  },
+  {
+    "original_byte_offset": 82338,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckSourcesFailure:1374\\n\");\n"
+  },
+  {
+    "original_byte_offset": 82688,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckSourcesFailure:1374\\n\");\n"
+  },
+  {
+    "original_byte_offset": 82866,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckForeign:1385\\n\");\n"
+  },
+  {
+    "original_byte_offset": 91860,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckForeign:1385\\n\");\n"
+  },
+  {
+    "original_byte_offset": 91915,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckForeignMutations:1485\\n\");\n"
+  },
+  {
+    "original_byte_offset": 93648,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckForeignMutations:1485\\n\");\n"
+  },
+  {
+    "original_byte_offset": 93757,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckByteCapability:1534\\n\");\n"
+  },
+  {
+    "original_byte_offset": 97740,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckByteCapability:1534\\n\");\n"
+  },
+  {
+    "original_byte_offset": 97928,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckAnnotationScope:1599\\n\");\n"
+  },
+  {
+    "original_byte_offset": 102292,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckAnnotationScope:1599\\n\");\n"
+  },
+  {
+    "original_byte_offset": 102404,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckScalarAnnotations:1658\\n\");\n"
+  },
+  {
+    "original_byte_offset": 104354,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckScalarAnnotations:1658\\n\");\n"
+  },
+  {
+    "original_byte_offset": 104386,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckWhileCapability:1686\\n\");\n"
+  },
+  {
+    "original_byte_offset": 109157,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckWhileCapability:1686\\n\");\n"
+  },
+  {
+    "original_byte_offset": 109186,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckCensusSource:1763\\n\");\n"
+  },
+  {
+    "original_byte_offset": 117793,
+    "inserted_text": "        diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckCensusSource:1763\\n\");\n"
+  },
+  {
+    "original_byte_offset": 119007,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckCensusSource:1763\\n\");\n"
+  },
+  {
+    "original_byte_offset": 121559,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckBlockLayouts:1850\\n\");\n"
+  },
+  {
+    "original_byte_offset": 123170,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckBlockLayouts:1850\\n\");\n"
+  },
+  {
+    "original_byte_offset": 123202,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckCyclicMutations:1877\\n\");\n"
+  },
+  {
+    "original_byte_offset": 126976,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckCyclicMutations:1877\\n\");\n"
+  },
+  {
+    "original_byte_offset": 127008,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-enter\\tCheckBlockBoundaries:1957\\n\");\n"
+  },
+  {
+    "original_byte_offset": 129316,
+    "inserted_text": "    diagnostic_os.WriteOutput(\"CD2\\tcheck-done\\tCheckBlockBoundaries:1957\\n\");\n"
+  }
+]

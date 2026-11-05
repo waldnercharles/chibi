@@ -1,0 +1,237 @@
+{
+  "schema": 1,
+  "classification": "inactive-source-reconstruction-not-execution",
+  "compiler_source_base_tree": "73b5dc67f3b9c0e6104426017b59adcd7939c4c6",
+  "compiler_source_revision04_tree": "f73f0115652bc06325de8f78bff11775a193b3eb",
+  "revision04_patch": "tools/experiments/vnext/checkpoints/census-20261105/source-census-v4-revision04.patch",
+  "revision04_patch_sha256": "a12f6cee8700a53e3130457bc15a4cc5de75f626c96f9483c09d4d08687266af",
+  "original_main_sha256": "0ed825c94cc5557bedd45989615570ce91ca053a50a2b9a9216ee4d80edbcec9",
+  "diagnostic_main_sha256": "afb658829bd22d56d80993b236f5ace7eb6d9bb7a648caf99034caa8913c8024",
+  "insertion_only_lines": 74,
+  "insertion_offsets": "Byte offsets into original Main; ordered insertions produce archived Main exactly.",
+  "prepared_files": [
+    {
+      "path": "Main.chibi",
+      "bytes": 134773,
+      "sha256": "afb658829bd22d56d80993b236f5ace7eb6d9bb7a648caf99034caa8913c8024",
+      "archived_at": "diagnostic02/Main.chibi"
+    },
+    {
+      "path": "core/bytes/Bytes.chibi",
+      "bytes": 4222,
+      "sha256": "3face4437c9ebd31073da5c8e2996f956dd1fa0105eefc1fe458c3f17f20bb4b",
+      "archived_at": "work-counters04/core-snapshot/bytes/Bytes.chibi"
+    },
+    {
+      "path": "core/hash/sha256/Sha256.chibi",
+      "bytes": 8093,
+      "sha256": "7d214328124b1452b89a17122196d6e32486437c16db4febde7d04f51362409d",
+      "archived_at": "work-counters04/core-snapshot/hash/sha256/Sha256.chibi"
+    },
+    {
+      "path": "core/os/Os.chibi",
+      "bytes": 19495,
+      "sha256": "ca7eb34c1d4a0b46377f2d3148079d741a0bdd6db431cd99ade6570c7f09c63c",
+      "archived_at": "work-counters04/core-snapshot/os/Os.chibi"
+    },
+    {
+      "path": "core/strings/Strings.chibi",
+      "bytes": 17248,
+      "sha256": "6fc25eedd2eee12631d2e22c8d075b82d7ee7561ef329e4c76846add13d44586",
+      "repository_source": "packages/core/strings/Strings.chibi"
+    },
+    {
+      "path": "core/sys/posix/Posix.chibi",
+      "bytes": 52702,
+      "sha256": "e6c0af3b80b8347550e3d9566952d71df3d2dfd0a9550040db6919e93adb0ae0",
+      "archived_at": "work-counters04/core-snapshot/sys/posix/Posix.chibi"
+    },
+    {
+      "path": "core/sys/windows/Decimal.chibi",
+      "bytes": 845,
+      "sha256": "75f9b4492cd791fe1dd7328e859dd856043f7c0a4c7a197295007545c3fa1cd4",
+      "archived_at": "work-counters04/core-snapshot/sys/windows/Decimal.chibi"
+    },
+    {
+      "path": "core/sys/windows/Windows.chibi",
+      "bytes": 44561,
+      "sha256": "11652d1d2b3ebd20026f2d5e1090c209e9b74b633680243788b5fb0120a0b6c5",
+      "archived_at": "work-counters04/core-snapshot/sys/windows/Windows.chibi"
+    },
+    {
+      "path": "core/target/Target.chibi",
+      "bytes": 688,
+      "sha256": "9c53c8eed58c028f7c575dea4e91978daaa4f996ba37605527caa19b6c151a93",
+      "archived_at": "work-counters04/core-snapshot/target/Target.chibi"
+    },
+    {
+      "path": "inputs/EchoJoin.chibi",
+      "bytes": 215,
+      "sha256": "12e0c98624d659c81157fa762bd01d40b2316eb742eef79806949dbc0bc36bfd",
+      "repository_source": "tools/experiments/vnext/frontend/typed/fixtures/EchoJoin.chibi"
+    },
+    {
+      "path": "inputs/Main.chibi.in",
+      "bytes": 119457,
+      "sha256": "3394f025cd3423c7878c1d09dd6cabe071848f419cd5ba69ed399cd6f3ef10b9",
+      "repository_source": "tools/experiments/vnext/frontend/typed/tests/Main.chibi.in"
+    },
+    {
+      "path": "inputs/foreign/Main.chibi",
+      "bytes": 970,
+      "sha256": "18c45d1d56a0e17dfc9a0dc685cc06c083ad9a6a466336c3ff3221975bd895bf",
+      "repository_source": "tools/experiments/vnext/slice_cases/foreign/Main.chibi"
+    },
+    {
+      "path": "inputs/missing_symbol.chibi",
+      "bytes": 158,
+      "sha256": "db3e079260166c0d149a0027691a2856869b7e3d66f4871ab1334dcc51f0ae3b",
+      "repository_source": "tools/experiments/vnext/slice_cases/rejected/missing_symbol.chibi"
+    },
+    {
+      "path": "inputs/modules/Main.chibi",
+      "bytes": 181,
+      "sha256": "86ded16117e844c3c57a7aca9191617ab148c9aa9c237a8502f397e75377e4cf",
+      "repository_source": "tools/experiments/vnext/slice_cases/modules/Main.chibi"
+    },
+    {
+      "path": "inputs/modules/math/Math.chibi",
+      "bytes": 117,
+      "sha256": "6fe411ca68648829984aa48f7b8c08da049d99c0f7792b379b9bcb70269c39be",
+      "repository_source": "tools/experiments/vnext/slice_cases/modules/math/Math.chibi"
+    },
+    {
+      "path": "inputs/private_import.chibi",
+      "bytes": 109,
+      "sha256": "450d919e432a1913473410fbf8eea6fa1f8d9d249ced4cba18e322d35c2b2e4c",
+      "repository_source": "tools/experiments/vnext/slice_cases/rejected/private_import.chibi"
+    },
+    {
+      "path": "inputs/source_census/Main.chibi",
+      "bytes": 7982,
+      "sha256": "0e44190699438f78b223c71a380a903f71526941f0a5dc700c655b62be341f16",
+      "repository_source": "tools/experiments/vnext/source_census/Main.chibi"
+    },
+    {
+      "path": "project/json_string/JsonString.chibi",
+      "bytes": 10675,
+      "sha256": "3a57f8b5b66ec6f3f067e5e8613eadf8f7a2010dc76638744ae854e61de36b06",
+      "repository_source": "tools/compiler/json_string/JsonString.chibi"
+    },
+    {
+      "path": "project/lexical_binding/Binding.chibi",
+      "bytes": 8673,
+      "sha256": "d39acdf6f1aaa3f7a43f7505daee4676401288f4b7ea9934a587e3f2e01a52a1",
+      "repository_source": "tools/compiler/lexical_binding/Binding.chibi"
+    },
+    {
+      "path": "project/named_binding/Binding.chibi",
+      "bytes": 16367,
+      "sha256": "2a4b5c1ff602b49c7699f8e2609768ea52e113831f77525d8a14109a8f214e2b",
+      "repository_source": "tools/compiler/named_binding/Binding.chibi"
+    },
+    {
+      "path": "project/package_graph/Graph.chibi",
+      "bytes": 13990,
+      "sha256": "c1fbae5b37b4667e1972a6a4685d37e7385623e643cf4402ebb0c6c8e7ff18e0",
+      "repository_source": "tools/compiler/package_graph/Graph.chibi"
+    },
+    {
+      "path": "project/signature_reader/Reader.chibi",
+      "bytes": 44643,
+      "sha256": "9a64c01947c19d4ab5fd89fcc34a6f3666efa4f3c38ed9247a4a04015c6b91bf",
+      "repository_source": "tools/compiler/signature_reader/Reader.chibi"
+    },
+    {
+      "path": "project/source_parser/Declarations.chibi",
+      "bytes": 22604,
+      "sha256": "7ff7c69935978858b666b71809944286bf37fd6327e6b4934f1a4aecacdd7028",
+      "repository_source": "tools/compiler/source_parser/Declarations.chibi"
+    },
+    {
+      "path": "project/source_parser/Expressions.chibi",
+      "bytes": 18832,
+      "sha256": "73fca2c7e098cf0f7d0b1581f92ba52ed36e363e7fde1586a63847685e9fde8e",
+      "repository_source": "tools/compiler/source_parser/Expressions.chibi"
+    },
+    {
+      "path": "project/source_parser/Parser.chibi",
+      "bytes": 6473,
+      "sha256": "6bcf35fc78143b66d09b092d07cb72a19d8f5b39914e60c383e946607732dd64",
+      "repository_source": "tools/compiler/source_parser/Parser.chibi"
+    },
+    {
+      "path": "project/source_parser/Statements.chibi",
+      "bytes": 13382,
+      "sha256": "71866bcd5565b25e3debe27fff8a805de3daaad6ca5cc855110ec33c4f1c6041",
+      "repository_source": "tools/compiler/source_parser/Statements.chibi"
+    },
+    {
+      "path": "project/source_parser/Tree.chibi",
+      "bytes": 9716,
+      "sha256": "eab14b818a037349b04cfa045220fa9df669470306773795a9a4b61647efb80c",
+      "repository_source": "tools/compiler/source_parser/Tree.chibi"
+    },
+    {
+      "path": "project/source_parser/Types.chibi",
+      "bytes": 11047,
+      "sha256": "05eca2e83b3f1635a699c42953bbc7b4e8381e4dd20876fd258dfe85122df397",
+      "repository_source": "tools/compiler/source_parser/Types.chibi"
+    },
+    {
+      "path": "project/source_tokenizer/Tokenizer.chibi",
+      "bytes": 30253,
+      "sha256": "88234ded25b3278c591602ae0346be3ce63c90130f4b8b0869a0f80c3a5e6072",
+      "repository_source": "tools/compiler/source_tokenizer/Tokenizer.chibi"
+    },
+    {
+      "path": "project/syntax_diagnostics/Diagnostics.chibi",
+      "bytes": 12254,
+      "sha256": "381d054bf4dc939c2dde091acd30d810a383b936b6f573988d4eac29015bd7c1",
+      "repository_source": "tools/compiler/syntax_diagnostics/Diagnostics.chibi"
+    },
+    {
+      "path": "project/type_constructors/Constructors.chibi",
+      "bytes": 17035,
+      "sha256": "f6136b7f2f72b8fc3bd356fa3d153aa3bce2188c64f4d5ca34310f876fbea232",
+      "repository_source": "tools/compiler/type_constructors/Constructors.chibi"
+    },
+    {
+      "path": "project/unit_algebra/Units.chibi",
+      "bytes": 8833,
+      "sha256": "d18c78a05a58ee6e3d0b3c4b53f11e3dab285c3fc4d29c4c28a6f6ed93c0ec48",
+      "repository_source": "tools/compiler/unit_algebra/Units.chibi"
+    },
+    {
+      "path": "project/vnext_typed/Model.chibi",
+      "bytes": 5884,
+      "sha256": "dd157ed822eda9840c5895a48e9bb59beea559b48d2995fb340b8a89263b16eb",
+      "repository_source": "tools/experiments/vnext/frontend/typed/Model.chibi"
+    },
+    {
+      "path": "project/vnext_typed/Produce.chibi",
+      "bytes": 71445,
+      "sha256": "cd668a0fd2fa8ce0cecdc5bd0cae5540c5c4f9387838a7baca698c74b7e2b714",
+      "repository_source": "tools/experiments/vnext/frontend/typed/Produce.chibi"
+    },
+    {
+      "path": "project/vnext_typed/Verify.chibi",
+      "bytes": 27509,
+      "sha256": "f21adba7cb2795e3223e0f647129eff4bf3b1224fa9e2b3eef931aca3ca61487",
+      "repository_source": "tools/experiments/vnext/frontend/typed/Verify.chibi"
+    }
+  ],
+  "original_preparation_inputs": [
+    {
+      "source": "tools/experiments/vnext/frontend/typed/prepare.py",
+      "bytes": 8633,
+      "sha256": "43e61548d749e28a7e6e54530307faead4e12710965bb7a11cf3f16b9776d135"
+    },
+    {
+      "source": "tools/experiments/vnext/frontend/prepare.py",
+      "bytes": 6082,
+      "sha256": "dea8dd7414eb3ace14834e6071b1f79331fd18f202bba4e43435361b00d6b265"
+    }
+  ],
+  "note": "Public repository paths refer to the reconstructed revision04 tree. Seven additional core files are retained in work-counters04. Full diagnostic Main is authoritative; no full compiler closure or binary is duplicated."
+}

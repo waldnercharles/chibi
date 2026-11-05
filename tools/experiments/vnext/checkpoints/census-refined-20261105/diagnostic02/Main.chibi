@@ -1,0 +1,2071 @@
+package vnext_typed_tests
+
+import typed "project:vnext_typed"
+import strings "core:strings"
+import diagnostic_os "core:os"
+import diagnostic_target "core:target"
+
+// The preparation caller replaces this marker with the exact UTF-8 fixture.
+// No file access, parser replacement, interpreter or backend is in this test.
+Main :: () -> int {
+    assert(diagnostic_target.Native == 1 && diagnostic_target.Os == diagnostic_target.Linux &&
+           diagnostic_target.Arch == diagnostic_target.X86_64 && diagnostic_target.PointerBits == 64,
+           "crash diagnostic requires native Linux x86-64 stdout capture");
+    diagnostic_os.WriteOutput("CD2\tbegin\tnon-acceptance\n");
+    diagnostic_os.WriteOutput("CD2\tstage-enter\tdocument-labels\n");
+    source := "package scalar_pair\n\npub Echo :: (value: i64) -> i64 { return value; }\npub Join :: (choose: bool, left: i64, right: i64) -> i64 {\n    result: i64 = right;\n    if (choose) { result = left; }\n    return result + 1;\n}\n";
+    switch typed.Produce(source, -1) {
+        case .Produced(module): assert(false, "negative document ID accepted");
+        case .Rejected(diagnostic): assert(diagnostic.document == -1, "invalid document ID is an input diagnostic");
+    }
+    document_labels: int[] = [0, 2147483647];
+    for (document in document_labels) {
+        switch typed.Produce(source, document) {
+            case .Produced(module):
+                CheckPair(module, 1);
+                verified := typed.Verify(module);
+                assert(verified == 0 && length(module.origins) == 7, "boundary document labels produce all verified origins");
+                for (origin in module.origins) {
+                    assert(origin.document == u32(document), "every origin preserves the exact boundary document label");
+                }
+            case .Rejected(diagnostic): assert(false, "valid boundary document label rejected");
+        }
+    }
+    diagnostic_os.WriteOutput("CD2\tstage-done\tdocument-labels\n");
+    diagnostic_os.WriteOutput("CD2\tstage-enter\tfixture-variants\n");
+    original := Accepted(source);
+    CheckPair(original, 1);
+    repeat := Accepted(source);
+    CheckEqual(original, repeat);
+
+    seven := Accepted(strings.ReplaceAll(source, "+ 1", "+ 7"));
+    CheckPair(seven, 7);
+    renamed_source := strings.ReplaceAll(source, "Echo", "Identity");
+    renamed_source = strings.ReplaceAll(renamed_source, "Join", "Select");
+    renamed_source = strings.ReplaceAll(renamed_source, "result", "selected");
+    renamed := Accepted(renamed_source);
+    CheckPair(renamed, 1);
+    assert(NameMatches(renamed, 0, "Identity") && NameMatches(renamed, 1, "Select"), "renamed exported functions are source driven");
+
+    swapped := Accepted(strings.ReplaceAll(source, "result = left", "result = right"));
+    assert(length(swapped.values) == 6 && length(swapped.arguments) == 0, "unchanged branch value needs no phi");
+    assert(swapped.blocks[3].parameter_count == 0, "unchanged assignment changes the merge body");
+    assert(swapped.instructions[4].left == 4, "unchanged assignment keeps the right parameter");
+
+    // Inspect value flow in produced tables; these are not backend recipes.
+    diagnostic_os.WriteOutput("CD2\tstage-done\tfixture-variants\n");
+    diagnostic_os.WriteOutput("CD2\tstage-enter\tscalar-expressions\n");
+    parentheses := Accepted("package p\nParentheses :: (x: i64) -> i64 { return ((x + 7)); }\n");
+    returned := Terminator(parentheses, 1);
+    assert(returned.op == typed.Return, "parenthesized addition is returned");
+    CheckAdd(parentheses, returned.left, 1, 7);
+    flag := Accepted("package p\nFlag :: (x: bool) -> bool { saved: bool = x; return saved; }\n");
+    returned = Terminator(flag, 1);
+    assert(returned.op == typed.Return && returned.left == 1 && flag.values[0].type == typed.Bool, "bool local retains its parameter value");
+    maximum := Accepted("package p\nMaxLiteral :: () -> i64 { return 9223372036854775807; }\n");
+    returned = Terminator(maximum, 1);
+    assert(returned.op == typed.Return, "maximum literal is returned");
+    constant := DefiningInstruction(maximum, returned.left);
+    assert(constant.op == typed.ConstantI64 && maximum.literals[int(constant.payload) - 1] == 9223372036854775807, "maximum decimal literal keeps its full value");
+
+    diagnostic_os.WriteOutput("CD2\tstage-done\tscalar-expressions\n");
+    diagnostic_os.WriteOutput("CD2\tstage-enter\tbranch-returns\n");
+    early := Accepted("package p\nEarly :: (b: bool, x: i64, y: i64) -> i64 { if (b) { return x; } return y; }\n");
+    condition := Terminator(early, 1);
+    assert(condition.op == typed.Branch && condition.left == 1, "early return branches on b");
+    true_return := Terminator(early, early.edges[int(condition.payload) - 1].target);
+    false_return := Terminator(early, early.edges[int(condition.payload)].target);
+    assert(true_return.op == typed.Return && true_return.left == 2, "early true path returns x");
+    assert(false_return.op == typed.Return && false_return.left == 3, "early remaining path returns y");
+    assert(length(early.arguments) == 0 && length(early.block_parameters) == 3, "early return needs no merge argument");
+
+    both := Accepted("package p\nBoth :: (b: bool, x: i64, y: i64) -> i64 { if (b) { return x; } else { return y; } }\n");
+    condition = Terminator(both, 1);
+    assert(condition.op == typed.Branch && condition.left == 1, "both returns condition on b");
+    true_return = Terminator(both, both.edges[int(condition.payload) - 1].target);
+    false_return = Terminator(both, both.edges[int(condition.payload)].target);
+    assert(true_return.op == typed.Return && true_return.left == 2, "both true path returns x");
+    assert(false_return.op == typed.Return && false_return.left == 3, "both false path returns y");
+    assert(length(both.blocks) == 3 && length(both.arguments) == 0, "two returns leave no continuation merge");
+
+    // Each case exercises a different one-surviving-arm path in Conditional.
+    surviving_sources: string[] = [
+        "package p\nSurviveFalse :: (b: bool, x: i64, y: i64) -> i64 { r: i64 = x; if (b) { return x; } else { r = y + 7; } return r; }\n",
+        "package p\nSurviveTrue :: (b: bool, x: i64, y: i64) -> i64 { r: i64 = x; if (b) { r = y + 7; } else { return x; } return r; }\n"
+    ];
+    for (text, index in surviving_sources) {
+        surviving := Accepted(text);
+        condition = Terminator(surviving, 1);
+        assert(condition.op == typed.Branch && condition.left == 1, "surviving-arm case branches on b");
+        returning_edge := surviving.edges[int(condition.payload) - 1 + index];
+        continuing_edge := surviving.edges[int(condition.payload) - index];
+        returned = Terminator(surviving, returning_edge.target);
+        assert(returned.op == typed.Return && returned.left == 2, "terminated arm returns x");
+        continued := Terminator(surviving, continuing_edge.target);
+        assert(continued.op == typed.Jump, "surviving arm reaches continuation");
+        continuation := surviving.edges[int(continued.payload) - 1];
+        returned = Terminator(surviving, continuation.target);
+        assert(returned.op == typed.Return, "continuation returns surviving assignment");
+        CheckAdd(surviving, returned.left, 3, 7);
+        assert(length(surviving.arguments) == 0 && length(surviving.block_parameters) == 3, "single surviving arm retains its value without merge parameters");
+    }
+
+    diagnostic_os.WriteOutput("CD2\tstage-done\tbranch-returns\n");
+    diagnostic_os.WriteOutput("CD2\tstage-enter\tnested-branches\n");
+    nested := Accepted("package p\nNested :: (a: bool, b: bool, x: i64, y: i64) -> i64 { r: i64 = y; if (a) { if (b) { r = x + 1; } else { r = y + 7; } } else { if (b) { r = x + 7; } } return r; }\n");
+    outer := Terminator(nested, 1);
+    assert(outer.op == typed.Branch && outer.left == 1, "outer condition reads a");
+    true_inner := Terminator(nested, nested.edges[int(outer.payload) - 1].target);
+    false_inner := Terminator(nested, nested.edges[int(outer.payload)].target);
+    assert(true_inner.op == typed.Branch && true_inner.left == 2 && false_inner.op == typed.Branch && false_inner.left == 2, "both inner conditions read b");
+    true_true := Terminator(nested, nested.edges[int(true_inner.payload) - 1].target);
+    true_false := Terminator(nested, nested.edges[int(true_inner.payload)].target);
+    false_true := Terminator(nested, nested.edges[int(false_inner.payload) - 1].target);
+    assert(true_true.op == typed.Jump && true_false.op == typed.Jump && false_true.op == typed.Jump, "inner assignment arms reach their merges");
+    true_true_edge := nested.edges[int(true_true.payload) - 1];
+    true_false_edge := nested.edges[int(true_false.payload) - 1];
+    false_true_edge := nested.edges[int(false_true.payload) - 1];
+    false_false_edge := nested.edges[int(false_inner.payload)];
+    assert(true_true_edge.target == true_false_edge.target && false_true_edge.target == false_false_edge.target, "each inner pair converges on its own merge");
+    CheckAdd(nested, EdgeArgument(nested, true_true_edge), 3, 1);
+    CheckAdd(nested, EdgeArgument(nested, true_false_edge), 4, 7);
+    CheckAdd(nested, EdgeArgument(nested, false_true_edge), 3, 7);
+    assert(EdgeArgument(nested, false_false_edge) == 4, "missing inner else preserves y");
+    true_merge := nested.blocks[int(true_true_edge.target) - 1];
+    false_merge := nested.blocks[int(false_true_edge.target) - 1];
+    assert(true_merge.parameter_count == 1 && false_merge.parameter_count == 1, "inner joins each merge the changed r value");
+    true_exit := Terminator(nested, true_true_edge.target);
+    false_exit := Terminator(nested, false_true_edge.target);
+    assert(true_exit.op == typed.Jump && false_exit.op == typed.Jump, "inner merged results reach outer join");
+    true_outer_edge := nested.edges[int(true_exit.payload) - 1];
+    false_outer_edge := nested.edges[int(false_exit.payload) - 1];
+    assert(true_outer_edge.target == false_outer_edge.target, "outer paths converge");
+    assert(EdgeArgument(nested, true_outer_edge) == nested.block_parameters[int(true_merge.first_parameter)], "outer true input is the true inner merge result");
+    assert(EdgeArgument(nested, false_outer_edge) == nested.block_parameters[int(false_merge.first_parameter)], "outer false input is the false inner merge result");
+    outer_merge := nested.blocks[int(true_outer_edge.target) - 1];
+    returned = Terminator(nested, true_outer_edge.target);
+    assert(outer_merge.parameter_count == 1 && returned.op == typed.Return && returned.left == nested.block_parameters[int(outer_merge.first_parameter)], "nested return uses the outer merged value");
+
+    diagnostic_os.WriteOutput("CD2\tstage-done\tnested-branches\n");
+    diagnostic_os.WriteOutput("CD2\tstage-enter\tscopes-multiple-wrapping\n");
+    scoped := Accepted("package p\nScoped :: (b: bool, x: i64) -> i64 { if (b) { temp: i64 = x; } else { temp: i64 = x; } return x; }\n");
+    returned = Terminator(scoped, u32(length(scoped.blocks)));
+    assert(returned.op == typed.Return && returned.left == 2, "arm-local declarations do not change returned x");
+    assert(length(scoped.arguments) == 0 && length(scoped.block_parameters) == 2, "arm-local declarations create no merge parameters");
+    multiple := Accepted("package p\nFirst :: () -> i64 { return 1; }\nSecond :: (x: i64) -> i64 { return x; }\nThird :: () -> i64 { return 7; }\n");
+    assert(length(multiple.functions) == 3, "all source functions retained");
+    for (function, index in multiple.functions) {
+        returned = Terminator(multiple, function.first_block + 1);
+        assert(returned.op == typed.Return, "each function retains its return");
+        if (index == 1) {
+            entry_block := multiple.blocks[int(function.first_block)];
+            assert(returned.left == multiple.block_parameters[int(entry_block.first_parameter)], "middle function returns its own parameter");
+        } else {
+            constant = DefiningInstruction(multiple, returned.left);
+            expected: i64 = 1;
+            if (index == 2) { expected = 7; }
+            assert(constant.op == typed.ConstantI64 && multiple.literals[int(constant.payload) - 1] == expected, "constant-return functions keep their own literals");
+        }
+    }
+    wrapping := Accepted("package p\nWrap :: () -> i64 { return 9223372036854775807 + 1; }\n");
+    assert(length(wrapping.instructions) == 4 && length(wrapping.values) == 3, "constant addition is not folded");
+    assert(wrapping.instructions[0].op == typed.ConstantI64 && wrapping.instructions[1].op == typed.ConstantI64, "both range-checked constants remain explicit");
+    assert(wrapping.literals[0] == 9223372036854775807 && wrapping.literals[1] == 1, "wrapping operands preserve full i64 values");
+    assert(wrapping.instructions[2].op == typed.AddI64 && wrapping.instructions[2].left == 1 && wrapping.instructions[2].right == 2, "literal-only addition follows the explicit wrapping operation");
+    assert(wrapping.instructions[3].op == typed.Return && wrapping.instructions[3].left == 3, "wrapping result is returned without evaluator substitution");
+    diagnostic_os.WriteOutput("CD2\tstage-done\tscopes-multiple-wrapping\n");
+    diagnostic_os.WriteOutput("CD2\tstage-enter\tcheck-functions\n");
+    CheckScalarCalls();
+    CheckByteCapability();
+    CheckAnnotationScope();
+    CheckScalarAnnotations();
+    CheckWhileCapability();
+    CheckBlockLayouts();
+    CheckCyclicMutations();
+    CheckCensusSource();
+    CheckPackages();
+    CheckForeign();
+    CheckCallMutations();
+    CheckMutations(original, both);
+    CheckLimits();
+    diagnostic_os.WriteOutput("CD2\tstage-done\tcheck-functions\n");
+    diagnostic_os.WriteOutput("CD2\tstage-enter\tinline-dominance\n");
+    dominance := Accepted(strings.ReplaceAll(source, "result = left", "result = left + 7"));
+    branch_value := dominance.instructions[3].result;
+    assert(dominance.instructions[3].op == typed.AddI64, "mutation source creates branch-local addition");
+    last_add := length(dominance.instructions) - 2;
+    dominance_instructions := dominance.instructions;
+    addition := dominance_instructions[last_add];
+    addition.left = branch_value;
+    dominance_instructions[last_add] = addition;
+    dominance.instructions = dominance_instructions;
+    error := typed.Verify(dominance);
+    assert(error == typed.InvalidDominance, "branch-local value must not escape without merge argument");
+
+    diagnostic_os.WriteOutput("CD2\tstage-done\tinline-dominance\n");
+    diagnostic_os.WriteOutput("CD2\tstage-enter\tinline-negative-sources\n");
+    negatives: string[] = [
+        "package p\nBad :: (b: bool, x: i64) -> i64 { if (b) { x: i64 = 1; } return x; }\n",
+        "package p\nBad :: (b: bool) -> i64 { x: i64 = 1; if (b) { x: i64 = 7; } return x; }\n",
+        "package p\nCancelled :: () -> i64 { return 1; }\n",
+        "package p\nBad :: (Cancelled: i64) -> i64 { return Cancelled; }\n",
+        "package p\nBad :: () -> i64 { Cancelled: i64 = 1; return Cancelled; }\n",
+        "package p\n",
+        "",
+        "package p\nBad :: (x: i64[]) -> i64 { return 1; }\n",
+        "package p\nBad :: (x: i64?) -> i64 { return 1; }\n",
+        "package p\nBad :: (x: plain i64) -> i64 { return 1; }\n",
+        "package p\nBad :: (x: char) -> i64 { return 1; }\n",
+        "package p\nBad :: (x: int) -> i64 { return 1; }\n",
+        "package p\nBad :: (x: i64, x: i64) -> i64 { return x; }\n",
+        "package p\nBad :: (x: i64 = 1) -> i64 { return x; }\n",
+        "package p\nBad :: ($x: i64) -> i64 { return x; }\n",
+        "package p\nBad :: (x: i64) -> i64 { return absent; }\n",
+        "package p\nBad :: (x: i64) -> i64 { local: bool = x; return x; }\n",
+        "package p\nBad :: (b: bool, x: i64) -> i64 { x = b; return x; }\n",
+        "package p\nBad :: (b: bool) -> i64 { return b + 1; }\n",
+        "package p\nBad :: (x: i64) -> i64 { if (x) { return x; } return x; }\n",
+        "package p\nBad :: (x: i64) -> bool { return x; }\n",
+        "package p\nBad :: (x: i64) -> i64 { x = 1; }\n",
+        "package p\nBad :: () -> i64 { return 9223372036854775808; }\n",
+        "package p\nBad :: () -> i64 { return 0xff; }\n",
+        "package p\nBad :: () -> i64 { return 1.5; }\n",
+        "package p\nBad :: () -> i64 { return -1; }\n",
+        "package p\nBad :: (x: i64) -> i64 { return x / 7; }\n",
+        "package p\nBad :: (x: i64) -> i64 { return x; x = 7; }\n",
+        "package p\nBad :: (b: bool, x: i64) -> i64 { if (b) { temp: i64 = x; } return temp; }\n",
+        "package p\nGood :: (x: i64) -> i64 { return x; }\nUnsupported :: (x: i64) -> i64 { return x / 7; }\n",
+        "package p\nDuplicate :: () -> i64 { return 1; }\nDuplicate :: () -> i64 { return 7; }\n",
+        "package p\nimport q \"project:q\"\nGood :: () -> i64 { return 1; }\n",
+        "package p\n@custom Good :: () -> i64 { return 1; }\n"
+    ];
+    for (text in negatives) { Rejected(text); }
+    // The second header is rejected before the first body can report its name.
+    diagnostic_os.WriteOutput("CD2\tstage-done\tinline-negative-sources\n");
+    diagnostic_os.WriteOutput("CD2\tstage-enter\theader-order\n");
+    header_first := "package p\nFirst :: () -> i64 { return absent; }\nSecond :: (x: i64[]) -> i64 { return 1; }\n";
+    switch typed.Produce(header_first, 19) {
+        case .Produced(module): assert(false, "unsupported later header accepted");
+        case .Rejected(diagnostic): assert(diagnostic.line == 3, "all headers precede body checking");
+    }
+    diagnostic_os.WriteOutput("CD2\tstage-done\theader-order\n");
+    diagnostic_os.WriteOutput("CD2\tsuite-done\tnon-acceptance\n");
+    return 0;
+}
+
+Accepted :: (text: string) -> typed.Module {
+    switch typed.Produce(text, 19) {
+        case .Produced(module):
+            verified := typed.Verify(module);
+            assert(verified == 0, "produced body verifies");
+            return module;
+        case .Rejected(diagnostic):
+            assert(false, "valid scalar transform rejected");
+            return {functions: [], foreigns: [], signatures: [], parameter_types: [], blocks: [],
+                    block_parameters: [], values: [], instructions: [], edges: [], calls: [],
+                    arguments: [], literals: [], origins: [], names: [], name_bytes: []};
+    }
+}
+Rejected :: (text: string) -> string {
+    switch typed.Produce(text, 19) {
+        case .Produced(module):
+            assert(false, "unsupported scalar source accepted");
+            return "";
+        case .Rejected(diagnostic):
+            assert(diagnostic.document == 19, "source diagnostic document retained");
+            assert(diagnostic.start >= 0 && diagnostic.end >= diagnostic.start, "source diagnostic byte range");
+            assert(diagnostic.end <= text_byte_length(text), "source diagnostic inside input");
+            assert(diagnostic.line > 0 && diagnostic.column > 0 && diagnostic.message != "", "source diagnostic location and explanation");
+            return diagnostic.message;
+    }
+}
+// Read table relationships only. No source evaluator or IR execution lives here.
+Terminator :: (module: typed.Module, block: u32) -> typed.Instruction {
+    row := module.blocks[int(block) - 1];
+    return module.instructions[int(row.first_instruction) + int(row.instruction_count) - 1];
+}
+DefiningInstruction :: (module: typed.Module, value: u32) -> typed.Instruction {
+    definition := module.values[int(value) - 1].definition;
+    assert((definition & typed.BlockDefinition) == 0, "expected an instruction-produced value");
+    return module.instructions[int(definition) - 1];
+}
+EdgeArgument :: (module: typed.Module, edge: typed.Edge) -> u32 {
+    assert(edge.argument_count == 1, "edge carries exactly one merged value");
+    return module.arguments[int(edge.first_argument)];
+}
+CheckAdd :: (module: typed.Module, value: u32, left: u32, literal: i64) {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckAdd:269\n");
+    addition := DefiningInstruction(module, value);
+    assert(addition.op == typed.AddI64 && addition.left == left, "addition retains its source operand");
+    constant := DefiningInstruction(module, addition.right);
+    assert(constant.op == typed.ConstantI64 && module.literals[int(constant.payload) - 1] == literal, "addition retains its source literal");
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckAdd:269\n");
+}
+NameMatches :: (module: typed.Module, index: int, expected: string) -> bool {
+    row := module.names[int(module.functions[index].name) - 1];
+    if (int(row.count) != text_byte_length(expected)) { return false; }
+    for (at in 0..<int(row.count)) {
+        if (int(module.name_bytes[int(row.start) + at]) != text_byte_at(expected, at)) { return false; }
+    }
+    return true;
+}
+CheckPair :: (module: typed.Module, literal: i64) {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckPair:283\n");
+    assert(length(module.functions) == 2 && length(module.signatures) == 2, "both source functions admitted");
+    assert(length(module.blocks) == 4 && length(module.values) == 7, "source-driven parameter and merge values");
+    assert(length(module.instructions) == 6 && length(module.edges) == 3 && length(module.literals) == 1, "absent else needs no empty block or jump");
+    assert(module.literals[0] == literal, "literal is read from source");
+    assert(module.functions[0].first_block == 0 && module.functions[0].block_count == 1, "Echo owns entry block");
+    assert(module.functions[1].first_block == 1 && module.functions[1].block_count == 3, "Join owns branch blocks");
+    assert(module.signatures[0].result_type == typed.I64 && module.signatures[1].result_type == typed.I64, "real result annotations");
+    assert(module.parameter_types[1] == typed.Bool && module.parameter_types[2] == typed.I64, "real parameter annotations");
+    assert(module.instructions[0].op == typed.Return && module.instructions[0].left == 1, "Echo returns its parameter");
+    assert(module.instructions[1].op == typed.Branch && module.instructions[1].left == 2, "Join branches on bool parameter");
+    assert(module.edges[0].target == 3 && module.edges[1].target == 4, "condition reaches true block or merge directly");
+    assert(module.edges[2].target == 4, "true arm reaches merge");
+    assert(EdgeArgument(module, module.edges[2]) == 3 && EdgeArgument(module, module.edges[1]) == 4, "true supplies left and direct false supplies right");
+    assert(module.blocks[3].parameter_count == 1, "merge owns one block parameter");
+    assert(module.values[4].definition == (typed.BlockDefinition | u32(4)), "merge value definition is explicit");
+    assert(module.instructions[4].op == typed.AddI64 && module.instructions[4].left == 5 && module.instructions[4].right == 6, "merge plus source constant");
+    assert(module.instructions[5].op == typed.Return && module.instructions[5].left == 7, "Join returns produced addition");
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckPair:283\n");
+}
+CheckEqual :: (left: typed.Module, right: typed.Module) {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckEqual:302\n");
+    assert(length(left.functions) == length(right.functions), "deterministic functions count");
+    for (a, index in left.functions) {
+        b := right.functions[index];
+        assert(a.name == b.name && a.signature == b.signature && a.first_block == b.first_block && a.block_count == b.block_count && a.origin == b.origin && a.exported == b.exported, "deterministic functions rows");
+    }
+    assert(length(left.foreigns) == length(right.foreigns), "deterministic foreign membership count");
+    for (a, index in left.foreigns) {
+        b := right.foreigns[index];
+        assert(a.function == b.function && a.library == b.library, "deterministic foreign membership rows");
+    }
+    assert(length(left.signatures) == length(right.signatures), "deterministic signatures count");
+    for (a, index in left.signatures) {
+        b := right.signatures[index];
+        assert(a.first_parameter == b.first_parameter && a.parameter_count == b.parameter_count && a.result_type == b.result_type, "deterministic signatures rows");
+    }
+    assert(length(left.blocks) == length(right.blocks), "deterministic blocks count");
+    for (a, index in left.blocks) {
+        b := right.blocks[index];
+        assert(a.first_parameter == b.first_parameter && a.parameter_count == b.parameter_count && a.first_instruction == b.first_instruction && a.instruction_count == b.instruction_count, "deterministic blocks rows");
+    }
+    assert(length(left.values) == length(right.values), "deterministic values count");
+    for (a, index in left.values) {
+        b := right.values[index];
+        assert(a.type == b.type && a.definition == b.definition, "deterministic values rows");
+    }
+    assert(length(left.instructions) == length(right.instructions), "deterministic instructions count");
+    for (a, index in left.instructions) {
+        b := right.instructions[index];
+        assert(a.op == b.op && a.result == b.result && a.left == b.left && a.right == b.right && a.payload == b.payload && a.origin == b.origin, "deterministic instructions rows");
+    }
+    assert(length(left.edges) == length(right.edges), "deterministic edges count");
+    for (a, index in left.edges) {
+        b := right.edges[index];
+        assert(a.target == b.target && a.first_argument == b.first_argument && a.argument_count == b.argument_count, "deterministic edges rows");
+    }
+    assert(length(left.calls) == length(right.calls), "deterministic calls count");
+    for (a, index in left.calls) {
+        b := right.calls[index];
+        assert(a.callee == b.callee && a.first_argument == b.first_argument, "deterministic calls rows");
+    }
+    assert(length(left.origins) == length(right.origins), "deterministic origins count");
+    for (a, index in left.origins) {
+        b := right.origins[index];
+        assert(a.document == b.document && a.start == b.start && a.end == b.end, "deterministic origins rows");
+    }
+    assert(length(left.names) == length(right.names), "deterministic names count");
+    for (a, index in left.names) {
+        b := right.names[index];
+        assert(a.start == b.start && a.count == b.count, "deterministic names rows");
+    }
+    assert(length(left.parameter_types) == length(right.parameter_types), "deterministic parameter_types count");
+    for (a, index in left.parameter_types) {
+        assert(a == right.parameter_types[index], "deterministic parameter_types rows");
+    }
+    assert(length(left.block_parameters) == length(right.block_parameters), "deterministic block_parameters count");
+    for (a, index in left.block_parameters) {
+        assert(a == right.block_parameters[index], "deterministic block_parameters rows");
+    }
+    assert(length(left.arguments) == length(right.arguments), "deterministic arguments count");
+    for (a, index in left.arguments) {
+        assert(a == right.arguments[index], "deterministic arguments rows");
+    }
+    assert(length(left.literals) == length(right.literals), "deterministic literals count");
+    for (a, index in left.literals) {
+        assert(a == right.literals[index], "deterministic literals rows");
+    }
+    assert(length(left.name_bytes) == length(right.name_bytes), "deterministic name_bytes count");
+    for (a, index in left.name_bytes) {
+        assert(a == right.name_bytes[index], "deterministic name_bytes rows");
+    }
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckEqual:302\n");
+}
+CheckMutations :: (source: typed.Module, both: typed.Module) {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckMutations:374\n");
+    module := source;
+    instructions := module.instructions;
+    instruction := instructions[5];
+    instruction.left = 999;
+    instructions[5] = instruction;
+    module.instructions = instructions;
+    error := typed.Verify(module);
+    assert(error == typed.InvalidDefinition, "bad use is rejected");
+    module = source;
+    values := module.values;
+    value := values[6];
+    value.definition = 4;
+    values[6] = value;
+    module.values = values;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDefinition, "bad definition is rejected");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[5];
+    instruction.left = 1;
+    instructions[5] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDominance, "cross-function use is rejected");
+    module = source;
+    values = module.values;
+    value = values[4];
+    value.type = typed.Bool;
+    values[4] = value;
+    module.values = values;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "wrong block parameter type is rejected");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[4];
+    instruction.left = 7;
+    instructions[4] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDominance, "non-dominating same-block use is rejected");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[5];
+    instruction.op = typed.AddI64;
+    instructions[5] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidTerminator, "missing terminator is rejected");
+    module = source;
+    instructions = module.instructions;
+    instructions.append(source.instructions[5]);
+    module.instructions = instructions;
+    blocks := module.blocks;
+    block := blocks[3];
+    block.instruction_count += 1;
+    blocks[3] = block;
+    module.blocks = blocks;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidTerminator, "instruction after return is rejected");
+    module = source;
+    arguments := module.arguments;
+    arguments[0] = 2;
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "wrong edge argument type is rejected");
+    module = source;
+    edges := module.edges;
+    edge := edges[2];
+    edge.target = 1;
+    edges[2] = edge;
+    module.edges = edges;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidEdge, "cross-function edge is rejected");
+    module = source;
+    edges = module.edges;
+    edge = edges[2];
+    edge.first_argument = module.edges[1].first_argument;
+    edges[2] = edge;
+    module.edges = edges;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "overlapping argument spans are rejected");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[3];
+    instruction.op = 0;
+    instructions[3] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "unknown opcode is rejected");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[2];
+    instruction.payload = 2;
+    instructions[2] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidEdge, "reused edge is rejected");
+    // Both-return has a real false block with no merge arguments to confound reachability.
+    module = both;
+    edges = module.edges;
+    edge = edges[1];
+    edge.target = edges[0].target;
+    edges[1] = edge;
+    module.edges = edges;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDominance, "unreachable block is rejected");
+    module = source;
+    origins := module.origins;
+    origins.append(source.origins[0]);
+    module.origins = origins;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "unowned origin is rejected");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[5];
+    instruction.left = 4294967295;
+    instructions[5] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDefinition, "maximum u32 value ID is rejected");
+    module = source;
+    edges = module.edges;
+    edge = edges[2];
+    edge.first_argument = 4294967295;
+    edges[2] = edge;
+    module.edges = edges;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "maximum u32 span offset is rejected");
+    pristine := typed.Verify(source);
+    assert(pristine == 0, "mutation snapshots preserve the original produced body");
+    pristine = typed.Verify(both);
+    assert(pristine == 0, "unreachable-block mutation preserves both-return source");
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckMutations:374\n");
+}
+
+CheckLimits :: () {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckLimits:509\n");
+    functions := "package p\n";
+    for (index in 0..<32) {
+        functions = strings.Concatenate([functions, "F", format_text("{}", index), " :: () -> i64 { return 1; }\n"]);
+    }
+    full := Accepted(functions);
+    assert(length(full.functions) == 32, "32 functions are accepted");
+    message := Rejected(strings.Concatenate([functions, "F32 :: () -> i64 { return 1; }\n"]));
+    assert(message == "vNext scalar slice exceeds 32 functions", "33rd function reaches the function limit");
+
+    parameters := "package p\nMany :: (";
+    for (index in 0..<32) {
+        if (index != 0) { parameters = strings.Concatenate([parameters, ", "]); }
+        parameters = strings.Concatenate([parameters, "p", format_text("{}", index), ": i64"]);
+    }
+    full = Accepted(strings.Concatenate([parameters, ") -> i64 { return p0; }\n"]));
+    assert(length(full.parameter_types) == 32, "32 parameters are accepted");
+    message = Rejected(strings.Concatenate([parameters, ", p32: i64) -> i64 { return p0; }\n"]));
+    assert(message == "vNext scalar slice exceeds 32 parameters", "33rd parameter reaches the parameter limit");
+
+    locals := "package p\nMany :: () -> i64 {\n";
+    for (index in 0..<64) {
+        locals = strings.Concatenate([locals, "v", format_text("{}", index), ": i64 = 1;\n"]);
+    }
+    full = Accepted(strings.Concatenate([locals, "return v0; }\n"]));
+    assert(length(full.values) == 64, "64 visible locals are accepted");
+    message = Rejected(strings.Concatenate([locals, "v64: i64 = 1;\nreturn v0; }\n"]));
+    assert(message == "vNext scalar slice exceeds 64 visible bindings", "65th local reaches the visible-binding limit");
+
+    CheckBlockBoundaries();
+    exact := "";
+    prefix := "package p\nDeep :: () -> i64 { return ";
+    full = Accepted(strings.Concatenate([prefix, strings.Repeat("(", 31), "1", strings.Repeat(")", 31), "; }\n"]));
+    assert(length(full.literals) == 1 && full.literals[0] == 1, "expression at depth 31 is accepted");
+    message = Rejected(strings.Concatenate([prefix, strings.Repeat("(", 32), "1", strings.Repeat(")", 32), "; }\n"]));
+    assert(message == "vNext scalar slice exceeds expression nesting 32", "expression at depth 32 reaches the nesting limit");
+
+    prefix = "package p\nBoundary :: () -> i64 { return 1; }\n";
+    exact = strings.Concatenate([prefix, strings.Repeat(" ", 65536 - text_byte_length(prefix))]);
+    assert(text_byte_length(exact) == 65536, "accepted source boundary is exactly 64 KiB");
+    full = Accepted(exact);
+    assert(length(full.functions) == 1 && full.literals[0] == 1, "valid padded source remains a scalar program");
+    over := strings.Concatenate([exact, " "]);
+    assert(text_byte_length(over) == 65537, "rejected source boundary is exactly one byte over");
+    message = Rejected(over);
+    assert(message == "vNext scalar slice requires a nonnegative document and at most 64 KiB source", "valid document isolates the source byte limit");
+    prefix = "package p\nDeep :: (b: bool, x: i64) -> i64 { ";
+    exact = strings.Concatenate([prefix, strings.Repeat("if (b) { ", 31), "return x; ",
+                                 strings.Repeat("} ", 31), "return x; }\n"]);
+    full = Accepted(exact);
+    assert(length(full.blocks) == 63, "statement depth 31 remains inside the block bound");
+    message = Rejected(strings.Concatenate([prefix, strings.Repeat("if (b) { ", 32), "return x; ",
+                                            strings.Repeat("} ", 32), "return x; }\n"]));
+    assert(message == "vNext scalar slice exceeds statement nesting 32", "statement depth is checked before deeper traversal");
+
+    // Retained parser emits 27 rows for this declaration and five per plain
+    // assignment, excluding its hidden newline terminators: 27 + 1633*5=8192.
+    prefix = "package p\nNodes :: (x: i64) -> i64 { ";
+    exact = strings.Concatenate([prefix, strings.Repeat("x = x; ", 1633), "return x; }\n"]);
+    full = Accepted(exact);
+    assert(length(full.values) == 1 && length(full.instructions) == 1, "8192 nodes admit no-op assignments without extra values");
+    // One extra comment is one retained extra row, without changing the body.
+    message = Rejected(strings.Concatenate(["// extra\n", exact]));
+    assert(message == "vNext scalar slice exceeds 8192 syntax nodes", "8193rd syntax row reaches the node bound");
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckLimits:509\n");
+}
+
+// These helpers inspect produced relationships; they never evaluate source/IR.
+CallInstruction :: (module: typed.Module, call: u32) -> int {
+    for (instruction, index in module.instructions) {
+        if (instruction.op == typed.DirectCall && instruction.payload == call) { return index; }
+    }
+    assert(false, "expected a produced call instruction");
+    return 0;
+}
+OpcodeInstruction :: (module: typed.Module, opcode: u32) -> int {
+    for (instruction, index in module.instructions) {
+        if (instruction.op == opcode) { return index; }
+    }
+    assert(false, "expected a produced opcode");
+    return 0;
+}
+CheckScalarCalls :: () {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckScalarCalls:590\n");
+    source := "package p\nOuter :: (x: i64, y: i64) -> i64 { return Pair(Inner(x), Inner(y)); }\nInner :: (value: i64) -> i64 { return value * 7; }\nPair :: (left: i64, right: i64) -> i64 { return left + right; }\n";
+    module := Accepted(source);
+    CheckEqual(module, Accepted(source));
+    assert(length(module.calls) == 3 && length(module.arguments) == 4, "two nested calls and their outer span are retained");
+    assert(module.calls[0].callee == 2 && module.calls[1].callee == 2 && module.calls[2].callee == 3, "forward private callees resolve from headers");
+    assert(module.calls[2].first_argument == 0 && module.calls[0].first_argument == 2 && module.calls[1].first_argument == 3, "outer span is reserved before nested arguments");
+    first_call := module.instructions[CallInstruction(module, 1)];
+    second_call := module.instructions[CallInstruction(module, 2)];
+    outer_call := module.instructions[CallInstruction(module, 3)];
+    assert(module.arguments[0] == first_call.result && module.arguments[1] == second_call.result, "outer arguments occupy contiguous slots in source order");
+    assert(module.arguments[2] == 1 && module.arguments[3] == 2, "nested calls read the correct caller parameters");
+    assert(CallInstruction(module, 1) < CallInstruction(module, 2) && CallInstruction(module, 2) < CallInstruction(module, 3), "argument evaluations are left-to-right before the outer call");
+    returned := Terminator(module, 1);
+    assert(returned.left == outer_call.result, "outer call result reaches the source return");
+    renamed := Accepted(strings.ReplaceAll(source, "Inner", "Renamed"));
+    assert(renamed.calls[0].callee == 2 && NameMatches(renamed, 1, "Renamed"), "renamed call resolution is source driven");
+    reordered := Accepted("package p\nInner :: (x: i64) -> i64 { return x; }\nOuter :: (x: i64) -> i64 { return Inner(x); }\n");
+    assert(reordered.calls[0].callee == 1, "declaration reorder changes the resolved FunctionID");
+
+    zero := Accepted("package p\nCaller :: (x: i64) -> i64 { saved: i64 = Identity(x); return Empty(); }\nIdentity :: (x: i64) -> i64 { return x; }\nEmpty :: () -> i64 { return 7; }\n");
+    assert(length(zero.arguments) == 1 && zero.calls[1].first_argument == 0, "zero arity has canonical offset even after nonempty arguments");
+    booleans := Accepted("package p\nCaller :: (x: i64, y: i64, b: bool) -> bool { scaled: i64 = x * y; return Flip(!(scaled > y)); }\nFlip :: (b: bool) -> bool { return !b; }\nTrue :: () -> bool { return true; }\nFalse :: () -> bool { return false; }\n");
+    multiply := booleans.instructions[OpcodeInstruction(booleans, typed.MultiplyI64)];
+    greater := booleans.instructions[OpcodeInstruction(booleans, typed.GreaterI64)];
+    inverted := booleans.instructions[OpcodeInstruction(booleans, typed.NotBool)];
+    assert(multiply.left == 1 && multiply.right == 2 && booleans.values[int(multiply.result) - 1].type == typed.I64, "multiply consumes i64 and produces i64");
+    assert(greater.left == multiply.result && greater.right == 2 && booleans.values[int(greater.result) - 1].type == typed.Bool, "signed greater consumes multiplied i64 and produces bool");
+    assert(inverted.left == greater.result && booleans.arguments[0] == inverted.result, "bool inversion flows through a bool call argument");
+    call := booleans.instructions[CallInstruction(booleans, 1)];
+    assert(booleans.values[int(call.result) - 1].type == typed.Bool, "bool call result follows callee signature");
+    for (function_index in 2..<4) {
+        function := booleans.functions[function_index];
+        returned = Terminator(booleans, function.first_block + 1);
+        constant := DefiningInstruction(booleans, returned.left);
+        assert(constant.op == typed.ConstantBool && constant.payload == u32(3 - function_index), "literal bool payloads are canonical 1/0");
+    }
+    wrapping := Accepted("package p\nWrap :: () -> i64 { return 9223372036854775807 * 2; }\n");
+    assert(length(wrapping.instructions) == 4 && wrapping.instructions[2].op == typed.MultiplyI64, "literal multiplication remains explicit wrapping IR");
+    assert(wrapping.literals[0] == 9223372036854775807 && wrapping.literals[1] == 2, "multiplication keeps individually checked literal operands");
+
+    recursive := Accepted("package p\nSelf :: (b: bool, x: i64) -> i64 { if (b) { return Self(false, x); } return x; }\n");
+    assert(recursive.calls[0].callee == 1, "self-call is not a CFG cycle");
+    mutual := Accepted("package p\nFirst :: (b: bool, x: i64) -> i64 { if (b) { return Second(false, x); } return x; }\nSecond :: (b: bool, x: i64) -> i64 { if (b) { return First(false, x); } return x; }\n");
+    assert(mutual.calls[0].callee == 2 && mutual.calls[1].callee == 1, "mutual calls use existing headers without recursive production");
+    branches := Accepted("package p\nCaller :: (b: bool, x: i64, y: i64) -> i64 { r: i64 = x; if (b) { r = Read(x); } else { r = Read(y); } return Read(r); }\nRead :: (x: i64) -> i64 { return x; }\n");
+    assert(length(branches.calls) == 3 && length(branches.arguments) == 5, "call and merge spans partition a shared argument table");
+    merge := branches.blocks[3];
+    last := branches.calls[2];
+    assert(branches.arguments[int(last.first_argument)] == branches.block_parameters[int(merge.first_parameter)], "post-branch call reads the merged value");
+
+    parameters := "";
+    arguments := "";
+    for (index in 0..<32) {
+        if (index != 0) {
+            parameters = strings.Concatenate([parameters, ", "]);
+            arguments = strings.Concatenate([arguments, ", "]);
+        }
+        annotation := "bool";
+        argument := "true";
+        if (index % 2 != 0) { annotation = "i64"; argument = format_text("{}", index); }
+        parameters = strings.Concatenate([parameters, "p", format_text("{}", index), ": ", annotation]);
+        arguments = strings.Concatenate([arguments, argument]);
+    }
+    header := strings.Concatenate(["package p\nMany :: (", parameters, ") -> i64 { return p31; }\n"]);
+    prefix := strings.Concatenate([header, "Caller :: () -> i64 { return Many("]);
+    full := Accepted(strings.Concatenate([prefix, arguments, "); }\n"]));
+    assert(length(full.calls) == 1 && length(full.arguments) == 32, "32 mixed scalar arguments cover register and stack positions");
+    message := Rejected(strings.Concatenate([prefix, arguments, ", 33); }\n"]));
+    assert(message == "vNext scalar slice exceeds 32 call arguments", "33rd argument reaches admission limit before evaluation");
+
+    negatives: string[] = [
+        "package p\nF :: () -> i64 { return Missing(); }\n",
+        "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: (Read: i64) -> i64 { return Read(1); }\n",
+        "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { Read: i64 = 7; return Read(1); }\n",
+        "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return Read(); }\n",
+        "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return Read(true); }\n",
+        "package p\nRead :: (x: bool) -> bool { return x; }\nF :: () -> bool { return Read(1); }\n",
+        "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return Read(x: 1); }\n",
+        "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return Read(x: i64 = 1); }\n",
+        "package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return (Read)(1); }\n",
+        "package p\nF :: () -> i64 { return other.Read(1); }\n",
+        "package p\nF :: () -> bool { return !1; }\n",
+        "package p\nF :: () -> i64 { return true * 7; }\n",
+        "package p\nF :: () -> bool { return 7 > false; }\n",
+    ];
+    for (text in negatives) { Rejected(text); }
+    CheckRejectedAt("package p\nF :: () -> i64 { return Missing(); }\n", "unknown direct callee", "Missing");
+    CheckRejectedAt("package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return Read(true); }\n", "direct call argument type does not match signature", "true");
+    CheckRejectedAt("package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return Read(); }\n", "direct call argument count does not match signature", "()");
+    CheckRejectedAt("package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return Read(absent, absent); }\n", "direct call argument count does not match signature", "(absent, absent)");
+    CheckRejectedAt("package p\nRead :: (x: i64) -> i64 { return x; }\nF :: (Read: i64) -> i64 { return Read(1); }\n", "scalar binding is not callable", "Read");
+    CheckRejectedAt("package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return Read(x: 1); }\n", "vNext scalar slice requires positional call arguments", "x: 1");
+    CheckRejectedAt("package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { return (Read)(1); }\n", "vNext scalar slice requires an identifier direct callee", "(Read)");
+    // An initializer sees the previous scope; its new binding is not visible yet.
+    initializer := Accepted("package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { Read: i64 = Read(7); return Read; }\n");
+    assert(initializer.calls[0].callee == 1, "local declaration starts shadowing after its initializer");
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckScalarCalls:590\n");
+}
+
+CheckCallMutations :: () {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckCallMutations:689\n");
+    source := Accepted("package p\nCaller :: (x: i64, y: i64, b: bool) -> i64 { a: i64 = Target(x, b); c: i64 = Target(y, !b); return a + c; }\nTarget :: (value: i64, flag: bool) -> i64 { return value; }\nBoolTarget :: (flag: bool) -> bool { return !flag; }\nBoolCaller :: (flag: bool) -> bool { return BoolTarget(flag); }\nZero :: () -> i64 { return 7; }\nZeroCaller :: () -> i64 { return Zero(); }\n");
+    first := CallInstruction(source, 1);
+    second := CallInstruction(source, 2);
+    boolean := CallInstruction(source, 3);
+    module := source;
+    instructions := module.instructions;
+    instruction := instructions[first];
+    calls := module.calls;
+    call := calls[0];
+    arguments := module.arguments;
+    values := module.values;
+    value := values[0];
+    error: int = 0;
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[first];
+    instruction.payload = 0;
+    instructions[first] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "zero CallID is rejected");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[first];
+    instruction.payload = 4294967295;
+    instructions[first] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "maximum CallID is rejected before indexing");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[second];
+    instruction.payload = 1;
+    instructions[second] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "a Call row cannot have two instruction owners");
+    module = source;
+    calls = module.calls;
+    calls.append(source.calls[3]);
+    module.calls = calls;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "orphan zero-arity Call row is rejected");
+    module = source;
+    calls = module.calls;
+    call = calls[0];
+    call.callee = 0;
+    calls[0] = call;
+    module.calls = calls;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDefinition, "absent callee is rejected before signature indexing");
+    module = source;
+    calls = module.calls;
+    call = calls[0];
+    call.callee = 4294967295;
+    calls[0] = call;
+    module.calls = calls;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDefinition, "maximum callee is rejected before indexing");
+    module = source;
+    functions := module.functions;
+    function := functions[1];
+    function.signature = 4294967295;
+    functions[1] = function;
+    module.functions = functions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "bad callee signature ID is rejected before call span reading");
+    module = source;
+    calls = module.calls;
+    call = calls[0];
+    call.first_argument = 4294967295;
+    calls[0] = call;
+    module.calls = calls;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "out-of-range call span is rejected before narrowing");
+    module = source;
+    calls = module.calls;
+    call = calls[0];
+    call.first_argument = u32(length(module.arguments) - 1);
+    calls[0] = call;
+    module.calls = calls;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "call span ending beyond the argument table is rejected");
+    module = source;
+    calls = module.calls;
+    call = calls[1];
+    call.first_argument = 0;
+    calls[1] = call;
+    module.calls = calls;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "overlapping call argument spans are rejected");
+    module = source;
+    calls = module.calls;
+    call = calls[3];
+    call.first_argument = 1;
+    calls[3] = call;
+    module.calls = calls;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "empty call span requires canonical zero offset");
+    module = source;
+    arguments = module.arguments;
+    arguments.append(1);
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "unowned argument slot is rejected");
+    module = source;
+    arguments = module.arguments;
+    arguments[0] = 0;
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDefinition, "absent call argument is rejected");
+    module = source;
+    arguments = module.arguments;
+    arguments[0] = 4294967295;
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDefinition, "maximum call argument ID is rejected before indexing");
+    module = source;
+    arguments = module.arguments;
+    arguments[0] = 3;
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "bool argument cannot replace an i64 parameter");
+    module = source;
+    arguments = module.arguments;
+    arguments[1] = 1;
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "i64 argument cannot replace a bool parameter");
+    module = source;
+    arguments = module.arguments;
+    arguments[0] = module.block_parameters[int(module.blocks[int(module.functions[1].first_block)].first_parameter)];
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDominance, "callee-local value cannot be used in caller argument");
+    module = source;
+    arguments = module.arguments;
+    arguments[int(module.calls[2].first_argument)] = 3;
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDominance, "earlier function parameter is not in the bool caller scope");
+    module = source;
+    arguments = module.arguments;
+    arguments[0] = module.instructions[second].result;
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDominance, "later call result cannot be used by an earlier call");
+    module = source;
+    arguments = module.arguments;
+    arguments[0] = module.instructions[first].result;
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDominance, "call cannot read its own result");
+    module = source;
+    values = module.values;
+    value = values[int(module.instructions[first].result) - 1];
+    value.type = typed.Bool;
+    values[int(module.instructions[first].result) - 1] = value;
+    module.values = values;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "call result type must match the callee signature");
+    module = source;
+    values = module.values;
+    value = values[int(module.instructions[boolean].result) - 1];
+    value.type = typed.I64;
+    values[int(module.instructions[boolean].result) - 1] = value;
+    module.values = values;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "call result type must match the callee signature");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[first];
+    instruction.left = 1;
+    instructions[first] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "call left field is unused and must be zero");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[first];
+    instruction.right = 1;
+    instructions[first] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "call right field is unused and must be zero");
+    branches := Accepted("package p\nCaller :: (b: bool, x: i64, y: i64) -> i64 { r: i64 = x; if (b) { r = Read(x); } else { r = Read(y); } return Read(r); }\nRead :: (x: i64) -> i64 { return x; }\n");
+    module = branches;
+    arguments = module.arguments;
+    arguments[int(module.calls[2].first_argument)] = module.instructions[CallInstruction(module, 1)].result;
+    module.arguments = arguments;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidDominance, "branch-local call result cannot bypass the merge");
+    module = branches;
+    calls = module.calls;
+    call = calls[0];
+    call.first_argument = module.edges[2].first_argument;
+    calls[0] = call;
+    module.calls = calls;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidSpan, "call and edge argument spans cannot overlap");
+
+    scalar := Accepted("package p\nF :: (x: i64, y: i64, b: bool) -> bool { a: i64 = x * y; return !(a > y); }\nTrue :: () -> bool { return true; }\n");
+    constant := OpcodeInstruction(scalar, typed.ConstantBool);
+    multiply := OpcodeInstruction(scalar, typed.MultiplyI64);
+    greater := OpcodeInstruction(scalar, typed.GreaterI64);
+    invert := OpcodeInstruction(scalar, typed.NotBool);
+    source = scalar;
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[constant];
+    instruction.payload = 2;
+    instructions[constant] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "bool literal payload must be canonical zero or one");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[constant];
+    instruction.left = 1;
+    instructions[constant] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "bool literal left field must be zero");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[constant];
+    instruction.right = 1;
+    instructions[constant] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "bool literal right field must be zero");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[multiply];
+    instruction.payload = 1;
+    instructions[multiply] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "multiply payload is unused");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[greater];
+    instruction.payload = 1;
+    instructions[greater] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "greater payload is unused");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[invert];
+    instruction.right = 1;
+    instructions[invert] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "not right field is unused");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[invert];
+    instruction.payload = 1;
+    instructions[invert] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidInstruction, "not payload is unused");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[multiply];
+    instruction.left = 3;
+    instructions[multiply] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "multiply requires i64 operands");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[greater];
+    instruction.right = 3;
+    instructions[greater] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "greater requires i64 operands");
+    module = source;
+    instructions = module.instructions;
+    instruction = instructions[invert];
+    instruction.left = 1;
+    instructions[invert] = instruction;
+    module.instructions = instructions;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "not requires bool operand");
+    module = source;
+    values = module.values;
+    value = values[int(module.instructions[multiply].result) - 1];
+    value.type = typed.Bool;
+    values[int(module.instructions[multiply].result) - 1] = value;
+    module.values = values;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "scalar opcode result has its required type");
+    module = source;
+    values = module.values;
+    value = values[int(module.instructions[greater].result) - 1];
+    value.type = typed.I64;
+    values[int(module.instructions[greater].result) - 1] = value;
+    module.values = values;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "scalar opcode result has its required type");
+    module = source;
+    values = module.values;
+    value = values[int(module.instructions[invert].result) - 1];
+    value.type = typed.I64;
+    values[int(module.instructions[invert].result) - 1] = value;
+    module.values = values;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "scalar opcode result has its required type");
+    module = source;
+    values = module.values;
+    value = values[int(module.instructions[constant].result) - 1];
+    value.type = typed.I64;
+    values[int(module.instructions[constant].result) - 1] = value;
+    module.values = values;
+    error = typed.Verify(module);
+    assert(error == typed.InvalidType, "scalar opcode result has its required type");
+    error = typed.Verify(source);
+    assert(error == 0, "mutations preserve the produced scalar module");
+    error = typed.Verify(branches);
+    assert(error == 0, "mutations preserve call and edge span source");
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckCallMutations:689\n");
+}
+
+CheckRejectedAt :: (text: string, message: string, span: string) {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckRejectedAt:1015\n");
+    switch typed.Produce(text, 2147483647) {
+        case .Produced(module): assert(false, "invalid call source accepted");
+        case .Rejected(diagnostic):
+            assert(diagnostic.document == 2147483647 && diagnostic.message == message, "call diagnostic preserves document and precise category text");
+            assert(diagnostic.start >= 0 && diagnostic.end <= text_byte_length(text), "call diagnostic is inside source");
+            actual := text_slice(text, diagnostic.start, diagnostic.end - diagnostic.start);
+            assert(actual == span, "call diagnostic identifies the callee, list or argument responsible");
+    }
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckRejectedAt:1015\n");
+}
+
+// The preparer transports the unchanged original corpus bytes independently.
+// These callers inspect typed relationships, not an IR evaluator or backend.
+CheckPackages :: () {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckPackages:1028\n");
+    main := "package modules\nimport math \"project:slice_cases/modules/math\"\npub Apply :: (value: i64, enabled: bool) -> i64 {\n    if (enabled) { return math.Double(value); }\n    return value;\n}\n";
+    math := "package math\npub Double :: (value: i64) -> i64 { return value * 2; }\nHidden :: (value: i64) -> i64 { return value; }\n";
+    private_import := "package rejected\nimport math \"project:slice_cases/modules/math\"\nMain :: () -> i64 { return math.Hidden(1); }\n";
+    sources: typed.Source[] = [
+        {path: "slice_cases/modules/Main.chibi", text: main, document: 19},
+        {path: "slice_cases/modules/math/Math.chibi", text: math, document: 20}
+    ];
+    module := AcceptedSources(sources);
+    CheckEqual(module, AcceptedSources(sources));
+    assert(length(module.functions) == 3 && length(module.blocks) == 5 &&
+           length(module.instructions) == 8 && length(module.values) == 7,
+           "original modules retain Apply, Double and unused Hidden bodies");
+    assert(length(module.calls) == 1 && module.calls[0].callee == 2 &&
+           module.arguments[int(module.calls[0].first_argument)] == 1,
+           "qualified call resolves to the actual dependency signature and argument");
+    assert(NameMatches(module, 0, "Apply") && NameMatches(module, 1, ".vnext.2") &&
+           NameMatches(module, 2, ".vnext.3"), "dependency native names are deterministic and distinct");
+    assert(module.functions[0].exported == 1 && module.functions[1].exported == 0 &&
+           module.functions[2].exported == 0, "only entry package pub functions are native exports");
+    condition := Terminator(module, 1);
+    assert(condition.op == typed.Branch && condition.left == 2, "Apply tests its bool parameter");
+    true_target := module.edges[int(condition.payload) - 1].target;
+    true_block := module.blocks[int(true_target) - 1];
+    true_return := Terminator(module, true_target);
+    call_index := CallInstruction(module, 1);
+    assert(call_index >= int(true_block.first_instruction) &&
+           call_index < int(true_block.first_instruction + true_block.instruction_count),
+           "enabled Apply block contains the qualified call");
+    assert(true_return.op == typed.Return && true_return.left == module.instructions[call_index].result,
+           "enabled Apply returns the qualified call result");
+    false_return := Terminator(module, module.edges[int(condition.payload)].target);
+    assert(false_return.op == typed.Return && false_return.left == 1, "disabled Apply returns its input");
+    double_entry := module.blocks[int(module.functions[1].first_block)];
+    double_return := Terminator(module, module.functions[1].first_block + 1);
+    multiply := DefiningInstruction(module, double_return.left);
+    factor := DefiningInstruction(module, multiply.right);
+    assert(double_return.op == typed.Return && double_entry.parameter_count == 1 &&
+           multiply.left == module.block_parameters[int(double_entry.first_parameter)],
+           "Double returns the multiplication of its own argument");
+    assert(multiply.op == typed.MultiplyI64 && factor.op == typed.ConstantI64 &&
+           module.literals[int(factor.payload) - 1] == 2, "enabled Apply calls the authored multiply by two");
+    for (function, index in module.functions) {
+        origin := module.origins[int(function.origin) - 1];
+        expected: u32 = 20;
+        if (index == 0) { expected = 19; }
+        assert(origin.document == expected, "function origins preserve separate source documents");
+    }
+    for (origin in module.origins) {
+        text := main;
+        if (origin.document == 20) { text = math; }
+        assert((origin.document == 19 || origin.document == 20) && origin.start < origin.end &&
+               origin.end <= u32(text_byte_length(text)), "every origin stays in its original source document");
+    }
+    CheckSourcesRejected([
+        {path: "slice_cases/rejected/private_import.chibi", text: private_import, document: 21},
+        sources[1]
+    ], "private member", 0, "math.Hidden");
+
+    renamed := sources;
+    row := renamed[0];
+    row.text = strings.ReplaceAll(main, "math", "renamed");
+    row.text = strings.ReplaceAll(row.text, "Double", "Twice");
+    renamed[0] = row;
+    row = renamed[1];
+    row.path = "slice_cases/modules/renamed/Other.chibi";
+    row.text = strings.ReplaceAll(math, "package math", "package alternate");
+    row.text = strings.ReplaceAll(row.text, "Double", "Twice");
+    renamed[1] = row;
+    renamed_module := AcceptedSources(renamed);
+    assert(renamed_module.calls[0].callee == 2, "renamed aliases, directories, headers and callees resolve from source");
+
+    split: typed.Source[] = [
+        {path: "root/Main.chibi", text: "package root\nimport left \"project:left\"\nimport right \"project:right\"\npub Apply :: (x: i64) -> i64 { return left.Same(x) + right.Same(x) + Later(x); }\n", document: 0},
+        {path: "left/Main.chibi", text: "package left\npub Same :: (x: i64) -> i64 { return Hidden(x); }\nHidden :: (x: i64) -> i64 { return x + 1; }\n", document: 10},
+        {path: "right/Main.chibi", text: "package right\npub Same :: (x: i64) -> i64 { return x * 7; }\n", document: 11},
+        {path: "root/Later.chibi", text: "package root\nLater :: (x: i64) -> i64 { return x; }\n", document: 2147483647}
+    ];
+    module = AcceptedSources(split);
+    assert(length(module.functions) == 5 && length(module.calls) == 4,
+           "same-named dependency functions and private later-file function are all produced");
+    assert(module.calls[0].callee == 2 && module.calls[1].callee == 4 && module.calls[2].callee == 5 &&
+           module.calls[3].callee == 3, "global IDs do not reset at document boundaries");
+    assert(NameMatches(module, 4, "Later") && module.functions[4].exported == 0,
+           "entry-package private names remain unchanged");
+    assert(module.origins[int(module.functions[4].origin) - 1].document == u32(2147483647),
+           "later-file origin preserves the maximum document label");
+
+    row = sources[0];
+    row.text = strings.ReplaceAll(main, "math.Double", "unknown.Double");
+    CheckSourcesRejected([row, sources[1]], "unknown package alias", 0, "unknown");
+    row.text = strings.ReplaceAll(main, "math.Double", "math.Absent");
+    CheckSourcesRejected([row, sources[1]], "unknown imported function", 0, "Absent");
+    row.text = strings.ReplaceAll(main, "math.Double(value)", "math.Double(true)");
+    CheckSourcesRejected([row, sources[1]], "direct call argument type does not match signature", 0, "true");
+    row.text = strings.ReplaceAll(main, "math.Double(value)", "math.Double()");
+    CheckSourcesRejected([row, sources[1]], "direct call argument count does not match signature", 0, "()");
+    row.text = strings.ReplaceAll(main, "value: i64", "math: i64");
+    CheckSourcesRejected([row, sources[1]], "scalar binding has no package members", 0, "math.Double");
+    row = sources[1];
+    row.text = strings.ReplaceAll(math, "return value;", "return absent;");
+    CheckSourcesRejected([sources[0], row], "unknown scalar name", 1, "absent");
+    CheckPackageRules(sources);
+    CheckPackageLimits();
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckPackages:1028\n");
+}
+
+AcceptedSources :: (sources: typed.Source[]) -> typed.Module {
+    switch typed.ProduceSources(sources) {
+        case .Produced(module):
+            verified := typed.Verify(module);
+            assert(verified == 0, "multi-source produced module verifies");
+            return module;
+        case .Rejected(diagnostic):
+            assert(false, "valid package transform rejected");
+            return {functions: [], foreigns: [], signatures: [], parameter_types: [], blocks: [],
+                    block_parameters: [], values: [], instructions: [], edges: [], calls: [],
+                    arguments: [], literals: [], origins: [], names: [], name_bytes: []};
+    }
+}
+CheckSourcesRejected :: (sources: typed.Source[], message: string, source: int, anchor: string) {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckSourcesRejected:1147\n");
+    switch typed.ProduceSources(sources) {
+        case .Produced(module): assert(false, "invalid package transform accepted");
+        case .Rejected(diagnostic):
+            expected := sources[source];
+            start := strings.Index(expected.text, anchor);
+            assert(start >= 0, "rejection anchor exists in original source");
+            assert(diagnostic.message == message && diagnostic.document == expected.document,
+                   "package diagnostic retains its reason and source document");
+            assert(diagnostic.start >= 0 && diagnostic.end > diagnostic.start &&
+                   diagnostic.end <= text_byte_length(expected.text) &&
+                   diagnostic.start < start + text_byte_length(anchor) && diagnostic.end > start,
+                   "package diagnostic overlaps its real source anchor");
+            line: int = 1;
+            column: int = 1;
+            for (at in 0..<diagnostic.start) {
+                if (text_byte_at(expected.text, at) == 10) { line += 1; column = 1; }
+                else { column += 1; }
+            }
+            assert(diagnostic.line == line && diagnostic.column == column,
+                   "package diagnostic coordinates match its source byte offset");
+            if (message == "private member") {
+                actual := text_slice(expected.text, diagnostic.start, diagnostic.end - diagnostic.start);
+                assert(actual == anchor, "private import reports the exact qualified member span");
+            }
+            if (message == "Invalid string or embedded NUL") {
+                assert(diagnostic.start == start && diagnostic.end == start + text_byte_length(anchor),
+                       "decoded import failure retains the exact original quoted literal span");
+            }
+    }
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckSourcesRejected:1147\n");
+}
+
+CheckPackageRules :: (original: typed.Source[]) {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckPackageRules:1179\n");
+    scoped: typed.Source[] = [
+        {path: "root/A.chibi", text: "package root\nimport helper \"project:left\"\npub First :: (x: i64) -> i64 { return helper.Read(x); }\n", document: 31},
+        {path: "root/B.chibi", text: "package root\nimport helper \"project:right\"\npub Second :: (x: i64) -> i64 { return helper.Read(x); }\n", document: 32},
+        {path: "left/Main.chibi", text: "package left\npub Read :: (x: i64) -> i64 { return x + 1; }\n", document: 33},
+        {path: "right/Main.chibi", text: "package right\npub Read :: (x: i64) -> i64 { return x + 7; }\n", document: 34}
+    ];
+    module := AcceptedSources(scoped);
+    assert(module.calls[0].callee == 3 && module.calls[1].callee == 4,
+           "identical aliases in two files keep different package bindings");
+    reordered := AcceptedSources([scoped[0], scoped[3], scoped[1], scoped[2]]);
+    assert(reordered.calls[0].callee == 4 && reordered.calls[1].callee == 2 &&
+           NameMatches(reordered, 1, ".vnext.2") && NameMatches(reordered, 2, "Second"),
+           "reordered sources deliberately change global IDs without changing name resolution");
+    row := scoped[1];
+    row.text = "package root\npub Second :: (x: i64) -> i64 { return helper.Read(x); }\n";
+    CheckSourcesRejected([scoped[0], row, scoped[2]], "unknown package alias", 1, "helper.Read");
+    row.text = "package root\nhelper :: (x: i64) -> i64 { return x; }\n";
+    CheckSourcesRejected([scoped[0], row, scoped[2]], "import alias conflicts with a package function", 0, "helper");
+    conflicts := scoped[0];
+    conflicts.text = "package root\nimport z \"project:left\"\nimport a \"project:left\"\npub First :: (x: i64) -> i64 { return x; }\n";
+    row.text = "package root\nz :: (x: i64) -> i64 { return x; }\na :: (x: i64) -> i64 { return x; }\n";
+    CheckSourcesRejected([conflicts, row, scoped[2]], "import alias conflicts with a package function", 0, "z \"project:left\"");
+    row.text = "package root\nFirst :: (x: i64) -> i64 { return x; }\n";
+    CheckSourcesRejected([scoped[0], row, scoped[2]], "duplicate function name", 1, "First");
+    row.text = "package wrong\nOther :: (x: i64) -> i64 { return x; }\n";
+    CheckSourcesRejected([scoped[0], row, scoped[2]], "package header mismatch", 1, "wrong");
+    row = scoped[2];
+    row.text = "package root\npub Read :: (x: i64) -> i64 { return x; }\n";
+    CheckSourcesRejected([scoped[0], row], "duplicate package name", 1, "package root");
+
+    self: typed.Source[] = [
+        {path: "self/Main.chibi", text: "package self\nimport own \"project:self\"\npub Call :: (x: i64) -> i64 { return own.Private(x); }\n", document: 35},
+        {path: "self/Private.chibi", text: "package self\nPrivate :: (x: i64) -> i64 { return x; }\n", document: 36}
+    ];
+    module = AcceptedSources(self);
+    assert(module.calls[0].callee == 2 && NameMatches(module, 1, "Private"), "self-import retains package-private access");
+    row = self[0];
+    row.text = "package self\nimport own \"project:self\"\n";
+    module = AcceptedSources([row, self[1]]);
+    assert(length(module.functions) == 1 && NameMatches(module, 0, "Private"),
+           "header/import-only files are admitted when their package contains a body");
+    recursive := AcceptedSources([
+        {path: "p/A.chibi", text: "package p\npub First :: (b: bool, x: i64) -> i64 { if (b) { return Second(false, x); } return x; }\n", document: 37},
+        {path: "p/B.chibi", text: "package p\nSecond :: (b: bool, x: i64) -> i64 { if (b) { return First(false, x); } return x; }\n", document: 38}
+    ]);
+    assert(recursive.calls[0].callee == 2 && recursive.calls[1].callee == 1,
+           "mutual calls across same-package files use complete headers");
+
+    row = original[0];
+    row.text = strings.ReplaceAll(row.text, "project:slice_cases/modules/math", "project:absent");
+    CheckSourcesRejected([row, original[1]], "import target is outside the supplied source closure", 0, "project:absent");
+    row = original[1];
+    row.text = strings.ReplaceAll(row.text, "package math", "package math\nimport root \"project:slice_cases/modules\"");
+    CheckSourcesRejected([original[0], row], "package import cycle", 0, "import math");
+    row = original[0];
+    row.text = strings.ReplaceAll(row.text, "pub Apply", "import math \"project:slice_cases/modules\"\npub Apply");
+    CheckSourcesRejected([row, original[1]], "duplicate import alias", 0, "math \"project:slice_cases/modules\"");
+    row.text = strings.ReplaceAll(original[0].text, "math.Double", "Double");
+    CheckSourcesRejected([row, original[1]], "unknown direct callee", 0, "Double");
+    row.text = strings.ReplaceAll(original[0].text, "math.Double", "math.nested.Double");
+    CheckSourcesRejected([row, original[1]], "vNext scalar slice requires an identifier package and member", 0, "math.nested.Double");
+    row = scoped[2];
+    CheckSourcesRejected([original[0], original[1], row], "source package is unreachable from the entry package", 2, "package left");
+    row = original[1];
+    row.text = strings.ReplaceAll(row.text, "value: i64", "value: i64[]");
+    bad_body := original[0];
+    bad_body.text = strings.ReplaceAll(bad_body.text, "math.Double(value)", "absent");
+    CheckSourcesRejected([bad_body, row], "vNext rejected a modified or constructed signature", 1, "i64[]");
+    row = original[1];
+    row.text = "package math\npub Double :: (";
+    switch typed.ProduceSources([original[0], row]) {
+        case .Produced(module): assert(false, "malformed dependency syntax accepted");
+        case .Rejected(diagnostic):
+            assert(diagnostic.document == row.document && diagnostic.line == 2 &&
+                   diagnostic.start >= 0 && diagnostic.end >= diagnostic.start &&
+                   diagnostic.end <= text_byte_length(row.text), "retained parser error keeps its dependency document");
+    }
+
+    // Ordinary string escapes are decoded by the retained reader, not by a
+    // fixture-specific import scanner. Distinct aliases may share a target.
+    row = original[0];
+    row.text = strings.ReplaceAll(row.text, "project:slice_cases/modules/math", "project:slice_cases\\/modules\\/math");
+    module = AcceptedSources([row, original[1]]);
+    assert(module.calls[0].callee == 2, "decoded import paths resolve their real target");
+    // Four hex digits pass ScanEscape, but Metadata rejects an unpaired
+    // surrogate. A decoded NUL instead fails Name's explicit byte check.
+    invalid_literals: string[] = ["\"project:\\uD800\"", "\"project:\\u0000\""];
+    for (literal in invalid_literals) {
+        row = original[1];
+        row.text = strings.ReplaceAll(row.text, "package math", strings.Concatenate(["package math\nimport bad ", literal]));
+        CheckSourcesRejected([original[0], row], "Invalid string or embedded NUL", 1, literal);
+    }
+    row = original[0];
+    row.text = strings.ReplaceAll(original[0].text, "pub Apply", "import second \"project:slice_cases/modules/math\"\npub Apply");
+    row.text = strings.ReplaceAll(row.text, "math.Double", "second.Double");
+    module = AcceptedSources([row, original[1]]);
+    assert(module.calls[0].callee == 2, "two aliases can name the same package");
+    imports: string[] = ["import \"project:slice_cases/modules/math\"", "import _ \"project:slice_cases/modules/math\"",
+                         "import math \"../math\"", "import math \"core:math\"", "import math \"project:bad/../math\""];
+    reasons: string[] = ["vNext scalar slice requires an explicit import alias", "vNext scalar slice requires a nonreserved import alias",
+                         "vNext scalar slice requires a canonical project: import", "vNext scalar slice requires a canonical project: import",
+                         "vNext scalar slice requires a canonical project: import"];
+    for (declaration, index in imports) {
+        row = original[0];
+        row.text = strings.ReplaceAll(row.text, "import math \"project:slice_cases/modules/math\"", declaration);
+        CheckSourcesRejected([row, original[1]], reasons[index], 0, declaration);
+    }
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckPackageRules:1179\n");
+}
+
+// Admission bounds apply to the whole explicit closure, not once per file.
+CheckPackageLimits :: () {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckPackageLimits:1290\n");
+    empty: typed.Source[] = [];
+    CheckSourcesFailure(empty, "vNext scalar slice requires 1..8 source files", 0);
+    files: typed.Source[] = [];
+    for (index in 0..<8) {
+        file: typed.Source = {path: format_text("F{}.chibi", index),
+                             text: format_text("package p\nF{} :: () -> i64 {{ return 1; }}\n", index), document: index};
+        files.append(file);
+    }
+    module := AcceptedSources(files);
+    assert(length(module.functions) == 8, "eight files are admitted without multiplying function limits");
+    ninth: typed.Source = {path: "Ninth.chibi", text: "package p\nNinth :: () -> i64 { return 1; }\n", document: 8};
+    files.append(ninth);
+    CheckSourcesFailure(files, "vNext scalar slice requires 1..8 source files", 8);
+    first: typed.Source = {path: "First.chibi", text: "package p\nFirst :: () -> i64 { return 1; }\n", document: 40};
+    second: typed.Source = {path: "Second.chibi", text: "package p\nSecond :: () -> i64 { return 7; }\n", document: 41};
+    duplicate := second;
+    duplicate.document = 40;
+    CheckSourcesFailure([first, duplicate], "duplicate source document label", 40);
+    duplicate = second;
+    duplicate.path = first.path;
+    CheckSourcesFailure([first, duplicate], "duplicate source path", 41);
+    duplicate = second;
+    duplicate.document = -1;
+    CheckSourcesFailure([first, duplicate], "vNext scalar slice requires a nonnegative document and at most 64 KiB source", -1);
+    invalid_paths: string[] = ["", "../Second.chibi", "/Second.chibi", "p//Second.chibi", "p/./Second.chibi", "Second.txt", "project:Second.chibi"];
+    for (path in invalid_paths) {
+        duplicate = second;
+        duplicate.path = path;
+        CheckSourcesFailure([first, duplicate], "vNext scalar slice requires a canonical project-relative .chibi path", 41);
+    }
+    duplicate = first;
+    duplicate.path = strings.Concatenate([strings.Repeat("a", 245), "/Main.chibi"]);
+    module = AcceptedSources([duplicate]);
+    assert(length(module.functions) == 1 && text_byte_length(duplicate.path) == 256, "256-byte canonical source location is admitted");
+    duplicate.path = strings.Concatenate(["a", duplicate.path]);
+    CheckSourcesFailure([duplicate], "vNext scalar slice requires a canonical project-relative .chibi path", 40);
+
+    left := first;
+    right := second;
+    left.text = strings.Concatenate([first.text, strings.Repeat(" ", 32768 - text_byte_length(first.text))]);
+    right.text = strings.Concatenate([second.text, strings.Repeat(" ", 32768 - text_byte_length(second.text))]);
+    module = AcceptedSources([left, right]);
+    assert(length(module.functions) == 2, "aggregate 65536-byte closure is admitted");
+    right.text = strings.Concatenate([right.text, " "]);
+    CheckSourcesFailure([left, right], "vNext scalar slice requires a nonnegative document and at most 64 KiB source", 41);
+
+    left = first;
+    right = second;
+    left.text = "package p\n";
+    right.text = "package p\n";
+    for (index in 0..<32) {
+        declaration := format_text("F{} :: () -> i64 {{ return 1; }}\n", index);
+        if (index < 16) { left.text = strings.Concatenate([left.text, declaration]); }
+        else { right.text = strings.Concatenate([right.text, declaration]); }
+    }
+    module = AcceptedSources([left, right]);
+    assert(length(module.functions) == 32, "aggregate 32-function closure is admitted");
+    right.text = strings.Concatenate([right.text, "F32 :: () -> i64 { return 1; }\n"]);
+    CheckSourcesRejected([left, right], "vNext scalar slice exceeds 32 functions", 1, "F32");
+
+    left = first;
+    left.text = "package p\n";
+    for (index in 0..<32) {
+        left.text = strings.Concatenate([left.text, format_text("import a{} \"project:\"\n", index)]);
+    }
+    left.text = strings.Concatenate([left.text, "First :: () -> i64 { return 1; }\n"]);
+    module = AcceptedSources([left]);
+    assert(length(module.functions) == 1, "32 distinct self aliases are admitted");
+    right = second;
+    right.text = "package p\nimport extra \"project:\"\nSecond :: () -> i64 { return 1; }\n";
+    CheckSourcesRejected([left, right], "vNext scalar slice exceeds 32 imports", 1, "import extra");
+
+    // Each one-parameter file has 27 parser nodes, an assignment adds five,
+    // and a retained comment adds one: 54 + 1627*5 + 3 = 8192 total.
+    left = first;
+    right = second;
+    left.text = strings.Concatenate(["package p\nFirst :: (x: i64) -> i64 { ", strings.Repeat("x = x; ", 800), "return x; }\n"]);
+    right.text = strings.Concatenate(["// one\n// two\n// three\npackage p\nSecond :: (x: i64) -> i64 { ", strings.Repeat("x = x; ", 827), "return x; }\n"]);
+    module = AcceptedSources([left, right]);
+    assert(length(module.values) == 2 && length(module.instructions) == 2, "aggregate 8192 syntax nodes retain two no-op bodies");
+    right.text = strings.Concatenate(["// fourth\n", right.text]);
+    CheckSourcesFailure([left, right], "vNext scalar slice exceeds 8192 syntax nodes", 41);
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckPackageLimits:1290\n");
+}
+CheckSourcesFailure :: (sources: typed.Source[], message: string, document: int) {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckSourcesFailure:1374\n");
+    switch typed.ProduceSources(sources) {
+        case .Produced(module): assert(false, "invalid multi-source admission accepted");
+        case .Rejected(diagnostic):
+            assert(diagnostic.message == message && diagnostic.document == document,
+                   "source admission preserves the exact reason and offending document");
+    }
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckSourcesFailure:1374\n");
+}
+
+// These exact original inputs are read only by the retained source parser.
+// Missing symbols are deliberately accepted here: resolution is a link gate.
+CheckForeign :: () {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckForeign:1385\n");
+    source := "package foreign_calls\nforeign import probe \"libslice_probe.a\"\nforeign probe {\n    chibi_slice_echo :: (value: i64) -> i64\n    chibi_slice_not :: (value: bool) -> bool\n    chibi_slice_clear :: () -> i64\n    chibi_slice_mark :: (value: i64) -> i64\n    chibi_slice_trace :: () -> i64\n    chibi_slice_weighted8 :: (a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64) -> i64\n}\npub Echo :: (value: i64) -> i64 { return chibi_slice_echo(value); }\npub Negate :: (value: bool) -> bool { return chibi_slice_not(value); }\npub Many :: () -> i64 { return chibi_slice_weighted8(1, 2, 3, 4, 5, 6, 7, 8); }\npub Order :: () -> i64 {\n    chibi_slice_clear();\n    value := chibi_slice_weighted8(chibi_slice_mark(1), chibi_slice_mark(2), 0, 0, 0, 0, 0, 0);\n    return value * 100 + chibi_slice_trace();\n}\npub ShortTrace :: (take: bool) -> i64 {\n    chibi_slice_clear();\n    if (take && chibi_slice_mark(1) == 1) { return chibi_slice_trace(); }\n    return chibi_slice_trace();\n}\n";
+    missing_source := "package rejected\nforeign import probe \"libslice_probe.a\"\nforeign probe { chibi_slice_absent :: () -> i64 }\nMain :: () -> i64 { return chibi_slice_absent(); }\n";
+    module := Accepted(source);
+    CheckEqual(module, Accepted(source));
+    assert(length(module.functions) == 11 && length(module.foreigns) == 6, "six foreign signatures and five real source bodies are retained");
+    assert(length(module.parameter_types) == 14 && length(module.calls) == 12, "original foreign signatures and all effectful calls are produced");
+    assert(length(module.names) == 12, "one library name is shared by six foreign declarations");
+    library_id := module.foreigns[0].library;
+    path := module.names[int(library_id) - 1];
+    expected := "libslice_probe.a";
+    assert(path.count == u32(text_byte_length(expected)), "foreign library identity length comes from source");
+    for (index in 0..<int(path.count)) {
+        assert(module.name_bytes[int(path.start) + index] == u8(text_byte_at(expected, index)), "foreign library identity bytes come from source");
+    }
+    symbols := ["chibi_slice_echo", "chibi_slice_not", "chibi_slice_clear", "chibi_slice_mark", "chibi_slice_trace", "chibi_slice_weighted8"];
+    for (symbol, index in symbols) {
+        imported := module.foreigns[index];
+        function := module.functions[index];
+        assert(imported.function == u32(index + 1) && imported.library == library_id && NameMatches(module, index, symbol), "foreign names and dense IDs follow source order");
+        assert(function.first_block == 0 && function.block_count == 0 && function.exported == 0, "foreign declarations have no authored body or native export");
+        origin := module.origins[int(function.origin) - 1];
+        assert(origin.document == 19 && origin.start < origin.end && origin.end <= u32(text_byte_length(source)), "foreign origin retains the original declaration bytes");
+    }
+    for (index in 6..<11) {
+        function := module.functions[index];
+        assert(function.block_count > 0 && function.exported == 1, "all five original exports have produced bodies");
+    }
+    order := module.functions[9];
+    entry_block := module.blocks[int(order.first_block)];
+    first := module.instructions[int(entry_block.first_instruction)];
+    assert(first.op == typed.DirectCall && module.calls[int(first.payload) - 1].callee == 3, "discarded clear is still the first emitted effect");
+    // The call table records source evaluation order, not argument-list nesting.
+    assert(module.calls[3].callee == 3 && module.calls[4].callee == 4 && module.calls[5].callee == 4 && module.calls[6].callee == 6 && module.calls[7].callee == 5, "Order emits clear, mark1, mark2, weighted8 and trace in order");
+    weighted := module.calls[6];
+    left := DefiningInstruction(module, module.arguments[int(weighted.first_argument)]);
+    right := DefiningInstruction(module, module.arguments[int(weighted.first_argument) + 1]);
+    assert(left.op == typed.DirectCall && right.op == typed.DirectCall && left.payload == 5 && right.payload == 6, "outer foreign arguments retain separate nested call results");
+    short := module.functions[10];
+    condition := Terminator(module, short.first_block + 1);
+    assert(condition.op == typed.Branch, "short circuit branches before its effectful RHS");
+    rhs := module.edges[int(condition.payload) - 1];
+    skipped := module.edges[int(condition.payload)];
+    assert(rhs.target < skipped.target && skipped.argument_count == 1, "false path skips RHS and supplies its false value");
+    merge := module.blocks[int(skipped.target) - 1];
+    assert(merge.parameter_count == 1 && module.values[int(module.block_parameters[int(merge.first_parameter)]) - 1].type == typed.Bool, "short circuit merges one bool value");
+    rhs_exit := Terminator(module, rhs.target);
+    assert(rhs_exit.op == typed.Jump, "RHS reaches the bool merge");
+    rhs_value := EdgeArgument(module, module.edges[int(rhs_exit.payload) - 1]);
+    equality := DefiningInstruction(module, rhs_value);
+    assert(equality.op == typed.EqualI64, "original equality is typed explicitly inside RHS");
+
+    unresolved := Accepted(missing_source);
+    assert(length(unresolved.foreigns) == 1 && length(unresolved.functions) == 2 && length(unresolved.calls) == 1, "missing_symbol remains a successfully typed module for the link gate");
+    assert(NameMatches(unresolved, 0, "chibi_slice_absent"), "missing symbol is never substituted by a fixture implementation");
+    missing_origin := unresolved.origins[int(unresolved.functions[0].origin) - 1];
+    // The retained zero-width semicolon is at '}', after the declaration's space.
+    assert(missing_origin.document == 19 && missing_origin.start == 73 && missing_origin.end == 105,
+           "original missing-symbol origin includes the retained synthetic terminator");
+    changed := Accepted(strings.ReplaceAll(source, "chibi_slice_echo", "another_echo"));
+    assert(NameMatches(changed, 0, "another_echo") && changed.calls[0].callee == 1, "foreign declaration and call names are source driven");
+    inferred := Accepted("package p\nFlag :: (x: bool) -> bool { saved := x; return saved; }\nNumber :: (x: i64) -> i64 { saved := x; return saved; }\n");
+    assert(length(inferred.values) == 2, "initialized inferred scalar locals preserve their typed values");
+    nested := Accepted("package p\nBoth :: (a: bool, b: bool, c: bool) -> bool { return a && (b && c); }\n");
+    assert(length(nested.blocks) == 5 && length(nested.edges) == 6, "nested short circuits retain topological RHS and merge blocks");
+    // Repeated discarded calls exercise accumulated argument spans beyond the
+    // tiny original fixture. These verify semantics, not allocation timings.
+    call_counts: int[] = [100, 400];
+    for (count in call_counts) {
+        lines := ["package p\nforeign import probe \"one.a\"\nforeign probe { f :: (x: i64) -> i64 }\nMany :: () -> i64 {\n"];
+        for (index in 0..<count) { lines.append(format_text("f({});\n", index)); }
+        lines.append("return 0;\n}\n");
+        repeated := Accepted(strings.Join(lines, ""));
+        assert(length(repeated.calls) == count && length(repeated.arguments) == count, "every discarded call owns exactly one argument");
+        for (call, index in repeated.calls) {
+            assert(call.callee == 1 && call.first_argument == u32(index), "successive call spans retain source order");
+            operand := DefiningInstruction(repeated, repeated.arguments[index]);
+            assert(operand.op == typed.ConstantI64 && repeated.literals[int(operand.payload) - 1] == i64(index), "later span growth preserves every earlier operand");
+        }
+    }
+    for (text in [
+        "package p\nBad :: () -> bool { return 1 && true; }\n",
+        "package p\nBad :: () -> bool { return true && 1; }\n",
+        "package p\nBad :: () -> bool { return true == false; }\n",
+        "package p\nBad :: () -> i64 { 1; return 1; }\n",
+        "package p\nforeign missing { f :: () -> i64 }\n",
+        "package p\nforeign { f :: () -> i64 }\n",
+        "package p\nforeign import probe \"one.a\"\nforeign import probe \"two.a\"\n",
+        "package p\nforeign import probe \"one.a\"\nforeign probe { f :: () -> i64 f :: () -> i64 }\n"
+    ]) { Rejected(text); }
+    discarded := Accepted("package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { Read(1); return 7; }\n");
+    assert(length(discarded.calls) == 1, "discarded authored calls remain effectful too");
+    collision: typed.Source[] = [
+        {path: "Main.chibi", text: "package p\nimport q \"project:q\"\nforeign import a \"one.a\"\nforeign a { same :: () -> i64 }\npub Main :: () -> i64 { return same(); }\n", document: 41},
+        {path: "q/Q.chibi", text: "package q\nforeign import b \"two.a\"\nforeign b { same :: () -> i64 }\n", document: 42}
+    ];
+    CheckSourcesRejected(collision, "duplicate native symbol name", 1, "same");
+    CheckForeignMutations(module);
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckForeign:1385\n");
+}
+
+CheckForeignMutations :: (original: typed.Module) {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckForeignMutations:1485\n");
+    changed := original;
+    rows := changed.foreigns;
+    row := rows[0];
+    row.function = 0;
+    rows[0] = row;
+    changed.foreigns = rows;
+    assert(typed.Verify(changed) == typed.InvalidSpan, "foreign function ID must exist");
+    changed = original;
+    rows = changed.foreigns;
+    rows[1] = rows[0];
+    changed.foreigns = rows;
+    assert(typed.Verify(changed) == typed.InvalidSpan, "foreign membership cannot repeat");
+    changed = original;
+    rows = changed.foreigns;
+    row = rows[0];
+    row.library = u32(length(changed.names) + 1);
+    rows[0] = row;
+    changed.foreigns = rows;
+    assert(typed.Verify(changed) == typed.InvalidSpan, "foreign library ID must exist");
+    changed = original;
+    functions := changed.functions;
+    function := functions[0];
+    function.block_count = 1;
+    functions[0] = function;
+    changed.functions = functions;
+    assert(typed.Verify(changed) == typed.InvalidSpan, "foreign declarations cannot own body blocks");
+    changed = original;
+    functions = changed.functions;
+    function = functions[0];
+    function.exported = 1;
+    functions[0] = function;
+    changed.functions = functions;
+    assert(typed.Verify(changed) == typed.InvalidSpan, "foreign declarations cannot publish entries");
+    changed = original;
+    instructions := changed.instructions;
+    for (instruction, index in instructions) {
+        if (instruction.op == typed.EqualI64) {
+            changed_instruction := instruction;
+            changed_instruction.left = 3;
+            instructions[index] = changed_instruction;
+            break;
+        }
+    }
+    changed.instructions = instructions;
+    assert(typed.Verify(changed) == typed.InvalidType, "equality rejects a bool operand");
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckForeignMutations:1485\n");
+}
+
+// Candidate v4 tests. These are source assertions, not an execution receipt.
+CheckByteCapability :: () {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckByteCapability:1534\n");
+    source := "package p\nRead :: (input: BorrowedBytes, at: i64) -> i64 { return byte_read_checked(input, at); }\npub Extent :: (input: BorrowedBytes) -> i64 { alias := input; return byte_length(alias) + Read(input, 0); }\n";
+    module := Accepted(source);
+    assert(module.parameter_types[0] == typed.BorrowedBytes && module.parameter_types[1] == typed.I64 &&
+           module.parameter_types[2] == typed.BorrowedBytes, "nominal borrow remains one logical parameter");
+    borrowed: int = 0;
+    lengths: int = 0;
+    reads: int = 0;
+    for (value in module.values) { if (value.type == typed.BorrowedBytes) { borrowed += 1; } }
+    for (instruction in module.instructions) {
+        if (instruction.op == typed.ByteLength) {
+            lengths += 1;
+            assert(instruction.right == 0 && instruction.payload == 0, "length owns no call payload");
+        }
+        if (instruction.op == typed.ByteReadChecked) {
+            reads += 1;
+            assert(instruction.payload == 0, "checked byte read is an intrinsic, not a foreign call");
+        }
+    }
+    assert(borrowed == 2 && lengths == 1 && reads == 1 && length(module.calls) == 1,
+           "two borrowed definitions and one authored forward call, with no alias allocation");
+    shadow := Accepted("package p\nbyte_length :: (x: i64) -> i64 { return x + 7; }\nF :: () -> i64 { return byte_length(3); }\n");
+    assert(length(shadow.calls) == 1, "ordinary package declaration shadows intrinsic");
+    for (instruction in shadow.instructions) { assert(instruction.op != typed.ByteLength, "same spelling does not confer intrinsic semantics"); }
+    for (text in [
+        "package p\nBad :: (x: UnknownBytes) -> i64 { return 0; }\n",
+        "package p\nBad :: (x: borrowed_bytes) -> i64 { return 0; }\n",
+        "package p\nBad :: (x: BorrowedBytes[]) -> i64 { return 0; }\n",
+        "package p\nBad :: (x: ^BorrowedBytes) -> i64 { return 0; }\n",
+        "package p\nBad :: (x: BorrowedBytes) -> BorrowedBytes { return x; }\n",
+        "package p\nforeign import a \"a.a\"\nforeign a { f :: (x: BorrowedBytes) -> i64 }\n",
+        "package p\nBad :: (x: BorrowedBytes) -> i64 { return x + 1; }\n",
+        "package p\nBad :: () -> i64 { return byte_length(1); }\n",
+        "package p\nBad :: (x: BorrowedBytes) -> i64 { return byte_read_checked(x, true); }\n",
+        "package p\nBad :: (x: BorrowedBytes) -> i64 { return byte_length(x, 0); }\n",
+        "package p\nBad :: (x: BorrowedBytes) -> i64 { return byte_read_checked(x); }\n",
+        "package p\nBad :: (x: BorrowedBytes) -> i64 { byte_length: i64 = 0; return byte_length(x); }\n",
+        "package p\nBad :: () -> i64 { return BorrowedBytes(); }\n",
+        "package p\nBad :: (x: BorrowedBytes) -> i64 { return i64(x); }\n"
+    ]) { Rejected(text); }
+    changed := module;
+    instructions := changed.instructions;
+    row := instructions[0];
+    assert(row.op == typed.ByteReadChecked, "first helper instruction is checked read");
+    row.left = 2;
+    instructions[0] = row;
+    changed.instructions = instructions;
+    assert(typed.Verify(changed) == typed.InvalidType, "checked read rejects scalar in its borrowed slot");
+    changed = module;
+    signatures := changed.signatures;
+    signature := signatures[0];
+    signature.result_type = typed.BorrowedBytes;
+    signatures[0] = signature;
+    changed.signatures = signatures;
+    assert(typed.Verify(changed) == typed.InvalidType, "borrowed returns rejected even in mutated IR");
+    subtract := Accepted("package p\nSub :: (a: i64, b: i64) -> i64 { return a - b; }\nLiteral :: () -> i64 { return 0 - 9223372036854775807 - 2; }\n");
+    row = subtract.instructions[0];
+    assert(row.op == typed.SubI64 && row.left == 1 && row.right == 2, "subtraction preserves operand order");
+    subs: int = 0;
+    for (instruction in subtract.instructions) { if (instruction.op == typed.SubI64) { subs += 1; } }
+    assert(subs == 3, "literal subtraction remains explicit wrapping operations");
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckByteCapability:1534\n");
+}
+
+// The retained parser and ordinary package catalog, not spelling reservation,
+// decide whether an annotation can acquire the compiler-owned nominal type.
+CheckAnnotationScope :: () {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckAnnotationScope:1599\n");
+    message := "function shadows an annotation type";
+    for (text in [
+        "package p\nF :: (input: BorrowedBytes) -> i64 { return 0; }\nBorrowedBytes :: () -> i64 { return 0; }\n",
+        "package p\nBorrowedBytes :: () -> i64 { return 0; }\nF :: (input: BorrowedBytes) -> i64 { return 0; }\n",
+        "package p\nBorrowedBytes :: (input: BorrowedBytes) -> i64 { return 0; }\n",
+        "package p\nF :: () -> BorrowedBytes { return 0; }\nBorrowedBytes :: () -> i64 { return 0; }\n",
+        "package p\nF :: (input: BorrowedBytes) -> i64 { return 0; }\nforeign import a \"one.a\"\nforeign a { BorrowedBytes :: () -> i64 }\n",
+        "package p\nforeign import a \"one.a\"\nforeign a { BorrowedBytes :: () -> i64 }\nF :: (input: BorrowedBytes) -> i64 { return 0; }\n",
+        "package p\nforeign import a \"one.a\"\nforeign a { BorrowedBytes :: (input: BorrowedBytes) -> i64 }\n",
+        "package p\nforeign import a \"one.a\"\nforeign a { F :: (input: BorrowedBytes) -> i64 }\nBorrowedBytes :: () -> i64 { return 0; }\n"
+    ]) { CheckRejectedAt(text, message, "BorrowedBytes"); }
+    caller: typed.Source = {path: "p/Caller.chibi", text: "package p\nF :: (input: BorrowedBytes) -> i64 { return 0; }\n", document: 91};
+    shadows: string[] = [
+        "package p\nBorrowedBytes :: () -> i64 { return 0; }\n",
+        "package p\nforeign import a \"one.a\"\nforeign a { BorrowedBytes :: () -> i64 }\n"
+    ];
+    for (text in shadows) {
+        shadow: typed.Source = {path: "p/Shadow.chibi", text: text, document: 92};
+        CheckSourcesRejected([caller, shadow], message, 0, "BorrowedBytes");
+        CheckSourcesRejected([shadow, caller], message, 1, "BorrowedBytes");
+    }
+    // A reachable dependency's public name is not an unqualified type binding.
+    separate: typed.Source[] = [
+        {path: "p/Main.chibi", text: "package p\nimport q \"project:q\"\npub F :: (input: BorrowedBytes) -> i64 { return byte_length(input) + q.BorrowedBytes(); }\n", document: 93},
+        {path: "q/Main.chibi", text: "package q\npub BorrowedBytes :: () -> i64 { return 7; }\n", document: 94}
+    ];
+    module := AcceptedSources(separate);
+    assert(module.parameter_types[0] == typed.BorrowedBytes && module.calls[0].callee == 2 &&
+           NameMatches(module, 1, ".vnext.2"), "dependency spelling neither shadows the borrow nor changes dense native IDs");
+    ordinary := Accepted("package p\nF :: () -> i64 { return BorrowedBytes(); }\nBorrowedBytes :: () -> i64 { return 7; }\n");
+    assert(ordinary.calls[0].callee == 2 && NameMatches(ordinary, 1, "BorrowedBytes"),
+           "ordinary function spelling remains legal and callable");
+
+    // Collection must not move later structural failures ahead of signatures.
+    for (suffix in [
+        "First :: () -> i64 { return 0; }\n",
+        "foreign missing { Later :: () -> i64 }\n"
+    ]) {
+        text := strings.Concatenate(["package p\nFirst :: (input: i64[]) -> i64 { return 0; }\n", suffix]);
+        CheckRejectedAt(text, "vNext rejected a modified or constructed signature", "i64[]");
+    }
+    // Foreign library rows are still emitted at first use, between function
+    // names, rather than being published eagerly by name collection.
+    mixed_source := "package p\nF :: () -> i64 { return A() + B(); }\nforeign import a \"one.a\"\nforeign import b \"two.a\"\nforeign a { A :: () -> i64 }\nMiddle :: () -> i64 { return 0; }\nforeign a { Again :: () -> i64 }\nforeign b { B :: () -> i64 }\n";
+    mixed := Accepted(mixed_source);
+    assert(length(mixed.functions) == 5 && length(mixed.names) == 7 && length(mixed.foreigns) == 3,
+           "two-phase headers preserve authored and foreign table counts");
+    assert(mixed.calls[0].callee == 2 && mixed.calls[1].callee == 5 &&
+           mixed.foreigns[0].function == 2 && mixed.foreigns[1].function == 4 && mixed.foreigns[2].function == 5,
+           "foreign and authored function IDs share declaration order");
+    assert(mixed.foreigns[0].library == 2 && mixed.foreigns[1].library == 2 && mixed.foreigns[2].library == 6 &&
+           mixed.functions[0].name == 1 && mixed.functions[1].name == 3 && mixed.functions[2].name == 4 &&
+           mixed.functions[3].name == 5 && mixed.functions[4].name == 7,
+           "library identities retain first-use sharing and native name order");
+    CheckEqual(mixed, Accepted(mixed_source));
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckAnnotationScope:1599\n");
+}
+
+// Traits omitted by retained scalar metadata must not widen slice admission.
+CheckScalarAnnotations :: () {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckScalarAnnotations:1658\n");
+    ordinary := Accepted("package p\nNumber :: (x: i64) -> i64 { saved: i64 = x; return saved; }\nFlag :: (x: bool) -> bool { saved: bool = x; return saved; }\n");
+    assert(ordinary.parameter_types[0] == typed.I64 && ordinary.parameter_types[1] == typed.Bool &&
+           ordinary.signatures[0].result_type == typed.I64 && ordinary.signatures[1].result_type == typed.Bool,
+           "ordinary scalar parameter, result and local annotations remain admitted");
+    assert(length(ordinary.values) == 2 && ordinary.values[0].type == typed.I64 &&
+           ordinary.values[1].type == typed.Bool, "ordinary annotated locals preserve their parameter values");
+    message := "vNext requires canonical ordinary i64, bool or BorrowedBytes";
+    for (scalar in ["i64", "bool"]) {
+        // Each source has just one nonordinary annotation, so the diagnostic
+        // must identify that complete type rather than a body/type mismatch.
+        annotations := [strings.Concatenate(["plain ", scalar]),
+                        strings.Concatenate(["service ", scalar]),
+                        strings.Concatenate(["setting ", scalar]),
+                        strings.Concatenate(["self ", scalar]),
+                        strings.Concatenate(["wildcard(1) ", scalar]),
+                        strings.Concatenate(["(", scalar, ")"])];
+        for (annotation in annotations) {
+            parameter := strings.Concatenate(["package p\nF :: (x: ", annotation, ") -> ", scalar, " { return x; }\n"]);
+            result := strings.Concatenate(["package p\nF :: (x: ", scalar, ") -> ", annotation, " { return x; }\n"]);
+            local := strings.Concatenate(["package p\nF :: (x: ", scalar, ") -> ", scalar, " { saved: ", annotation, " = x; return saved; }\n"]);
+            CheckRejectedAt(parameter, message, annotation);
+            CheckRejectedAt(result, message, annotation);
+            CheckRejectedAt(local, message, annotation);
+        }
+    }
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckScalarAnnotations:1658\n");
+}
+
+CheckWhileCapability :: () {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckWhileCapability:1686\n");
+    source := "package p\npub Sum :: (limit: i64) -> i64 { at: i64 = 0; sum: i64 = 0; while (limit > at) { sum = sum + at; at = at + 1; } return sum; }\n";
+    module := Accepted(source);
+    assert(length(module.blocks) == 4, "plain while has entry/header/body/continuation");
+    assert(module.blocks[1].parameter_count == 2, "only assigned entry bindings become loop parameters");
+    header := module.blocks[1];
+    at_parameter := module.block_parameters[int(header.first_parameter)];
+    sum_parameter := module.block_parameters[int(header.first_parameter) + 1];
+    assert(module.values[int(at_parameter) - 1].type == typed.I64 &&
+           module.values[int(sum_parameter) - 1].type == typed.I64, "loop parameter types come from canonical values");
+    entry_jump := Terminator(module, 1);
+    back := Terminator(module, 3);
+    assert(entry_jump.op == typed.Jump && back.op == typed.Jump, "while entry and body exit are edges");
+    edge := module.edges[int(back.payload) - 1];
+    assert(edge.target == 2 && edge.argument_count == 2, "backedge points to the same logical header");
+    at_update := DefiningInstruction(module, module.arguments[int(edge.first_argument)]);
+    sum_update := DefiningInstruction(module, module.arguments[int(edge.first_argument) + 1]);
+    assert(at_update.op == typed.AddI64 && at_update.left == at_parameter,
+           "first backedge argument is the distinct at update");
+    assert(sum_update.op == typed.AddI64 && sum_update.left == sum_parameter && sum_update.right == at_parameter,
+           "second backedge argument is the distinct sum update");
+    continuation := Terminator(module, 4);
+    assert(continuation.left == sum_parameter, "zero-trip exit uses header value, never body value");
+    alias := Accepted("package p\nF :: (b: bool, x: i64, y: i64) -> i64 { while (b) { x = y; y = y; } return x; }\n");
+    back = Terminator(alias, 3);
+    edge = alias.edges[int(back.payload) - 1];
+    assert(edge.argument_count == 2 && alias.arguments[int(edge.first_argument)] == alias.arguments[int(edge.first_argument) + 1],
+           "intentional alias forwarding may repeat a ValueID in a valid owned span");
+    for (text in [
+        "package p\nF :: () -> i64 { x: i64 = 0; while (false) { x = x + 1; } return x; }\n",
+        "package p\nF :: () -> i64 { while (false) { temporary: i64 = 1; } return 0; }\n",
+        "package p\nF :: (n: i64) -> i64 { x: i64 = 0; b: bool = true; while (b) { if (n > x) { x = x + 1; } else { b = false; } } return x; }\n",
+        "package p\nF :: (n: i64) -> i64 { x: i64 = 0; while (n > x) { y: i64 = 0; while (n > y) { x = x + 1; y = y + 1; } } return x; }\n",
+        "package p\nF :: () -> i64 { x: i64 = 0; while (false) { local: i64 = 1; x = local; } while (false) { local: bool = true; if (local) { x = 2; } } return x; }\n",
+        "package p\nF :: (b: bool) -> i64 { while (b) { return 7; } return 0; }\n"
+    ]) { Accepted(text); }
+    for (text in [
+        "package p\nF :: () -> i64 { while (1) { } return 0; }\n",
+        "package p\nF :: () -> i64 { while (true) { break; } return 0; }\n",
+        "package p\nF :: () -> i64 { while (true) { continue; } return 0; }\n",
+        "package p\nF :: () -> i64 { while (false) { local: i64 = 1; } return local; }\n"
+    ]) { Rejected(text); }
+    // Mutations keep ownership intact unless ownership itself is the target.
+    changed := module;
+    edges := changed.edges;
+    row := edges[int(entry_jump.payload) - 1];
+    row.target = 1;
+    edges[int(entry_jump.payload) - 1] = row;
+    changed.edges = edges;
+    assert(typed.Verify(changed) == typed.InvalidEdge, "incoming entry edge is rejected");
+    changed = module;
+    instructions := changed.instructions;
+    last := length(instructions) - 1;
+    instruction := instructions[last];
+    instruction.left = at_update.result;
+    instructions[last] = instruction;
+    changed.instructions = instructions;
+    assert(typed.Verify(changed) == typed.InvalidDominance, "body definition unavailable on zero-trip continuation");
+    disconnected := Accepted("package p\nF :: (b: bool) -> i64 { while (b) { } return 0; }\n");
+    edges = disconnected.edges;
+    row = edges[0];
+    row.target = 4;
+    edges[0] = row;
+    disconnected.edges = edges;
+    assert(typed.Verify(disconnected) == typed.InvalidDominance, "unreachable header/body cycle is rejected");
+    changed = module;
+    edges = changed.edges;
+    back = Terminator(module, 3);
+    // Missing argument ownership must fail even if the edge still points home.
+    row = edges[int(back.payload) - 1];
+    row.first_argument = 0;
+    row.argument_count = 0;
+    edges[int(back.payload) - 1] = row;
+    changed.edges = edges;
+    assert(typed.Verify(changed) != 0, "missing backedge arguments are rejected");
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckWhileCapability:1686\n");
+}
+
+CheckCensusSource :: () {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckCensusSource:1763\n");
+    source := "package source_census\n\n// PROPOSAL ONLY. Current v3 does not admit BorrowedBytes, these intrinsics,\n// subtraction or while. This is a new caller, not recovered historical source.\nforeign import census \"libchibi_census_host.a\"\nforeign census {\n    chibi_census_report :: (status: i64, error_offset: i64, packages: i64,\n        original_files: i64, original_bytes: i64, original_lines: i64, original_nonblank: i64,\n        replaced_files: i64, replaced_bytes: i64, replaced_lines: i64, replaced_nonblank: i64,\n        generated_files: i64, generated_bytes: i64, generated_lines: i64, generated_nonblank: i64,\n        frame_bytes: i64) -> i64\n}\n\n// Caller proves four bytes remain. Each read still has checked semantics.\n// The maximum result is 4294967295, comfortably inside i64.\nReadU32 :: (input: BorrowedBytes, at: i64) -> i64 {\n    a := byte_read_checked(input, at);\n    b := byte_read_checked(input, at + 1);\n    c := byte_read_checked(input, at + 2);\n    d := byte_read_checked(input, at + 3);\n    return a + b * 256 + c * 65536 + d * 16777216;\n}\n\n// One synchronous borrow covers the invocation. No byte crosses into C.\n// Success reports original totals, their replaced subset, and generated totals.\n// On rejection all census counters are zero; status/offset/extent identify input.\npub Census :: (input: BorrowedBytes) -> i64 {\n    frame_magic: i64 = 827212611; // Little-endian ASCII CCN1.\n    original_file_limit: i64 = 16777216;\n    original_total_limit: i64 = 268435456;\n    generated_total_limit: i64 = 256;\n    frame_limit: i64 = 268632348;\n    replaced_tag: i64 = 2;\n    generated_tag: i64 = 3;\n    line_feed: i64 = 10;\n    space: i64 = 32;\n    before_tab: i64 = 8;\n    after_carriage_return: i64 = 14;\n    size := byte_length(input);\n    status: i64 = 0;\n    error_at: i64 = 0;\n    declared_packages: i64 = 0;\n    declared_originals: i64 = 0;\n    declared_generated: i64 = 0;\n    packages: i64 = 0;\n    original_files: i64 = 0;\n    original_bytes: i64 = 0;\n    original_lines: i64 = 0;\n    original_nonblank: i64 = 0;\n    replaced_files: i64 = 0;\n    replaced_bytes: i64 = 0;\n    replaced_lines: i64 = 0;\n    replaced_nonblank: i64 = 0;\n    generated_files: i64 = 0;\n    generated_bytes: i64 = 0;\n    generated_lines: i64 = 0;\n    generated_nonblank: i64 = 0;\n    pending_package: i64 = 0;\n    at: i64 = 16;\n\n    // Header validation precedes every four-byte header read.\n    if (16 > size) { status = 1; }\n    else if (size > frame_limit) { status = 2; }\n    else if (!(ReadU32(input, 0) == frame_magic)) { status = 3; }\n    else {\n        declared_packages = ReadU32(input, 4);\n        declared_originals = ReadU32(input, 8);\n        declared_generated = ReadU32(input, 12);\n        if (!(declared_packages > 0 && !(declared_packages > 4096))) { status = 4; }\n        else if (!(declared_originals > 0 && !(declared_originals > 16384))) { status = 4; }\n        else if (declared_generated > 1) { status = 4; }\n    }\n\n    while (status == 0 && size > at) {\n        error_at = at;\n        if (12 > size - at) { status = 5; }\n        else {\n            tag := ReadU32(input, at);\n            package_id := ReadU32(input, at + 4);\n            count := ReadU32(input, at + 8);\n            payload := at + 12;\n            if (!(tag > 0 && !(tag > generated_tag))) { status = 6; }\n            else if (count > size - payload) { status = 7; }\n            else {\n                // A replaced original must be followed immediately by its one\n                // generated target record in the same package.\n                if (pending_package > 0) {\n                    if (!(tag == generated_tag && package_id == pending_package)) { status = 8; }\n                } else if (tag == generated_tag) { status = 8; }\n                if (status == 0) {\n                    if (tag == generated_tag) {\n                        if (!(declared_generated > generated_files)) { status = 9; }\n                        else if (count > generated_total_limit - generated_bytes) { status = 10; }\n                    } else {\n                        if (!(package_id > 0 && !(package_id > declared_packages))) { status = 11; }\n                        else if (!(package_id == packages) && !(package_id == packages + 1)) { status = 11; }\n                        else if (!(declared_originals > original_files)) { status = 12; }\n                        else if (count > original_file_limit) { status = 13; }\n                        else if (count > original_total_limit - original_bytes) { status = 14; }\n                        else if (tag == replaced_tag && replaced_files > 0) { status = 15; }\n                    }\n                }\n            }\n            if (status == 0) {\n                file_lines: i64 = 0;\n                file_nonblank: i64 = 0;\n                line_has_text: bool = false;\n                last_byte := line_feed;\n                cursor := payload;\n                stop := payload + count;\n                // One read per payload byte, no allocations, hashes or FFI.\n                while (stop > cursor) {\n                    byte := byte_read_checked(input, cursor);\n                    if (byte == line_feed) {\n                        file_lines = file_lines + 1;\n                        if (line_has_text) { file_nonblank = file_nonblank + 1; }\n                        line_has_text = false;\n                    } else if (!(byte == space) && !(byte > before_tab && after_carriage_return > byte)) {\n                        line_has_text = true;\n                    }\n                    last_byte = byte;\n                    cursor = cursor + 1;\n                }\n                if (!(last_byte == line_feed)) {\n                    file_lines = file_lines + 1;\n                    if (line_has_text) { file_nonblank = file_nonblank + 1; }\n                }\n                if (tag == generated_tag) {\n                    generated_files = generated_files + 1;\n                    generated_bytes = generated_bytes + count;\n                    generated_lines = generated_lines + file_lines;\n                    generated_nonblank = generated_nonblank + file_nonblank;\n                    pending_package = 0;\n                } else {\n                    packages = package_id;\n                    original_files = original_files + 1;\n                    original_bytes = original_bytes + count;\n                    original_lines = original_lines + file_lines;\n                    original_nonblank = original_nonblank + file_nonblank;\n                    if (tag == replaced_tag) {\n                        replaced_files = replaced_files + 1;\n                        replaced_bytes = replaced_bytes + count;\n                        replaced_lines = replaced_lines + file_lines;\n                        replaced_nonblank = replaced_nonblank + file_nonblank;\n                        pending_package = package_id;\n                    }\n                }\n                at = stop;\n            }\n        }\n    }\n    if (status == 0) {\n        error_at = size;\n        if (pending_package > 0) { status = 16; }\n        else if (!(packages == declared_packages)) { status = 17; }\n        else if (!(original_files == declared_originals)) { status = 18; }\n        else if (!(generated_files == declared_generated)) { status = 19; }\n    }\n    if (status == 0) { error_at = 0; }\n    else {\n        packages = 0;\n        original_files = 0;\n        original_bytes = 0;\n        original_lines = 0;\n        original_nonblank = 0;\n        replaced_files = 0;\n        replaced_bytes = 0;\n        replaced_lines = 0;\n        replaced_nonblank = 0;\n        generated_files = 0;\n        generated_bytes = 0;\n        generated_lines = 0;\n        generated_nonblank = 0;\n    }\n    return chibi_census_report(status, error_at, packages,\n        original_files, original_bytes, original_lines, original_nonblank,\n        replaced_files, replaced_bytes, replaced_lines, replaced_nonblank,\n        generated_files, generated_bytes, generated_lines, generated_nonblank, size);\n}\n";
+    // Before the separate 128-block admission gate, the exact retained-parser
+    // caller must reach that deliberate limit rather than fail an earlier type,
+    // intrinsic, source, parameter-count or loop-admission check.
+    if (typed.MaxBlocks == 64) {
+        message := Rejected(source);
+        assert(message == "vNext scalar slice exceeds 64 blocks in one function", "exact census reaches deliberate block gate");
+        diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckCensusSource:1763\n");
+        return;
+    }
+    module := Accepted(source);
+    assert(length(module.functions) == 3 && length(module.foreigns) == 1, "exact census has helper/entry/report");
+    signature := module.signatures[0];
+    assert(signature.parameter_count == 16 && signature.result_type == typed.I64, "report has sixteen logical i64 positions");
+    for (ordinal in 0..<16) {
+        assert(module.parameter_types[int(signature.first_parameter) + ordinal] == typed.I64, "every report position is i64");
+    }
+    borrowed: int = 0;
+    report_calls: int = 0;
+    for (value in module.values) { if (value.type == typed.BorrowedBytes) { borrowed += 1; } }
+    for (call in module.calls) { if (call.callee == 1) { report_calls += 1; } }
+    assert(borrowed == 2 && report_calls == 1, "exact source has two borrowed definitions and one report call");
+    assert(module.functions[1].block_count == 1 && module.functions[2].block_count == 121,
+           "review actual emission if the source CFG projection changes");
+    moved := ReverseBlockLayout(module);
+    error := typed.Verify(moved);
+    assert(error == 0, "exact Census verifies with reversed non-entry block layout");
+    CheckEqual(module, ReverseBlockLayout(moved));
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckCensusSource:1763\n");
+}
+
+// Test-only physical layout transform. Each function keeps its entry and span;
+// reverse its remaining blocks, repacking both block-owned tables. ValueIDs,
+// operand IDs, edge/call IDs and their argument spans retain their identities.
+// Reversing twice is the identity, including instruction definition IDs.
+ReverseBlockLayout :: (original: typed.Module) -> typed.Module {
+    output := original;
+    blocks: typed.Block[] = [];
+    parameters: u32[] = [];
+    instructions: typed.Instruction[] = [];
+    values := original.values;
+    block_ids := resize([u32(0)], length(original.blocks));
+    for (function in original.functions) {
+        first := int(function.first_block);
+        count := int(function.block_count);
+        for (ordinal in 0..<count) {
+            old_index := first;
+            if (ordinal != 0) { old_index = first + count - ordinal; }
+            new_id := u32(length(blocks) + 1);
+            block_ids[old_index] = new_id;
+            block := original.blocks[old_index];
+            moved := block;
+            moved.first_parameter = 0;
+            if (block.parameter_count != 0) { moved.first_parameter = u32(length(parameters)); }
+            moved.first_instruction = u32(length(instructions));
+            for (at in int(block.first_parameter)..<int(block.first_parameter + block.parameter_count)) {
+                id := original.block_parameters[at];
+                parameters.append(id);
+                value := values[int(id) - 1];
+                value.definition = typed.BlockDefinition | new_id;
+                values[int(id) - 1] = value;
+            }
+            for (at in int(block.first_instruction)..<int(block.first_instruction + block.instruction_count)) {
+                instruction := original.instructions[at];
+                instructions.append(instruction);
+                if (instruction.result != 0) {
+                    value := values[int(instruction.result) - 1];
+                    value.definition = u32(length(instructions));
+                    values[int(instruction.result) - 1] = value;
+                }
+            }
+            blocks.append(moved);
+        }
+    }
+    edges := original.edges;
+    for (edge, index in original.edges) {
+        moved := edge;
+        moved.target = block_ids[int(edge.target) - 1];
+        edges[index] = moved;
+    }
+    output.blocks = blocks;
+    output.block_parameters = parameters;
+    output.instructions = instructions;
+    output.values = values;
+    output.edges = edges;
+    return output;
+}
+
+CheckBlockLayouts :: () {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckBlockLayouts:1850\n");
+    sources: string[] = [
+        "package p\nF :: (b: bool, x: i64) -> i64 { if (b) { x = x + 1; } return x + 7; }\n",
+        "package p\nF :: (n: i64) -> i64 { x: i64 = 0; while (n > x) { x = x + 1; } return x + 7; }\n",
+        "package p\nF :: (n: i64) -> i64 { x: i64 = 0; while (n > x) { y: i64 = 0; while (n > y) { x = x + y; y = y + 1; } } return x; }\n",
+        "package p\nF :: (b: bool, x: i64) -> i64 { while (b) { if (x > 7) { return x; } x = Read(x); } return x; }\nRead :: (x: i64) -> i64 { if (x > 0) { return x + 1; } return 0; }\n"
+    ];
+    counts: int[] = [3, 4, 7, 9];
+    for (source, index in sources) {
+        original := Accepted(source);
+        assert(length(original.blocks) == counts[index], "independent source CFG block count");
+        moved := ReverseBlockLayout(original);
+        error := typed.Verify(moved);
+        assert(error == 0, "DAG and cyclic dominance do not depend on physical block order");
+        restored := ReverseBlockLayout(moved);
+        CheckEqual(original, restored);
+        CheckEqual(original, Accepted(source));
+    }
+    // Old blocks [entry, body, merge] become [entry, merge, body]. The
+    // merge use precedes the body's instructions physically, not semantically.
+    dag := ReverseBlockLayout(Accepted(sources[0]));
+    assert(dag.edges[0].target == 3 && dag.edges[1].target == 2 && dag.edges[2].target == 2,
+           "known permutation remaps both branch targets and the merge edge");
+    assert(dag.blocks[1].parameter_count == 1 && dag.blocks[2].parameter_count == 0,
+           "parameter-bearing merge moves with its owned span");
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckBlockLayouts:1850\n");
+}
+
+CheckCyclicMutations :: () {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckCyclicMutations:1877\n");
+    source := "package p\nF :: (b: bool, x: i64) -> i64 { while (b) { x = x + 1; x = x + 7; } return x; }\nOther :: (x: i64) -> i64 { return x; }\n";
+    original := Accepted(source);
+    entry_jump := Terminator(original, 1);
+    back := Terminator(original, 3);
+    entry_index := int(entry_jump.payload) - 1;
+    back_index := int(back.payload) - 1;
+    header := original.blocks[1];
+    parameter := original.block_parameters[int(header.first_parameter)];
+    body := original.blocks[2];
+    first_add := int(body.first_instruction) + 1;
+    second_add := first_add + 2;
+    assert(original.instructions[first_add].op == typed.AddI64 &&
+           original.instructions[second_add].op == typed.AddI64, "two ordered body updates");
+    changed := original;
+    arguments := changed.arguments;
+    arguments[int(original.edges[entry_index].first_argument)] = parameter;
+    changed.arguments = arguments;
+    error := typed.Verify(changed);
+    assert(error == typed.InvalidDominance, "loop parameter cannot initialize itself on the entry edge");
+    changed = original;
+    arguments = changed.arguments;
+    arguments[int(original.edges[back_index].first_argument)] = 1;
+    changed.arguments = arguments;
+    error = typed.Verify(changed);
+    assert(error == typed.InvalidType, "bool backedge operand cannot feed i64 loop parameter");
+    changed = original;
+    values := changed.values;
+    value := values[int(parameter) - 1];
+    value.type = typed.Bool;
+    values[int(parameter) - 1] = value;
+    changed.values = values;
+    error = typed.Verify(changed);
+    assert(error == typed.InvalidType, "loop parameter type must match incoming values");
+    changed = original;
+    instructions := changed.instructions;
+    instruction := instructions[first_add];
+    instruction.left = instructions[second_add].result;
+    instructions[first_add] = instruction;
+    changed.instructions = instructions;
+    error = typed.Verify(changed);
+    assert(error == typed.InvalidDominance, "cycle does not make a later same-block definition available");
+    moved := ReverseBlockLayout(changed);
+    error = typed.Verify(moved);
+    assert(error == typed.InvalidDominance, "same-block future use still fails after layout reversal");
+    changed = original;
+    edges := changed.edges;
+    edge := edges[back_index];
+    edge.first_argument = edges[entry_index].first_argument;
+    edges[back_index] = edge;
+    changed.edges = edges;
+    error = typed.Verify(changed);
+    assert(error == typed.InvalidSpan, "backedge cannot share ownership of the entry argument span");
+    changed = original;
+    edges = changed.edges;
+    edge = edges[back_index];
+    edge.target = original.functions[1].first_block + 1;
+    edges[back_index] = edge;
+    changed.edges = edges;
+    error = typed.Verify(changed);
+    assert(error == typed.InvalidEdge, "same-arity cross-function backedge is rejected");
+    // All edge spans here are empty. Redirecting both header arms to the exit
+    // leaves a body with an owned self-edge but no path from the entry.
+    isolated := Accepted("package p\nF :: (b: bool) -> bool { while (b) { } return b; }\n");
+    header_branch := Terminator(isolated, 2);
+    back = Terminator(isolated, 3);
+    edges = isolated.edges;
+    edge = edges[int(header_branch.payload) - 1];
+    edge.target = 4;
+    edges[int(header_branch.payload) - 1] = edge;
+    edge = edges[int(back.payload) - 1];
+    edge.target = 3;
+    edges[int(back.payload) - 1] = edge;
+    isolated.edges = edges;
+    error = typed.Verify(isolated);
+    assert(error == typed.InvalidDominance, "unreachable self-cycle is not accepted by initialized dominance masks");
+    error = typed.Verify(original);
+    assert(error == 0, "invalid uses and edge mutations preserve their source module");
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckCyclicMutations:1877\n");
+}
+
+CheckBlockBoundaries :: () {
+    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckBlockBoundaries:1957\n");
+    assert(typed.MaxBlocks == 64 || typed.MaxBlocks == 128, "only separately reviewed block caps are under test");
+    // One entry, three blocks per while, two per no-else conditional. These
+    // literal input/expected tables are independent of the active admission cap.
+    counts: int[] = [64, 65, 128, 129];
+    loops: int[] = [1, 0, 1, 0];
+    branches: int[] = [30, 32, 62, 64];
+    for (count, index in counts) {
+        source := strings.Concatenate([
+            "package p\nF :: (b: bool, x: i64) -> i64 {\n",
+            strings.Repeat("while (b) { x = x + 1; }\n", loops[index]),
+            strings.Repeat("if (b) { x = x + 7; }\n", branches[index]),
+            "return x; }\n"]);
+        if (count > typed.MaxBlocks) {
+            message := Rejected(source);
+            expected := format_text("vNext scalar slice exceeds {} blocks in one function", typed.MaxBlocks);
+            assert(message == expected, "exact boundary source fails only the configured block admission");
+        } else {
+            module := Accepted(source);
+            assert(length(module.blocks) == count && module.functions[0].block_count == u32(count),
+                   "exact 64/65/128 block source admission");
+            moved := ReverseBlockLayout(module);
+            error := typed.Verify(moved);
+            assert(error == 0, "boundary masks accept reversed cyclic and acyclic layouts");
+            CheckEqual(module, ReverseBlockLayout(moved));
+            // The first optional body does not dominate the final return.
+            // Reversal places this definition near the upper mask boundary.
+            changed := module;
+            instructions := changed.instructions;
+            last := length(instructions) - 1;
+            returned := instructions[last];
+            returned.left = instructions[OpcodeInstruction(module, typed.AddI64)].result;
+            instructions[last] = returned;
+            changed.instructions = instructions;
+            error = typed.Verify(changed);
+            assert(error == typed.InvalidDominance, "boundary exit cannot bypass optional-body merge values");
+            error = typed.Verify(ReverseBlockLayout(changed));
+            assert(error == typed.InvalidDominance, "upper-word non-dominator stays invalid after permutation");
+        }
+    }
+    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckBlockBoundaries:1957\n");
+}

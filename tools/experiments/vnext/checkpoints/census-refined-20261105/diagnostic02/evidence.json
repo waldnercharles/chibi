@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "classification": "normalized-historical-compile-and-static-review-only",
+  "main_sha256": "afb658829bd22d56d80993b236f5ace7eb6d9bb7a648caf99034caa8913c8024",
+  "compile": {
+    "status": "passed",
+    "exit_code": 0,
+    "elapsed_seconds": 18.411596339,
+    "cleanup_status": "closed",
+    "stdout": "empty",
+    "stderr": "empty"
+  },
+  "artifact": {
+    "bytes": 18344800,
+    "sha256": "58f653aa47c212ebd459f3a349049bfd7a16ec202df91c9b20a45397c07498fd",
+    "included": false
+  },
+  "static_elf_review": {
+    "status": "accepted",
+    "format": "ELF64 little-endian x86-64 ET_EXEC",
+    "needed": [
+      "libc.so.6"
+    ],
+    "writable_executable_load": false,
+    "executable_stack": false,
+    "required_symbol_versions_available": true
+  },
+  "runtime": "held; not run",
+  "original_typed_sigsegv": "unresolved",
+  "acceptance": false
+}

@@ -1,0 +1,412 @@
+--- original/Main.chibi
++++ diagnostic02/Main.chibi
+@@ -2,10 +2,17 @@
+ 
+ import typed "project:vnext_typed"
+ import strings "core:strings"
++import diagnostic_os "core:os"
++import diagnostic_target "core:target"
+ 
+ // The preparation caller replaces this marker with the exact UTF-8 fixture.
+ // No file access, parser replacement, interpreter or backend is in this test.
+ Main :: () -> int {
++    assert(diagnostic_target.Native == 1 && diagnostic_target.Os == diagnostic_target.Linux &&
++           diagnostic_target.Arch == diagnostic_target.X86_64 && diagnostic_target.PointerBits == 64,
++           "crash diagnostic requires native Linux x86-64 stdout capture");
++    diagnostic_os.WriteOutput("CD2\tbegin\tnon-acceptance\n");
++    diagnostic_os.WriteOutput("CD2\tstage-enter\tdocument-labels\n");
+     source := "package scalar_pair\n\npub Echo :: (value: i64) -> i64 { return value; }\npub Join :: (choose: bool, left: i64, right: i64) -> i64 {\n    result: i64 = right;\n    if (choose) { result = left; }\n    return result + 1;\n}\n";
+     switch typed.Produce(source, -1) {
+         case .Produced(module): assert(false, "negative document ID accepted");
+@@ -24,6 +31,8 @@
+             case .Rejected(diagnostic): assert(false, "valid boundary document label rejected");
+         }
+     }
++    diagnostic_os.WriteOutput("CD2\tstage-done\tdocument-labels\n");
++    diagnostic_os.WriteOutput("CD2\tstage-enter\tfixture-variants\n");
+     original := Accepted(source);
+     CheckPair(original, 1);
+     repeat := Accepted(source);
+@@ -44,6 +53,8 @@
+     assert(swapped.instructions[4].left == 4, "unchanged assignment keeps the right parameter");
+ 
+     // Inspect value flow in produced tables; these are not backend recipes.
++    diagnostic_os.WriteOutput("CD2\tstage-done\tfixture-variants\n");
++    diagnostic_os.WriteOutput("CD2\tstage-enter\tscalar-expressions\n");
+     parentheses := Accepted("package p\nParentheses :: (x: i64) -> i64 { return ((x + 7)); }\n");
+     returned := Terminator(parentheses, 1);
+     assert(returned.op == typed.Return, "parenthesized addition is returned");
+@@ -57,6 +68,8 @@
+     constant := DefiningInstruction(maximum, returned.left);
+     assert(constant.op == typed.ConstantI64 && maximum.literals[int(constant.payload) - 1] == 9223372036854775807, "maximum decimal literal keeps its full value");
+ 
++    diagnostic_os.WriteOutput("CD2\tstage-done\tscalar-expressions\n");
++    diagnostic_os.WriteOutput("CD2\tstage-enter\tbranch-returns\n");
+     early := Accepted("package p\nEarly :: (b: bool, x: i64, y: i64) -> i64 { if (b) { return x; } return y; }\n");
+     condition := Terminator(early, 1);
+     assert(condition.op == typed.Branch && condition.left == 1, "early return branches on b");
+@@ -97,6 +110,8 @@
+         assert(length(surviving.arguments) == 0 && length(surviving.block_parameters) == 3, "single surviving arm retains its value without merge parameters");
+     }
+ 
++    diagnostic_os.WriteOutput("CD2\tstage-done\tbranch-returns\n");
++    diagnostic_os.WriteOutput("CD2\tstage-enter\tnested-branches\n");
+     nested := Accepted("package p\nNested :: (a: bool, b: bool, x: i64, y: i64) -> i64 { r: i64 = y; if (a) { if (b) { r = x + 1; } else { r = y + 7; } } else { if (b) { r = x + 7; } } return r; }\n");
+     outer := Terminator(nested, 1);
+     assert(outer.op == typed.Branch && outer.left == 1, "outer condition reads a");
+@@ -131,6 +146,8 @@
+     returned = Terminator(nested, true_outer_edge.target);
+     assert(outer_merge.parameter_count == 1 && returned.op == typed.Return && returned.left == nested.block_parameters[int(outer_merge.first_parameter)], "nested return uses the outer merged value");
+ 
++    diagnostic_os.WriteOutput("CD2\tstage-done\tnested-branches\n");
++    diagnostic_os.WriteOutput("CD2\tstage-enter\tscopes-multiple-wrapping\n");
+     scoped := Accepted("package p\nScoped :: (b: bool, x: i64) -> i64 { if (b) { temp: i64 = x; } else { temp: i64 = x; } return x; }\n");
+     returned = Terminator(scoped, u32(length(scoped.blocks)));
+     assert(returned.op == typed.Return && returned.left == 2, "arm-local declarations do not change returned x");
+@@ -156,6 +173,8 @@
+     assert(wrapping.literals[0] == 9223372036854775807 && wrapping.literals[1] == 1, "wrapping operands preserve full i64 values");
+     assert(wrapping.instructions[2].op == typed.AddI64 && wrapping.instructions[2].left == 1 && wrapping.instructions[2].right == 2, "literal-only addition follows the explicit wrapping operation");
+     assert(wrapping.instructions[3].op == typed.Return && wrapping.instructions[3].left == 3, "wrapping result is returned without evaluator substitution");
++    diagnostic_os.WriteOutput("CD2\tstage-done\tscopes-multiple-wrapping\n");
++    diagnostic_os.WriteOutput("CD2\tstage-enter\tcheck-functions\n");
+     CheckScalarCalls();
+     CheckByteCapability();
+     CheckAnnotationScope();
+@@ -169,6 +188,8 @@
+     CheckCallMutations();
+     CheckMutations(original, both);
+     CheckLimits();
++    diagnostic_os.WriteOutput("CD2\tstage-done\tcheck-functions\n");
++    diagnostic_os.WriteOutput("CD2\tstage-enter\tinline-dominance\n");
+     dominance := Accepted(strings.ReplaceAll(source, "result = left", "result = left + 7"));
+     branch_value := dominance.instructions[3].result;
+     assert(dominance.instructions[3].op == typed.AddI64, "mutation source creates branch-local addition");
+@@ -181,6 +202,8 @@
+     error := typed.Verify(dominance);
+     assert(error == typed.InvalidDominance, "branch-local value must not escape without merge argument");
+ 
++    diagnostic_os.WriteOutput("CD2\tstage-done\tinline-dominance\n");
++    diagnostic_os.WriteOutput("CD2\tstage-enter\tinline-negative-sources\n");
+     negatives: string[] = [
+         "package p\nBad :: (b: bool, x: i64) -> i64 { if (b) { x: i64 = 1; } return x; }\n",
+         "package p\nBad :: (b: bool) -> i64 { x: i64 = 1; if (b) { x: i64 = 7; } return x; }\n",
+@@ -218,11 +241,15 @@
+     ];
+     for (text in negatives) { Rejected(text); }
+     // The second header is rejected before the first body can report its name.
++    diagnostic_os.WriteOutput("CD2\tstage-done\tinline-negative-sources\n");
++    diagnostic_os.WriteOutput("CD2\tstage-enter\theader-order\n");
+     header_first := "package p\nFirst :: () -> i64 { return absent; }\nSecond :: (x: i64[]) -> i64 { return 1; }\n";
+     switch typed.Produce(header_first, 19) {
+         case .Produced(module): assert(false, "unsupported later header accepted");
+         case .Rejected(diagnostic): assert(diagnostic.line == 3, "all headers precede body checking");
+     }
++    diagnostic_os.WriteOutput("CD2\tstage-done\theader-order\n");
++    diagnostic_os.WriteOutput("CD2\tsuite-done\tnon-acceptance\n");
+     return 0;
+ }
+ 
+@@ -267,10 +294,12 @@
+     return module.arguments[int(edge.first_argument)];
+ }
+ CheckAdd :: (module: typed.Module, value: u32, left: u32, literal: i64) {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckAdd:269\n");
+     addition := DefiningInstruction(module, value);
+     assert(addition.op == typed.AddI64 && addition.left == left, "addition retains its source operand");
+     constant := DefiningInstruction(module, addition.right);
+     assert(constant.op == typed.ConstantI64 && module.literals[int(constant.payload) - 1] == literal, "addition retains its source literal");
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckAdd:269\n");
+ }
+ NameMatches :: (module: typed.Module, index: int, expected: string) -> bool {
+     row := module.names[int(module.functions[index].name) - 1];
+@@ -281,6 +310,7 @@
+     return true;
+ }
+ CheckPair :: (module: typed.Module, literal: i64) {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckPair:283\n");
+     assert(length(module.functions) == 2 && length(module.signatures) == 2, "both source functions admitted");
+     assert(length(module.blocks) == 4 && length(module.values) == 7, "source-driven parameter and merge values");
+     assert(length(module.instructions) == 6 && length(module.edges) == 3 && length(module.literals) == 1, "absent else needs no empty block or jump");
+@@ -298,8 +328,10 @@
+     assert(module.values[4].definition == (typed.BlockDefinition | u32(4)), "merge value definition is explicit");
+     assert(module.instructions[4].op == typed.AddI64 && module.instructions[4].left == 5 && module.instructions[4].right == 6, "merge plus source constant");
+     assert(module.instructions[5].op == typed.Return && module.instructions[5].left == 7, "Join returns produced addition");
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckPair:283\n");
+ }
+ CheckEqual :: (left: typed.Module, right: typed.Module) {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckEqual:302\n");
+     assert(length(left.functions) == length(right.functions), "deterministic functions count");
+     for (a, index in left.functions) {
+         b := right.functions[index];
+@@ -370,8 +402,10 @@
+     for (a, index in left.name_bytes) {
+         assert(a == right.name_bytes[index], "deterministic name_bytes rows");
+     }
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckEqual:302\n");
+ }
+ CheckMutations :: (source: typed.Module, both: typed.Module) {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckMutations:374\n");
+     module := source;
+     instructions := module.instructions;
+     instruction := instructions[5];
+@@ -504,9 +538,11 @@
+     assert(pristine == 0, "mutation snapshots preserve the original produced body");
+     pristine = typed.Verify(both);
+     assert(pristine == 0, "unreachable-block mutation preserves both-return source");
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckMutations:374\n");
+ }
+ 
+ CheckLimits :: () {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckLimits:509\n");
+     functions := "package p\n";
+     for (index in 0..<32) {
+         functions = strings.Concatenate([functions, "F", format_text("{}", index), " :: () -> i64 { return 1; }\n"]);
+@@ -570,6 +606,7 @@
+     // One extra comment is one retained extra row, without changing the body.
+     message = Rejected(strings.Concatenate(["// extra\n", exact]));
+     assert(message == "vNext scalar slice exceeds 8192 syntax nodes", "8193rd syntax row reaches the node bound");
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckLimits:509\n");
+ }
+ 
+ // These helpers inspect produced relationships; they never evaluate source/IR.
+@@ -588,6 +625,7 @@
+     return 0;
+ }
+ CheckScalarCalls :: () {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckScalarCalls:590\n");
+     source := "package p\nOuter :: (x: i64, y: i64) -> i64 { return Pair(Inner(x), Inner(y)); }\nInner :: (value: i64) -> i64 { return value * 7; }\nPair :: (left: i64, right: i64) -> i64 { return left + right; }\n";
+     module := Accepted(source);
+     CheckEqual(module, Accepted(source));
+@@ -684,9 +722,11 @@
+     // An initializer sees the previous scope; its new binding is not visible yet.
+     initializer := Accepted("package p\nRead :: (x: i64) -> i64 { return x; }\nF :: () -> i64 { Read: i64 = Read(7); return Read; }\n");
+     assert(initializer.calls[0].callee == 1, "local declaration starts shadowing after its initializer");
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckScalarCalls:590\n");
+ }
+ 
+ CheckCallMutations :: () {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckCallMutations:689\n");
+     source := Accepted("package p\nCaller :: (x: i64, y: i64, b: bool) -> i64 { a: i64 = Target(x, b); c: i64 = Target(y, !b); return a + c; }\nTarget :: (value: i64, flag: bool) -> i64 { return value; }\nBoolTarget :: (flag: bool) -> bool { return !flag; }\nBoolCaller :: (flag: bool) -> bool { return BoolTarget(flag); }\nZero :: () -> i64 { return 7; }\nZeroCaller :: () -> i64 { return Zero(); }\n");
+     first := CallInstruction(source, 1);
+     second := CallInstruction(source, 2);
+@@ -1010,9 +1050,11 @@
+     assert(error == 0, "mutations preserve the produced scalar module");
+     error = typed.Verify(branches);
+     assert(error == 0, "mutations preserve call and edge span source");
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckCallMutations:689\n");
+ }
+ 
+ CheckRejectedAt :: (text: string, message: string, span: string) {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckRejectedAt:1015\n");
+     switch typed.Produce(text, 2147483647) {
+         case .Produced(module): assert(false, "invalid call source accepted");
+         case .Rejected(diagnostic):
+@@ -1021,11 +1063,13 @@
+             actual := text_slice(text, diagnostic.start, diagnostic.end - diagnostic.start);
+             assert(actual == span, "call diagnostic identifies the callee, list or argument responsible");
+     }
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckRejectedAt:1015\n");
+ }
+ 
+ // The preparer transports the unchanged original corpus bytes independently.
+ // These callers inspect typed relationships, not an IR evaluator or backend.
+ CheckPackages :: () {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckPackages:1028\n");
+     main := "package modules\nimport math \"project:slice_cases/modules/math\"\npub Apply :: (value: i64, enabled: bool) -> i64 {\n    if (enabled) { return math.Double(value); }\n    return value;\n}\n";
+     math := "package math\npub Double :: (value: i64) -> i64 { return value * 2; }\nHidden :: (value: i64) -> i64 { return value; }\n";
+     private_import := "package rejected\nimport math \"project:slice_cases/modules/math\"\nMain :: () -> i64 { return math.Hidden(1); }\n";
+@@ -1129,6 +1173,7 @@
+     CheckSourcesRejected([sources[0], row], "unknown scalar name", 1, "absent");
+     CheckPackageRules(sources);
+     CheckPackageLimits();
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckPackages:1028\n");
+ }
+ 
+ AcceptedSources :: (sources: typed.Source[]) -> typed.Module {
+@@ -1145,6 +1190,7 @@
+     }
+ }
+ CheckSourcesRejected :: (sources: typed.Source[], message: string, source: int, anchor: string) {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckSourcesRejected:1147\n");
+     switch typed.ProduceSources(sources) {
+         case .Produced(module): assert(false, "invalid package transform accepted");
+         case .Rejected(diagnostic):
+@@ -1174,9 +1220,11 @@
+                        "decoded import failure retains the exact original quoted literal span");
+             }
+     }
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckSourcesRejected:1147\n");
+ }
+ 
+ CheckPackageRules :: (original: typed.Source[]) {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckPackageRules:1179\n");
+     scoped: typed.Source[] = [
+         {path: "root/A.chibi", text: "package root\nimport helper \"project:left\"\npub First :: (x: i64) -> i64 { return helper.Read(x); }\n", document: 31},
+         {path: "root/B.chibi", text: "package root\nimport helper \"project:right\"\npub Second :: (x: i64) -> i64 { return helper.Read(x); }\n", document: 32},
+@@ -1284,10 +1332,12 @@
+         row.text = strings.ReplaceAll(row.text, "import math \"project:slice_cases/modules/math\"", declaration);
+         CheckSourcesRejected([row, original[1]], reasons[index], 0, declaration);
+     }
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckPackageRules:1179\n");
+ }
+ 
+ // Admission bounds apply to the whole explicit closure, not once per file.
+ CheckPackageLimits :: () {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckPackageLimits:1290\n");
+     empty: typed.Source[] = [];
+     CheckSourcesFailure(empty, "vNext scalar slice requires 1..8 source files", 0);
+     files: typed.Source[] = [];
+@@ -1370,19 +1420,23 @@
+     assert(length(module.values) == 2 && length(module.instructions) == 2, "aggregate 8192 syntax nodes retain two no-op bodies");
+     right.text = strings.Concatenate(["// fourth\n", right.text]);
+     CheckSourcesFailure([left, right], "vNext scalar slice exceeds 8192 syntax nodes", 41);
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckPackageLimits:1290\n");
+ }
+ CheckSourcesFailure :: (sources: typed.Source[], message: string, document: int) {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckSourcesFailure:1374\n");
+     switch typed.ProduceSources(sources) {
+         case .Produced(module): assert(false, "invalid multi-source admission accepted");
+         case .Rejected(diagnostic):
+             assert(diagnostic.message == message && diagnostic.document == document,
+                    "source admission preserves the exact reason and offending document");
+     }
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckSourcesFailure:1374\n");
+ }
+ 
+ // These exact original inputs are read only by the retained source parser.
+ // Missing symbols are deliberately accepted here: resolution is a link gate.
+ CheckForeign :: () {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckForeign:1385\n");
+     source := "package foreign_calls\nforeign import probe \"libslice_probe.a\"\nforeign probe {\n    chibi_slice_echo :: (value: i64) -> i64\n    chibi_slice_not :: (value: bool) -> bool\n    chibi_slice_clear :: () -> i64\n    chibi_slice_mark :: (value: i64) -> i64\n    chibi_slice_trace :: () -> i64\n    chibi_slice_weighted8 :: (a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64) -> i64\n}\npub Echo :: (value: i64) -> i64 { return chibi_slice_echo(value); }\npub Negate :: (value: bool) -> bool { return chibi_slice_not(value); }\npub Many :: () -> i64 { return chibi_slice_weighted8(1, 2, 3, 4, 5, 6, 7, 8); }\npub Order :: () -> i64 {\n    chibi_slice_clear();\n    value := chibi_slice_weighted8(chibi_slice_mark(1), chibi_slice_mark(2), 0, 0, 0, 0, 0, 0);\n    return value * 100 + chibi_slice_trace();\n}\npub ShortTrace :: (take: bool) -> i64 {\n    chibi_slice_clear();\n    if (take && chibi_slice_mark(1) == 1) { return chibi_slice_trace(); }\n    return chibi_slice_trace();\n}\n";
+     missing_source := "package rejected\nforeign import probe \"libslice_probe.a\"\nforeign probe { chibi_slice_absent :: () -> i64 }\nMain :: () -> i64 { return chibi_slice_absent(); }\n";
+     module := Accepted(source);
+@@ -1480,9 +1534,11 @@
+     ];
+     CheckSourcesRejected(collision, "duplicate native symbol name", 1, "same");
+     CheckForeignMutations(module);
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckForeign:1385\n");
+ }
+ 
+ CheckForeignMutations :: (original: typed.Module) {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckForeignMutations:1485\n");
+     changed := original;
+     rows := changed.foreigns;
+     row := rows[0];
+@@ -1528,10 +1584,12 @@
+     }
+     changed.instructions = instructions;
+     assert(typed.Verify(changed) == typed.InvalidType, "equality rejects a bool operand");
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckForeignMutations:1485\n");
+ }
+ 
+ // Candidate v4 tests. These are source assertions, not an execution receipt.
+ CheckByteCapability :: () {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckByteCapability:1534\n");
+     source := "package p\nRead :: (input: BorrowedBytes, at: i64) -> i64 { return byte_read_checked(input, at); }\npub Extent :: (input: BorrowedBytes) -> i64 { alias := input; return byte_length(alias) + Read(input, 0); }\n";
+     module := Accepted(source);
+     assert(module.parameter_types[0] == typed.BorrowedBytes && module.parameter_types[1] == typed.I64 &&
+@@ -1592,11 +1650,13 @@
+     subs: int = 0;
+     for (instruction in subtract.instructions) { if (instruction.op == typed.SubI64) { subs += 1; } }
+     assert(subs == 3, "literal subtraction remains explicit wrapping operations");
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckByteCapability:1534\n");
+ }
+ 
+ // The retained parser and ordinary package catalog, not spelling reservation,
+ // decide whether an annotation can acquire the compiler-owned nominal type.
+ CheckAnnotationScope :: () {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckAnnotationScope:1599\n");
+     message := "function shadows an annotation type";
+     for (text in [
+         "package p\nF :: (input: BorrowedBytes) -> i64 { return 0; }\nBorrowedBytes :: () -> i64 { return 0; }\n",
+@@ -1652,10 +1712,12 @@
+            mixed.functions[3].name == 5 && mixed.functions[4].name == 7,
+            "library identities retain first-use sharing and native name order");
+     CheckEqual(mixed, Accepted(mixed_source));
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckAnnotationScope:1599\n");
+ }
+ 
+ // Traits omitted by retained scalar metadata must not widen slice admission.
+ CheckScalarAnnotations :: () {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckScalarAnnotations:1658\n");
+     ordinary := Accepted("package p\nNumber :: (x: i64) -> i64 { saved: i64 = x; return saved; }\nFlag :: (x: bool) -> bool { saved: bool = x; return saved; }\n");
+     assert(ordinary.parameter_types[0] == typed.I64 && ordinary.parameter_types[1] == typed.Bool &&
+            ordinary.signatures[0].result_type == typed.I64 && ordinary.signatures[1].result_type == typed.Bool,
+@@ -1681,9 +1743,11 @@
+             CheckRejectedAt(local, message, annotation);
+         }
+     }
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckScalarAnnotations:1658\n");
+ }
+ 
+ CheckWhileCapability :: () {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckWhileCapability:1686\n");
+     source := "package p\npub Sum :: (limit: i64) -> i64 { at: i64 = 0; sum: i64 = 0; while (limit > at) { sum = sum + at; at = at + 1; } return sum; }\n";
+     module := Accepted(source);
+     assert(length(module.blocks) == 4, "plain while has entry/header/body/continuation");
+@@ -1758,9 +1822,11 @@
+     edges[int(back.payload) - 1] = row;
+     changed.edges = edges;
+     assert(typed.Verify(changed) != 0, "missing backedge arguments are rejected");
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckWhileCapability:1686\n");
+ }
+ 
+ CheckCensusSource :: () {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckCensusSource:1763\n");
+     source := "package source_census\n\n// PROPOSAL ONLY. Current v3 does not admit BorrowedBytes, these intrinsics,\n// subtraction or while. This is a new caller, not recovered historical source.\nforeign import census \"libchibi_census_host.a\"\nforeign census {\n    chibi_census_report :: (status: i64, error_offset: i64, packages: i64,\n        original_files: i64, original_bytes: i64, original_lines: i64, original_nonblank: i64,\n        replaced_files: i64, replaced_bytes: i64, replaced_lines: i64, replaced_nonblank: i64,\n        generated_files: i64, generated_bytes: i64, generated_lines: i64, generated_nonblank: i64,\n        frame_bytes: i64) -> i64\n}\n\n// Caller proves four bytes remain. Each read still has checked semantics.\n// The maximum result is 4294967295, comfortably inside i64.\nReadU32 :: (input: BorrowedBytes, at: i64) -> i64 {\n    a := byte_read_checked(input, at);\n    b := byte_read_checked(input, at + 1);\n    c := byte_read_checked(input, at + 2);\n    d := byte_read_checked(input, at + 3);\n    return a + b * 256 + c * 65536 + d * 16777216;\n}\n\n// One synchronous borrow covers the invocation. No byte crosses into C.\n// Success reports original totals, their replaced subset, and generated totals.\n// On rejection all census counters are zero; status/offset/extent identify input.\npub Census :: (input: BorrowedBytes) -> i64 {\n    frame_magic: i64 = 827212611; // Little-endian ASCII CCN1.\n    original_file_limit: i64 = 16777216;\n    original_total_limit: i64 = 268435456;\n    generated_total_limit: i64 = 256;\n    frame_limit: i64 = 268632348;\n    replaced_tag: i64 = 2;\n    generated_tag: i64 = 3;\n    line_feed: i64 = 10;\n    space: i64 = 32;\n    before_tab: i64 = 8;\n    after_carriage_return: i64 = 14;\n    size := byte_length(input);\n    status: i64 = 0;\n    error_at: i64 = 0;\n    declared_packages: i64 = 0;\n    declared_originals: i64 = 0;\n    declared_generated: i64 = 0;\n    packages: i64 = 0;\n    original_files: i64 = 0;\n    original_bytes: i64 = 0;\n    original_lines: i64 = 0;\n    original_nonblank: i64 = 0;\n    replaced_files: i64 = 0;\n    replaced_bytes: i64 = 0;\n    replaced_lines: i64 = 0;\n    replaced_nonblank: i64 = 0;\n    generated_files: i64 = 0;\n    generated_bytes: i64 = 0;\n    generated_lines: i64 = 0;\n    generated_nonblank: i64 = 0;\n    pending_package: i64 = 0;\n    at: i64 = 16;\n\n    // Header validation precedes every four-byte header read.\n    if (16 > size) { status = 1; }\n    else if (size > frame_limit) { status = 2; }\n    else if (!(ReadU32(input, 0) == frame_magic)) { status = 3; }\n    else {\n        declared_packages = ReadU32(input, 4);\n        declared_originals = ReadU32(input, 8);\n        declared_generated = ReadU32(input, 12);\n        if (!(declared_packages > 0 && !(declared_packages > 4096))) { status = 4; }\n        else if (!(declared_originals > 0 && !(declared_originals > 16384))) { status = 4; }\n        else if (declared_generated > 1) { status = 4; }\n    }\n\n    while (status == 0 && size > at) {\n        error_at = at;\n        if (12 > size - at) { status = 5; }\n        else {\n            tag := ReadU32(input, at);\n            package_id := ReadU32(input, at + 4);\n            count := ReadU32(input, at + 8);\n            payload := at + 12;\n            if (!(tag > 0 && !(tag > generated_tag))) { status = 6; }\n            else if (count > size - payload) { status = 7; }\n            else {\n                // A replaced original must be followed immediately by its one\n                // generated target record in the same package.\n                if (pending_package > 0) {\n                    if (!(tag == generated_tag && package_id == pending_package)) { status = 8; }\n                } else if (tag == generated_tag) { status = 8; }\n                if (status == 0) {\n                    if (tag == generated_tag) {\n                        if (!(declared_generated > generated_files)) { status = 9; }\n                        else if (count > generated_total_limit - generated_bytes) { status = 10; }\n                    } else {\n                        if (!(package_id > 0 && !(package_id > declared_packages))) { status = 11; }\n                        else if (!(package_id == packages) && !(package_id == packages + 1)) { status = 11; }\n                        else if (!(declared_originals > original_files)) { status = 12; }\n                        else if (count > original_file_limit) { status = 13; }\n                        else if (count > original_total_limit - original_bytes) { status = 14; }\n                        else if (tag == replaced_tag && replaced_files > 0) { status = 15; }\n                    }\n                }\n            }\n            if (status == 0) {\n                file_lines: i64 = 0;\n                file_nonblank: i64 = 0;\n                line_has_text: bool = false;\n                last_byte := line_feed;\n                cursor := payload;\n                stop := payload + count;\n                // One read per payload byte, no allocations, hashes or FFI.\n                while (stop > cursor) {\n                    byte := byte_read_checked(input, cursor);\n                    if (byte == line_feed) {\n                        file_lines = file_lines + 1;\n                        if (line_has_text) { file_nonblank = file_nonblank + 1; }\n                        line_has_text = false;\n                    } else if (!(byte == space) && !(byte > before_tab && after_carriage_return > byte)) {\n                        line_has_text = true;\n                    }\n                    last_byte = byte;\n                    cursor = cursor + 1;\n                }\n                if (!(last_byte == line_feed)) {\n                    file_lines = file_lines + 1;\n                    if (line_has_text) { file_nonblank = file_nonblank + 1; }\n                }\n                if (tag == generated_tag) {\n                    generated_files = generated_files + 1;\n                    generated_bytes = generated_bytes + count;\n                    generated_lines = generated_lines + file_lines;\n                    generated_nonblank = generated_nonblank + file_nonblank;\n                    pending_package = 0;\n                } else {\n                    packages = package_id;\n                    original_files = original_files + 1;\n                    original_bytes = original_bytes + count;\n                    original_lines = original_lines + file_lines;\n                    original_nonblank = original_nonblank + file_nonblank;\n                    if (tag == replaced_tag) {\n                        replaced_files = replaced_files + 1;\n                        replaced_bytes = replaced_bytes + count;\n                        replaced_lines = replaced_lines + file_lines;\n                        replaced_nonblank = replaced_nonblank + file_nonblank;\n                        pending_package = package_id;\n                    }\n                }\n                at = stop;\n            }\n        }\n    }\n    if (status == 0) {\n        error_at = size;\n        if (pending_package > 0) { status = 16; }\n        else if (!(packages == declared_packages)) { status = 17; }\n        else if (!(original_files == declared_originals)) { status = 18; }\n        else if (!(generated_files == declared_generated)) { status = 19; }\n    }\n    if (status == 0) { error_at = 0; }\n    else {\n        packages = 0;\n        original_files = 0;\n        original_bytes = 0;\n        original_lines = 0;\n        original_nonblank = 0;\n        replaced_files = 0;\n        replaced_bytes = 0;\n        replaced_lines = 0;\n        replaced_nonblank = 0;\n        generated_files = 0;\n        generated_bytes = 0;\n        generated_lines = 0;\n        generated_nonblank = 0;\n    }\n    return chibi_census_report(status, error_at, packages,\n        original_files, original_bytes, original_lines, original_nonblank,\n        replaced_files, replaced_bytes, replaced_lines, replaced_nonblank,\n        generated_files, generated_bytes, generated_lines, generated_nonblank, size);\n}\n";
+     // Before the separate 128-block admission gate, the exact retained-parser
+     // caller must reach that deliberate limit rather than fail an earlier type,
+@@ -1768,6 +1834,7 @@
+     if (typed.MaxBlocks == 64) {
+         message := Rejected(source);
+         assert(message == "vNext scalar slice exceeds 64 blocks in one function", "exact census reaches deliberate block gate");
++        diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckCensusSource:1763\n");
+         return;
+     }
+     module := Accepted(source);
+@@ -1788,6 +1855,7 @@
+     error := typed.Verify(moved);
+     assert(error == 0, "exact Census verifies with reversed non-entry block layout");
+     CheckEqual(module, ReverseBlockLayout(moved));
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckCensusSource:1763\n");
+ }
+ 
+ // Test-only physical layout transform. Each function keeps its entry and span;
+@@ -1848,6 +1916,7 @@
+ }
+ 
+ CheckBlockLayouts :: () {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckBlockLayouts:1850\n");
+     sources: string[] = [
+         "package p\nF :: (b: bool, x: i64) -> i64 { if (b) { x = x + 1; } return x + 7; }\n",
+         "package p\nF :: (n: i64) -> i64 { x: i64 = 0; while (n > x) { x = x + 1; } return x + 7; }\n",
+@@ -1872,9 +1941,11 @@
+            "known permutation remaps both branch targets and the merge edge");
+     assert(dag.blocks[1].parameter_count == 1 && dag.blocks[2].parameter_count == 0,
+            "parameter-bearing merge moves with its owned span");
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckBlockLayouts:1850\n");
+ }
+ 
+ CheckCyclicMutations :: () {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckCyclicMutations:1877\n");
+     source := "package p\nF :: (b: bool, x: i64) -> i64 { while (b) { x = x + 1; x = x + 7; } return x; }\nOther :: (x: i64) -> i64 { return x; }\n";
+     original := Accepted(source);
+     entry_jump := Terminator(original, 1);
+@@ -1952,9 +2023,11 @@
+     assert(error == typed.InvalidDominance, "unreachable self-cycle is not accepted by initialized dominance masks");
+     error = typed.Verify(original);
+     assert(error == 0, "invalid uses and edge mutations preserve their source module");
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckCyclicMutations:1877\n");
+ }
+ 
+ CheckBlockBoundaries :: () {
++    diagnostic_os.WriteOutput("CD2\tcheck-enter\tCheckBlockBoundaries:1957\n");
+     assert(typed.MaxBlocks == 64 || typed.MaxBlocks == 128, "only separately reviewed block caps are under test");
+     // One entry, three blocks per while, two per no-else conditional. These
+     // literal input/expected tables are independent of the active admission cap.
+@@ -1994,4 +2067,5 @@
+             assert(error == typed.InvalidDominance, "upper-word non-dominator stays invalid after permutation");
+         }
+     }
++    diagnostic_os.WriteOutput("CD2\tcheck-done\tCheckBlockBoundaries:1957\n");
+ }

@@ -1,0 +1,150 @@
+
+// Registered once at the start of the retained typed Main. This return value is
+// the test-copy output interface; WorkOutput prints it outside measured passes.
+pub WorkReport :: struct {
+    producer: typed.WorkCounts[];
+    verifier: typed.WorkCounts[];
+    verifier_labels: string[];
+    skipped_blocks: int[];
+    census: typed.WorkCounts;
+}
+
+WorkCompareSource :: (source: string, meter: ^typed.WorkCounts) -> typed.Result {
+    baseline := typed.Produce(source, 7);
+    measured := typed.MeterProduce(source, 7, meter);
+    switch baseline {
+        case .Produced(module):
+            switch measured {
+                case .Produced(other): CheckEqual(module, other);
+                case .Rejected(diagnostic): assert(false, "counter producer rejected accepted source");
+            }
+        case .Rejected(diagnostic):
+            switch measured {
+                case .Produced(module): assert(false, "counter producer accepted rejected source");
+                case .Rejected(other):
+                    assert(diagnostic.start == other.start && diagnostic.end == other.end &&
+                           diagnostic.line == other.line && diagnostic.column == other.column &&
+                           diagnostic.document == other.document && diagnostic.message == other.message,
+                           "counter producer preserves every diagnostic field");
+            }
+    }
+    return measured;
+}
+
+WorkVerify :: (module: typed.Module, expected: int) -> typed.WorkCounts {
+    meter := typed.EmptyWorkCounts();
+    baseline := typed.Verify(module);
+    measured := typed.MeterVerify(module, &meter);
+    assert(baseline == expected && measured == baseline, "counter verifier preserves diagnostic category");
+    return meter;
+}
+
+pub RunWorkProbes :: () -> WorkReport {
+    report: WorkReport = {producer: [], verifier: [], verifier_labels: [],
+                         skipped_blocks: [], census: typed.EmptyWorkCounts()};
+    sizes: int[] = [4, 16];
+    for (size in sizes) {
+        source := strings.Concatenate([
+            "package p\nF :: (b: bool) -> i64 { x: i64 = 0;\n",
+            strings.Repeat("while (b) { x = x + 1; }\n", size), "return x; }\n"]);
+        meter := typed.EmptyWorkCounts();
+        result := WorkCompareSource(source, &meter);
+        switch result {
+            case .Produced(module): assert(length(module.blocks) == 1 + 3 * size, "disjoint loop fixture blocks");
+            case .Rejected(diagnostic): assert(false, "disjoint loop fixture must produce");
+        }
+        assert(meter.prepass_statements == 2 * size + 2 && meter.emitted_statements == 2 * size + 2,
+               "declaration, loop, assignment and return statement visits");
+        assert(meter.assignment_resolutions == size && meter.mask_updates == size, "one assignment and enclosing loop");
+        assert(meter.expression_entries == 5 * size + 2 && meter.emit_calls == 5 * size + 2,
+               "parenthesized conditions count separately from their identifiers");
+        assert(meter.while_conditions == size && meter.while_bodies == size, "one condition and body emission per loop");
+        report.producer.append(meter);
+    }
+    small := report.producer[0];
+    large := report.producer[1];
+    assert(large.prepass_statements - 2 == 4 * (small.prepass_statements - 2) &&
+           large.emitted_statements - 2 == 4 * (small.emitted_statements - 2) &&
+           large.expression_entries - 2 == 4 * (small.expression_entries - 2) &&
+           large.emit_calls - 2 == 4 * (small.emit_calls - 2) &&
+           large.assignment_resolutions == 4 * small.assignment_resolutions &&
+           large.mask_updates == 4 * small.mask_updates, "fixed-depth work grows fourfold after constant setup");
+
+    // Source-derived Modules only. One entry + one while*3 + 14/62 ifs*2.
+    block_sizes: int[] = [32, 128];
+    conditionals: int[] = [14, 62];
+    for (size, index in block_sizes) {
+        source := strings.Concatenate([
+            "package p\nF :: (b: bool, x: i64) -> i64 {\nwhile (b) { x = x + 1; }\n",
+            strings.Repeat("if (b) { x = x + 7; }\n", conditionals[index]), "return x; }\n"]);
+        meter := typed.EmptyWorkCounts();
+        result := WorkCompareSource(source, &meter);
+        if (size > typed.MaxBlocks) {
+            switch result {
+                case .Produced(module): assert(false, "unreviewed block capacity admitted");
+                case .Rejected(diagnostic):
+                    assert(diagnostic.message == format_text("vNext scalar slice exceeds {} blocks in one function", typed.MaxBlocks),
+                           "larger verifier family blocked by explicit capacity gate");
+            }
+            report.skipped_blocks.append(size);
+        } else {
+            switch result {
+                case .Rejected(diagnostic): assert(false, "admitted verifier family rejected");
+                case .Produced(module):
+                    assert(length(module.blocks) == size, "source family block count");
+                    layouts: typed.Module[] = [module, ReverseBlockLayout(module)];
+                    for (layout, ordinal in layouts) {
+                        counts := WorkVerify(layout, 0);
+                        assert(counts.reachability_pops == size, "deduplicated reachability visits each reachable block");
+                        pop_bound := size + 2 * size * (size - 1);
+                        assert(counts.dominance_pops <= pop_bound && counts.word_intersections <= 4 * size * pop_bound,
+                               "bounded fixed point, not a linear dominance claim");
+                        assert(counts.word_intersections == 2 * counts.predecessor_reads, "two words per predecessor");
+                        report.verifier.append(counts);
+                        report.verifier_labels.append(format_text("blocks={} reversed={} valid", size, ordinal));
+                    }
+                    // Retain the producer's IR, changing only one use. The first
+                    // loop-body add does not dominate its zero-trip exit/return.
+                    changed := module;
+                    instructions := changed.instructions;
+                    last := length(instructions) - 1;
+                    returned := instructions[last];
+                    returned.left = instructions[OpcodeInstruction(module, typed.AddI64)].result;
+                    instructions[last] = returned;
+                    changed.instructions = instructions;
+                    invalid_layouts: typed.Module[] = [changed, ReverseBlockLayout(changed)];
+                    for (layout, ordinal in invalid_layouts) {
+                        counts := WorkVerify(layout, typed.InvalidDominance);
+                        report.verifier.append(counts);
+                        report.verifier_labels.append(format_text("blocks={} reversed={} invalid-use", size, ordinal));
+                    }
+            }
+        }
+    }
+    // Compare parser rejection, prepass rejection, missing return value,
+    // unknown expression binding, and return typing.
+    bad_sources: string[] = ["package p\nF :: () -> i64 { return 1;",
+                            "package p\nF :: () -> i64 { unknown = 1; return 0; }",
+                            "package p\nF :: () -> i64 { return ; }",
+                            "package p\nF :: () -> i64 { return unknown; }",
+                            "package p\nF :: (b: bool) -> i64 { return b; }"];
+    for (source in bad_sources) {
+        meter := typed.EmptyWorkCounts();
+        result := WorkCompareSource(source, &meter);
+        switch result {
+            case .Produced(module): assert(false, "negative fixture unexpectedly accepted");
+            case .Rejected(diagnostic): assert(text_byte_length(diagnostic.message) > 0, "negative fixture has a diagnostic");
+        }
+    }
+    census_source := WORK_CENSUS_LITERAL;
+    census_counts := typed.EmptyWorkCounts();
+    census_result := WorkCompareSource(census_source, &census_counts);
+    report.census = census_counts;
+    switch census_result {
+        case .Produced(module): assert(typed.MaxBlocks >= 128, "Census production needs separate capacity review");
+        case .Rejected(diagnostic):
+            assert(typed.MaxBlocks == 64 && diagnostic.message == "vNext scalar slice exceeds 64 blocks in one function",
+                   "Census rejection remains the deliberate capacity gate");
+    }
+    return report;
+}

@@ -1,0 +1,438 @@
+{
+  "classification": "lexical_source_inventory_not_parser_or_native_evidence",
+  "source_sha256": "0e44190699438f78b223c71a380a903f71526941f0a5dc700c655b62be341f16",
+  "source_bytes": 7982,
+  "physical_lines": 179,
+  "nonblank_lines": 174,
+  "functions": {
+    "ReadU32": {
+      "parameters": [
+        "input",
+        "at"
+      ],
+      "local_declarations": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "binding_count": 6,
+      "peak_lexically_visible_bindings": 6,
+      "if_sites": 0,
+      "else_sites": 0,
+      "while_sites": 0,
+      "short_circuit_and_sites": 0,
+      "projected_blocks": 1,
+      "bindings": {
+        "input": {
+          "body_token_occurrences": 4,
+          "declarations_in_body": 0,
+          "assignment_writes": 0,
+          "read_uses": 4
+        },
+        "at": {
+          "body_token_occurrences": 4,
+          "declarations_in_body": 0,
+          "assignment_writes": 0,
+          "read_uses": 4
+        },
+        "a": {
+          "body_token_occurrences": 2,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 1
+        },
+        "b": {
+          "body_token_occurrences": 2,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 1
+        },
+        "c": {
+          "body_token_occurrences": 2,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 1
+        },
+        "d": {
+          "body_token_occurrences": 2,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 1
+        }
+      }
+    },
+    "Census": {
+      "parameters": [
+        "input"
+      ],
+      "local_declarations": [
+        "frame_magic",
+        "original_file_limit",
+        "original_total_limit",
+        "generated_total_limit",
+        "frame_limit",
+        "replaced_tag",
+        "generated_tag",
+        "line_feed",
+        "space",
+        "before_tab",
+        "after_carriage_return",
+        "size",
+        "status",
+        "error_at",
+        "declared_packages",
+        "declared_originals",
+        "declared_generated",
+        "packages",
+        "original_files",
+        "original_bytes",
+        "original_lines",
+        "original_nonblank",
+        "replaced_files",
+        "replaced_bytes",
+        "replaced_lines",
+        "replaced_nonblank",
+        "generated_files",
+        "generated_bytes",
+        "generated_lines",
+        "generated_nonblank",
+        "pending_package",
+        "at",
+        "tag",
+        "package_id",
+        "count",
+        "payload",
+        "file_lines",
+        "file_nonblank",
+        "line_has_text",
+        "last_byte",
+        "cursor",
+        "stop",
+        "byte"
+      ],
+      "binding_count": 44,
+      "peak_lexically_visible_bindings": 44,
+      "if_sites": 36,
+      "else_sites": 22,
+      "while_sites": 2,
+      "short_circuit_and_sites": 10,
+      "projected_blocks": 121,
+      "bindings": {
+        "input": {
+          "body_token_occurrences": 9,
+          "declarations_in_body": 0,
+          "assignment_writes": 0,
+          "read_uses": 9
+        },
+        "frame_magic": {
+          "body_token_occurrences": 2,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 1
+        },
+        "original_file_limit": {
+          "body_token_occurrences": 2,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 1
+        },
+        "original_total_limit": {
+          "body_token_occurrences": 2,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 1
+        },
+        "generated_total_limit": {
+          "body_token_occurrences": 2,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 1
+        },
+        "frame_limit": {
+          "body_token_occurrences": 2,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 1
+        },
+        "replaced_tag": {
+          "body_token_occurrences": 3,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 2
+        },
+        "generated_tag": {
+          "body_token_occurrences": 6,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 5
+        },
+        "line_feed": {
+          "body_token_occurrences": 4,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 3
+        },
+        "space": {
+          "body_token_occurrences": 2,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 1
+        },
+        "before_tab": {
+          "body_token_occurrences": 2,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 1
+        },
+        "after_carriage_return": {
+          "body_token_occurrences": 2,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 1
+        },
+        "size": {
+          "body_token_occurrences": 8,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 7
+        },
+        "status": {
+          "body_token_occurrences": 30,
+          "declarations_in_body": 1,
+          "assignment_writes": 23,
+          "read_uses": 6
+        },
+        "error_at": {
+          "body_token_occurrences": 5,
+          "declarations_in_body": 1,
+          "assignment_writes": 3,
+          "read_uses": 1
+        },
+        "declared_packages": {
+          "body_token_occurrences": 6,
+          "declarations_in_body": 1,
+          "assignment_writes": 1,
+          "read_uses": 4
+        },
+        "declared_originals": {
+          "body_token_occurrences": 6,
+          "declarations_in_body": 1,
+          "assignment_writes": 1,
+          "read_uses": 4
+        },
+        "declared_generated": {
+          "body_token_occurrences": 5,
+          "declarations_in_body": 1,
+          "assignment_writes": 1,
+          "read_uses": 3
+        },
+        "packages": {
+          "body_token_occurrences": 7,
+          "declarations_in_body": 1,
+          "assignment_writes": 2,
+          "read_uses": 4
+        },
+        "original_files": {
+          "body_token_occurrences": 7,
+          "declarations_in_body": 1,
+          "assignment_writes": 2,
+          "read_uses": 4
+        },
+        "original_bytes": {
+          "body_token_occurrences": 6,
+          "declarations_in_body": 1,
+          "assignment_writes": 2,
+          "read_uses": 3
+        },
+        "original_lines": {
+          "body_token_occurrences": 5,
+          "declarations_in_body": 1,
+          "assignment_writes": 2,
+          "read_uses": 2
+        },
+        "original_nonblank": {
+          "body_token_occurrences": 5,
+          "declarations_in_body": 1,
+          "assignment_writes": 2,
+          "read_uses": 2
+        },
+        "replaced_files": {
+          "body_token_occurrences": 6,
+          "declarations_in_body": 1,
+          "assignment_writes": 2,
+          "read_uses": 3
+        },
+        "replaced_bytes": {
+          "body_token_occurrences": 5,
+          "declarations_in_body": 1,
+          "assignment_writes": 2,
+          "read_uses": 2
+        },
+        "replaced_lines": {
+          "body_token_occurrences": 5,
+          "declarations_in_body": 1,
+          "assignment_writes": 2,
+          "read_uses": 2
+        },
+        "replaced_nonblank": {
+          "body_token_occurrences": 5,
+          "declarations_in_body": 1,
+          "assignment_writes": 2,
+          "read_uses": 2
+        },
+        "generated_files": {
+          "body_token_occurrences": 7,
+          "declarations_in_body": 1,
+          "assignment_writes": 2,
+          "read_uses": 4
+        },
+        "generated_bytes": {
+          "body_token_occurrences": 6,
+          "declarations_in_body": 1,
+          "assignment_writes": 2,
+          "read_uses": 3
+        },
+        "generated_lines": {
+          "body_token_occurrences": 5,
+          "declarations_in_body": 1,
+          "assignment_writes": 2,
+          "read_uses": 2
+        },
+        "generated_nonblank": {
+          "body_token_occurrences": 5,
+          "declarations_in_body": 1,
+          "assignment_writes": 2,
+          "read_uses": 2
+        },
+        "pending_package": {
+          "body_token_occurrences": 6,
+          "declarations_in_body": 1,
+          "assignment_writes": 2,
+          "read_uses": 3
+        },
+        "at": {
+          "body_token_occurrences": 9,
+          "declarations_in_body": 1,
+          "assignment_writes": 1,
+          "read_uses": 7
+        },
+        "tag": {
+          "body_token_occurrences": 9,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 8
+        },
+        "package_id": {
+          "body_token_occurrences": 8,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 7
+        },
+        "count": {
+          "body_token_occurrences": 9,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 8
+        },
+        "payload": {
+          "body_token_occurrences": 4,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 3
+        },
+        "file_lines": {
+          "body_token_occurrences": 8,
+          "declarations_in_body": 1,
+          "assignment_writes": 2,
+          "read_uses": 5
+        },
+        "file_nonblank": {
+          "body_token_occurrences": 8,
+          "declarations_in_body": 1,
+          "assignment_writes": 2,
+          "read_uses": 5
+        },
+        "line_has_text": {
+          "body_token_occurrences": 5,
+          "declarations_in_body": 1,
+          "assignment_writes": 2,
+          "read_uses": 2
+        },
+        "last_byte": {
+          "body_token_occurrences": 3,
+          "declarations_in_body": 1,
+          "assignment_writes": 1,
+          "read_uses": 1
+        },
+        "cursor": {
+          "body_token_occurrences": 5,
+          "declarations_in_body": 1,
+          "assignment_writes": 1,
+          "read_uses": 3
+        },
+        "stop": {
+          "body_token_occurrences": 3,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 2
+        },
+        "byte": {
+          "body_token_occurrences": 6,
+          "declarations_in_body": 1,
+          "assignment_writes": 0,
+          "read_uses": 5
+        }
+      }
+    }
+  },
+  "census_projected_additional_blocks_by_source_section": {
+    "header_lines_61_72": 21,
+    "record_validation_lines_74_104": 60,
+    "payload_scan_and_tail_lines_105_127": 18,
+    "category_commit_lines_128_151": 5,
+    "final_validation_and_report_lines_152_179": 16,
+    "entry_block": 1
+  },
+  "reviewed_loop_write_sets": {
+    "outer_i64": [
+      "status",
+      "error_at",
+      "packages",
+      "original_files",
+      "original_bytes",
+      "original_lines",
+      "original_nonblank",
+      "replaced_files",
+      "replaced_bytes",
+      "replaced_lines",
+      "replaced_nonblank",
+      "generated_files",
+      "generated_bytes",
+      "generated_lines",
+      "generated_nonblank",
+      "pending_package",
+      "at"
+    ],
+    "inner_i64": [
+      "file_lines",
+      "file_nonblank",
+      "last_byte",
+      "cursor"
+    ],
+    "inner_bool": [
+      "line_has_text"
+    ]
+  },
+  "static_calls": {
+    "ReadU32": 7,
+    "byte_length": 1,
+    "byte_read_checked": 5,
+    "chibi_census_report": 1
+  },
+  "new_feature_sites": {
+    "BorrowedBytes_annotations": 2,
+    "while_statements": 2,
+    "subtraction_operators": 4
+  }
+}

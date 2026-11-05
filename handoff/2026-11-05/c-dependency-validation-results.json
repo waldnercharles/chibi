@@ -1,0 +1,109 @@
+{
+  "date": "2026-11-05",
+  "scope": "Dependency preprocessing for the remaining 87 C translation units and two GCC driver print-only checks; no compilation of those objects.",
+  "frozen_source_commit": "a661626d48172e3bfcda82c9dcde3018edf53eef",
+  "frozen_source_tree": "1ecc136fc8ab2a059430cfb6cefcd88217cf3710",
+  "profile": {
+    "platform": "Linux x86-64",
+    "compiler": "GCC 14.2",
+    "language_and_configuration": "GNU23 Release",
+    "include_layouts": 17,
+    "flag_classes": {
+      "ordinary": 41,
+      "vendor": 2,
+      "execution": 44
+    },
+    "authored_compiler_flags_and_commands_unchanged": true
+  },
+  "stage": {
+    "revision": "r4",
+    "status": "independently_accepted_dependency_and_print_only_validation",
+    "outer_exit": 0,
+    "outer_elapsed_seconds": 4.103953680998529,
+    "dependency_queries_completed": 87,
+    "driver_print_only_queries_completed": 2,
+    "unique_active_input_identities_and_hashes": 335,
+    "staged_source_header_files": 302,
+    "inert_dependency_files": 87,
+    "object_outputs": 0,
+    "temporary_outputs_remaining": 0,
+    "cleanup_checks": "passed",
+    "staged_input_checks": "passed",
+    "exact_driver_argument_order": "passed",
+    "dependency_queries": "preprocessing_only",
+    "cc1_or_assembler_execution_in_print_only_commands": false,
+    "acceptance_scope": "Recorded dependency and print-only results under configured checks; subject to runtime_loader_alias_qualification.",
+    "captures_recorded": 89,
+    "configured_runtime_integrity_checks": "passed"
+  },
+  "controls": {
+    "status": "independently_accepted",
+    "fresh_positive_negative_cases": 21
+  },
+  "pure_validation_checks": {
+    "status": "passed",
+    "count": 344,
+    "scope": "Validation-source checks, not Chibi product tests."
+  },
+  "prior_failed_runs": {
+    "r2": {
+      "status": "failed_preserved",
+      "reason": "Missing canonical spelling of an already pinned errno header.",
+      "correction": "Explicit aliases in fresh validation."
+    },
+    "r3": {
+      "status": "failed_preserved",
+      "reason": "Expected assembler arguments omitted -W forwarded by GCC from original vendor -w.",
+      "correction": "Fresh exact expectation includes -W at its required position."
+    },
+    "ordering_relaxed": false,
+    "historical_failures_reclassified_as_passes": false
+  },
+  "ownership": {
+    "outcome": "whole_owner_ECHILD_EOF_passed",
+    "stronger_per_capture_descendant_proof": false
+  },
+  "separate_prior_result": {
+    "text_c_compilation": "independently_accepted_in_prior_checkpoint",
+    "documentation": "TEXT-C-VALIDATION.md"
+  },
+  "remaining": {
+    "remaining_object_compilations": {
+      "count": 87,
+      "status": "not_run"
+    },
+    "archives": {
+      "count": 16,
+      "status": "not_run"
+    },
+    "host_link_and_runtime": "not_run",
+    "windows_validation": "not_run",
+    "full_new_head_integration": "not_established",
+    "new_cli_or_sdk_pass": false,
+    "cli_r3": "failed_preserved",
+    "cli_r4": "held_not_rerun",
+    "sdk": "held_not_rerun",
+    "pr_1331": "held",
+    "c5_bootstrap": "held_terminal_unknown",
+    "native_union16_investigation": "held",
+    "existing_branch_and_pr_holds": "unchanged",
+    "merge_or_release_readiness": false
+  },
+  "future_compile_requirement": "Freshly check corrected loader-facing alias chains and bind source, staging, flags and input identities; this checkpoint is not object compilation acceptance.",
+  "checkpoint_product_source_changes": false,
+  "runtime_loader_alias_qualification": {
+    "resolved_library_bytes_pinned": true,
+    "omitted_loader_facing_alias_chains": [
+      "libexpat.so.1",
+      "libffi.so.8"
+    ],
+    "affected_scope": "Validation-runtime library loading, not additional C source dependencies.",
+    "historical_alias_chain_checks": "not_performed_for_omitted_chains",
+    "complete_recursive_loader_alias_assurance": "not_established",
+    "alias_drift": "none_observed",
+    "historical_alias_immutability": "not_proved",
+    "recorded_dependency_dry_capture_and_configured_check_outcomes": "preserved",
+    "historical_control_outcomes_reclassified": false,
+    "future_compilation_requirement": "Freshly check corrected loader-facing alias chains; do not infer omitted historical checks passed."
+  }
+}

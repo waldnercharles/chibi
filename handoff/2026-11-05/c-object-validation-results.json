@@ -1,0 +1,106 @@
+{
+  "date": "2026-11-05",
+  "scope": "Independently accepted compilation of the remaining 87 C translation units; structural ELF and ordered active-dependency validation only.",
+  "frozen_source_commit": "a661626d48172e3bfcda82c9dcde3018edf53eef",
+  "frozen_source_tree": "1ecc136fc8ab2a059430cfb6cefcd88217cf3710",
+  "profile": {
+    "platform": "Linux x86-64",
+    "compiler": "GCC 14.2",
+    "language_and_configuration": "GNU23 Release",
+    "include_layouts": 17,
+    "flag_classes": {
+      "ordinary": 41,
+      "vendor": 2,
+      "execution": 44
+    },
+    "authored_compiler_flags_and_commands_unchanged": true
+  },
+  "stage": {
+    "revision": "r4",
+    "status": "independently_accepted_structural_compilation_and_dependencies",
+    "outer_exit": 0,
+    "outer_elapsed_seconds": 50.49571951600228,
+    "owner_elapsed_seconds": 50.17490820399689,
+    "compile_commands_completed": 87,
+    "object_dependency_pairs": 87,
+    "staged_source_header_files": 302,
+    "unique_active_input_identities_and_hashes": 335,
+    "generated_objects_linked_loaded_or_executed": false,
+    "capture_diagnostic_bytes": 0,
+    "object_bytes": 2035368,
+    "dependency_bytes": 545527,
+    "output_identity_associations_passed": 174
+  },
+  "controls": {
+    "status": "independently_accepted",
+    "fresh_positive_negative_cases": 38
+  },
+  "pure_validation_checks": {
+    "harness": 383,
+    "generic_parser": {
+      "prior_cases": 101,
+      "new_alignment_cases": 15,
+      "independent_actual_header_regressions": 7
+    },
+    "scope": "Validation-harness checks, not Chibi product tests. Overlapping coverage is not summed into a combined test total."
+  },
+  "ownership": {
+    "outcome": "whole_owner_ECHILD_EOF_passed",
+    "errors": 0,
+    "signals": 0,
+    "remaining_children": 0,
+    "stronger_per_capture_descendant_proof": false
+  },
+  "corrections": {
+    "loader_aliases": "Fresh checks include libexpat.so.1 and libffi.so.8 alias chains; historical dependency-r4 omission remains qualified.",
+    "output_identity": "Fresh controls check genuine replacement and mutation at the final capture boundary.",
+    "elf_alignment": "Removed unsupported generic file-offset alignment check; retained address/alignment bounds and other structural constraints.",
+    "elf_abi_reference": "https://gabi.xinuos.com/elf/03-sheader.html"
+  },
+  "prior_failed_runs": {
+    "compile_r2": {
+      "status": "failed_preserved",
+      "reason": "Replacement control did not demonstrate intended replacement; durable output identity coverage gap."
+    },
+    "compile_r3": {
+      "status": "failed_preserved",
+      "failing_command_index": 3,
+      "reason": "Unsupported generic file-offset alignment check rejected valid .rodata.cst16 in type.c.o."
+    },
+    "historical_failures_reclassified_as_passes": false
+  },
+  "separate_prior_result": {
+    "text_c_compilation": "independently_accepted_in_prior_checkpoint",
+    "documentation": "TEXT-C-VALIDATION.md",
+    "object_bytes": 7896,
+    "object_sha256": "e2f4e86674e8d845390ad2170d506a0fad84193b9f7cbd856b5bb21dfd001baa",
+    "integrated_build": false
+  },
+  "remaining": {
+    "archives": {
+      "count": 16,
+      "status": "not_run"
+    },
+    "host_link_and_runtime": "not_run",
+    "windows_validation": "not_run",
+    "full_new_head_integration": "not_established",
+    "new_cli_or_sdk_pass": false,
+    "cli_r3": "failed_preserved",
+    "cli_r4": "held_not_rerun",
+    "sdk": "held_not_rerun",
+    "pr_1331": "held",
+    "c5_bootstrap": "held_terminal_unknown",
+    "native_union16_and_excluded_native_corpus": "held",
+    "official_libdep_package_provenance": "unresolved",
+    "existing_branch_and_pr_holds": "unchanged",
+    "merge_or_release_readiness": false
+  },
+  "generic_elf_structural_validity_proves_api_or_runtime_correctness": false,
+  "checkpoint_product_source_changes": false,
+  "evidence_sha256": {
+    "actual_compilation_acceptance": "e5da4579a06468dec6a9a5965a05baed30b84b7a51bb47415851da74203c2710",
+    "independent_actual_review": "89c61d7b5edfd08e7c754486dc980fe9f2d1833e7aa35e0f4dce1914e627f2f3",
+    "artifact_inventory": "05d3bb9c35fe4efbf1edb1b8c67e90a6132c8c7340f76e7a00a7d93d62baa14f",
+    "controls_acceptance": "7a1e02275738bb1d3ec8163c4f7b5a7c33e33d377e9301e494298dbeb2ab7626"
+  }
+}

@@ -1,0 +1,154 @@
+{
+  "classification": "Complete Linux Graph BuildTests.Run and DriverTests.Run independently accepted; not all Graph, registry adapter, Windows or full PR acceptance",
+  "source": {
+    "tested_local_commit": "a8d16f54ce664bbc077558f01f16365f1c7f899d",
+    "published_identical_tree_commit": "bd31dc875805c64ebdb1584345cd321a584b693d",
+    "tree": "9432a0d8292216b4221d24864b1b9b40a543b325",
+    "entries": 4176
+  },
+  "compiler_sha256": "7b17b5bfdaed144e0949afd065db723bb45c8bd55b356cb70910d6df42e6d266",
+  "affinity": [
+    0,
+    1
+  ],
+  "normal_compiler_jobs_unchanged": true,
+  "suites": {
+    "build": {
+      "entry": "test/graph/BuildTests.chibi::Run",
+      "source_assertion_sites": 30,
+      "construction_exit_code": 0,
+      "suite_exit_code": 0,
+      "outer_exit_code": 0,
+      "outer_elapsed_seconds": 21.11987608399977,
+      "owner_elapsed_seconds": 21.034600695000336,
+      "total_bound_seconds": 1200,
+      "cleanup_reserve_seconds": 10,
+      "main_program": {
+        "bytes": 179680,
+        "mode": 448,
+        "sha256": "36a52336acc2888d26bd51c158dd571e0c2aad20f5c59921fa65a5987e3787a4"
+      },
+      "echild": true,
+      "pipe_eof": true,
+      "owner_signals": 0,
+      "owner_errors": 0,
+      "surviving_children": 0,
+      "post_echild_source_tool_output_cleanup_fences": true,
+      "streams": {
+        "compile/stdout.log": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "compile/stderr.log": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "run/stdout.log": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "run/stderr.log": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "raw.log": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "inner_capture_streams": "Consumed by authored tests and not separately retained",
+      "closure": {
+        "file_facts": 578,
+        "directory_inventories": 34,
+        "required_absences": 913
+      },
+      "evidence_sha256": {
+        "owner-receipt.json": "2da0bebb8b47f5a0e5a2041fc0005f253235ced704b061818e9dd1bab073da6b",
+        "suite-result.json": "a14778ead9330b19eafcab45e28ae43883757ae53f647d1d4f4cadc0fb573e85",
+        "quiescent-fences.json": "204c0f83813c7704b1de88cebd2aa73f40f33291697c65e60537ab82095905a2",
+        "program-identity.json": "4c0087babc84ff9bd6d665ee234ef2bbc1ecea826d391d8b80abfffcaa97c5c5"
+      },
+      "independent_terminal_acceptance_sha256": "431c333a26d58e63141492915eb736b4b124ea1398fef6b529d12e3a8fe8f844",
+      "authored_scratch_removed": true,
+      "normal_cache_retained": true,
+      "private_directories_empty": true
+    },
+    "driver": {
+      "entry": "test/graph/DriverTests.chibi::Run",
+      "source_assertion_sites": 117,
+      "construction_exit_code": 0,
+      "suite_exit_code": 0,
+      "outer_exit_code": 0,
+      "outer_elapsed_seconds": 19.117479430999083,
+      "owner_elapsed_seconds": 19.031453221999982,
+      "total_bound_seconds": 240,
+      "cleanup_reserve_seconds": 10,
+      "main_program": {
+        "bytes": 645816,
+        "mode": 448,
+        "sha256": "733284128679c03540be43608a540581ca6e9ab7b40402735fde061b3370b1ed"
+      },
+      "echild": true,
+      "pipe_eof": true,
+      "owner_signals": 0,
+      "owner_errors": 0,
+      "surviving_children": 0,
+      "post_echild_source_tool_output_cleanup_fences": true,
+      "streams": {
+        "compile/stdout.log": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "compile/stderr.log": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "run/stdout.log": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "run/stderr.log": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "raw.log": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "inner_capture_streams": "Consumed by authored tests and not separately retained",
+      "closure": {
+        "file_facts": 578,
+        "directory_inventories": 34,
+        "required_absences": 913
+      },
+      "evidence_sha256": {
+        "owner-receipt.json": "a5250ab1becc6fd511bbb907219174c1c275beeddf365e357fd3f992e8de392b",
+        "suite-result.json": "2788d7bc7ba6ced7806c42853e72a6f38c887b64a4ae167887bb2f564036737b",
+        "quiescent-fences.json": "204c0f83813c7704b1de88cebd2aa73f40f33291697c65e60537ab82095905a2",
+        "program-identity.json": "00b7250d50d9fa059d922d636b1158b5c7483c43ace7717b8901d9559927f17d"
+      },
+      "independent_terminal_acceptance_sha256": "99d34bd277620bf7ffa7c0a1ae92b4514aaad2cdc9a7e1772e2e30934339a073",
+      "authored_scratch_removed": true,
+      "normal_cache_retained": true,
+      "private_directories_empty": true
+    }
+  },
+  "scope_limits": [
+    "Driver planner/stage fixtures use controlled scripts around real native Driver execution, not real compiler fixed-point proof",
+    "Discovery and other final-source Graph refresh remain separate",
+    "No registry-adapter, Windows, broader product or C/runtime integration acceptance",
+    "Historical stronger per-Capture proof remains failed or unproven",
+    "PR #1331 hold, original unknown c5 bootstrap and excluded native union leak investigation unchanged"
+  ],
+  "timing_note": "Bounded correctness timings, not performance benchmarks",
+  "local_preservation": {
+    "file": "chibi-graph-build-driver-a8d16f54-source-proof-20261105.tar.gz",
+    "bytes": 23276108,
+    "sha256": "663400a72d659f3bb9629b19c4f88fbf99054924405b9d871850dd5d6264f76c",
+    "members": 12026,
+    "inventory_entries": 28765,
+    "explicit_duplicate_mappings": 16741,
+    "upload_performed": false
+  }
+}

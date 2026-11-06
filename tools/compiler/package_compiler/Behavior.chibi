@@ -116,7 +116,7 @@ InvocationReadEffect: int : 64;
 
 // A behavior's names: the game's globals, its states, then `self`, its owner,
 // whatever global the game names so.
-BehaviorNames :: (kept_states: StateDecl[], globals: GameGlobal[]) -> Name[] {
+BehaviorNames :: (kept_states: StateDecl[], globals: GameGlobal[], owner_record: int) -> Name[] {
     names: Name[] = [];
     index: int = 0;
     while (index < length(globals)) {
@@ -128,12 +128,14 @@ BehaviorNames :: (kept_states: StateDecl[], globals: GameGlobal[]) -> Name[] {
     index = 0;
     while (index < length(kept_states)) {
         kept: Name = {name: kept_states[index].name, place: StatePlace, index: index,
-                      storage: kept_states[index].storage, container: 0, record: -1, writable: true,
+                      storage: kept_states[index].storage, container: 0, record: kept_states[index].record,
+                      writable: true,
                       node: kept_states[index].node};
         names.append(kept);
         index += 1;
     }
-    owner: Name = {name: "self", place: SelfPlace, index: 0, storage: HandleStorage, container: 0, record: -1,
+    owner: Name = {name: "self", place: SelfPlace, index: 0, storage: HandleStorage, container: 0,
+                   record: owner_record,
                    writable: false, node: -1};
     return append(names, owner);
 }
@@ -561,10 +563,16 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
                                    has_syntax: true, has_header: false};
     links: graph.Binding[] = [];
     constants: ConstDecl[] = [];
-    return Assemble(forest, [document], 0, 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
-                    callables, params, declared_types, members, constants, natives, ports, native_ids, ops, target, abi,
+    switch Assemble(forest, [document], 0, 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
+                    callables, params, declared_types, members, constants, natives, ports, native_ids,
+                    resize([int(0)], length(natives)), resize([int(0)], length(callables)), ops, target, abi,
                     Game.Behavior(kept_states, handled, game_events, event_fields, entity, operators, globals, makes,
-                                  make_fields));
+                                  make_fields)) {
+        case .Rejected(diagnostic):
+            return Result.Rejected(diagnostic);
+        case .Compiled(module, bytes, effects):
+            return Result.Compiled(module, bytes);
+    }
 }
 // The modules of a project's behavior assets, `identities[i]` holding
 // `sources[i]`, as a CHIBICLO closure rooted at the first, for a host that

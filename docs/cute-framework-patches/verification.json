@@ -151,7 +151,7 @@
     }
   ],
   "not_run": [
-    "full native and render aggregate tests, quarantined by repository policy",
+    "full native and render aggregate tests were not run",
     "Windows, macOS and D3D12 or Metal backends",
     "chibi's renderer on browser WebGPU: headless Chromium here offers only a 32-byte SwiftShader adapter, which the page sends to WebGL 2"
   ]

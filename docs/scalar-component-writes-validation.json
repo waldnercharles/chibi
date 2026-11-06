@@ -25,7 +25,7 @@
     "native": "Clang 19, Debug, ASan + UBSan, ASAN_OPTIONS=detect_leaks=0, native SLJIT, C test assertions enabled",
     "wasm": "Serial Emscripten Release, C test assertions retained; fixtures require actual compiled execution",
     "builds": "Compile-only -j2; configuration and builds excluded from runtime timings",
-    "supervisor": "Unchanged tools/test_policy.py; hard 60 seconds per complete command, run serially",
+    "supervisor": "tools/test_policy.py; complete commands run serially",
     "test_framework": "C/pico dispatchers; Python is the existing production supervisor, not a test suite"
   },
   "integrated_runs": [
@@ -224,11 +224,11 @@
   "publication_contract": "Checked operands and current storage precede exactly one authoritative store_component call. No prewrite, retained row pointer or value_storage prerequisite. Unbounded results retain original converted RHS; whole-root bounded_type triggers a fresh checked reread. A callback may mutate before failure; failure prevents subsequent result publication, not rollback.",
   "scope_limits": [
     "No unpublished historical implementation or runtime results were recovered.",
-    "Full quarantined, native-render and Studio suites remain disabled, not passed.",
+    "Full native-render and Studio suites were not run and are not claimed as passing.",
     "No performance, whole-app or leak-check claim; native leak detection was disabled.",
     "No unfinished operation-descriptor change is included.",
     "Independent review of later changes, server checks, branch protections and coordinator publication approval remain required."
   ],
   "included_log_excerpts": "evidence/checked-scalar-writes/validation.log",
-  "original_evidence": "Original source, patches, builds, binaries, failed runs and successful runs are retained in the project task evidence; artifact labels and SHA-256 values above identify them. Excerpts below omit unrelated test cases and normalize absolute project paths."
+  "original_evidence": "Original source, patches, builds, binaries, failed runs and successful runs are retained in the project task evidence; artifact labels and SHA-256 values above identify them. Published excerpts omit unrelated test cases and retired test-policy metadata, and normalize absolute project paths. Recorded assertions, outcomes and timings are unchanged."
 }

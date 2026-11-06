@@ -5,5 +5,5 @@
   "source_blockers": [],
   "report_blockers": [],
   "github_approved_review": false,
-  "limitations": "Focused admission and source review supply no full-gate or landing authority."
+  "limitations": "Focused workload and source review supply no full-gate or landing authority."
 }

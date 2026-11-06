@@ -442,13 +442,32 @@ void prepared_value(prepared_context *c, pin_value *v)
     }
     execution_wire_value_owned(&c->wire, v, resolve, c);
 }
-static bool header_work(prepared_context *c, pin_value value)
+static bool header_work(
+    prepared_context *c,
+    pin_value value,
+    behavior_record_check *checks,
+    int count,
+    bool diagnostic
+)
 {
     if (!value.record) {
         return true;
     }
     int at = requirement(c, &value);
-    return at >= 0 && work(c, c->records[at].validation_work);
+    if (at < 0) {
+        return false;
+    }
+    int found = behavior_record_check_find(checks, count, value.record);
+    if (!diagnostic && found >= 0 && checks[found].seen) {
+        return true;
+    }
+    if (!work(c, c->records[at].validation_work)) {
+        return false;
+    }
+    if (found >= 0) {
+        checks[found].seen = true;
+    }
+    return true;
 }
 bool prepared_records_finalize(prepared_context *c)
 {
@@ -459,6 +478,23 @@ bool prepared_records_finalize(prepared_context *c)
     }
     for (int j = 0; j < acount(c->functions); j++) {
         const behavior_function *f = c->functions[j];
+        size_t bytes;
+        size_t overhead = behavior_function_record_check_budget(f, &bytes);
+        if (overhead == SIZE_MAX || bytes > SIZE_MAX / 2) {
+            c->wire.error = "record validation scratch budget overflow";
+            return false;
+        }
+        if (!work(c, overhead)) {
+            return false;
+        }
+        /* Both the temporary preflight table and the later verifier table are
+         * charged before either allocation. Canonical reconciliation refunds
+         * this scratch when the module is accepted. */
+        if (!execution_wire_reserve(&c->wire, 2 * bytes)) {
+            return false;
+        }
+        int count;
+        behavior_record_check *checks = behavior_function_record_checks(f, bytes, &count);
         const pin_value *banks[] = { f->argument_defaults,
                                      f->result_defaults,
                                      f->variable_defaults,
@@ -471,27 +507,34 @@ bool prepared_records_finalize(prepared_context *c)
                          acount(f->command_results) };
         for (int b = 0; b < 5; b++) {
             for (int i = 0; i < counts[b]; i++) {
-                if (!header_work(c, banks[b][i])) {
-                    return false;
+                if (!header_work(c, banks[b][i], checks, count, false)) {
+                    goto invalid;
                 }
             }
         }
         for (int i = 0; i < acount(f->data_values); i++) {
-            if (!header_work(c, f->data_values[i].initial)) {
-                return false;
+            if (!header_work(c, f->data_values[i].initial, checks, count, false)) {
+                goto invalid;
             }
         }
         for (int i = 0; i < acount(f->value_roots); i++) {
-            if (!header_work(c, f->value_roots[i].shape)) {
-                return false;
+            if (!header_work(c, f->value_roots[i].shape, checks, count, false)) {
+                goto invalid;
             }
         }
         for (int i = 0; i < acount(f->source_watches); i++) {
-            if (!header_work(c, f->source_watches[i].initial) ||
-                !header_work(c, f->source_watches[i].initial)) {
-                return false;
+            /* A failed descriptor is never a proof. The diagnostic rescan
+             * can revisit an invalid watch, so retain its full extra charge. */
+            if (!header_work(c, f->source_watches[i].initial, checks, count, false) ||
+                !header_work(c, f->source_watches[i].initial, checks, count, true)) {
+                goto invalid;
             }
         }
+        free(checks);
+        continue;
+    invalid:
+        free(checks);
+        return false;
     }
     return !c->wire.error;
 }

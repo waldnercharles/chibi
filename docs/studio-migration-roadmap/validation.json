@@ -135,14 +135,16 @@
   "all_product_sources_and_headers_explicitly_owned": true,
   "all_867_paths_have_tracking_owner": true,
   "original_inventory_sha256": "76d710e88e0a2d2ecb35a9bf895b3b8223a1fbf96b9029e51f185f2106089d87",
-  "inventory_normalization": "CRLF to LF only; CSV row/field content retained",
+  "inventory_normalization": "Archived inventory uses LF line endings; its source identities remain historical evidence.",
   "original_source_plan_sha256": "ff9559d8ceead0f2b8ec958e974050e428e74ea8ee2fa0ff5b1bf1f1858d6e31",
   "original_source_plan_url": "https://github.com/waldnercharles/chibi/blob/444e5b20e60d052e9e280788eec7163ca52f8390/docs/studio-migration-roadmap/source/plan.md",
   "source_plan_sha256": "fd55128677af43ad0978b07f39887df489889815aa05a4b8ce404f10570241c1",
   "source_plan_edit": "Curated copy: obsolete test-gate prose omitted; original scope, contracts and results retained.",
   "input_sha256": {
-    "source/plan.md": "fd55128677af43ad0978b07f39887df489889815aa05a4b8ce404f10570241c1",
-    "source/studio-file-inventory.csv": "22c5397e095b5f823988606e55ea6f098e723913b3d8bbfa7df24d92c76b82ad"
+    "source/plan.md": "fd55128677af43ad0978b07f39887df489889815aa05a4b8ce404f10570241c1"
   },
-  "external_mutations": "none; no PR publication or merges"
+  "external_mutations": "none; no PR publication or merges",
+  "archived_inventory_url": "https://github.com/waldnercharles/chibi/blob/1117f2de55bb4ceaa8f3b16a0e0fb7dee7dc4881/docs/studio-migration-roadmap/source/studio-file-inventory.csv",
+  "archived_path_coverage_url": "https://github.com/waldnercharles/chibi/blob/1117f2de55bb4ceaa8f3b16a0e0fb7dee7dc4881/docs/studio-migration-roadmap/studio-path-coverage.csv",
+  "archived_inventory_sha256": "22c5397e095b5f823988606e55ea6f098e723913b3d8bbfa7df24d92c76b82ad"
 }

@@ -1,7 +1,6 @@
 {
   "source_commit": "641424f550c8f78327e3e8ef232b904364688514",
   "before_delta": "src/editor/rmlui/kit.c from 0538d05c67f74fb3b177a534c5a0ed5d3f3b0c0d; all other code, dependencies, flags and coverage identical to after",
-  "shared_deadline_seconds": 60,
   "aggregate_wall_seconds": 10.936191541841254,
   "runs": [
     {

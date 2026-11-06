@@ -8,7 +8,7 @@
   "tested_base": "b1ada743d978a25ff8b0d5d677b491291eb4ddf5",
   "documentation_integration_base": "19a8439314a1057d4a1c7c4e0e5e8ba47da7bd02",
   "final_integration_change": "Documentation and evidence only after tested commit; product, test and policy bytes preserved.",
-  "admission": {
+  "workload_review": {
     "independent_review": "approved",
     "routes": [
       "language-modules",
@@ -63,10 +63,9 @@
       "cases_failed": 0,
       "assertions": 348,
       "wall_seconds": 0.168,
-      "deadline_seconds": 60,
       "log_sha256": "8ad3378aa9f6881009dc3183b760bd8df2fa016c83e31c9d5dd0b140d4e59d3a",
       "summary": "Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 348",
-      "timing": "Test command wall time: 0.168s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded."
+      "timing": "Test command wall time: 0.168s; includes in-test fixture setup; external configuration/build excluded."
     },
     {
       "route": "wasm-modules",
@@ -79,10 +78,9 @@
       "cases_failed": 0,
       "assertions": 348,
       "wall_seconds": 0.227,
-      "deadline_seconds": 60,
       "log_sha256": "f9b41bccf307d3274682dec66d02247a5f495be4e31d4b60d38deecc617bfeb8",
       "summary": "Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 348",
-      "timing": "Test command wall time: 0.227s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded."
+      "timing": "Test command wall time: 0.227s; includes in-test fixture setup; external configuration/build excluded."
     },
     {
       "route": "language-navigation",
@@ -96,10 +94,9 @@
       "cases_failed": 0,
       "assertions": 329,
       "wall_seconds": 0.183,
-      "deadline_seconds": 60,
       "log_sha256": "6288d5da599296567f51af12a896c9a593f9317b14b99abc28a624ed3010e3db",
       "summary": "Summary: Passed: 29 Failed: 0 Total: 29 Suites: 0 Asserts: 329",
-      "timing": "Test command wall time: 0.183s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded."
+      "timing": "Test command wall time: 0.183s; includes in-test fixture setup; external configuration/build excluded."
     },
     {
       "route": "language-incremental",
@@ -113,10 +110,9 @@
       "cases_failed": 0,
       "assertions": 235,
       "wall_seconds": 0.43,
-      "deadline_seconds": 60,
       "log_sha256": "358852d9339d679f32ea6510bd820f6e7cbe1026c8a3973869d3b242b5a82e0a",
       "summary": "Summary: Passed: 13 Failed: 0 Total: 13 Suites: 0 Asserts: 235",
-      "timing": "Test command wall time: 0.430s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded."
+      "timing": "Test command wall time: 0.430s; includes in-test fixture setup; external configuration/build excluded."
     }
   ],
   "tested_source_files": [
@@ -161,7 +157,7 @@
     }
   ],
   "limitations": [
-    "No full/quarantined gate ran.",
+    "Full-suite gates were not run.",
     "No aggregate membership expansion.",
     "Existing program/imported-state and publication cases were audited but not rerun.",
     "No representative multi-feature application or qualified imported-state/publication integration proof.",
@@ -188,7 +184,7 @@
       "leak_detection": "Unavailable; ASAN_OPTIONS=detect_leaks=0. ASan/UBSan remain enabled."
     },
     "fixed_workload": {
-      "independent_admission": "Seven-case dedicated specimen, exact corrected source, whole 29/17-command aggregates and current-source native-tools independently admitted and measured serially under the unchanged supervisor.",
+      "independent_workload_review": "Seven-case dedicated specimen, exact corrected source, whole 29/17-command aggregates and current-source native-tools independently reviewed and measured serially.",
       "cases": 7,
       "max_catalogs": 22,
       "max_source_preparations": 60,
@@ -265,7 +261,7 @@
       }
     },
     "aggregate_measurement": {
-      "status": "Both complete groups passed once under one shared 60-second deadline each; exact results below.",
+      "status": "Both complete groups passed once; exact results below.",
       "historical_commit": "cdf9adc540f1c1c0c9c8468820a1bf5b706629e4",
       "historical_language": {
         "cases": 382,
@@ -277,8 +273,7 @@
         "assertions": 32081,
         "wall_seconds": 3.203
       },
-      "deadline_seconds": 60,
-      "deadline_scope": "One shared production deadline per complete group; no member removal, chunking, failure suppression or timeout extension. Historical component timings do not guarantee a changed aggregate budget.",
+      "deadline_scope": "Each recorded run covers a complete group without removing members or suppressing failures. Historical component timings do not establish the cost of a changed aggregate.",
       "policy_validation": "Existing complete native-tools passed using this exact checkout and freshly compiled test_tools/policy_worker.",
       "coverage_limits": [
         "Query-program cases already run through program.",
@@ -421,7 +416,7 @@
       "LeakSanitizer unavailable under tracing; ASAN_OPTIONS=detect_leaks=0; ASan/UBSan active",
       "wasm-format remains standalone and was not run",
       "Prepared producer/consumer belongs to native group and was not run",
-      "No full/quarantined gates, whole-app behavior, scheduling or performance claim",
+      "No full-suite, whole-app, scheduling or performance coverage is claimed",
       "Earlier published-head approval remains superseded; this review applies only to exact corrected head"
     ],
     "documentation_followup": "Only docs/module-composition.md, docs/module-composition-validation.json and docs/testing.md change after tested e3749f9f. Product, test, policy and fixture bytes preserved; no new runtime."

@@ -114,6 +114,20 @@ static const char *build_make_directory(void *service, const pin_value *argument
     results[0].b = build_io_mkdir(host->root, strings[0]);
     return NULL;
 }
+static const char *build_reserve_directory(void *service, const pin_value *arguments, pin_value *results)
+{
+    READY_HOST();
+    BOOL_STRING_ARGUMENTS(1);
+    results[0].b = build_io_reserve_directory(host->root, strings[0]);
+    return NULL;
+}
+static const char *build_publish_directory(void *service, const pin_value *arguments, pin_value *results)
+{
+    READY_HOST();
+    BOOL_STRING_ARGUMENTS(2);
+    results[0].b = build_io_publish_directory(host->root, strings[0], strings[1]);
+    return NULL;
+}
 static const char *build_resolve_path(void *service, const pin_value *arguments, pin_value *results)
 {
     READY_HOST();
@@ -389,45 +403,47 @@ static const script_catalog_parameter array_result = {
     .name = "value",
     .type = { .storage = PIN_STR, .container = PIN_CONTAINER_ARRAY }
 };
-#define BUILD_NATIVES(X)                                                                      \
-    X(901, "build.run", &array_parameter, 1, int_result, build_host_run_step)                 \
-    X(902, "build.environment", &c_text_parameter, 1, text_result, build_host_environment)    \
-    X(903, "build.arguments", NULL, 0, array_result, build_arguments)                         \
-    X(904, "build.platform", NULL, 0, text_result, build_platform)                            \
-    X(905, "build.root", NULL, 0, text_result, build_root)                                    \
-    X(906, "build.program_directory", NULL, 0, text_result, build_program_directory)          \
-    X(907, "build.find_executable", &c_text_parameter, 1, text_result, build_find_executable) \
-    X(908, "build.read_file", &c_text_parameter, 1, text_result, build_read_file)             \
-    X(909, "build.file_exists", &c_text_parameter, 1, bool_result, build_file_exists)         \
-    X(910, "build.make_directory", &c_text_parameter, 1, bool_result, build_make_directory)   \
-    X(911, "build.resolve_path", &c_text_parameter, 1, text_result, build_resolve_path)       \
-    X(912, "build.write_file", write_parameters, 2, bool_result, build_write_file)            \
-    X(913, "build.last_stdout", NULL, 0, text_result, build_last_stdout)                      \
-    X(914, "build.last_stderr", NULL, 0, text_result, build_last_stderr)                      \
-    X(915, "build.report", &text_parameter, 1, int_result, build_report)                      \
-    X(916, "build.join", join_parameters, 2, text_result, value_join)                         \
-    X(917, "build.starts_with", two_text_parameters, 2, bool_result, value_starts_with)       \
-    X(918, "build.before", two_text_parameters, 2, text_result, value_before)                 \
-    X(919, "build.after", two_text_parameters, 2, text_result, value_after)                   \
-    X(920, "build.lines", &text_parameter, 1, array_result, value_lines)                      \
-    X(921, "build.trim", &text_parameter, 1, text_result, value_trim)                         \
-    X(922, "build.concat", concat_parameters, 2, array_result, value_concat)                  \
-    X(923, "build.length", &array_parameter, 1, int_result, value_length)                     \
-    X(924, "build.probe", &array_parameter, 1, int_result, build_host_run_probe)              \
-    X(925, "build.environment_names", NULL, 0, array_result, build_host_environment_names)    \
-    X(926, "build.file_kind", &path_parameter, 1, text_result, build_file_kind)               \
-    X(927, "build.file_stamp", &path_parameter, 1, text_result, build_file_stamp)             \
-    X(928, "build.list_directory", &path_parameter, 1, array_result, build_list_directory)    \
-    X(929, "build.copy_file", move_parameters, 2, bool_result, build_copy_file)               \
-    X(930, "build.rename", move_parameters, 2, bool_result, build_rename)                     \
-    X(931, "build.remove", &path_parameter, 1, bool_result, build_remove)                     \
-    X(932, "build.hash_file", &path_parameter, 1, text_result, build_hash_file)               \
-    X(933, "build.hash_text", &text_parameter, 1, text_result, build_hash_text)               \
-    X(934, "build.start", &array_parameter, 1, int_result, build_host_start)                  \
-    X(935, "build.wait", &handle_parameter, 1, int_result, build_host_wait)                   \
-    X(936, "build.embed_file", embed_parameters, 3, bool_result, build_embed_file)            \
-    X(937, "build.replace", replace_parameters, 3, text_result, value_replace)                \
-    X(938, "build.byte_list", &path_parameter, 1, text_result, build_byte_list)
+#define BUILD_NATIVES(X)                                                                        \
+    X(901, "build.run", &array_parameter, 1, int_result, build_host_run_step)                   \
+    X(902, "build.environment", &c_text_parameter, 1, text_result, build_host_environment)      \
+    X(903, "build.arguments", NULL, 0, array_result, build_arguments)                           \
+    X(904, "build.platform", NULL, 0, text_result, build_platform)                              \
+    X(905, "build.root", NULL, 0, text_result, build_root)                                      \
+    X(906, "build.program_directory", NULL, 0, text_result, build_program_directory)            \
+    X(907, "build.find_executable", &c_text_parameter, 1, text_result, build_find_executable)   \
+    X(908, "build.read_file", &c_text_parameter, 1, text_result, build_read_file)               \
+    X(909, "build.file_exists", &c_text_parameter, 1, bool_result, build_file_exists)           \
+    X(910, "build.make_directory", &c_text_parameter, 1, bool_result, build_make_directory)     \
+    X(911, "build.resolve_path", &c_text_parameter, 1, text_result, build_resolve_path)         \
+    X(912, "build.write_file", write_parameters, 2, bool_result, build_write_file)              \
+    X(913, "build.last_stdout", NULL, 0, text_result, build_last_stdout)                        \
+    X(914, "build.last_stderr", NULL, 0, text_result, build_last_stderr)                        \
+    X(915, "build.report", &text_parameter, 1, int_result, build_report)                        \
+    X(916, "build.join", join_parameters, 2, text_result, value_join)                           \
+    X(917, "build.starts_with", two_text_parameters, 2, bool_result, value_starts_with)         \
+    X(918, "build.before", two_text_parameters, 2, text_result, value_before)                   \
+    X(919, "build.after", two_text_parameters, 2, text_result, value_after)                     \
+    X(920, "build.lines", &text_parameter, 1, array_result, value_lines)                        \
+    X(921, "build.trim", &text_parameter, 1, text_result, value_trim)                           \
+    X(922, "build.concat", concat_parameters, 2, array_result, value_concat)                    \
+    X(923, "build.length", &array_parameter, 1, int_result, value_length)                       \
+    X(924, "build.probe", &array_parameter, 1, int_result, build_host_run_probe)                \
+    X(925, "build.environment_names", NULL, 0, array_result, build_host_environment_names)      \
+    X(926, "build.file_kind", &path_parameter, 1, text_result, build_file_kind)                 \
+    X(927, "build.file_stamp", &path_parameter, 1, text_result, build_file_stamp)               \
+    X(928, "build.list_directory", &path_parameter, 1, array_result, build_list_directory)      \
+    X(929, "build.copy_file", move_parameters, 2, bool_result, build_copy_file)                 \
+    X(930, "build.rename", move_parameters, 2, bool_result, build_rename)                       \
+    X(931, "build.remove", &path_parameter, 1, bool_result, build_remove)                       \
+    X(932, "build.hash_file", &path_parameter, 1, text_result, build_hash_file)                 \
+    X(933, "build.hash_text", &text_parameter, 1, text_result, build_hash_text)                 \
+    X(934, "build.start", &array_parameter, 1, int_result, build_host_start)                    \
+    X(935, "build.wait", &handle_parameter, 1, int_result, build_host_wait)                     \
+    X(936, "build.embed_file", embed_parameters, 3, bool_result, build_embed_file)              \
+    X(937, "build.replace", replace_parameters, 3, text_result, value_replace)                  \
+    X(938, "build.byte_list", &path_parameter, 1, text_result, build_byte_list)                 \
+    X(939, "build.reserve_directory", &path_parameter, 1, bool_result, build_reserve_directory) \
+    X(940, "build.publish_directory", move_parameters, 2, bool_result, build_publish_directory)
 #define CAPABILITY(ID, NAME, PARAMETERS, COUNT, RESULT, FUNCTION)              \
     { .id = ID,                                                                \
       .name = NAME,                                                            \

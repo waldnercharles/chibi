@@ -27,7 +27,7 @@ const TSLanguage *tree_sitter_chibi();
  * Workload: about 150 files, under 1 MiB, each at most 256 KiB, one
  * compiled-backend call per file; the fixed sources and cases run on both
  * backends. Calls are capped at 64 steps per byte (they take under 20). No
- * children, services or GPU; shared 60 s. */
+ * children, services or GPU. */
 enum
 {
     MAX_SOURCE = 256 * 1024,

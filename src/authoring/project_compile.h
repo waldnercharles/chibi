@@ -18,7 +18,8 @@ void authoring_application_end(authoring_application *);
 int authoring_project_compile(const char *project, const char *scene, const char *output);
 /* The same artifact assembled from `modules`, one for each of the project's
  * executable sources, as another compiler prepared them, instead of compiling
- * the sources. Borrows `modules`. */
+ * the sources. Zero modules assembles a resource-only project and refuses
+ * any executable source. Borrows `modules`. */
 int authoring_project_compile_modules(
     const char *project,
     const package_module *modules,

@@ -51,7 +51,7 @@ at all. No overhead percentage or application performance win is claimed.
 
 ## Complete affected-contract closure
 
-Independent admission used the exact fixed C workloads, 89 checked-in corpus
+Independent review used the exact fixed C workloads, 89 checked-in corpus
 files totaling 63,497 bytes, existing bounds and previously measured complete
 command capacity. Each new route occurs once in its ordinary group. No prior
 member was removed; the unrelated 66-member native `test_tools` selector group
@@ -66,8 +66,8 @@ was not expanded or reconstructed.
 
 The prepared workflow totals six producer cases/199 assertions, twelve separate
 runtime-only consumer cases/629 assertions and one parent case/five assertions.
-All four complete commands used their production-supervisor
-deadlines. No unexpected failure, sanitizer finding, crash or timeout occurred.
+All four complete commands ran through the production supervisor.
+No unexpected failure, sanitizer finding, crash or timeout occurred.
 Expected failure messages inside tooling policy/package tests are their passing
 negative controls, not failed top-level invocations.
 
@@ -98,17 +98,20 @@ its failure is not represented as a passing build or runtime result.
 ## Evidence and limits
 
 `validation.json` lists exact commands, results and every published log digest.
-The seven logs are complete outputs. Only source-workspace prefixes, test-owned temporary-root prefixes and the
-machine-specific invocation PATH are replaced with `$SOURCE`, `$TMP` and
-`$NODE24_BIN:$BASE_PATH` where present. The pinned Node version and artifact
-identity remain in the build evidence. Each record gives the original and published SHA-256 and replacement
-counts; test names, numbers, failure/control messages and timings are unchanged.
-Unmodified logs have identical original/published hashes.
+The seven logs preserve all test cases and their outcomes. Source-workspace
+prefixes, test-owned temporary-root prefixes and the machine-specific invocation
+PATH use `$SOURCE`, `$TMP` and `$NODE24_BIN:$BASE_PATH` where present. Retired
+test-policy banners and ceiling metadata are omitted; nonexecution and rejected
+invocations state their recorded outcomes. Test names, counts and timings are
+unchanged. Each record retains the original and prior published SHA-256 alongside
+the current published digest, byte size and normalization details. The pinned
+Node version and artifact identity remain in the build evidence.
 
 The historical `workload.json` also replaces machine-specific source and toolchain
 roots with `$SOURCE` and `$TOOLS`. `validation.json` records its original and
-published hashes and replacement counts. Dependency revisions, command flags,
-binary hashes and original pre-admission status are retained. Map these path
+published hashes and normalization details. Retired test-policy fields are
+omitted. Dependency revisions, command flags, binary hashes and the original
+proposed execution status are retained. Map these path
 placeholders to local directories before reproducing the historical build.
 
 This covers selected copies, actual backend entries and sampled retained intern

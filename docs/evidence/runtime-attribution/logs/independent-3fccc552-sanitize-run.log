@@ -1,4 +1,3 @@
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
 runtime-attribution engine_base=3c65bb60b6f3443aef6ccf4ab15acbe09b04b191 fixture_sha256=49a8a6ecef30c6db4e357a37b86e5d989f4476f98aaa5b639065be6519c949ad build=Debug coverage=selected timings=raw-noop-hooks-control-not-run
 Running: runtime_attribution_copy_sites (OK) (0.001468 secs)
 Running: runtime_attribution_scopes (OK) (0.000795 secs)
@@ -61,4 +60,4 @@ attribution case=overhead phase=trial workload=managed-array-snapshot backend=SL
 (OK) (0.019386 secs)
 ===============================================================
 Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 69013
-Test command wall time: 0.113s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.
+Test command wall time: 0.113s; includes in-test fixture setup; external configuration/build excluded.

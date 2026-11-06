@@ -10,6 +10,11 @@
  * (data functions with no flow, outcomes or suspension), their ports, and each
  * native's identity and signature ABI. Malloc-owned; release with free(). */
 char *compiler_target_json(const script_catalog *, size_t *length);
+/* Per-native script effect masks, in the same callable order as target_json.
+ * The explicit effect-aware compile entries take this as their last argument;
+ * it does not change the stable six-argument bootstrap target description.
+ * Malloc-owned; release with free(). */
+char *compiler_target_effects_json(const script_catalog *, size_t *length);
 /* CompileBehaviors' arguments for the behaviors identities[i] holding
  * sources[i], as one JSON array: their identities and sources, the same six,
  * then what a behavior links against:

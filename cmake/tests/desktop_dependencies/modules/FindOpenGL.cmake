@@ -8,7 +8,7 @@ set(OPENGL_opengl_LIBRARY "${FIXTURE_PROVIDER_ROOT}/opengl/libOpenGL.so")
 set(OPENGL_glx_LIBRARY "${FIXTURE_PROVIDER_ROOT}/opengl/libGLX.so")
 foreach(role GL OpenGL GLX)
     if(NOT TARGET "OpenGL::${role}")
-        add_library("OpenGL::${role}" UNKNOWN IMPORTED)
+        add_library("OpenGL::${role}" SHARED IMPORTED)
         set_target_properties("OpenGL::${role}" PROPERTIES
             IMPORTED_LOCATION "${FIXTURE_PROVIDER_ROOT}/opengl/lib${role}.so")
     endif()

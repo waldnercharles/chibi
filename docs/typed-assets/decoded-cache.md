@@ -34,6 +34,14 @@ The implementation is in `src/authoring/asset_compiler_host.c`. Read-only storag
 getters in `src/toolchain/compiler_host.c` and
 `src/runtime/native_capabilities.c` keep their private layouts private.
 
+Asset hosts use a fixed native catalog containing only the text and array
+definition packs. Compile requests describe that same pure target. The compiler
+facade adds compiler JSON and syntax packs. Neither host receives an ordinary
+game or Studio application catalog, preview world or application profile.
+Preview-source preparation owns that separate catalog boundary. Variable native
+catalogs would require cache identity and invalidation changes if introduced
+into asset evaluation later.
+
 ## Local evidence — 2026-10-22
 
 Release native drivers, sanitizers off, ABI 20. Build/configuration time is

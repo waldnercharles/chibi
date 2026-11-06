@@ -3,17 +3,6 @@
 
 #include "authoring/source_package_snapshot.h"
 
-typedef struct
-{
-    const char *project_root;
-    const source_package_collection *collections;
-    int collection_count;
-} source_package_disk_options;
-typedef struct
-{
-    char path[4096], message[192];
-} source_package_load_error;
-
 /* Collects the complete explicit package-source forest, without environment
  * discovery or changing cwd. Roots must be absolute directories; root symlinks
  * are canonicalized. Hidden descendants are skipped. Other descendant symlinks
@@ -29,11 +18,4 @@ source_package_snapshot *source_package_snapshot_load(
     const source_package_disk_options *,
     source_package_load_error *
 );
-/* Stores in the empty *files the .chibi files below the absolute directory
- * root, collected and limited as source_package_snapshot_load collects one
- * root: canonical absolute paths with owned texts, sorted by path. False with
- * a value-owned error, storing nothing, where that loader fails. */
-bool source_package_files_read(const char *root, source_package_input **files, source_package_load_error *);
-void source_package_files_free(source_package_input *files);
-
 #endif

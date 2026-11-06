@@ -6,23 +6,6 @@
 
 typedef struct
 {
-    const char *path, *text;
-    size_t size; /* Exact text byte count, excluding an optional trailing NUL. */
-} source_package_input;
-typedef struct
-{
-    const char *name, *root;
-} source_package_collection;
-typedef struct
-{
-    const char *project_root; /* Implicit reserved project: collection. */
-    const source_package_input *files;
-    int file_count;
-    const source_package_collection *collections;
-    int collection_count;
-} source_package_snapshot_options;
-typedef struct
-{
     script_diagnostic diagnostic; /* range.document is the input file, or -1. */
     script_range related;         /* document is -1 when absent. */
     source_package_error graph; /* Retains import indices for graph/cycle errors. */

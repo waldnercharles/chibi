@@ -7,8 +7,7 @@
 #ifndef _XOPEN_SOURCE
 #define _XOPEN_SOURCE 700
 #endif
-#include "authoring/source_package_files.h"
-
+#include "authoring/source_package_io.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -396,23 +395,25 @@ bool source_package_files_read(const char *root, source_package_input **files, s
 #endif
 }
 
-source_package_snapshot *source_package_snapshot_load(
+bool source_package_files_load(
     const source_package_disk_options *options,
+    source_package_snapshot_options *inputs,
     source_package_load_error *error
 )
 {
-    assert(error);
+    assert(inputs && !inputs->project_root && !inputs->files && !inputs->collections && error);
     *error = (source_package_load_error){ 0 };
 #ifdef _WIN32
     (void)options;
+    (void)inputs;
     reject(error, "", "Package filesystem loading is unsupported on Windows");
-    return NULL;
+    return false;
 #else
     if (!options || options->collection_count < 0 ||
         options->collection_count >= SOURCE_PACKAGE_MAX_FILES ||
         (options->collection_count && !options->collections)) {
         reject(error, "", "Invalid package filesystem options");
-        return NULL;
+        return false;
     }
     package_files files = { .error = error };
     bool ok = add_root(&files, options->project_root);
@@ -428,24 +429,38 @@ source_package_snapshot *source_package_snapshot_load(
         }
         ok = add_root(&files, collection->root);
     }
-    source_package_snapshot *snapshot = NULL;
-    if (ok && collect(&files)) {
-        source_package_collection collections[SOURCE_PACKAGE_MAX_FILES];
+    ok = ok && collect(&files);
+    if (ok) {
+        source_package_collection
+            *collections = xcalloc((size_t)options->collection_count, sizeof *collections);
         for (int i = 0; i < options->collection_count; i++) {
             collections[i] = (source_package_collection){
-                options->collections[i].name,
-                files.roots[i + 1]
+                xstrdup(options->collections[i].name),
+                xstrdup(files.roots[i + 1])
             };
         }
-        snapshot = source_package_snapshot_new(&(source_package_snapshot_options){
-            .project_root = files.roots[0],
+        *inputs = (source_package_snapshot_options){
+            .project_root = xstrdup(files.roots[0]),
             .files = files.files,
             .file_count = acount(files.files),
             .collections = collections,
             .collection_count = options->collection_count,
-        });
+        };
+        files.files = NULL;
     }
     free_files(&files);
-    return snapshot;
+    return ok;
 #endif
+}
+
+void source_package_files_release(source_package_snapshot_options *inputs)
+{
+    free((char *)inputs->project_root);
+    source_package_files_free((source_package_input *)inputs->files);
+    for (int i = 0; i < inputs->collection_count; i++) {
+        free((char *)inputs->collections[i].name);
+        free((char *)inputs->collections[i].root);
+    }
+    free((source_package_collection *)inputs->collections);
+    *inputs = (source_package_snapshot_options){ 0 };
 }

@@ -93,6 +93,33 @@ bool build_io_mkdir(const char *root, const char *path)
     return ok;
 }
 
+bool build_io_reserve_directory(const char *root, const char *path)
+{
+    char *joined = build_io_path(root, path);
+    bool ok = !mkdir(joined, 0755);
+    free(joined);
+    return ok;
+}
+
+bool build_io_publish_directory(const char *root, const char *source, const char *destination)
+{
+    char *from = build_io_path(root, source), *to = build_io_path(root, destination);
+    struct stat info;
+    bool directory = !lstat(from, &info) && S_ISDIR(info.st_mode);
+    /* A same-path rename can succeed as a no-op even with RENAME_EXCL.
+     * Require a missing destination; the syscall still closes creation races. */
+    bool absent = lstat(to, &info) < 0 && errno == ENOENT;
+#ifdef __APPLE__
+    bool ok = directory && absent && !renamex_np(from, to, RENAME_EXCL);
+#else
+    bool ok = directory && absent &&
+              !renameat2(AT_FDCWD, from, AT_FDCWD, to, RENAME_NOREPLACE);
+#endif
+    free(from);
+    free(to);
+    return ok;
+}
+
 bool build_io_read(
     const char *root,
     const char *path,

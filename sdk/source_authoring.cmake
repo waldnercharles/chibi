@@ -22,7 +22,7 @@ set_target_properties(chibi_source_catalog PROPERTIES EXPORT_NAME source_catalog
 chibi_sdk_headers(chibi_source_catalog PUBLIC authoring/language_catalog.h
     authoring/source_catalog.h authoring/source_collection.h authoring/source_asset.h
     authoring/source_prototype_edit.h
-    authoring/source_packages.h authoring/source_package_snapshot.h authoring/source_package_files.h
+    authoring/source_packages.h authoring/source_package_io.h authoring/source_package_snapshot.h authoring/source_package_files.h
     authoring/source_package_exports.h authoring/source_package_prepare.h authoring/package_tests.h)
 foreach(header source_catalog_snapshot source_prepare_internal source_package_syntax source_package_paths source_package_routes)
     configure_file("${CHIBI_SDK_ROOT}/src/authoring/${header}.h"

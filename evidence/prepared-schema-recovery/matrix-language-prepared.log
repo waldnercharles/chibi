@@ -1,4 +1,3 @@
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
 Running: prepared_artifact_crosses_producer_process_and_runtime_only_link Running: prepared_source_generations_write_after_analysis_retirement (OK) (0.036446 secs)
 Running: prepared_external_closure_generations (OK) (0.044194 secs)
 Running: prepared_state_action_generations_write_after_catalog_retirement (OK) (0.010785 secs)
@@ -21,4 +20,4 @@ Summary: Passed: 10 Failed: 0 Total: 10 Suites: 0 Asserts: 554
 (OK) (0.004980 secs)
 ===============================================================
 Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 5
-Test command wall time: 0.296s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.
+Test command wall time: 0.296s; includes in-test fixture setup; external configuration/build excluded.

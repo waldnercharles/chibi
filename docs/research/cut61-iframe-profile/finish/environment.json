@@ -43,5 +43,5 @@
   "compiler": "Homebrew clang version 23.1.1",
   "macos_sdk": "/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk",
   "tool_binary_sha256": "664cbc7544a75f5d62350523b7140c637a86640cd5a8a99f5092134cc333b1d3",
-  "policy": "production tools/test_policy.py; 60 seconds including cleanup"
+  "policy": "production tools/test_policy.py; execution and process cleanup"
 }

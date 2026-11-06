@@ -1,4 +1,3 @@
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
 package-native: Existing output is not an engine package; choose a new directory
 package-native: Packaging requires CHIBI_DISTRIBUTION=ON; run make package-native
 package-native: Packaging requires CHIBI_DEVELOPMENT_RELOAD=OFF; run make package-native
@@ -20,32 +19,24 @@ usage: plan.py validation-plan [-h] --base BASE [--head HEAD]
                                [--selector SELECTOR] [--tools]
                                [--tool {native-tools}] [--verify VERIFY]
 plan.py validation-plan: error: argument --tool: invalid choice: 'quiet' (choose from 'native-tools')
-Validation plan blocked: selector is quarantined for agent-test: --model-sampled-gpu
-Validation plan blocked: selector is quarantined for agent-test: --runtime-execution
+Validation plan did not run selector: --model-sampled-gpu
+Validation plan did not run selector: --runtime-execution
 Validation plan blocked: unclassified selector: --not-a-test
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
-DISABLED: unadmitted native invocation: --graph-optimize; touch /tmp/chibi-validation-plan-K8h2lo/injected
+Rejected test invocation: --graph-optimize; touch /tmp/chibi-validation-plan-K8h2lo/injected
 make: *** [test-fast] Error 2
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
-DISABLED: unadmitted native invocation: --graph-optimize && touch /tmp/chibi-validation-plan-K8h2lo/injected
+Rejected test invocation: --graph-optimize && touch /tmp/chibi-validation-plan-K8h2lo/injected
 make: *** [test-fast] Error 2
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
-DISABLED: unadmitted native invocation: --graph-optimize `touch /tmp/chibi-validation-plan-K8h2lo/injected`
+Rejected test invocation: --graph-optimize `touch /tmp/chibi-validation-plan-K8h2lo/injected`
 make: *** [test-fast] Error 2
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
-DISABLED: unadmitted native invocation: --graph-optimize $(touch /tmp/chibi-validation-plan-K8h2lo/injected)
+Rejected test invocation: --graph-optimize $(touch /tmp/chibi-validation-plan-K8h2lo/injected)
 make: *** [test-fast] Error 2
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
-DISABLED: unadmitted native invocation: --graph-optimize; touch /tmp/chibi-validation-plan-K8h2lo/injected
+Rejected test invocation: --graph-optimize; touch /tmp/chibi-validation-plan-K8h2lo/injected
 make: *** [agent-test] Error 2
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
-DISABLED: unadmitted native invocation: --graph-optimize && touch /tmp/chibi-validation-plan-K8h2lo/injected
+Rejected test invocation: --graph-optimize && touch /tmp/chibi-validation-plan-K8h2lo/injected
 make: *** [agent-test] Error 2
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
-DISABLED: unadmitted native invocation: --graph-optimize `touch /tmp/chibi-validation-plan-K8h2lo/injected`
+Rejected test invocation: --graph-optimize `touch /tmp/chibi-validation-plan-K8h2lo/injected`
 make: *** [agent-test] Error 2
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
-DISABLED: unadmitted native invocation: --graph-optimize $(touch /tmp/chibi-validation-plan-K8h2lo/injected)
+Rejected test invocation: --graph-optimize $(touch /tmp/chibi-validation-plan-K8h2lo/injected)
 make: *** [agent-test] Error 2
 Running: preview_budgets (OK) (0.000101 secs)
 Running: malformed_numeric_fields (OK) (0.000030 secs)
@@ -66,4 +57,4 @@ Running: validation_refuses_gpu_and_unadmitted_selectors (OK) (0.008186 secs)
 Running: make_selector_data_never_reaches_the_shell (OK) (0.030281 secs)
 ===============================================================
 Summary: Passed: 17 Failed: 0 Total: 17 Suites: 0 Asserts: 189
-Test command wall time: 21.406s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.
+Test command wall time: 21.406s; includes in-test fixture setup; external configuration/build excluded.

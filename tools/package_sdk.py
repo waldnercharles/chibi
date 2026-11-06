@@ -127,8 +127,12 @@ def product_targets(cache, system=None):
 
 def private_tool_targets(cache, system=None):
     system = system or cache.get('CMAKE_SYSTEM_NAME')
-    if cache.get('CHIBI_SDK_BUILD_COMPILER') == 'ON' and system in ('Darwin', 'Linux'):
+    if cache.get('CHIBI_SDK_BUILD_COMPILER') != 'ON':
+        return {}
+    if system in ('Darwin', 'Linux'):
         return dict(PRIVATE_TOOL_PATHS)
+    if system == 'Windows':
+        return {'chibi-compiler-host': PRIVATE_TOOL_PATHS['chibi-compiler-host'] + '.exe'}
     return {}
 
 

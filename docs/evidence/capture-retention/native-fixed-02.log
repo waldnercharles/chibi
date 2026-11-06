@@ -1,4 +1,3 @@
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
 Running: program_reduction_updates_preserve_clock_and_event_order (OK) (0.067032 secs)
 Running: program_reduction_query_rows_count_filtered_candidates (OK) (0.005067 secs)
 Running: program_pattern_bindings_share_and_spellings (OK) (0.029384 secs)
@@ -221,4 +220,4 @@ Running: query_predicate_purity_follows_each_outlined_callee (OK) (0.000547 secs
 Running: query_predicate_context_cannot_be_recovered_through_bank_aliases (OK) (0.000220 secs)
 ===============================================================
 Summary: Passed: 114 Failed: 0 Total: 114 Suites: 0 Asserts: 8249
-Test command wall time: 2.033s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.
+Test command wall time: 2.033s; includes in-test fixture setup; external configuration/build excluded.

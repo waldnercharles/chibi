@@ -187,6 +187,54 @@ MoveCode :: (value: Value, ops: Ops, target: Target, slot: int, cell: int, item:
     return [Instruction(ops.host_slot, target.pointer_storage, slot, cell, 0, 0, item), write];
 }
 
+// A literal without context takes its storage from its spelling, as stage zero
+// does. Other expressions supply their own type. Hexadecimal e is a digit;
+// only decimal spellings have an exponent.
+InferredNumberStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    literal := Unparenthesized(forest, node);
+    digits := literal;
+    if (Is(forest, digits, "unary_expression")) {
+        digits = Field(forest, digits, "operand");
+        operator := Text(forest, text, Field(forest, literal, "operator"));
+        if (operator != "-" && operator != "+") {
+            return 0;
+        }
+        if (operator == "+") {
+            literal = digits;
+        }
+    }
+    if (!Is(forest, digits, "number")) {
+        return 0;
+    }
+    spelling := Text(forest, text, digits);
+    size := strings.ByteLength(spelling);
+    hexadecimal := size > 2 && strings.ByteAt(spelling, 0) == 48 &&
+                   (strings.ByteAt(spelling, 1) == 120 || strings.ByteAt(spelling, 1) == 88);
+    if (!hexadecimal) {
+        index: int = 0;
+        while (index < size) {
+            character := strings.ByteAt(spelling, index);
+            if (character == 46 || character == 101 || character == 69) {
+                return DoubleStorage;
+            }
+            index += 1;
+        }
+    }
+    switch ParseNumber(forest, text, literal) {
+        case .Number(negative, magnitude):
+            if (Fits(negative, magnitude, IntStorage)) {
+                return IntStorage;
+            }
+            if (Fits(negative, magnitude, Int64Storage)) {
+                return Int64Storage;
+            }
+        case .Invalid:
+            return WordStorage;
+    }
+    // The constant emitter diagnoses a value beyond uint64's range.
+    return WordStorage;
+}
+
 // Statements: local declarations, assignments, expression statements and
 // returns, from scheduling to the value's store.
 // A function's named results are locals from `named` on.
@@ -237,6 +285,11 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                     return Fail(forest, declared, document, "local type is not supported yet");
                 }
                 expected = Expect(value, resolved.storage, resolved.container, resolved.record);
+            } else {
+                inferred := InferredNumberStorage(forest, text, value);
+                if (inferred > 0) {
+                    expected = Expect(value, inferred, 0, -1);
+                }
             }
         } else if (kind == "return_statement") {
             expected = Expect(value, callable.result, callable.result_container, callable.result_record);
@@ -392,7 +445,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             }
         }
         if (kind == "return_statement" && callable.results > 0) {
-            return NamedReturnStep(forest, document, code, params, callable, named, value, item, ops, at, node);
+            return NamedReturnStep(forest, document, code, params, callable, named, value, item, ops, target, at, node);
         }
         if (kind == "return_statement" && value < 0) {
             if (callable.result != 0) {
@@ -416,7 +469,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             local := result;
             if (declared < 0 && result.storage == NumberStorage) {
                 return Fail(forest, Field(forest, item.node, "value"), document,
-                            "an untyped number is a double; give the local an integer type");
+                            "local initializer has no concrete numeric type");
             }
             if (declared >= 0) {
                 resolved := ReadType(forest, text, types, names, package, declared);
@@ -593,15 +646,16 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         }
     } else if (item.phase == FieldPhase) {
         popped = 1;
-        return FieldStep(forest, text, document, names[item.a], members[item.b], values[top - 1], item, ops, target, at,
-                         node);
+        binding := names[item.a];
+        return EffectsStep(FieldStep(forest, text, document, binding, members[item.b], values[top - 1], item,
+                                     ops, target, at, node), MemberEffects(types, binding.record));
     } else if (item.phase == ComponentPhase) {
         return ComponentWriteStep(forest, text, document, members[item.b], values[top - 1], item, ops, target, at,
                                   node);
     } else if (item.phase == ComponentAssignPhase) {
         return ComponentAssignStep(forest, document, types, values[top - 1], item, ops, target, at, node);
     } else if (item.phase == ReturnsPhase) {
-        return ResultsStep(forest, document, params, callable, values, top, item, ops, at, node);
+        return ResultsStep(forest, document, params, callable, named, values, top, item, ops, target, at, node);
     } else if (item.phase == MapStorePhase || item.phase == MapDeletePhase) {
         return MapUpdateStep(forest, text, document, types, names, values, top, item, ops, target, at, node);
     } else if (item.phase == RetainedPhase) {
@@ -1041,6 +1095,20 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         if (member == "") {
             return Fail(forest, Field(forest, item.node, "member"), document, "Invalid string or embedded NUL");
         }
+        source := ResultSourceCallable(forest, text, callables, names, package, Field(forest, item.node, "object"));
+        if (source >= 0 && NamedResult(params, callables[source], member) == 0) {
+            // A single named result is also an ordinary value. Its output
+            // name projects that value before looking for a record field.
+            named := params[callables[source].first + callables[source].count];
+            projected := Typed(object.slot, named.storage, named.container, named.record);
+            if (object.storage != named.storage) {
+                slots = NumberSlots(object.storage, named.storage);
+                code = NumberCode(ops, object.storage, named.storage, object.slot, at.slot, node);
+                projected.slot = at.slot + length(slots) - 1;
+            }
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1, projected,
+                                NoValue(), marks);
+        }
         if (Single(object, ResultsStorage)) {
             // One of a native's results, read from its cell.
             called := natives[object.record];
@@ -1076,10 +1144,17 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
                 return Fail(forest, item.node, document, format_text("Unknown result '{}'", member));
             }
             result := params[called.first + called.count + index];
-            slots = [address, ValueLocal(result.storage)];
-            code = CellRead(result.storage, object.slot + index, ops, target, at.slot, node);
+            loaded: Slot = {storage: SlotStorage(result.storage, result.container, target),
+                            kind: SlotKind(result.storage, result.container)};
+            slots = [address, loaded];
+            code = CellRead(loaded.storage, object.slot + index, ops, target, at.slot, node);
+            if (Pointer(result.storage, result.container)) {
+                root: Root = {slot: at.slot + 1, storage: result.storage, container: result.container,
+                              record: result.record};
+                roots.append(root);
+            }
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
-                                Typed(at.slot + 1, result.storage, 0, -1), NoValue(), marks);
+                                Typed(at.slot + 1, result.storage, result.container, result.record), NoValue(), marks);
         }
         if (Single(object, HandleStorage) && Component(types, member) >= 0) {
             // A component of another entity, read as the owner's is.
@@ -1095,22 +1170,27 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             return Fail(forest, item.node, document, format_text("Unknown field '{}'", member));
         }
         field := members[found];
+        read_effects := MemberEffects(types, object.record);
         if (field.read >= 0) {
             // A native reads the field, such as an input action's `pressed`.
-            return NativeReadStep(object, field, ops, target, at, node);
+            return EffectsStep(NativeReadStep(object, field, ops, target, at, node), read_effects);
         }
         if (field.c_string) {
-            return NativeTextReadStep(object, field, ops, target, at, node);
+            return EffectsStep(NativeTextReadStep(object, field, ops, target, at, node), read_effects);
         }
         if (field.storage == StructStorage && field.record < 0) {
             return Fail(forest, item.node, document,
                         format_text("field '{}' has a type this compiler cannot read", member));
         }
+        if (read_effects != 0) {
+            next.append(RecordEffects(read_effects));
+        }
         if (field.storage == StructStorage) {
             // A native record's record field lies inside it.
             word: Slot = {storage: target.pointer_storage, kind: ValueKind};
             slots.append(word);
-            code.append(ConstantCode(ops, target.pointer_storage, uint64(field.offset), at.slot, node));
+            offset := ConstantCode(ops, target.pointer_storage, uint64(field.offset), at.slot, node);
+            code.append(offset);
             slots.append(address);
             code.append(Instruction(ops.add, target.pointer_storage, at.slot + 1, object.slot, at.slot, -1,
                                     node));
@@ -1122,7 +1202,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         read := Instruction(ops.load, field.storage, at.slot, object.slot, 0, 0, node);
         read.offset = field.offset;
         code.append(read);
-        produced = Typed(at.slot, field.storage, 0, -1);
+        produced = Typed(at.slot, field.storage, 0, field.record);
     } else {
         popped = 2;
         array := values[top - 2];
@@ -1404,10 +1484,22 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             next.append(finish);
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
         }
+        // An unbound prefix names a native namespace. An import alias or a
+        // local receiver keeps its package or array-method meaning.
+        qualified_native: bool = false;
+        native_name: string = "";
+        if (Is(forest, callee, "member_expression")) {
+            prefix := Field(forest, callee, "object");
+            if (Is(forest, prefix, "identifier") && Lookup(names, Text(forest, text, prefix)) < 0) {
+                qualified_native = true;
+                native_name = format_text("{}.{}", Text(forest, text, prefix),
+                                          Text(forest, text, Field(forest, callee, "member")));
+            }
+        }
         // `xs.f(...)` calls the array function f with xs first. A method that
         // changes its array is a statement on the array's name.
         method: int = -1;
-        if (Is(forest, callee, "member_expression") &&
+        if (!qualified_native && Is(forest, callee, "member_expression") &&
             QualifierOf(forest, text, names, package, Field(forest, callee, "object")) < 0) {
             method = ArrayMethod(natives, ports, Text(forest, text, Field(forest, callee, "member")));
         }
@@ -1446,19 +1538,24 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             next.append(finish);
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
         }
-        // `F(...)` calls this package's F or a native; `alias.F(...)` calls an
-        // imported package's F.
+        // `F(...)` calls this package's F or a native; a bound alias calls an
+        // imported package's F; an unbound prefix qualifies a native's name.
         qualifier: int = -1;
         if (Is(forest, callee, "member_expression")) {
             qualifier = Field(forest, callee, "object");
             callee = Field(forest, callee, "member");
         }
         home := QualifierOf(forest, text, names, package, qualifier);
-        if (home < 0 || !Is(forest, callee, "identifier")) {
+        if ((!qualified_native && home < 0) || !Is(forest, callee, "identifier")) {
             return Fail(forest, Field(forest, item.node, "function"), document, "call needs a function name");
         }
         callee_name := Text(forest, text, callee);
-        found := FindCallable(callables, home, callee_name);
+        found: int = -1;
+        if (qualified_native) {
+            callee_name = native_name;
+        } else {
+            found = FindCallable(callables, home, callee_name);
+        }
         conversion: int = 0;
         if (qualifier < 0 && found < 0) {
             conversion = ScalarStorage(callee_name);
@@ -1549,7 +1646,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         expected_count: int = 0;
         if (found >= 0) {
             expected_count = callables[found].count;
-        } else if (qualifier >= 0) {
+        } else if (qualifier >= 0 && !qualified_native) {
             return Fail(forest, callee, document, format_text("Unknown function '{}'", callee_name));
         } else {
             native = FindNative(natives, callee_name);
@@ -1568,7 +1665,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                     count += 1;
                     argument = NextMember(forest, argument);
                 }
-                choose := Resume(item.node, 1, -1, count);
+                choose := Resume(item.node, 1, native, count);
                 choose.c = 4;
                 next.append(choose);
                 return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(),
@@ -1786,7 +1883,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     if (item.c == 4) {
         // An overloaded native: the one whose parameters take the arguments.
         callee := Field(forest, item.node, "function");
-        chosen = Overload(natives, ports, Text(forest, text, callee), values, first, count);
+        chosen = Overload(natives, ports, natives[item.a].name, values, first, count);
         if (chosen < 0) {
             return Fail(forest, callee, document, "no overload of this native takes these arguments, or several do");
         }
@@ -1879,6 +1976,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     }
     result := Typed(-1, -1, 0, -1);
     result_count: int = 0;
+    named_results: bool = false;
     if (linked && natives[chosen].results > 1) {
         // Several results land in cells a local or `.name` reads.
         called := natives[chosen];
@@ -1906,23 +2004,29 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         }
         result_count = 1;
     } else if (!linked && callables[item.a].results > 0) {
-        // Named results land in cells a local or `.name` reads.
+        // Named results keep their declared headers in the caller's cells.
         called := callables[item.a];
         at_result: int = 0;
         while (at_result < called.results) {
             named := params[called.first + called.count + at_result];
-            cell: Cell = {storage: named.storage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+            cell: Cell = {storage: named.storage, container: named.container, record: named.record, constant: 0,
+                          variant: -1, kind: ValueKind};
             cells.append(cell);
             at_result += 1;
         }
         result_count = called.results;
         result = Typed(at.cell + total, FunctionResultsStorage, 0, item.a);
+        if (called.results == 1) {
+            named := params[called.first + called.count];
+            result = Typed(-1, named.storage, named.container, named.record);
+        }
+        named_results = true;
     } else if (!linked && callables[item.a].result != 0) {
         called := callables[item.a];
         result = Typed(-1, called.result, called.result_container, called.result_record);
         result_count = 1;
     }
-    if (result.storage > 0) {
+    if (result.storage > 0 && !named_results) {
         cell: Cell = {storage: result.storage, container: result.container, record: result.record, constant: 0, variant: -1,
                       kind: ValueKind};
         cells.append(cell);
@@ -2916,113 +3020,208 @@ NamedResult :: (params: Param[], called: Callable, name: string) -> int {
     }
     return -1;
 }
-// Returns each named result of `callable` from its local, which start at
-// `named`, through the NamedResultsSlots from `slot`.
-NamedResultsCode :: (ops: Ops, params: Param[], callable: Callable, named: int, slot: int,
-                     node: snapshot.SnapshotNode) -> Code[] {
-    code: Code[] = [];
-    index: int = 0;
-    while (index < callable.results) {
-        storage := params[callable.first + callable.count + index].storage;
-        code.append(Instruction(ops.local, storage, slot + index, named + index, 0, 0, node));
-        code.append(Instruction(ops.result, storage, 0, slot + index, 0, index, node));
-        index += 1;
+// A single named result's source follows declaration initializers, including
+// aliases after assignment or ref mutation. Each alias narrows the visible
+// prefix to its declaration, preserving lexical binding and preventing cycles.
+// Ordinary members stop the search: a named projection consumes its source.
+ResultSourceCallable :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
+                         package: int, node: int) -> int {
+    visible := names;
+    at := Unparenthesized(forest, node);
+    remaining := length(names) + 1;
+    while (at >= 0 && remaining > 0) {
+        remaining -= 1;
+        if (Is(forest, at, "call_expression")) {
+            called := CalledFunction(forest, text, callables, visible, package, at);
+            if (called >= 0 && callables[called].results == 1) {
+                return called;
+            }
+            return -1;
+        }
+        if (!Is(forest, at, "identifier")) {
+            return -1;
+        }
+        found := Lookup(visible, Text(forest, text, at));
+        if (found < 0 || visible[found].node < 0) {
+            return -1;
+        }
+        declaration := forest[visible[found].node].parent;
+        if (!Is(forest, declaration, "local_declaration")) {
+            return -1;
+        }
+        at = Unparenthesized(forest, Field(forest, declaration, "value"));
+        visible = slice(visible, 0, found);
     }
-    return code;
+    return -1;
 }
-NamedResultsSlots :: (params: Param[], callable: Callable) -> Slot[] {
+// Stage zero marks a component-typed value's field access as a read even
+// when that value is a local copy. This does not introduce an ECS dependency.
+MemberEffects :: (types: TypeDecl[], record: int) -> int {
+    if (record >= 0 && types[record].component != 0) {
+        return ReadEffect;
+    }
+    return 0;
+}
+// Record source effects without adding runtime instructions or changing the
+// step's scheduled work.
+EffectsStep :: (step: Step, effects: int) -> Step {
+    if (effects == 0) {
+        return step;
+    }
+    switch step {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, value, retained, marks):
+            scheduled := extend([RecordEffects(effects)], next);
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, scheduled, popped, value,
+                                retained, marks);
+    }
+}
+// Publishes named locals after all return assignments. Records are copied
+// before their complete headers enter the result bank, preserving nominal
+// layouts and nested owned values just as an unnamed record return does.
+NamedResultsStep :: (before: Code[], ops: Ops, target: Target, params: Param[], callable: Callable, named: int,
+                     at: Bases, node: snapshot.SnapshotNode) -> Step {
+    code := before;
     slots: Slot[] = [];
-    index: int = 0;
-    while (index < callable.results) {
-        slots.append(ValueLocal(params[callable.first + callable.count + index].storage));
-        index += 1;
-    }
-    return slots;
-}
-// `return` in a function with named results, after `before`: alone, it
-// returns them; `return (a, b)` gives each its value, with ReturnsPhase.
-NamedReturnStep :: (forest: snapshot.SnapshotNode[], document: int, before: Code[], params: Param[],
-                    callable: Callable, named: int, value: int, item: Work, ops: Ops, at: Bases,
-                    node: snapshot.SnapshotNode) -> Step {
-    locals: Slot[] = [];
     cells: Cell[] = [];
     hosts: Host[] = [];
-    roots: Root[] = [];
-    calls: Invocation[] = [];
-    bound: Name[] = [];
-    marks: int[] = [];
-    next: Work[] = [];
-    if (value < 0) {
-        code := extend(before, [CompletionCode(ops, node)]);
-        code.extend(NamedResultsCode(ops, params, callable, named, at.slot, node));
-        code.append(Instruction(ops.finish, 0, 0, 0, 0, 0, node));
-        return Step.Emitted(code, NamedResultsSlots(params, callable), locals, cells, hosts, roots, calls, bound, next,
-                            0, NoValue(), NoValue(), marks);
-    }
-    if (!Is(forest, value, "argument_list")) {
-        return Fail(forest, value, document, "a function with named results returns `(...)`, one value for each");
-    }
-    index: int = 0;
-    argument := FirstMember(forest, value);
-    while (argument >= 0) {
-        if (index >= callable.results || Is(forest, argument, "named_argument")) {
-            return Fail(forest, value, document, "a function with named results returns `(...)`, one value for each");
-        }
-        result := params[callable.first + callable.count + index];
-        next.append(Expect(argument, result.storage, 0, result.record));
-        index += 1;
-        argument = NextMember(forest, argument);
-    }
-    if (index != callable.results) {
-        return Fail(forest, value, document, "a function with named results returns `(...)`, one value for each");
-    }
-    next.append(Resume(item.node, ReturnsPhase, 0, 0));
-    slots: Slot[] = [];
-    return Step.Emitted(before, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(),
-                        marks);
-}
-// `return (a, b)` once its values are on top: each converted as a store
-// converts it, then returned as its named result.
-ResultsStep :: (forest: snapshot.SnapshotNode[], document: int, params: Param[], callable: Callable, values: Value[],
-                top: int, item: Work, ops: Ops, at: Bases, node: snapshot.SnapshotNode) -> Step {
-    locals: Slot[] = [];
-    cells: Cell[] = [];
-    hosts: Host[] = [];
-    roots: Root[] = [];
-    calls: Invocation[] = [];
-    bound: Name[] = [];
-    next: Work[] = [];
-    marks: int[] = [];
-    // Each value stores its result, then the function completes.
-    code: Code[] = [];
-    returned_nodes := Members(forest, Field(forest, item.node, "value"));
     index: int = 0;
     while (index < callable.results) {
-        code.append(SymbolCode(ops, params[callable.first + callable.count + index].node,
-                               forest[returned_nodes[index]]));
-        index += 1;
-    }
-    code.append(CompletionCode(ops, node));
-    slots: Slot[] = [];
-    index = 0;
-    while (index < callable.results) {
         result := params[callable.first + callable.count + index];
-        returned := values[top - callable.results + index];
-        if (returned.container == 0 && Converts(returned.storage, result.storage)) {
-            code.extend(NumberCode(ops, returned.storage, result.storage, returned.slot,
-                                   at.slot + length(slots), node));
-            slots.extend(NumberSlots(returned.storage, result.storage));
-            returned = Typed(at.slot + length(slots) - 1, result.storage, 0, -1);
+        first := at.slot + length(slots);
+        if (result.storage != StructStorage) {
+            slots.append(ValueLocal(result.storage));
+            code.append(Instruction(ops.local, result.storage, first, named + index, 0, 0, node));
+            code.append(Instruction(ops.result, result.storage, 0, first, 0, index, node));
+        } else {
+            cell: Cell = {storage: result.storage, container: result.container, record: result.record,
+                          constant: 0, variant: -1, kind: ValueKind};
+            input := at.cell + length(cells);
+            cells.extend([cell, cell]);
+            address := AddressSlot(target);
+            slots.extend([address, address, address]);
+            code.append(Instruction(ops.local, target.pointer_storage, first, named + index, 0, 0, node));
+            read := Instruction(ops.load, target.pointer_storage, first + 1, first, 0, 0, node);
+            read.offset = target.payload_offset;
+            code.append(read);
+            code.extend(CellWrite(target.pointer_storage, first + 1, input, ops, target, first + 2, node));
+            host: Host = {intrinsic: SnapshotIntrinsic, linked: -1, first: input, result_first: input + 1,
+                          result_count: 1, written: false};
+            hosts.append(host);
+            code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0,
+                                    at.host + length(hosts) - 1, node));
+            header := at.slot + length(slots);
+            number := ValueLocal(IntStorage);
+            slots.extend([address, address, number, address]);
+            code.append(Instruction(ops.host_slot, target.pointer_storage, header, input + 1, 0, 0, node));
+            context := Instruction(ops.context, target.pointer_storage, header + 1, 0, 0, 0, node);
+            context.offset = target.results_offset;
+            code.append(context);
+            code.append(ConstantCode(ops, IntStorage, uint64(index), header + 2, node));
+            destination := Instruction(ops.index, target.pointer_storage, header + 3, header + 1, header + 2, 0,
+                                       node);
+            destination.offset = target.value_size;
+            code.append(destination);
+            offsets: int[] = [target.type_offset, target.container_offset, target.name_offset,
+                              target.record_offset, target.payload_offset];
+            part: int = 0;
+            while (part < length(offsets)) {
+                loaded := address;
+                if (part < 2) {
+                    loaded = number;
+                }
+                slots.append(loaded);
+                value := at.slot + length(slots) - 1;
+                load := Instruction(ops.load, loaded.storage, value, header, 0, 0, node);
+                load.offset = offsets[part];
+                code.append(load);
+                store := Instruction(ops.write, loaded.storage, 0, value, header + 3, 0, node);
+                store.offset = offsets[part];
+                code.append(store);
+                part += 1;
+            }
         }
-        if (!SameType(result.storage, 0, result.record, returned)) {
-            return Fail(forest, item.node, document, "returned value differs from the result type");
-        }
-        code.append(Instruction(ops.result, result.storage, 0, returned.slot, 0, index, node));
         index += 1;
     }
     code.append(Instruction(ops.finish, 0, 0, 0, 0, 0, node));
-    return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, callable.results, NoValue(),
-                        NoValue(), marks);
+    return Step.Emitted(code, slots, [], cells, hosts, [], [], [], [], 0, NoValue(), NoValue(), []);
+}
+NamedReturnValues :: (forest: snapshot.SnapshotNode[], value: int) -> int[] {
+    if (Is(forest, value, "argument_list")) {
+        return Members(forest, value);
+    }
+    return [value];
+}
+// A bare return publishes the named locals. Explicit values assign them in
+// order; each assignment completes before the next expression is evaluated.
+NamedReturnStep :: (forest: snapshot.SnapshotNode[], document: int, before: Code[], params: Param[],
+                    callable: Callable, named: int, value: int, item: Work, ops: Ops, target: Target, at: Bases,
+                    node: snapshot.SnapshotNode) -> Step {
+    if (value < 0) {
+        return NamedResultsStep(extend(before, [CompletionCode(ops, node)]), ops, target, params, callable, named,
+                                at, node);
+    }
+    returned := NamedReturnValues(forest, value);
+    if (length(returned) != callable.results) {
+        return Fail(forest, value, document, "a function with named results returns one value for each result");
+    }
+    for (argument in returned) {
+        if (Is(forest, argument, "named_argument")) {
+            return Fail(forest, value, document, "named return arguments are not supported yet");
+        }
+    }
+    result := params[callable.first + callable.count];
+    next: Work[] = [Expect(returned[0], result.storage, result.container, result.record),
+                    Resume(item.node, ReturnsPhase, 0, 0)];
+    return Step.Emitted(before, [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
+}
+// Store one explicitly returned value. A record is retained before the next
+// expression, so later assignments cannot change this result through an alias.
+ResultsStep :: (forest: snapshot.SnapshotNode[], document: int, params: Param[], callable: Callable, named: int,
+                values: Value[], top: int, item: Work, ops: Ops, target: Target, at: Bases,
+                node: snapshot.SnapshotNode) -> Step {
+    if (item.a == callable.results) {
+        return NamedResultsStep([CompletionCode(ops, node)], ops, target, params, callable, named, at, node);
+    }
+    code: Code[] = [];
+    slots: Slot[] = [];
+    next: Work[] = [];
+    result := params[callable.first + callable.count + item.a];
+    returned := values[top - 1];
+    returned_nodes := NamedReturnValues(forest, Field(forest, item.node, "value"));
+    if (item.b == 0) {
+        if (returned.container == 0 && Converts(returned.storage, result.storage)) {
+            code.extend(NumberCode(ops, returned.storage, result.storage, returned.slot, at.slot, node));
+            slots.extend(NumberSlots(returned.storage, result.storage));
+            returned = Typed(at.slot + length(slots) - 1, result.storage, 0, -1);
+        }
+        if (!SameType(result.storage, result.container, result.record, returned)) {
+            return Fail(forest, returned_nodes[item.a], document, "returned value differs from the result type");
+        }
+        if (result.storage == StructStorage) {
+            next.append(Resume(item.node, ReturnsPhase, item.a, 1));
+            return Step.Emitted(code, slots, [], [], [], [], [], [], next, 1, NoValue(), returned, []);
+        }
+    }
+    code.append(SymbolCode(ops, result.node, forest[returned_nodes[item.a]]));
+    if (result.storage == StructStorage) {
+        header := at.slot + length(slots);
+        slots.append(AddressSlot(target));
+        code.append(Instruction(ops.local, target.pointer_storage, header, named + item.a, 0, 0, node));
+        write := Instruction(ops.write, target.pointer_storage, 0, returned.slot, header, 0, node);
+        write.offset = target.payload_offset;
+        code.append(write);
+    } else {
+        code.append(Instruction(ops.save, result.storage, 0, returned.slot, 0, named + item.a, node));
+    }
+    index := item.a + 1;
+    if (index < callable.results) {
+        following := params[callable.first + callable.count + index];
+        next.append(Expect(returned_nodes[index], following.storage, following.container, following.record));
+    }
+    next.append(Resume(item.node, ReturnsPhase, index, 0));
+    return Step.Emitted(code, slots, [], [], [], [], [], [], next, 1, NoValue(), NoValue(), []);
 }
 // `step`, with `prefix` taking the slots before its own.
 PrefixSlots :: (prefix: Slot[], step: Step) -> Step {
@@ -3201,7 +3400,7 @@ NativeReadStep :: (object: Value, field: TypeMember, ops: Ops, target: Target, a
     value: Slot = {storage: SlotStorage(field.storage, 0, target), kind: SlotKind(field.storage, 0)};
     code := CallCode(arguments, at.cell, at.host, value.storage, at.slot, ops, target, node);
     return Step.Emitted(code, CallSlots(1, value, target), locals, CallCells(arguments, read), [host], roots, calls,
-                        bound, next, 1, Typed(at.slot + 2, field.storage, 0, -1), NoValue(), marks);
+                        bound, next, 1, Typed(at.slot + 2, field.storage, 0, field.record), NoValue(), marks);
 }
 // Whether the compiler passes each of a native's ports: a result takes a
 // known or inferred type, never each value's own.

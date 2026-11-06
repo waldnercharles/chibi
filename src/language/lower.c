@@ -4683,7 +4683,13 @@ static int expression_value(lower *l, int index)
         }
         case SCRIPT_EXPR_MEMBER: {
             if (sole_output(l, e)) {
-                return expression(l, e->left);
+                return convert(
+                    l,
+                    expression(l, e->left),
+                    l->a->expressions[e->left].type,
+                    e->type,
+                    e->range
+                );
             }
             const script_expression *receiver = &l->a->expressions[e->left];
             if (receiver->kind == SCRIPT_EXPR_UNWRAP &&

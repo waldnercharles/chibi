@@ -335,7 +335,6 @@
         "language-runtime-attribution"
       ],
       "purpose": "assertion-enabled ASan/UBSan correctness",
-      "hard_deadline_seconds": 60,
       "authorized_to_execute": false
     },
     {
@@ -349,7 +348,6 @@
         "language-runtime-attribution"
       ],
       "purpose": "unsanitized paired raw measurements and parity",
-      "hard_deadline_seconds": 60,
       "authorized_to_execute": false
     },
     {
@@ -363,7 +361,6 @@
         "wasm-runtime-attribution"
       ],
       "purpose": "serial generated-Wasm correctness and parity",
-      "hard_deadline_seconds": 60,
       "authorized_to_execute": false,
       "prepend_PATH": "../chibi-tools/emsdk/node/24.19.0_64bit/bin",
       "required_node_version": "24.19.0",

@@ -16,12 +16,12 @@ resources, then reconfigure with the option off before building products.
 Run the authored generator:
 
 ```
-build/sdk/chibi-build-host --root "$PWD" --source tools/toolchain/AssetCompiler.chibi --core packages/core --collection graph=tools/graph --entry Build --timeout-ms 180000 -- "$PWD/build/sdk/chibi-compiler-host" "$PWD/tools/compiler/asset_compiler/bootstrap/native64"
+build/sdk/chibi-build-host --compiler tools/compiler --compiler-core packages/core --root "$PWD" --source tools/toolchain/AssetCompiler.chibi --core packages/core --collection graph=tools/graph --entry Build --timeout-ms 180000 -- "$PWD/build/sdk/chibi-compiler-host" "$PWD/tools/compiler/asset_compiler/bootstrap/native64"
 cmake -S sdk -B build-web-sdk -DCHIBI_BUILD_COMPILER_HOST_COMMAND=ON
 cmake --build build-web-sdk --target chibi-compiler-host
 node build-web-sdk/chibi-compiler-host.js --target-json > .chibi/asset-wasm-target.json
 cmake -S sdk -B build-web-sdk -DCHIBI_BUILD_COMPILER_HOST_COMMAND=OFF
-build/sdk/chibi-build-host --root "$PWD" --source tools/toolchain/AssetCompiler.chibi --core packages/core --collection graph=tools/graph --entry Build --timeout-ms 180000 -- "$PWD/build/sdk/chibi-compiler-host" "$PWD/tools/compiler/asset_compiler/bootstrap/wasm32" "$PWD/.chibi/asset-wasm-target.json"
+build/sdk/chibi-build-host --compiler tools/compiler --compiler-core packages/core --root "$PWD" --source tools/toolchain/AssetCompiler.chibi --core packages/core --collection graph=tools/graph --entry Build --timeout-ms 180000 -- "$PWD/build/sdk/chibi-compiler-host" "$PWD/tools/compiler/asset_compiler/bootstrap/wasm32" "$PWD/.chibi/asset-wasm-target.json"
 ```
 
 The generator recovers the current compiler from the compiler bootstrap closure,
@@ -60,6 +60,11 @@ These identify this dirty b934 integration checkpoint, not the final clean main
 integration. See
 [`docs/self-hosting-build.md`](../../../../docs/self-hosting-build.md#compiled-asset-resources)
 for the build record and coverage limits.
+
+The source integration of main `fa1b7b2bb` uses build-host protocol 8 and the
+self-hosted Build/Graph compiler. The retained b934 artifacts are recovery
+inputs for that integration. The combined compiler and both asset resources
+still require regeneration and validation before installation.
 
 The earlier stabilization snapshot built and packaged native/Web SDKs and Studio,
 and compiled installed and relocated public SDK consumers. Its recovery-install

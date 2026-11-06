@@ -13,7 +13,9 @@
 #include <unistd.h>
 
 static const char *worker_path, *host_path;
+static chibi_build_compiler *build_compiler;
 static char suite[256], root[512], program_path[1024];
+static char git_program[1024];
 static char *program;
 static char last_stderr[CHIBI_BUILD_OUTPUT_CAPACITY];
 static const char *const environment_names[] = {
@@ -68,6 +70,25 @@ static int trace_count(const char *kind)
 {
     return count_in("cmake.trace", kind);
 }
+static void resolve_git()
+{
+    char log[1024];
+    path(log, suite, "git-program.log");
+#ifdef __APPLE__
+    const char *arguments[] = { "xcrun", "--find", "git", NULL };
+#else
+    const char *arguments[] = { "sh", "-c", "command -v git", NULL };
+#endif
+    assert(!tool_run(arguments, suite, log));
+    char *text = tool_read(log);
+    assert(text);
+    text[strcspn(text, "\r\n")] = 0;
+    char *resolved = realpath(text, NULL);
+    assert(resolved && strlen(resolved) < sizeof git_program && !access(resolved, X_OK));
+    strcpy(git_program, resolved);
+    free(resolved);
+    free(text);
+}
 static void reset_fixture(const char *name, int backend)
 {
     snprintf(root, sizeof root, "%s/%s %d", suite, name, backend);
@@ -80,8 +101,16 @@ static void reset_fixture(const char *name, int backend)
         path(file, bin, names[i]);
         assert(!symlink(worker_path, file));
     }
-    /* CMake is the only executable shim selected. Python and its runtime,
-     * sanitizer symbolizers, and git come from the original explicit PATH. */
+    /* Apple's git launcher inspects SDKROOT, which is fake in this fixture.
+     * Exec the previously resolved binary so authored probes and setup use it.
+     * A symlink would make Git derive its resource paths from the fixture. */
+    char git_path[1100];
+    snprintf(git_path, sizeof git_path, "%s\n", git_program);
+    write_file("bin/git-program", git_path);
+    write_file("bin/git", "#!/bin/sh\nIFS= read -r program < \"${0%/*}/git-program\" || exit 1\nexec \"$program\" \"$@\"\n");
+    path(file, bin, "git");
+    assert(!chmod(file, 0700));
+    /* Python, its runtime and sanitizer symbolizers use the original PATH. */
     snprintf(search, sizeof search, "%s:%s", bin, saved_environment[0] ? saved_environment[0] : "/usr/bin:/bin");
     assert(!setenv("PATH", search, 1));
     assert(!unsetenv("CC") && !unsetenv("CXX") && !unsetenv("CMAKE_TOOLCHAIN_FILE"));
@@ -101,6 +130,7 @@ static void reset_fixture(const char *name, int backend)
 static bool invoke(const char *const *arguments, int count, int backend, int value)
 {
     chibi_build_options options = {
+        .compiler = build_compiler,
         .root = root,
         .source_path = program_path,
         .source_text = program,
@@ -581,6 +611,10 @@ TEST_CASE(private_cli_forwards_empty_and_special_tail_arguments)
     path(log, root, "cli.log");
     const char *arguments[] = {
         host_path,
+        "--compiler",
+        CHIBI_SOURCE_ROOT "/tools/compiler",
+        "--compiler-core",
+        CHIBI_SOURCE_ROOT "/packages/core",
         "--root",
         root,
         "--source",
@@ -629,19 +663,22 @@ TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol)
         selected
     );
     tool_write(overrides, recipes);
-    char old[1024], previous[1024], current[1024], missing[1024];
+    char old[1024], previous[1024], bootstrap[1024], current[1024], missing[1024];
     path(old, root, "old host");
     path(previous, root, "protocol-6 host");
+    path(bootstrap, root, "protocol-8 host");
     path(current, root, "current host");
     path(missing, root, "missing host");
     assert(!symlink(worker_path, old));
     assert(!symlink(worker_path, previous));
+    assert(!symlink(worker_path, bootstrap));
     assert(!symlink(host_path, current));
     char recursive_make[4096];
     snprintf(recursive_make, sizeof recursive_make, "MAKE=make -f '%s' -f '%s'", makefile, overrides);
-    /* A protocol-6 host answers the query but lacks the natives the graph uses. */
-    const char *hosts[] = { missing, old, previous, current };
-    for (int i = 0; i < 4; i++) {
+    /* Protocol 6 lacks graph natives; protocol 8 does not guarantee the compiled
+     * bootstrap contract. Both answer the probe but must recover before authored loads. */
+    const char *hosts[] = { missing, old, previous, bootstrap, current };
+    for (int i = 0; i < 5; i++) {
         char host_option[1200];
         snprintf(host_option, sizeof host_option, "BUILD_HOST=%s", hosts[i]);
         const char *arguments[] = {
@@ -652,7 +689,7 @@ TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol)
         };
         REQUIRE(!tool_run(arguments, source, log));
         char *choice = tool_read(selected);
-        bool correct = choice && !strcmp(choice, i == 3 ? "authored\n" : "recovery\n");
+        bool correct = choice && !strcmp(choice, i == 4 ? "authored\n" : "recovery\n");
         free(choice);
         REQUIRE(correct);
         REQUIRE(!unlink(selected));
@@ -663,6 +700,18 @@ TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol)
 void test_build_toolchain(const char *worker, const char *host)
 {
     host_path = host;
+    char error[256] = { 0 };
+    build_compiler = chibi_build_compiler_load(
+        CHIBI_SOURCE_ROOT "/tools/compiler",
+        CHIBI_SOURCE_ROOT "/packages/core",
+        error,
+        sizeof error
+    );
+    if (!build_compiler) {
+        fprintf(stderr, "build compiler: %s\n", error);
+    }
+    assert(build_compiler);
+
     worker_path = worker;
     strcpy(suite, "/tmp/chibi-toolchain-XXXXXX");
     assert(mkdtemp(suite));
@@ -677,6 +726,7 @@ void test_build_toolchain(const char *worker, const char *host)
         const char *value = getenv(environment_names[i]);
         saved_environment[i] = value ? strdup(value) : NULL;
     }
+    resolve_git();
     RUN_TEST_CASE(native_compiler_and_explicit_cache_precedence);
     RUN_TEST_CASE(warm_configuration_tracks_inputs_options_environment_and_compiler);
     RUN_TEST_CASE(configuration_and_build_failures_propagate_and_tool_host_profile_is_narrow);
@@ -699,6 +749,8 @@ void test_build_toolchain(const char *worker, const char *host)
         }
         free(saved_environment[i]);
     }
+    chibi_build_compiler_free(build_compiler);
+    build_compiler = NULL;
     free(program);
     tool_remove_tree(suite);
 }

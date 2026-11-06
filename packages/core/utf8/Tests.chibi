@@ -103,7 +103,8 @@ EmptyInputAndInvalidOffsets :: () {
     valid := Validate(empty);
     assert(valid == nil);
     ended := Decode(empty, 0);
-    assert(ended.status == End && ended.width == 0 && ended.error == nil);
+    assert(ended.error == nil);
+    assert(ended.status == End && ended.width == 0);
     negative := Decode(empty, -1);
     assert(negative.status == InvalidOffset && negative.width == 0);
     CheckError(negative.error, InvalidOffset, -1);
@@ -117,7 +118,8 @@ EmptyInputAndInvalidOffsets :: () {
     assert(maximum.status == InvalidOffset && maximum.width == 0);
     CheckError(maximum.error, InvalidOffset, 2147483647);
     counted := Count("");
-    assert(counted.count == 0 && counted.error == nil);
+    assert(counted.error == nil);
+    assert(counted.count == 0);
 }
 
 @test
@@ -146,15 +148,20 @@ StringsCountScalarsAndPreserveNul :: () {
     valid := ValidateString(text);
     assert(valid == nil);
     counted := Count(text);
-    assert(counted.count == 4 && counted.error == nil);
+    assert(counted.error == nil);
+    assert(counted.count == 4);
     nul := DecodeString(text, 1);
-    assert(nul.status == Success && int(nul.value) == 0 && nul.width == 1 && nul.error == nil);
+    assert(nul.error == nil);
+    assert(nul.status == Success && int(nul.value) == 0 && nul.width == 1);
     accent := DecodeString(text, 2);
-    assert(accent.status == Success && int(accent.value) == 233 && accent.width == 2 && accent.error == nil);
+    assert(accent.error == nil);
+    assert(accent.status == Success && int(accent.value) == 233 && accent.width == 2);
     cat := DecodeString(text, 4);
-    assert(cat.status == Success && int(cat.value) == 128008 && cat.width == 4 && cat.error == nil);
+    assert(cat.error == nil);
+    assert(cat.status == Success && int(cat.value) == 128008 && cat.width == 4);
     end := DecodeString(text, 8);
-    assert(end.status == End && end.width == 0 && end.error == nil);
+    assert(end.error == nil);
+    assert(end.status == End && end.width == 0);
     negative := DecodeString(text, -1);
     assert(negative.status == InvalidOffset && negative.width == 0);
     CheckError(negative.error, InvalidOffset, -1);
@@ -168,9 +175,11 @@ StringsCountScalarsAndPreserveNul :: () {
     assert(maximum.status == InvalidOffset && maximum.width == 0);
     CheckError(maximum.error, InvalidOffset, 2147483647);
     combining := Count("é");
-    assert(combining.count == 2 && combining.error == nil);
+    assert(combining.error == nil);
+    assert(combining.count == 2);
     bom := Count("\uFEFFa");
-    assert(bom.count == 2 && bom.error == nil);
+    assert(bom.error == nil);
+    assert(bom.count == 2);
 }
 
 @test

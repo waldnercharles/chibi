@@ -94,6 +94,9 @@ ownership, private/public compiler text profiles, and exact collection selection
 consumer through the authored compiler and executes its closure on both
 backends. A native-front-end pass does not satisfy this route. Both selectors
 are in the language aggregate and own their inner execution resources.
+The Wasm compiler selector prepares its compiler from the existing embedded
+source fixture for that target. It does not read native bootstrap files from
+the host checkout; the native selector retains validated bootstrap loading.
 
 `language-package-portable-costs` is an explicit opt-in measurement route,
 excluded from the correctness aggregate. Twelve calls cover UTF-8 validation

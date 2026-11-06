@@ -16,6 +16,10 @@
 #include "toolchain/compiler_host.h"
 #include "toolchain/compiler_target.h"
 
+#ifdef __EMSCRIPTEN__
+#include "package_compiler_chibi.h"
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -74,6 +78,7 @@ static void cleanup()
     request_doc = NULL;
 }
 
+#ifndef __EMSCRIPTEN__
 /* The generated header holds actual shipped sources. Test files are omitted:
  * this verifies a consumer using public imports, separately from package tests. */
 static bool prepare_request(size_t *length)
@@ -124,6 +129,8 @@ static bool prepare_request(size_t *length)
     return true;
 }
 
+#endif
+
 static bool compile_consumer()
 {
     char error[256];
@@ -135,6 +142,46 @@ static bool compile_consumer()
         fprintf(stderr, "portable compiler public catalog: %s\n", error);
     }
     REQUIRE(native);
+#ifdef __EMSCRIPTEN__
+    // Use the target's embedded compiler; Node cannot read a native host seed.
+    static const source_package_input sources[] = { PORTABLE_SOURCE_INPUTS };
+    enum
+    {
+        SOURCES = sizeof sources / sizeof *sources
+    };
+    source_package_input files[2 + SOURCES];
+    char paths[SOURCES][256];
+    files[0] = (source_package_input){ "/project/consumer/Main.chibi",
+                                       CONSUMER,
+                                       sizeof CONSUMER - 1 };
+    files[1] = (source_package_input){ "/sdk/core/strings/Strings.chibi",
+                                       CORE_STRINGS_SOURCE,
+                                       sizeof CORE_STRINGS_SOURCE - 1 };
+    int count = 2;
+    for (int i = 0; i < SOURCES; i++) {
+        const char *name = strrchr(sources[i].path, '/');
+        if (name && !strcmp(name, "/Tests.chibi")) {
+            continue;
+        }
+        int size = snprintf(
+            paths[i],
+            sizeof paths[i],
+            "/sdk/core/%s",
+            sources[i].path
+        );
+        REQUIRE(size > 0 && (size_t)size < sizeof paths[i]);
+        files[count] = sources[i];
+        files[count++].path = paths[i];
+    }
+    REQUIRE(package_compiler_closure(
+        files,
+        count,
+        COMPILE_BUDGET,
+        &closure.bytes,
+        &closure.length
+    ));
+    return true;
+#else
     compiler_bootstrap options = {
         .folder = CHIBI_SOURCE_ROOT "/tools/compiler/bootstrap",
         .compiler = CHIBI_SOURCE_ROOT "/tools/compiler",
@@ -177,6 +224,7 @@ static bool compile_consumer()
     }
     REQUIRE(compiled && closure.length);
     return true;
+#endif
 }
 
 static bool run_consumer(behavior_backend backend)

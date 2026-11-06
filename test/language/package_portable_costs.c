@@ -101,7 +101,7 @@ static bool measured_call(
 {
     struct timespec start, finish;
     pin_copy_scope copies = { 0 };
-    REQUIRE(timespec_get(&start, TIME_UTC) == TIME_UTC);
+    REQUIRE(clock_gettime(CLOCK_MONOTONIC, &start) == 0);
     pin_copy_scope_begin(&copies);
     bool called = compiler_fixture_call(
         &fixture,
@@ -115,7 +115,7 @@ static bool measured_call(
         out
     );
     pin_copy_scope_end(&copies);
-    REQUIRE(timespec_get(&finish, TIME_UTC) == TIME_UTC);
+    REQUIRE(clock_gettime(CLOCK_MONOTONIC, &finish) == 0);
     double elapsed = (double)(finish.tv_sec - start.tv_sec) +
                      (double)(finish.tv_nsec - start.tv_nsec) / 1000000000.0;
     printf(

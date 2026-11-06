@@ -8,7 +8,7 @@ The owner selected that error convention in the parallel recoverable-results
 workstream. There is no generic Result requirement or success-before-use rule.
 
 The implementation starts from `c086475d5971a762af25f3fa6395a9bff7534b7a`.
-The candidate is now integrated with accepted main `4981e9733`.
+The candidate is now integrated with accepted main `286f69ddf`.
 Source is implemented locally; complete validation, publication and main
 integration remain separate claims. The owning declarations give exact
 signatures. This document records the selected subset and deliberate choices,
@@ -150,7 +150,11 @@ Adjacent `Tests.chibi` files contain the algorithm assertions. The
 discovers core tests, and runs the shared authored executor on bytecode and
 SLJIT. Default project-only discovery remains unchanged. A separate consumer
 compiles public imports through the authored compiler and executes its closure
-against the public native catalog. Native boundary cases cover boxed, packed
+against the public native catalog. Its native route loads the validated compiler
+bootstrap. Its Wasm route invokes the embedded current compiler through the
+shared fixture for that target, then loads the emitted consumer closure. It
+needs no host-checkout filesystem or native-bootstrap provenance claim.
+Native boundary cases cover boxed, packed
 and empty arrays, output ownership after input retirement, failed conversions,
 and the private/public text-profile distinction. A values-only runtime case
 executes binary conversion after source retirement and requires the seed-private
@@ -165,39 +169,51 @@ Installed and relocated SDK imports, affected Wasm execution, current-source
 compiler recovery and selected native checks are separate validation claims.
 Record actual results and elapsed time; no global timing admission rule applies.
 
-The candidate is reconciled with accepted main `c4f75f125`, including the
-Rhythm/VisualMotion retirement. The current focused native driver passes
-65 public-API authored tests on each
-of bytecode and SLJIT, plus five native representation/profile/discovery cases
-and 295 outer assertions. Four duplicate endian wrapper cases were merged into
+The candidate includes the accepted Rhythm/VisualMotion retirement and authored
+strings migration. Shared collection discovery and the authored fixture runner
+are now main-owned; this batch adds no second runner. The focused native driver
+passes 65 public-API authored tests on each of bytecode and SLJIT, plus five
+native representation/profile/discovery cases and 295 outer assertions.
+Four duplicate endian wrapper cases were merged into
 the original wire/bounds tests without dropping their unique assertions. The
 focused driver explicitly configures `CHIBI_TEST_ASSET_COMPILER_HOST=OFF`;
 asset-host integration is not covered by that build.
 
+The recoverable-results v2 source-contract audit selects 25 public `@fallible`
+operations: twelve endian operations, seven codec operations, five UTF-8
+operations and slashpath `Join`. Their annotation patch is prepared separately
+and remains unapplied until the compiler prerequisite is eligible. Nine UTF-8
+assertions now check errors unconditionally, and Hex's rejection helper checks
+the error before its data-length early return. All 65 cases and their existing
+oracles remain. This is source-audit preparation, not a combined error-checker
+execution pass.
+
 | Selected check | Result | Command wall time, fixture setup included |
 | --- | --- | --- |
-| `language-package-portable` | 65 authored tests per backend; 5 native cases | 1.307 s |
-| `language-package-core` | 9 cases, 14,626 assertions | 0.368 s |
-| `language-package-tests` | 6 cases, 338 assertions | 0.233 s |
-| `language-compiler-fixture` | 8 cases, 385 assertions | 1.699 s |
-| `language-native-calls` | 7 cases, 758 assertions | 0.166 s |
-| `wasm-package-portable` | 65 authored tests per BYTECODE/WASM; 5 native cases | 1.225 s |
-| `language-asset-packaging-chibi` | 4 cases, 24,842 assertions | 3.114 s |
-| `language-test-parallel` | 4 cases, 15 assertions | 0.158 s |
+| `language-package-portable` | 65 authored tests per backend; 5 native cases | 1.365 s |
+| `language-package-core` | 6 cases, 14,834 assertions; includes authored strings/formatting | 16.787 s |
+| `language-package-tests` | 6 cases, 338 assertions | 0.238 s |
+| `language-compiler-fixture` | 9 cases, 414 assertions | 1.781 s |
+| `wasm-package-portable` | 65 authored tests per BYTECODE/WASM; 5 native cases | 1.271 s |
+| `language-docs-markdown` | 14 cases, 1,778 assertions | 1.424 s |
+| `text-format` | 2 native boundary cases, 16 assertions | 0.096 s |
+| `language-package-portable-costs` | 12 measured BYTECODE/SLJIT calls; 130,109 assertions | 0.856 s |
+| Wasm `--package-portable-costs` | 12 measured BYTECODE/WASM calls; 130,109 assertions | 0.890 s |
 
-The unchanged cost workload passed 12 measured calls and independent result
-checks in 1.460 s before the retirement-main update. Those measurements are
-historical samples, not a validation claim for the combined candidate.
+Native-call, asset-packaging prefix and parallel boundary checks last passed on
+the `c4f75f125` candidate. Their results remain historical evidence rather than
+new execution claims for the strings-main combination.
 
-Configuration/build times are excluded from that table. The public consumer in
-`test/packages/portable_consumer/Consumer.chibi` also passes through the native
-front end. The runtime-only SDK builds and installs with compiler/native/desktop
-products disabled; relocated CMake metadata finds all ten package directories.
-A separately built current native verifier loads the relocated installed core
-and passes the public-import tests. This verifies the runtime profile's source
+Configuration/build times are excluded from that table. On the `c4f75f125`
+candidate, the public consumer in `test/packages/portable_consumer/Consumer.chibi`
+passed through the native front end. The runtime-only SDK built and installed
+with compiler/native/desktop products disabled; relocated CMake metadata found
+all ten package directories. A separately built native verifier loaded the installed core
+and passed the public-import tests. This verifies the runtime profile's source
 installation; it is not a full compiler-enabled SDK distribution pass.
 
-Measurements use 4096 and 16384 input bytes, once per workload and backend.
+Measurements use a monotonic clock and 4096 and 16384 input bytes, once per
+workload and backend.
 They exclude preparation/input setup, include result detachment, and count only
 selected same-thread managed-value copies, not all allocation or memory traffic.
 The validation workload performs buffer validation, string validation and scalar
@@ -209,8 +225,11 @@ remain 1548 bytes at both input sizes for fixed 32-byte needles. Base64's
 and detachment. Those are implementation observations, not zero-allocation or
 universal throughput guarantees. Exact samples are retained in the task logs.
 
-The authored-compiler consumer currently rejects a named result with
-`named result type is not supported yet`, as expected on the accepted base.
+The native and Wasm authored-compiler consumers currently reject the same named
+result with `named result type is not supported yet` at line 52, column 60,
+as expected on the accepted base. Wasm now reaches that semantic check through
+the direct source fixture; it no longer fails at host filesystem access or
+whole-compiler serialization. Neither compiler selector passes yet.
 Full compiler-enabled builds, source recovery, `@fallible` acknowledgment,
 nominal-char parity and full compiler-enabled installed SDK checks
 remain separate gates owned or supplied by the coordinated prerequisite lanes.

@@ -38,11 +38,11 @@ DecodedIs :: (text: string, expected: u8[]) -> bool {
 
 RejectedAt :: (text: string, expected_kind: int, expected_offset: int) -> bool {
     result := Decode(text);
-    if (length(result.data) != 0) {
-        return false;
-    }
     failed := result.error;
     if (failed) {
+        if (length(result.data) != 0) {
+            return false;
+        }
         return failed.kind == expected_kind && failed.offset == expected_offset;
     }
     return false;

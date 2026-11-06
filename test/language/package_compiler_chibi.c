@@ -4145,6 +4145,47 @@ static unsigned char *closure_bytes(const pin_union *value, size_t *length)
     }
     return bytes;
 }
+
+bool package_compiler_closure(
+    const source_package_input *sources,
+    int count,
+    uintptr_t budget,
+    unsigned char **bytes,
+    size_t *length
+)
+{
+    *bytes = NULL;
+    *length = 0;
+    pin_value output;
+    bool valid = prepare_backends(COMPILER_FIXTURE_BYTECODE) &&
+                 compile(0, true, false, false, sources, count, budget, &output);
+    const pin_union *value = valid && output.type == PIN_UNION ? output.ptr : NULL;
+    if (valid && !value) {
+        fprintf(pu_errors(), "Authored closure compilation returned no Result\n");
+        valid = false;
+    }
+    if (valid && value->tag != tag(0, "Compiled")) {
+        pin_value message, line, column;
+        if (get(&value->values[0], "message", &message) &&
+            get(&value->values[0], "line", &line) &&
+            get(&value->values[0], "column", &column)) {
+            fprintf(
+                pu_errors(),
+                "Authored closure compilation: %s at %d:%d\n",
+                pin_text(message).bytes,
+                line.i,
+                column.i
+            );
+        }
+        valid = false;
+    }
+    if (valid) {
+        *bytes = closure_bytes(value, length);
+    }
+    cleanup();
+    return valid;
+}
+
 /* Compile the discovered test package with each compiler backend, then run
  * the same fixed assertions on each independently loaded target backend. */
 static bool authored_tests(

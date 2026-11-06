@@ -377,6 +377,9 @@ NativeDecl: int : 3;
 // A game namespace, such as SceneGlobals: a native type no module requires.
 NamespaceDecl: int : 4;
 MapDecl: int : 5;
+// Compile-time identity for builtin scalars. Runtime values keep their existing
+// storage; this kind contributes no external type or prepared layout.
+BuiltinScalarDecl: int : 14;
 // Symbol kinds in package-symbol IDs.
 FunctionKind: int : 1;
 TypeKind: int : 13;
@@ -472,12 +475,33 @@ ScalarStorage :: (text: string) -> int {
     }
     return 0;
 }
+CharIndex :: (types: TypeDecl[]) -> int {
+    for declared, index in types {
+        if (declared.kind == BuiltinScalarDecl && declared.id == binding.ID("type", "char")) {
+            return index;
+        }
+    }
+    return -1;
+}
+CharTypes :: (input: TypeDecl[]) -> TypeDecl[] {
+    if (CharIndex(input) >= 0) { return input; }
+    declared: TypeDecl = {name: "char", type_name: "char", package: -1, node: -1,
+                          kind: BuiltinScalarDecl, first: 0, count: 0, size: 4, parent: -1,
+                          storage: IntStorage, id: binding.ID("type", "char"), layout: 0,
+                          component: 0, key: 0, value_storage: 0, value_container: 0, value_record: -1};
+    return append(input, declared);
+}
+CharType :: (types: TypeDecl[], storage: int, container: int, record: int) -> bool {
+    return storage == IntStorage && container == 0 && record >= 0 &&
+           types[record].kind == BuiltinScalarDecl && types[record].id == binding.ID("type", "char");
+}
 // The record or union of `package` named `name`, -1 when none.
 FindType :: (types: TypeDecl[], package: int, name: string) -> int {
     index: int = 0;
     while (index < length(types)) {
         declared := types[index];
-        if (declared.package == package && declared.kind != VariantDecl && declared.name == name) {
+        if (declared.package == package && declared.kind != VariantDecl &&
+            declared.kind != BuiltinScalarDecl && declared.name == name) {
             return index;
         }
         index += 1;
@@ -485,7 +509,7 @@ FindType :: (types: TypeDecl[], package: int, name: string) -> int {
     // Game-native types are shared by every executable source.
     index = 0;
     while (index < length(types)) {
-        if (types[index].package == -1 && types[index].name == name) {
+        if (types[index].package == -1 && types[index].kind != BuiltinScalarDecl && types[index].name == name) {
             return index;
         }
         index += 1;
@@ -553,6 +577,7 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], n
     pointer := TypePointerNode(forest, node);
     if (pointer >= 0) {
         element := ReadType(forest, text, types, names, package, Field(forest, pointer, "target"));
+        if (CharType(types, element.storage, element.container, element.record)) { return none; }
         declared := FindPointer(types, element, HasToken(forest, node, "?"));
         if (declared < 0) {
             return none;
@@ -583,6 +608,9 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], n
             }
             child = forest[child].next_sibling;
         }
+        if (value.container != 0 && CharType(types, value.storage, 0, value.record)) {
+            return none;
+        }
         if (HasToken(forest, node, "?")) {
             if (value.storage != PointerStorage || value.container != 0 || value.record < 0) {
                 return none;
@@ -611,8 +639,11 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], n
     }
     map := Field(forest, node, "map");
     if (map >= 0) {
-        declared := FindMap(types, ReadType(forest, text, types, names, package, Field(forest, map, "key")),
-                            ReadType(forest, text, types, names, package, Field(forest, map, "value")));
+        key := ReadType(forest, text, types, names, package, Field(forest, map, "key"));
+        value := ReadType(forest, text, types, names, package, Field(forest, map, "value"));
+        if (CharType(types, key.storage, key.container, key.record) ||
+            CharType(types, value.storage, value.container, value.record)) { return none; }
+        declared := FindMap(types, key, value);
         if (container != 0 || declared < 0) {
             return none;
         }
@@ -628,6 +659,10 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], n
         if (home < 0 || NextMember(forest, part) >= 0) {
             return none;
         }
+    } else if (name == "char") {
+        declared := CharIndex(types);
+        if (declared < 0 || container != 0 || HasToken(forest, node, "?")) { return none; }
+        return {storage: IntStorage, container: 0, record: declared};
     } else if (ScalarStorage(name) != 0) {
         return {storage: ScalarStorage(name), container: container, record: -1};
     }
@@ -788,6 +823,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                        package: int, package_name: string, links: graph.Binding[], target: Target,
                        callables: Callable[], params: Param[], types: TypeDecl[],
                        members: TypeMember[], constants: ConstDecl[]) -> Declarations {
+    types = CharTypes(types);
     for (file in files) {
         text := documents[file].text;
         member := FirstMember(forest, documents[file].syntax_root);
@@ -940,6 +976,9 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                                                                     PrivateMessage(Text(forest, text, hidden))));
                             }
                             payload := ReadType(forest, text, types, aliases, package, Field(forest, parameter, "type"));
+                            if (CharType(types, payload.storage, payload.container, payload.record)) {
+                                return Declarations.Failed(Diagnose(forest, parameter, file, "char union payloads are not supported yet"));
+                            }
                             if (payload.storage == 0) {
                                 return Declarations.Failed(Diagnose(forest, parameter, file, "payload type is not supported yet"));
                             }
@@ -1003,7 +1042,8 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                     }
                     constant_type := ReadType(forest, text, types, aliases, package, declared);
                     storage = constant_type.storage;
-                    if ((!Integer(storage) && !Floating(storage)) || constant_type.container != 0) {
+                    if ((!Integer(storage) && !Floating(storage)) || constant_type.container != 0 ||
+                        CharType(types, storage, constant_type.container, constant_type.record)) {
                         return Declarations.Failed(Diagnose(forest, declared, file, "constant type is not supported yet"));
                     }
                 }
@@ -1610,6 +1650,9 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
             type_node = Field(forest, pointer, "target");
         }
         declared := ReadType(forest, text, types, aliases, package, type_node);
+        if (reference && CharType(types, declared.storage, declared.container, declared.record)) {
+            return Signature.Failed(Diagnose(forest, parameter, file, "char pointers are not supported yet"));
+        }
         if (declared.storage == 0) {
             return Signature.Failed(Diagnose(forest, parameter, file, "parameter type is not supported yet"));
         }
@@ -1622,6 +1665,9 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
                                              "Invalid string or embedded NUL"));
         }
         default_value := Field(forest, parameter, "value");
+        if (default_value >= 0 && CharType(types, declared.storage, declared.container, declared.record)) {
+            return Signature.Failed(Diagnose(forest, default_value, file, "char parameter defaults are not supported yet"));
+        }
         default_occurrence: u64 = 0;
         if (default_value >= 0) {
             default_occurrence = Occurrence(key, ExpressionRecord, solid[forest[default_value].start],
@@ -2266,6 +2312,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     for (declared in types) {
         layouts.append(int(0));
         tags.append(int(0));
+        if (declared.kind == BuiltinScalarDecl) { continue; }
         if (declared.kind == OptionalComponentDecl) {
             layouts[length(layouts) - 1] = layouts[declared.parent];
             continue;

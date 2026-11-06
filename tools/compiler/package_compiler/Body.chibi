@@ -113,6 +113,11 @@ UpdateFact: int : 0;
 NativeFact: int : 1;
 CallFact: int : 2;
 WriteFact: int : 3;
+BindingStorageFact: int : 4;
+BindingContainerFact: int : 5;
+BindingRecordFact: int : 6;
+BindingOmittableFact: int : 7;
+ReturnRequiredFact: int : 8;
 UnknownWrite: int : -1;
 Body :: union {
     Failed(diagnostic: syntax.Diagnostic)
@@ -1273,7 +1278,7 @@ ParseNumber :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> Lit
     if (!Is(forest, digits, syntax.Number)) {
         return invalid;
     }
-    literal := Text(forest, text, digits);
+    literal := tk.NumericText(Text(forest, text, digits));
     size := strings.ByteLength(literal);
     base: int = 10;
     index: int = 0;
@@ -2731,6 +2736,11 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 }
                 record = -1;
             }
+            if (storage == -1) { storage = 0; record = -1; }
+            else if (storage < 0) {
+                return Body.Failed(Diagnose(forest, item.node, document,
+                                           "Result type cannot be inferred; add an explicit result type"));
+            }
             return Body.Inferred({storage: storage, container: value.container, record: record});
         }
         if (callable.result == GenericInferStorage && kind == syntax.ReturnStatement && item.phase == 0) {
@@ -2816,6 +2826,11 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         }
         if (kind == syntax.CallExpression && item.phase == 0) {
             called := CalledFunction(forest, text, callables, natives, names, callable.package, item.node);
+            if (called >= 0 && callables[called].count >= 0 && callables[called].result == GenericInferStorage) {
+                // Ask the same preparation scheduler for a concrete callee's
+                // missing result before using it as an expression type.
+                return Body.Specialize(called, item.node, [], names);
+            }
             if (called >= 0 && callables[called].count < 0) {
                 hidden := PrivateAccess(forest, text, callables, table^, constants, names, callable.package,
                                         Field(forest, item.node, syntax.FieldFunction));
@@ -3544,6 +3559,15 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             step = ElementAssignStep(forest, text, document, table^, values, value_top, item, ops, target, at);
         } else if (kind == syntax.LocalDeclaration || kind == syntax.Assignment || kind == syntax.ExpressionStatement ||
                    kind == syntax.ReturnStatement || kind == syntax.DeleteStatement) {
+            if (kind == syntax.ReturnStatement && item.phase == 0 && ops.source_types && callable.identity == 0 &&
+                callable.result > 0 && callable.results == 0) {
+                natural := SourceExpressionType(forest, text, callables, params, callable, names, table^, members,
+                                                constants, Field(forest, item.node, syntax.FieldValue), 0);
+                if (natural.storage != callable.result || natural.container != callable.result_container ||
+                    natural.record != callable.result_record) {
+                    facts.append({node: item.node, kind: ReturnRequiredFact, target: 1});
+                }
+            }
             step = StatementStep(forest, text, document, callables, params, table, members, natives, ports, identities, names,
                                  scopes[length(scopes) - 1], callable.package, values, value_top, function, named,
                                  referenced, mutated, built, addressed, generic_updates, item, ops, target, at);
@@ -3705,6 +3729,28 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                         hosts.extend(added_hosts);
                         roots.extend(added_roots);
                         calls.extend(added_calls);
+                        // Bound names already carry the exact post-conversion type. The
+                        // ordinary compiler allocates no type facts. Only source analysis
+                        // reads these sparse rows, once per newly bound local.
+                        if (length(added_names) > 0 && ops.source_types && callable.identity == 0) {
+                            for (bound_name in added_names) {
+                                if (bound_name.node >= 0 &&
+                                    Is(forest, forest[bound_name.node].parent, syntax.LocalDeclaration)) {
+                                    facts.append({node: bound_name.node, kind: BindingStorageFact, target: bound_name.storage});
+                                    facts.append({node: bound_name.node, kind: BindingContainerFact, target: bound_name.container});
+                                    facts.append({node: bound_name.node, kind: BindingRecordFact, target: bound_name.record});
+                                    declaration_node := forest[bound_name.node].parent;
+                                    initializer := Field(forest, declaration_node, syntax.FieldValue);
+                                    natural := SourceExpressionType(forest, text, callables, params, callable,
+                                        names, table^, members, constants, initializer, 0);
+                                    omittable := natural.storage == bound_name.storage &&
+                                                natural.container == bound_name.container && natural.record == bound_name.record;
+                                    if (omittable) {
+                                        facts.append({node: bound_name.node, kind: BindingOmittableFact, target: 1});
+                                    }
+                                }
+                            }
+                        }
                         names.extend(added_names);
                         next.extend(scheduled);
                         value_top -= popped;

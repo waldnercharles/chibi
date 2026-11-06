@@ -1,0 +1,46 @@
+package function_styles
+
+Double :: fn(value: int) int => value * 2;
+Positive :: (value: int) bool => value > 0;
+Inferred :: fn(value: int) => value + 1;
+Ordinary :: fn(value: int) -> int { return value + 2; }
+NoResult :: () {}
+ExpressionVoid :: fn() => NoResult();
+Identity :: fn(value: $T) T => value;
+
+@test
+NamedExpressionBodiesReturnTheirValue :: () {
+    assert(Double(3) == 6, "typed expression body returns its value");
+    assert(Positive(3) && !Positive(-1), "bare bool result remains a result");
+}
+
+@test
+NamedExpressionBodiesInferTheirResult :: () {
+    assert(Inferred(3) == 4, "an inferred expression body has a value result");
+    assert(Ordinary(3) == 5, "fn with a block shares ordinary function semantics");
+}
+
+@test
+VoidExpressionBodiesKeepVoidSemantics :: () {
+    ExpressionVoid();
+    assert(true, "a void expression body returns normally");
+}
+
+@test
+ExpressionBodiesKeepGenericSpecialization :: () {
+    assert(Identity(4) == 4 && Identity(true), "expression syntax preserves generic specialization");
+}
+
+@test
+SingleForBodiesKeepIterationAndBranchTargets :: () {
+    index := 99;
+    sum := 0;
+    for index in 0..<4
+        if index == 1 continue;
+        else sum += index;
+    assert(sum == 5 && index == 99, "for scope and continue are unchanged");
+    for index in 0..<20
+        if index == 3 break;
+        else sum += index;
+    assert(sum == 8, "break leaves the correct for loop");
+}

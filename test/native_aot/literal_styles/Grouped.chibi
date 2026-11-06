@@ -1,0 +1,20 @@
+package grouped_literal_programs
+
+@test
+GroupedIntegersExecuteWithTheirContextualWidths :: () {
+    count: int = 1_234_567;
+    small: i16 = 3_000;
+    maximum: u64 = 18_446_744_073_709_551_615;
+    mask: u64 = 0xFFFF_FFFF_FFFF_FFFF;
+    assert(count == 1234567, "decimal integer grouping keeps its value");
+    assert(small == i16(3000), "grouping keeps narrow declared storage");
+    assert(maximum == mask, "decimal and hexadecimal maxima have identical bits");
+}
+
+@test
+GroupedFractionsAndExponentsExecuteExactly :: () {
+    wide: f64 = 1_234.5_678e-0_2;
+    narrow: f32 = 1_234.5_678e-0_2;
+    assert(wide == f64(1234.5678e-02), "grouped f64 rounds exactly like the plain spelling");
+    assert(narrow == f32(1234.5678e-02), "grouped f32 rounds exactly like the plain spelling");
+}

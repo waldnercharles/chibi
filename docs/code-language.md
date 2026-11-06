@@ -146,6 +146,21 @@ Example :: library {
 A function names its parameters and result type. Calls pass arguments in
 parameter order.
 
+Named definitions may write `fn` after `::`. A written result type may omit
+its `->` separator. Both choices preserve the function's signature. A function
+with one returned expression may use `=> expression` in place of a block:
+
+```chibi
+Double :: (value: int) -> int { return value * 2; }
+Triple :: fn(value: int) int => value * 3;
+```
+
+An expression body returns its expression, including an inferred result when
+the annotation is absent. A void call used as an expression body remains void.
+Inside another expression, a lambda's `=>` body has no trailing semicolon.
+An untyped lambda with a block writes `fn` to distinguish it from grouping.
+Callable *types* still write their `fn` keyword and result arrow.
+
 ```chibi
 // chibi-mit-example: damage-functions
 // SPDX-FileCopyrightText: 2026 Charles Waldner
@@ -295,6 +310,19 @@ Managed pointers cannot cross ordinary native-service or persistence boundaries.
 ## Conditions and loops
 
 `if` selects a branch. Conditions do not require parentheses.
+
+An `if`, `else`, `while` or `for` body may be one statement without braces. The
+statement has its own lexical scope, just as a braced body does. It may follow
+the header on the same line or the next line. An `else` belongs to the nearest
+unmatched `if`; use braces when the intended association would be unclear.
+An explicit `;` still ends a same-line statement. Empty `;` bodies are rejected.
+
+```chibi
+Choose :: (ready: bool) -> int {
+    if ready return 1;
+    else return 0;
+}
+```
 
 ```chibi
 Example :: library {

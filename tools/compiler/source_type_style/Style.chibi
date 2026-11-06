@@ -1,0 +1,260 @@
+package source_type_style
+
+import compiler "project:package_compiler"
+import catalog "project:compiler_catalog"
+import strings "core:strings"
+
+pub Inherit: int : -1;
+pub Preserve: int : 0;
+pub OmitRedundant: int : 1;
+pub Explicit: int : 2;
+pub Evident: int : 3;
+pub PreserveAliases: int : 0;
+pub Shortest: int : 1;
+pub Qualified: int : 2;
+
+pub Preferences :: struct {
+    bindings: int;
+    locals: int;
+    constants: int;
+    parameters: int;
+    results: int;
+    members: int;
+    public_types: int;
+    spelling: int;
+    analysis_target: int;
+}
+
+pub Defaults :: () -> Preferences {
+    return {bindings: Preserve, locals: Inherit, constants: Inherit, parameters: Preserve,
+            results: Preserve, members: Preserve, public_types: Inherit, spelling: PreserveAliases, analysis_target: 0};
+}
+
+pub Result :: union {
+    Rewritten(text: string, changed: int, skipped: int, notes: string)
+    | Rejected(message: string)
+}
+
+// The original binding-only API remains useful for native tools and tests.
+pub Rewrite :: (source: string, mode: int) -> Result {
+    preferences := Defaults(); preferences.bindings = mode;
+    return RewriteWith(source, preferences);
+}
+
+pub RewriteWith :: (source: string, preferences: Preferences) -> Result {
+    return RewriteProjectWith(source, preferences, "/formatter", [], [], ["/formatter/Main.chibi"], [source]);
+}
+
+pub RewriteProject :: (source: string, mode: int, project: string, collection_names: string[],
+                       collection_paths: string[], paths: string[], sources: string[]) -> Result {
+    preferences := Defaults(); preferences.bindings = mode;
+    return RewriteProjectWith(source, preferences, project, collection_names, collection_paths, paths, sources);
+}
+
+pub Prove :: (before: string, proposed: string) -> (same: bool, notes: string) {
+    proof := ProveFor(before, proposed, 0);
+    return (proof.same, proof.notes);
+}
+
+pub ProveFor :: (before: string, proposed: string, analysis_target: int) -> (same: bool, notes: string) {
+    proof := ProveProjectFor(before, proposed, "/formatter", [], [], ["/formatter/Main.chibi"], [before], analysis_target);
+    return (proof.same, proof.notes);
+}
+
+// One prepared analysis identifies actual void calls in the editable source.
+// The offsets are sorted and unique. They choose candidates; callers must
+// still prove the complete proposed rewrite before applying semantic edits.
+pub VoidExpressionsFor :: (source: string, analysis_target: int) -> (starts: int[], notes: string) {
+    found := VoidExpressionsProjectFor(source, "/formatter", [], [], ["/formatter/Main.chibi"], [source], analysis_target);
+    return (found.starts, found.notes);
+}
+
+pub VoidExpressionsProjectFor :: (source: string, project: string, collection_names: string[],
+                                  collection_paths: string[], paths: string[], sources: string[], analysis_target: int)
+    -> (starts: int[], notes: string) {
+    if (length(paths) == 0 || length(paths) != length(sources)) {
+        return ([], "Void-call analysis requires matching source paths and documents.");
+    }
+    if (analysis_target < 0 || analysis_target > 3) { return ([], "Invalid compiler analysis target."); }
+    if (compiler.TargetPackagePath(collection_names, collection_paths, paths[0])) {
+        return ([], "Void-call analysis preserves core:target itself because platform analysis materializes its constants.");
+    }
+    input := sources; input[0] = source;
+    switch Analyze(project, collection_names, collection_paths, paths, input, analysis_target) {
+        case .Rejected(diagnostic):
+            return ([], format_text("Void-call analysis needs the original program to compile: document {} at {}:{}: {}.",
+                                     diagnostic.document, diagnostic.line, diagnostic.column, diagnostic.message));
+        case .Analyzed(sites, signature):
+            return (compiler.VoidCallOffsets(signature, catalog.Names()), "");
+    }
+}
+
+// A caller may propose syntax or import changes as well as type annotations.
+// The first source is the editable document; dependencies remain unchanged.
+pub ProveProject :: (before: string, proposed: string, project: string, collection_names: string[],
+                     collection_paths: string[], paths: string[], sources: string[]) -> (same: bool, notes: string) {
+    proof := ProveProjectFor(before, proposed, project, collection_names, collection_paths, paths, sources, 0);
+    return (proof.same, proof.notes);
+}
+
+pub ProveProjectFor :: (before: string, proposed: string, project: string, collection_names: string[],
+                        collection_paths: string[], paths: string[], sources: string[], analysis_target: int) -> (same: bool, notes: string) {
+    if (before == proposed) { return (true, ""); }
+    if (length(paths) == 0 || length(paths) != length(sources)) {
+        return (false, "Compiler validation requires matching source paths and documents.");
+    }
+    if (analysis_target < 0 || analysis_target > 3) { return (false, "Invalid compiler analysis target."); }
+    if (compiler.TargetPackagePath(collection_names, collection_paths, paths[0])) {
+        return (false, "Compiler validation preserves core:target itself because platform analysis materializes its constants.");
+    }
+    input := sources; input[0] = before;
+    switch Analyze(project, collection_names, collection_paths, paths, input, analysis_target) {
+        case .Rejected(diagnostic):
+            return (false, format_text("Compiler validation needs the original program to compile: document {} at {}:{}: {}.",
+                                        diagnostic.document, diagnostic.line, diagnostic.column, diagnostic.message));
+        case .Analyzed(sites, signature):
+            input[0] = proposed;
+            switch Analyze(project, collection_names, collection_paths, paths, input, analysis_target) {
+                case .Rejected(diagnostic):
+                    return (false, format_text("Compiler validation rejected the proposed program: document {} at {}:{}: {}.",
+                                                diagnostic.document, diagnostic.line, diagnostic.column, diagnostic.message));
+                case .Analyzed(next_sites, next_signature):
+                    if (compiler.SameSemantics(signature, next_signature)) { return (true, ""); }
+                    return (false, "Compiler validation could not prove unchanged typed operations, conversions, signatures and lifetimes.");
+            }
+    }
+}
+
+Analyze :: (project: string, collection_names: string[], collection_paths: string[], paths: string[], sources: string[],
+            analysis_target: int) -> compiler.SourceAnalysis {
+    target := catalog.TargetFacts();
+    os := analysis_target + 1; arch := 1;
+    if (analysis_target == 1) { arch = 2; }
+    if (analysis_target == 3) { arch = 3; target.pointer_size = 4; }
+    return compiler.AnalyzeSourcesFor(project, collection_names, collection_paths, paths, sources, target,
+                                      catalog.Names(), catalog.Natives(), catalog.Ports(), catalog.Identities(), os, arch, 1);
+}
+
+Policy :: (site: compiler.TypeSite, preferences: Preferences) -> int {
+    mode := Inherit;
+    switch site.context {
+        case compiler.LocalTypeSite: mode = preferences.locals;
+        case compiler.ConstantTypeSite: mode = preferences.constants;
+        case compiler.ParameterTypeSite: mode = preferences.parameters;
+        case compiler.ReturnTypeSite: mode = preferences.results;
+        case compiler.MemberTypeSite: mode = preferences.members;
+        case: assert(false, "known type style context");
+    }
+    if (mode == Inherit) { mode = preferences.bindings; }
+    if (site.public_type && preferences.public_types != Inherit) { mode = preferences.public_types; }
+    return mode;
+}
+
+// The compiler checks a proposed batch twice, rather than rechecking per site.
+// Dependencies are borrowed unchanged; only the first document is edited.
+pub RewriteProjectWith :: (source: string, preferences: Preferences, project: string, collection_names: string[],
+                           collection_paths: string[], paths: string[], sources: string[]) -> Result {
+    for (mode in [preferences.bindings, preferences.locals, preferences.constants, preferences.parameters,
+                  preferences.results, preferences.members, preferences.public_types]) {
+        if (mode < Inherit || mode > Evident) { return Result.Rejected("Invalid type style policy"); }
+    }
+    if (preferences.bindings < Preserve || preferences.spelling < PreserveAliases || preferences.spelling > Qualified ||
+        preferences.analysis_target < 0 || preferences.analysis_target > 3) {
+        return Result.Rejected("Invalid type style preferences");
+    }
+    if (strings.TrimSpace(source) == "") { return Result.Rewritten(source, 0, 0, ""); }
+    if (preferences.bindings == Preserve && preferences.locals <= Preserve && preferences.constants <= Preserve &&
+        preferences.parameters <= Preserve && preferences.results <= Preserve && preferences.members <= Preserve &&
+        preferences.public_types <= Preserve && preferences.spelling == PreserveAliases) {
+        return Result.Rewritten(source, 0, 0, "");
+    }
+    if (length(paths) == 0 || length(paths) != length(sources)) {
+        return Result.Rejected("Type style requires matching source paths and documents");
+    }
+    if (compiler.TargetPackagePath(collection_names, collection_paths, paths[0])) {
+        return Result.Rewritten(source, 0, 1,
+            "Type style preserves core:target itself because platform analysis materializes its constants. Layout remains available.");
+    }
+    input := sources; input[0] = source;
+    switch Analyze(project, collection_names, collection_paths, paths, input, preferences.analysis_target) {
+        case .Rejected(diagnostic):
+            return Result.Rewritten(source, 0, 0,
+                format_text("Type style was not applied: document {} at {}:{}: {}. Layout is still available.",
+                            diagnostic.document, diagnostic.line, diagnostic.column, diagnostic.message));
+        case .Analyzed(sites, signature):
+            pieces: string[] = [];
+            at: int = 0;
+            changed: int = 0;
+            skipped: int = 0;
+            for (site in sites) {
+                if (site.document != 0) { continue; }
+                mode := Policy(site, preferences);
+                if (mode == Evident) {
+                    if (site.evident) { mode = OmitRedundant; }
+                    else { mode = Explicit; }
+                }
+                spelling := site.spelling;
+                if (preferences.spelling == Shortest) { spelling = site.shortest; }
+                normalize := site.declared && preferences.spelling != PreserveAliases && spelling != "" &&
+                             strings.Slice(source, site.type_start, site.type_end - site.type_start) != spelling;
+                add := mode == Explicit && !site.declared;
+                omit := mode == OmitRedundant && site.declared;
+                if (!add && !omit && !normalize) { continue; }
+                gap := strings.Slice(source, site.name_end, site.value_start - site.name_end);
+                if (omit && !site.can_omit) { skipped += 1; omit = false; }
+                if (!add && !omit && !normalize) { continue; }
+                if (site.protected || (add && spelling == "") ||
+                    strings.Contains(gap, "//") || strings.Contains(gap, "/*")) {
+                    skipped += 1;
+                    continue;
+                }
+                if (omit || add) {
+                    pieces.append(strings.Slice(source, at, site.name_end - at));
+                    if (site.context == compiler.ReturnTypeSite) {
+                        if (add) { pieces.append(format_text(" -> {} ", spelling)); }
+                        else { pieces.append(" "); }
+                    } else if (site.context == compiler.ParameterTypeSite || site.context == compiler.MemberTypeSite) {
+                        if (add) { pieces.append(format_text(": {} = ", spelling)); }
+                        else { pieces.append(" = "); }
+                    } else if (add) {
+                        if (site.constant) { pieces.append(format_text(": {} : ", spelling)); }
+                        else { pieces.append(format_text(": {} = ", spelling)); }
+                    } else {
+                        if (site.constant) { pieces.append(" :: "); }
+                        else { pieces.append(" := "); }
+                    }
+                    at = site.value_start;
+                } else {
+                    pieces.append(strings.Slice(source, at, site.type_start - at));
+                    pieces.append(spelling);
+                    at = site.type_end;
+                }
+                changed += 1;
+            }
+            if (changed == 0) {
+                notes := "";
+                if (skipped > 0) {
+                    notes = format_text("Type style left {} declaration(s) unchanged because a formatter directive, required/contextual type or attached comment prevents a safe rewrite.", skipped);
+                }
+                return Result.Rewritten(source, 0, skipped, notes);
+            }
+            pieces.append(strings.Slice(source, at, strings.ByteLength(source) - at));
+            rewritten := strings.Concatenate(pieces); input[0] = rewritten;
+            switch Analyze(project, collection_names, collection_paths, paths, input, preferences.analysis_target) {
+                case .Rejected(diagnostic):
+                    return Result.Rewritten(source, 0, skipped + changed,
+                        format_text("Type style kept the original {} candidate declaration(s): compiler validation failed at {}:{}: {}.",
+                                    changed, diagnostic.line, diagnostic.column, diagnostic.message));
+                case .Analyzed(next_sites, next_signature):
+                    if (!compiler.SameSemantics(signature, next_signature)) {
+                        return Result.Rewritten(source, 0, skipped + changed,
+                            format_text("Type style kept the original {} candidate declaration(s): the compiler could not prove unchanged typed operations, conversions, signatures and lifetimes.", changed));
+                    }
+                    notes := "";
+                    if (skipped > 0) {
+                        notes = format_text("Type style changed {} declaration(s); {} protected/required/contextual or commented declaration(s) were preserved.", changed, skipped);
+                    }
+                    return Result.Rewritten(rewritten, changed, skipped, notes);
+            }
+    }
+}

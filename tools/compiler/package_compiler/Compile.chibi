@@ -115,6 +115,8 @@ Ops :: struct {
     source_watch: int;
     // Whether the code carries debugger points and watches.
     debug: bool;
+    // Sparse local binding types are requested only by source analysis.
+    source_types: bool;
 }
 // A type: a storage code, whether it is an array, and for records, unions and
 // arrays of them the index of their declaration in `types`.
@@ -823,7 +825,7 @@ ResolveOps :: (names: string[], debug: bool) -> Ops {
             store: Ordinal(names, "STORE"), store_value: Ordinal(names, "STORE_VALUE"),
             owner: Ordinal(names, "OWNER"), query_variable: Ordinal(names, "QUERY_VARIABLE"), convert: Ordinal(names, "CONVERT"),
             source_point: Ordinal(names, "SOURCE_POINT"), source_watch: Ordinal(names, "SOURCE_WATCH"),
-            debug: debug};
+            debug: debug, source_types: false};
 }
 // Whether the target names every instruction this compiler emits.
 Complete :: (ops: Ops) -> bool {
@@ -2869,6 +2871,34 @@ LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, nod
 }
 // The signature of the function `member` named `name`, its params numbered
 // from `first`. Named results include text, arrays and boxed optionals.
+FunctionValueReturn :: (forest: snapshot.SnapshotNode[], body: int) -> bool {
+    if (body < 0) { return false; }
+    pending := [body];
+    top := 1;
+    while (top > 0) {
+        top -= 1;
+        at := pending[top];
+        if (at != body && (Is(forest, at, syntax.FunctionDeclaration) || Is(forest, at, syntax.MacroDeclaration) ||
+                           Is(forest, at, syntax.LambdaExpression))) { continue; }
+        if (Is(forest, at, syntax.ReturnStatement) && Field(forest, at, syntax.FieldValue) >= 0) { return true; }
+        child := forest[at].first_child;
+        while (child >= 0) {
+            if (top < length(pending)) { pending[top] = child; }
+            else { pending.append(child); }
+            top += 1;
+            child = forest[child].next_sibling;
+        }
+    }
+    return false;
+}
+DefaultParameterType :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> ValueType {
+    value: ValueType = {storage: 0, container: 0, record: -1};
+    if (node < 0) { return value; }
+    if (Is(forest, node, syntax.Boolean)) { value.storage = BoolStorage; }
+    else if (Is(forest, node, syntax.String)) { value.storage = TextStorage; }
+    else { value.storage = ConstantExpressionStorage(forest, text, node); }
+    return value;
+}
 FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], table: ^(TypeDecl[]),
                       aliases: Name[], package: int, file: int, member: int, name: string, first: int,
                       scopes: ScopeTable) -> Signature {
@@ -2902,6 +2932,9 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
             type_node = Field(forest, pointer, syntax.FieldTarget);
         }
         declared := ReadType(forest, text, table, aliases, package, type_node);
+        if (type_node < 0) {
+            declared = DefaultParameterType(forest, text, Field(forest, parameter, syntax.FieldValue));
+        }
         if (reference && CharType(table^, declared.storage, declared.container, declared.record)) {
             return Signature.Failed(Diagnose(forest, parameter, file, "char pointers are not supported yet"));
         }
@@ -2991,6 +3024,13 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
         if (result.storage == 0) {
             return Signature.Failed(Diagnose(forest, results, file, "result type is not supported yet"));
         }
+    } else if (Is(forest, member, syntax.FunctionDeclaration) &&
+               FunctionValueReturn(forest, Field(forest, member, syntax.FieldBody))) {
+        if (WaitingBody(forest, Field(forest, member, syntax.FieldBody))) {
+            return Signature.Failed(Diagnose(forest, member, file,
+                                               "Suspending functions with a value result require an explicit result type"));
+        }
+        result.storage = GenericInferStorage;
     }
     callable: Callable = {name: name, package: package, document: file, node: member, first: first, count: count,
                           result: result.storage, result_container: result.container, result_record: result.record,

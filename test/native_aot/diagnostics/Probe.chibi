@@ -1,6 +1,7 @@
 package probe
 
 import compiler "project:package_compiler"
+import catalog "project:compiler_catalog"
 import binding "project:lexical_binding"
 import facts "project:scalar_facts"
 import scalar "project:scalar_llvm"
@@ -10,7 +11,7 @@ import syntax "project:syntax_diagnostics"
 import os "core:os"
 import route "project:driver_paths"
 
-// run.sh appends the driver's actual catalog, not a second maintained copy.
+// The driver and this probe read the same source catalog.
 Main :: () -> int {
     TypedEffects();
     ExistingMathOverloads();
@@ -71,7 +72,7 @@ TypedEffects :: () {
     source := "package main\nimport other \"project:other\"\nforeign { External :: () -> int }\nMain :: () -> int { return 0; }\nPure :: () -> int { values: int[] = [1, 2]; values[0] = 3; return length(values); }\nCallsPure :: () -> int { return Pure(); }\nLeaf :: () -> int { return External(); }\nMid :: () -> int { return Leaf(); }\nCycleA :: (n: int) -> int { if (n > 0) { return CycleB(n - 1); } return Leaf(); }\nCycleB :: (n: int) -> int { return CycleA(n); }\nImported :: () -> int { return other.Value(); }\n";
     other := "package other\nforeign { ExternalOther :: () -> int }\npub Value :: () -> int { return ExternalOther(); }\nPure :: () -> int { return 1; }\n";
     collected := compiler.CollectScalarProgramWithEffects("/project", [], [], ["Main.chibi", "other/Other.chibi"],
-        [source, other], TargetFacts(), Names(), Natives(), Ports(), Identities(), 1, 1, "Main");
+        [source, other], catalog.TargetFacts(), catalog.Names(), catalog.Natives(), catalog.Ports(), catalog.Identities(), 1, 1, "Main");
     if (length(collected.rows) <= 2 || collected.rows[1].kind == facts.RejectionRow) {
         os.Print(collected.rows[length(collected.rows) - 1].text);
     }
@@ -89,13 +90,13 @@ TypedEffects :: () {
     assert(masks["Leaf"] == 3 && masks["Mid"] == 3 && masks["CycleA"] == 3 && masks["CycleB"] == 3 &&
            masks["Imported"] == 3, "foreign read/write effects close across calls and cycles");
     rejected := compiler.CollectScalarProgramWithEffects("/project", [], [], ["Main.chibi"],
-        ["package main\nMain :: () -> int { return Missing(); }\n"], TargetFacts(), Names(), Natives(), Ports(), Identities(), 1, 1, "Main");
+        ["package main\nMain :: () -> int { return Missing(); }\n"], catalog.TargetFacts(), catalog.Names(), catalog.Natives(), catalog.Ports(), catalog.Identities(), 1, 1, "Main");
     assert(length(rejected.effects) == 0 && rejected.rows[1].kind == facts.RejectionRow, "rejection publishes no partial masks");
 }
 
 Collect :: (paths: string[], sources: string[]) -> facts.Row[] {
     return compiler.CollectScalarProgram("/project", ["core"], ["/sdk/core"], paths, sources,
-                                         TargetFacts(), Names(), Natives(), Ports(), Identities(), 1, 1, "");
+                                         catalog.TargetFacts(), catalog.Names(), catalog.Natives(), catalog.Ports(), catalog.Identities(), 1, 1, "");
 }
 
 Rejected :: (paths: string[], sources: string[], joined: string, excerpt: string, message: string, line: int, column: int) {
@@ -133,9 +134,9 @@ Message :: (collections: string[], directories: string[], paths: string[], sourc
 // Reusing them must not inject duplicate candidates and create ambiguity.
 ExistingMathOverloads :: () {
     for (count in [int(1), 2]) {
-        natives := Natives();
-        ports := Ports();
-        identities := Identities();
+        natives := catalog.Natives();
+        ports := catalog.Ports();
+        identities := catalog.Identities();
         for (index in 0..<count) {
             storage := 11;
             if (index == 1) { storage = 10; }
@@ -148,7 +149,7 @@ ExistingMathOverloads :: () {
             identities.append(binding.ID("test-math-signature", format_text("fmod:{}", storage)));
         }
         source := "package main\nMain :: () -> int { return int(fmod(i64(16777217), i64(2))); }\n";
-        rows := compiler.CollectScalar("/project", "Main.chibi", source, TargetFacts(), Names(), natives, ports, identities);
+        rows := compiler.CollectScalar("/project", "Main.chibi", source, catalog.TargetFacts(), catalog.Names(), natives, ports, identities);
         assert(length(rows) > 1);
         if (count == 2) {
             assert(rows[1].kind != facts.RejectionRow, "existing canonical fmod overloads are not duplicated");
@@ -156,10 +157,10 @@ ExistingMathOverloads :: () {
         } else {
             assert(rows[1].kind == facts.RejectionRow, "a different catalog cannot silently gain f32 math");
             unused := "package main\nMain :: () -> int { return 0; }\n";
-            accepted := compiler.CollectScalar("/project", "Main.chibi", unused, TargetFacts(), Names(), natives, ports, identities);
+            accepted := compiler.CollectScalar("/project", "Main.chibi", unused, catalog.TargetFacts(), catalog.Names(), natives, ports, identities);
             assert(length(accepted) > 1 && accepted[1].kind != facts.RejectionRow, "unused capabilities remain valid");
             shadow := "package main\nMain :: () -> int { return fmod(); }\nfmod :: () -> int { return 42; }\n";
-            accepted = compiler.CollectScalar("/project", "Main.chibi", shadow, TargetFacts(), Names(), natives, ports, identities);
+            accepted = compiler.CollectScalar("/project", "Main.chibi", shadow, catalog.TargetFacts(), catalog.Names(), natives, ports, identities);
             assert(length(accepted) > 1 && accepted[1].kind != facts.RejectionRow, "authored fmod shadows an unsupported capability");
         }
     }

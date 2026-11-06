@@ -1,0 +1,7 @@
+package for_scope
+Main :: () -> int {
+    for index in 0..<2
+        hidden := index;
+    return hidden;
+}
+// error: 5:12: Unknown name 'hidden'

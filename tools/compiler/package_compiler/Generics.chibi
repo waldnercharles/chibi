@@ -702,11 +702,11 @@ SpecializePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                        links: graph.Binding[], package_names: string[], input_callables: Callable[], input_params: Param[],
                        table: ^(TypeDecl[]), members: TypeMember[], constants: ConstDecl[], natives: ResolvedNative[],
                        ports: ResolvedPort[], identities: u64[], context: BodyContext, ops: Ops, target: Target) -> GenericPlan {
-    has_templates := false;
+    needs_specialization := false;
     for (callable in input_callables) {
-        has_templates = has_templates || callable.count < 0;
+        needs_specialization = needs_specialization || callable.count < 0 || callable.result == GenericInferStorage;
     }
-    if (!has_templates) {
+    if (!needs_specialization) {
         return GenericPlan.Ready(input_callables, input_params, []);
     }
     callables := input_callables;
@@ -714,10 +714,17 @@ SpecializePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
     bindings: GenericBinding[] = [];
     instances: int = 0;
     current: int = 0;
+    prepared := resize([false], length(callables));
+    inferring := resize([false], length(callables));
+    dependencies: int[] = [];
     scoped := forest;
     scoped_callables: int = -1;
     scoped_params: int = -1;
     while (current < length(callables)) {
+        if (length(prepared) < length(callables)) {
+            prepared = resize(prepared, length(callables)); inferring = resize(inferring, length(callables));
+        }
+        if (prepared[current]) { current += 1; continue; }
         callable := callables[current];
         if (callable.count < 0) {
             current += 1;
@@ -759,9 +766,21 @@ SpecializePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                         return GenericPlan.Failed(diagnostic);
                 }
             case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects, direct_write, facts):
-                current += 1;
+                prepared[current] = true; inferring[current] = false;
+                if (length(dependencies) > 0) {
+                    last := length(dependencies) - 1; current = dependencies[last];
+                    dependencies = resize(dependencies, last);
+                } else { current += 1; }
             case .Specialize(template, call, arguments, caller_names):
                 definition := callables[template];
+                if (definition.count >= 0 && definition.result == GenericInferStorage) {
+                    if (template == current || inferring[template]) {
+                        return GenericPlan.Failed(Diagnose(forest, call, callable.document,
+                                                           "Recursive result inference requires an explicit result type"));
+                    }
+                    inferring[current] = true; dependencies.append(current); current = template;
+                    continue;
+                }
                 source := documents[definition.document];
                 switch GenericNames(forest, source.text, definition.document, definition, table, arguments) {
                     case .Failed(diagnostic):

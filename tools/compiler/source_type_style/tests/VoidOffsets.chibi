@@ -1,0 +1,29 @@
+package source_type_style_tests
+
+import compiler "project:package_compiler"
+import catalog "project:compiler_catalog"
+import strings "core:strings"
+
+@test
+VoidHintsClassifyTheResolvedCallRatherThanItsEnclosingReturnType :: () {
+    source := "package p\nDone :: () {}\nRead :: () -> int { return 3; }\nInvoke :: () { Done(); }\nIgnored :: () { Read(); }\nPrint :: () { print_string(\"hello\"); }\nChecked :: () { assert(true); }\n";
+    switch compiler.AnalyzeSources("/formatter", [], [], ["/formatter/Main.chibi"], [source], catalog.TargetFacts(), catalog.Names(), catalog.Natives(), catalog.Ports(), catalog.Identities()) {
+        case .Rejected(diagnostic): print_string(diagnostic.message); assert(false, "valid calls are analyzed");
+        case .Analyzed(sites, signature):
+            offsets := compiler.VoidCallOffsets(signature, catalog.Names());
+            assert(length(offsets) == 2 && offsets[0] == strings.Index(source, "Done();") &&
+                   offsets[1] == strings.Index(source, "print_string("), "authored/native void calls are eligible and ignored values/inlined checks stay conservative");
+    }
+}
+
+@test
+VoidHintsExcludeTaskHandlesNamedResultsAndInstantiatedTemplates :: () {
+    source := "package p\nDone :: () {}\nWaiting :: () { yield; }\nSpawn :: () { Waiting(); }\nNamed :: () -> (result: int) { Done(); }\nGeneric :: (value: $T) { Done(); }\nInvoke :: () { Generic(3); }\n";
+    other := "package p\nElsewhere :: () { Done(); }\n";
+    switch compiler.AnalyzeSources("/formatter", [], [], ["/formatter/Main.chibi", "/formatter/Other.chibi"], [source, other], catalog.TargetFacts(), catalog.Names(), catalog.Natives(), catalog.Ports(), catalog.Identities()) {
+        case .Rejected(diagnostic): print_string(diagnostic.message); assert(false, "valid tasks and templates are analyzed");
+        case .Analyzed(sites, signature):
+            offsets := compiler.VoidCallOffsets(signature, catalog.Names());
+            assert(length(offsets) == 1 && offsets[0] == strings.Index(source, "Generic(3)"), "only the concrete document-zero call has a plain void result");
+    }
+}

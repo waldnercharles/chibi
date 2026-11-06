@@ -1,0 +1,274 @@
+package formatter_wasm_build
+
+import os "core:os"
+import sys "core:sys/posix"
+import strings "core:strings"
+import json "core:encoding/json"
+import wasmtools "graph:wasm_toolchain"
+
+Join :: (parts: string[]) -> string { return strings.Concatenate(parts); }
+Parent :: (path: string) -> string {
+    at := strings.LastIndex(path, "/");
+    if (at == 0) { return "/"; }
+    return strings.Slice(path, 0, at);
+}
+Run :: (command: string[]) -> bool {
+    status := os.Run(command);
+    if (status != 0) { os.Print(format_text("formatter: {} failed with status {}", command[0], status)); }
+    return status == 0;
+}
+RemoveTree :: (path: string) -> bool {
+    if (os.Kind(path) == os.KindDirectory) {
+        listed := os.List(path);
+        if (listed.error != nil) { return false; }
+        for (name in listed.names) {
+            if (!RemoveTree(Join([path, "/", name]))) { return false; }
+        }
+    }
+    return os.Remove(path) == nil;
+}
+Hash :: (path: string) -> string {
+    hashed := os.HashFile(path);
+    if (hashed.error != nil) { return ""; }
+    return hashed.digest;
+}
+
+// Source contents, including newly added packages, determine the formatter.
+// Generated build trees are not compiler inputs.
+SourceInputs :: (directory: string, chunks: ^(string[])) -> bool {
+    listed := os.List(directory);
+    if (listed.error != nil) { return false; }
+    for (name in listed.names) {
+        if (strings.HasPrefix(name, ".") || name == "build" || strings.HasPrefix(name, "build-")) { continue; }
+        path := Join([directory, "/", name]);
+        if (os.Kind(path) == os.KindDirectory) {
+            if (!SourceInputs(path, chunks)) { return false; }
+        } else if (strings.HasSuffix(name, ".chibi")) {
+            digest := Hash(path);
+            if (digest == "") { return false; }
+            chunks.append(format_text("{}:{}{}", strings.ByteLength(path), path, digest));
+        }
+    }
+    return true;
+}
+
+Assets :: () -> string[] {
+    return ["index.html", "app.css", "app.js", "client.mjs", "config.mjs", "diff.js", "options.js",
+            "protocol.mjs", "project-context.mjs", "tree.js", "worker.mjs"];
+}
+
+InputDigest :: (root: string, driver: string, toolchain: wasmtools.ToolchainInputs) -> string {
+    chunks := [toolchain.configuration];
+    if (!SourceInputs(Join([root, "/tools/compiler"]), &chunks) ||
+        !SourceInputs(Join([root, "/packages/core"]), &chunks)) { return ""; }
+    files := toolchain.files;
+    files.append(driver);
+    for (path in ["tools/graph/formatter_wasm/Build.chibi", "tools/graph/wasm_toolchain/Toolchain.chibi",
+                  "tools/docs/playground/build.sh", "tools/docs/playground/wasm/Main.chibi",
+                  "tools/docs/playground/wasm/api.c", "src/runtime/program_wasm.c", "src/runtime/program_wasm.h",
+                  "tools/compiler/source_format/options.json", "tools/docs/playground/generate-options.mjs",
+                  "tools/docs/theme.css"]) {
+        files.append(Join([root, "/", path]));
+    }
+    for (name in Assets()) { files.append(Join([root, "/tools/docs/playground/", name])); }
+    for (path in files) {
+        chunks.append(format_text("{}:{}", strings.ByteLength(path), path));
+        if (os.Kind(path) != os.KindDirectory) {
+            digest := Hash(os.RealPath(path));
+            if (digest == "") { return ""; }
+            chunks.append(digest);
+        }
+    }
+    return os.HashText(Join(chunks));
+}
+
+Compile :: (root: string, driver: string, emcc: string, llvm: string, work: string, site: string) -> bool {
+    os.Print("formatter: compile the authored formatter to WebAssembly");
+    bundle := Join([work, "/formatter.ll"]);
+    if (!Run([driver, "--compiler", Join([root, "/tools/compiler"]), "--core", Join([root, "/packages/core"]),
+              "--source", Join([root, "/tools/docs/playground/wasm/Main.chibi"]), "--entry", "Main",
+              "--target", "wasm32-unknown-emscripten", "--emit-llvm", "--output", bundle])) { return false; }
+    read := os.ReadText(bundle);
+    if (read.error != nil) { return false; }
+    pieces := strings.Split(read.text, "\n; chibi-piece\n");
+    command := [emcc, "-O2",
+                "-sSUPPORT_LONGJMP=wasm", "-sSTACK_OVERFLOW_CHECK=2", "-sSTACK_SIZE=8388608",
+                "-sALLOW_MEMORY_GROWTH=1", "-sMAXIMUM_MEMORY=2147483648", "-sFILESYSTEM=0",
+                "-sENVIRONMENT=web,worker,node", "-sEXPORT_ES6=1", "-sMODULARIZE=1",
+                "-sEXPORTED_FUNCTIONS=[\"_malloc\",\"_free\",\"_chibi_formatter_format\",\"_chibi_formatter_set_context\",\"_chibi_formatter_result\",\"_chibi_formatter_result_length\",\"_chibi_formatter_error\"]",
+                "-sEXPORTED_RUNTIME_METHODS=[\"HEAPU8\"]", "--no-entry"];
+    for (runtime, index in ["src/runtime/program_wasm.c", "tools/docs/playground/wasm/api.c"]) {
+        bitcode := format_text("{}/runtime-{}.bc", work, index);
+        if (!Run([emcc, "-O2", "-std=c11", "-Wall", "-Wextra", "-Werror", "-flto", "-I", Join([root, "/src"]),
+                  "-sSUPPORT_LONGJMP=wasm", "-c", Join([root, "/", runtime]), "-o", bitcode])) { return false; }
+        command.append(bitcode);
+    }
+    for (piece, index in pieces) {
+        source := format_text("{}/piece-{}.ll", work, index);
+        bitcode := format_text("{}/piece-{}.bc", work, index);
+        if (os.WriteText(source, piece) != nil) { return false; }
+        if (!Run([Join([llvm, "/opt"]), "-passes=default<O2>,verify", source, "-o", bitcode])) { return false; }
+        command.append(bitcode);
+    }
+    command.extend(["-o", Join([site, "/wasm/engine.mjs"])]);
+    return Run(command);
+}
+
+// Redirect Git's NUL-separated inventory to files rather than a bounded process
+// capture. A large repository must not silently lose the end of its file list.
+Tracked :: (root: string, work: string) -> (paths: string[], error: string) {
+    output := Join([work, "/tracked"]);
+    errors := Join([work, "/git-errors"]);
+    pid := sys.StartRedirected(["git", "-C", root, "ls-files", "--cached", "-z", "--", "*.chibi"], output, errors, true);
+    if (pid < 0 || sys.WaitFor(pid, -1) != 0) { return ([], "cannot list tracked Chibi sources"); }
+    read := os.ReadText(output);
+    if (read.error != nil) { return ([], "cannot read tracked Chibi sources"); }
+    paths: string[] = [];
+    for (path in strings.Split(read.text, text_from_bytes([u8(0)]))) {
+        if (path == "") { continue; }
+        if (strings.HasPrefix(path, "/") || !strings.HasSuffix(path, ".chibi")) { return ([], "invalid tracked source path"); }
+        for (segment in strings.Split(path, "/")) {
+            if (segment == "" || segment == "." || segment == "..") { return ([], "invalid tracked source path"); }
+        }
+        full := Join([root, "/", path]);
+        kind := os.Kind(full);
+        // An unstaged deletion remains in Git's index. Package the checked-out
+        // source; the second inventory detects a deletion during this build.
+        if (kind == os.KindNone) { continue; }
+        if (kind != os.KindFile || !strings.HasPrefix(os.RealPath(full), Join([root, "/"]))) {
+            return ([], Join(["tracked source is not a regular file: ", path]));
+        }
+        paths.append(path);
+    }
+    return (paths, "");
+}
+
+// Only authored compiler/core additions join the dependency inventory. Other
+// untracked files remain local; tracked examples keep their separate catalog.
+ExtraSources :: (root: string, directory: string, tracked: [string: bool], paths: ^(string[])) -> bool {
+    listed := os.List(directory);
+    if (listed.error != nil) { return false; }
+    for (name in listed.names) {
+        if (strings.HasPrefix(name, ".") || name == "build" || strings.HasPrefix(name, "build-")) { continue; }
+        full := Join([directory, "/", name]);
+        kind := os.Kind(full);
+        if (kind == os.KindDirectory) {
+            if (!strings.HasPrefix(os.RealPath(full), Join([root, "/"])) ||
+                !ExtraSources(root, full, tracked, paths)) { return false; }
+        } else if (strings.HasSuffix(name, ".chibi")) {
+            if (kind != os.KindFile || !strings.HasPrefix(os.RealPath(full), Join([root, "/"]))) { return false; }
+            relative := strings.Slice(full, strings.ByteLength(root) + 1,
+                                      strings.ByteLength(full) - strings.ByteLength(root) - 1);
+            if (!tracked.has(relative)) { paths.append(relative); }
+        }
+    }
+    return true;
+}
+
+ContextPaths :: (root: string, tracked_paths: string[]) -> (paths: string[], error: string) {
+    tracked: [string: bool] = [:];
+    for (path in tracked_paths) { tracked[path] = true; }
+    paths := tracked_paths;
+    for (directory in ["tools/compiler", "packages/core"]) {
+        if (!ExtraSources(root, Join([root, "/", directory]), tracked, &paths)) {
+            return ([], "cannot list compiler dependency sources");
+        }
+    }
+    return (paths, "");
+}
+
+Package :: (root: string, site: string, tracked_paths: string[], context_paths: string[]) -> string {
+    os.Print(format_text("formatter: package {} tracked examples and {} project sources", length(tracked_paths), length(context_paths)));
+    for (name in Assets()) {
+        if (os.Copy(Join([root, "/tools/docs/playground/", name]), Join([site, "/", name])) != nil) { return ""; }
+    }
+    if (os.Copy(Join([root, "/tools/docs/theme.css"]), Join([site, "/theme.css"])) != nil) { return ""; }
+    records: string[] = [];
+    dependencies: string[] = [];
+    tracked: [string: bool] = [:];
+    for (path in tracked_paths) { tracked[path] = true; }
+    for (path in context_paths) {
+        source := Join([root, "/", path]);
+        read := os.ReadText(source);
+        if (read.error != nil) { return ""; }
+        digest := os.HashText(read.text);
+        destination := Join([site, "/sources/", path]);
+        if (os.MakeDirectory(Parent(destination)) != nil || os.Copy(source, destination) != nil || Hash(destination) != digest) { return ""; }
+        record := format_text("{{\"path\":{},\"bytes\":{},\"sha256\":\"{}\"}}", json.JsonQuote(path), strings.ByteLength(read.text), digest);
+        dependencies.append(record);
+        if (tracked.has(path)) { records.append(record); }
+    }
+    manifest := Join(["{\"files\":[", strings.Join(records, ","), "]}\n"]);
+    contexts := Join(["{\"files\":[", strings.Join(dependencies, ","), "]}\n"]);
+    if (os.WriteText(Join([site, "/files.json"]), manifest) != nil ||
+        os.WriteText(Join([site, "/context_files.json"]), contexts) != nil ||
+        os.WriteText(Join([site, "/.nojekyll"]), "") != nil) { return ""; }
+    return os.HashText(manifest);
+}
+
+VerifySources :: (root: string, site: string, paths: string[]) -> bool {
+    for (path in paths) {
+        current := Hash(Join([root, "/", path]));
+        copied := Hash(Join([site, "/sources/", path]));
+        if (current == "" || copied == "" || current != copied) { return false; }
+    }
+    return true;
+}
+
+Main :: () -> int {
+    args := os.Arguments();
+    if (length(args) != 5) {
+        os.Print("usage: formatter-wasm-build SOURCE_ROOT NATIVE_DRIVER EMCC WASM_LLVM_BIN OUTPUT_DIRECTORY"); return 2;
+    }
+    root := os.RealPath(args[0]);
+    driver := os.RealPath(args[1]);
+    emcc := os.RealPath(args[2]);
+    llvm := os.RealPath(args[3]);
+    output := args[4];
+    if (!os.IsDirectory(root) || !os.IsFile(driver) || !os.IsFile(emcc) || !os.IsDirectory(llvm) ||
+        !strings.HasPrefix(output, "/") || strings.HasSuffix(output, "/") || os.Kind(output) != os.KindNone) {
+        os.Print("formatter: tools must exist and output must be a new absolute directory"); return 2;
+    }
+    parent := Parent(output);
+    if (os.MakeDirectory(parent) != nil) { return 1; }
+    toolchain := wasmtools.Toolchain(emcc, llvm);
+    if (toolchain.error != "") { os.Print(toolchain.error); return 2; }
+    if (!Run(["node", Join([root, "/tools/docs/playground/generate-options.mjs"]), "--check"])) { return 1; }
+    before := InputDigest(root, driver, toolchain);
+    if (before == "") { os.Print("formatter: cannot verify build inputs"); return 1; }
+    temporary := os.TemporaryDirectory(parent);
+    if (temporary.error != nil) { return 1; }
+    site := Join([temporary.path, "/site"]);
+    ready := os.MakeDirectory(Join([site, "/wasm"])) == nil;
+    tracked := Tracked(root, temporary.path);
+    if (tracked.error != "") { os.Print(Join(["formatter: ", tracked.error])); ready = false; }
+    contexts := ContextPaths(root, tracked.paths);
+    if (contexts.error != "") { os.Print(Join(["formatter: ", contexts.error])); ready = false; }
+    if (ready) { ready = Compile(root, driver, emcc, llvm, temporary.path, site); }
+    inventory := "";
+    if (ready) { inventory = Package(root, site, tracked.paths, contexts.paths); ready = inventory != ""; }
+    if (ready) {
+        verified := Tracked(root, temporary.path);
+        verified_contexts := ContextPaths(root, verified.paths);
+        verified_tools := wasmtools.Toolchain(emcc, llvm);
+        ready = verified.error == "" && strings.Join(verified.paths, "\n") == strings.Join(tracked.paths, "\n") &&
+                verified_contexts.error == "" && strings.Join(verified_contexts.paths, "\n") == strings.Join(contexts.paths, "\n") &&
+                VerifySources(root, site, contexts.paths) && verified_tools.error == "" &&
+                InputDigest(root, driver, verified_tools) == before;
+        if (!ready) { os.Print("formatter: source or tool inputs changed during preparation"); }
+    }
+    if (ready) {
+        revision := os.Capture(["git", "-C", root, "rev-parse", "HEAD"]);
+        javascript := Hash(Join([site, "/wasm/engine.mjs"]));
+        wasm := Hash(Join([site, "/wasm/engine.wasm"]));
+        receipt := format_text("{{\"format\":1,\"target\":\"wasm32-unknown-emscripten\",\"source_revision\":{},\"inputs_sha256\":\"{}\",\"compiler_sha256\":\"{}\",\"files_sha256\":\"{}\",\"context_files_sha256\":\"{}\",\"javascript_sha256\":\"{}\",\"wasm_sha256\":\"{}\"}}\n",
+                              json.JsonQuote(strings.TrimSpace(revision.stdout)), before, Hash(driver), inventory,
+                              Hash(Join([site, "/context_files.json"])), javascript, wasm);
+        ready = revision.status == 0 && javascript != "" && wasm != "" &&
+                os.WriteText(Join([site, "/build.json"]), receipt) == nil && os.Publish(site, output) == nil;
+    }
+    cleaned := RemoveTree(temporary.path);
+    if (!ready || !cleaned) { os.Print("formatter: build failed; destination was not replaced"); return 1; }
+    os.Print(Join(["formatter: static playground ready at ", output]));
+    return 0;
+}

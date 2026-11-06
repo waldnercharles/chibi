@@ -51,6 +51,7 @@ Trimmed :: (digits: int[], count: int, point: int, trunc: bool) -> Decimal {
 // point counts every significant digit read, those beyond the stored ones
 // too.
 DecimalOf :: (spelling: string) -> Decimal {
+    spelling = tk.NumericText(spelling);
     size := strings.ByteLength(spelling);
     digits: int[] = [];
     count: int = 0;
@@ -152,6 +153,7 @@ Added :: (digits: int[], count: int, point: int, trunc: bool, value: int) -> Dec
 
 // The decimal of a hexadecimal integer literal, `0x` and its digits.
 HexDecimalOf :: (spelling: string) -> Decimal {
+    spelling = tk.NumericText(spelling);
     size := strings.ByteLength(spelling);
     digits: int[] = [];
     count: int = 0;

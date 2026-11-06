@@ -22,6 +22,9 @@ tool	chibi-cli-authored	@host@	--compiler	tools/compiler	--compiler-core	package
 tool	native-workload-benchmark	@build@/test/tools/test_tools	--native-workload-benchmark	@release@/sdk/chibi
 tool	chibi-cli-installed	@build@/test/tools/test_tools	--chibi-cli-installed	dist/sdk/bin/chibi
 tool	native-link	sh	test/native_aot/link/run.sh	@compiler@	@llvm@
+tool	language-control-bodies	sh	test/native_aot/control_bodies/check.sh	@compiler@	@llvm@
+tool	language-function-styles	sh	test/native_aot/function_styles/check.sh	@compiler@	@llvm@
+tool	language-literal-styles	sh	test/native_aot/literal_styles/check.sh	@compiler@	@llvm@
 tool	native-build-entry	sh	test/bootstrap/native-entry.sh
 tool	build-process	@build@/test/tools/test_tools	--build-process	@build@/test/tools/policy_worker	@host@
 tool	build-timings	@build@/test/tools/test_tools	--build-timings	@build@/test/tools/policy_worker	@host@
@@ -50,6 +53,7 @@ tool	fmt	@build@/test/tools/test_tools	--fmt
 tool	language-test-parallel	@build@/test/language/test_language	--test-parallel
 tool	language-ranges	@build@/test/language/test_language	--ranges
 tool	chibi-test-compiler	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/tools/compiler
+tool	chibi-test-number-literals	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	--root	@root@/tools/compiler	@root@/tools/compiler/number_literals/tests
 tool	language-map-receivers	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/native_aot/map_programs/ArrayPayload.chibi	--core	packages/core	--entry	Main	--timeout-ms	120000
 tool	chibi-test-core	@release@/sdk/chibi	test	packages/core
 tool	chibi-test-integer-arithmetic	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/test/integer_arithmetic
@@ -88,6 +92,6 @@ timeout	bootstrap-load	1800
 exclusive	language-test-parallel
 group	native	native-values	graph-c	box3d	persistent-store	whole-integer	whole-select	whole-math	asset-values	fmt	arena	build-process	build-process-files	build-timings
 group	projects	chibi-cli	chibi-cli-authored	native-build	native-build-entry
-group	language	language-map-receivers	language-test-parallel	execution-scope	language-execution	language-program	language-ranges	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-comptime	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	chibi-test-core-strings	chibi-test-time	chibi-test-portable-consumer	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	compiler-bootstrap	language-native-census-flattening	bootstrap-recovery	native-link
+group	language	language-control-bodies	language-function-styles	language-literal-styles	language-map-receivers	language-test-parallel	execution-scope	language-execution	language-program	language-ranges	chibi-test-compiler	chibi-test-number-literals	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-comptime	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	chibi-test-core-strings	chibi-test-time	chibi-test-portable-consumer	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	compiler-bootstrap	language-native-census-flattening	bootstrap-recovery	native-link
 group	compiler	language-package-compiler-chibi-scalar
 group	benchmarks	native-workload-benchmark

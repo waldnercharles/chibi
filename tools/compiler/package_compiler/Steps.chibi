@@ -348,6 +348,21 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     changing := item.phase == 0 && !ops.debug && kind == syntax.ExpressionStatement &&
                 LocalPush(forest, text, callables, natives, ports, identities, names, package, generic_updates,
                           item.node);
+    if (item.phase == 0 && !ops.debug && kind == syntax.ExpressionStatement && generic_updates.contains(item.node) &&
+        LocalPush(forest, text, callables, natives, ports, identities, names, package, [], item.node)) {
+        // A generic fallback changes the lowering, not the update's resolved
+        // semantic item. Keep its marker before visiting the argument so the
+        // stability check can compare the same WRITE contract on both passes.
+        value := StatementValue(forest, item.node);
+        receiver := StatementTarget(forest, item.node);
+        found := Lookup(names, Text(forest, text, receiver));
+        switch InPlaceUpdate(forest, text, callables, natives, ports, identities, names, package, found, receiver, value) {
+            case .NotApplicable: assert(false, "a local push retains its resolved update");
+            case .InPlace(mode, array, supplied, native):
+                next.append(RecordSemantic(item.node, UpdateFact, supplied));
+                next.append(RecordSemantic(value, NativeFact, native));
+        }
+    }
     if (item.phase == 0) {
         code.append(Instruction(ops.check, 0, 0, 0, 0, 0, node));
         value := Field(forest, item.node, syntax.FieldValue);
@@ -697,6 +712,12 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     } else if (item.phase == ValuePhase) {
         popped = 1;
         result := values[top - 1];
+        if (kind == syntax.ReturnStatement && callable.result == 0 && result.storage == -1) {
+            code.append(CompletionCode(ops, node));
+            code.append(Instruction(ops.finish, 0, 0, 0, 0, 0, node));
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                                popped, NoValue(), retained, marks);
+        }
         if (result.storage < 0 && result.storage != NumberStorage && !Single(result, ResultsStorage) &&
             !Single(result, FunctionResultsStorage) && kind != syntax.ExpressionStatement) {
             return Fail(forest, item.node, document, "call has no value");

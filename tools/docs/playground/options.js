@@ -1,0 +1,3720 @@
+// Generated from tools/compiler/source_format/options.json.
+const OPTION_GROUPS = [
+  {
+    "name": "Profiles",
+    "items": [
+      {
+        "key": "profile",
+        "kind": "choice",
+        "label": "Style profile",
+        "default": "current_v1",
+        "choices": [
+          {
+            "value": "current_v1",
+            "label": "Current v1"
+          },
+          {
+            "value": "compact_v1",
+            "label": "Compact v1"
+          },
+          {
+            "value": "expanded_v1",
+            "label": "Expanded v1"
+          },
+          {
+            "value": "tabular_v1",
+            "label": "Tabular v1"
+          }
+        ],
+        "help": "Apply a versioned set of settings. Individual settings override the selected profile."
+      }
+    ]
+  },
+  {
+    "name": "Width",
+    "items": [
+      {
+        "key": "preferred_width",
+        "kind": "number",
+        "label": "Preferred width",
+        "default": 0,
+        "min": 0,
+        "max": 400,
+        "step": 10,
+        "zero": "Off",
+        "help": "The column wrapping aims for. Off keeps your line breaks inside brackets. On, a bracket group that fits stays on one line; one that does not breaks after the bracket, after each comma and before the closer.",
+        "also": "Prettier printWidth, Black line-length, clang-format ColumnLimit, rustfmt max_width"
+      },
+      {
+        "key": "magic_trailing_comma",
+        "kind": "bool",
+        "label": "Trailing comma forces a break",
+        "default": true,
+        "help": "With wrapping on, a group whose last item ends in a comma always breaks, even when it would fit.",
+        "also": "Black and Ruff magic trailing comma, dart format preserve"
+      }
+    ]
+  },
+  {
+    "name": "Indentation",
+    "items": [
+      {
+        "key": "use_tabs",
+        "kind": "choice",
+        "label": "Indent with",
+        "default": false,
+        "choices": [
+          {
+            "value": false,
+            "label": "Spaces"
+          },
+          {
+            "value": true,
+            "label": "Tabs"
+          }
+        ],
+        "help": "Tabs write one tab per level. Alignment past the levels, such as arguments under an open parenthesis, still uses spaces, so it survives any tab width.",
+        "also": "Prettier useTabs, clang-format UseTab, rustfmt hard_tabs, EditorConfig indent_style"
+      },
+      {
+        "key": "indent_width",
+        "kind": "number",
+        "label": "Indent width",
+        "default": 4,
+        "min": 1,
+        "max": 16,
+        "help": "Columns per level. With tabs, the width a tab counts for when aligning continued lines.",
+        "also": "Prettier tabWidth, clang-format IndentWidth, rustfmt tab_spaces, EditorConfig indent_size"
+      },
+      {
+        "key": "continuation_indent",
+        "kind": "number",
+        "label": "Continuation indent",
+        "default": 0,
+        "min": 0,
+        "max": 16,
+        "zero": "1 level",
+        "help": "How far a continued line is indented when it is not aligned: after a bracket that ends its line, or always when alignment is off.",
+        "also": "clang-format ContinuationIndentWidth, Artistic Style --indent-continuation"
+      },
+      {
+        "key": "align_after_open_bracket",
+        "kind": "bool",
+        "label": "Align after open bracket",
+        "default": true,
+        "help": "Lines continued inside a bracket line up under its first item. Off, they take the continuation indent.",
+        "also": "clang-format AlignAfterOpenBracket, rustfmt indent_style Visual"
+      },
+      {
+        "key": "align_operands",
+        "kind": "bool",
+        "label": "Align operands",
+        "default": true,
+        "help": "A continued operand of a binary expression lines up with the first operand. Off, it takes the continuation indent.",
+        "also": "clang-format AlignOperands"
+      },
+      {
+        "key": "indent_case_labels",
+        "kind": "bool",
+        "label": "Indent case labels",
+        "default": true,
+        "help": "case labels sit one level inside their switch. Off, they line up with the switch.",
+        "also": "clang-format IndentCaseLabels, odinfmt indent_cases, swift-format indentSwitchCaseLabels"
+      },
+      {
+        "key": "indent_foreign_blocks",
+        "kind": "bool",
+        "label": "Indent foreign contents",
+        "default": false,
+        "help": "Indent declarations one level inside this kind of block. Braces retain the enclosing indentation."
+      },
+      {
+        "key": "indent_when_blocks",
+        "kind": "bool",
+        "label": "Indent when contents",
+        "default": false,
+        "help": "Indent declarations one level inside this kind of block. Braces retain the enclosing indentation."
+      },
+      {
+        "key": "tab_width",
+        "kind": "number",
+        "label": "Tab display width",
+        "default": 0,
+        "min": 0,
+        "max": 16,
+        "help": "Columns displayed by a tab; zero uses Indent width. Tabs indent and spaces align.",
+        "zero": "Indent width"
+      }
+    ]
+  },
+  {
+    "name": "Blocks",
+    "items": [
+      {
+        "key": "brace_placement",
+        "kind": "choice",
+        "label": "Opening braces",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "attach",
+            "label": "Attached"
+          },
+          {
+            "value": "next_line",
+            "label": "Next line"
+          }
+        ],
+        "help": "Keep opening block braces where you wrote them, attach them to their header, or place them on the next line. Literal braces keep their list layout.",
+        "also": "clang-format BreakBeforeBraces, Rider brace layout, dprint bracePosition"
+      },
+      {
+        "key": "branch_braces",
+        "kind": "choice",
+        "label": "Body braces",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "always",
+            "label": "Always"
+          },
+          {
+            "value": "omit_single",
+            "label": "Omit simple"
+          }
+        ],
+        "help": "Keep, require, or omit braces around one simple statement in an if, else or while body. Empty bodies, multiple statements, nested controls and comments retain their braces.",
+        "also": "Rider optional braces, dprint useBraces"
+      },
+      {
+        "key": "empty_blocks",
+        "kind": "choice",
+        "label": "Empty blocks",
+        "default": "keep",
+        "choices": [
+          {
+            "value": "keep",
+            "label": "Keep"
+          },
+          {
+            "value": "collapse",
+            "label": "{}"
+          },
+          {
+            "value": "expand",
+            "label": "{ ↵ }"
+          }
+        ],
+        "help": "An empty block as you wrote it, collapsed to {} or expanded over two lines.",
+        "also": "clang-format AllowShortBlocksOnASingleLine: Empty"
+      },
+      {
+        "key": "keep_one_line_blocks",
+        "kind": "bool",
+        "label": "Keep one-line blocks",
+        "default": false,
+        "help": "A block you wrote on one line, such as if (x) { return y; }, stays on one line.",
+        "also": "clang-format AllowShortBlocksOnASingleLine, Artistic Style --keep-one-line-blocks"
+      },
+      {
+        "key": "following_keyword",
+        "kind": "choice",
+        "label": "Following else",
+        "default": "same_line",
+        "choices": [
+          {
+            "value": "same_line",
+            "label": "Same line"
+          },
+          {
+            "value": "next_line",
+            "label": "Next line"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the following else policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "unbraced_body_placement",
+        "kind": "choice",
+        "label": "Unbraced body placement",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "same_line",
+            "label": "Same line"
+          },
+          {
+            "value": "next_line",
+            "label": "Next line"
+          }
+        ],
+        "help": "Place one-statement control bodies independently of brace presence. Comments and grammar continuation hazards retain safe line breaks."
+      }
+    ]
+  },
+  {
+    "name": "Brace overrides",
+    "items": [
+      {
+        "key": "function_braces",
+        "kind": "choice",
+        "label": "Function braces",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use general brace setting"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "attach",
+            "label": "Attached"
+          },
+          {
+            "value": "next_line",
+            "label": "Next line"
+          }
+        ],
+        "help": "Select the function braces policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "control_braces",
+        "kind": "choice",
+        "label": "Control braces",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use general brace setting"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "attach",
+            "label": "Attached"
+          },
+          {
+            "value": "next_line",
+            "label": "Next line"
+          }
+        ],
+        "help": "Select the control braces policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "type_braces",
+        "kind": "choice",
+        "label": "Type braces",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use general brace setting"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "attach",
+            "label": "Attached"
+          },
+          {
+            "value": "next_line",
+            "label": "Next line"
+          }
+        ],
+        "help": "Select the type braces policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "foreign_braces",
+        "kind": "choice",
+        "label": "Foreign braces",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use general brace setting"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "attach",
+            "label": "Attached"
+          },
+          {
+            "value": "next_line",
+            "label": "Next line"
+          }
+        ],
+        "help": "Select the foreign braces policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "when_braces",
+        "kind": "choice",
+        "label": "When braces",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use general brace setting"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "attach",
+            "label": "Attached"
+          },
+          {
+            "value": "next_line",
+            "label": "Next line"
+          }
+        ],
+        "help": "Select the when braces policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "empty_function_blocks",
+        "kind": "choice",
+        "label": "Empty functions",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use empty-block setting"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "collapse",
+            "label": "Collapse"
+          },
+          {
+            "value": "expand",
+            "label": "Expand"
+          }
+        ],
+        "help": "Select the empty functions policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "empty_control_blocks",
+        "kind": "choice",
+        "label": "Empty controls",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use empty-block setting"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "collapse",
+            "label": "Collapse"
+          },
+          {
+            "value": "expand",
+            "label": "Expand"
+          }
+        ],
+        "help": "Select the empty controls policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "empty_type_blocks",
+        "kind": "choice",
+        "label": "Empty types",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use empty-block setting"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "collapse",
+            "label": "Collapse"
+          },
+          {
+            "value": "expand",
+            "label": "Expand"
+          }
+        ],
+        "help": "Select the empty types policy. Keep or inherit preserves the corresponding current setting."
+      }
+    ]
+  },
+  {
+    "name": "Short bodies",
+    "items": [
+      {
+        "key": "short_functions",
+        "kind": "choice",
+        "label": "Short functions",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use general block setting"
+          },
+          {
+            "value": "expand",
+            "label": "Expand"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "inline_if_fits",
+            "label": "Inline if it fits"
+          }
+        ],
+        "help": "Select the short functions policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "short_branches",
+        "kind": "choice",
+        "label": "Short branches",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use general block setting"
+          },
+          {
+            "value": "expand",
+            "label": "Expand"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "inline_if_fits",
+            "label": "Inline if it fits"
+          }
+        ],
+        "help": "Select the short branches policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "short_loops",
+        "kind": "choice",
+        "label": "Short loops",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use general block setting"
+          },
+          {
+            "value": "expand",
+            "label": "Expand"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "inline_if_fits",
+            "label": "Inline if it fits"
+          }
+        ],
+        "help": "Select the short loops policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "short_case_arms",
+        "kind": "choice",
+        "label": "Short case arms",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use general block setting"
+          },
+          {
+            "value": "expand",
+            "label": "Expand"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "inline_if_fits",
+            "label": "Inline if it fits"
+          }
+        ],
+        "help": "Select the short case arms policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "max_inline_statements",
+        "kind": "number",
+        "label": "Maximum inline statements",
+        "default": 1,
+        "min": 0,
+        "max": 16,
+        "help": "A limit for Inline if it fits; attached comments and nested controls can require expansion.",
+        "zero": "Unlimited"
+      }
+    ]
+  },
+  {
+    "name": "Function syntax",
+    "items": [
+      {
+        "key": "function_body",
+        "kind": "choice",
+        "label": "Function bodies",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "block",
+            "label": "Blocks"
+          },
+          {
+            "value": "expression",
+            "label": "Expression =>"
+          }
+        ],
+        "help": "Select the function bodies policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "function_keyword",
+        "kind": "choice",
+        "label": "Definition fn",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit",
+            "label": "Omit fn"
+          },
+          {
+            "value": "always",
+            "label": "Always fn"
+          }
+        ],
+        "help": "Select the definition fn policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "return_arrow",
+        "kind": "choice",
+        "label": "Return type arrow",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit",
+            "label": "Omit"
+          },
+          {
+            "value": "always",
+            "label": "Always"
+          }
+        ],
+        "help": "Keep, require or omit the arrow before a written result type. This setting keeps the result type itself."
+      }
+    ]
+  },
+  {
+    "name": "Type preferences",
+    "items": [
+      {
+        "key": "binding_types",
+        "kind": "choice",
+        "label": "Binding types",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit_redundant",
+            "label": "Inferred"
+          },
+          {
+            "value": "explicit",
+            "label": "Explicit"
+          },
+          {
+            "value": "evident",
+            "label": "Inferred when evident"
+          }
+        ],
+        "help": "Use compiler-resolved types for supported local bindings and constants in self-contained source. Inferred removes an annotation only when the program keeps the same meaning. Missing imports and skipped bindings appear in analysis notes.",
+        "also": "Rider inferred-type style, Clang-Tidy use-auto"
+      },
+      {
+        "key": "local_types",
+        "kind": "choice",
+        "label": "Local bindings",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use binding policy"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit_redundant",
+            "label": "Omit inferable types"
+          },
+          {
+            "value": "explicit",
+            "label": "Explicit types"
+          },
+          {
+            "value": "evident",
+            "label": "Inferred when evident"
+          }
+        ],
+        "help": "Select the local bindings policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "constant_types",
+        "kind": "choice",
+        "label": "Constants",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use binding policy"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit_redundant",
+            "label": "Omit inferable types"
+          },
+          {
+            "value": "explicit",
+            "label": "Explicit types"
+          },
+          {
+            "value": "evident",
+            "label": "Inferred when evident"
+          }
+        ],
+        "help": "Select the constants policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "parameter_types",
+        "kind": "choice",
+        "label": "Parameters",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use binding policy"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit_redundant",
+            "label": "Omit inferable types"
+          },
+          {
+            "value": "explicit",
+            "label": "Explicit types"
+          },
+          {
+            "value": "evident",
+            "label": "Inferred when evident"
+          }
+        ],
+        "help": "Select the parameters policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "return_types",
+        "kind": "choice",
+        "label": "Results",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use binding policy"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit_redundant",
+            "label": "Omit inferable types"
+          },
+          {
+            "value": "explicit",
+            "label": "Explicit types"
+          },
+          {
+            "value": "evident",
+            "label": "Inferred when evident"
+          }
+        ],
+        "help": "Select the results policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "member_types",
+        "kind": "choice",
+        "label": "Members",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use binding policy"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit_redundant",
+            "label": "Omit inferable types"
+          },
+          {
+            "value": "explicit",
+            "label": "Explicit types"
+          },
+          {
+            "value": "evident",
+            "label": "Inferred when evident"
+          }
+        ],
+        "help": "Select the members policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "public_types",
+        "kind": "choice",
+        "label": "Public API",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use binding policy"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit_redundant",
+            "label": "Omit inferable types"
+          },
+          {
+            "value": "explicit",
+            "label": "Explicit types"
+          },
+          {
+            "value": "evident",
+            "label": "Inferred when evident"
+          }
+        ],
+        "help": "Select the public api policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "type_spelling",
+        "kind": "choice",
+        "label": "Type spelling",
+        "default": "preserve_aliases",
+        "choices": [
+          {
+            "value": "preserve_aliases",
+            "label": "Keep written aliases"
+          },
+          {
+            "value": "shortest",
+            "label": "Shortest unambiguous"
+          },
+          {
+            "value": "qualified",
+            "label": "Qualified names"
+          }
+        ],
+        "help": "Select the type spelling policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "analysis_target",
+        "kind": "choice",
+        "label": "Analysis target",
+        "default": "linux64",
+        "choices": [
+          {
+            "value": "linux64",
+            "label": "Linux x86-64"
+          },
+          {
+            "value": "darwin64",
+            "label": "macOS arm64"
+          },
+          {
+            "value": "windows64",
+            "label": "Windows x86-64"
+          },
+          {
+            "value": "web32",
+            "label": "WebAssembly 32-bit"
+          }
+        ],
+        "help": "Target used to resolve platform conditions and validate semantic style rewrites. Layout-only formatting does not analyze the program."
+      },
+      {
+        "key": "semantic_targets",
+        "kind": "choice",
+        "label": "Semantic validation",
+        "default": "all",
+        "choices": [
+          {
+            "value": "all",
+            "label": "All platforms"
+          },
+          {
+            "value": "selected",
+            "label": "Selected target"
+          }
+        ],
+        "help": "Validate type and other compiler-backed changes on Linux, macOS, Windows and WebAssembly. Selected target explicitly permits platform-specific spelling and proof. Analysis target selects the candidate type spelling."
+      }
+    ]
+  },
+  {
+    "name": "Logical sections",
+    "items": [
+      {
+        "key": "statement_paragraphs",
+        "kind": "choice",
+        "label": "Statement paragraphs",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep authored sections"
+          },
+          {
+            "value": "syntax",
+            "label": "By statement kind"
+          },
+          {
+            "value": "logical",
+            "label": "Logical groups (SEGMENT)"
+          }
+        ],
+        "help": "Logical groups use SEGMENT's four-phase action-unit algorithm adapted to Chibi: candidate units, overlap resolution, similarity refinement and compatible singleton merges. Syntax mode uses structural cuts. Existing sections, comments and protected text are retained."
+      }
+    ]
+  },
+  {
+    "name": "Blank lines",
+    "items": [
+      {
+        "key": "max_blank_lines",
+        "kind": "choice",
+        "label": "Keep at most",
+        "default": 1,
+        "choices": [
+          {
+            "value": 0,
+            "label": "0"
+          },
+          {
+            "value": 1,
+            "label": "1"
+          },
+          {
+            "value": 2,
+            "label": "2"
+          },
+          {
+            "value": 3,
+            "label": "3"
+          }
+        ],
+        "help": "A longer run of blank lines shrinks to this many.",
+        "also": "clang-format MaxEmptyLinesToKeep, rustfmt blank_lines_upper_bound"
+      },
+      {
+        "key": "blank_lines_between_declarations",
+        "kind": "choice",
+        "label": "Between declarations",
+        "default": 0,
+        "choices": [
+          {
+            "value": 0,
+            "label": "Keep"
+          },
+          {
+            "value": 1,
+            "label": "1"
+          },
+          {
+            "value": 2,
+            "label": "2"
+          }
+        ],
+        "help": "The fewest blank lines between top-level declarations when either spans lines. Runs of one-line constants stay together, and a comment directly above a declaration belongs to it.",
+        "also": "clang-format SeparateDefinitionBlocks, rustfmt blank_lines_lower_bound"
+      },
+      {
+        "key": "keep_blank_lines_at_block_edges",
+        "kind": "bool",
+        "label": "Keep blank lines at block edges",
+        "default": true,
+        "help": "Blank lines just inside a block’s braces stay. Off, they go.",
+        "also": "clang-format KeepEmptyLines.AtStartOfBlock"
+      },
+      {
+        "key": "blank_lines_before_final_return",
+        "kind": "number",
+        "label": "Before final return",
+        "default": 0,
+        "min": 0,
+        "max": 3,
+        "help": "Before final return."
+      },
+      {
+        "key": "blank_lines_after_control",
+        "kind": "number",
+        "label": "After control statements",
+        "default": 0,
+        "min": 0,
+        "max": 3,
+        "help": "After control statements."
+      },
+      {
+        "key": "blank_lines_between_members",
+        "kind": "number",
+        "label": "Between members",
+        "default": 0,
+        "min": 0,
+        "max": 3,
+        "help": "Between members."
+      },
+      {
+        "key": "blank_lines_between_import_groups",
+        "kind": "number",
+        "label": "Between import groups",
+        "default": 0,
+        "min": 0,
+        "max": 3,
+        "help": "Between import groups."
+      },
+      {
+        "key": "block_padding",
+        "kind": "choice",
+        "label": "Inside nonempty blocks",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Keep existing policy"
+          },
+          {
+            "value": "remove",
+            "label": "Remove blank edges"
+          },
+          {
+            "value": "blank",
+            "label": "One blank line"
+          }
+        ],
+        "help": "Select the inside nonempty blocks policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "function_block_padding",
+        "kind": "choice",
+        "label": "Function block padding",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Inherit"
+          },
+          {
+            "value": "remove",
+            "label": "Remove"
+          },
+          {
+            "value": "blank",
+            "label": "Blank line"
+          }
+        ],
+        "help": "Override the global blank-line padding inside this kind of nonempty block."
+      },
+      {
+        "key": "type_block_padding",
+        "kind": "choice",
+        "label": "Type block padding",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Inherit"
+          },
+          {
+            "value": "remove",
+            "label": "Remove"
+          },
+          {
+            "value": "blank",
+            "label": "Blank line"
+          }
+        ],
+        "help": "Override the global blank-line padding inside this kind of nonempty block."
+      },
+      {
+        "key": "control_block_padding",
+        "kind": "choice",
+        "label": "Control block padding",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Inherit"
+          },
+          {
+            "value": "remove",
+            "label": "Remove"
+          },
+          {
+            "value": "blank",
+            "label": "Blank line"
+          }
+        ],
+        "help": "Override the global blank-line padding inside this kind of nonempty block."
+      },
+      {
+        "key": "foreign_block_padding",
+        "kind": "choice",
+        "label": "Foreign block padding",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Inherit"
+          },
+          {
+            "value": "remove",
+            "label": "Remove"
+          },
+          {
+            "value": "blank",
+            "label": "Blank line"
+          }
+        ],
+        "help": "Override the global blank-line padding inside this kind of nonempty block."
+      },
+      {
+        "key": "when_block_padding",
+        "kind": "choice",
+        "label": "When block padding",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Inherit"
+          },
+          {
+            "value": "remove",
+            "label": "Remove"
+          },
+          {
+            "value": "blank",
+            "label": "Blank line"
+          }
+        ],
+        "help": "Override the global blank-line padding inside this kind of nonempty block."
+      },
+      {
+        "key": "blank_lines_before_comments",
+        "kind": "number",
+        "label": "Blank lines before standalone comments",
+        "default": -1,
+        "min": -1,
+        "max": 3,
+        "step": 1,
+        "help": "Use -1 to preserve authored gaps. Keep each comment group attached to its following code."
+      }
+    ]
+  },
+  {
+    "name": "Wrapping",
+    "items": [
+      {
+        "key": "list_layout",
+        "kind": "choice",
+        "label": "List layout",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "fit",
+            "label": "Pack to width"
+          },
+          {
+            "value": "vertical",
+            "label": "Always vertical"
+          },
+          {
+            "value": "one_per_line_when_wrapped",
+            "label": "One per line when wrapped"
+          }
+        ],
+        "help": "Select the list layout policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "arguments_layout",
+        "kind": "choice",
+        "label": "Call arguments",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use general list policy"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "fit",
+            "label": "Pack to width"
+          },
+          {
+            "value": "vertical",
+            "label": "Always vertical"
+          },
+          {
+            "value": "one_per_line_when_wrapped",
+            "label": "One per line when wrapped"
+          }
+        ],
+        "help": "Select the call arguments policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "parameters_layout",
+        "kind": "choice",
+        "label": "Parameters",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use general list policy"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "fit",
+            "label": "Pack to width"
+          },
+          {
+            "value": "vertical",
+            "label": "Always vertical"
+          },
+          {
+            "value": "one_per_line_when_wrapped",
+            "label": "One per line when wrapped"
+          }
+        ],
+        "help": "Select the parameters policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "arrays_layout",
+        "kind": "choice",
+        "label": "Arrays",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use general list policy"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "fit",
+            "label": "Pack to width"
+          },
+          {
+            "value": "vertical",
+            "label": "Always vertical"
+          },
+          {
+            "value": "one_per_line_when_wrapped",
+            "label": "One per line when wrapped"
+          }
+        ],
+        "help": "Select the arrays policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "records_layout",
+        "kind": "choice",
+        "label": "Record literals",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use general list policy"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "fit",
+            "label": "Pack to width"
+          },
+          {
+            "value": "vertical",
+            "label": "Always vertical"
+          },
+          {
+            "value": "one_per_line_when_wrapped",
+            "label": "One per line when wrapped"
+          }
+        ],
+        "help": "Select the record literals policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "bindings_layout",
+        "kind": "choice",
+        "label": "Pattern bindings",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use general list policy"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "fit",
+            "label": "Pack to width"
+          },
+          {
+            "value": "vertical",
+            "label": "Always vertical"
+          },
+          {
+            "value": "one_per_line_when_wrapped",
+            "label": "One per line when wrapped"
+          }
+        ],
+        "help": "Select the pattern bindings policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "arguments_width",
+        "kind": "number",
+        "label": "Argument width",
+        "default": 0,
+        "min": 0,
+        "max": 400,
+        "help": "Per-construct width; zero uses the general preferred width.",
+        "zero": "General"
+      },
+      {
+        "key": "parameters_width",
+        "kind": "number",
+        "label": "Parameter width",
+        "default": 0,
+        "min": 0,
+        "max": 400,
+        "help": "Per-construct width; zero uses the general preferred width.",
+        "zero": "General"
+      },
+      {
+        "key": "arrays_width",
+        "kind": "number",
+        "label": "Array width",
+        "default": 0,
+        "min": 0,
+        "max": 400,
+        "help": "Per-construct width; zero uses the general preferred width.",
+        "zero": "General"
+      },
+      {
+        "key": "records_width",
+        "kind": "number",
+        "label": "Record width",
+        "default": 0,
+        "min": 0,
+        "max": 400,
+        "help": "Per-construct width; zero uses the general preferred width.",
+        "zero": "General"
+      },
+      {
+        "key": "max_items_per_line",
+        "kind": "number",
+        "label": "Maximum items per line",
+        "default": 0,
+        "min": 0,
+        "max": 100,
+        "help": "Zero imposes no item count limit. Width and comments still constrain packing.",
+        "zero": "Unlimited"
+      },
+      {
+        "key": "list_indent",
+        "kind": "choice",
+        "label": "List indentation",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use indentation settings"
+          },
+          {
+            "value": "block",
+            "label": "Block"
+          },
+          {
+            "value": "align_first",
+            "label": "Align first item"
+          },
+          {
+            "value": "hanging",
+            "label": "Hanging"
+          }
+        ],
+        "help": "Select the list indentation policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "closing_delimiter",
+        "kind": "choice",
+        "label": "Closing delimiter",
+        "default": "own_line",
+        "choices": [
+          {
+            "value": "own_line",
+            "label": "Own line"
+          },
+          {
+            "value": "last_item_line",
+            "label": "After last item"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the closing delimiter policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "binary_operator_position",
+        "kind": "choice",
+        "label": "Binary operator position",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "leading",
+            "label": "Beginning of line"
+          },
+          {
+            "value": "trailing",
+            "label": "End of line"
+          }
+        ],
+        "help": "Select the binary operator position policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "binary_layout",
+        "kind": "choice",
+        "label": "Binary wrapping",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "one_per_line",
+            "label": "One per line"
+          },
+          {
+            "value": "precedence_groups",
+            "label": "By precedence"
+          }
+        ],
+        "help": "Select the binary wrapping policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "chain_layout",
+        "kind": "choice",
+        "label": "Member and call chains",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "fit",
+            "label": "Fit"
+          },
+          {
+            "value": "vertical",
+            "label": "Vertical"
+          }
+        ],
+        "help": "Select the member and call chains policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "chain_indent",
+        "kind": "bool",
+        "label": "Indent vertical chains",
+        "default": true,
+        "help": "Indent vertical chains."
+      },
+      {
+        "key": "attribute_layout",
+        "kind": "choice",
+        "label": "Attributes",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "inline",
+            "label": "Inline"
+          },
+          {
+            "value": "one_per_line",
+            "label": "One per line"
+          }
+        ],
+        "help": "Keep authored attribute breaks, place attributes inline, or put each attribute on its own line."
+      },
+      {
+        "key": "signature_break_priority",
+        "kind": "choice",
+        "label": "Signature wrapping",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "parameters_first",
+            "label": "Parameters first"
+          },
+          {
+            "value": "return_first",
+            "label": "Return first"
+          }
+        ],
+        "help": "Choose whether a long function signature breaks its parameters or its return type first."
+      }
+    ]
+  },
+  {
+    "name": "Parentheses",
+    "items": [
+      {
+        "key": "control_parens",
+        "kind": "choice",
+        "label": "Control parentheses",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit",
+            "label": "Omit"
+          },
+          {
+            "value": "always",
+            "label": "Always"
+          }
+        ],
+        "help": "Select the control parentheses policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "if_parens",
+        "kind": "choice",
+        "label": "If condition",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use control policy"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit",
+            "label": "Omit"
+          },
+          {
+            "value": "always",
+            "label": "Always"
+          }
+        ],
+        "help": "Select the if condition policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "while_parens",
+        "kind": "choice",
+        "label": "While condition",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use control policy"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit",
+            "label": "Omit"
+          },
+          {
+            "value": "always",
+            "label": "Always"
+          }
+        ],
+        "help": "Select the while condition policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "for_parens",
+        "kind": "choice",
+        "label": "For header",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use control policy"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit",
+            "label": "Omit"
+          },
+          {
+            "value": "always",
+            "label": "Always"
+          }
+        ],
+        "help": "Select the for header policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "switch_parens",
+        "kind": "choice",
+        "label": "Switch condition",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use control policy"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit",
+            "label": "Omit"
+          },
+          {
+            "value": "always",
+            "label": "Always"
+          }
+        ],
+        "help": "Select the switch condition policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "expression_parens",
+        "kind": "choice",
+        "label": "Expression parentheses",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit_redundant",
+            "label": "Remove redundant"
+          },
+          {
+            "value": "readability",
+            "label": "Clarify mixed precedence"
+          }
+        ],
+        "help": "Select the expression parentheses policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "flatten_parens",
+        "kind": "bool",
+        "label": "Flatten repeated parentheses",
+        "default": false,
+        "help": "Flatten repeated parentheses."
+      },
+      {
+        "key": "when_parens",
+        "kind": "choice",
+        "label": "When condition",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use control policy"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit",
+            "label": "Omit"
+          },
+          {
+            "value": "always",
+            "label": "Always"
+          }
+        ],
+        "help": "Parentheses around compile-time conditions."
+      },
+      {
+        "key": "readability_mixed_operators",
+        "kind": "bool",
+        "label": "Group mixed operators at equal precedence",
+        "default": false,
+        "help": "With readability parentheses, make mixed operators explicit without changing their association."
+      }
+    ]
+  },
+  {
+    "name": "Spacing",
+    "items": [
+      {
+        "key": "space_in_braces",
+        "kind": "bool",
+        "label": "Spaces inside braces",
+        "default": false,
+        "help": "Struct literals as { a: 1 } instead of {a: 1}. An empty {} stays tight.",
+        "also": "Prettier bracketSpacing, Uncrustify sp_inside_braces_struct"
+      },
+      {
+        "key": "space_in_parens",
+        "kind": "bool",
+        "label": "Spaces inside parentheses",
+        "default": false,
+        "help": "Calls, parameter lists and grouping as ( a, b ). An empty () stays tight.",
+        "also": "clang-format SpacesInParens, Uncrustify sp_inside_paren"
+      },
+      {
+        "key": "space_in_brackets",
+        "kind": "bool",
+        "label": "Spaces inside brackets",
+        "default": false,
+        "help": "Array literals as [ 1, 2 ]. Index expressions and array types stay tight.",
+        "also": "clang-format SpacesInSquareBrackets, Uncrustify sp_inside_square"
+      },
+      {
+        "key": "spaces_before_trailing_comment",
+        "kind": "number",
+        "label": "Spaces before trailing comment",
+        "default": 1,
+        "min": 1,
+        "max": 4,
+        "help": "Spaces between code and a comment that ends the line.",
+        "also": "clang-format SpacesBeforeTrailingComments, swift-format spacesBeforeEndOfLineComments"
+      }
+    ]
+  },
+  {
+    "name": "Operator spacing",
+    "items": [
+      {
+        "key": "operator_spacing",
+        "kind": "choice",
+        "label": "Operator style",
+        "default": "uniform",
+        "choices": [
+          {
+            "value": "uniform",
+            "label": "Uniform"
+          },
+          {
+            "value": "precedence",
+            "label": "Compact multiplication"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Uniform spaces around binary operators, compact multiplication within addition, or preserve authored horizontal gaps."
+      },
+      {
+        "key": "space_multiplicative",
+        "kind": "choice",
+        "label": "Multiplication / division",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the multiplication / division policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_additive",
+        "kind": "choice",
+        "label": "Addition / subtraction",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the addition / subtraction policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_comparison",
+        "kind": "choice",
+        "label": "Comparisons",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the comparisons policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_logical",
+        "kind": "choice",
+        "label": "Logical operators",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the logical operators policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_assignment",
+        "kind": "choice",
+        "label": "Assignment operators",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the assignment operators policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_bitwise",
+        "kind": "choice",
+        "label": "Bitwise operators",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the bitwise operators policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_range",
+        "kind": "choice",
+        "label": "Range operators",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the range operators policy. Keep or inherit preserves the corresponding current setting."
+      }
+    ]
+  },
+  {
+    "name": "Delimiter spacing",
+    "items": [
+      {
+        "key": "space_before_control_parens",
+        "kind": "choice",
+        "label": "Before control parentheses",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the before control parentheses policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_before_call_parens",
+        "kind": "choice",
+        "label": "Before call parentheses",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the before call parentheses policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_before_declaration_parens",
+        "kind": "choice",
+        "label": "Before parameter lists",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the before parameter lists policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_inside_call_parens",
+        "kind": "choice",
+        "label": "Inside call parentheses",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the inside call parentheses policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_inside_parameter_parens",
+        "kind": "choice",
+        "label": "Inside parameter lists",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the inside parameter lists policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_inside_grouping_parens",
+        "kind": "choice",
+        "label": "Inside expression parentheses",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the inside expression parentheses policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_inside_control_parens",
+        "kind": "choice",
+        "label": "Inside control parentheses",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the inside control parentheses policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_inside_empty_parens",
+        "kind": "choice",
+        "label": "Inside empty parentheses",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the inside empty parentheses policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_inside_array_brackets",
+        "kind": "choice",
+        "label": "Inside array literals",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the inside array literals policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_inside_index_brackets",
+        "kind": "choice",
+        "label": "Inside indexing brackets",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the inside indexing brackets policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_inside_type_brackets",
+        "kind": "choice",
+        "label": "Inside array types",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the inside array types policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_inside_empty_brackets",
+        "kind": "choice",
+        "label": "Inside empty brackets",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the inside empty brackets policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_inside_record_braces",
+        "kind": "choice",
+        "label": "Inside record literals",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the inside record literals policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_inside_empty_record_braces",
+        "kind": "choice",
+        "label": "Inside empty record literals",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the inside empty record literals policy. Keep or inherit preserves the corresponding current setting."
+      }
+    ]
+  },
+  {
+    "name": "Punctuation spacing",
+    "items": [
+      {
+        "key": "space_before_type_colon",
+        "kind": "choice",
+        "label": "Before type colons",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the before type colons policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_after_type_colon",
+        "kind": "choice",
+        "label": "After type colons",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the after type colons policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_before_field_colon",
+        "kind": "choice",
+        "label": "Before field colons",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the before field colons policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_after_field_colon",
+        "kind": "choice",
+        "label": "After field colons",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the after field colons policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_before_named_argument_colon",
+        "kind": "choice",
+        "label": "Before argument-name colons",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the before argument-name colons policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_after_named_argument_colon",
+        "kind": "choice",
+        "label": "After argument-name colons",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the after argument-name colons policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_before_case_colon",
+        "kind": "choice",
+        "label": "Before case colons",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the before case colons policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_after_case_colon",
+        "kind": "choice",
+        "label": "After case colons",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the after case colons policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_around_arrows",
+        "kind": "choice",
+        "label": "Around arrows",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the around arrows policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_around_declaration_separator",
+        "kind": "choice",
+        "label": "Around declaration separators",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the around declaration separators policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_after_unary",
+        "kind": "choice",
+        "label": "After unary operators",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the after unary operators policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_before_postfix",
+        "kind": "choice",
+        "label": "Before postfix operators",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Spacing where grammar permits it, such as indexing and nullable types. Dereference ^, unwrap ! and optional ?. retain their required adjacency."
+      },
+      {
+        "key": "space_before_comma",
+        "kind": "choice",
+        "label": "Before commas",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the before commas policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "space_after_comma",
+        "kind": "choice",
+        "label": "After commas",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Default"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          },
+          {
+            "value": "one",
+            "label": "1 space"
+          },
+          {
+            "value": "two",
+            "label": "2 spaces"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          }
+        ],
+        "help": "Select the after commas policy. Keep or inherit preserves the corresponding current setting."
+      }
+    ]
+  },
+  {
+    "name": "Alignment",
+    "items": [
+      {
+        "key": "align_assignments",
+        "kind": "bool",
+        "label": "Assignments",
+        "default": false,
+        "help": "The =, := or compound operator of assignments on consecutive lines lines up.",
+        "also": "clang-format AlignConsecutiveAssignments, Uncrustify align_assign_span"
+      },
+      {
+        "key": "align_field_types",
+        "kind": "bool",
+        "label": "Field types",
+        "default": false,
+        "help": "Types of consecutive struct and component fields line up.",
+        "also": "gofmt (always), odinfmt align_struct_fields, clang-format AlignConsecutiveDeclarations"
+      },
+      {
+        "key": "align_constants",
+        "kind": "bool",
+        "label": "Constant types",
+        "default": false,
+        "help": "Types of consecutive typed constants, Name: T : value, line up.",
+        "also": "odinfmt align_constant_definitions, clang-format AlignConsecutiveMacros"
+      },
+      {
+        "key": "align_struct_literal_values",
+        "kind": "bool",
+        "label": "Struct literal values",
+        "default": false,
+        "help": "Values of a struct literal written one field per line line up.",
+        "also": "odinfmt align_struct_values, clang-format AlignArrayOfStructures"
+      },
+      {
+        "key": "align_trailing_comments",
+        "kind": "bool",
+        "label": "Trailing comments",
+        "default": false,
+        "help": "Comments that end consecutive lines start in the same column.",
+        "also": "clang-format AlignTrailingComments, odinfmt align_comments"
+      }
+    ]
+  },
+  {
+    "name": "Alignment policies",
+    "items": [
+      {
+        "key": "assignment_alignment",
+        "kind": "choice",
+        "label": "Assignment columns",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use existing switch"
+          },
+          {
+            "value": "off",
+            "label": "Off"
+          },
+          {
+            "value": "preserve_manual",
+            "label": "Keep manual columns"
+          },
+          {
+            "value": "consecutive",
+            "label": "Align consecutive rows"
+          }
+        ],
+        "help": "Select the assignment columns policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "field_type_alignment",
+        "kind": "choice",
+        "label": "Field type columns",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use existing switch"
+          },
+          {
+            "value": "off",
+            "label": "Off"
+          },
+          {
+            "value": "preserve_manual",
+            "label": "Keep manual columns"
+          },
+          {
+            "value": "consecutive",
+            "label": "Align consecutive rows"
+          }
+        ],
+        "help": "Select the field type columns policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "constant_alignment",
+        "kind": "choice",
+        "label": "Constant type columns",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use existing switch"
+          },
+          {
+            "value": "off",
+            "label": "Off"
+          },
+          {
+            "value": "preserve_manual",
+            "label": "Keep manual columns"
+          },
+          {
+            "value": "consecutive",
+            "label": "Align consecutive rows"
+          }
+        ],
+        "help": "Align typed constant types and, with an explicit policy, untyped constant value columns. The legacy constant switch keeps its original scope."
+      },
+      {
+        "key": "record_value_alignment",
+        "kind": "choice",
+        "label": "Record value columns",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use existing switch"
+          },
+          {
+            "value": "off",
+            "label": "Off"
+          },
+          {
+            "value": "preserve_manual",
+            "label": "Keep manual columns"
+          },
+          {
+            "value": "consecutive",
+            "label": "Align consecutive rows"
+          }
+        ],
+        "help": "Select the record value columns policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "comment_alignment",
+        "kind": "choice",
+        "label": "Comment columns",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Use existing switch"
+          },
+          {
+            "value": "off",
+            "label": "Off"
+          },
+          {
+            "value": "preserve_manual",
+            "label": "Keep manual columns"
+          },
+          {
+            "value": "consecutive",
+            "label": "Align consecutive rows"
+          }
+        ],
+        "help": "Select the comment columns policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "alignment_across_blank_lines",
+        "kind": "bool",
+        "label": "Align across blank lines",
+        "default": false,
+        "help": "Align across blank lines."
+      },
+      {
+        "key": "alignment_across_comments",
+        "kind": "bool",
+        "label": "Align across standalone comments",
+        "default": false,
+        "help": "Align across standalone comments."
+      },
+      {
+        "key": "alignment_max_padding",
+        "kind": "number",
+        "label": "Maximum alignment padding",
+        "default": 0,
+        "min": 0,
+        "max": 80,
+        "help": "Groups requiring more padding retain their individual spacing.",
+        "zero": "Unlimited"
+      },
+      {
+        "key": "alignment_max_column",
+        "kind": "number",
+        "label": "Maximum alignment column",
+        "default": 0,
+        "min": 0,
+        "max": 400,
+        "help": "Zero leaves the target column uncapped.",
+        "zero": "Unlimited"
+      },
+      {
+        "key": "alignment_compound",
+        "kind": "choice",
+        "label": "Compound assignments",
+        "default": "operator_start",
+        "choices": [
+          {
+            "value": "operator_start",
+            "label": "Align operator starts"
+          },
+          {
+            "value": "assignment_marker",
+            "label": "Align assignment markers"
+          }
+        ],
+        "help": "Select the compound assignments policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "data_alignment",
+        "kind": "choice",
+        "label": "Data tables",
+        "default": "off",
+        "choices": [
+          {
+            "value": "off",
+            "label": "Off"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep manual layout"
+          },
+          {
+            "value": "columns",
+            "label": "Align columns"
+          },
+          {
+            "value": "numeric_right",
+            "label": "Right-align numbers"
+          }
+        ],
+        "help": "Select the data tables policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "declaration_type_alignment",
+        "kind": "choice",
+        "label": "Local type columns",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Off by default"
+          },
+          {
+            "value": "off",
+            "label": "Off"
+          },
+          {
+            "value": "preserve_manual",
+            "label": "Keep manual columns"
+          },
+          {
+            "value": "consecutive",
+            "label": "Align consecutive rows"
+          }
+        ],
+        "help": "Align type annotations on consecutive local declarations within the configured group and padding limits."
+      },
+      {
+        "key": "data_column_alignment",
+        "kind": "text",
+        "label": "Data column directions",
+        "default": "auto",
+        "help": "Comma-separated auto,left,right directions for up to 32 columns. Auto uses the selected data alignment mode."
+      }
+    ]
+  },
+  {
+    "name": "Comments",
+    "items": [
+      {
+        "key": "comment_reflow",
+        "kind": "choice",
+        "label": "Comment reflow",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "prose",
+            "label": "Prose"
+          },
+          {
+            "value": "docs",
+            "label": "Documentation"
+          },
+          {
+            "value": "all",
+            "label": "Prose and documentation"
+          }
+        ],
+        "help": "Select the comment reflow policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "comment_width",
+        "kind": "number",
+        "label": "Comment width",
+        "default": 80,
+        "min": 20,
+        "max": 400,
+        "help": "Comment width."
+      },
+      {
+        "key": "reflow_block_comments",
+        "kind": "bool",
+        "label": "Reflow block comments",
+        "default": false,
+        "help": "Reflow block comments."
+      }
+    ]
+  },
+  {
+    "name": "Numeric literals",
+    "items": [
+      {
+        "key": "numeric_separators",
+        "kind": "choice",
+        "label": "Digit separators",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "remove",
+            "label": "Remove"
+          },
+          {
+            "value": "group",
+            "label": "Group digits"
+          }
+        ],
+        "help": "Select the digit separators policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "decimal_group",
+        "kind": "number",
+        "label": "Decimal group size",
+        "default": 3,
+        "min": 1,
+        "max": 16,
+        "help": "Decimal group size."
+      },
+      {
+        "key": "hex_group",
+        "kind": "number",
+        "label": "Hex group size",
+        "default": 4,
+        "min": 1,
+        "max": 16,
+        "help": "Hex group size."
+      },
+      {
+        "key": "fraction_group",
+        "kind": "number",
+        "label": "Fraction group size",
+        "default": 0,
+        "min": 0,
+        "max": 16,
+        "help": "Zero leaves fraction digits ungrouped.",
+        "zero": "Off"
+      },
+      {
+        "key": "numeric_min_digits",
+        "kind": "number",
+        "label": "Minimum digits to group",
+        "default": 5,
+        "min": 1,
+        "max": 64,
+        "help": "Minimum digits to group."
+      },
+      {
+        "key": "hex_case",
+        "kind": "choice",
+        "label": "Hexadecimal casing",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "lower",
+            "label": "Lowercase"
+          },
+          {
+            "value": "upper",
+            "label": "Uppercase"
+          }
+        ],
+        "help": "Select the hexadecimal casing policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "exponent_case",
+        "kind": "choice",
+        "label": "Exponent casing",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "lower",
+            "label": "Lowercase"
+          },
+          {
+            "value": "upper",
+            "label": "Uppercase"
+          }
+        ],
+        "help": "Select the exponent casing policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "numeric_base",
+        "kind": "choice",
+        "label": "Integer base",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "decimal",
+            "label": "Decimal"
+          },
+          {
+            "value": "hex",
+            "label": "Hexadecimal"
+          }
+        ],
+        "help": "Select the integer base policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "exponent_group",
+        "kind": "number",
+        "label": "Exponent digit group size",
+        "default": 0,
+        "min": 0,
+        "max": 16,
+        "zero": "Off",
+        "help": "Zero leaves exponent digits ungrouped."
+      }
+    ]
+  },
+  {
+    "name": "String and character literals",
+    "items": [
+      {
+        "key": "string_escapes",
+        "kind": "choice",
+        "label": "String escapes",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "minimal",
+            "label": "Minimal escapes"
+          },
+          {
+            "value": "ascii",
+            "label": "ASCII escapes"
+          }
+        ],
+        "help": "Select the string escapes policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "char_escapes",
+        "kind": "choice",
+        "label": "Character escapes",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "minimal",
+            "label": "Minimal escapes"
+          },
+          {
+            "value": "ascii",
+            "label": "ASCII escapes"
+          }
+        ],
+        "help": "Select the character escapes policy. Keep or inherit preserves the corresponding current setting."
+      }
+    ]
+  },
+  {
+    "name": "Imports",
+    "items": [
+      {
+        "key": "imports",
+        "kind": "choice",
+        "label": "Import organization",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "sort",
+            "label": "Sort within groups"
+          },
+          {
+            "value": "organize",
+            "label": "Sort and remove unused"
+          }
+        ],
+        "help": "Select the import organization policy. Keep or inherit preserves the corresponding current setting."
+      }
+    ]
+  },
+  {
+    "name": "Punctuation and line ends",
+    "items": [
+      {
+        "key": "semicolons",
+        "kind": "choice",
+        "label": "Semicolons",
+        "default": "keep",
+        "choices": [
+          {
+            "value": "keep",
+            "label": "Keep"
+          },
+          {
+            "value": "omit",
+            "label": "Omit"
+          },
+          {
+            "value": "always",
+            "label": "Always"
+          }
+        ],
+        "help": "Explicit ; at the end of statements as you wrote them, dropped where a line break ends the statement anyway, or always written. Imports and package lines never take one.",
+        "also": "Prettier semi, Biome semicolons, dprint semiColons"
+      },
+      {
+        "key": "line_ending",
+        "kind": "choice",
+        "label": "Line break",
+        "default": "lf",
+        "choices": [
+          {
+            "value": "lf",
+            "label": "LF"
+          },
+          {
+            "value": "crlf",
+            "label": "CRLF"
+          }
+        ],
+        "help": "Between lines only. Bytes inside comments and strings are copied exactly.",
+        "also": "Prettier endOfLine, clang-format LineEnding, EditorConfig end_of_line"
+      },
+      {
+        "key": "final_newline",
+        "kind": "bool",
+        "label": "Final newline",
+        "default": true,
+        "help": "The file ends with a line break.",
+        "also": "EditorConfig insert_final_newline, clang-format InsertNewlineAtEOF"
+      },
+      {
+        "key": "trailing_commas",
+        "kind": "choice",
+        "label": "Trailing commas",
+        "default": "preserve",
+        "choices": [
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit",
+            "label": "Omit optional commas"
+          },
+          {
+            "value": "multiline",
+            "label": "Add to multiline lists"
+          }
+        ],
+        "help": "Select the trailing commas policy. Keep or inherit preserves the corresponding current setting."
+      },
+      {
+        "key": "trailing_commas_arguments",
+        "kind": "choice",
+        "label": "Call argument commas",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Inherit"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit",
+            "label": "Omit"
+          },
+          {
+            "value": "multiline",
+            "label": "Multiline"
+          }
+        ],
+        "help": "Override the global trailing-comma policy for this list kind. Required singleton tuple commas are retained."
+      },
+      {
+        "key": "trailing_commas_parameters",
+        "kind": "choice",
+        "label": "Parameter commas",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Inherit"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit",
+            "label": "Omit"
+          },
+          {
+            "value": "multiline",
+            "label": "Multiline"
+          }
+        ],
+        "help": "Override the global trailing-comma policy for this list kind. Required singleton tuple commas are retained."
+      },
+      {
+        "key": "trailing_commas_arrays",
+        "kind": "choice",
+        "label": "Array and map commas",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Inherit"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit",
+            "label": "Omit"
+          },
+          {
+            "value": "multiline",
+            "label": "Multiline"
+          }
+        ],
+        "help": "Override the global trailing-comma policy for this list kind. Required singleton tuple commas are retained."
+      },
+      {
+        "key": "trailing_commas_records",
+        "kind": "choice",
+        "label": "Record commas",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Inherit"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit",
+            "label": "Omit"
+          },
+          {
+            "value": "multiline",
+            "label": "Multiline"
+          }
+        ],
+        "help": "Override the global trailing-comma policy for this list kind. Required singleton tuple commas are retained."
+      },
+      {
+        "key": "trailing_commas_tuples",
+        "kind": "choice",
+        "label": "Result tuple commas",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Inherit"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit",
+            "label": "Omit"
+          },
+          {
+            "value": "multiline",
+            "label": "Multiline"
+          }
+        ],
+        "help": "Override the global trailing-comma policy for this list kind. Required singleton tuple commas are retained."
+      },
+      {
+        "key": "trailing_commas_bindings",
+        "kind": "choice",
+        "label": "Pattern binding commas",
+        "default": "inherit",
+        "choices": [
+          {
+            "value": "inherit",
+            "label": "Inherit"
+          },
+          {
+            "value": "preserve",
+            "label": "Keep"
+          },
+          {
+            "value": "omit",
+            "label": "Omit"
+          },
+          {
+            "value": "multiline",
+            "label": "Multiline"
+          }
+        ],
+        "help": "Override the global trailing-comma policy for this list kind. Required singleton tuple commas are retained."
+      }
+    ]
+  },
+  {
+    "name": "Selection",
+    "items": [
+      {
+        "key": "start_line",
+        "kind": "number",
+        "label": "First selected line",
+        "default": 0,
+        "min": 0,
+        "max": 1000000,
+        "help": "Zero formats the whole file. Ranges expand to complete syntax units.",
+        "zero": "Whole file"
+      },
+      {
+        "key": "end_line",
+        "kind": "number",
+        "label": "Last selected line",
+        "default": 0,
+        "min": 0,
+        "max": 1000000,
+        "help": "Zero extends the range to the end of the file.",
+        "zero": "End of file"
+      },
+      {
+        "key": "range_scope",
+        "kind": "choice",
+        "label": "Selection scope",
+        "default": "declarations",
+        "choices": [
+          {
+            "value": "declarations",
+            "label": "Enclosing declarations"
+          },
+          {
+            "value": "statements",
+            "label": "Enclosing statements"
+          }
+        ],
+        "help": "Select the selection scope policy. Keep or inherit preserves the corresponding current setting."
+      }
+    ]
+  }
+];
+const FORMAT_PROFILES = [
+  {
+    "id": "current_v1",
+    "label": "Current v1",
+    "options": {}
+  },
+  {
+    "id": "compact_v1",
+    "label": "Compact v1",
+    "options": {
+      "indent_width": 2,
+      "preferred_width": 100,
+      "short_functions": "inline_if_fits",
+      "short_branches": "inline_if_fits",
+      "short_loops": "inline_if_fits",
+      "function_body": "expression",
+      "function_keyword": "omit",
+      "return_arrow": "omit",
+      "binding_types": "omit_redundant",
+      "operator_spacing": "precedence",
+      "statement_paragraphs": "logical",
+      "trailing_commas": "omit"
+    }
+  },
+  {
+    "id": "expanded_v1",
+    "label": "Expanded v1",
+    "options": {
+      "preferred_width": 80,
+      "list_layout": "vertical",
+      "short_functions": "expand",
+      "short_branches": "expand",
+      "short_loops": "expand",
+      "brace_placement": "next_line",
+      "branch_braces": "always",
+      "function_body": "block",
+      "function_keyword": "always",
+      "return_arrow": "always",
+      "statement_paragraphs": "logical",
+      "blank_lines_before_final_return": 1,
+      "blank_lines_after_control": 1,
+      "blank_lines_between_members": 1
+    }
+  },
+  {
+    "id": "tabular_v1",
+    "label": "Tabular v1",
+    "options": {
+      "preferred_width": 100,
+      "list_layout": "one_per_line_when_wrapped",
+      "assignment_alignment": "consecutive",
+      "field_type_alignment": "consecutive",
+      "constant_alignment": "consecutive",
+      "record_value_alignment": "consecutive",
+      "comment_alignment": "consecutive",
+      "data_alignment": "numeric_right",
+      "alignment_max_padding": 24,
+      "alignment_max_column": 100,
+      "statement_paragraphs": "logical"
+    }
+  }
+];
+function eachOption(visit) { for (const group of OPTION_GROUPS) for (const item of group.items) visit(item, group); }
+function defaultOptions() { const options = {}; eachOption(item => { options[item.key] = item.default; }); return options; }
+function optionByKey(key) { let found = null; eachOption(item => { if (item.key === key) found = item; }); return found; }
+function profileOptions(id) { const profile = FORMAT_PROFILES.find(profile => profile.id === id); return { ...defaultOptions(), ...(profile?.options || {}), profile: id }; }
+function configText(options) { const id = options.profile || "current_v1"; const baseline = profileOptions(id); const lines = id === "current_v1" ? [] : [`profile=${id}`]; eachOption(item => { if (item.key !== "profile" && options[item.key] !== baseline[item.key]) lines.push(`${item.key}=${options[item.key]}`); }); return lines.join("\n"); }

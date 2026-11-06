@@ -74,10 +74,12 @@ compile_objects() {
 }
 compile_wasm() {
     compile_objects "$1" "$2"
-    "$emcc" -O2 -std=c11 -Wall -Wextra -Werror -DCHIBI_ASSET_COMPILER_WASM_TEST -I"$root/src" \
+    "$emcc" -O2 -std=c11 -Wall -Wextra -Werror -DCHIBI_ASSET_COMPILER_WASM_TEST -DCHIBI_PROGRAM_WASM_TEST \
+        -DCHIBI_PROGRAM_WASM_TRANSPORT_TEST -I"$root/src" \
         -sSUPPORT_LONGJMP=wasm -sSTACK_OVERFLOW_CHECK=2 -sALLOW_MEMORY_GROWTH=1 \
         -sSTACK_SIZE=8388608 -sMAXIMUM_MEMORY=2147483648 -sENVIRONMENT=node -sNODERAWFS=1 \
-        "$root/src/authoring/asset_compiler_wasm.c" "$root/test/native_aot/asset_compiler/Wasm.c" \
+        "$root/src/runtime/program_wasm.c" "$root/src/authoring/asset_compiler_wasm.c" \
+        "$root/test/native_aot/asset_compiler/Wasm.c" "$root/test/native_aot/asset_compiler/WasmTransport.c" \
         "$wasm_work"/piece-*.ll.o -o "$wasm_work/compiler.js"
 }
 target=x86_64-unknown-linux-gnu
@@ -99,7 +101,7 @@ mkdir -p "$work/service"
     -sSTACK_SIZE=8388608 -sMAXIMUM_MEMORY=2147483648 -sENVIRONMENT=node -sNODERAWFS=1 \
     "$root/test/native_aot/asset_compiler/Wasm.c" "$root/test/native_aot/asset_compiler/WasmGame.c" \
     "$work/package/libchibi_asset_compiler.a" "$work/game"/piece-*.ll.o -o "$work/service/compiler.js"
-"$emcc" -O2 -std=c11 -Wall -Wextra -Werror -DCHIBI_ASSET_COMPILER_WASM_TEST -I"$root/src" \
+"$emcc" -O2 -std=c11 -Wall -Wextra -Werror -DCHIBI_ASSET_COMPILER_WASM_TEST -DCHIBI_PROGRAM_WASM_TEST -I"$root/src" \
     -pthread -sSUPPORT_LONGJMP=wasm -sSTACK_OVERFLOW_CHECK=2 -sINITIAL_MEMORY=268435456 \
     -sSTACK_SIZE=8388608 -sDEFAULT_PTHREAD_STACK_SIZE=8388608 -sPTHREAD_POOL_SIZE=2 \
     -sENVIRONMENT=node -sNODERAWFS=1 "$root/test/native_aot/asset_compiler/WasmThreads.c" \

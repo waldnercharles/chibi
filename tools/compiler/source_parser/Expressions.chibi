@@ -313,7 +313,8 @@ ParsePrimary :: (c: ^Cursor, n: ^(Node[])) -> int {
 // `(value: int) { ... }`. A parenthesized expression before a block is not one.
 StartsLambda :: (c: ^Cursor, n: ^(Node[])) -> bool {
     open := c.pos;
-    if (n^[open].kind == syntax.Fn) {
+    explicit := n^[open].kind == syntax.Fn;
+    if (explicit) {
         open += 1;
     }
     if (n^[open].token != tk.OpenParen) {
@@ -327,10 +328,14 @@ StartsLambda :: (c: ^Cursor, n: ^(Node[])) -> bool {
     if (next == tk.FatArrow || next == tk.ArrowRight) {
         return true;
     }
+    if (BareResultBeforeBody(c, n, end)) {
+        return true;
+    }
     if (next != tk.OpenBrace) {
         return false;
     }
-    return n^[open + 1].token == tk.CloseParen || (IsName(n^[open + 1].token) && n^[open + 2].token == tk.Colon);
+    return explicit || n^[open + 1].token == tk.CloseParen ||
+           (IsName(n^[open + 1].token) && n^[open + 2].token == tk.Colon);
 }
 
 // `[fn] (parameters) [-> result] { body }` or `[fn] (parameters) => value`.

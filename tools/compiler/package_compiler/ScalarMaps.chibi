@@ -51,14 +51,13 @@ ScalarMapShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
 
 // A declaration's map type, including a copy of a map variable or call.
 ScalarLocalMap :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
-                   types: TypeDecl[], callable: Callable, statement: int) -> int {
+                   types: TypeDecl[], callable: Callable, statement: int, lookup_types: ^(TypeDecl[])) -> int {
     declared := Field(forest, statement, syntax.FieldType);
     if (declared < 0) {
         return ScalarMapShape(forest, text, callables, names, types, callable.package,
                               Field(forest, statement, syntax.FieldValue));
     }
-    table := types;
-    value := ReadType(forest, text, &table, names, callable.package, declared);
+    value := ReadType(forest, text, lookup_types, names, callable.package, declared);
     if (value.container == MapContainer && ScalarMapType(types, value.record) != 0) {
         return value.record;
     }

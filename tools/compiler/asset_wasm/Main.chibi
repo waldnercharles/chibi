@@ -8,24 +8,24 @@ import target "core:target"
 // host borrows buffers only for these foreign calls; no file or OS import is
 // part of the compiler module.
 foreign {
-    chibi_asset_request_length :: () -> int
-    chibi_asset_request_copy :: (buffer: u8[], count: int) -> int
-    chibi_asset_budget :: () -> u64
-    chibi_asset_publish :: (bytes: u8[], count: int) -> int
-    chibi_asset_rejected :: (document: int, line: int, column: int, message: cstring) -> int
+    chibi_program_request_length :: () -> int
+    chibi_program_request_copy :: (buffer: u8[], count: int) -> int
+    chibi_program_budget :: () -> u64
+    chibi_program_publish :: (bytes: u8[], count: int) -> int
+    chibi_program_rejected :: (document: int, line: int, column: int, message: cstring) -> int
     chibi_native_scope_begin :: (steps: u64) -> int
     chibi_native_scope_end :: () -> int
 }
 
 Main :: () -> int {
     assert(target.Os == target.Web && target.Arch == target.Wasm32 && target.PointerBits == 32, "the browser compiler target");
-    count := chibi_asset_request_length();
+    count := chibi_program_request_length();
     if (count < 0 || count > 67108864) { return 2; }
     data := resize([u8(0)], count);
-    if (chibi_asset_request_copy(data, count) != 0) { return 2; }
+    if (chibi_program_request_copy(data, count) != 0) { return 2; }
     value := request.Parse(text_from_bytes(data));
     if (!value.valid) { return 2; }
-    armed := chibi_native_scope_begin(chibi_asset_budget());
+    armed := chibi_native_scope_begin(chibi_program_budget());
     assert(armed == 0, "native compiler scope begins");
     compiled := compiler.CompileCatalogResult(value.project, value.collections, value.roots, value.paths, value.sources,
         value.debug, value.target, value.abi, value.names, value.natives, value.ports, value.identities,
@@ -34,10 +34,10 @@ Main :: () -> int {
     assert(ended == 0, "native compiler scope ends");
     switch compiled {
         case .Rejected(diagnostic):
-            if (chibi_asset_rejected(diagnostic.document, diagnostic.line, diagnostic.column, diagnostic.message) != 0) { return 2; }
+            if (chibi_program_rejected(diagnostic.document, diagnostic.line, diagnostic.column, diagnostic.message) != 0) { return 2; }
             return 1;
         case .Compiled(module, bytes):
-            if (chibi_asset_publish(bytes, length(bytes)) != 0) { return 2; }
+            if (chibi_program_publish(bytes, length(bytes)) != 0) { return 2; }
             return 0;
     }
 }

@@ -1,0 +1,204 @@
+package source_format_tests
+
+import format "project:source_format"
+import strings "core:strings"
+
+@test
+AlignmentModesCanOverrideLegacySwitches :: () {
+    aligned := format.Defaults();
+    aligned.assignment_alignment = 3;
+    With(aligned, "package p\nA :: () { a := 1; longer := 2; }\n",
+         "package p\nA :: () {\n    a      := 1;\n    longer := 2;\n}\n");
+    off := format.Defaults();
+    off.align_assignments = true;
+    off.assignment_alignment = 1;
+    With(off, "package p\nA :: () { a      := 1; longer := 2; }\n",
+         "package p\nA :: () {\n    a := 1;\n    longer := 2;\n}\n");
+}
+
+@test
+TypedLocalsAndUntypedConstantsHaveSeparateAnchors :: () {
+    o := format.Defaults();
+    o.declaration_type_alignment = 3;
+    o.constant_alignment = 3;
+    With(o, "package p\nA :: 1;\nLonger :: 2;\n\nF :: () {\n    a: int = 1;\n    longer: string = \"x\";\n}\n",
+         "package p\nA      :: 1;\nLonger :: 2;\n\nF :: () {\n    a:      int = 1;\n    longer: string = \"x\";\n}\n");
+    legacy := format.Defaults();
+    legacy.align_constants = true;
+    With(legacy, "package p\nA :: 1;\nLonger :: 2;\n", "package p\nA :: 1;\nLonger :: 2;\n");
+}
+
+@test
+ManualAlignmentNeedsAuthoredPadding :: () {
+    manual := format.Defaults();
+    manual.assignment_alignment = 2;
+    With(manual, "package p\nA :: () {\n    a      := 1;\n    longer := 2;\n}\n",
+         "package p\nA :: () {\n    a      := 1;\n    longer := 2;\n}\n");
+    With(manual, "package p\nA :: () {\n    a := 1;\n    longer := 2;\n}\n",
+         "package p\nA :: () {\n    a := 1;\n    longer := 2;\n}\n");
+}
+
+@test
+AlignmentGroupsRespectBlankCommentAndScopeBoundaries :: () {
+    o := format.Defaults();
+    o.assignment_alignment = 3;
+    source := "package p\nA :: () {\n    a := 1;\n\n    longer := 2;\n}\n";
+    With(o, source, source);
+    o.alignment_across_blank_lines = true;
+    With(o, source, "package p\nA :: () {\n    a      := 1;\n\n    longer := 2;\n}\n");
+    source = "package p\nA :: () {\n    a := 1;\n    // group note\n    longer := 2;\n}\n";
+    With(o, source, source);
+    o.alignment_across_comments = true;
+    With(o, source, "package p\nA :: () {\n    a      := 1;\n    // group note\n    longer := 2;\n}\n");
+    source = "package p\nA :: () {\n    a := 1;\n    Call();\n    longer := 2;\n}\n";
+    With(o, source, source);
+    source = "package p\nA :: () {\n    a := 1;\n}\nB :: () {\n    longer := 2;\n}\n";
+    With(o, source, source);
+}
+
+@test
+AlignmentBudgetsRejectAnOutlierGroup :: () {
+    o := format.Defaults();
+    o.assignment_alignment = 3;
+    o.alignment_max_padding = 2;
+    source := "package p\nA :: () {\n    a := 1;\n    longer := 2;\n}\n";
+    With(o, source, source);
+    o.alignment_max_padding = 0;
+    o.alignment_max_column = 8;
+    With(o, source, source);
+}
+
+@test
+NumericDataCapsCountAllPaddingAtTheSameGap :: () {
+    o := format.Defaults();
+    o.data_alignment = 3;
+    o.alignment_max_padding = 2;
+    With(o, "package p\nA :: () {\nrows := [[\"a\", 1], [\"bbb\", 22]];\n}\n",
+         "package p\nA :: () {\n    rows := [\n        [\"a\", 1],\n        [\"bbb\", 22]\n    ];\n}\n");
+}
+
+@test
+DataColumnsHaveExplicitLeftAndRightOverrides :: () {
+    parsed := format.ParseOptions(format.Defaults(), "data_alignment=columns data_column_alignment=right,left");
+    assert(parsed.error == "", "explicit column directions parse");
+    With(parsed.options, "package p\nA :: () {\nrows := [[\"a\", 1], [\"bbb\", 22]];\n}\n",
+         "package p\nA :: () {\n    rows := [\n        [  \"a\", 1],\n        [\"bbb\", 22]\n    ];\n}\n");
+    overridden := format.ParseOptions(format.Defaults(), "data_alignment=numeric_right data_column_alignment=left,right");
+    assert(overridden.error == "", "column directions can override numeric mode");
+    With(overridden.options, "package p\nA :: () {\nrows := [[1, 200], [30, 4]];\n}\n",
+         "package p\nA :: () {\n    rows := [\n        [1,  200],\n        [30,   4]\n    ];\n}\n");
+}
+
+@test
+DataColumnPoliciesRejectInvalidNamesAndReservedBits :: () {
+    assert(format.ParseOptions(format.Defaults(), "data_column_alignment=left,unknown").error != "", "unknown column direction rejects");
+    assert(format.ParseOptions(format.Defaults(), "data_column_alignment=left,,right").error != "", "empty interior column rejects");
+    assert(format.ParseOptions(format.Defaults(), "data_column_alignment=left,left,left,left,left,left,left,left,left,left,left,left,left,left,left,left,left,left,left,left,left,left,left,left,left,left,left,left,left,left,left,left,left").error != "", "more than 32 columns rejects");
+    o := format.Defaults();
+    o.data_column_alignment = u64(3);
+    assert(format.Validate(o) != "", "reserved internal column bits reject");
+    columns: string[] = [];
+    for (index in 0..<31) { columns.append("auto"); }
+    columns.append("right");
+    highest := format.ParseOptions(format.Defaults(), strings.Concatenate(["data_column_alignment=", strings.Join(columns, ",")]));
+    assert(highest.error == "" && highest.options.data_column_alignment == u64(9223372036854775808), "the 32nd column uses the full unsigned mask");
+}
+
+@test
+CompoundAssignmentsCanAlignTheirAssignmentMarker :: () {
+    o := format.Defaults();
+    o.assignment_alignment = 3;
+    o.alignment_compound = 1;
+    With(o, "package p\nA :: () { a = 1; long += 2; }\n",
+         "package p\nA :: () {\n    a     = 1;\n    long += 2;\n}\n");
+}
+
+@test
+TabDisplayWidthIsIndependentOfIndentWidth :: () {
+    o := format.Defaults();
+    o.use_tabs = true;
+    o.tab_width = 8;
+    o.assignment_alignment = 3;
+    With(o, "package p\nA :: () {\na := 1;\nlonger := 2;\n}\n",
+         "package p\nA :: () {\n\ta      := 1;\n\tlonger := 2;\n}\n");
+}
+
+@test
+ManualColumnSignalsExpandTabs :: () {
+    o := format.Defaults();
+    o.assignment_alignment = 2;
+    o.tab_width = 8;
+    With(o, "package p\nA :: () {\n    a\t:= 1;\n    abc\t:= 2;\n}\n",
+         "package p\nA :: () {\n    a   := 1;\n    abc := 2;\n}\n");
+}
+
+@test
+DataRowsCanPreserveAuthoredColumns :: () {
+    o := format.Defaults();
+    o.data_alignment = 1;
+    With(o, "package p\nA :: () {\nrows := [\n[  1,200],\n[300,  4],\n]\n}\n",
+         "package p\nA :: () {\n    rows := [\n        [  1,200],\n        [300,  4],\n    ]\n}\n");
+}
+
+@test
+DataRowsCanAlignLeftOrNumericRight :: () {
+    o := format.Defaults();
+    o.data_alignment = 2;
+    source := "package p\nA :: () {\nrows := [[1, 200], [30, 4]];\n}\n";
+    With(o, source, "package p\nA :: () {\n    rows := [\n        [1,  200],\n        [30, 4]\n    ];\n}\n");
+    o.data_alignment = 3;
+    With(o, source, "package p\nA :: () {\n    rows := [\n        [ 1, 200],\n        [30,   4]\n    ];\n}\n");
+}
+
+@test
+RecordDataColumnsKeepFieldNamesAndOrder :: () {
+    o := format.Defaults();
+    o.data_alignment = 2;
+    With(o, "package p\nA :: () {\nrows := [{x: 1, y: 200}, {x: 30, y: 4}];\n}\n",
+         "package p\nA :: () {\n    rows := [\n        {x: 1,  y: 200},\n        {x: 30, y: 4}\n    ];\n}\n");
+    o.data_alignment = 3;
+    With(o, "package p\nA :: () {\nrows := [{x: 1, y: 200}, {x: 30, y: 4}];\n}\n",
+         "package p\nA :: () {\n    rows := [\n        {x:  1, y: 200},\n        {x: 30, y:   4}\n    ];\n}\n");
+}
+
+@test
+DataPaddingCapsAndProtectedRegionsRemainEffective :: () {
+    o := format.Defaults();
+    o.data_alignment = 3;
+    o.alignment_max_padding = 1;
+    With(o, "package p\nA :: () {\nrows := [[1, 200], [30, 4]];\n}\n",
+         "package p\nA :: () {\n    rows := [\n        [1, 200],\n        [30, 4]\n    ];\n}\n");
+    o.alignment_max_padding = 0;
+    source := "package p\nA :: () {\n    // chibi fmt: off\nrows := [[1,200],[30,4]];\n// chibi fmt: on\n}\n";
+    With(o, source, source);
+}
+
+@test
+DataOutliersCannotMultiplyOutputWithoutBound :: () {
+    o := format.Defaults();
+    o.data_alignment = 2;
+    parts := ["package p\nA :: () {\n    rows := [\n", "        [1, \""];
+    parts.append(strings.Repeat("x", 10000));
+    parts.append("\", 0],\n");
+    for (index in 0..<1000) { parts.append("        [1, \"x\", 0],\n"); }
+    parts.append("    ]\n}\n");
+    source := strings.Join(parts, "");
+    output := Run(source, o);
+    assert(output == source, "a table requiring more than the formatter byte budget keeps canonical rows");
+    assert(Run(output, o) == output, "the bounded fallback is a fixed point");
+}
+
+@test
+DeclarationOutliersCannotMultiplyOutputWithoutBound :: () {
+    o := format.Defaults();
+    o.assignment_alignment = 3;
+    parts := ["package p\nA :: () {\n"];
+    for (index in 0..<1000) { parts.append("    a = 1;\n"); }
+    parts.append("    ");
+    parts.append(strings.Repeat("x", 10000));
+    parts.append(" = 1;\n}\n");
+    source := strings.Join(parts, "");
+    output := Run(source, o);
+    assert(output == source, "a declaration group beyond the byte budget keeps canonical gaps");
+    assert(Run(output, o) == output, "bounded declaration padding is a fixed point");
+}

@@ -286,11 +286,26 @@ ParseNamedValue :: (c: ^Cursor, n: ^(Node[]), offset: int, public: bool, third: 
     if (third == tk.Union) {
         return ParseUnion(c, n, public);
     }
+    if (third == tk.Ident && n^[c.pos + offset + 2].kind == syntax.Fn &&
+        Peek(c, n, offset + 3) == tk.OpenParen) {
+        // `fn` remains a legal name: `Value :: fn(1)` is a constant call,
+        // unless the parameter group is followed by a function signature/body.
+        following := SkipBrackets(n, c.pos + offset + 3, c.final);
+        if (following >= 0 && (n^[following].token == tk.ArrowRight ||
+                               n^[following].token == tk.FatArrow ||
+                               n^[following].token == tk.OpenBrace ||
+                               BareResultBeforeBody(c, n, following))) {
+            definition2 := New(n, syntax.FunctionDeclaration);
+            Accept(c, n, definition2, tk.Pub, syntax.FieldVisibility);
+            return ParseFunctionRest(c, n, definition2);
+        }
+    }
     if (third == tk.OpenParen) {
         following := SkipBrackets(n, c.pos + offset + 2, c.final);
         if (following >= 0 && (n^[following].token == tk.ArrowRight ||
                                n^[following].token == tk.FatArrow ||
-                               n^[following].token == tk.OpenBrace)) {
+                               n^[following].token == tk.OpenBrace ||
+                               BareResultBeforeBody(c, n, following))) {
             definition2 := New(n, syntax.FunctionDeclaration);
             Accept(c, n, definition2, tk.Pub, syntax.FieldVisibility);
             return ParseFunctionRest(c, n, definition2);
@@ -347,7 +362,7 @@ ParseExplicitState :: (c: ^Cursor, n: ^(Node[])) -> int {
     return slot;
 }
 
-// [attributes] [pub] name `::` parameters [`->` results] [`=>`] body [`;`].
+// [attributes] [pub] name `::` [fn] parameters [[`->`] results] body [`;`].
 ParseFunctionRest :: (c: ^Cursor, n: ^(Node[]), definition2: int) -> int {
     TakeName(c, n, definition2, syntax.FieldName);
     Expect(c, n, definition2, tk.ColonColon, syntax.FieldNone);
@@ -355,9 +370,72 @@ ParseFunctionRest :: (c: ^Cursor, n: ^(Node[]), definition2: int) -> int {
     return definition2;
 }
 
-// `-> Type` or `-> (name: Type, ...)` after the parameters, when present.
+// A signature lookahead knows the trait words. The general token-only type
+// scanner treats adjacent names as possible traits, which would swallow the
+// measured unit in `int m/s` or reject `int m^2`.
+SkipSignatureBase :: (c: ^Cursor, n: ^(Node[]), at: int) -> int {
+    final := c.final;
+    while (at >= 0 && at < final) {
+        scanning := true;
+        while (scanning && at < final) {
+            token := n^[at].token;
+            if (token == tk.Plain || token == tk.Service || token == tk.Setting) { at += 1; }
+            else if (token == tk.Wildcard) { at += 4; }
+            else if ((IsWordAt(c, n, at, "view") || IsWordAt(c, n, at, "self")) &&
+                     StartsType(n^[at + 1].token)) { at += 1; }
+            else { scanning = false; }
+        }
+        at = SkipTypeSuffixes(n, SkipTypePrimary(n, at, final), final);
+        if (at < 0 || n^[at].token != tk.Or) { return at; }
+        at += 1;
+    }
+    return -1;
+}
+
+// The end of a result annotation without consuming source. Units and named
+// result lists need the same boundary treatment as an ordinary type.
+SkipSignatureResult :: (c: ^Cursor, n: ^(Node[]), at: int) -> int {
+    final := c.final;
+    if (at >= final) { return -1; }
+    if (n^[at].token == tk.OpenParen && (n^[at + 1].token == tk.CloseParen ||
+        (IsName(n^[at + 1].token) && n^[at + 2].token == tk.Colon))) {
+        return SkipBrackets(n, at, final);
+    }
+    end := SkipSignatureBase(c, n, at);
+    if (n^[at].token == tk.Ident && (n^[at + 1].token == tk.Quo ||
+        (n^[at + 1].token == tk.Xor && at + 2 < final && n^[at + 2].token == tk.Integer))) {
+        end = at + 1;
+    }
+    if (end < 0) { return -1; }
+    // A unit alone starts with a name followed by / or ^integer. Otherwise
+    // a second name after the type starts its measured unit.
+    unit := -1;
+    if (IsName(n^[at].token) && (n^[end].token == tk.Quo ||
+        (n^[end].token == tk.Xor && n^[end + 1].token == tk.Integer))) { unit = at; }
+    else if (n^[end].token == tk.Ident) { unit = end; }
+    if (unit >= 0) {
+        end = unit + 1;
+        if (n^[end].token == tk.Xor && n^[end + 1].token == tk.Integer) { end += 2; }
+        while (end < final && n^[end].token == tk.Quo && n^[end + 1].token == tk.Ident) {
+            end += 2;
+            if (n^[end].token == tk.Xor && n^[end + 1].token == tk.Integer) { end += 2; }
+        }
+    }
+    return end;
+}
+
+BareResultBeforeBody :: (c: ^Cursor, n: ^(Node[]), at: int) -> bool {
+    end := SkipSignatureResult(c, n, at);
+    return end >= 0 && (n^[end].token == tk.OpenBrace || n^[end].token == tk.FatArrow);
+}
+
+// [`->`] Type or [`->`] (name: Type, ...) after the parameters, when present.
 ParseResults :: (c: ^Cursor, n: ^(Node[]), owner: int) {
-    if (Accept(c, n, owner, tk.ArrowRight, syntax.FieldNone)) {
+    arrow := Accept(c, n, owner, tk.ArrowRight, syntax.FieldNone);
+    bare := SkipSignatureResult(c, n, c.pos);
+    if (arrow || (bare >= 0 && (n^[bare].token == tk.OpenBrace || n^[bare].token == tk.FatArrow ||
+                                n^[bare].token == tk.Semicolon || n^[bare].token == tk.CloseBrace ||
+                                n^[bare].token == tk.EOF))) {
         if (c.token == tk.OpenParen && (Peek(c, n, 1) == tk.CloseParen ||
                                           (IsName(Peek(c, n, 1)) && Peek(c, n, 2) == tk.Colon))) {
             Add(n, owner, ParseParameters(c, n), syntax.FieldResults);
@@ -404,6 +482,11 @@ ParseForeignFunction :: (c: ^Cursor, n: ^(Node[])) -> int {
     TakeAttributes(c, n, declaration);
     TakeName(c, n, declaration, syntax.FieldName);
     Expect(c, n, declaration, tk.ColonColon, syntax.FieldNone);
+    if (StartsFn(c, n, c.pos)) {
+        keyword := Take(c, n, declaration, syntax.FieldNone);
+        n^[keyword].kind = syntax.Fn;
+        n^[keyword].named = false;
+    }
     Add(n, declaration, ParseParameters(c, n), syntax.FieldParameters);
     ParseResults(c, n, declaration);
     Accept(c, n, declaration, tk.Semicolon, syntax.FieldNone);
@@ -411,10 +494,25 @@ ParseForeignFunction :: (c: ^Cursor, n: ^(Node[])) -> int {
 }
 
 ParseSignature :: (c: ^Cursor, n: ^(Node[]), owner: int) {
+    if (StartsFn(c, n, c.pos)) {
+        keyword := Take(c, n, owner, syntax.FieldNone);
+        n^[keyword].kind = syntax.Fn;
+        n^[keyword].named = false;
+    }
     Add(n, owner, ParseParameters(c, n), syntax.FieldParameters);
     ParseResults(c, n, owner);
-    Accept(c, n, owner, tk.FatArrow, syntax.FieldNone);
-    Add(n, owner, ParseCallableBody(c, n, syntax.CallableBody), syntax.FieldBody);
+    if (c.token == tk.FatArrow && Peek(c, n, 1) != tk.OpenBrace) {
+        body := New(n, syntax.CallableBody);
+        returned := New(n, syntax.ReturnStatement);
+        Take(c, n, returned, syntax.FieldNone);
+        Add(n, returned, ParseBinary(c, n, OrPower), syntax.FieldValue);
+        End(c, n, returned);
+        Add(n, body, returned, syntax.FieldNone);
+        Add(n, owner, body, syntax.FieldBody);
+    } else {
+        Accept(c, n, owner, tk.FatArrow, syntax.FieldNone);
+        Add(n, owner, ParseCallableBody(c, n, syntax.CallableBody), syntax.FieldBody);
+    }
     Accept(c, n, owner, tk.Semicolon, syntax.FieldNone);
 }
 

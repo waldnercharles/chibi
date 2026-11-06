@@ -27,7 +27,7 @@ RemoveTree :: (path: string) -> bool {
 }
 
 CFiles :: () -> string[] {
-    return ["authoring/asset_compiler_wasm.c", "authoring/asset_compiler_host.c", "support/binary_cache.c",
+    return ["runtime/program_wasm.c", "authoring/asset_compiler_wasm.c", "authoring/asset_compiler_host.c", "support/binary_cache.c",
             "support/file_io.c", "support/sha256.c", "support/xalloc.c"];
 }
 
@@ -60,7 +60,7 @@ InputDigest :: (root: string, driver: string, emcc: string, llvm: string) -> str
     inputs := [driver, Join([root, "/tools/graph/asset_wasm/Build.chibi"]), Join([root, "/tools/graph/wasm_toolchain/Toolchain.chibi"])];
     inputs.extend(toolchain.files);
     for (source in CFiles()) { inputs.append(Join([root, "/src/", source])); }
-    for (header in ["authoring/asset_compiler_wasm.h", "authoring/asset_compiler_host.h", "support/binary_cache.h",
+    for (header in ["runtime/program_wasm.h", "authoring/asset_compiler_wasm.h", "authoring/asset_compiler_host.h", "support/binary_cache.h",
                     "support/file_io.h", "support/sha256.h", "support/xalloc.h"]) {
         inputs.append(Join([root, "/src/", header]));
     }
@@ -109,7 +109,7 @@ Runtime :: (root: string, emcc: string, work: string, threads: bool, testing: bo
     compiler := [emcc];
     compiler.extend(Flags(threads));
     compiler.extend(["-std=gnu11", "-Wall", "-Wextra", "-Werror", "-flto", "-I", Join([root, "/src"])]);
-    if (testing) { compiler.append("-DCHIBI_ASSET_COMPILER_WASM_TEST"); }
+    if (testing) { compiler.extend(["-DCHIBI_ASSET_COMPILER_WASM_TEST", "-DCHIBI_PROGRAM_WASM_TEST"]); }
     modules: string[] = [];
     for (source, index in CFiles()) {
         runtime := format_text("{}/runtime-{}.bc", work, index);

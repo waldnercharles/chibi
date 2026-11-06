@@ -1,6 +1,7 @@
 package native_driver
 
 import compiler "project:package_compiler"
+import catalog "project:compiler_catalog"
 import facts "project:scalar_facts"
 import route "project:driver_paths"
 import raw "project:compiler_syntax"
@@ -28,13 +29,17 @@ Tally :: struct {
 
 // The package folders below `folder`, relative to the root, that may hold tests: those that
 // hold a .chibi file. Hidden folders and `build` folders are not looked in. "." is the root.
-TestFolders :: (root: string, relative: string) -> string[] {
+TestFolders :: (root: string, relative: string) -> (names: string[], problem: string) {
     found: string[] = [];
     folder := root;
     if (relative != ".") {
         folder = strings.Concatenate([root, "/", relative]);
     }
-    names := os.List(folder).names;
+    listed := os.List(folder);
+    if (listed.error != nil) {
+        return (found, strings.Concatenate(["cannot list test directory ", folder]));
+    }
+    names := listed.names;
     holds := false;
     for (name in names) {
         if (strings.HasSuffix(name, ".chibi") && os.IsFile(strings.Concatenate([folder, "/", name]))) {
@@ -52,20 +57,26 @@ TestFolders :: (root: string, relative: string) -> string[] {
         if (relative != ".") {
             child = strings.Concatenate([relative, "/", name]);
         }
-        found.extend(TestFolders(root, child));
+        children := TestFolders(root, child);
+        if (children.problem != "") { return (children.names, children.problem); }
+        found.extend(children.names);
     }
-    return found;
+    return (found, "");
 }
 
 // The .chibi files of a package folder, in name order.
-TestFiles :: (folder: string) -> string[] {
+TestFiles :: (folder: string) -> (names: string[], problem: string) {
     files: string[] = [];
-    for (name in os.List(folder).names) {
+    listed := os.List(folder);
+    if (listed.error != nil) {
+        return (files, strings.Concatenate(["cannot list test package ", folder]));
+    }
+    for (name in listed.names) {
         if (strings.HasSuffix(name, ".chibi") && os.IsFile(strings.Concatenate([folder, "/", name]))) {
             files.append(name);
         }
     }
-    return files;
+    return (files, "");
 }
 
 // The text after `// error: ` on the last line of `text`, "" when it does not end so.
@@ -314,7 +325,7 @@ RejectedAsExpected :: (label: string, relative: string, file: string, expected: 
     target := Target(HostTriple());
     platform := PlatformFor(target);
     rows := compiler.CollectScalarProgram("/project", ["core"], [route.Visible(core)], inputs.paths, inputs.sources, PointerFacts(target),
-                                           Names(), Natives(), Ports(), Identities(), platform.os, platform.arch, "");
+                                           catalog.Names(), catalog.Natives(), catalog.Ports(), catalog.Identities(), platform.os, platform.arch, "");
     actual := "it compiled";
     passed := false;
     if (length(rows) < 2 || rows[1].kind == facts.RejectionRow) {
@@ -390,7 +401,13 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
     attributed := false;
     package := "";
     known: string[] = [];
-    for (file in TestFiles(folder)) {
+    listed := TestFiles(folder);
+    if (listed.problem != "") {
+        Complain(listed.problem);
+        result.compiled = false;
+        return result;
+    }
+    for (file in listed.names) {
         known.append(file);
         read := os.ReadText(strings.Concatenate([folder, "/", file]));
         if (read.error != nil) {
@@ -477,7 +494,7 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
     visible: string[] = [];
     for (directory in directories) { visible.append(route.Visible(directory)); }
     collected := compiler.CollectScalarProgramWithEffects("/project", collections, visible, gathered.paths, gathered.sources,
-        PointerFacts(target), Names(), Natives(), Ports(), Identities(), platform.os, platform.arch, main_name);
+        PointerFacts(target), catalog.Names(), catalog.Natives(), catalog.Ports(), catalog.Identities(), platform.os, platform.arch, main_name);
     prepared: TestProgram = {rows: collected.rows, effects: []};
     if (length(collected.effects) > 0) {
         prepared = TestProgramRows(collected, gathered.paths, gathered.sources, names, main_name, dispatcher);
@@ -555,7 +572,12 @@ TestCommand :: (invocation: CliInvocation) -> int {
     }
     tally: Tally = {total: 0, failed: 0, compiled: true};
     number := 0;
-    for (relative in TestFolders(root, ".")) {
+    folders := TestFolders(root, ".");
+    if (folders.problem != "") {
+        Complain(folders.problem);
+        return 2;
+    }
+    for (relative in folders.names) {
         scratch := strings.Concatenate([root, "/build/native/test/", format_text("{}", number)]);
         number += 1;
         tally = TestPackage(root, relative, project, core, llvm, triple, scratch, invocation, workers, tally);

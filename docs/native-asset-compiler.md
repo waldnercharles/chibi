@@ -51,8 +51,9 @@ mode and an external linker; it never enters a desktop link plan.
 Wasm task programs are rejected until a browser scheduler is verified.
 
 `asset_wasm/Main.chibi` uses the desktop request parser and package compiler
-with borrowed host callbacks instead of OS imports. `asset_compiler_wasm.c`
-supplies the 32-bit context and owns every temporary for one synchronous call.
+with borrowed host callbacks instead of OS imports. `runtime/program_wasm.c`
+supplies the 32-bit context and owns every temporary for one synchronous call;
+`asset_compiler_wasm.c` preserves the public compiler diagnostic contract.
 Quota and cancellation unwind to that call through native Wasm longjmp support.
 Link with Emscripten `-sSUPPORT_LONGJMP=wasm` and
 `-sSTACK_OVERFLOW_CHECK=2`; the latter checks shadow-stack assignments instead

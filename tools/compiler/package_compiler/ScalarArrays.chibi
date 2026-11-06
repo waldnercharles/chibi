@@ -808,15 +808,12 @@ ScalarNativeRows :: (forest: snapshot.SnapshotNode[], text: string, callables: C
 // type's, or its value's, a literal's from its first element.
 ScalarLocalArray :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                      callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
-                     constants: ConstDecl[], node: int) -> ValueType {
+                     constants: ConstDecl[], node: int, lookup_types: ^(TypeDecl[])) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
     declared := Field(forest, node, syntax.FieldType);
     value := Field(forest, node, syntax.FieldValue);
     if (declared >= 0) {
-        // Reading a type may add an optional or pointer type; this analysis
-        // keeps none of them.
-        table := types;
-        resolved := ReadType(forest, text, &table, names, callable.package, declared);
+        resolved := ReadType(forest, text, lookup_types, names, callable.package, declared);
         if (resolved.container == ArrayContainer) {
             return resolved;
         }

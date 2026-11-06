@@ -60,6 +60,10 @@ TestRuns :: (label: string, names: string[], effects: int[], program: string, sc
             if (process > 0) { status = os.Wait(process, -1); }
             error := os.ReadText(error_path);
             message := error.text;
+            if (error.error != nil) {
+                status = 127;
+                message = strings.Concatenate(["cannot read native test diagnostics ", error_path]);
+            }
             if (process <= 0) { message = "cannot start the native test process"; }
             ran: os.Result = {status: status, stdout: "", stderr: message};
             result = TestReport(label, names[first], ran, paths, sources, result);
@@ -98,9 +102,20 @@ TestRuns :: (label: string, names: string[], effects: int[], program: string, sc
             while (reported < next && processes[reported - first] <= 0) {
                 output := os.ReadText(format_text("{}/{}.stdout", scratch, reported));
                 error := os.ReadText(format_text("{}/{}.stderr", scratch, reported));
+                status := statuses[reported - first];
+                text := output.text;
                 message := error.text;
+                if (output.error != nil) {
+                    status = 127;
+                    text = "";
+                    message = "cannot read native test output";
+                }
+                if (error.error != nil) {
+                    status = 127;
+                    message = "cannot read native test diagnostics";
+                }
                 if (processes[reported - first] < 0) { message = "cannot start the native test process"; }
-                ran: os.Result = {status: statuses[reported - first], stdout: output.text, stderr: message};
+                ran: os.Result = {status: status, stdout: text, stderr: message};
                 result = TestReport(label, names[reported], ran, paths, sources, result);
                 reported += 1;
             }

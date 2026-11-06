@@ -265,6 +265,9 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
         partial := strings.Concatenate([output, ".partial"]);
         if (os.WriteText(partial, text) != nil || os.Rename(partial, output) != nil) {
             removed := os.Remove(partial);
+            if (removed != nil) {
+                os.Print(strings.Concatenate(["native: cannot remove partial module ", partial]));
+            }
             os.Print("native: cannot publish the LLVM module bundle");
             return 2;
         }
@@ -397,6 +400,9 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     }
     for (name in files) {
         removed := os.Remove(name);
+        if (removed != nil) {
+            os.Print(strings.Concatenate(["native: cannot remove temporary file ", name]));
+        }
     }
     return 0;
 }
@@ -502,6 +508,10 @@ ImportedFrom :: (text: string, collection: string) -> string[] {
 PackageFiles :: (folder: string, tests: bool) -> string[] {
     files: string[] = [];
     listed := os.List(folder);
+    if (listed.error != nil) {
+        os.Print(strings.Concatenate(["native: cannot list package directory ", folder]));
+        return files;
+    }
     for (name in listed.names) {
         if (strings.HasSuffix(name, ".chibi") && (tests || !strings.HasSuffix(name, "Tests.chibi")) && os.IsFile(strings.Concatenate([folder, "/", name]))) {
             files.append(name);

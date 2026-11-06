@@ -1,0 +1,73 @@
+package source_format_tests
+
+import format "project:source_format"
+
+// This request mirrors a browser sending every setting. The JavaScript catalog
+// test checks this fixture against the schema so added controls cannot be lost.
+NativeCatalogDefaults :: () -> string { return "profile=current_v1 preferred_width=0 magic_trailing_comma=true use_tabs=false indent_width=4 continuation_indent=0 align_after_open_bracket=true align_operands=true indent_case_labels=true indent_foreign_blocks=false indent_when_blocks=false tab_width=0 brace_placement=preserve branch_braces=preserve empty_blocks=keep keep_one_line_blocks=false following_keyword=same_line unbraced_body_placement=inherit function_braces=inherit control_braces=inherit type_braces=inherit foreign_braces=inherit when_braces=inherit empty_function_blocks=inherit empty_control_blocks=inherit empty_type_blocks=inherit short_functions=inherit short_branches=inherit short_loops=inherit short_case_arms=inherit max_inline_statements=1 function_body=preserve function_keyword=preserve return_arrow=preserve binding_types=preserve local_types=inherit constant_types=inherit parameter_types=inherit return_types=inherit member_types=inherit public_types=inherit type_spelling=preserve_aliases analysis_target=linux64 semantic_targets=all statement_paragraphs=preserve max_blank_lines=1 blank_lines_between_declarations=0 keep_blank_lines_at_block_edges=true blank_lines_before_final_return=0 blank_lines_after_control=0 blank_lines_between_members=0 blank_lines_between_import_groups=0 block_padding=inherit function_block_padding=inherit type_block_padding=inherit control_block_padding=inherit foreign_block_padding=inherit when_block_padding=inherit blank_lines_before_comments=-1 list_layout=preserve arguments_layout=inherit parameters_layout=inherit arrays_layout=inherit records_layout=inherit bindings_layout=inherit arguments_width=0 parameters_width=0 arrays_width=0 records_width=0 max_items_per_line=0 list_indent=inherit closing_delimiter=own_line binary_operator_position=preserve binary_layout=preserve chain_layout=preserve chain_indent=true attribute_layout=preserve signature_break_priority=preserve control_parens=preserve if_parens=inherit while_parens=inherit for_parens=inherit switch_parens=inherit expression_parens=preserve flatten_parens=false when_parens=inherit readability_mixed_operators=false space_in_braces=false space_in_parens=false space_in_brackets=false spaces_before_trailing_comment=1 operator_spacing=uniform space_multiplicative=inherit space_additive=inherit space_comparison=inherit space_logical=inherit space_assignment=inherit space_bitwise=inherit space_range=inherit space_before_control_parens=inherit space_before_call_parens=inherit space_before_declaration_parens=inherit space_inside_call_parens=inherit space_inside_parameter_parens=inherit space_inside_grouping_parens=inherit space_inside_control_parens=inherit space_inside_empty_parens=inherit space_inside_array_brackets=inherit space_inside_index_brackets=inherit space_inside_type_brackets=inherit space_inside_empty_brackets=inherit space_inside_record_braces=inherit space_inside_empty_record_braces=inherit space_before_type_colon=inherit space_after_type_colon=inherit space_before_field_colon=inherit space_after_field_colon=inherit space_before_named_argument_colon=inherit space_after_named_argument_colon=inherit space_before_case_colon=inherit space_after_case_colon=inherit space_around_arrows=inherit space_around_declaration_separator=inherit space_after_unary=inherit space_before_postfix=inherit space_before_comma=inherit space_after_comma=inherit align_assignments=false align_field_types=false align_constants=false align_struct_literal_values=false align_trailing_comments=false assignment_alignment=inherit field_type_alignment=inherit constant_alignment=inherit record_value_alignment=inherit comment_alignment=inherit alignment_across_blank_lines=false alignment_across_comments=false alignment_max_padding=0 alignment_max_column=0 alignment_compound=operator_start data_alignment=off declaration_type_alignment=inherit data_column_alignment=auto comment_reflow=preserve comment_width=80 reflow_block_comments=false numeric_separators=preserve decimal_group=3 hex_group=4 fraction_group=0 numeric_min_digits=5 hex_case=preserve exponent_case=preserve numeric_base=preserve exponent_group=0 string_escapes=preserve char_escapes=preserve imports=preserve semicolons=keep line_ending=lf final_newline=true trailing_commas=preserve trailing_commas_arguments=inherit trailing_commas_parameters=inherit trailing_commas_arrays=inherit trailing_commas_records=inherit trailing_commas_tuples=inherit trailing_commas_bindings=inherit start_line=0 end_line=0 range_scope=declarations"; }
+
+@test
+EveryCatalogDefaultIsAcceptedByTheAuthoredOptionsParser :: () {
+    parsed := format.ParseOptions(format.Defaults(), NativeCatalogDefaults());
+    assert(parsed.error == "", "all browser defaults are accepted by the native parser");
+    assert(format.Validate(parsed.options) == "", "the complete catalog is valid as one request");
+    assert(parsed.options.profile == 0 && parsed.options.analysis_target == 0 && parsed.options.semantic_targets == 0 &&
+           parsed.options.data_column_alignment == 0 && parsed.options.exponent_group == 0,
+           "current defaults retain native target and preservation policies");
+}
+
+@test
+VersionedProfilesApplyCoherentFormattingPolicies :: () {
+    compact := format.Profile(1);
+    assert(compact.indent_width == 2 && compact.function_body == 2 && compact.binding_types == 1 &&
+           compact.function_keyword == 1 && compact.return_arrow == 1,
+           "compact style chooses expression bodies and redundant-type omission");
+    expanded := format.Profile(2);
+    assert(expanded.brace_placement == 2 && expanded.function_body == 1 && expanded.function_keyword == 2 &&
+           expanded.return_arrow == 2 && expanded.statement_paragraphs == 2,
+           "expanded style chooses explicit block layout and logical paragraphs");
+    tabular := format.Profile(3);
+    assert(tabular.assignment_alignment == 3 && tabular.field_type_alignment == 3 &&
+           tabular.record_value_alignment == 3 && tabular.comment_alignment == 3 &&
+           tabular.alignment_max_padding == 24,
+           "tabular style groups related columns with bounded padding");
+    assert(format.Validate(compact) == "" && format.Validate(expanded) == "" && format.Validate(tabular) == "",
+           "every named profile forms a valid option set");
+    assert(format.Defaults().function_body == 0 && format.Defaults().binding_types == 0 && format.Defaults().semantic_targets == 0,
+           "applying a profile does not mutate defaults");
+}
+
+@test
+ExplicitOverridesWinBeforeOrAfterTheProfileName :: () {
+    leading := format.ParseOptions(format.Defaults(), "indent_width=7 function_body=block profile=compact_v1");
+    trailing := format.ParseOptions(format.Defaults(), "profile=compact_v1 indent_width=7 function_body=block");
+    assert(leading.error == "" && trailing.error == "", "both exported option orders parse");
+    assert(leading.options.profile == 1 && trailing.options.profile == 1 &&
+           leading.options.indent_width == 7 && trailing.options.indent_width == 7 &&
+           leading.options.function_body == 1 && trailing.options.function_body == 1 &&
+           leading.options.binding_types == 1 && trailing.options.binding_types == 1,
+           "individual settings override presets independently of line order");
+}
+
+@test
+AnalysisTargetsAndPerColumnDirectionsUseTheSameConfigParser :: () {
+    index := 0;
+    for (target in ["linux64", "darwin64", "windows64", "web32"]) {
+        parsed := format.ParseOptions(format.Defaults(), format_text("analysis_target={}", target));
+        assert(parsed.error == "" && parsed.options.analysis_target == index,
+               "each documented analysis target has a distinct native value");
+        index += 1;
+    }
+    columns := format.ParseOptions(format.Defaults(), "data_column_alignment=left,right,auto");
+    assert(columns.error == "" && columns.options.data_column_alignment == 9,
+           "column overrides retain their order in the packed native representation");
+}
+
+@test
+InvalidProfileTargetAndColumnPoliciesAreRejected :: () {
+    for (config in ["profile=unknown_v1", "analysis_target=browser", "data_column_alignment=left,center",
+                    "data_column_alignment=right,,left", "exponent_group=17", "missing_setting=preserve"]) {
+        assert(format.ParseOptions(format.Defaults(), config).error != "",
+               "invalid settings cannot silently turn into defaults");
+    }
+}

@@ -411,7 +411,11 @@ Resolve :: (requested: string) -> Subject {
     if (os.IsFile(strings.Concatenate([path, "/Main.chibi"]))) {
         return {project: path, source: "", package: ".", problem: ""};
     }
-    for (name in os.List(path).names) {
+    listed := os.List(path);
+    if (listed.error != nil) {
+        return {project: "", source: "", package: ".", problem: format_text("{}: cannot list source directory", requested)};
+    }
+    for (name in listed.names) {
         if (strings.HasSuffix(name, ".chibi") && os.IsFile(strings.Concatenate([path, "/", name]))) {
             return {project: path, source: "", package: ".", problem: ""};
         }

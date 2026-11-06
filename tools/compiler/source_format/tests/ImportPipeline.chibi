@@ -1,0 +1,94 @@
+package source_format_tests
+
+import format "project:source_format"
+import strings "core:strings"
+
+ImportProjectRun :: (source: string, mode: int, context: format.Context) -> (text: string, notes: string) {
+    options := format.Defaults(); options.imports = mode;
+    switch format.FormatProject(source, options, context) {
+        case .Rejected(message):
+            print_string(message); assert(false, "project import formatting accepts valid source");
+            return (source, message);
+        case .Formatted(text, notes):
+            switch format.FormatProject(text, options, context) {
+                case .Rejected(message): print_string(message); assert(false, "organized imports still parse");
+                case .Formatted(second, detail): assert(second == text, "project import organization reaches a fixed point");
+            }
+            return (text, notes);
+    }
+}
+
+ImportProjectContext :: (paths: string[], sources: string[]) -> format.Context {
+    return {project: "/formatter", collection_names: [], collection_paths: [], paths: paths, sources: sources};
+}
+
+@test
+ImportPipelineSortsResolvedDependencies :: () {
+    source := "package p\nimport z \"project:z\"\nimport a \"project:a\"\nMain :: () { a.Count(); z.Count(); }\n";
+    context := ImportProjectContext(["/formatter/Main.chibi", "/formatter/z/Z.chibi", "/formatter/a/A.chibi"],
+                                    [source, "package z\npub Count :: () -> int { return 2; }\n",
+                                             "package a\npub Count :: () -> int { return 1; }\n"]);
+    result := ImportProjectRun(source, 1, context);
+    assert(strings.Contains(result.text, "import a \"project:a\"\nimport z \"project:z\""), "public pipeline applies compiler-proved import sorting");
+    assert(strings.Index(result.text, "a.Count()") < strings.Index(result.text, "z.Count()"), "call evaluation order remains written order");
+    assert(result.notes == "", "resolved safe import sorting needs no skipped-work note");
+}
+
+@test
+ImportPipelineRemovesAnUnusedAliasOfAUsedPackage :: () {
+    source := "package p\nimport dead \"project:lib\"\nimport kept \"project:lib\"\nMain :: () { kept.Count(); }\n";
+    context := ImportProjectContext(["/formatter/Main.chibi", "/formatter/lib/Lib.chibi"],
+                                    [source, "package lib\npub Count :: () -> int { return 3; }\n"]);
+    result := ImportProjectRun(source, 2, context);
+    assert(!strings.Contains(result.text, "import dead"), "an unused explicit alias is removed after typed proof");
+    assert(strings.Contains(result.text, "import kept") && strings.Contains(result.text, "kept.Count()"), "the live package binding remains");
+    assert(result.notes == "", "a proved dead alias removal is applied without a refusal");
+}
+
+@test
+ImportPipelineRemovesAnUnusedProjectDependencyWhenClosureIsUnchanged :: () {
+    source := "package p\nimport used \"project:z\"\nimport unused \"project:a\"\nMain :: () { used.Count(); }\n";
+    context := ImportProjectContext(["/formatter/Main.chibi", "/formatter/z/Z.chibi", "/formatter/a/A.chibi"],
+                                    [source, "package z\npub Count :: () -> int { return 2; }\n",
+                                             "package a\npub Count :: () -> int { return 1; }\n"]);
+    result := ImportProjectRun(source, 2, context);
+    assert(!strings.Contains(result.text, "import unused") && strings.Contains(result.text, "used.Count()"), "unused explicit project imports can be removed when prepared declarations stay unchanged");
+    assert(result.notes == "", "safe project dependency removal is proved");
+}
+
+@test
+ImportPipelineKeepsUnresolvedImportsWithoutProjectContext :: () {
+    source := "package p\nimport z \"project:z\"\nimport a \"project:a\"\nMain :: () {}\n";
+    result := ImportProjectRun(source, 1, format.EmptyContext());
+    assert(strings.Contains(result.text, "import z \"project:z\"\nimport a \"project:a\""), "an unresolved package order is retained");
+    assert(strings.Contains(result.notes, "Import organization was not applied") && strings.Contains(result.notes, "original program"), "the missing compiler context is visible");
+}
+
+@test
+ImportPipelinePreservesConditionalImportsInBothConfigurations :: () {
+    source := "package p\nimport config \"project:config\"\nwhen config.Enabled == 1 {\nimport z \"project:z\"\nimport a \"project:a\"\nActive :: () { a.Count(); z.Count(); }\n} else {\nimport alternate \"project:alternate\"\nActive :: () {}\n}\nMain :: () { Active(); }\n";
+    for (selected in [int(0), 1]) {
+        config := format_text("package config\npub Enabled: int : {}\n", selected);
+        context := ImportProjectContext(["/formatter/Main.chibi", "/formatter/config/Config.chibi", "/formatter/z/Z.chibi",
+                                         "/formatter/a/A.chibi", "/formatter/alternate/Alternate.chibi"],
+                                        [source, config, "package z\npub Count :: () -> int { return 2; }\n",
+                                                         "package a\npub Count :: () -> int { return 1; }\n",
+                                                         "package alternate\n"]);
+        result := ImportProjectRun(source, 2, context);
+        assert(strings.Index(result.text, "import a \"project:a\"") < strings.Index(result.text, "import z \"project:z\""), "each conditional import group sorts within its branch");
+        assert(strings.Contains(result.text, "import alternate \"project:alternate\""), "other configurations keep their conditional namespace");
+        assert(strings.Contains(result.notes, "conditional") && !strings.Contains(result.notes, "was not applied"), "conditional retention is explained and sorting is proved");
+    }
+}
+
+@test
+ImportPipelinePreservesRetainedInitializationAndHostCallOrder :: () {
+    source := "package p\nimport right \"project:right\"\nimport left \"project:left\"\nMain :: () { left.Next(); right.Next(); }\n";
+    left := "package left\npub Next :: () -> int { count: retain int = 0; count += 1; print_string(\"left\"); return count; }\n";
+    right := "package right\npub Next :: () -> int { count: retain int = 10; count += 1; print_string(\"right\"); return count; }\n";
+    context := ImportProjectContext(["/formatter/Main.chibi", "/formatter/right/Right.chibi", "/formatter/left/Left.chibi"], [source, right, left]);
+    result := ImportProjectRun(source, 1, context);
+    assert(strings.Contains(result.text, "import left \"project:left\"\nimport right \"project:right\""), "dependency declarations sort with retained state and effects intact");
+    assert(strings.Index(result.text, "left.Next()") < strings.Index(result.text, "right.Next()"), "effectful authored calls retain their evaluation order");
+    assert(result.notes == "", "typed proof covers retained initial values and host calls");
+}

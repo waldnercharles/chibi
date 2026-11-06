@@ -1,0 +1,8 @@
+package if_scope
+
+Main :: () -> int {
+    if true hidden := 3;
+    return hidden;
+}
+
+// error: 5:12: Unknown name 'hidden'

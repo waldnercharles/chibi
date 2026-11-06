@@ -2201,17 +2201,15 @@ ScalarEnds :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool
 // types it: its declared type, or its value's storage where its value's
 // inferred number storage is the context. 0 for a type that is not scalar.
 ScalarDeclared :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
-                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], node: int) -> int {
+                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], node: int,
+                   lookup_types: ^(TypeDecl[])) -> int {
     declared := Field(forest, node, syntax.FieldType);
     if (declared < 0) {
         value := Field(forest, node, syntax.FieldValue);
         return ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, value,
                                     ConstantExpressionStorage(forest, text, value));
     }
-    // Reading a type may add an optional or pointer type; this analysis
-    // keeps none of them.
-    table := types;
-    resolved := ReadType(forest, text, &table, names, callable.package, declared);
+    resolved := ReadType(forest, text, lookup_types, names, callable.package, declared);
     if (resolved.container != 0) {
         return 0;
     }
@@ -2220,7 +2218,8 @@ ScalarDeclared :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
 // The record or union of the variable a local declaration of one declares:
 // its declared type's, or its value's.
 ScalarDeclaredRecord :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
-                         names: Name[], types: TypeDecl[], members: TypeMember[], callable: Callable, node: int) -> int {
+                         names: Name[], types: TypeDecl[], members: TypeMember[], callable: Callable, node: int,
+                         lookup_types: ^(TypeDecl[])) -> int {
     declared := Field(forest, node, syntax.FieldType);
     if (declared < 0) {
         value := Field(forest, node, syntax.FieldValue);
@@ -2230,8 +2229,7 @@ ScalarDeclaredRecord :: (forest: snapshot.SnapshotNode[], text: string, callable
         }
         return ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, value);
     }
-    table := types;
-    record := ReadType(forest, text, &table, names, callable.package, declared).record;
+    record := ReadType(forest, text, lookup_types, names, callable.package, declared).record;
     // An unsupported descriptor must not escape its temporary type table.
     if (record >= length(types)) { return -1; }
     return record;
@@ -2316,7 +2314,7 @@ ScalarPlan :: union {
 // frame under the nesting its operands may take.
 ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], statement: int,
-                  mutated: string[], stored: string[]) -> ScalarPlan {
+                  mutated: string[], stored: string[], lookup_types: ^(TypeDecl[])) -> ScalarPlan {
     value := Field(forest, statement, syntax.FieldValue);
     map_change := ScalarMapChange(forest, text, callables, names, types, callable.package, statement);
     if (map_change.operator != 0) { return ScalarPlan.MapEdited(map_change); }
@@ -2477,9 +2475,9 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         return ScalarPlan.Failed(Diagnose(forest, statement, 0,
                                           "scalar proof supports only locals, assignments, asserts, if statements, switches, loops and returns"));
     }
-    local_map := ScalarLocalMap(forest, text, callables, names, types, callable, statement);
+    local_map := ScalarLocalMap(forest, text, callables, names, types, callable, statement, lookup_types);
     if (local_map >= 0) { return ScalarPlan.Mapped(value, local_map, true); }
-    shape := ScalarLocalArray(forest, text, callables, params, callable, names, types, members, constants, statement);
+    shape := ScalarLocalArray(forest, text, callables, params, callable, names, types, members, constants, statement, lookup_types);
     if (shape.storage != 0) {
         if (ScalarArrayType(types, shape.storage, shape.record) == 0 || value < 0) {
             return ScalarPlan.Failed(Diagnose(forest, statement, 0, "scalar proof supports only arrays of numbers, bool, strings, records and unions with a value"));
@@ -2499,13 +2497,13 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         }
         return ScalarPlan.Array(value, shape, copy);
     }
-    storage := ScalarDeclared(forest, text, callables, params, callable, names, types, members, constants, statement);
+    storage := ScalarDeclared(forest, text, callables, params, callable, names, types, members, constants, statement, lookup_types);
     if (storage == StructStorage) {
         return ScalarPlan.Record(value, ScalarDeclaredRecord(forest, text, callables, params, names, types, members, callable,
-                                                             statement));
+                                                             statement, lookup_types));
     }
     if (storage == UnionStorage) {
-        held := ScalarDeclaredRecord(forest, text, callables, params, names, types, members, callable, statement);
+        held := ScalarDeclaredRecord(forest, text, callables, params, names, types, members, callable, statement, lookup_types);
         return ScalarPlan.Record(value, held);
     }
     if (ScalarTypeOf(storage) == 0) {
@@ -2586,6 +2584,10 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                    params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], function: int, ops: Ops,
                    target: Target, aliases: Name[], changed_fields: string[], assertions: ScalarAssertion[],
                    first_assertion: int, last_assertion: int) -> ScalarOperands {
+    // Type queries can intern a missing descriptor. Reuse one private table
+    // for this function instead of copying the entire table per local query.
+    // `types` remains the immutable set whose indices the scalar facts admit.
+    lookup_types := types;
     callable := callables[function];
     result := ScalarValueType(types, callable.result, callable.result_container, callable.result_record);
     rows: facts.Row[] = [ScalarAt(forest, callable.node, facts.FunctionRow, result, 0, callable.count, callable.name)];
@@ -2870,7 +2872,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
         iterated := false;
         map_iterated := -1;
         switch ScalarPlanned(forest, text, callables, params, callable, names, types, members, constants, statement, written,
-                             kept_whole) {
+                             kept_whole, &lookup_types) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
             case .Compound(storage):
@@ -3119,11 +3121,11 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
         } else if (Is(forest, statement, syntax.LocalDeclaration) || Is(forest, statement, syntax.StateDeclaration)) {
             retained := Is(forest, statement, syntax.StateDeclaration);
             declared := Field(forest, statement, syntax.FieldName);
-            storage := ScalarDeclared(forest, text, callables, params, callable, names, types, members, constants, statement);
+            storage := ScalarDeclared(forest, text, callables, params, callable, names, types, members, constants, statement, &lookup_types);
             record: int = -1;
             container: int = 0;
-            shape := ScalarLocalArray(forest, text, callables, params, callable, names, types, members, constants, statement);
-            map_record := ScalarLocalMap(forest, text, callables, names, types, callable, statement);
+            shape := ScalarLocalArray(forest, text, callables, params, callable, names, types, members, constants, statement, &lookup_types);
+            map_record := ScalarLocalMap(forest, text, callables, names, types, callable, statement, &lookup_types);
             if (map_record >= 0) {
                 storage = UnionStorage;
                 container = MapContainer;
@@ -3133,7 +3135,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 container = ArrayContainer;
                 record = shape.record;
             } else if (storage == StructStorage || storage == UnionStorage) {
-                record = ScalarDeclaredRecord(forest, text, callables, params, names, types, members, callable, statement);
+                record = ScalarDeclaredRecord(forest, text, callables, params, names, types, members, callable, statement, &lookup_types);
             } else if (storage == TaskStorage) {
                 // The function whose task the variable holds.
                 record = ScalarTaskCallee(forest, text, callables, names, callable, Field(forest, statement, syntax.FieldValue));
@@ -4385,6 +4387,27 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                     natives, ports, identities, packaged, os, arch, chosen, generation, &summary);
 }
 
+// The scalar producer and semantic tooling resolve the same print action.
+ScalarPrintCatalog :: (natives: ^(ResolvedNative[]), ports: ^(ResolvedPort[]), identities: ^(u64[])) {
+    // The bootstrap catalog contains data functions only. Printing is a void
+    // action, supplied here for the ordinary body checker and lowered below.
+    // These private identities never cross the prepared/runtime ABI.
+    has_print := false;
+    for (native in natives^) { has_print = has_print || NativeNameMatches(native, "print_string"); }
+    if (!has_print) {
+        printed: ResolvedNative = {name: "print_string", first: length(ports^), parameters: 1, results: 0,
+                                  variadic: false, direct: true, qualified_name: "print_string",
+                                  kind: NativeFunctionKind, intrinsic: 0, effects: NativePrintEffect, source: false};
+        port: ResolvedPort = {name: "InString", storage: TextStorage, container: 0, c_string: false, record: -1,
+                             has_default: false, default_owner: false, default_supported: false,
+                             default_bits: 0, default_text: ""};
+        natives.append(printed);
+        ports.append(port);
+        identities.append(binding.ID("native-scalar", "print_string"));
+        identities.append(binding.ID("native-scalar-signature", "print_string(string)"));
+    }
+}
+
 ScalarCollectWithEffects :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                              sources: string[], target: Target, names: string[], natives: Native[], ports: Port[],
                              identities: u64[], packaged: bool, os: int, arch: int, chosen: string, generation: bool,
@@ -4408,23 +4431,7 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
     text_ports := ScalarTextPorts(resolved, resolved_ports);
     text_identities := ScalarTextIdentities(resolved, identities);
     ScalarMathCatalog(&text_natives, &text_ports, &text_identities);
-    // The bootstrap catalog contains data functions only. Printing is a void
-    // action, supplied here for the ordinary body checker and lowered below.
-    // These private identities never cross the prepared/runtime ABI.
-    has_print := false;
-    for (native in text_natives) { has_print = has_print || NativeNameMatches(native, "print_string"); }
-    if (!has_print) {
-        printed: ResolvedNative = {name: "print_string", first: length(text_ports), parameters: 1, results: 0,
-                                  variadic: false, direct: true, qualified_name: "print_string",
-                                  kind: NativeFunctionKind, intrinsic: 0, effects: NativePrintEffect, source: false};
-        port: ResolvedPort = {name: "InString", storage: TextStorage, container: 0, c_string: false, record: -1,
-                             has_default: false, default_owner: false, default_supported: false,
-                             default_bits: 0, default_text: ""};
-        text_natives.append(printed);
-        text_ports.append(port);
-        text_identities.append(binding.ID("native-scalar", "print_string"));
-        text_identities.append(binding.ID("native-scalar-signature", "print_string(string)"));
-    }
+    ScalarPrintCatalog(&text_natives, &text_ports, &text_identities);
     for (source in sources) {
         nul := ScalarNul(source);
         if (nul.message != "") {

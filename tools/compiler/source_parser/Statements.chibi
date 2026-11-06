@@ -14,6 +14,24 @@ ParseBlock :: (c: ^Cursor, n: ^(Node[])) -> int {
     return block;
 }
 
+// A control body is a braced block or one statement with the same lexical
+// scope. The newline after an unbraced header is not an empty statement.
+ParseControlBody :: (c: ^Cursor, n: ^(Node[])) -> int {
+    if (c.token == tk.Semicolon && n^[c.pos].hidden) {
+        Take(c, n, -1, syntax.FieldNone);
+    }
+    if (c.token == tk.OpenBrace) {
+        return ParseBlock(c, n);
+    }
+    block := New(n, syntax.Block);
+    if (c.token == tk.Semicolon || c.token == tk.CloseBrace || c.token == tk.Else || c.token == tk.EOF) {
+        Fail(c, n, Expected(c, n, "a statement or `{`"));
+        return block;
+    }
+    Add(n, block, ParseStatement(c, n, false), syntax.FieldNone);
+    return block;
+}
+
 // The body of a function, a system or a macro: statements and declarations.
 ParseCallableBody :: (c: ^Cursor, n: ^(Node[]), kind: int) -> int {
     body := New(n, kind);
@@ -41,7 +59,7 @@ ParseStatement :: (c: ^Cursor, n: ^(Node[]), declarations: bool) -> int {
         loop := New(n, syntax.WhileStatement);
         Take(c, n, loop, syntax.FieldNone);
         Add(n, loop, ParseBinary(c, n, OrPower), syntax.FieldCondition);
-        Add(n, loop, ParseBlock(c, n), syntax.FieldBody);
+        Add(n, loop, ParseControlBody(c, n), syntax.FieldBody);
         return loop;
     }
     if (token == tk.For) {
@@ -197,13 +215,13 @@ ParseIf :: (c: ^Cursor, n: ^(Node[])) -> int {
     while (!c.failed) {
         Take(c, n, current, syntax.FieldNone);
         Add(n, current, ParseBinary(c, n, OrPower), syntax.FieldCondition);
-        Add(n, current, ParseBlock(c, n), syntax.FieldConsequence);
+        Add(n, current, ParseControlBody(c, n), syntax.FieldConsequence);
         if (c.failed || c.token != tk.Else) {
             break;
         }
         Take(c, n, current, syntax.FieldNone);
         if (c.token != tk.If) {
-            Add(n, current, ParseBlock(c, n), syntax.FieldAlternative);
+            Add(n, current, ParseControlBody(c, n), syntax.FieldAlternative);
             break;
         }
         chained := New(n, syntax.IfStatement);
@@ -255,7 +273,7 @@ ParseFor :: (c: ^Cursor, n: ^(Node[])) -> int {
     if (grouped) {
         Expect(c, n, loop, tk.CloseParen, syntax.FieldNone);
     }
-    Add(n, loop, ParseBlock(c, n), syntax.FieldBody);
+    Add(n, loop, ParseControlBody(c, n), syntax.FieldBody);
     return loop;
 }
 

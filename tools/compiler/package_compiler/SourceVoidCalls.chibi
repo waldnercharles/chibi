@@ -1,0 +1,44 @@
+package package_compiler
+
+// Eligibility hints for expression-statement bodies, from actual prepared
+// dispatch and result counts. The enclosing function's void result alone is
+// insufficient: it can discard a value returned by its final call.
+// Returned offsets name unparenthesized CallExpression starts in document 0.
+// These hints do not replace the final whole-program equivalence proof.
+pub VoidCallOffsets :: (signature: SemanticSignature, names: string[]) -> int[] {
+    invoke := Ordinal(names, "INVOKE"); host_call := Ordinal(names, "HOST_CALL");
+    if (invoke < 0 || host_call < 0) { return []; }
+    offsets: int[] = []; keys: u64[] = [];
+    for (function in 0..<length(signature.bodies)) {
+        if (function >= length(signature.callables)) { continue; }
+        enclosing := signature.callables[function];
+        if (enclosing.document != 0 || enclosing.identity != 0 || enclosing.count < 0 ||
+            enclosing.result != 0 || enclosing.results != 0 || enclosing.waits) { continue; }
+        body := signature.bodies[function];
+        for (instruction in body.code) {
+            allowed := false;
+            if (instruction.op == invoke && instruction.left >= 0 && instruction.left < length(body.calls)) {
+                call := body.calls[instruction.left];
+                if (!call.task && call.result_count == 0 && call.callee >= 0 && call.callee < length(signature.callables)) {
+                    callee := signature.callables[call.callee];
+                    allowed = callee.result == 0 && callee.results == 0 && !callee.waits;
+                }
+            } else if (instruction.op == host_call && instruction.target >= 0 && instruction.target < length(body.hosts)) {
+                host := body.hosts[instruction.target];
+                if (host.command == 0 && host.result_count == 0 && host.linked >= 0 && host.linked < length(signature.natives)) {
+                    allowed = signature.natives[host.linked].results == 0;
+                }
+            }
+            if (allowed && instruction.start >= 0) { offsets.append(instruction.start); keys.append(u64(instruction.start)); }
+        }
+    }
+    // Different preparation paths may refer to the same source call. Stable
+    // sorting and deduplication keep lookup bounded for the syntax transform.
+    ordered: int[] = [];
+    previous: int = -1;
+    for (index in SourceOrder(keys)) {
+        offset := offsets[index];
+        if (offset != previous) { ordered.append(offset); previous = offset; }
+    }
+    return ordered;
+}

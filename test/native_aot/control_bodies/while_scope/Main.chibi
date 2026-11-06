@@ -1,0 +1,8 @@
+package while_scope
+
+Main :: () -> int {
+    while false hidden := 3;
+    return hidden;
+}
+
+// error: 5:12: Unknown name 'hidden'

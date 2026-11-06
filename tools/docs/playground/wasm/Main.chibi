@@ -1,0 +1,188 @@
+package formatter_wasm
+
+import strings "core:strings"
+import syntax "project:compiler_syntax"
+import format "project:source_format"
+import highlight "project:source_highlight"
+import json "core:encoding/json"
+import decoded "project:json_string"
+import extract "project:package_syntax"
+import routes "project:package_routes"
+
+foreign {
+    chibi_program_request_length :: () -> int
+    chibi_program_request_copy :: (buffer: u8[], count: int) -> int
+    chibi_program_budget :: () -> u64
+    chibi_program_publish :: (bytes: u8[], count: int) -> int
+    chibi_program_rejected :: (document: int, line: int, column: int, message: cstring) -> int
+    chibi_formatter_context_length :: () -> int
+    chibi_formatter_context_copy :: (buffer: u8[], count: int) -> int
+    chibi_native_scope_begin :: (steps: u64) -> int
+    chibi_native_scope_end :: () -> int
+}
+
+// The worker sends one UTF-8 options line followed by the source verbatim.
+// Result lengths count bytes, so newlines, Unicode and NULs need no escaping.
+Respond :: (status: string, text: string, original: string, formatted: string, notes: string) -> int {
+    header := format_text("{}\n{} {} {} {}\n", status, strings.ByteLength(text),
+                          strings.ByteLength(original), strings.ByteLength(formatted), strings.ByteLength(notes));
+    response := strings.Concatenate([header, text, original, formatted, notes]);
+    // A cstring rejects embedded NULs and has a bounded conversion buffer.
+    // The publication boundary borrows exact UTF-8 bytes, including NULs.
+    bytes := resize([u8(0)], strings.ByteLength(response));
+    for (byte, index in text_bytes(response)) { bytes[index] = u8(byte); }
+    return chibi_program_publish(bytes, length(bytes));
+}
+
+Answer :: (source: string, options: format.Options, context: format.Context) -> int {
+    switch syntax.Parse(source) {
+        case .Parsed(rows, fields, named, extras, root):
+            leaves := highlight.Classes(source, rows, fields, named);
+            original := highlight.Render(source, leaves.starts, leaves.ends, leaves.classes);
+            switch format.FormatParsedProject(source, rows, fields, named, root, options, context) {
+                case .Rejected(message):
+                    return Respond("error", message, original, "", "");
+                case .Formatted(formatted, notes):
+                    rendered := original;
+                    if (formatted != source && format.ChangesTokens(options)) {
+                        // Token-changing styles need roles from their new tree.
+                        // The formatter has already validated this source.
+                        switch syntax.Parse(formatted) {
+                            case .Parsed(next_rows, next_fields, next_named, next_extras, next_root):
+                                next := highlight.Classes(formatted, next_rows, next_fields, next_named);
+                                rendered = highlight.Render(formatted, next.starts, next.ends, next.classes);
+                            case .Rejected(diagnostic):
+                                assert(false, "formatted source parses for highlighting");
+                        }
+                    } else if (formatted != source) {
+                        rendered = highlight.Retarget(formatted, leaves.classes);
+                    }
+                    return Respond("ok", formatted, original, rendered, notes);
+            }
+        case .Rejected(diagnostic):
+            if (strings.TrimSpace(source) == "") {
+                return Respond("ok", source, highlight.Escape(source), highlight.Escape(source), "");
+            }
+            return Respond("error", format.Unparsed(diagnostic), highlight.Escape(source), "", "");
+    }
+}
+
+ContextStrings :: (value: string, limit: int, paths: bool) -> (values: string[], error: string) {
+    values: string[] = [];
+    if (!strings.HasPrefix(value, "[")) { return (values, "Formatter project context requires string arrays"); }
+    items := json.JsonItems(value);
+    if (length(items) > limit) { return (values, "Formatter project context has too many entries"); }
+    for (item in items) {
+        decoded_item := decoded.Value(item);
+        if (!decoded_item.valid) { return (values, "Formatter project context requires string arrays"); }
+        if (paths && (strings.IndexByte(decoded_item.value, 0) >= 0 || strings.ByteLength(decoded_item.value) >= 4096)) {
+            return (values, "Formatter project context contains an invalid path");
+        }
+        values.append(decoded_item.value);
+    }
+    return (values, "");
+}
+
+ReadContext :: () -> (context: format.Context, error: string) {
+    context := format.EmptyContext();
+    count := chibi_formatter_context_length();
+    if (count == 0) { return (context, ""); }
+    if (count < 0 || count > 16777216) { return (context, "Formatter project context exceeds 16 MiB"); }
+    bytes := resize([u8(0)], count);
+    if (chibi_formatter_context_copy(bytes, count) != 0) { return (context, "Cannot read formatter project context"); }
+    fields := json.JsonFields(text_from_bytes(bytes));
+    if (length(fields) != 5) { return (context, "Invalid formatter project context JSON"); }
+    for (field in fields) {
+        if (field.key == "project") {
+            project := decoded.Value(field.value);
+            if (!project.valid || project.value == "" || strings.IndexByte(project.value, 0) >= 0) {
+                return (context, "Formatter project context requires an absolute project root");
+            }
+            context.project = project.value;
+        } else if (field.key == "collection_names" || field.key == "collection_paths" || field.key == "paths" || field.key == "sources") {
+            limit := 256;
+            if (field.key == "collection_names" || field.key == "collection_paths") { limit = 255; }
+            parsed := ContextStrings(field.value, limit, field.key != "sources");
+            if (parsed.error != "") { return (context, parsed.error); }
+            if (field.key == "collection_names") { context.collection_names = parsed.values; }
+            if (field.key == "collection_paths") { context.collection_paths = parsed.values; }
+            if (field.key == "paths") { context.paths = parsed.values; }
+            if (field.key == "sources") { context.sources = parsed.values; }
+        } else { return (context, "Unknown formatter project context field"); }
+    }
+    if (length(context.paths) == 0 || length(context.paths) != length(context.sources) ||
+        length(context.collection_names) != length(context.collection_paths)) {
+        return (context, "Formatter project context requires matching nonempty paths and sources");
+    }
+    collections: routes.Collection[] = [];
+    for (name, index in context.collection_names) {
+        collections.append({name: name, path: context.collection_paths[index], has_name: true, has_path: true});
+    }
+    switch routes.RootSet(context.project, true, collections) {
+        case .Rejected(diagnostic): return (context, diagnostic.message);
+        case .Accepted(roots):
+            seen: [string: bool] = [:];
+            for (path in context.paths) {
+                switch routes.FileRoute(roots, path, true, 0) {
+                    case .Rejected(diagnostic): return (context, diagnostic.message);
+                    case .Accepted(file):
+                        if (seen.has(file.path)) { return (context, "Duplicate formatter project document path"); }
+                        seen[file.path] = true;
+                }
+            }
+    }
+    return (context, "");
+}
+
+Imports :: (source: string) -> int {
+    switch syntax.Parse(source) {
+        case .Rejected(diagnostic): return Respond("error", format.Unparsed(diagnostic), "", "", "");
+        case .Parsed(rows, fields, named, extras, root):
+            switch extract.Extract(rows, fields, source, root, 0, "/repo/Main.chibi", "/repo") {
+                case .Rejected(diagnostic): return Respond("error", diagnostic.message, "", "", "");
+                case .Accepted(file, imports):
+                    paths: string[] = [];
+                    for (item in imports) {
+                        literal := strings.Slice(source, item.path_start, item.path_end - item.path_start);
+                        path := decoded.Value(literal);
+                        if (!path.valid || strings.IndexByte(path.value, 0) >= 0) {
+                            return Respond("error", "Invalid import string or embedded NUL", "", "", "");
+                        }
+                        paths.append(json.JsonQuote(path.value));
+                    }
+                    array := strings.Concatenate(["[", strings.Join(paths, ","), "]"]);
+                    return Respond("ok", array, "", "", "");
+            }
+    }
+}
+
+Main :: () -> int {
+    count := chibi_program_request_length();
+    if (count < 0 || count > 432769) { return 2; }
+    bytes := resize([u8(0)], count);
+    if (chibi_program_request_copy(bytes, count) != 0) { return 2; }
+    request := text_from_bytes(bytes);
+    boundary := strings.IndexByte(request, 10);
+    if (boundary < 0 || boundary > 32768) { return 2; }
+    source := strings.Slice(request, boundary + 1, count - boundary - 1);
+    if (strings.ByteLength(source) > 400000) { return 2; }
+    armed := chibi_native_scope_begin(chibi_program_budget());
+    assert(armed == 0, "formatter scope begins");
+    header := strings.Slice(request, 0, boundary);
+    status := 0;
+    if (header == "!imports") {
+        status = Imports(source);
+    } else {
+        options := format.ParseOptions(format.Defaults(), header);
+        if (options.error != "") {
+            status = Respond("error", options.error, highlight.Escape(source), "", "");
+        } else {
+            context := ReadContext();
+            if (context.error != "") { status = Respond("error", context.error, highlight.Escape(source), "", ""); }
+            else { status = Answer(source, options.options, context.context); }
+        }
+    }
+    ended := chibi_native_scope_end();
+    assert(ended == 0, "formatter scope ends");
+    return status;
+}

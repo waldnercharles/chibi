@@ -116,6 +116,10 @@ static int reused(const char *request, size_t count, const char *cache)
  * the desktop process. Files are a Node test convenience, not compiler imports. */
 int main(int argc, char **argv)
 {
+#ifdef CHIBI_PROGRAM_WASM_TRANSPORT_TEST
+    extern void test_wasm_transport(void);
+    test_wasm_transport();
+#endif
     bool reuse = (argc == 3 || argc == 4) && !strcmp(argv[1], "--reuse");
     assert(reuse || argc == 4 || argc == 5);
     uint64_t budget = UINT64_C(4000000000);

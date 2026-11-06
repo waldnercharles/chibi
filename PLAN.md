@@ -359,3 +359,285 @@ new owner decision. Ordinary CI does not replace full sanitizer and clean
 bootstrap acceptance. Further cache work is stopped; performance work targets
 measured compiler-code costs. The latest matched hosted comparison showed no
 overall CI speedup.
+
+
+## Browser formatter, 2026-11-02
+
+The formatter playground will use the existing native LLVM Wasm target and the
+same authored formatter, parser and highlighter. This lane is isolated from the
+active self-hosting and performance checkouts at frozen parent `db6b9f6c1`.
+
+Discovery checked local worktrees, branches and active chat snapshots. The
+`native-asset-compiler` lane already implements and has browser evidence for
+`wasm32-unknown-emscripten`; the earlier claim that this target was absent was
+outdated. Historical VM browser work is not needed.
+
+Changes:
+- Restore `tools/compiler/source_format` and `source_highlight` from the retained
+  formatter revision, using the current parser, core and collection imports.
+- Extract the existing Wasm request/runtime implementation into
+  `src/runtime/program_wasm.*`, retaining asset compiler API behavior. Both real
+  callers share allocation, quota, cancellation and failure recovery.
+- Add `tools/docs/playground/wasm/Main.chibi` and a small C/JavaScript boundary.
+  Input is UTF-8 options plus source; output includes formatting and highlighting.
+- Replace local APIs with a worker and relative static files. Requests coalesce,
+  stale responses are ignored and runtime failure/timeout allows retry.
+- Add a Chibi build program that reuses the existing Emscripten toolchain checks,
+  compiles the formatter, packages repository examples and publishes a new output
+  directory atomically. No deployment is part of this task.
+
+Verification:
+- Keep the existing native formatter/highlighter regression cases.
+- Run the real Wasm shared-runtime and public asset compiler regressions.
+- Compare exact browser output with the local formatter across options, Unicode,
+  comments, invalid drafts and repeated requests.
+- Verify the UI on a static-only server under a URL prefix with no formatting API.
+- Check worker failure/retry, rapid edits and consistent generated output.
+
+State remains owned by the page and each worker; no source is uploaded. The
+existing local playground remains available during implementation.
+
+## Formatter language and semantic styles, 2026-11-02
+
+The user authorized the language and compiler support needed for optional
+control-body braces and explicit/inferred type preferences. Continue in the
+isolated formatter worktree, preserving the earlier browser implementation.
+The current compiler/parser remains the source of truth for grammar and types.
+The user also requested research into inserting blank lines between logical
+sections and assessing readability; document evidence before selecting a model.
+
+Changes:
+- `source_parser/Statements.chibi`: parse one unbraced statement after `if`,
+  `else` and `while`, wrapped in the existing Block node so scope and lowering
+  remain shared. A dangling `else` binds to the nearest `if`; explicit empty
+  bodies remain invalid.
+- `source_format`: preserve and indent unbraced bodies, add opt-in brace
+  placement/presence controls, and validate brace edits with normalized control
+  trees while retaining scopes, comments and statement order.
+- Compiler analysis and `source_type_style`: reuse declaration, specialization
+  and preparation passes to expose resolved binding types without code emission.
+  Validate type-style rewrites against the program's semantic representation;
+  keep numeric context and report unsupported/unresolved sites explicitly.
+- Playground options/entry: expose supported style controls, keep semantic
+  analysis out of ordinary layout requests, refresh highlighting after token
+  rewrites, and display analysis limitations. Build the same code for native
+  tests and the browser worker. Source remains local to the browser.
+- `docs/formatter-readability-research.md`: primary-source research on logical
+  section detection, existing tools, readable-code classifiers and a deterministic
+  opt-in approach suitable for the playground.
+
+Verification:
+- Parser shapes/rejections, nearest-if association, scoped declarations and real
+  native execution at O0/O2 for unbraced branches and loops.
+- Formatter expected outputs and idempotence across brace policies, comments,
+  nested controls, semicolon policies, tabs and CRLF.
+- Actual compiler analysis for inferred/explicit bindings, narrow numeric types,
+  constants, aliases, call choices and unresolved imports. Recompilation alone
+  is insufficient evidence for a semantics-preserving rewrite.
+- Native formatter/highlighter suites, protocol/client tests and real Wasm style
+  requests with recovery after rejected input.
+- Rebuild the static playground and exercise the new options in the browser.
+
+Defaults preserve source type and brace spelling. At this first checkpoint,
+compiler analysis ran only for the opted-in type path and logical-section
+heuristics remained a proposal. The expanded implementation below supersedes
+those limits. No external model or source upload is introduced.
+
+First brace/type checkpoint, implemented and locally accepted:
+- Optional single-statement `if`/`else`/`while` bodies preserve Block scopes and
+  nearest-if association. The tokenizer recognizes inline typed constant bodies.
+- `brace_placement`, `branch_braces` and `binding_types` are available in the
+  playground. Unsafe omissions retain braces. Typed rewrites preserve protected
+  regions and report skipped or unresolved sites in a visible notes panel.
+- `AnalyzeSources` and `SameSemantics` use the compiler's prepared representation.
+  `RewriteProject` accepted dependency documents; that browser checkpoint supplied
+  one document. Parameter/result signatures then remained as written. Generated
+  lambda/task identities can conservatively prevent a type rewrite.
+- Actual optimized-driver checks exposed ignored OS errors in the frozen native
+  driver. Reported failures are now checked in cache, source discovery and test
+  output handling. The existing core OS unreadable-directory reporting issue is
+  outside this change and is not claimed fixed.
+- All 502 authored compiler tests passed, including 47 formatter and 19 semantic
+  tests. The compiler run took about 49.39 seconds from log creation/final-write
+  timestamps. The separate 19-test semantic run took 21.42 seconds. Seven real
+  control-body checks passed at O0 in 0.72 seconds and O2 in 0.93 seconds.
+- Ten JavaScript protocol/client checks and ten real Wasm checks passed. Wasm
+  checks took 1.47 seconds. Browser acceptance covered combined styles, Unicode,
+  exact protected text, invalid-source correction, skipped-type notes and the
+  production URL prefix. No browser console errors were observed.
+- The final coherent static build took 103.84 seconds. It contains the same
+  3,705,668-byte Wasm module accepted above, SHA-256
+  `a6bfe3e7813a0ce78d6d9a35a33a2ad808fe7082103bf632262886713987df84`.
+  It is served at `http://127.0.0.1:8766/chibi/formatter/`. The previous site is
+  retained at `.chibi/formatter-before-styles-1793662987`; the live path points
+  to `.chibi/formatter-styles-final`. Receipt: `.chibi/formatter-styles-acceptance.json`.
+- Readability research is in `docs/formatter-readability-research.md`, with direct
+  blank-line segmentation precedent and the original deterministic paragraph
+  design. Automatic paragraphs were not implemented at that checkpoint.
+
+Changes remain local and uncommitted; GitHub Pages has not been deployed.
+
+## Expanded formatter catalog and logical sections, 2026-11-02
+
+At the checkpoint before the SEGMENT replacement, the user requested the broader
+survey families and a working logical-section formatter. That source defined 174 settings in one canonical catalog,
+`tools/compiler/source_format/options.json`. Generated native definitions,
+validation/configuration parsing and browser controls share that catalog.
+`docs/formatter-implementation.md` maps every survey family to concrete options
+and records the unsupported variants.
+
+Implemented in the current source:
+- Independent foreign/when indentation; construct brace/empty/short-body
+  policies; parameter/result/attribute wrapping; list packing and widths;
+  binary/chain wrapping; syntax minimum gaps; comment-group gaps; per-construct
+  block padding and independent unbraced-body placement.
+- Optional `fn` and return-arrow spelling and checked block/`=>` function forms.
+  Contextual type preferences include parameters, results, members, public APIs,
+  evident types, alias spelling and four compiler analysis targets. Required
+  annotations, unresolved sites and unsuitable recursive/suspending results stay
+  with notes. Generic templates are not specialized from individual calls.
+- Operator-family and syntax-context spacing; bounded consecutive/manual
+  alignment; array/record table columns and per-column left/right preferences.
+- Parentheses including mixed same-precedence operator groups, per-list trailing
+  commas, comment prose/doc reflow, numeric separators and casing, exact checked
+  integer base conversion and string/character escapes.
+- Import sort/organize candidates with conservative unused-alias detection.
+  Every import reorder or removal requires compiler semantic proof. Removal
+  retains implicit namespaces, side-effect imports and uncertain, commented or
+  conditional candidates.
+- `statement_paragraphs=preserve|syntax|logical` and three density choices.
+  The working logical mode uses bounded lexical/structural summaries and dynamic
+  programming over at most 12 predecessor units. It preserves authored anchors,
+  recognizes receiver runs, keeps producer/check pairs together and separates
+  the tested validation/computation/output example. It does not use a classifier
+  or claim resolved dataflow or measured comprehension improvements.
+- Versioned profiles, explicit overrides, searchable UI groups, project-context
+  source loading and declaration/statement range formatting. EditorConfig
+  import/export supports common properties and all `chibi_*` overrides, matching
+  sections, explicit atomic Apply and diagnostics. Parent-config discovery is
+  outside this single-file interchange.
+- Public formatting defaults to `semantic_targets=all`. The chosen
+  `analysis_target` determines initial analysis/type spelling, then
+  compiler-backed edits require proof on Linux, macOS, Windows and WebAssembly.
+  Failed proofs keep the affected original source with notes; layout remains
+  available. `semantic_targets=selected` explicitly opts into one-target proof.
+  Lower-level `source_type_style` rewrite APIs retain their selected-target
+  contract and are not equivalent to the public portable-proof pipeline.
+
+Current validation:
+- The broad authored compiler checkpoint passed 718 of 718 tests in 173.26 seconds,
+  including 222 formatter cases, 51 semantic-style cases, 49 parser cases and
+  15 tokenizer cases. Formatter coverage includes 12 private and 210 public
+  cases, all 11 logical-paragraph and 12 import-candidate cases, and five new
+  all-platform/selected-target portability fixtures. Log:
+  `.chibi/formatter-compiler-final-void-tests.log`.
+- A Wasm case exposed conservative mixed-void function-body handling.
+  Prepared-result queries now select eligible void bodies before batch proof.
+  The updated focused formatter suite passed 222 of 222 cases in 56.45 seconds;
+  semantic-style tests passed 51 of 51. Logs are
+  `.chibi/full-pipeline-mixed-void-tests.log` and `.chibi/void-offsets-style-tests.log`.
+- A final comment fixed-point case exposed reflow measuring indentation before
+  layout. Comment reflow now runs after final indentation and before selection.
+  The current public formatter directory passed 211 of 211 tests in 31.10 seconds,
+  including the regression. Log: `.chibi/formatter-comment-final-indent-tests.log`.
+  This is 211 public cases, while the earlier 222 included 210 public plus 12
+  private function-style cases. The current source inventory is 223 formatter
+  tests; those 12 private cases and the global 718-test suite were not rerun
+  after this localized ordering change.
+- Current fresh-driver native execution passed six function-form cases per
+  optimization level at O0/O2 in 1.62 seconds combined, two numeric-literal cases
+  per level in 1.40 seconds and seven control-body cases per level in 1.20 seconds.
+  The preceding checkpoint also passed one grouped-record return case per level
+  and optional/managed ownership regressions in 31.88 seconds.
+- The current producer receipt verifies 87 input hashes unchanged across the
+  build, including the new prepared void-call query. The 6,682,640-byte
+  `.chibi/formatter-final-void-driver` built in 57.56 seconds and is SHA-256
+  `ca55770532ba76ce037809149e04e7e908afd477c3245ea8473c22a2ef7c5b27`.
+- The exact Host project-context probe omitted four safe annotations, kept 25
+  required/contextual sites and reported no analysis error. A separate native
+  paragraph parser/helper probe over 5,000 declarations completed in 0.22 seconds;
+  that excludes compiler proof and is not browser latency.
+- All 44 JavaScript configuration/context/catalog/client tests passed in
+  0.094 seconds. Prior browser UI QA covered EditorConfig import and validation
+  errors without applying invalid settings. Log:
+  `.chibi/formatter-javascript-reflow-final.log`.
+- The final reflow-fixed coherent Wasm artifact passed all 24 checks in
+  1.497 seconds, including the width-40 indented-comment fixed point.
+  `.chibi/formatter-full-final-reflow` built in 196.89 seconds and contains
+  a 4,389,641-byte module, SHA-256
+  `d0781fa04e3be993dd8c99656fcf4ee69b1b2f4b6300ddd003e466b329172bcd`.
+  Input digest:
+  `3ceeeb55cca3181e488677ac40e9beac24b2626887d55c5e6cdc0f26fb9adb5b`.
+  Shipped assets match the receipt. Log: `.chibi/formatter-wasm-reflow-final.log`.
+- Prior browser UI checks used the 174-setting module with all-platform validation by
+  default. Bytes applied 18 type-style changes and retained 29 sites with
+  `return_types=inherit`; Host applied 23 changes and retained 80 without an
+  analysis error. Foreign/when indentation and function keyword/arrow controls
+  worked. EditorConfig valid import and invalid atomic import checks passed.
+- Editing a tracked file now retains its project path and marks it `, edited`.
+  Manual regression verified import resolution and a filename-specific
+  EditorConfig section after editing Bytes. Explicit Scratch still clears the
+  path.
+- The final build has a new local preview at
+  `http://127.0.0.1:8768/chibi/formatter/`. Prefixed HTTP assets and Wasm hashes
+  were verified. Real HTTP project-context loading and Wasm formatting handled
+  edited Bytes with a two-document context, and a second edit reused cached
+  context while supplying the current edited source. Receipt:
+  `.chibi/formatter-final-http-context.json`.
+- Final browser acceptance of the reflow-fixed build combined expression bodies,
+  required `fn`, omitted return arrows, inferred bindings, logical paragraphs
+  and prose wrapping. All 174 controls rendered and no browser warnings or
+  errors were observed. Screenshot: `.chibi/formatter-full-browser.png`.
+- The main local URL `http://127.0.0.1:8766/chibi/formatter/` now points to
+  `.chibi/formatter-full-final-reflow`. HTTP bytes match the accepted build,
+  and a fresh browser tab loaded Bytes successfully. The old site is retained
+  at `.chibi/formatter-styles-final`; final receipt:
+  `.chibi/formatter-full-acceptance.json`. No GitHub Pages deployment occurred.
+
+Per-boundary explanation UI, learned preference/classifier models and human
+readability/comprehension evaluation remain proposals. The coverage matrix also
+names smaller absent variants such as shifted braces, independent tuple-layout
+controls and arbitrary statement-gap selectors. Region formatter directives
+provide the survey's escape hatch; ignore-next is outside this iteration.
+Changes remain local and uncommitted; no GitHub Pages deployment is part of this
+checkpoint.
+
+
+## SEGMENT replacement, 2026-11-02
+
+The user requested SEGMENT's algorithm in place of the custom logical-group
+optimizer. The replacement is implemented in `source_format/SegmentFacts.chibi`,
+`SegmentActions.chibi`, `SegmentSimilarity.chibi` and `SegmentRefine.chibi`, with
+formatter boundaries in `Paragraphs.chibi`. It follows the four published phases:
+recognize action/SynS units, resolve overlaps, refine uneven similarity windows,
+and merge compatible singleton statements. `docs/formatter-segment-algorithm.md`
+records the recovered rules and the deterministic Chibi completions where the
+original description omits recognition or tie-order details. The original Java
+source was not recovered, so this is not claimed to be a byte-identical port.
+
+The old density scores, twelve-predecessor optimizer and eight-name truncation
+are removed. The canonical catalog now has 173 settings and four profiles;
+`paragraph_density` is removed. Logical groups resolve lexical binding identity
+and index complete definitions/uses and identifier words. Analysis uses flat
+arrays and sorted intervals, bounded by source references/words rather than
+all statement pairs. A few thousand statements should take milliseconds to
+hundreds of milliseconds in the native/Wasm formatter, rather than seconds
+of graph construction; the final artifact acceptance records actual timings.
+
+Acceptance is complete: 256 native formatter tests passed (32 private and
+224 public) in 118.06 seconds while the Wasm build ran concurrently; 25 actual
+Wasm tests passed in 1.598 seconds, and 44 JavaScript checks passed in 0.107
+seconds. The real-project and 5,000-statement fixed-point Wasm case took 0.163
+seconds including two formatting/highlighting passes. The coherent build took
+283.89 seconds. Its 4,501,913-byte Wasm SHA-256 is
+`e77c5cc933c99ef656c563e917ec8a213798cb060c7be4f3ce7be951a9b913b5`.
+
+The main local URL at port 8766 and the example preview at port 8768 now point
+to `.chibi/formatter-segment-final`, with matching HTTP receipts and Wasm hashes.
+Browser acceptance selected Logical groups (SEGMENT) in the 173-setting catalog
+and showed the two expected inserted lines in published/rule-derived examples,
+with no console warnings or errors. Screenshot:
+`.chibi/formatter-segment-browser.png`. Receipt:
+`.chibi/formatter-segment-acceptance.json`. The preceding reflow build is retained
+for rollback. Existing user tabs/drafts were left intact and need a reload for
+the new module. No GitHub Pages deployment or commit was requested.

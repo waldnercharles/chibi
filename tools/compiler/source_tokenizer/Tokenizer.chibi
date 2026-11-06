@@ -359,7 +359,10 @@ pub Tokenize :: (text: string) -> Tokens {
         if (kind != Comment) {
             valued = (kind == Ident && previous == Period && before == Return) ||
                      (kind == Colon && annotating);
-            annotating = (kind == Colon && label) ||
+            // A declaration in an inline control body has no preceding
+            // separator. Its type colon still makes the second `:` a value
+            // introducer, so a following record literal holds no statements.
+            annotating = (kind == Colon && (label || (top == Statements && previous == Ident))) ||
                          (annotating && kind != Colon && kind != Eq && kind != ColonEq &&
                           kind != Semicolon && kind != OpenBrace);
             label = (kind == Ident || kind == String) && top == Statements &&
@@ -700,7 +703,11 @@ ScanNumber :: (bytes: int[], offset: int) -> Lexeme {
     if (bytes[offset] == 48 && (marker == 120 || marker == 88)) {
         at += 1;
         digits := at;
-        while (DigitValue(ByteAt(bytes, at)) < 16) {
+        while (DigitValue(ByteAt(bytes, at)) < 16 || ByteAt(bytes, at) == 95) {
+            if (ByteAt(bytes, at) == 95 &&
+                (at == digits || DigitValue(ByteAt(bytes, at - 1)) >= 16 || DigitValue(ByteAt(bytes, at + 1)) >= 16)) {
+                return Failed(Invalid, at + 1, "numeric separator must occur between digits", at);
+            }
             at += 1;
         }
         if (at == digits) {
@@ -710,10 +717,16 @@ ScanNumber :: (bytes: int[], offset: int) -> Lexeme {
     }
     kind: int = Integer;
     at = ScanMantissa(bytes, at);
+    if (at > offset && ByteAt(bytes, at - 1) == 95) {
+        return Failed(Invalid, at, "numeric separator must occur between digits", at - 1);
+    }
     // A fraction needs a digit, so `0..n` stays a range.
     if (ByteAt(bytes, at) == 46 && IsDigit(ByteAt(bytes, at + 1))) {
         kind = Float;
         at = ScanMantissa(bytes, at + 1);
+        if (ByteAt(bytes, at - 1) == 95) {
+            return Failed(Invalid, at, "numeric separator must occur between digits", at - 1);
+        }
     }
     exponent := ByteAt(bytes, at);
     if (exponent == 101 || exponent == 69) {
@@ -727,6 +740,9 @@ ScanNumber :: (bytes: int[], offset: int) -> Lexeme {
             return Failed(Float, at, "illegal floating-point exponent", at);
         }
         at = ScanMantissa(bytes, at);
+        if (ByteAt(bytes, at - 1) == 95) {
+            return Failed(Invalid, at, "numeric separator must occur between digits", at - 1);
+        }
     }
     return Done(kind, at);
 }
@@ -734,10 +750,39 @@ ScanNumber :: (bytes: int[], offset: int) -> Lexeme {
 ScanMantissa :: (bytes: int[], offset: int) -> int {
     count := length(bytes);
     at := offset;
-    while (at < count && IsDigit(bytes[at])) {
+    while (at < count && (IsDigit(bytes[at]) || bytes[at] == 95)) {
+        if (bytes[at] == 95 &&
+            (at == 0 || !IsDigit(bytes[at - 1]) || !IsDigit(ByteAt(bytes, at + 1)))) {
+            return at + 1;
+        }
         at += 1;
     }
     return at;
+}
+
+// Numeric readers share one separator normalization. The common unseparated
+// literal returns its original value without allocating. Invalid separator
+// positions remain unchanged so public numeric readers still reject them.
+pub NumericText :: (spelling: string) -> string {
+    count := text_byte_length(spelling);
+    first := 0;
+    while (first < count && text_byte_at(spelling, first) != 95) { first += 1; }
+    if (first == count) { return spelling; }
+    base := 10;
+    if (count > 2 && text_byte_at(spelling, 0) == 48 &&
+        (text_byte_at(spelling, 1) == 120 || text_byte_at(spelling, 1) == 88)) { base = 16; }
+    for (at in first..<count) {
+        if (text_byte_at(spelling, at) == 95 &&
+            (at == 0 || at + 1 >= count || DigitValue(text_byte_at(spelling, at - 1)) >= base ||
+             DigitValue(text_byte_at(spelling, at + 1)) >= base)) { return spelling; }
+    }
+    bytes := resize([u8(0)], count);
+    used := 0;
+    for (at in 0..<count) {
+        byte := text_byte_at(spelling, at);
+        if (byte != 95) { bytes[used] = u8(byte); used += 1; }
+    }
+    return text_from_bytes(slice(bytes, 0, used));
 }
 
 // The body of the string that opens at `start`, from `from` to its closing

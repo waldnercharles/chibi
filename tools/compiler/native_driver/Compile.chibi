@@ -1,6 +1,7 @@
 package native_driver
 
 import compiler "project:package_compiler"
+import catalog "project:compiler_catalog"
 import facts "project:scalar_facts"
 import abi "project:native_abi"
 import scalar "project:scalar_llvm"
@@ -33,7 +34,7 @@ Target :: (triple: string) -> abi.Target {
 // Scalar lowering needs the destination pointer width for core:target and
 // foreign pointer-sized scalars. These are not a prepared VM layout for Wasm.
 PointerFacts :: (target: abi.Target) -> compiler.Target {
-    facts := TargetFacts();
+    facts := catalog.TargetFacts();
     facts.pointer_size = target.pointer_bits / 8;
     if (target.pointer_bits == 32) { facts.pointer_storage = 7; }
     return facts;
@@ -150,11 +151,11 @@ ModuleWith :: (collections: string[], directories: string[], paths: string[], so
     platform := PlatformFor(target);
     rows: facts.Row[] = [];
     if (shared) {
-        rows = compiler.CollectScalarGeneration("/project", collections, directories, paths, sources, PointerFacts(target), Names(),
-                                               Natives(), Ports(), Identities(), platform.os, platform.arch);
+        rows = compiler.CollectScalarGeneration("/project", collections, directories, paths, sources, PointerFacts(target), catalog.Names(),
+                                               catalog.Natives(), catalog.Ports(), catalog.Identities(), platform.os, platform.arch);
     } else {
-        rows = compiler.CollectScalarProgram("/project", collections, directories, paths, sources, PointerFacts(target), Names(),
-                                            Natives(), Ports(), Identities(), platform.os, platform.arch, chosen);
+        rows = compiler.CollectScalarProgram("/project", collections, directories, paths, sources, PointerFacts(target), catalog.Names(),
+                                            catalog.Natives(), catalog.Ports(), catalog.Identities(), platform.os, platform.arch, chosen);
     }
     return EmitRows(collections, directories, paths, sources, platform.os, platform.arch, rows, target, directory, shared, origins);
 }
@@ -189,7 +190,7 @@ LibrarySource :: (source: string) -> bool {
 // The existing single-source library producer; package libraries and line
 // tables are not supported here.
 LibraryModule :: (path: string, source: string, triple: string, origins: DiagnosticOrigins) -> Output {
-    rows := compiler.CollectScalar("/project", path, source, TargetFacts(), Names(), Natives(), Ports(), Identities());
+    rows := compiler.CollectScalar("/project", path, source, catalog.TargetFacts(), catalog.Names(), catalog.Natives(), catalog.Ports(), catalog.Identities());
     target := Target(triple);
     platform := PlatformFor(target);
     return EmitRows([], [], [path], [source], platform.os, platform.arch, rows, target, "", false, origins);

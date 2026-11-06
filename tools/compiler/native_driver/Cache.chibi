@@ -173,15 +173,25 @@ CacheProblem :: (output: string, program: string, snapshot: CacheInputs) -> stri
 // invocation deliberately leaves it for diagnosis and explicit recovery.
 CacheDiscard :: (folder: string) {
     listed := os.List(folder);
+    if (listed.error != nil) {
+        Complain(strings.Concatenate(["native: cannot list temporary directory ", folder]));
+        return;
+    }
     for (name in listed.names) {
         path := strings.Concatenate([folder, "/", name]);
         if (os.IsDirectory(path)) {
             CacheDiscard(path);
         } else {
             removed := os.Remove(path);
+            if (removed != nil) {
+                Complain(strings.Concatenate(["native: cannot remove temporary file ", path]));
+            }
         }
     }
     removed := os.Remove(folder);
+    if (removed != nil) {
+        Complain(strings.Concatenate(["native: cannot remove temporary directory ", folder]));
+    }
 }
 
 // One compiler result is consumed by build's printed artifact and run's
@@ -251,7 +261,12 @@ CachedProgram :: (root: string, collections: string[], directories: string[], ga
     refreshed := Gather(root, collections, directories, package, source);
     checked := CacheSnapshot(collections, directories, refreshed, triple, chosen, llvm, options);
     hashed := os.HashFile(strings.Concatenate([work, "/", program]));
-    if (refreshed.problem != "" || checked.problem != "" || checked.key != snapshot.key || hashed.error != nil) {
+    if (hashed.error != nil) {
+        os.Print(strings.Concatenate(["native: cannot identify built program ", work, "/", program]));
+        CacheDiscard(work);
+        return {status: 2, path: "", reused: false};
+    }
+    if (refreshed.problem != "" || checked.problem != "" || checked.key != snapshot.key) {
         os.Print("native: an input changed during the build; retry");
         CacheDiscard(work);
         return {status: 1, path: "", reused: false};

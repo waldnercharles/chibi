@@ -6443,6 +6443,131 @@ TEST_CASE(program_version_23_declarations_and_switch_migrate)
     return true;
 }
 
+TEST_CASE(program_version_23_not_calls_migrate)
+{
+    const char
+        *source = "behavior O {\n"
+                  "Collapsed: bool = true\n"
+                  "on ToggleRoot {\n"
+                  "// not(Value: false) stays in comments and strings.\n"
+                  "label := \"not(Value: false)\";\n"
+                  "set_variable<\"Collapsed\">(Value: bool = "
+                  "not(Value: state.Collapsed));\n"
+                  "nested := not /* call */ (/* before */ Value /* name */: "
+                  "bool /* type */ = not(Value: true) /* after */);\n"
+                  "positional := not(false);\n"
+                  "}\n"
+                  "}\n";
+    char error[192] = { 0 }, *migrated = NULL, *again = NULL;
+    REQUIRE(!chibi_migrate_declarations(source, &migrated, error, sizeof error));
+    REQUIRE(migrated);
+    REQUIRE(strstr(migrated, "!( state.Collapsed)"));
+    REQUIRE(strstr(migrated, "nested := ! /* call */ ("));
+    REQUIRE(strstr(migrated, "!( true)"));
+    const char *comments[] = { "/* before */", "/* name */", "/* type */", "/* after */" };
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(strstr(migrated, comments[i]));
+    }
+    REQUIRE(strstr(migrated, "positional := !(false)"));
+    REQUIRE(!strstr(migrated, "\"not\"("));
+    REQUIRE(strstr(migrated, "// not(Value: false) stays in comments and strings."));
+    REQUIRE(strstr(migrated, "label := \"not(Value: false)\""));
+    script_syntax *syntax = script_parse(migrated);
+    REQUIRE(!syntax->diagnostic_count);
+    script_syntax_free(syntax);
+    REQUIRE(!chibi_migrate_declarations(migrated, &again, error, sizeof error));
+    REQUIRE(!again);
+
+    char root[] = "/tmp/chibi-not-migration-XXXXXX", path[256], json[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(
+        json,
+        sizeof json,
+        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
+        "\"node\"}]}",
+        (size_t)(strstr(source, "state.Collapsed") - source)
+    );
+    char *metadata = authoring_source_metadata_bind(json, source);
+    REQUIRE(metadata);
+    const char *files[] = { "O.chibi", "O.chibi.meta" };
+    const char *contents[] = { source, metadata };
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i]);
+        FILE *file = fopen(path, "wb");
+        REQUIRE(file);
+        REQUIRE(fputs(contents[i], file) >= 0);
+        REQUIRE(!fclose(file));
+    }
+    free(metadata);
+    REQUIRE(!chibi_project_migrate_content(root, NULL, 23, error, sizeof error));
+    snprintf(path, sizeof path, "%s/O.chibi.meta", root);
+    FILE *file = fopen(path, "rb");
+    REQUIRE(file);
+    char remapped[1024];
+    remapped[fread(remapped, 1, sizeof remapped - 1, file)] = '\0';
+    REQUIRE(!fclose(file));
+    snprintf(json, sizeof json, "\"start\":%zu", (size_t)(strstr(migrated, "state.Collapsed") - migrated));
+    REQUIRE(authoring_source_metadata_matches(remapped, migrated));
+    REQUIRE(strstr(remapped, json));
+    REQUIRE(strstr(remapped, "\"id\":42"));
+    REQUIRE(!chibi_project_migrate_content(root, NULL, 23, error, sizeof error));
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i]);
+        REQUIRE(!unlink(path));
+    }
+    REQUIRE(!rmdir(root));
+    free(migrated);
+    return true;
+}
+
+TEST_CASE(program_version_23_not_calls_execute)
+{
+    const char *source = "behavior B { answer: bool = false;"
+                         "on Impulse(amount, enabled) { answer = not(Value: "
+                         "bool = not(Value: enabled)) } }";
+    char error[192] = { 0 }, *migrated = NULL;
+    REQUIRE(!chibi_migrate_declarations(source, &migrated, error, sizeof error));
+    REQUIRE(migrated);
+    prepare();
+    REQUIRE(compile(migrated, BEHAVIOR_BYTECODE));
+    execution_instance *instance = execution_program_attach(
+        program,
+        ecs_entity_to_u64(ecs_world_create_entity(world))
+    );
+    pin_value args[] = { { .type = PIN_F64, .d = 0 }, { .type = PIN_BOOL, .b = true } };
+    REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+    const pin_value *answer = execution_instance_state(instance, state_id("answer"));
+    REQUIRE(answer && answer->type == PIN_BOOL && answer->b);
+    args[1].b = false;
+    REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+    REQUIRE(!execution_instance_state(instance, state_id("answer"))->b);
+    free(migrated);
+    return true;
+}
+
+TEST_CASE(program_version_23_not_calls_reject_unsupported_arguments)
+{
+    const char *sources[] = {
+        "behavior B { on Tick { x := not() } }",
+        "behavior B { on Tick { x := not(true, false) } }",
+        "behavior B { on Tick { x := not(Other: true) } }",
+        "behavior B { on Tick { x := not(Value: int = 1) } }",
+        "behavior B { on Tick { x := not(Value: bool from enabled) } }",
+        "behavior B { on Tick { x := not(Value: enabled).Result } }",
+        "behavior B { on Tick { x := (not(Value: enabled)).Result } }",
+        "behavior B { pure function not(Value: bool) -> (Result: bool) { "
+        "return Value }"
+        "on Tick { x := not(Value: true) } }",
+    };
+    for (int i = 0; i < (int)(sizeof sources / sizeof *sources); i++) {
+        char error[192] = { 0 }, *migrated = NULL;
+        REQUIRE(chibi_migrate_declarations(sources[i], &migrated, error, sizeof error) < 0);
+        REQUIRE(!migrated);
+        REQUIRE(strstr(error, "Cannot migrate not call to unary negation"));
+    }
+    return true;
+}
+
 TEST_CASE(program_single_result_call_fields_read_the_result)
 {
     const char *source = "behavior B { n: double = 0;"
@@ -7602,6 +7727,9 @@ void test_language_program()
     RUN_TEST_CASE(program_version_22_prefixes_preserve_resolved_helpers);
     RUN_TEST_CASE(program_constant_definitions_and_optional_fn_execute);
     RUN_TEST_CASE(program_version_23_declarations_and_switch_migrate);
+    RUN_TEST_CASE(program_version_23_not_calls_migrate);
+    RUN_TEST_CASE(program_version_23_not_calls_execute);
+    RUN_TEST_CASE(program_version_23_not_calls_reject_unsupported_arguments);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

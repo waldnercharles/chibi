@@ -3845,9 +3845,87 @@ static char *drop_lab_settings(const char *asset)
     av_doc_free(document);
     return migrated;
 }
-/* Replace only syntax tokens, preserving comments, strings and each name. */
-static void declaration_edits(const char *text, TSNode node, replacement **edits)
+static bool negation_edits(const char *text, TSNode call, replacement **edits)
 {
+    TSNode target = ts_node_child_by_field_name(call, "function", 8);
+    if (!is(target, "identifier") || !names(text, target, "not")) {
+        return true;
+    }
+    for (TSNode scope = ts_node_parent(call); !ts_node_is_null(scope);
+         scope = ts_node_parent(scope)) {
+        if (!ts_node_is_null(callable_in(text, scope, target))) {
+            return false;
+        }
+    }
+    if (is(outer(call), "member_expression")) {
+        return false;
+    }
+    TSNode arguments = ts_node_child_by_field_name(call, "arguments", 9),
+           argument = { 0 };
+    for (uint32_t i = 0; i < ts_node_named_child_count(arguments); i++) {
+        TSNode child = ts_node_named_child(arguments, i);
+        if (ts_node_is_extra(child)) {
+            continue;
+        }
+        if (!ts_node_is_null(argument)) {
+            return false;
+        }
+        argument = child;
+    }
+    if (ts_node_is_null(argument)) {
+        return false;
+    }
+    TSNode value = argument;
+    if (is(argument, "named_argument") || is(argument, "typed_argument")) {
+        TSNode name = ts_node_child_by_field_name(argument, "name", 4);
+        char *label = name_text(text, name);
+        bool valid = names_match(label, "Value");
+        free(label);
+        if (!valid ||
+            !ts_node_is_null(ts_node_child_by_field_name(argument, "source", 6))) {
+            return false;
+        }
+        TSNode type = ts_node_child_by_field_name(argument, "type", 4);
+        if (!ts_node_is_null(type) &&
+            (ts_node_end_byte(type) - ts_node_start_byte(type) != 4 ||
+             strncmp(text + ts_node_start_byte(type), "bool", 4))) {
+            return false;
+        }
+        value = ts_node_child_by_field_name(argument, "value", 5);
+        if (ts_node_is_null(value)) {
+            return false;
+        }
+        /* Keep comments, whitespace and the argument-list parentheses. The
+         * operand stays in place, so nested calls and metadata anchors move
+         * only by the syntax tokens removed before them. */
+        for (uint32_t i = 0; i < ts_node_child_count(argument); i++) {
+            TSNode child = ts_node_child(argument, i);
+            if (ts_node_is_extra(child) ||
+                ts_node_start_byte(child) >= ts_node_start_byte(value)) {
+                continue;
+            }
+            apush(
+                *edits,
+                ((replacement){ .start = (int)ts_node_start_byte(child),
+                                .end = (int)ts_node_end_byte(child),
+                                .text = xstrdup("") })
+            );
+        }
+    }
+    apush(
+        *edits,
+        ((replacement){ .start = (int)ts_node_start_byte(target),
+                        .end = (int)ts_node_end_byte(target),
+                        .text = xstrdup("!") })
+    );
+    return true;
+}
+/* Replace only syntax tokens, preserving comments, strings and each name. */
+static bool declaration_edits(const char *text, TSNode node, replacement **edits)
+{
+    if (is(node, "call_expression") && !negation_edits(text, node, edits)) {
+        return false;
+    }
     if (is(node, "function_declaration")) {
         TSNode name = ts_node_child_by_field_name(node, "name", 4);
         bool pure = false;
@@ -3909,8 +3987,11 @@ static void declaration_edits(const char *text, TSNode node, replacement **edits
         }
     }
     for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-        declaration_edits(text, ts_node_named_child(node, i), edits);
+        if (!declaration_edits(text, ts_node_named_child(node, i), edits)) {
+            return false;
+        }
     }
+    return true;
 }
 
 int chibi_migrate_declarations(const char *source, char **migrated, char *error, size_t size)
@@ -3929,7 +4010,12 @@ int chibi_migrate_declarations(const char *source, char **migrated, char *error,
         return -1;
     }
     replacement *edits = NULL;
-    declaration_edits(source, ts_tree_root_node(syntax->tree), &edits);
+    if (!declaration_edits(source, ts_tree_root_node(syntax->tree), &edits)) {
+        snprintf(error, size, "Cannot migrate not call to unary negation");
+        prefix_edits_free(edits);
+        script_syntax_free(syntax);
+        return -1;
+    }
     char *result = prefix_apply(source, edits);
     prefix_edits_free(edits);
     script_syntax_free(syntax);
@@ -3958,7 +4044,9 @@ static char **migrate_declarations(char **sources, char **paths, int count, char
         }
         script_syntax *syntax = parse23(sources[i]);
         replacement *edits = NULL;
-        declaration_edits(sources[i], ts_tree_root_node(syntax->tree), &edits);
+        bool valid = declaration_edits(sources[i], ts_tree_root_node(syntax->tree), &edits);
+        assert(valid);
+        (void)valid;
         qsort(edits, (size_t)acount(edits), sizeof *edits, by_start);
         size_t length = strlen(paths[i]);
         for (int j = 0; j < count; j++) {

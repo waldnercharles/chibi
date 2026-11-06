@@ -2,20 +2,20 @@
   "format": 1,
   "version": 7,
   "minimum": 6,
-  "revision": "f2a71eae9611009c8a9a237b87f867739c7a5f82",
+  "revision": "2a76e61a8",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 20780474,
-    "sha256": "bf582baf6aa06496b15e6f715f27cab3d5afbd0fb68feb59483c85d7481cc64a"
+    "bytes": 20805242,
+    "sha256": "ce56a52ba79e51fe538eac447bd1caf2d233d5250f2a990e56f9d4ca0e9b3356"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 148667,
-      "sha256": "fe133148cdaa310e7c466d78e6c1ce481b4550a6c9fc5a53e9772fb710d312e1"
+      "bytes": 150403,
+      "sha256": "7398ea88f67f5e890babdc749f95a8da90e52d27cd7ed5e351ff594f49c50ee4"
     },
     {
       "path": "package_compiler/Body.chibi",
@@ -155,8 +155,8 @@
       "value_size": 48,
       "payload_offset": 8,
       "arguments_offset": 168,
-      "delta_seconds_offset": 344,
       "results_offset": 208,
+      "delta_seconds_offset": 344,
       "error_status_offset": 496,
       "type_offset": 0,
       "container_offset": 16,

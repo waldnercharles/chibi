@@ -236,11 +236,11 @@ pub Tokenize :: (text: string) -> Tokens {
         kept := insert;
         top := contexts[depth - 1];
         if (insert && (top == Statements || top == Fields) && Terminates(bytes, start, newline)) {
-            kinds = array_add(kinds, Semicolon);
-            starts = array_add(starts, start);
-            ends = array_add(ends, start);
-            rows = array_add(rows, row);
-            columns = array_add(columns, column);
+            kinds.append(Semicolon);
+            starts.append(start);
+            ends.append(start);
+            rows.append(row);
+            columns.append(column);
             before = previous;
             previous = Semicolon;
             label = false;
@@ -280,10 +280,10 @@ pub Tokenize :: (text: string) -> Tokens {
                 // Strings, numbers and characters fail on their line, and a
                 // comment fails at its start.
                 if (lexeme.message != "") {
-                    errors = array_add(errors, lexeme.message);
-                    error_offsets = array_add(error_offsets, lexeme.at);
-                    error_rows = array_add(error_rows, row);
-                    error_columns = array_add(error_columns, lexeme.at - line);
+                    errors.append(lexeme.message);
+                    error_offsets.append(lexeme.at);
+                    error_rows.append(row);
+                    error_columns.append(lexeme.at - line);
                 }
                 if (!lexeme.partial) {
                     break;
@@ -292,11 +292,11 @@ pub Tokenize :: (text: string) -> Tokens {
             }
             end = lexeme.end;
         }
-        kinds = array_add(kinds, kind);
-        starts = array_add(starts, start);
-        ends = array_add(ends, end);
-        rows = array_add(rows, row);
-        columns = array_add(columns, column);
+        kinds.append(kind);
+        starts.append(start);
+        ends.append(end);
+        rows.append(row);
+        columns.append(column);
         offset = end;
         if (kind == Comment) {
             at := start;
@@ -321,7 +321,7 @@ pub Tokenize :: (text: string) -> Tokens {
         }
         if (opened >= 0) {
             if (depth == length(contexts)) {
-                contexts = array_add(contexts, opened);
+                contexts.append(opened);
             } else {
                 contexts[depth] = opened;
             }
@@ -355,11 +355,11 @@ pub Tokenize :: (text: string) -> Tokens {
             previous = kind;
         }
     }
-    kinds = array_add(kinds, EOF);
-    starts = array_add(starts, count);
-    ends = array_add(ends, count);
-    rows = array_add(rows, row);
-    columns = array_add(columns, count - line);
+    kinds.append(EOF);
+    starts.append(count);
+    ends.append(count);
+    rows.append(row);
+    columns.append(count - line);
     return Tokens.Scanned(kinds, starts, ends, rows, columns,
                           errors, error_offsets, error_rows, error_columns);
 }

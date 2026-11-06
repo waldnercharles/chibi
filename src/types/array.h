@@ -81,7 +81,9 @@ void pin_array_free(pin_array *array);
 int pin_array_reserve(pin_array *array, int capacity);
 /* Grows an exclusively owned arena array to hold count items, doubling its
  * capacity like Odin's dynamic arrays so appends cost amortized O(1). Items
- * move without copying their payloads; the old buffer becomes unreachable. */
+ * move without copying their payloads, and a packed array stays packed; the
+ * old buffer becomes unreachable. The caller writes the slots from the
+ * array's count up to `count`. */
 int pin_array_reserve_owned(arena *a, pin_array *array, int count);
 int pin_array_push(pin_array *array, const pin_value *value);
 int pin_array_equal(const pin_array *a, const pin_array *b);

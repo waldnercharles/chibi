@@ -1,3 +1,4 @@
+#include "../owned_text.h"
 #include "runtime/arrays.h"
 #include "support/arena.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -89,13 +90,16 @@ static bool check_item(const pin_value *value, pin_type type, int number)
         text = row->text;
     }
     if (!number) {
-        REQUIRE(!text);
+        REQUIRE(type == PIN_STR ? !pin_text(*value).length : !text);
         return true;
     }
     char expected[24];
     snprintf(expected, sizeof expected, "native-%d", number);
     REQUIRE(text && !strcmp(text, expected));
-    REQUIRE(arena_contains(&results, text));
+    REQUIRE(
+        type == PIN_STR ? test_text_owned(&results, *value)
+                        : arena_contains(&results, text)
+    );
     return true;
 }
 TEST_CASE(record_legacy_array_callbacks)
@@ -105,7 +109,7 @@ TEST_CASE(record_legacy_array_callbacks)
     static const pin_type kinds[] = { PIN_I32, PIN_STR, PIN_STRUCT };
     static const node_host_call *const calls[2][8] = {
         { &NATIVE_ARRAY_add_HOST,
-          &NATIVE_ARRAY_append_HOST,
+          &NATIVE_ARRAY_extend_HOST,
           &NATIVE_ARRAY_set_elem_HOST,
           &NATIVE_ARRAY_insert_HOST,
           &NATIVE_ARRAY_remove_index_HOST,
@@ -113,7 +117,7 @@ TEST_CASE(record_legacy_array_callbacks)
           &NATIVE_ARRAY_resize_HOST,
           &NATIVE_ARRAY_slice_HOST },
         { &NATIVE_ARRAY_add_CALL,
-          &NATIVE_ARRAY_append_CALL,
+          &NATIVE_ARRAY_extend_CALL,
           &NATIVE_ARRAY_set_elem_CALL,
           &NATIVE_ARRAY_insert_CALL,
           &NATIVE_ARRAY_remove_index_CALL,
@@ -185,10 +189,11 @@ TEST_CASE(record_legacy_array_callbacks)
         /* The result must already own all text before a test-side copy. */
         if (kinds[kind] != PIN_I32) {
             for (int i = 0; i < 4; i++) {
-                char *text = kinds[kind] == PIN_STR
-                               ? (char *)pin_text(items[i]).bytes
-                               : (char *)((native_row *)items[i].ptr)->text;
-                text[0] = 'X';
+                if (kinds[kind] == PIN_STR) {
+                    items[i] = (pin_value){ .type = PIN_STR };
+                } else {
+                    ((char *)((native_row *)items[i].ptr)->text)[0] = 'X';
+                }
             }
         }
         arena_free(&source);

@@ -1,5 +1,6 @@
 #include "union_members_chibi.h"
 
+#include "../owned_text.h"
 #include "compiler_fixture.h"
 #include "language/union_members.h"
 #include "lexical_binding_chibi_source.h"
@@ -125,7 +126,7 @@ static bool text_field(const pin_value *row, const char *name, pin_string expect
 static bool string_field(const pin_value *row, const char *name, const char *expected)
 {
     expected = expected ? expected : "";
-    return text_field(row, name, (pin_string){ expected, (uint32_t)strlen(expected) });
+    return text_field(row, name, (pin_string){ .bytes = expected, .length = (uint32_t)strlen(expected) });
 }
 static bool range_fields(const pin_value *row, script_range r)
 {
@@ -283,9 +284,7 @@ static bool owned(const arena *storage, const pin_value *value, int depth)
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(
-            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
-        );
+        REQUIRE(pin_text(*value).bytes && test_text_owned(storage, *value));
         return true;
     }
     REQUIRE(value->type == PIN_I32 || value->type == PIN_BOOL || value->type == PIN_U64);
@@ -573,7 +572,12 @@ static bool compare_replaced(const pin_union *u, const script_catalog_type *d)
             typed_field(r, "type", &u->values[3], &u->values[4], v->type) &&
             bool_field(r, "tagged", v->tagged) &&
             bool_field(r, "is_literal", v->is_literal) &&
-            text_field(r, "literal", v->is_literal ? pin_text(v->literal) : (pin_string){ "", 0 }) &&
+            text_field(
+                r,
+                "literal",
+                v->is_literal ? pin_text(v->literal)
+                              : (pin_string){ .bytes = "", .length = 0 }
+            ) &&
             int_field(r, "field_count", v->field_count) &&
             field_number(r, "field_start", &fs) &&
             compare_fields(&u->values[2], fs, v->fields, v->field_count, &u->values[3], &u->values[4], true)

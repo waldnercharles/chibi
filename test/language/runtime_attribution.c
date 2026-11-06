@@ -1,3 +1,4 @@
+#include "../owned_text.h"
 #include "backend.h"
 #include "ecs/ecs.h"
 #include "ecs/execution.h"
@@ -271,8 +272,10 @@ TEST_CASE(runtime_attribution_copy_sites)
         /* S2: null, empty, heap text, ordinary arena text, owning empty. */
         const char *texts[] = { NULL, "", "abc" };
         for (int i = 0; i < 3; i++) {
-            const pin_string borrowed = { texts[i] ? texts[i] : "",
-                                          texts[i] ? (uint32_t)strlen(texts[i]) : 0 };
+            const pin_string borrowed = { .bytes = texts[i] ? texts[i] : "",
+                                          .length = texts[i]
+                                                      ? (uint32_t)strlen(texts[i])
+                                                      : 0 };
             pin_value source = { .type = PIN_STR, .text = texts[i] ? &borrowed : NULL };
             copy_begin(enabled);
             REQUIRE(pin_value_copy(&fixture.heap[0], &source) == 0);
@@ -1485,10 +1488,7 @@ static bool workload_check_results(int managed, int count)
                 pin_text(pin_array_get(array, j)).bytes !=
                 pin_text(workload_input_items[j]).bytes
             );
-            REQUIRE(arena_contains(
-                &workload_storage,
-                pin_text(pin_array_get(array, j)).bytes
-            ));
+            REQUIRE(test_text_owned(&workload_storage, pin_array_get(array, j)));
             REQUIRE(!strcmp(
                 pin_text(pin_array_get(array, j)).bytes,
                 pin_text(workload_input_items[j]).bytes

@@ -1,5 +1,6 @@
 #include "types/text.h"
 /* This consumer compiles only with exported runtime SDK headers. */
+#include "../owned_text.h"
 #include "execution/function_builder.h"
 #include "execution/module.h"
 #include "execution/prepared.h"
@@ -117,8 +118,7 @@ static bool owned_row(const pin_value *value)
 {
     REQUIRE(arena_contains(&storage, value->ptr));
     for (int field = 0; field < 5; field++) {
-        const char *text = pin_text(member(value, field)).bytes;
-        REQUIRE(text && arena_contains(&storage, text));
+        REQUIRE(test_text_owned(&storage, member(value, field)));
     }
     return true;
 }

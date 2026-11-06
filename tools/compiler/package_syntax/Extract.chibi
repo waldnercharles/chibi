@@ -120,7 +120,7 @@ pub Extract :: (nodes: syntax.Node[], fields: string[], text: string,
                 alias_line: aliasLine, alias_column: aliasColumn,
                 alias_document: 0
             };
-            imports = array_add(imports, imported);
+            imports.append(imported);
         }
         current = nodes[current].next_sibling;
     }

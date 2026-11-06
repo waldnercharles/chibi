@@ -56,15 +56,15 @@ MapLiteralStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDe
     if (item.phase == 0) {
         count: int = 0;
         for (pair in Members(forest, item.node)) {
-            next = array_add(next, Expect(Field(forest, pair, "key"), types[map].key, 0, -1));
-            next = array_add(next, Expect(Field(forest, pair, "value"), types[map].value_storage, 0,
-                                          types[map].value_record));
+            next.append(Expect(Field(forest, pair, "key"), types[map].key, 0, -1));
+            next.append(Expect(Field(forest, pair, "value"), types[map].value_storage, 0,
+                               types[map].value_record));
             count += 2;
         }
         rest := Expect(item.node, item.storage, item.container, map);
         rest.phase = 1;
         rest.a = count;
-        next = array_add(next, rest);
+        next.append(rest);
         return Step.Emitted(code, slots, [], cells, [], roots, [], [], next, 0, NoValue(), NoValue(), []);
     }
     cells = [MapCell(map), KeyCell(types, map), ItemCell(types, map)];
@@ -80,22 +80,22 @@ MapLiteralStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDe
             return Fail(forest, Field(forest, pair, "value"), document, "map value differs from the map's type");
         }
         for (part in [key, value]) {
-            cells = array_add(cells, PartCell(part));
-            slots = array_add(slots, address);
-            code = append(code, CellWrite(SlotStorage(part.storage, 0, target), part.slot, at.cell + length(cells) - 1,
-                                          ops, target, at.slot + length(slots) - 1, forest[pair]));
+            cells.append(PartCell(part));
+            slots.append(address);
+            code.extend(CellWrite(SlotStorage(part.storage, 0, target), part.slot, at.cell + length(cells) - 1,
+                                  ops, target, at.slot + length(slots) - 1, forest[pair]));
         }
         index += 2;
     }
-    cells = array_add(cells, MapCell(map));
+    cells.append(MapCell(map));
     host: Host = {intrinsic: MapMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
                   result_count: 1, written: false};
-    code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
-    slots = append(slots, [address, address]);
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    slots.extend([address, address]);
     made := at.slot + length(slots) - 1;
-    code = append(code, CellRead(target.pointer_storage, at.cell + length(cells) - 1, ops, target, made - 1, node));
+    code.extend(CellRead(target.pointer_storage, at.cell + length(cells) - 1, ops, target, made - 1, node));
     root: Root = {slot: made, storage: UnionStorage, container: MapContainer, record: map};
-    roots = array_add(roots, root);
+    roots.append(root);
     return Step.Emitted(code, slots, [], cells, [host], roots, [], [], next, item.a,
                         Typed(made, UnionStorage, MapContainer, map), NoValue(), []);
 }
@@ -120,31 +120,31 @@ MapReadStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[
     cells: Cell[] = [MapCell(map.record), KeyCell(types, map.record)];
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
     slots: Slot[] = [address, address];
-    code := append(CellWrite(target.pointer_storage, map.slot, at.cell, ops, target, at.slot, node),
+    code := extend(CellWrite(target.pointer_storage, map.slot, at.cell, ops, target, at.slot, node),
                    CellWrite(SlotStorage(key.storage, 0, target), key.slot, at.cell + 1, ops, target, at.slot + 1, node));
     if (HasZero(item.storage)) {
-        code = array_add(code, ExpressionCode(ops, node));
-        slots = array_add(slots, ValueLocal(item.storage));
-        code = array_add(code, ConstantCode(ops, item.storage, 0, at.slot + 2, node));
-        code = array_add(code, WatchCode(ops, at.slot + 2, item.storage, 0, -1, 0, true, node, target));
-        cells = array_add(cells, ItemCell(types, map.record));
-        slots = array_add(slots, address);
-        code = append(code, CellWrite(item.storage, at.slot + 2, at.cell + 2, ops, target, at.slot + 3, node));
+        code.append(ExpressionCode(ops, node));
+        slots.append(ValueLocal(item.storage));
+        code.append(ConstantCode(ops, item.storage, 0, at.slot + 2, node));
+        code.append(WatchCode(ops, at.slot + 2, item.storage, 0, -1, 0, true, node, target));
+        cells.append(ItemCell(types, map.record));
+        slots.append(address);
+        code.extend(CellWrite(item.storage, at.slot + 2, at.cell + 2, ops, target, at.slot + 3, node));
     }
-    cells = array_add(cells, ItemCell(types, map.record));
+    cells.append(ItemCell(types, map.record));
     host: Host = {intrinsic: MapGetIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
                   result_count: 1, written: false};
-    code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     read := length(slots);
-    slots = array_add(slots, address);
+    slots.append(address);
     result: Slot = {storage: SlotStorage(item.storage, 0, target), kind: SlotKind(item.storage, 0)};
-    slots = array_add(slots, result);
-    code = append(code, CellRead(SlotStorage(item.storage, 0, target), at.cell + length(cells) - 1, ops, target,
-                                 at.slot + read, node));
+    slots.append(result);
+    code.extend(CellRead(SlotStorage(item.storage, 0, target), at.cell + length(cells) - 1, ops, target,
+                         at.slot + read, node));
     roots: Root[] = [];
     if (Pointer(item.storage, 0)) {
         root: Root = {slot: at.slot + read + 1, storage: item.storage, container: 0, record: item.record};
-        roots = array_add(roots, root);
+        roots.append(root);
     }
     return Step.Emitted(code, slots, [], cells, [host], roots, [], [], [], 2,
                         Typed(at.slot + read + 1, item.storage, 0, item.record), NoValue(), []);
@@ -271,34 +271,34 @@ MapUpdateStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     cells: Cell[] = [address_cell];
     slots: Slot[] = [address, address];
     code: Code[] = [Instruction(ops.host_slot, target.pointer_storage, at.slot, binding.index, 0, 0, node)];
-    code = append(code, CellWrite(target.pointer_storage, at.slot, at.cell, ops, target, at.slot + 1, node));
+    code.extend(CellWrite(target.pointer_storage, at.slot, at.cell, ops, target, at.slot + 1, node));
     for (argument in arguments) {
-        cells = array_add(cells, PartCell(argument));
-        slots = array_add(slots, address);
-        code = append(code, CellWrite(SlotStorage(argument.storage, 0, target), argument.slot,
-                                      at.cell + length(cells) - 1, ops, target, at.slot + length(slots) - 1, node));
+        cells.append(PartCell(argument));
+        slots.append(address);
+        code.extend(CellWrite(SlotStorage(argument.storage, 0, target), argument.slot,
+                              at.cell + length(cells) - 1, ops, target, at.slot + length(slots) - 1, node));
     }
     done: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
-    cells = array_add(cells, done);
+    cells.append(done);
     intrinsic := MapDeleteIntrinsic;
     if (store) {
         intrinsic = MapStoreIntrinsic;
     }
     host: Host = {intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
                   result_count: 1, written: false};
-    code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
-    code = array_add(code, SymbolCode(ops, binding.node, node));
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code.append(SymbolCode(ops, binding.node, node));
     if (!store) {
-        code = append(code, NamePoints(forest, text, names, ops, item.b));
+        code.extend(NamePoints(forest, text, names, ops, item.b));
     }
     // The map a removal leaves is its watched output.
     if (!store && ops.debug) {
-        slots = array_add(slots, address);
+        slots.append(address);
         reread := Instruction(ops.load, target.pointer_storage, at.slot + length(slots) - 1, at.slot, 0, 0, node);
         reread.offset = target.payload_offset;
-        code = array_add(code, reread);
-        code = array_add(code, WatchCode(ops, at.slot + length(slots) - 1, UnionStorage, MapContainer, binding.record,
-                                         0, true, forest[item.c], target));
+        code.append(reread);
+        code.append(WatchCode(ops, at.slot + length(slots) - 1, UnionStorage, MapContainer, binding.record,
+                              0, true, forest[item.c], target));
     }
     return Step.Emitted(code, slots, [], cells, [host], [], [], [], [], length(arguments), NoValue(), NoValue(), []);
 }
@@ -322,7 +322,7 @@ MapHasStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
     if (item.phase == 0) {
         code: Code[] = [];
         if (negated) {
-            code = array_add(code, ExpressionCode(ops, node));
+            code.append(ExpressionCode(ops, node));
         }
         resume := Resume(item.node, KeyPhase, 0, 0);
         resume.c = MapHasMark;
@@ -347,22 +347,22 @@ MapHasStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
     result: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
     cells: Cell[] = [MapCell(held.record), PartCell(sought), result];
     slots: Slot[] = [address, address, address, flag];
-    code := append(CellWrite(target.pointer_storage, held.slot, at.cell, ops, target, at.slot, node),
+    code := extend(CellWrite(target.pointer_storage, held.slot, at.cell, ops, target, at.slot, node),
                    CellWrite(SlotStorage(sought.storage, 0, target), sought.slot, at.cell + 1, ops, target,
                              at.slot + 1, node));
     host: Host = {intrinsic: MapHasIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2, result_count: 1,
                   written: false};
-    code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
-    code = append(code, CellRead(BoolStorage, at.cell + 2, ops, target, at.slot + 2, node));
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code.extend(CellRead(BoolStorage, at.cell + 2, ops, target, at.slot + 2, node));
     answer := at.slot + 3;
     if (negated) {
         // `not in` is a negation of the has, an expression of its own.
-        code = array_add(code, ScalarWatch(ops, answer, BoolStorage, 0, true, node));
+        code.append(ScalarWatch(ops, answer, BoolStorage, 0, true, node));
         // Not is equality with false.
-        slots = array_add(slots, flag);
-        code = array_add(code, ConstantCode(ops, BoolStorage, 0, at.slot + 4, node));
-        slots = array_add(slots, flag);
-        code = array_add(code, Instruction(ops.eq, BoolStorage, at.slot + 5, answer, at.slot + 4, -1, node));
+        slots.append(flag);
+        code.append(ConstantCode(ops, BoolStorage, 0, at.slot + 4, node));
+        slots.append(flag);
+        code.append(Instruction(ops.eq, BoolStorage, at.slot + 5, answer, at.slot + 4, -1, node));
         answer = at.slot + 5;
     }
     return Step.Emitted(code, slots, [], cells, [host], [], [], [], [], 2, Typed(answer, BoolStorage, 0, -1),
@@ -372,14 +372,14 @@ MapHasStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
 // `key`, from stage zero's map item intrinsic, whose cells start at `cell`.
 MapItemCode :: (types: TypeDecl[], map: int, held: int, ordinal: int, key: bool, cell: int, host: int, slot: int,
                 ops: Ops, target: Target, node: snapshot.SnapshotNode) -> Code[] {
-    code := append(CellWrite(target.pointer_storage, held, cell, ops, target, slot, node),
+    code := extend(CellWrite(target.pointer_storage, held, cell, ops, target, slot, node),
                    CellWrite(IntStorage, ordinal, cell + 1, ops, target, slot + 1, node));
-    code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, host, node));
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, host, node));
     storage := types[map].key;
     if (!key) {
         storage = SlotStorage(types[map].value_storage, 0, target);
     }
-    return append(code, CellRead(storage, cell + 3, ops, target, slot + 2, node));
+    return extend(code, CellRead(storage, cell + 3, ops, target, slot + 2, node));
 }
 MapItemCells :: (types: TypeDecl[], map: int, key: bool) -> Cell[] {
     flag: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
@@ -410,33 +410,33 @@ MapForStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
     slots: Slot[] = [number];
     code: Code[] = [ConstantCode(ops, IntStorage, 0, at.slot, node)];
     locals: Slot[] = [ValueLocal(IntStorage)];
-    code = array_add(code, Instruction(ops.save, IntStorage, 0, at.slot, 0, at.local, node));
+    code.append(Instruction(ops.save, IntStorage, 0, at.slot, 0, at.local, node));
     b := at.slot + 1;
     head := at.pc + length(code);
-    code = array_add(code, Instruction(ops.check, 0, 0, 0, 0, 0, node));
-    slots = append(slots, [address, address, number, number, flag]);
-    code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, b, at.cell - 1, 0, 0, node));
+    code.append(Instruction(ops.check, 0, 0, 0, 0, 0, node));
+    slots.extend([address, address, number, number, flag]);
+    code.append(Instruction(ops.host_slot, target.pointer_storage, b, at.cell - 1, 0, 0, node));
     load := Instruction(ops.load, target.pointer_storage, b + 1, b, 0, 0, node);
     load.offset = target.payload_offset;
-    code = array_add(code, load);
+    code.append(load);
     root: Root = {slot: b + 1, storage: UnionStorage, container: MapContainer, record: held.record};
     roots: Root[] = [root];
     count := Instruction(ops.load, IntStorage, b + 2, b + 1, 0, 0, node);
     count.offset = target.map_count_offset;
-    code = array_add(code, count);
-    code = array_add(code, Instruction(ops.local, IntStorage, b + 3, at.local, 0, 0, node));
-    code = array_add(code, Instruction(ops.lt, IntStorage, b + 4, b + 3, b + 2, -1, node));
-    code = array_add(code, Instruction(ops.branch_if, 0, 0, b + 4, 0, at.pc + length(code) + 2, node));
+    code.append(count);
+    code.append(Instruction(ops.local, IntStorage, b + 3, at.local, 0, 0, node));
+    code.append(Instruction(ops.lt, IntStorage, b + 4, b + 3, b + 2, -1, node));
+    code.append(Instruction(ops.branch_if, 0, 0, b + 4, 0, at.pc + length(code) + 2, node));
     leave := at.pc + length(code);
-    code = array_add(code, Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+    code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
     cells := MapItemCells(types, held.record, false);
     hosts: Host[] = [{intrinsic: MapItemIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 3,
                       result_count: 1, written: false}];
     value := at.slot + length(slots) + 3;
-    slots = append(slots, [address, address, address,
-                           {storage: SlotStorage(map.value_storage, 0, target), kind: SlotKind(map.value_storage, 0)}]);
-    code = append(code, MapItemCode(types, held.record, b + 1, b + 3, false, at.cell, at.host, value - 3, ops, target,
-                                    node));
+    slots.extend([address, address, address,
+                  {storage: SlotStorage(map.value_storage, 0, target), kind: SlotKind(map.value_storage, 0)}]);
+    code.extend(MapItemCode(types, held.record, b + 1, b + 3, false, at.cell, at.host, value - 3, ops, target,
+                            node));
     value_node := Field(forest, item.node, "name");
     binding: Name = {name: Text(forest, text, value_node), place: LocalPlace, index: at.local + 1,
                      storage: map.value_storage, container: 0, record: map.value_record, writable: false,
@@ -445,41 +445,41 @@ MapForStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
         // The record is copied into a cell of its own, as a record element is.
         copy: Cell = {storage: StructStorage, container: 0, record: map.value_record, constant: 0, variant: -1,
                       kind: ValueKind};
-        cells = append(cells, [copy, copy]);
-        slots = array_add(slots, address);
-        code = append(code, CellWrite(target.pointer_storage, value, at.cell + 4, ops, target, at.slot + length(slots) - 1,
-                                      node));
+        cells.extend([copy, copy]);
+        slots.append(address);
+        code.extend(CellWrite(target.pointer_storage, value, at.cell + 4, ops, target, at.slot + length(slots) - 1,
+                              node));
         snapshot: Host = {intrinsic: SnapshotIntrinsic, linked: -1, first: at.cell + 4, result_first: at.cell + 5,
                           result_count: 1, written: false};
-        hosts = array_add(hosts, snapshot);
-        code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host + 1, node));
+        hosts.append(snapshot);
+        code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host + 1, node));
         binding.place = CellPlace;
         binding.index = at.cell + 5;
     } else {
-        locals = array_add(locals, ValueLocal(map.value_storage));
-        code = array_add(code, Instruction(ops.save, map.value_storage, 0, value, 0, at.local + 1, node));
+        locals.append(ValueLocal(map.value_storage));
+        code.append(Instruction(ops.save, map.value_storage, 0, value, 0, at.local + 1, node));
     }
     bound: Name[] = [binding];
-    code = array_add(code, SymbolCode(ops, value_node, node));
+    code.append(SymbolCode(ops, value_node, node));
     key_node := Field(forest, item.node, "key");
     if (key_node >= 0 && Text(forest, text, key_node) == binding.name) {
         return Fail(forest, value_node, document, format_text("Duplicate declaration '{}'", binding.name));
     }
     if (key_node >= 0) {
         first := at.cell + length(cells);
-        cells = append(cells, MapItemCells(types, held.record, true));
+        cells.extend(MapItemCells(types, held.record, true));
         key_host: Host = {intrinsic: MapItemIntrinsic, linked: -1, first: first, result_first: first + 3,
                           result_count: 1, written: false};
-        hosts = array_add(hosts, key_host);
-        slots = append(slots, [address, address, address, ValueLocal(map.key)]);
-        code = append(code, MapItemCode(types, held.record, b + 1, b + 3, true, first, at.host + length(hosts) - 1,
-                                        at.slot + length(slots) - 4, ops, target, node));
+        hosts.append(key_host);
+        slots.extend([address, address, address, ValueLocal(map.key)]);
+        code.extend(MapItemCode(types, held.record, b + 1, b + 3, true, first, at.host + length(hosts) - 1,
+                                at.slot + length(slots) - 4, ops, target, node));
         key: Name = {name: Text(forest, text, key_node), place: LocalPlace, index: at.local + length(locals),
                      storage: map.key, container: 0, record: -1, writable: false, node: key_node};
-        locals = array_add(locals, ValueLocal(map.key));
-        code = array_add(code, Instruction(ops.save, map.key, 0, at.slot + length(slots) - 1, 0, key.index, node));
-        bound = array_add(bound, key);
-        code = array_add(code, SymbolCode(ops, key_node, node));
+        locals.append(ValueLocal(map.key));
+        code.append(Instruction(ops.save, map.key, 0, at.slot + length(slots) - 1, 0, key.index, node));
+        bound.append(key);
+        code.append(SymbolCode(ops, key_node, node));
     }
     next: Work[] = [Visit(Field(forest, item.node, "body")), Resume(item.node, 4, 0, 0)];
     return Step.Emitted(code, slots, locals, cells, hosts, roots, [], bound, next, 0, NoValue(), NoValue(),

@@ -94,7 +94,9 @@ fix a hand-made project.
 1. Bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and add the step
    that upgrades the previous version to the `switch` in
    `src/assets/project_migrate.c`. Steps are idempotent and stage every
-   source before replacing any.
+   source before replacing any. After each step the manifest's `migrated`
+   node records the version the sources reached, so a rerun after a later
+   failure resumes there; only a step interrupted while replacing runs again.
 2. Cover the step with a pico_unit case that migrates a small old-format
    source and checks the result (see `program_version_11_references_migrate_to_values`
    in `test/language/program.c`).

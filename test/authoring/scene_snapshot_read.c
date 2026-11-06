@@ -1,3 +1,4 @@
+#include "../owned_text.h"
 #include "authoring/language_catalog.h"
 #include "authoring/scene_snapshot.h"
 #include "authoring/source_prepare.h"
@@ -119,7 +120,7 @@ static const char *read_snapshot(
     for (int i = 0; i < count; i++) {
         const char *copy = pin_text(arrays[2]->items[i]).bytes;
         owned &= copy && copy != raw[i].name &&
-                 arena_contains(context->value_storage, copy);
+                 test_text_owned(context->value_storage, arrays[2]->items[i]);
     }
     f->owned = owned;
     f->ownership_checks++;

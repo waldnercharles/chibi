@@ -6,10 +6,13 @@
 #include "runtime/native_capabilities.h"
 
 #define BUILD_ENVIRONMENT_CAPACITY 96
+/* The environment snapshot's bytes: what exec accepts on macOS. */
+#define BUILD_ENVIRONMENT_LIMIT (1024 * 1024)
 /* Steps that may run at once through build.start. */
 #define BUILD_MAX_JOBS CHIBI_PROCESS_SERVICE_JOBS
-/* A step's own output may fill one build text value. */
-#define BUILD_STEP_OUTPUT_CAPACITY (BUILD_TEXT_LIMIT + 1)
+/* A step's own output: 1 MB, with room to tell when it was truncated. Each
+ * running step holds two such buffers. */
+#define BUILD_STEP_OUTPUT_CAPACITY (1024 * 1024 + 1)
 
 typedef struct
 {

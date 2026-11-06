@@ -16,24 +16,24 @@ Pages :: (sections: string[], titles: string[], outputs: string[], current: int)
         }
         grouped := end - index > 1;
         if (grouped) {
-            html = array_add(html, format_text("<li class=\"page-group\"><h2>{}</h2>\n<ul>\n",
-                                               markdown.Escape(sections[index])));
+            html.append(format_text("<li class=\"page-group\"><h2>{}</h2>\n<ul>\n",
+                                    markdown.Escape(sections[index])));
         }
         while (index < end) {
             mark: string = "";
             if (index == current) {
                 mark = " aria-current=\"page\"";
             }
-            html = array_add(html, format_text("<li><a href=\"{}\"{}>{}</a></li>\n",
-                                               markdown.Escape(outputs[index]), mark,
-                                               markdown.Escape(titles[index])));
+            html.append(format_text("<li><a href=\"{}\"{}>{}</a></li>\n",
+                                    markdown.Escape(outputs[index]), mark,
+                                    markdown.Escape(titles[index])));
             index += 1;
         }
         if (grouped) {
-            html = array_add(html, "</ul>\n</li>\n");
+            html.append("</ul>\n</li>\n");
         }
     }
-    return array_add(html, "</ul>\n");
+    return append(html, "</ul>\n");
 }
 
 // A page up to its body, as HTML pieces to write in order. sections, titles
@@ -41,16 +41,16 @@ Pages :: (sections: string[], titles: string[], outputs: string[], current: int)
 // page's index among them.
 pub Head :: (site: string, sections: string[], titles: string[], outputs: string[], current: int) -> string[] {
     html: string[] = [];
-    html = array_add(html, "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n");
-    html = array_add(html, "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
-    html = array_add(html, format_text("<title>{} · {}</title>\n", markdown.Escape(titles[current]),
-                                       markdown.Escape(site)));
-    html = array_add(html, "<link rel=\"stylesheet\" href=\"style.css\">\n</head>\n<body>\n<a class=\"skip\" href=\"#main\">Skip to content</a>\n<header class=\"bar\">\n");
-    html = array_add(html, format_text("<a class=\"site\" href=\"{}\">{}</a>\n<span class=\"context\">Documentation</span>\n",
-                                       markdown.Escape(outputs[0]), markdown.Escape(site)));
-    html = array_add(html, "</header>\n<div class=\"page\">\n<nav class=\"pages\" aria-label=\"Pages\">\n");
-    html = append(html, Pages(sections, titles, outputs, current));
-    return array_add(html, "</nav>\n<main id=\"main\" tabindex=\"-1\">\n");
+    html.append("<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n");
+    html.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
+    html.append(format_text("<title>{} · {}</title>\n", markdown.Escape(titles[current]),
+                            markdown.Escape(site)));
+    html.append("<link rel=\"stylesheet\" href=\"style.css\">\n</head>\n<body>\n<a class=\"skip\" href=\"#main\">Skip to content</a>\n<header class=\"bar\">\n");
+    html.append(format_text("<a class=\"site\" href=\"{}\">{}</a>\n<span class=\"context\">Documentation</span>\n",
+                            markdown.Escape(outputs[0]), markdown.Escape(site)));
+    html.append("</header>\n<div class=\"page\">\n<nav class=\"pages\" aria-label=\"Pages\">\n");
+    html.extend(Pages(sections, titles, outputs, current));
+    return append(html, "</nav>\n<main id=\"main\" tabindex=\"-1\">\n");
 }
 
 // Native disclosures work without script. Script adds bulk controls, opens

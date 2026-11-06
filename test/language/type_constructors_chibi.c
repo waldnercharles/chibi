@@ -1,5 +1,6 @@
 #include "type_constructors_chibi.h"
 
+#include "../owned_text.h"
 #include "compiler_fixture.h"
 #include "language/type_constructors.h"
 #include "lexical_binding_chibi_source.h"
@@ -478,7 +479,7 @@ static bool owned(arena *owner, const pin_value *value, int depth)
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(pin_text(*value).bytes && arena_contains(owner, pin_text(*value).bytes));
+        REQUIRE(pin_text(*value).bytes && test_text_owned(owner, *value));
         return true;
     }
     REQUIRE(value->type == PIN_I32 || value->type == PIN_U64 || value->type == PIN_BOOL);
@@ -1014,7 +1015,7 @@ TEST_CASE(type_constructor_results_and_metadata_outlive_producers)
     REQUIRE(
         literal->is_literal && literal->literal.type == PIN_STR &&
         pin_text(literal->literal).bytes &&
-        arena_contains(&metadata_storage, pin_text(literal->literal).bytes) &&
+        test_text_owned(&metadata_storage, literal->literal) &&
         !strcmp(pin_text(literal->literal).bytes, "owned literal")
     );
     REQUIRE(
@@ -1028,7 +1029,7 @@ TEST_CASE(type_constructor_results_and_metadata_outlive_producers)
         field->name && arena_contains(&metadata_storage, field->name) &&
         !strcmp(field->name, "message") && field->has_default &&
         field->default_value.type == PIN_STR && pin_text(field->default_value).bytes &&
-        arena_contains(&metadata_storage, pin_text(field->default_value).bytes) &&
+        test_text_owned(&metadata_storage, field->default_value) &&
         !strcmp(pin_text(field->default_value).bytes, "owned default")
     );
     return true;

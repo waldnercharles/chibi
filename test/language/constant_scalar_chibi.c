@@ -1,5 +1,6 @@
 #include "constant_scalar_chibi.h"
 
+#include "../owned_text.h"
 #include "compiler_fixture.h"
 #include "constant_scalar_chibi_source.h"
 #include "language/constant_proof.h"
@@ -496,9 +497,7 @@ static bool owned(const arena *storage, const pin_value *value)
             REQUIRE(owned(storage, &data->values[i]));
         }
     } else if (behavior_scalar_string(value->type)) {
-        REQUIRE(
-            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
-        );
+        REQUIRE(pin_text(*value).bytes && test_text_owned(storage, *value));
     }
     return true;
 }

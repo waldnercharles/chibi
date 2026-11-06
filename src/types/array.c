@@ -188,9 +188,8 @@ static char *arena_string(arena *a, const char *s, pin_copy_kind kind)
 
 static int copy_text(arena *storage, pin_value *out, const pin_value *source)
 {
-    pin_string text = pin_text(*source);
     pin_value copy;
-    if (pin_value_text(storage, &copy, text.bytes, text.length)) {
+    if (pin_value_text_share(storage, &copy, *source)) {
         return -1;
     }
     out->text = copy.text;
@@ -222,12 +221,24 @@ int pin_array_reserve_owned(arena *a, pin_array *array, int count)
     }
     int capacity = array->capacity ? array->capacity * 2 : 8;
     capacity = capacity < count ? count : capacity;
-    pin_value *items = arena_alloc(a, (size_t)capacity * sizeof *items);
-    if (array->count) {
-        memcpy(items, array->items, (size_t)array->count * sizeof *items);
+    size_t width = array->stride ? array->stride : sizeof(pin_value);
+    if ((size_t)capacity > SIZE_MAX / width) {
+        return -1;
     }
-    memset(items + array->count, 0, (size_t)(capacity - array->count) * sizeof *items);
-    array->items = items;
+    char *items = arena_alloc(a, (size_t)capacity * width);
+    if (array->count) {
+        memcpy(
+            items,
+            array->stride ? array->data : (void *)array->items,
+            (size_t)array->count * width
+        );
+    }
+    memset(items + (size_t)count * width, 0, (size_t)(capacity - count) * width);
+    if (array->stride) {
+        array->data = items;
+    } else {
+        array->items = (pin_value *)items;
+    }
     array->capacity = capacity;
     return 0;
 }
@@ -878,7 +889,7 @@ void pin_value_destroy(pin_value *value)
     } else if (value->container >= PIN_CONTAINER_ARRAY) {
         pin_array_free((pin_array *)value->ptr);
     } else if (value->type == PIN_STR) {
-        free((void *)value->text);
+        pin_text_destroy(value->text);
     } else if (value->type == PIN_NAME) {
         free((void *)value->str);
     } else if (value->type == PIN_UNION) {

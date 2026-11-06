@@ -74,7 +74,7 @@ DecimalOf :: (spelling: string) -> Decimal {
             } else {
                 read += 1;
                 if (count < DecimalDigits) {
-                    digits = array_add(digits, c - 48);
+                    digits.append(c - 48);
                     count += 1;
                 } else if (c != 48) {
                     trunc = true;
@@ -125,9 +125,9 @@ Added :: (digits: int[], count: int, point: int, trunc: bool, value: int) -> Dec
     index: int = 0;
     while (index < point) {
         if (index < count) {
-            full = array_add(full, digits[index]);
+            full.append(digits[index]);
         } else {
-            full = array_add(full, int(0));
+            full.append(int(0));
         }
         index += 1;
     }
@@ -142,7 +142,7 @@ Added :: (digits: int[], count: int, point: int, trunc: bool, value: int) -> Dec
     width := point;
     while (carry > 0) {
         lead: int[] = [carry % 10];
-        full = append(lead, full);
+        full = extend(lead, full);
         carry = carry / 10;
         width += 1;
     }
@@ -192,13 +192,13 @@ ShiftLeft :: (digits: int[], count: int, point: int, trunc: bool, k: int) -> Dec
     while (read >= 0) {
         n += digits[read] << k;
         quotient := n / 10;
-        reversed = array_add(reversed, n - 10 * quotient);
+        reversed.append(n - 10 * quotient);
         n = quotient;
         read -= 1;
     }
     while (n > 0) {
         quotient := n / 10;
-        reversed = array_add(reversed, n - 10 * quotient);
+        reversed.append(n - 10 * quotient);
         n = quotient;
     }
     delta := length(reversed) - count;
@@ -207,7 +207,7 @@ ShiftLeft :: (digits: int[], count: int, point: int, trunc: bool, k: int) -> Dec
     index := length(reversed) - 1;
     while (index >= 0) {
         if (length(product) < DecimalDigits) {
-            product = array_add(product, reversed[index]);
+            product.append(reversed[index]);
         } else if (reversed[index] != 0) {
             dropped = true;
         }
@@ -237,7 +237,7 @@ ShiftRight :: (digits: int[], count: int, point: int, trunc: bool, k: int) -> De
     quotient: int[] = [];
     while (read < count) {
         next := digits[read];
-        quotient = array_add(quotient, n >> k);
+        quotient.append(n >> k);
         n = n & mask;
         n = n * 10 + next;
         read += 1;
@@ -247,7 +247,7 @@ ShiftRight :: (digits: int[], count: int, point: int, trunc: bool, k: int) -> De
         digit := n >> k;
         n = n & mask;
         if (length(quotient) < DecimalDigits) {
-            quotient = array_add(quotient, digit);
+            quotient.append(digit);
         } else if (digit > 0) {
             dropped = true;
         }

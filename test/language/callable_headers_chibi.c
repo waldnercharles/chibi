@@ -1,5 +1,6 @@
 #include "callable_headers_chibi.h"
 
+#include "../owned_text.h"
 #include "callable_headers_chibi_source.h"
 #include "compiler_fixture.h"
 #include "language/callable_headers.h"
@@ -348,9 +349,7 @@ static bool owned(const arena *storage, const pin_value *value, int depth)
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(
-            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
-        );
+        REQUIRE(pin_text(*value).bytes && test_text_owned(storage, *value));
         return true;
     }
     REQUIRE(value->type == PIN_I32 || value->type == PIN_BOOL || value->type == PIN_U64);

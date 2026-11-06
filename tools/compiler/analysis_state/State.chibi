@@ -41,10 +41,10 @@ RetainedTree :: (documents: snapshot.Document[], forest: snapshot.SnapshotNode[]
             next_sibling: LocalLink(item.next_sibling, document.node_start),
             error: item.error, missing: item.missing, has_error: item.has_error
         };
-        nodes = array_add(nodes, node);
-        fields = array_add(fields, item.field);
-        named_flags = array_add(named_flags, item.is_named);
-        extra_flags = array_add(extra_flags, item.is_extra);
+        nodes.append(node);
+        fields.append(item.field);
+        named_flags.append(item.is_named);
+        extra_flags.append(item.is_extra);
         index += 1;
     }
     return DocumentTree.Parsed(reader.Tree.Raw(nodes, fields, named_flags, extra_flags, document.text),
@@ -77,13 +77,13 @@ pub DocumentsForPackage :: (source: snapshot.Result, package_index: int) -> Docu
                     source_file_to_local: int[] = [];
                     source_file: int = 0;
                     while (source_file < length(documents)) {
-                        source_file_to_local = array_add(source_file_to_local, int(-1));
+                        source_file_to_local.append(int(-1));
                         source_file += 1;
                     }
                     local: int = 0;
                     while (local < selected.member_count) {
                         source_file = members[selected.member_start + local];
-                        local_to_source_file = array_add(local_to_source_file, source_file);
+                        local_to_source_file.append(source_file);
                         source_file_to_local[source_file] = local;
                         local += 1;
                     }

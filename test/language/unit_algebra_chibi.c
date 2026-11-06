@@ -1,5 +1,6 @@
 #include "unit_algebra_chibi.h"
 
+#include "../owned_text.h"
 #include "compiler_fixture.h"
 #include "language/unit_algebra.h"
 #include "package_core_source.h"
@@ -323,9 +324,7 @@ static bool owned(const arena *storage, const pin_value *value, int depth)
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(
-            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
-        );
+        REQUIRE(pin_text(*value).bytes && test_text_owned(storage, *value));
         return true;
     }
     REQUIRE(value->type == PIN_I32 || value->type == PIN_BOOL);

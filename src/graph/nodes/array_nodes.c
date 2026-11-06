@@ -202,18 +202,18 @@ node_desc NODE_ArrayAddUnique = {
 
 };
 
-node_desc NODE_ArrayAppend = {
-    .name = NATIVE_ARRAY_APPEND_NAME,
-    .source_name = NATIVE_ARRAY_APPEND_SOURCE,
+node_desc NODE_ArrayExtend = {
+    .name = NATIVE_ARRAY_EXTEND_NAME,
+    .source_name = NATIVE_ARRAY_EXTEND_SOURCE,
     .input_count = COUNT(array_two_inputs),
     .output_count = COUNT(array_only_outputs),
     .inputs = array_two_inputs,
     .outputs = array_only_outputs,
     .pure_kind = NODE_PURE_CALL,
-    .execution_call = &NATIVE_ARRAY_append_CALL,
-    .host_call = &NATIVE_ARRAY_append_HOST,
+    .execution_call = &NATIVE_ARRAY_extend_CALL,
+    .host_call = &NATIVE_ARRAY_extend_HOST,
     .access = &NATIVE_ARRAY_ACCESS,
-    NATIVE_ARRAY_append_PRESENTATION,
+    NATIVE_ARRAY_extend_PRESENTATION,
 
 };
 
@@ -354,7 +354,7 @@ node_desc NODE_ArraySlice = {
 
 static node_desc *const ARRAY_NODES[] = {
     &NODE_MakeArray,      &NODE_ArrayGet,         &NODE_ArraySetElem,
-    &NODE_ArrayAdd,       &NODE_ArrayAddUnique,   &NODE_ArrayAppend,
+    &NODE_ArrayAdd,       &NODE_ArrayAddUnique,   &NODE_ArrayExtend,
     &NODE_ArrayClear,     &NODE_ArrayContains,    &NODE_ArrayFind,
     &NODE_ArrayIdentical, &NODE_ArrayLength,      &NODE_ArrayLastIndex,
     &NODE_ArrayResize,    &NODE_ArrayRemoveIndex, &NODE_ArrayRemoveItem,

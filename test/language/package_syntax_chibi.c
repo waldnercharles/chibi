@@ -1,5 +1,6 @@
 #include "package_syntax_chibi.h"
 
+#include "../owned_text.h"
 #include "compiler_fixture.h"
 #include "package_core_source.h"
 #include "package_syntax_chibi_source.h"
@@ -93,7 +94,7 @@ static bool same_text(const pin_value *row, const char *name, const char *expect
         value.type == PIN_STR && pin_text(value).bytes &&
         !strcmp(pin_text(value).bytes, expected)
     );
-    REQUIRE(arena_contains(&detached, pin_text(value).bytes));
+    REQUIRE(test_text_owned(&detached, value));
     return true;
 }
 static bool same_range(const pin_value *row, const char *prefix, script_range range)

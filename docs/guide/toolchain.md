@@ -19,7 +19,10 @@ chibi run /path/to/game
 Pass player options after `--`. Use `chibi-player --help` to list them.
 
 An older project must migrate before these commands can use it. The error
-message gives the migration command.
+message gives the migration command. If a migration fails partway, the
+manifest's `migrated` node records the version its sources reached, and the
+next run continues from there. Fix the sources as they are; to start over from
+old sources, restore `project.kdl` with them.
 
 ## Project files
 

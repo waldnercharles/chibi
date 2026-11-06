@@ -112,13 +112,13 @@ Select :: (selection: Selections, value: named.Value, catalog_type: int, variant
             switch value {
                 case .Typed(storage, container, flags, nominal, parameter):
                     slot := length(ids);
-                    ids = array_add(ids, nominal);
-                    ids = array_add(ids, parameter);
-                    ids = array_add(ids, tag);
+                    ids.append(nominal);
+                    ids.append(parameter);
+                    ids.append(tag);
                     row: Variant = {catalog_type: catalog_type, variant: variant, member: member,
                                     storage: storage, container: container, flags: flags,
                                     nominal_slot: slot, parameter_slot: slot + 1, tag_slot: slot + 2};
-                    rows = array_add(rows, row);
+                    rows.append(row);
                     return Selections.Selected(rows, ids);
             }
     }
@@ -242,7 +242,7 @@ pub Task :: (environment: Environment, result: int, function: uint64) -> Plan {
                     index = 0;
                     while (index < capabilities[capability].result_count) {
                         field: Field = {capability: capability, parameter: index, symbol: -1};
-                        fields = array_add(fields, field);
+                        fields.append(field);
                         index += 1;
                     }
                 } else {
@@ -259,7 +259,7 @@ pub Task :: (environment: Environment, result: int, function: uint64) -> Plan {
                         index = 0;
                         while (index < functions[function_index].result_count) {
                             field: Field = {capability: -1, parameter: -1, symbol: results[functions[function_index].result_start + index]};
-                            fields = array_add(fields, field);
+                            fields.append(field);
                             index += 1;
                         }
                     }
@@ -296,7 +296,7 @@ pub Await :: (environment: Environment, success: int, request: Request) -> Plan 
                 diagnostic: syntax.Diagnostic = {start: request.start, end: request.end, line: request.line,
                                                  column: request.column, document: request.document,
                                                  message: "Cancelled is reserved for task cancellation, not a successful task result"};
-                diagnostics = array_add(diagnostics, diagnostic);
+                diagnostics.append(diagnostic);
             }
             selection = SelectMember(environment, selection, value, 0);
             selection = SelectMember(environment, selection, named.Value.Typed(18, 0, 512,

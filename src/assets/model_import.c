@@ -1197,7 +1197,8 @@ static char *prototype_text(const char *name, const char *source)
         { "Geometry3D", "depth", { .type = PIN_F32, .f = 1 } },
         { "MeshAsset",
           "source",
-          { .type = PIN_STR, .text = &(pin_string){ source, (uint32_t)strlen(source) } } },
+          { .type = PIN_STR,
+            .text = &(pin_string){ .bytes = source, .length = (uint32_t)strlen(source) } } },
     };
     for (size_t i = 0; i < sizeof fields / sizeof *fields; i++) {
         int written = prototype_write_field(

@@ -1,3 +1,4 @@
+#include "../owned_text.h"
 #include "authoring/source_collection.h"
 #include "backend.h"
 #include "capabilities/catalog_snapshot.h"
@@ -15,8 +16,10 @@
 #include <string.h>
 #include <unistd.h>
 
-static const pin_string stale_text = { "stale", sizeof("stale") - 1 };
-static const pin_string changed_text = { "changed", sizeof("changed") - 1 };
+static const pin_string stale_text = { .bytes = "stale",
+                                       .length = sizeof("stale") - 1 };
+static const pin_string changed_text = { .bytes = "changed",
+                                         .length = sizeof("changed") - 1 };
 
 /* Seven fixed cases. VM/SLJIT preparation and publication, no authored execution.
  * The repro selector runs only the VM half of the real publication case. */
@@ -224,8 +227,9 @@ TEST_CASE(record_equal_catalog_snapshots_merge_and_own_their_shape)
     REQUIRE(copied.types[0].name != analysis->types[0].name);
     REQUIRE(copied.types[0].fields != analysis->types[0].fields);
     REQUIRE(
-        pin_text(copied.types[0].fields[0].default_value).bytes !=
-        pin_text(analysis->types[0].fields[0].default_value).bytes
+        test_text_owned(&catalog_storage, copied.types[0].fields[0].default_value) &&
+        copied.types[0].fields[0].default_value.text !=
+            analysis->types[0].fields[0].default_value.text
     );
     plan = script_lower(analysis, &copied, &bindings);
     REQUIRE(plan->valid && plan->type_count == 1);

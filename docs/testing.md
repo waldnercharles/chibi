@@ -2228,24 +2228,33 @@ transition. Python runs only the production input probes; no Python tests are
 introduced. These cases never configure or build the engine. Actual clean-source
 configuration and compilation are separate build evidence.
 
-`python3 tools/test_policy.py tool build-graph` runs four C cases for the Chibi
+`python3 tools/test_policy.py tool build-graph` runs one C case for the Chibi
 build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against the CMake
 build that configured the tests. It reads that build's profile from
-`CMakeCache.txt` and CMake's compiler file. With `--commands-only` and only
-that profile's name, with CMake's compiler as `CC` (and the debug directory,
-which depends on where a build is), the graph finds the rest of its profile
-on the machine and writes the compile commands of every target it owns, including
-the third-party archive's sources and include directories and the options of
-single sources, and each of the 363
-must equal `compile_commands.json`'s for the same source, apart from the
-object path and with the temporary build directory standing for CMake's. In a
-copy of the sources, about ten runs that build only `chibi_support` then check
+`CMakeCache.txt` and CMake's compiler files. With `--commands-only` and only
+that profile's name, with CMake's compiler as `CC` and no `CXX` (and the
+debug directory, which depends on where a build is), the graph finds the
+rest of its profile on the machine and writes the compile commands of every
+target it owns, including the third-party archive's sources and include
+directories, the options of single sources and C++ and Objective-C sources,
+and each of the 711 must equal `compile_commands.json`'s for the same source
+in the same target, split as the shell splits it, apart from the object path
+and with the temporary build directory standing for CMake's. A second case
+requires each of the four link commands it writes in `link_commands.json` to
+equal its executable's `build.ninja` statement, apart from where objects, the
+output and archives sit. A third builds the `chibi` launcher with a compiler
+that always fails: the headers its libraries staged stay in place, since an
+executable stages none. Only `reflect` is linked by a test; the other links
+are compared, and a manual full build links and runs them. About 12 s.
+
+`python3 tools/test_policy.py tool build-graph-support` runs three cases in a
+copy of the sources: about ten runs that build only `chibi_support` check
 that an unchanged build compiles nothing, that changing a source, a header or
 the flags or deleting an object recompiles exactly what depends on it, that a
 staged header nothing publishes is removed, and that a source that fails to
 compile keeps no record and is retried alone. The archive must link a program
-that runs. It compiles about fifteen C files with the profile's sanitizers,
-about 32 s at a load average of 8.
+that runs. It compiles about thirty C files with the profile's sanitizers,
+about 36 s at a load average of 9.
 
 `python3 tools/test_policy.py tool build-graph-reflect` builds and links
 `reflect` from the graph (27 C files with the profile's sanitizers), requires
@@ -2256,17 +2265,26 @@ math headers the graph staged from the third-party archive: its
 About 42 s at a load average of 11; with other builds running, its first graph
 run can exceed its 50 s share.
 
-`python3 tools/test_policy.py tool build-graph-archive` builds SLJIT from the
-third-party archive CMake configured with, and `chibi_vector_capabilities`
-over the archive's Cute math headers, which the graph stages: three C files
-with the profile's sanitizers. A second run compiles nothing, the object sits
-below `objects/chibi_execution_sljit/third-party/`, and the staged
-`cute_math.h` equals CMake's; a run naming an archive that is not unpacked
-fails before compiling and says so. A second case builds `chibi_native_types`
-with the configured build's `reflect` (`--reflect`): the graph stages the math
-headers, runs reflect as CMake does and compiles the one source; both written
-sources equal CMake's byte for byte, and an unchanged run neither reruns
-reflect nor compiles. About 23 s at a load average of 10.
+`python3 tools/test_policy.py tool build-graph-archive` builds SLJIT and
+enkiTS's C++ scheduler from the third-party archive CMake configured with,
+`chibi_vector_capabilities` over the archive's Cute math headers, which the
+graph stages, and the task pool: four C and two C++ files with the profile's
+sanitizers. A second run compiles nothing, the objects sit below
+`objects/TARGET/third-party/`, and the staged `cute_math.h` and the shared
+`private/physics` headers equal CMake's; a run naming an archive that is not
+unpacked, or with C++ sources and no C++ compiler, fails before compiling and
+says so. About 32 s at a load average of 10.
+
+`python3 tools/test_policy.py tool build-graph-generated` covers sources and
+headers the graph writes. One case builds `chibi_native_types` with the
+configured build's `reflect` (`--reflect`): the graph stages the math headers,
+runs reflect as CMake does and compiles the one source; both written sources
+equal CMake's byte for byte, an unchanged run neither reruns reflect nor
+compiles, and losing an output reruns it. Another builds
+`chibi_image_preparation`, whose codec headers the graph rewrites from Cute's
+with private symbols: they equal CMake's, staging keeps them, and an
+unchanged run compiles nothing and leaves their stamps. About 19 s at a load
+average of 12.
 
 `chibi-cli-installed` runs the packaged SDK's launcher in place, `dist/sdk/bin/chibi` unless
 `CHIBI_INSTALLED_CLI` names another, so run `make package-sdk` first. Its three cases cover

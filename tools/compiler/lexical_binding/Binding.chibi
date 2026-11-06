@@ -198,7 +198,7 @@ SymbolID :: (environment: Environment, context: Context, request: Request, resul
 pub Declare :: (environment: Environment, context: Context, request: Request) -> Declaration {
     diagnostics: syntax.Diagnostic[] = [];
     if (request.name == "Cancelled") {
-        diagnostics = array_add(diagnostics, Diagnostic(request, "'Cancelled' is reserved for the cancellation singleton"));
+        diagnostics.append(Diagnostic(request, "'Cancelled' is reserved for the cancellation singleton"));
     }
     existing := FindName(environment, context.scope, request.name);
     packageDeclaration := context.has_documents && context.scope == context.package_scope;
@@ -222,9 +222,9 @@ pub Declare :: (environment: Environment, context: Context, request: Request) ->
                 resultParameter = symbols[existing].kind == ParameterKind;
             }
             if (existing >= 0 && symbols[existing].scope == context.scope && !resultParameter) {
-                diagnostics = array_add(diagnostics, Diagnostic(request, format_text("Duplicate declaration '{}'", request.name)));
+                diagnostics.append(Diagnostic(request, format_text("Duplicate declaration '{}'", request.name)));
                 if (packageDeclaration) {
-                    diagnostics = array_add(diagnostics, Previous(symbols[existing], format_text("Previous declaration '{}' is here", request.name)));
+                    diagnostics.append(Previous(symbols[existing], format_text("Previous declaration '{}' is here", request.name)));
                 }
                 return Declaration.Existing(existing, diagnostics);
             }

@@ -72,7 +72,7 @@ AddRoot :: (roots: Root[], item: Collection) -> RootResult {
                 }
             }
             root: Root = {name: item.name, path: path};
-            return RootResult.Accepted(array_add(roots, root));
+            return RootResult.Accepted(append(roots, root));
     }
 }
 

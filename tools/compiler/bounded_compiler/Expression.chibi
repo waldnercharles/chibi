@@ -131,7 +131,7 @@ ReadExpression :: (tree: reader.Tree, root: int, document: int, expected: int) -
     initial: ExpressionFrame = {node: root, phase: 0, left: -1, expected: expected};
     frames: ExpressionFrame[] = [];
     while (length(frames) < 65) {
-        frames = array_add(frames, initial);
+        frames.append(initial);
     }
     top: int = 0;
     visits: int = 0;
@@ -295,13 +295,13 @@ ReadExpression :: (tree: reader.Tree, root: int, document: int, expected: int) -
                 return ExpressionFailure(tree, node, document, "unsupported bounded expression");
             }
             row.literal = length(literals);
-            literals = array_add(literals, literal);
+            literals.append(literal);
         }
         if (length(expressions) >= 24) {
             return ExpressionFailure(tree, root, document, "bounded expression exceeds its 24-row limit");
         }
-        ranges = array_add(ranges, ExpressionRange(tree, node, document));
-        expressions = array_add(expressions, row);
+        ranges.append(ExpressionRange(tree, node, document));
+        expressions.append(row);
         value = length(expressions) - 1;
         top -= 1;
         returning = true;

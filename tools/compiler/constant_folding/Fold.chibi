@@ -17,7 +17,7 @@ Frames :: (count: int) -> Frame[] {
     frames: Frame[] = [];
     index: int = 0;
     while (index < count) {
-        frames = array_add(frames, FrameValue(0, 0));
+        frames.append(FrameValue(0, 0));
         index += 1;
     }
     return frames;
@@ -26,7 +26,7 @@ Values :: (count: int) -> scalar.Value[] {
     values: scalar.Value[] = [];
     index: int = 0;
     while (index < count) {
-        values = array_add(values, scalar.Value.Bool(false));
+        values.append(scalar.Value.Bool(false));
         index += 1;
     }
     return values;

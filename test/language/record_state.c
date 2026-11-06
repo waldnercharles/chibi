@@ -1,3 +1,4 @@
+#include "../owned_text.h"
 #include "backend.h"
 #include "capabilities/catalog_snapshot.h"
 #include "ecs/ecs.h"
@@ -501,7 +502,7 @@ static bool owned(const pin_value *v)
     for (int i = 0; i < 5; i++) {
         pin_value field;
         REQUIRE(!pin_read_field(&producer, v->ptr, &v->record->type.fields[i], &field));
-        REQUIRE(arena_contains(&saved, pin_text(field).bytes));
+        REQUIRE(test_text_owned(&saved, field));
     }
     return true;
 }

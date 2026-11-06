@@ -378,7 +378,8 @@ TEST_CASE(runtime_snapshots)
     render_model_stats before_invalid = render_shader_model_stats();
     const pin_string *valid_name = inputs[1].text;
     const char nul_name[] = "Radius\0shadow";
-    const pin_string invalid_name = { nul_name, sizeof nul_name - 1 };
+    const pin_string invalid_name = { .bytes = nul_name,
+                                      .length = sizeof nul_name - 1 };
     inputs[1].text = &invalid_name;
     const char *invalid_text = RENDER_SHAPE_PARAMETER_CALL.invoke(world, inputs, NULL);
     REQUIRE(invalid_text && !strcmp(invalid_text, "String contains embedded NUL"));

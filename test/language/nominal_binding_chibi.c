@@ -1,5 +1,6 @@
 #include "nominal_binding_chibi.h"
 
+#include "../owned_text.h"
 #include "compiler_fixture.h"
 #include "language/nominal_binding.h"
 #include "lexical_binding_chibi_source.h"
@@ -342,7 +343,7 @@ static bool owns(arena *owner, const pin_value *value)
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(pin_text(*value).bytes && arena_contains(owner, pin_text(*value).bytes));
+        REQUIRE(pin_text(*value).bytes && test_text_owned(owner, *value));
         return true;
     }
     if (value->type == PIN_STRUCT) {

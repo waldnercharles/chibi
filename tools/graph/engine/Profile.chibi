@@ -7,13 +7,14 @@ import strings "core:strings"
 // SANITIZER_, DEBUG_ and RELEASE_CMAKE_FLAGS, its default the first.
 
 // The profile `name` names on this machine, or a profile whose compiler is
-// empty when the name is unknown or no compiler is found. Its archive depends
-// on the compiler and sanitizers a caller may override, so ThirdParty finds
-// it once they are final.
+// empty when the name is unknown or no compiler is found. Its C++ compiler
+// and archive depend on the compiler and sanitizers a caller may override, so
+// CxxCompiler and ThirdParty find them once they are final.
 pub Discover :: (name: string, source_root: string, build_dir: string) -> Profile {
     compiler := DiscoverCompiler();
     profile: Profile = {
         compiler: compiler,
+        cxx_compiler: "",
         compiler_id: CompilerId(compiler),
         build_type: "Debug",
         architecture: "",
@@ -101,6 +102,30 @@ DiscoverCompiler :: () -> string {
     return build.find_executable(chosen);
 }
 
+// CXX, or the C++ driver beside a C compiler named clang, gcc or cc, or the
+// one on PATH for the compiler's kind, as CMake finds them. Empty when none
+// is found.
+pub CxxCompiler :: (compiler: string, compiler_id: string) -> string {
+    chosen := build.environment("CXX");
+    if (chosen != "") {
+        return build.find_executable(chosen);
+    }
+    directory := strings.Slice(compiler, 0, strings.LastIndex(compiler, "/") + 1);
+    name := strings.Slice(compiler, strings.ByteLength(directory), strings.ByteLength(compiler));
+    for (pair in ["clang=clang++", "gcc=g++", "cc=c++"]) {
+        if (name == build.before(pair, "=") && build.file_exists(Join([directory, build.after(pair, "=")]))) {
+            return Join([directory, build.after(pair, "=")]);
+        }
+    }
+    if (compiler_id == "GNU") {
+        return build.find_executable("g++");
+    }
+    if (compiler_id == "Clang" || compiler_id == "AppleClang") {
+        return build.find_executable("clang++");
+    }
+    return build.find_executable("c++");
+}
+
 // AppleClang, Clang or GNU, from the compiler's version banner, as CMake
 // names them; empty for another compiler.
 pub CompilerId :: (compiler: string) -> string {
@@ -159,7 +184,7 @@ pub CcacheDebugDirectory :: (source_root: string, build_dir: string) -> string {
     parts: string[] = [];
     for (part in strings.Split(strings.Slice(build_dir, strings.ByteLength(prefix), strings.ByteLength(build_dir)), "/")) {
         if (part != "") {
-            parts = array_add(parts, "build");
+            parts.append("build");
         }
     }
     return strings.Join(parts, "/");
@@ -173,7 +198,7 @@ DiscoverLibclang :: (part: string) -> string {
     versions: string[] = [];
     for (name in build.list_directory("/usr/lib")) {
         if (strings.HasPrefix(name, "llvm-")) {
-            versions = array_add(versions, name);
+            versions.append(name);
         }
     }
     // Newest first: a longer version number is newer, then the larger.
@@ -189,7 +214,7 @@ DiscoverLibclang :: (part: string) -> string {
         }
     }
     for (version in versions) {
-        prefixes = array_add(prefixes, Join(["/usr/lib/", version]));
+        prefixes.append(Join(["/usr/lib/", version]));
     }
     for (prefix in prefixes) {
         include := Join([prefix, "/include"]);

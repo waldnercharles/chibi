@@ -1161,6 +1161,7 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
                                   (INPUT(0, PIN_NAME) && OUTPUT(PIN_STR)) ||
                                   (INPUT(0, PIN_STR) && OUTPUT(PIN_NAME)));
         case EXECUTION_INTRINSIC_UNION_MAKE:
+        case EXECUTION_INTRINSIC_UNION_MOVE:
             return count >= 1 && INPUT(0, PIN_U64) && OUTPUT(PIN_UNION);
         case EXECUTION_INTRINSIC_UNION_TEST:
             if (count < 2 || !INPUT(0, PIN_UNION) || !OUTPUT(PIN_BOOL)) {

@@ -1,3 +1,4 @@
+#include "../owned_text.h"
 #include "ecs/ecs.h"
 #include "execution/function.h"
 #include "runtime/behaviors/entities.h"
@@ -123,7 +124,7 @@ static bool check_row(const pin_value *value, int number, const arena *owner)
             char text[32];
             snprintf(text, sizeof text, "row-%d-field-%d", number, i);
             REQUIRE(pin_text(field).bytes && !strcmp(pin_text(field).bytes, text));
-            REQUIRE(arena_contains(owner, pin_text(field).bytes));
+            REQUIRE(test_text_owned(owner, field));
         } else if (i < 7) {
             REQUIRE(field.i == number + i);
         } else {
@@ -195,32 +196,17 @@ TEST_CASE(record_globals_owned_values)
     void *backing = set.ptr;
     REQUIRE(!host(&ENTITY_SET_GLOBAL_CALL, arguments, &set));
     REQUIRE(set.ptr == backing);
-    pin_value text;
-    {
-        const char *
-            error = pin_read_field(&reads, arguments[1].ptr, &record->type.fields[0], &text);
-        if (error) {
-            abort();
-        }
-    };
-    ((char *)pin_text(text).bytes)[0] = 'X';
+    const pin_string changed = { .bytes = "changed", .length = sizeof("changed") - 1 };
+    pin_value replacement = { .type = PIN_STR, .text = &changed };
+    REQUIRE(!pin_write_field(&producer, arguments[1].ptr, &record->type.fields[0], replacement));
     REQUIRE(check_row(&set, 9, &invocation));
     arguments[0].text = &(const pin_string){ .bytes = "rows",
                                              .length = (uint32_t)strlen("rows") };
     arguments[1] = array;
     REQUIRE(!host(&ENTITY_SET_GLOBAL_CALL, arguments, &set_array));
-    {
-        const char *error = pin_read_field(
-            &reads,
-            pin_array_data(array.ptr, 0),
-            &record->type.fields[0],
-            &text
-        );
-        if (error) {
-            abort();
-        }
-    };
-    ((char *)pin_text(text).bytes)[0] = 'X';
+    REQUIRE(
+        !pin_write_field(&producer, pin_array_data(array.ptr, 0), &record->type.fields[0], replacement)
+    );
     REQUIRE(check_rows(&set_array, 3, &invocation));
     arena_free(&producer);
     pin_value stored, stored_array;
@@ -339,7 +325,8 @@ TEST_CASE(record_headless_ui_owned_data)
     const av_value *before = datum->value;
     const pin_string *valid_name = arguments[1].text;
     const char nul_name[] = "rows\0other";
-    const pin_string invalid_name = { nul_name, sizeof nul_name - 1 };
+    const pin_string invalid_name = { .bytes = nul_name,
+                                      .length = sizeof nul_name - 1 };
     arguments[1].text = &invalid_name;
     const char *invalid_text = UI_SET_DATA_CALL.context(&context, model, arguments, NULL);
     REQUIRE(invalid_text && !strcmp(invalid_text, "String contains embedded NUL"));
@@ -428,10 +415,11 @@ TEST_CASE(record_globals_native_compatibility)
         REQUIRE(!host(&ENTITY_SET_GLOBAL_CALL, args, &out));
         REQUIRE(out.type == values[i].type && !out.record);
         if (i == 2) {
-            REQUIRE(arena_contains(&invocation, pin_text(out).bytes));
+            REQUIRE(test_text_owned(&invocation, out));
             text[0] = 'X';
             arena_free(&producer);
-            values[i].str = "native-text";
+            values[i].text = &(const pin_string){ .bytes = "native-text",
+                                                  .length = sizeof("native-text") - 1 };
             args[1] = values[i];
         }
         REQUIRE(pin_value_equal(&out, &values[i]));
@@ -441,8 +429,8 @@ TEST_CASE(record_globals_native_compatibility)
         REQUIRE(!host(&ENTITY_GET_GLOBAL_CALL, args, &out));
         REQUIRE(pin_value_equal(&out, &values[i]) && !out.record);
         if (i == 2) {
-            REQUIRE(arena_contains(&reads, pin_text(saved).bytes));
-            REQUIRE(arena_contains(&invocation, pin_text(out).bytes));
+            REQUIRE(test_text_owned(&reads, saved));
+            REQUIRE(test_text_owned(&invocation, out));
         }
     }
 

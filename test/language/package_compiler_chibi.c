@@ -12335,10 +12335,16 @@ static const int CALL_SLOTS[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT, NATIVE_IN
 static const int CALL_ARGUMENTS[] = { 0, 1, 2 };
 static native_module call_module(const native_code *code, const int *arguments, int argument_count)
 {
-    return (native_module){
-        CALL_FUNCTIONS, 2,         CALL_PARAMETERS, 3, CALL_SLOTS, 5, code,
-        CALL_CODE,      arguments, argument_count
-    };
+    return (native_module){ .functions = CALL_FUNCTIONS,
+                            .function_count = 2,
+                            .parameters = CALL_PARAMETERS,
+                            .parameter_count = 3,
+                            .slots = CALL_SLOTS,
+                            .slot_count = 5,
+                            .code = code,
+                            .code_count = CALL_CODE,
+                            .arguments = arguments,
+                            .argument_count = argument_count };
 }
 static bool contains(pin_string haystack, const char *needle)
 {
@@ -18994,6 +19000,11 @@ void test_language_package_compiler_chibi_native()
 void test_language_package_compiler_chibi_libraries()
 {
     pu_setup(NULL, cleanup);
+    if (getenv("CHIBI_BASELINE_INVALID_LIBRARY")) {
+        RUN_TEST_CASE(package_compiler_rejects_invalid_library_closures);
+        pu_clear_setup();
+        return;
+    }
     RUN_TEST_CASE(package_compiler_pure_provider_has_no_write);
     RUN_TEST_CASE(package_compiler_compiles_executable_libraries);
     RUN_TEST_CASE(package_compiler_links_executable_libraries);
@@ -19144,35 +19155,51 @@ TEST_CASE(native_overload_reference_contract)
         const char *message;
         int column;
     } cases[] = {
-        { "package facts\nRun :: () -> int { return native.overload(2); }", PIN_I32 },
+        { "package facts\nRun :: () -> int { return native.overload(2); }", PIN_I32, NULL, 0 },
         { "package facts\nRun :: () -> int { return "
           "native.overload((-(2))); }",
-          PIN_I32 },
+          PIN_I32,
+          NULL,
+          0 },
         { "package facts\nRun :: () -> int { return native.overload(2.0); "
           "}",
-          PIN_I32 },
+          PIN_I32,
+          NULL,
+          0 },
         { "package facts\nRun :: () -> int { return native.overload(1e0); "
           "}",
-          PIN_I32 },
-        { "package facts\nRun :: () -> int { return native.kernel(2); }", PIN_F32 },
+          PIN_I32,
+          NULL,
+          0 },
+        { "package facts\nRun :: () -> int { return native.kernel(2); }", PIN_F32, NULL, 0 },
         { "package facts\nRun :: (v: int) -> int { return native.kernel(v "
           "* "
           "2); }",
-          PIN_F32 },
+          PIN_F32,
+          NULL,
+          0 },
         { "package facts\nRun :: (v: i64) -> int { return native.kernel(v "
           "* "
           "2); }",
-          PIN_F64 },
+          PIN_F64,
+          NULL,
+          0 },
         { "package facts\nRun :: (v: f64) -> int { return "
           "native.kernel(v); }",
-          PIN_F64 },
+          PIN_F64,
+          NULL,
+          0 },
         { "package facts\nRun :: (v: int) -> int { return "
           "native.overload(v); "
           "}",
-          PIN_I32 },
+          PIN_I32,
+          NULL,
+          0 },
         { "package facts\nRun :: () -> int { return "
           "native.overload(\"three\"); }",
-          PIN_STR },
+          PIN_STR,
+          NULL,
+          0 },
         { "package facts\nRun :: () -> int { return native.overload(2.5); "
           "}",
           PIN_FLOW,

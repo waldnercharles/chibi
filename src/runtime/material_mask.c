@@ -46,9 +46,121 @@ void material_mask_work_free(material_mask_work *work)
     free(work);
 }
 
+static int halo_index(int width, int height, int radius, int x, int y)
+{
+    int stride = width + 2 * radius, px = x + radius, py = y + radius;
+    if (py < radius) {
+        return py * stride + px;
+    }
+    if (py >= radius + height) {
+        return radius * stride + height * 2 * radius +
+               (py - radius - height) * stride + px;
+    }
+    return radius * stride + (py - radius) * 2 * radius +
+           (px < radius ? px : px - width);
+}
+
+bool material_occupancy_sample(material_occupancy_view v, int x, int y, bool *occupied, float *distance)
+{
+    int index;
+    if (x >= 0 && y >= 0 && x < v.width && y < v.height) {
+        index = y * v.width + x;
+        *occupied = v.cells[index] != 0;
+        *distance = v.distance[index];
+        return true;
+    }
+    int r = v.halo_radius;
+    if (!r || x < -r || y < -r || x >= v.width + r || y >= v.height + r) {
+        return false;
+    }
+    index = halo_index(v.width, v.height, r, x, y);
+    if (v.halo_cells[index] == MATERIAL_HALO_UNAVAILABLE) {
+        return false;
+    }
+    *occupied = v.halo_cells[index] != 0;
+    *distance = v.halo_distance[index];
+    return true;
+}
+bool material_mask_sample(const material_mask *mask, int x, int y, bool *occupied, float *distance)
+{
+    return material_occupancy_sample(material_mask_occupancy(mask), x, y, occupied, distance);
+}
+static void surface_sample(const material_mask *mask, int x, int y, bool *occupied, float *distance)
+{
+    if (material_mask_sample(mask, x, y, occupied, distance)) {
+        return;
+    }
+    int cx = x < 0 ? 0 : x >= mask->width ? mask->width - 1 : x;
+    int cy = y < 0 ? 0 : y >= mask->height ? mask->height - 1 : y;
+    // At a finite outer edge, keep the neighbor on the other axis.
+    if (material_mask_sample(mask, x, cy, occupied, distance) ||
+        material_mask_sample(mask, cx, y, occupied, distance)) {
+        return;
+    }
+    material_mask_sample(mask, cx, cy, occupied, distance);
+}
 static float grid_position(int index, int size, float cell)
 {
-    return (fmaxf(0, fminf(size, index - .5f)) - size * .5f) * cell;
+    return (index - .5f - size * .5f) * cell;
+}
+/* A marching polygon has at most five vertices; four rectangle clips add at
+ * most four. Use generous bounded work storage, then fan any result larger
+ * than the renderer's six-vertex polygon contract. */
+static void append_clipped(material_mask *mask, material_polygon polygon)
+{
+    float a[32], b[32];
+    int count = polygon.count;
+    memcpy(a, polygon.points, (size_t)count * 2 * sizeof(float));
+    for (int plane = 0; plane < 4 && count; plane++) {
+        int axis = plane / 2;
+        float extent = (axis ? mask->height : mask->width) * mask->cell_size * .5f;
+        float bound = plane % 2 ? extent : -extent;
+        int next_count = 0;
+        for (int i = 0, previous = count - 1; i < count; previous = i++) {
+            float *p = a + previous * 2, *q = a + i * 2;
+            bool pin = plane % 2 ? p[axis] <= bound : p[axis] >= bound;
+            bool qin = plane % 2 ? q[axis] <= bound : q[axis] >= bound;
+            if (pin != qin) {
+                float t = (bound - p[axis]) / (q[axis] - p[axis]);
+                assert(next_count < 16);
+                b[next_count * 2] = p[0] + t * (q[0] - p[0]);
+                b[next_count * 2 + 1] = p[1] + t * (q[1] - p[1]);
+                b[next_count * 2 + axis] = bound;
+                next_count++;
+            }
+            if (qin) {
+                assert(next_count < 16);
+                b[next_count * 2] = q[0];
+                b[next_count * 2 + 1] = q[1];
+                next_count++;
+            }
+        }
+        count = next_count;
+        memcpy(a, b, (size_t)count * 2 * sizeof(float));
+    }
+    if (count < 3) {
+        return;
+    }
+    double area = 0;
+    for (int i = 0, previous = count - 1; i < count; previous = i++) {
+        area += (double)a[previous * 2] * a[i * 2 + 1] -
+                (double)a[i * 2] * a[previous * 2 + 1];
+    }
+    if (area == 0) {
+        return;
+    }
+    if (count <= 6) {
+        polygon.count = count;
+        memcpy(polygon.points, a, (size_t)count * 2 * sizeof(float));
+        apush(mask->surface, polygon);
+        return;
+    }
+    for (int i = 1; i + 1 < count; i++) {
+        polygon.count = 3;
+        memcpy(polygon.points, a, 2 * sizeof(float));
+        memcpy(polygon.points + 2, a + i * 2, 4 * sizeof(float));
+        apush(mask->surface, polygon);
+    }
 }
 
 static void surface_polygon(material_mask *mask, int bits, int x, int y, int w, int h)
@@ -58,12 +170,13 @@ static void surface_polygon(material_mask *mask, int bits, int x, int y, int w, 
     float top = grid_position(y, mask->height, mask->cell_size);
     float bottom = grid_position(y + h, mask->height, mask->cell_size);
     float corners[8] = { left, top, right, top, right, bottom, left, bottom };
-    int x0 = x > 0 ? x - 1 : 0, x1 = x < mask->width ? x : x - 1;
-    int y0 = y > 0 ? y - 1 : 0, y1 = y < mask->height ? y : y - 1;
-    float values[4] = { mask->distance[y0 * mask->width + x0],
-                        mask->distance[y0 * mask->width + x1],
-                        mask->distance[y1 * mask->width + x1],
-                        mask->distance[y1 * mask->width + x0] };
+    int x0 = x - 1, x1 = x + w - 1, y0 = y - 1, y1 = y + h - 1;
+    float values[4];
+    bool occupied;
+    surface_sample(mask, x0, y0, &occupied, &values[0]);
+    surface_sample(mask, x1, y0, &occupied, &values[1]);
+    surface_sample(mask, x1, y1, &occupied, &values[2]);
+    surface_sample(mask, x0, y1, &occupied, &values[3]);
     material_polygon polygon = { 0 };
     for (int i = 0; i < 4; i++) {
         int next = (i + 1) % 4;
@@ -82,7 +195,7 @@ static void surface_polygon(material_mask *mask, int bits, int x, int y, int w, 
                                                           t;
         }
     }
-    apush(mask->surface, polygon);
+    append_clipped(mask, polygon);
 }
 
 static void surface(material_mask *mask, material_mask_work *work)
@@ -92,13 +205,21 @@ static void surface(material_mask *mask, material_mask_work *work)
     asetlen(work->tiles, width * height);
     unsigned char *tiles = work->tiles;
     for (int y = 0; y < height; y++) {
-        int top = y > 0 ? y - 1 : 0, bottom = y < mask->height ? y : y - 1;
         for (int x = 0; x < width; x++) {
-            int left = x > 0 ? x - 1 : 0, right = x < mask->width ? x : x - 1;
-            tiles[y * width + x] = mask->cells[top * mask->width + left] |
-                                   (mask->cells[top * mask->width + right] << 1) |
-                                   (mask->cells[bottom * mask->width + right] << 2) |
-                                   (mask->cells[bottom * mask->width + left] << 3);
+            int coordinates[4][2] = { { x - 1, y - 1 },
+                                      { x, y - 1 },
+                                      { x, y },
+                                      { x - 1, y } };
+            int bits = 0;
+            for (int i = 0; i < 4; i++) {
+                bool occupied;
+                float distance;
+                surface_sample(mask, coordinates[i][0], coordinates[i][1], &occupied, &distance);
+                if (occupied) {
+                    bits |= 1 << i;
+                }
+            }
+            tiles[y * width + x] = (unsigned char)bits;
         }
     }
     for (int y = 0; y < height; y++) {
@@ -135,6 +256,75 @@ static void surface(material_mask *mask, material_mask_work *work)
             surface_polygon(mask, bits, x, y, w, h);
         }
     }
+}
+
+bool material_mask_set_halo(material_mask *mask, material_mask_halo halo)
+{
+    assert(mask && halo.radius >= 0 && halo.radius <= MATERIAL_HALO_RADIUS_MAX);
+    assert(halo.lod_limit >= 0 && halo.lod_limit <= 7);
+    assert(!halo.radius || (halo.cells && halo.distance));
+    bool changed = mask->halo_radius != halo.radius || mask->lod_limit != halo.lod_limit;
+    int width = mask->width + 2 * halo.radius, height = mask->height + 2 * halo.radius;
+    for (int y = 0; halo.radius && y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            if (x >= halo.radius && y >= halo.radius &&
+                x < width - halo.radius && y < height - halo.radius) {
+                continue;
+            }
+            int input = y * width + x;
+            int owned = halo_index(mask->width, mask->height, halo.radius, x - halo.radius, y - halo.radius);
+            assert(halo.cells[input] <= MATERIAL_HALO_UNAVAILABLE);
+            assert(
+                halo.cells[input] == MATERIAL_HALO_UNAVAILABLE ||
+                isfinite(halo.distance[input])
+            );
+            if (!changed && (mask->halo_cells[owned] != halo.cells[input] ||
+                             (halo.cells[input] != MATERIAL_HALO_UNAVAILABLE &&
+                              mask->halo_distance[owned] != halo.distance[input]))) {
+                changed = true;
+            }
+        }
+    }
+    if (!changed) {
+        return false;
+    }
+    size_t count = (size_t)width * height - (size_t)mask->width * mask->height;
+    bool resized = mask->halo_radius != halo.radius;
+    unsigned char *cells = resized ? (halo.radius ? xmalloc(count) : NULL)
+                                   : mask->halo_cells;
+    float *distance = resized ? (halo.radius ? xmalloc(count * sizeof(float)) : NULL)
+                              : mask->halo_distance;
+    for (int y = 0; halo.radius && y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            if (x >= halo.radius && y >= halo.radius &&
+                x < width - halo.radius && y < height - halo.radius) {
+                continue;
+            }
+            int input = y * width + x;
+            int owned = halo_index(mask->width, mask->height, halo.radius, x - halo.radius, y - halo.radius);
+            cells[owned] = halo.cells[input];
+            distance[owned] = halo.cells[input] == MATERIAL_HALO_UNAVAILABLE
+                                ? 0
+                                : halo.distance[input];
+        }
+    }
+    if (resized) {
+        free(mask->halo_cells);
+        free(mask->halo_distance);
+    }
+    mask->halo_cells = cells;
+    mask->halo_distance = distance;
+    mask->halo_radius = halo.radius;
+    mask->lod_limit = halo.radius ? halo.lod_limit : 0;
+    mask->halo_signature = 0;
+    material_mask_work work = { 0 };
+    surface(mask, &work);
+    free_work(&work);
+    if (++mask->revision == 0) {
+        mask->incarnation = incarnation();
+        mask->revision = 1;
+    }
+    return true;
 }
 
 void material_mask_rebuild_work(material_mask *mask, material_mask_work *work)
@@ -182,6 +372,10 @@ void material_mask_rebuild_work(material_mask *mask, material_mask_work *work)
         }
     }
     surface(mask, work);
+    if (++mask->content_revision == 0) {
+        mask->incarnation = incarnation();
+    }
+    mask->halo_signature = 0;
     if (++mask->revision == 0) {
         mask->incarnation = incarnation();
         mask->revision = 1;
@@ -221,6 +415,8 @@ void material_mask_free(material_mask *mask)
     free(mask->cells);
     free(mask->damage);
     free(mask->distance);
+    free(mask->halo_cells);
+    free(mask->halo_distance);
     afree(mask->rects);
     afree(mask->surface);
     *mask = (material_mask){ 0 };
@@ -293,6 +489,46 @@ material_mask material_mask_reduce(const material_mask *mask)
         }
     }
     material_mask_rebuild(&half);
+    int radius = mask->halo_radius / 2;
+    if (radius) {
+        int padded_width = width + 2 * radius, padded_height = height + 2 * radius;
+        unsigned char *cells = xmalloc((size_t)padded_width * padded_height);
+        float *distance = xcalloc((size_t)padded_width * padded_height, sizeof(float));
+        memset(cells, MATERIAL_HALO_UNAVAILABLE, (size_t)padded_width * padded_height);
+        for (int y = -radius; y < height + radius; y++) {
+            for (int x = -radius; x < width + radius; x++) {
+                if (x >= 0 && y >= 0 && x < width && y < height) {
+                    continue;
+                }
+                bool known = true, occupied;
+                float samples[4] = { 0 };
+                for (int dy = 0; dy < 2; dy++) {
+                    for (int dx = 0; dx < 2; dx++) {
+                        float value;
+                        if (!material_mask_sample(mask, 2 * x + dx, 2 * y + dy, &occupied, &value)) {
+                            known = false;
+                        } else {
+                            samples[dy * 2 + dx] = value;
+                        }
+                    }
+                }
+                int i = (y + radius) * padded_width + x + radius;
+                if (known) {
+                    distance[i] = (samples[0] + samples[1] + samples[2] + samples[3]) *
+                                  .25f;
+                    cells[i] = distance[i] <= 0;
+                }
+            }
+        }
+        material_mask_set_halo(
+            &half,
+            (
+                material_mask_halo
+            ){ radius, mask->lod_limit > 0 ? mask->lod_limit - 1 : 0, cells, distance }
+        );
+        free(cells);
+        free(distance);
+    }
     return half;
 }
 
@@ -357,34 +593,55 @@ int material_mask_apply_damage(material_mask *mask, float x, float y, float radi
     }
     mask->count -= removed;
     if (removed) {
-        /* SDF subtraction retains a circular cut between the samples. Resistance
-         * still owns cell removal, so an unbroken cell must retain its sign. */
-        int y0 = top > 0 ? top - 1 : 0,
-            y1 = bottom + 1 < mask->height ? bottom + 1 : bottom;
-        int x0 = left > 0 ? left - 1 : 0,
-            x1 = right + 1 < mask->width ? right + 1 : right;
-        for (int row = y0; row <= y1; row++) {
-            float dy = (row + .5f - mask->height * .5f) * mask->cell_size - y;
-            for (int col = x0; col <= x1; col++) {
-                int i = row * mask->width + col;
-                float dx = (col + .5f - mask->width * .5f) * mask->cell_size - x;
-                /* Float offsets fit safely in double, including their squares.
-                 * One IEEE sqrt avoids platform-specific hypotf rounding. */
-                float cut = radius - (float)sqrt((double)dx * dx + (double)dy * dy);
-                if (mask->cells[i]) {
-                    cut = fminf(cut, -.0001f);
-                }
-                mask->distance[i] = fmaxf(mask->distance[i], cut);
+        material_mask_cut_field(mask, x, y, radius);
+    }
+    return removed;
+}
+
+bool material_mask_cut_field(material_mask *mask, float x, float y, float radius)
+{
+    assert(mask && isfinite(x) && isfinite(y) && isfinite(radius) && radius >= 0);
+    int left = (int)fmax(
+        0,
+        fmin(mask->width, floor(((double)x - radius) / mask->cell_size + mask->width * .5) - 1)
+    );
+    int right = (int)fmax(
+        -1,
+        fmin(mask->width - 1, floor(((double)x + radius) / mask->cell_size + mask->width * .5) + 1)
+    );
+    int top = (int)fmax(
+        0,
+        fmin(mask->height, floor(((double)y - radius) / mask->cell_size + mask->height * .5) - 1)
+    );
+    int bottom = (int)fmax(
+        -1,
+        fmin(mask->height - 1, floor(((double)y + radius) / mask->cell_size + mask->height * .5) + 1)
+    );
+    bool changed = false;
+    for (int row = top; row <= bottom; row++) {
+        float dy = (row + .5f - mask->height * .5f) * mask->cell_size - y;
+        for (int col = left; col <= right; col++) {
+            int i = row * mask->width + col;
+            float dx = (col + .5f - mask->width * .5f) * mask->cell_size - x;
+            float cut = radius - (float)sqrt((double)dx * dx + (double)dy * dy);
+            // Occupancy owns breakage; SDF-only synchronization cannot break cells
+            // or turn an already empty cell solid at a zero-distance boundary.
+            cut = mask->cells[i] ? fminf(cut, -.0001f) : fmaxf(cut, .0001f);
+            float value = fmaxf(mask->distance[i], cut);
+            if (value != mask->distance[i]) {
+                mask->distance[i] = value;
+                changed = true;
             }
         }
     }
-    return removed;
+    return changed;
 }
 
 int material_mask_carve(material_mask *mask, float x, float y, float radius)
 {
     int removed = material_mask_apply_damage(mask, x, y, radius, 1, 1);
-    if (removed) {
+    bool changed = material_mask_cut_field(mask, x, y, radius);
+    if (removed || changed) {
         material_mask_rebuild(mask);
     }
     return removed;
@@ -499,10 +756,18 @@ material_mask *material_mask_extract_fragments(material_mask *mask, int minimum,
 
 material_occupancy_view material_mask_occupancy(const material_mask *mask)
 {
-    return (material_occupancy_view){ mask->cells,    mask->distance,
-                                      mask->width,    mask->height,
-                                      mask->count,    mask->cell_size,
-                                      mask->revision, mask->incarnation };
+    return (material_occupancy_view){ .cells = mask->cells,
+                                      .distance = mask->distance,
+                                      .width = mask->width,
+                                      .height = mask->height,
+                                      .count = mask->count,
+                                      .cell_size = mask->cell_size,
+                                      .revision = mask->revision,
+                                      .incarnation = mask->incarnation,
+                                      .halo_cells = mask->halo_cells,
+                                      .halo_distance = mask->halo_distance,
+                                      .halo_radius = mask->halo_radius,
+                                      .lod_limit = mask->lod_limit };
 }
 material_collision_view material_mask_collision(const material_mask *mask)
 {

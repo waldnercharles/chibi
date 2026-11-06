@@ -45,6 +45,33 @@ void materials_reset_except_terrain(materials *materials);
 /* Outside ECS queries: synchronize authored sources and apply queued damage.
  * Errors describe invalid authored data. Fluid simulation is optional. */
 const char *materials_prepare(materials *materials);
+/* Host-owned durable storage: call outside queries after prepare. Identity is a
+ * nonempty stable caller key, unique per terrain within its save namespace.
+ * Write returns malloc bytes. Read validates the full source snapshot before
+ * replacing masks; failure preserves the source. After successful read call
+ * materials_prepare again before physics/render, to load streamed views and
+ * synchronize derived geometry. Only terrain occupancy, signed
+ * distances and partial damage persist, not fragments, fluids or actors.
+ * Imported terrain requires explicit materials_reset before changing generation
+ * or placement/configuration. Limits: 256 tiles, 64 MiB per source snapshot. */
+bool materials_terrain_checkpoint_write(
+    materials *,
+    ecs_entity source,
+    const char *identity,
+    unsigned char **bytes,
+    size_t *length,
+    char *error,
+    size_t size
+);
+bool materials_terrain_checkpoint_read(
+    materials *,
+    ecs_entity source,
+    const char *identity,
+    const void *bytes,
+    size_t length,
+    char *error,
+    size_t size
+);
 /* Views streamed terrain prepares beside its cameras', such as an editor's:
  * game coordinates, prepared under each terrain's stream budget. Copied;
  * they stay until replaced or reset. */

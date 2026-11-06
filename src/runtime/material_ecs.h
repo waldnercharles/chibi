@@ -4,16 +4,19 @@
 #include "runtime/material_debris.h"
 #include "runtime/material_destruction.h"
 #include "runtime/material_stream.h"
+#include "runtime/material_terrain.h"
 #include "runtime/materials.h"
 #include "runtime/task_pool.h"
 
 typedef struct
 {
     ecs_entity entity;
+    uint64_t terrain_surface_hash;
     material_mask *mask;
     uint64_t mask_generation;
     bool fragment, volume, terrain;
-    uint64_t terrain_hash;
+    uint64_t terrain_hash, terrain_recipe;
+    bool terrain_checkpoint;
     float glow_age, glow_multiplier;
     int initial_cells;
     ecs_entity terrain_source;
@@ -38,6 +41,8 @@ struct materials
     uint64_t next_mask_generation;
     material_destruction *destruction;
     material_damage *damage_requests;
+    /* Successful terrain disks, consumed before publishing surface geometry. */
+    material_damage *terrain_cuts;
     int fragment_limit;
     fluid_region *regions;
     int fragments;
@@ -46,6 +51,7 @@ struct materials
     struct material_debris_tile *debris_tiles;
     /* Preparation scratch; synchronous consumers borrow only during the call. */
     material_stream_view *terrain_views;
+    material_terrain_view *surface_views;
     /* Views a host adds, in game coordinates (materials_set_stream_views). */
     material_stream_view *host_views;
     bool stream_deferred; /* materials_set_stream_deferred */
@@ -62,6 +68,9 @@ void material_ecs_add_component(
 );
 MaterialBreakProfile material_ecs_break_profile(materials *materials, ecs_entity entity);
 const char *material_ecs_generate_terrains(materials *materials);
+void material_ecs_sync_terrain_surfaces(materials *materials);
+void material_ecs_queue_terrain_cut(void *user, const material_damage *damage);
+void material_ecs_apply_terrain_cuts(materials *materials);
 const char *material_ecs_configure_fluid(materials *materials);
 const char *material_ecs_fill_volume(materials *materials, ecs_entity entity);
 void material_ecs_fade_fragments(materials *materials, float delta);

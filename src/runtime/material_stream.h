@@ -57,3 +57,17 @@ const material_stream_tile *material_stream_tiles(const material_stream *stream,
 material_stream_state material_stream_inspect(const material_stream *stream);
 /* Whether the last update left a tile its views want unprepared. */
 bool material_stream_waiting(const material_stream *stream);
+
+/* Canonical full-grid addresses for bounded terrain, packed signed x/y for
+ * unbounded terrain. Shared by finite checkpoints and the streamer. */
+bool material_stream_tile_grid(field_grid grid, uint64_t key, field_grid *tile);
+struct material_checkpoint;
+/* Snapshot resident overrides of cold tiles. Candidate import stores all tiles
+ * cold and leaves the old stream untouched on any failure. */
+bool material_stream_checkpoint(material_stream *, struct material_checkpoint *, char *error, size_t size);
+bool material_stream_restore_checkpoint(
+    material_stream *,
+    const struct material_checkpoint *,
+    char *error,
+    size_t size
+);

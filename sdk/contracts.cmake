@@ -118,7 +118,7 @@ if(CHIBI_SDK_BUILD_NATIVE)
     chibi_sdk_contract(chibi_material_runtime "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_ecs chibi_tasks chibi_field_catalog chibi_native_capabilities chibi_native_types
         chibi_entity_runtime chibi_particle_runtime chibi_spatial_runtime chibi_task_pool_runtime
-        chibi_execution chibi_support)
+        chibi_execution chibi_support chibi_save_runtime)
     chibi_sdk_contract(chibi_physics_runtime "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_native_types chibi_entity_runtime chibi_material_runtime chibi_task_pool_runtime
         chibi_native_capabilities chibi_spatial_runtime chibi_execution chibi_support chibi_box2d)

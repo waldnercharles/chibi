@@ -22,6 +22,7 @@
 #include "runtime/selection_definition.h"
 #include "runtime/sets_definition.h"
 #include "runtime/state_definition.h"
+#include "runtime/terrain_storage_definition.h"
 #include "runtime/text_definition.h"
 #include "runtime/ui_definition.h"
 #include "runtime/url_definition.h"
@@ -67,6 +68,7 @@ native_capabilities *host_native_default_catalog_new(
     apush(selected, NATIVE_CONVERSION_DEFINITION_PACK);
     apush(selected, NATIVE_TEXT_DEFINITION_PACK);
     apush(selected, SAVE_DEFINITION_PACK);
+    apush(selected, TERRAIN_STORAGE_DEFINITION_PACK);
     apush(selected, SCENE_DEFINITION_PACK);
     apush(selected, PARTICLES_DEFINITION_PACK);
     apush(selected, UI_DEFINITION_PACK);

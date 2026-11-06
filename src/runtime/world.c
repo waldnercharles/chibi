@@ -151,6 +151,10 @@ world *world_new(const world_options *options, char *error, size_t size)
             options->fields
         );
         entities_bind_materials(w->modules.entities, w->modules.materials);
+        w->modules.terrain_storage = terrain_storage_new(
+            w->modules.materials,
+            w->modules.save
+        );
     }
     if (options->modules & WORLD_PHYSICS) {
         w->modules.physics = physics_new(w->ecs, w->modules.entities);
@@ -166,6 +170,7 @@ world *world_new(const world_options *options, char *error, size_t size)
     bind(w, EVAL_COMPONENT_READER_SERVICE, &w->reader);
     bind(w, "game.entities", w->modules.entities);
     bind(w, "game.save", w->modules.save);
+    bind(w, TERRAIN_STORAGE_SERVICE, w->modules.terrain_storage);
     bind(w, "game.scenes", w->scenes);
     bind(w, URL_SERVICE, w->urls);
     bind(w, "game.audio", w->modules.audio);
@@ -204,6 +209,9 @@ void world_free(world *w)
     }
     if (w->modules.physics3d) {
         physics3d_free(w->modules.physics3d);
+    }
+    if (w->modules.terrain_storage) {
+        terrain_storage_free(w->modules.terrain_storage);
     }
     if (w->modules.materials) {
         materials_free(w->modules.materials);

@@ -82,7 +82,8 @@ void shade_surface_points(vec3 v_world, vec3 v_normal, vec3 object_point, vec3 p
         opacity=clamp(surface[5].x,0.0,1.0);
         unlit=surface[6].x>0.5;
         albedo=unlit?vec3(0):base*(1.0-clamp(surface[3].x,0.0,1.0));
-        absorption=vec3(opacity); absorption_cover=opacity;
+        // Graph appearance preserves the entity's authored transport coefficients.
+        absorption*=opacity; absorption_cover*=opacity;
         gloss=1.0-clamp(surface[2].x,0.0,1.0);
         float n2=dot(surface[4].xyz,surface[4].xyz);
         if (n2>1e-8&&!isnan(n2)&&!isinf(n2)) normal=surface[4].xyz*inversesqrt(n2);

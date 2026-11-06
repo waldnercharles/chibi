@@ -2,6 +2,7 @@
 #define CHIBI_SAVE_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 typedef struct save save;
@@ -34,5 +35,15 @@ void save_discard(save *save);
  * the host's storage. Used for checkpoints and isolated scenario inputs. */
 char *save_export(const save *save);
 bool save_import(save *save, const char *json);
+
+/* Binary attachments commit independently of text entries. The host must bind
+ * durable storage first. Keys contain 1-64 UTF-8 bytes and are encoded as a
+ * single path component. Native writes replace a same-directory temporary file
+ * atomically; failed writes preserve the previous attachment. Browser binary
+ * storage is currently unsupported. Read returns malloc-owned bytes. */
+#define SAVE_BLOB_KEY_MAX 64
+#define SAVE_BLOB_BYTES_MAX (64u * 1024u * 1024u)
+bool save_blob_write(save *, const char *key, const void *bytes, size_t length);
+bool save_blob_read(save *, const char *key, unsigned char **bytes, size_t *length);
 
 #endif

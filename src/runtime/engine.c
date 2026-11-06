@@ -637,6 +637,9 @@ void engine_reset_scene(engine *engine)
         source_cancel_systems(engine->modules.sources);
     }
     schedule_reset(engine->systems);
+    if (engine->modules.terrain_storage) {
+        terrain_storage_reset(engine->modules.terrain_storage);
+    }
     engine->phase = STEP_IDLE;
     engine->error[0] = 0;
     engine->scene_steps = engine->timing.simulation_steps;
@@ -1164,6 +1167,17 @@ static int finish_systems(engine *engine)
         return result;
     }
     CHIBI_TRACE_ZONE_END(systems_zone);
+    bool checkpoint = engine->modules.terrain_storage &&
+                      terrain_storage_pending(engine->modules.terrain_storage);
+    if (checkpoint && (result = apply_step_commands(engine)) != FLOW_OK) {
+        return result;
+    }
+    /* All authored phases have finished and structural commands are published.
+     * Checkpoints include this step's edits without reentering an ECS query.
+     * Prepare new terrain tiles before propagating their render transforms. */
+    if (checkpoint) {
+        terrain_storage_flush(engine->modules.terrain_storage);
+    }
     if ((result = propagate_transforms(engine)) < 0) {
         return result;
     }

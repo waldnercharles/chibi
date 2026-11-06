@@ -209,13 +209,23 @@ static bool gradient(
     if (!isfinite(distance) || distance <= 0) {
         return fail(error, n->source_id, "Surface detail Distance must be finite and positive");
     }
-    float (*scratch)[4] = xmalloc((size_t)acount(g->nodes) * sizeof *scratch);
+    bool borrowed = sample->derivative_scratch &&
+                    sample->derivative_capacity >= acount(g->nodes);
+    float (*scratch)[4] = borrowed
+                            ? sample->derivative_scratch
+                            : xmalloc((size_t)acount(g->nodes) * sizeof *scratch);
     bool ok = true;
     int root = sampled_root(n), width = g->nodes[root].width;
     for (int axis = 0; axis < 3 && ok; axis++) {
         shader_sample_context positive, negative;
         shift(&positive, sample, axis, distance);
         shift(&negative, sample, axis, -distance);
+        if (borrowed) {
+            positive.derivative_scratch = negative.derivative_scratch = scratch +
+                                                                        acount(g->nodes);
+            positive.derivative_capacity = negative.derivative_capacity = sample->derivative_capacity -
+                                                                          acount(g->nodes);
+        }
         float a[4], b[4];
         ok = shader_graph_eval_node_scratch(g, &positive, parameters, root, scratch, a, error) &&
              shader_graph_eval_node_scratch(g, &negative, parameters, root, scratch, b, error);
@@ -232,7 +242,9 @@ static bool gradient(
             }
         }
     }
-    free(scratch);
+    if (!borrowed) {
+        free(scratch);
+    }
     return ok;
 }
 static float smooth(float x)

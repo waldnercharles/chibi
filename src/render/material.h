@@ -37,6 +37,8 @@ typedef struct
     int *row;
 } render_material_border;
 
+/* Known halo occupancy continues across chunk seams. Unavailable neighbors
+ * preserve the isolated-mask outside-air rule; terrain snapshots cover reach. */
 void render_material_border_build(render_material_border *border, material_occupancy_view mask, int reach);
 void render_material_border_free(render_material_border *border);
 

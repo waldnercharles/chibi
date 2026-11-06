@@ -96,6 +96,8 @@ typedef struct
     int query_description; /* Active one-based description. */
 } analyzer;
 
+void script_analyzer_check_results(analyzer *);
+
 script_named_facts script_analyzer_named_facts(const analyzer *);
 script_range script_analyzer_range(const analyzer *, TSNode);
 const script_syntax *script_analyzer_syntax(const analyzer *, TSNode);

@@ -1660,6 +1660,8 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
     if (script_analyzer_is(node, "struct_expression")) {
         result.kind = SCRIPT_EXPR_STRUCT;
         result.type = expected;
+        /* Construct the record before conversion wraps an optional payload. */
+        result.type.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
         const script_catalog_type
             *type = script_catalog_type_by_id(a->catalog, expected.nominal);
         if (!type || expected.storage != PIN_STRUCT) {

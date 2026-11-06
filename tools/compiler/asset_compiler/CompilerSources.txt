@@ -1,5 +1,6 @@
 package_compiler/Compile.chibi
 package_compiler/Body.chibi
+package_compiler/Fallible.chibi
 package_compiler/Steps.chibi
 package_compiler/Maps.chibi
 package_compiler/References.chibi

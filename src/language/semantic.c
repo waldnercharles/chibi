@@ -36,6 +36,7 @@ static script_analysis *finish_analysis(analyzer *a, bool declarations, bool com
         finish_joins(a);
         script_analyzer_finish_bindings(a);
         script_analyzer_check_constants(a);
+        script_analyzer_check_results(a);
     }
     for (int i = 0; i < acount(out->functions); i++) {
         if (out->functions[i].parent >= 0 &&

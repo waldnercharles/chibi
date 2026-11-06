@@ -714,8 +714,18 @@ static const char *default_probe(arena *, const pin_value *, int, pin_value *out
     out[0] = (pin_value){ .type = PIN_I32, .i = 99 };
     return NULL;
 }
+static const char *optional_probe(arena *, const pin_value *, int, pin_value *out)
+{
+    out[0] = (pin_value){ .type = PIN_UNION };
+    return NULL;
+}
 static bool default_probe_binding(void *, uint64_t id, script_lower_host *out)
 {
+    if (id == 701) {
+        static const node_host_call call = { .value = optional_probe };
+        *out = (script_lower_host){ .call = &call };
+        return true;
+    }
     if (id != 700) {
         return false;
     }
@@ -911,9 +921,112 @@ TEST_CASE(package_imports_malformed_public_exports_are_rejected_before_lookup)
     return true;
 }
 
+TEST_CASE(package_imports_preserve_fallible_contract)
+{
+    const source_package_input provider = {
+        "reader/main.chibi",
+        "package reader\n@fallible pub Read :: (input: int) -> (value: int, "
+        "error: int?) "
+        "{ return(input, 9); }\n",
+        0
+    };
+    const char *clients[] = {
+        ("package app\nimport renamed \"../reader\"\nMain :: (input: int) -> "
+         "int "
+         "{ read := renamed.Read(input); partial := read.value; "
+         "if read.error { return partial + 1; } return partial; }\n"),
+        ("package app\nimport renamed \"../reader\"\nMain :: (input: int) -> "
+         "int "
+         "{ read := renamed.Read(input); return read.value; }\n"),
+    };
+    for (int b = 0; b < 2; b++) {
+        for (int sample = 0; sample < 2; sample++) {
+            const source_package_input files[] = { { "app/main.chibi", clients[sample], 0 },
+                                                   provider };
+            REQUIRE(prepare(0, files, 2, backends[b], -1, "/project"));
+            const authoring_package *reader = package(0, "project:reader");
+            REQUIRE(
+                reader && reader->valid && reader->exports && reader->exports->metadata
+            );
+            const script_catalog *metadata = reader->exports->metadata;
+            const script_catalog_capability *read = script_catalog_capability_by_id(
+                metadata,
+                function_id(reader, "Read")
+            );
+            REQUIRE(read && read->fallible);
+            script_catalog copied = { 0 };
+            REQUIRE(script_catalog_snapshot(&metadata_storage, metadata, &copied));
+            const script_catalog_capability
+                *snapshot = script_catalog_capability_by_id(&copied, read->id);
+            REQUIRE(snapshot && snapshot->fallible);
+            const authoring_package *app = package(0, "project:app");
+            REQUIRE(app);
+            if (!sample) {
+                REQUIRE(valid(0));
+                REQUIRE(call(app->module, function_id(app, "Main"), backends[b], 7, 8));
+                continue;
+            }
+            REQUIRE(!app->valid && !app->module && app->diagnostic_count > 0);
+            bool diagnosed = false;
+            for (int i = 0; i < app->diagnostic_count; i++) {
+                diagnosed |= strstr(app->diagnostics[i].message, "ignored") != NULL;
+            }
+            REQUIRE(diagnosed);
+        }
+    }
+    return true;
+}
+
+TEST_CASE(package_imports_fallible_contract_change_invalidates_reuse)
+{
+    static const script_catalog_parameter output = {
+        .name = "error",
+        .type = { .storage = PIN_I32, .flags = SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL }
+    };
+    script_catalog_capability probe = {
+        .id = 701,
+        .name = "Outcome",
+        .kind = SCRIPT_CAPABILITY_FUNCTION,
+        .results = &output,
+        .result_count = 1,
+        .effects = SCRIPT_EFFECT_HOST,
+    };
+    script_catalog metadata = { .capabilities = &probe, .capability_count = 1 };
+    const script_lower_bindings bound = { .host = default_probe_binding,
+                                          .generation = 1 };
+    const source_package_input files[] = {
+        { "app/main.chibi", "package app\nMain :: (input: int) -> int { Outcome(); return input; }\n", 0 },
+    };
+    for (int b = 0; b < 2; b++) {
+        probe.fallible = false;
+        REQUIRE(prepare_catalog(0, files, 1, backends[b], -1, "/project", &metadata, &bound));
+        REQUIRE(valid(0));
+        const authoring_package *original = package(0, "project:app");
+        REQUIRE(
+            original &&
+            call(original->module, function_id(original, "Main"), backends[b], 7, 7)
+        );
+        probe.fallible = true;
+        REQUIRE(prepare_catalog(1, files, 1, backends[b], 0, "/project", &metadata, &bound));
+        REQUIRE(
+            !authoring_packages_valid(owners[1]) &&
+            !authoring_packages_reused(owners[1])
+        );
+        const authoring_package *app = package(1, "project:app");
+        REQUIRE(
+            app && app->diagnostic_count == 1 &&
+            strstr(app->diagnostics[0].message, "ignored")
+        );
+        REQUIRE(call(original->module, function_id(original, "Main"), backends[b], 7, 7));
+    }
+    return true;
+}
+
 void test_language_package_imports()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_imports_preserve_fallible_contract);
+    RUN_TEST_CASE(package_imports_fallible_contract_change_invalidates_reuse);
     RUN_TEST_CASE(package_imports_transitive_calls_execute_on_each_backend);
     RUN_TEST_CASE(package_imports_reused_alias_spelling_remains_file_local);
     RUN_TEST_CASE(package_imports_self_alias_resolves_sibling_function);

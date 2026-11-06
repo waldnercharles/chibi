@@ -207,8 +207,8 @@ TEST_CASE(language_systems_use_flat_queries_and_implicit_step)
         "Motion :: system(p: Position) join target in self.Targets {}",
         "Demo :: behavior { query components(); }",
         "Motion :: system(p: Position split self) {}",
-        "Demo :: behavior { on Tick :: () { rows := query(p: Position split "
-        "self); } }",
+        ("Demo :: behavior { on Tick :: () { rows := query(p: Position split "
+         "self); } }"),
     };
     for (size_t i = 0; i < sizeof removed / sizeof *removed; i++) {
         parse(removed[i]);

@@ -844,7 +844,7 @@ static char *compile_input(const integer_sample *s, size_t *length)
     yyjson_mut_doc_free(doc);
     return json;
 }
-/* Compile's rejection of the input: Rejected's diagnostic. */
+/* Compile's trailing optional result carries the rejection diagnostic. */
 static bool rejection(const char *json, size_t length, compile_outcome *out)
 {
     REQUIRE(compiler_host_invoke(
@@ -856,8 +856,8 @@ static bool rejection(const char *json, size_t length, compile_outcome *out)
         &result
     ));
     yyjson_doc *doc = yyjson_read(result.json, result.length, 0);
-    yyjson_val *rejected = yyjson_arr_get(yyjson_doc_get_root(doc), 0);
-    yyjson_val *diagnostic = yyjson_arr_get(yyjson_obj_get(rejected, "values"), 0);
+    yyjson_val *error = yyjson_arr_get(yyjson_doc_get_root(doc), 2);
+    yyjson_val *diagnostic = yyjson_arr_get(yyjson_obj_get(error, "values"), 0);
     const char *message = yyjson_get_str(yyjson_obj_get(diagnostic, "message"));
     snprintf(out->message, sizeof out->message, "%s", message ? message : "");
     out->line = (int)yyjson_get_int(yyjson_obj_get(diagnostic, "line"));

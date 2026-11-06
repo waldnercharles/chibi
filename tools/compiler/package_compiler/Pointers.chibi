@@ -19,6 +19,12 @@ PointerStorePhase: int : 32;
 // Constructor identity is the complete pointee type's semantic tag. Nullable
 // pointers share runtime identity; their declaration key retains source flags.
 SemanticTag :: (types: TypeDecl[], value: ValueType) -> u64 {
+    if IsBoxedOptional(types, value) {
+        payload := OptionalPayload(types, value.record);
+        nominal: u64 = 0;
+        if payload.record >= 0 { nominal = types[payload.record].id; }
+        return binding.ID("union-type", format_text("{}:{}:{}:0:2", payload.storage, payload.container, nominal));
+    }
     if (value.container == MapContainer && value.record >= 0) {
         declared := types[value.record];
         key := SemanticTag(types, {storage: declared.key, container: 0, record: -1});

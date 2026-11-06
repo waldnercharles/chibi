@@ -224,6 +224,7 @@ typedef struct
     bool pure, disabled;
     bool inferred; /* No `->`: its returns give the results. */
     bool test;     /* Marked `@test`: chibi test runs it. */
+    bool fallible; /* Final optional output must be acknowledged. */
 } script_function;
 typedef enum
 {

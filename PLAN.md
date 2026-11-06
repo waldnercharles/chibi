@@ -1,5 +1,38 @@
 # Chibi toolchain consolidation and self-hosting
 
+## Recoverable errors, approved 2026-10-27
+
+Use ordinary named results with a final typed optional error. A nil error means
+success. Each API defines whether its other outputs remain useful on failure;
+the compiler does not require success before their use. Exceptions, a generic
+Result wrapper and propagation operators are outside this change.
+
+The first implementation adds stage-one optional-value and named-result parity,
+then replaces the asset compiler's `Completed(ok, ...)` facade with named values
+and an optional source diagnostic. Public package compiler `Compile`,
+`CompileWithEffects` and `CompileBehavior` use the same convention; internal
+assembly states remain private. Preserve closure byte entry points and the
+asset compiler's native 29-byte transport. Mark
+fallible functions explicitly with `@fallible`; their final optional error must
+be acknowledged. Ordinary optional absence results remain unaffected. Testing,
+reporting, forwarding or storing the error is acknowledgment;
+an unused local or reading only sibling outputs is not. Alias copies transfer
+the obligation, and overwrites must not erase it. This is an acknowledgment
+rule, not proof of useful recovery or eventual consumption after storage.
+
+This chat owns the implementation in its isolated recoverable-errors worktree.
+Keep shared compiler ownership, source registration, bootstrap publication and
+existing PR holds coordinated with the roadmap chat. The host-clock and library
+port chats consume the resulting signature contract. Do not change the installed
+compiler default or regenerate a bootstrap independently.
+
+Validate fixed expected success, partial-progress and failure behavior in both
+compiler stages. Check bare/unused/success-only error drops, aliases, overwrites,
+branches, loops, explicit forwarding and error-type renaming. Keep native-boundary
+assertions for exact asset status, token offsets, source line/column and text.
+Run affected language/asset checks, bootstrap compatibility and the applicable
+repository groups on the combined candidate; report timing and unrun targets.
+
 ## Coordinated named struct results, 2026-10-22
 
 The next local setup slice extends the ABI20 authored compiler's existing

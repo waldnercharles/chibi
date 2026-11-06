@@ -1,0 +1,81 @@
+name: Cute empty-uniform drawing (Linux)
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/cute-zero-uniforms-linux.yml'
+      - 'tools/validate_cute_zero_uniforms_linux.py'
+      - 'third_party/CMakeLists.txt'
+      - 'third_party/cute_framework/**'
+      - 'third_party/archives.tsv'
+      - 'test/render/draw_uniforms.c'
+      - 'test/tools/CMakeLists.txt'
+      - 'test/tools/main.c'
+      - 'test/execution_selectors.h'
+      - 'tools/test_policy.py'
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact reviewed source commit; must match the dispatched branch commit
+        required: true
+        type: string
+      source_tree:
+        description: Exact reviewed source tree
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  draw:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    # Hosted runner resource budget; this is not a repository-wide test deadline.
+    timeout-minutes: 60
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || inputs.source_sha }}
+      SOURCE_TREE: ${{ inputs.source_tree }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Reserve evidence and private build paths
+        run: |
+          mkdir -p "$RUNNER_TEMP/cute-zero-uniforms/evidence"
+          echo "EVIDENCE=$RUNNER_TEMP/cute-zero-uniforms/evidence" >> "$GITHUB_ENV"
+          echo "WORK=$RUNNER_TEMP/cute-zero-uniforms/work" >> "$GITHUB_ENV"
+      - name: Verify and record the clean source
+        run: >-
+          python3 tools/validate_cute_zero_uniforms_linux.py
+          --source-sha "$SOURCE_SHA" --source-tree "$SOURCE_TREE"
+          --evidence "$EVIDENCE" --verify-source-only
+      - name: Install the fixed Linux toolchain and software renderer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang-18 clang-tools-18 llvm-18 libclang-18-dev libclang-rt-18-dev \
+            ninja-build ccache git python3-venv libssl-dev libgl1-mesa-dev \
+            libvulkan1 mesa-vulkan-drivers vulkan-tools xvfb xauth \
+            libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev \
+            libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev \
+            libasound2-dev libpulse-dev 2>&1 | tee "$EVIDENCE/packages.log"
+          python3 -m venv "$RUNNER_TEMP/cute-zero-uniforms/build-tools"
+          "$RUNNER_TEMP/cute-zero-uniforms/build-tools/bin/pip" install \
+            --only-binary=:all: --require-hashes -r .github/build-tools.txt \
+            2>&1 | tee "$EVIDENCE/build-tools.log"
+          echo "$RUNNER_TEMP/cute-zero-uniforms/build-tools/bin" >> "$GITHUB_PATH"
+      - name: Build and compare the real unguarded and guarded draw
+        run: >-
+          python3 tools/validate_cute_zero_uniforms_linux.py
+          --source-sha "$SOURCE_SHA" --source-tree "$SOURCE_TREE"
+          --evidence "$EVIDENCE" --work "$WORK"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cute-zero-uniforms-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cute-zero-uniforms/evidence
+          if-no-files-found: warn

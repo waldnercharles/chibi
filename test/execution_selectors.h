@@ -76,6 +76,9 @@ CHIBI_GPU_SELECTOR("--studio-scene-collider3d")
 /* Cute's interior border on two shapes in a hidden 64x64 app, through the
  * instanced and tiled draw paths, with readback. */
 CHIBI_GPU_SELECTOR("--interior-border")
+/* Two adjacent Cute commands without uniforms in a hidden 32x32 app, with
+ * readback. The sanitizer regression requires instrumented Cute libraries. */
+CHIBI_GPU_SELECTOR("--draw-uniforms")
 /* An engine viewport in a hidden app takes its first requested size at once
  * and later sizes after two draws. */
 CHIBI_GPU_SELECTOR("--viewport-resize")

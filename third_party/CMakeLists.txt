@@ -82,7 +82,7 @@ chibi_third_party(cute_framework https://github.com/RandyGaul/cute_framework.git
     96e6034aa6bc44665856ee480962a9ddab0b87cc
     interior-border imgui-render-target eight-targets web-no-asyncify gles-ubo-instance-scope
     instance-buffer web-webgpu-device gles-range-draw-state sound-free-queue-music-volume
-    audio-device sdlgpu-used-vertex-streams)
+    audio-device sdlgpu-used-vertex-streams draw-zero-uniforms)
 chibi_third_party(sdl3 https://github.com/libsdl-org/SDL.git
     a962f40bbba175e9716557a25d5d7965f134a3d3 wayland-seat-pointer)
 chibi_third_party(s2n_tls https://github.com/aws/s2n-tls.git 1c9844722d9cc3beca5551c0f9bfed8aabbc22ed)

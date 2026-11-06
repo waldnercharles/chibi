@@ -74,7 +74,8 @@ gles-ubo-instance-scope, instance-buffer, web-webgpu-device,
 gles-range-draw-state, sound-free-queue-music-volume (the free-source queue
 grows by its byte size and the music volume applies once), audio-device
 (`cf_audio_get_sdl_device`), sdlgpu-used-vertex-streams (SDL_GPU binds only
-vertex streams with reflected attributes).
+vertex streams with reflected attributes), draw-zero-uniforms (do not compare
+null empty uniform payloads with `memcmp`).
 
 SDL (`sdl3/`): wayland-seat-pointer, a backport of SDL 79b40ad3; seats without
 a `wl_pointer` get no cursor requests.

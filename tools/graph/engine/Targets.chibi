@@ -814,7 +814,7 @@ Files :: (target: string) -> string[] {
             "test/render/material_borders.c", "test/render/material_sampling.c",
             "test/render/material_coefficients.c", "test/render/material_lod.c",
             "test/render/scene2d.c", "test/render/scene3d.c", "test/render/material_terrain_seams.c",
-            "test/tools/device_controls.c", "test/render/interior_border.c",
+            "test/tools/device_controls.c", "test/render/interior_border.c", "test/render/draw_uniforms.c",
             "test/render/viewport_resize.c", "test/draw_backend.cpp", "test/tools/scene3d_camera.c",
             "test/tools/scene3d_terrain.c", "test/tools/scene3d_volume.c",
             "test/tools/terrain_cut_benchmark.c", "test/render/material_graphs.c",

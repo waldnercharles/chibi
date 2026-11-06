@@ -101,6 +101,7 @@ STUDIO_ACCEPTANCE = {
     '--studio-debugger-source-history': ('--debugger-source-history', 47, 'Studio debugger source history accepted: frames=47'),
 }
 RENDER_SELECTORS = {'--interior-border': 'interior-border', '--viewport-resize': 'viewport-resize',
+                    '--draw-uniforms': 'draw-uniforms',
                     '--surface-transport': 'surface-transport',
                     '--material-mesh-cache': 'material-mesh-cache',
                     '--scene3d-terrain-gpu': 'scene3d-terrain-gpu',

@@ -37,6 +37,7 @@ The rows follow the order `third_party/CMakeLists.txt` applies them in. Each pat
 | [cute-web-webgpu-device](cute-web-webgpu-device.md) | Start WebGPU in the browser from a device the page requests, since the player links without Asyncify. |
 | [cute-gles-range-draw-state](cute-gles-range-draw-state.md) | Keep the viewport between GLES range draws, so batched shadow casters stay in their atlas tile. |
 | [cute-sound-free-queue-music-volume](cute-sound-free-queue-music-volume.md) | Grow the deferred free queue by pointers and apply the music volume once. |
+| [cute-draw-zero-uniforms](cute-draw-zero-uniforms.md) | Skip the null byte comparison for draw commands without uniform payloads. |
 
 The October 6 audit published each patch it kept as an unlisted gist, and `gists.json` records that publication. The gists hold the October 6 versions and were not republished for this update. The patches in `third_party/cute_framework`, which the third-party archive builder applies, and these documents are current.
 

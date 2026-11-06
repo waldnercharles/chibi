@@ -123,6 +123,7 @@ void test_terrain_playable_render(
     const char *output
 );
 void test_render_interior_border();
+void test_render_draw_uniforms();
 void test_render_viewport_resize();
 void test_render_radiance_layout();
 void test_render_radiance();
@@ -1008,7 +1009,7 @@ int main(int argc, char **argv)
     bool expansion = argc == 3 && !strcmp(argv[1], "--prototype-expansion");
     bool native = false, native_values = false, native_catalog = false,
          physics = false, physics3d = false, transforms = false,
-         render_resources = false, interior_border = false,
+         render_resources = false, interior_border = false, draw_uniforms = false,
          viewport_resize = false, sdf_visibility = false, radiance = false,
          radiance_depth = false, material_sampling = false, scene2d = false,
          terrain_seams = false, scene3d = false, material_ramps = false,
@@ -1095,6 +1096,7 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_RENDER_RUNTIME
     render_resources = argc == 2 && !strcmp(argv[1], "--render-resources");
     interior_border = argc == 2 && !strcmp(argv[1], "--interior-border");
+    draw_uniforms = argc == 2 && !strcmp(argv[1], "--draw-uniforms");
     viewport_resize = argc == 2 && !strcmp(argv[1], "--viewport-resize");
     radiance = argc == 2 && !strcmp(argv[1], "--radiance");
     radiance_depth = argc == 2 && !strcmp(argv[1], "--radiance-depth");
@@ -1176,10 +1178,10 @@ int main(int argc, char **argv)
         !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
         !scene_snapshot_read && !native && !native_values && !native_catalog &&
         !physics && !physics3d && !transforms && !render_resources &&
-        !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
-        !radiance_depth && !material_sampling && !scene2d && !terrain_seams &&
-        !scene3d && !material_ramps && !texture_transform && !arena &&
-        !render_geometry && !radiance_surface && !radiance_horizons &&
+        !interior_border && !draw_uniforms && !viewport_resize && !sdf_visibility &&
+        !radiance && !radiance_depth && !material_sampling && !scene2d &&
+        !terrain_seams && !scene3d && !material_ramps && !texture_transform &&
+        !arena && !render_geometry && !radiance_surface && !radiance_horizons &&
         !material_pixels && !box3d && !sky_files && !mesh_files && !model_import &&
         !model_graphs && !model_catalog && !shader_graphs && !shader_parity &&
         !shader_programs && !material_cameras && !mesh_materials &&
@@ -1226,6 +1228,7 @@ int main(int argc, char **argv)
             "| --physics | --physics3d | --transforms "
             "| --render-resources | --render-geometry | --material-render | "
             "--interior-border | "
+            "--draw-uniforms | "
             "--viewport-resize | "
             "--sdf-visibility | "
             "--radiance | --radiance-depth | --material-sampling | --scene2d | "
@@ -1427,11 +1430,13 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_RENDER_RUNTIME
-    if (render_resources || interior_border || viewport_resize || radiance ||
-        radiance_depth || material_sampling || scene2d || terrain_seams ||
-        scene3d || material_render) {
+    if (render_resources || interior_border || draw_uniforms ||
+        viewport_resize || radiance || radiance_depth || material_sampling ||
+        scene2d || terrain_seams || scene3d || material_render) {
         if (interior_border) {
             test_render_interior_border();
+        } else if (draw_uniforms) {
+            test_render_draw_uniforms();
         } else if (viewport_resize) {
             test_render_viewport_resize();
         } else if (radiance) {

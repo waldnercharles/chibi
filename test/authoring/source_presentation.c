@@ -725,12 +725,13 @@ TEST_CASE(source_view_component_setters_expose_entity_not_component_read)
                                                  .capability_count = 2 };
     const char *sources[] = {
         "Motion :: behavior { on Tick :: () { self.Position.x = 7; } }",
-        "Motion :: system(position: Position) { reduce self.Position.x += 7; }",
-        "Motion :: system(position: Position) { reduce min(self.Position.x, "
+        "Motion :: system(position: ^Position) { reduce self.Position.x += 7; "
+        "}",
+        "Motion :: system(position: ^Position) { reduce min(self.Position.x, "
         "7); }",
-        "Motion :: system(position: Position) { reduce max(self.Position.x, "
+        "Motion :: system(position: ^Position) { reduce max(self.Position.x, "
         "7); }",
-        "Motion :: system(position: Position) { reduce unordered "
+        "Motion :: system(position: ^Position) { reduce unordered "
         "self.Position.x += 7; }",
     };
     const char *titles[] = { "Set self.Position.x",
@@ -805,22 +806,22 @@ TEST_CASE(source_view_component_setters_expose_entity_not_component_read)
             REQUIRE(strcmp(g->nodes[i]->desc->name, "Get Position"));
         }
     }
-    /* A comparison in `where` is a value query, which has its own node. */
+    /* An `if` comparison is a value query, which has its own node. */
     cleanup();
-    syntax = script_parse("Motion :: system(position: Position) where position.x > 0 { position.x = 7; }");
+    syntax = script_parse("Motion :: system(position: ^Position , if position.x > 0) { position.x = 7; }");
     REQUIRE(syntax->diagnostic_count == 0);
     analysis = script_analyze(syntax, &declarations);
     REQUIRE(analysis->diagnostic_count == 0 && analysis->query >= 0);
     view = authoring_source_presentation_new(analysis, &declarations, NULL);
     REQUIRE(view);
-    bool where = false;
+    bool filter = false;
     behavior_asset *asset = authoring_source_presentation_view(view);
     for (int i = 0; i < acount(asset->graphs); i++) {
         for (int j = 0; j < acount(asset->graphs[i]->nodes); j++) {
-            where |= !strncmp(asset->graphs[i]->nodes[j]->desc->name, "Where", 5);
+            filter |= !strncmp(asset->graphs[i]->nodes[j]->desc->name, "If", 2);
         }
     }
-    REQUIRE(where);
+    REQUIRE(filter);
     return true;
 }
 TEST_CASE(source_view_authored_calls_keep_named_typed_editable_ports)

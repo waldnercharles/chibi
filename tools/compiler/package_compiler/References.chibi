@@ -375,7 +375,7 @@ ReferenceArgumentStep :: (forest: snapshot.SnapshotNode[], text: string, documen
     if (found >= 0 && names[found].place == ManagedPlace) {
         binding := names[found];
         if (root == item.node && !SameType(item.storage, item.container, item.record,
-                                            Typed(-1, binding.storage, binding.container, binding.record))) {
+                                           Typed(-1, binding.storage, binding.container, binding.record))) {
             return Fail(forest, item.node, document, "reference argument differs from the parameter's type");
         }
         pointer := FindPointer(types, {storage: binding.storage, container: binding.container, record: binding.record}, false);

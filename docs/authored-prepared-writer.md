@@ -1,7 +1,7 @@
 # Authored prepared writer
 
 `tools/compiler/prepared_writer` is the Chibi source of the prepared-module
-encoder (CHIBIPRE format 18) and the executable closure container (CHIBICLO
+encoder (CHIBIPRE format 22) and the executable closure container (CHIBICLO
 version 1). Stage one will write its artifacts with it. It is checked against
 the native writers, and the bounded compiler writes its modules and closures
 with it (`docs/bounded-authored-compiler.md`).
@@ -10,10 +10,11 @@ with it (`docs/bounded-authored-compiler.md`).
 
 `Write(module: Module) -> byte[]` encodes one module of authored functions or
 of a behavior: requirements, event declarations, imports, functions with their
-component tables, retained states and entries, which may handle events. Format
-18 also has queries, bindings, actions, observers, captures and debugger tables;
-the writer emits them as empty. The caller's lowering supplies the target ABI
-hash in the header, because it hashes C layouts.
+component tables, retained states and entries, which may handle events. It also
+encodes structural query terms, reusable query descriptions and the scheduled
+system's description. Reactive bindings, actions, observers and captures remain
+empty. The caller's lowering supplies the target ABI hash in the header, because
+it hashes C layouts.
 
 `Module` is one union case of flat pools, since records hold no arrays:
 - Every 64-bit value (ids, layouts, scalar bits, union tags, fingerprints) is an
@@ -23,6 +24,14 @@ hash in the header, because it hashes C layouts.
 - Each function names 23 consecutive `spans`, one range per table.
 - An absent native struct, such as a reference's type, is a header with no
   fields; an absent authored one keeps its field count.
+- `Query` holds a structural term. Its children occupy a range in `ints`; its
+  predicate indexes `references`, or is `-1` when the term has no evaluator.
+- `QueryDescription` holds a root term and entity variable count, a row type
+  header in `values`, and an evaluator in `references`. Evaluators follow query
+  predicates in the function order. `system_description` selects a description
+  by its one-based index; zero means this module has no scheduled query.
+- `PIN_QUERY` headers use the ordinary scalar encoding with zero payload bits.
+  A live iterator contains runtime state and cannot be saved.
 
 `Fingerprint(bytes)` is the FNV-1a import fingerprint. `Closure` writes the
 CHIBICLO header and rows sorted bytewise by name.

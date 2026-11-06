@@ -108,8 +108,8 @@ A system selects entities by their components.
 This system needs `Transform` and `Velocity` on each matching entity.
 
 ```chibi
-Drift :: system(position: Transform, velocity: Velocity) on Tick :: (dt: s) {
-    position += velocity * dt
+Drift :: system(position: ^Transform, velocity: Velocity) {
+    position^ += velocity * dt
 }
 ```
 

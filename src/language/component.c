@@ -188,7 +188,7 @@ static bool pointer_syntax(TSNode node)
 }
 static bool pointer_fields(const script_catalog *catalog, script_type type, int depth)
 {
-    if (type.storage == PIN_POINTER || depth >= 64) {
+    if (type.storage == PIN_POINTER || type.storage == PIN_QUERY || depth >= 64) {
         return true;
     }
     const script_catalog_type *record = script_catalog_type_by_id(catalog, type.nominal);
@@ -245,7 +245,7 @@ static void type(reader *r, TSNode node, script_component_field *out)
         report(r, node, "ECS component fields cannot own union payloads");
         return;
     }
-    if (builtin.storage == PIN_POINTER ||
+    if (builtin.storage == PIN_POINTER || builtin.storage == PIN_QUERY ||
         (named >= 0 && pointer_fields(r->catalog, r->catalog->types[named].type, 0))) {
         report(r, node, "ECS component fields cannot own managed pointers");
         return;

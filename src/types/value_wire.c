@@ -255,7 +255,8 @@ static bool same_name(const char *a, const char *b)
 }
 static bool valid_field(const type_desc *type, const type_field *field)
 {
-    if (field->type < PIN_BOOL || field->type > PIN_ENUM ||
+    if (!((field->type >= PIN_BOOL && field->type <= PIN_ENUM) ||
+          field->type == PIN_POINTER) ||
         field->offset > type->size || field->size > type->size - field->offset) {
         return false;
     }
@@ -641,16 +642,30 @@ static void collection(value_codec *c, pin_value *v, unsigned depth)
 static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_value *destination)
 {
     execution_wire *w = c->wire;
-    if (!w->reading && v->record && !c->resolve) {
+    if (!w->reading && v->container == PIN_CONTAINER_VIEW && v->ptr) {
+        fail(w, "Array views cannot be persisted");
+        return;
+    }
+    if (!w->reading && v->record && v->record->native &&
+        !pin_record_native_current(v->record)) {
+        fail(w, "Native record type is retired or its layout is incompatible");
+        return;
+    }
+    if (!w->reading && v->record && !v->record->native &&
+        !pin_record_fields_current(v->record)) {
+        fail(w, "Authored record nested native layout is retired or incompatible");
+        return;
+    }
+    if (!w->reading && v->record && !v->record->native && !c->resolve) {
         fail(w, "Authored record requires a prepared layout table");
     }
-    if (!w->reading && (v->type < PIN_FLOW || v->type > PIN_UNION ||
+    if (!w->reading && (v->type < PIN_FLOW || v->type > PIN_POINTER ||
                         v->container < PIN_CONTAINER_SINGLE ||
-                        v->container > PIN_CONTAINER_MAP ||
+                        v->container > PIN_CONTAINER_VIEW ||
                         (v->type == PIN_FLOW && v->container))) {
         fail(w, "Prepared value tag is invalid");
     }
-    bool authored = !w->reading && v->record;
+    bool authored = !w->reading && v->record && !v->record->native;
     if (!w->reading && c->resolve) {
         c->resolve(w, c->user, v, authored);
     }
@@ -668,8 +683,8 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
     if (w->error) {
         return;
     }
-    if (tag < PIN_FLOW || tag > PIN_UNION || container < PIN_CONTAINER_SINGLE ||
-        container > PIN_CONTAINER_MAP || (tag == PIN_FLOW && container)) {
+    if (tag < PIN_FLOW || tag > PIN_POINTER || container < PIN_CONTAINER_SINGLE ||
+        container > PIN_CONTAINER_VIEW || (tag == PIN_FLOW && container)) {
         fail(w, "Prepared value tag is invalid");
         return;
     }
@@ -713,6 +728,14 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
         fail(w, "Prepared inline value differs from its destination type");
         return;
     }
+    if (container == PIN_CONTAINER_VIEW) {
+        bool present = false;
+        execution_wire_bool(w, &present);
+        if (!w->error && present) {
+            fail(w, "Array views cannot be persisted");
+        }
+        return;
+    }
     if (container == PIN_CONTAINER_MAP) {
         map_collection(c, v, depth);
         return;
@@ -740,6 +763,10 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
     uint64_t bits = w->reading || tag == PIN_FLOW ? 0 : scalar_bits(*v);
     execution_wire_u64(w, &bits);
     if (w->error) {
+        return;
+    }
+    if (tag == PIN_POINTER && bits) {
+        fail(w, "Managed pointers cannot be persisted");
         return;
     }
     if ((tag == PIN_HANDLE || tag == PIN_TASK || tag == PIN_FLOW) && bits) {
@@ -770,6 +797,7 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
                 memcpy(&decoded.e, &narrow, sizeof narrow);
                 break;
             }
+            case PIN_POINTER: decoded.ptr = NULL; break;
             case PIN_HANDLE:
             case PIN_TASK: decoded.u64 = 0; break;
             default: fail(w, "Prepared scalar type is invalid"); return;

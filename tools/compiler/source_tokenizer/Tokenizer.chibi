@@ -123,7 +123,8 @@ Prototype: int : 112;
 Relationship: int : 113;
 Pub: int : 114;
 Delete: int : 115;
-KindCount: int : 116;
+HalfOpenRange: int : 116;
+KindCount: int : 117;
 
 // Byte classes.
 SpaceClass: int : 1;
@@ -180,7 +181,7 @@ pub KindNames :: () -> string[] {
             "branch", "return", "reduce", "unordered", "goto", "break", "continue",
             "await", "yield", "cancel", "true", "false", "nil", "null", "plain", "ref",
             "service", "setting", "wildcard", "from", "split", "component",
-            "prototype", "relationship", "pub", "delete"];
+            "prototype", "relationship", "pub", "delete", "..<"];
 }
 
 pub Tokenize :: (text: string) -> Tokens {
@@ -267,6 +268,9 @@ pub Tokenize :: (text: string) -> Tokens {
             if (kind == GtEq && start + 2 < count && bytes[start + 2] == 62) {
                 // `>=>` closes type arguments before `=>`.
                 kind = Gt;
+            } else if (kind == Ellipsis && start + 2 < count && bytes[start + 2] == 60) {
+                kind = HalfOpenRange;
+                end = start + 3;
             } else if (kind != Invalid) {
                 end = start + 2;
             } else {
@@ -297,6 +301,9 @@ pub Tokenize :: (text: string) -> Tokens {
         ends.append(end);
         rows.append(row);
         columns.append(column);
+        // An adjacent caret after an expression is postfix dereference;
+        // spaced carets keep their existing binary xor meaning.
+        dereference := kind == Xor && kept && start == offset;
         offset = end;
         if (kind == Comment) {
             at := start;
@@ -334,7 +341,7 @@ pub Tokenize :: (text: string) -> Tokens {
         }
         // A word after `.` is a member name, which can end a statement; an
         // attribute's name cannot.
-        ends := endings[kind] || (previous == Period && kind >= Package);
+        ends := endings[kind] || dereference || (previous == Period && kind >= Package);
         insert = (ends && previous != At) || (kind == CloseBrace && closed == Literal) ||
                  (kind == Colon && label);
         if (kind == Invalid) {
@@ -556,7 +563,7 @@ ScanIdentifier :: (bytes: int[], classes: int[], offset: int) -> int {
 KeywordTable :: (names: string[]) -> int[] {
     table := resize([int(0)], KeywordSlots);
     kind: int = Package;
-    while (kind < KindCount) {
+    while (kind <= Delete) {
         name := names[kind];
         hash: uint64 = KeywordHashBasis;
         index: int = 0;

@@ -417,7 +417,7 @@ const char *const *execution_module_services(const execution_module *m, int *cou
 static bool same_type(pin_value a, pin_value b)
 {
     return a.type == b.type && a.container == b.container &&
-           pin_record_same(a.record, b.record) &&
+           pin_value_layout_same(&a, &b) &&
            ((!a.type_name && !b.type_name) ||
             (a.type_name && b.type_name && !strcmp(a.type_name, b.type_name)));
 }
@@ -449,7 +449,9 @@ static bool events_valid(execution_module_plan *m, bool decoded)
             execution_module_event_field *field = &event->fields[j];
             if (!field->name || !field->name[0] ||
                 field->initial.type <= PIN_FLOW || field->initial.type > PIN_ENUM ||
-                field->initial.container > PIN_CONTAINER_MAP ||
+                field->initial.container > PIN_CONTAINER_VIEW ||
+                (field->initial.container == PIN_CONTAINER_VIEW &&
+                 field->initial.ptr) ||
                 (field->default_owner &&
                  (!field->has_default || field->initial.type != PIN_HANDLE ||
                   field->initial.container != PIN_CONTAINER_SINGLE))) {
@@ -471,7 +473,12 @@ static bool events_valid(execution_module_plan *m, bool decoded)
                 if (!type || type->storage != field->initial.type ||
                     !type->name || !field->initial.type_name ||
                     strcmp(type->name, field->initial.type_name) ||
-                    !pin_record_same(type->record, field->initial.record)) {
+                    !pin_value_layout_same(
+                        &(pin_value){ .type = type->storage,
+                                      .type_name = type->name,
+                                      .record = type->record },
+                        &field->initial
+                    )) {
                     return false;
                 }
             }
@@ -733,10 +740,10 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
             continue;
         }
         const pin_record *record = type->record;
-        if (!pin_record_valid(record) || type->storage != PIN_STRUCT ||
-            record->id != type->id || record->layout != type->layout ||
-            record->type.size != type->size || !type->name ||
-            strcmp(record->type.name, type->name)) {
+        if (record->native || !pin_record_valid(record) ||
+            type->storage != PIN_STRUCT || record->id != type->id ||
+            record->layout != type->layout || record->type.size != type->size ||
+            !type->name || strcmp(record->type.name, type->name)) {
             snprintf(error, size, "authored type requirement has incompatible layout");
             return FLOW_ERR_COMPILE;
         }
@@ -877,7 +884,8 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
                 !f->subscription || f->action || f->body->argument_count != 1 ||
                 observer->argument != 0 || f->subscription->result_count != 1 ||
                 f->subscription->result_defaults[0].type != PIN_HANDLE ||
-                behavior_function_resumable(f->subscription) || observer->type.record ||
+                behavior_function_resumable(f->subscription) ||
+                (observer->type.record && !observer->type.record->native) ||
                 observer->type.container != PIN_CONTAINER_SINGLE ||
                 observer->type.type == PIN_FLOW ||
                 !same_type(observer->type, f->body->argument_defaults[0])) {
@@ -964,7 +972,7 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
             snprintf(error, size, "binding dependency evaluator is not finalized");
             return FLOW_ERR_COMPILE;
         }
-        if (b->target_type.record) {
+        if (b->target_type.record && !b->target_type.record->native) {
             snprintf(error, size, "authored record component bindings are not supported");
             return FLOW_ERR_COMPILE;
         }

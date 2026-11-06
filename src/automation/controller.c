@@ -3231,6 +3231,7 @@ static const char *container_json_name(pin_container container)
         case PIN_CONTAINER_ARRAY: return "array";
         case PIN_CONTAINER_SET: return "set";
         case PIN_CONTAINER_MAP: return "map";
+        case PIN_CONTAINER_VIEW: return "view";
     }
     return "invalid";
 }
@@ -7231,9 +7232,10 @@ static void scenario_hash_value(uint64_t *hash, pin_type type, const char *type_
             }
             break;
         }
+        case PIN_POINTER:
         case PIN_TASK:
         case PIN_UNION:
-            assert(false && "Managed task and union values cannot be ECS fields");
+            assert(false && "Managed pointers, tasks and unions cannot be ECS fields");
             break;
         case PIN_FLOW: break;
     }

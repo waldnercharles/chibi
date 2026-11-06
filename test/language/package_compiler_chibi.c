@@ -50,7 +50,7 @@
 static const char PACKAGE[] = "project:package_compiler";
 enum
 {
-    CALLS = 10,
+    CALLS = 12,
     SAMPLE_INPUTS = 4,
     ARGUMENTS = 12,
     /* Compile's debug flag, then the six that describe the target. */
@@ -128,6 +128,30 @@ static const native_parameter_definition CSTRING_INPUT[] = {
 static const native_parameter_definition CSTRING_OUTPUT[] = {
     { .name = "length", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
 };
+/* Borrowed native result banks exercise tuple copies without authored named
+ * collection results, which stage one does not support. */
+static const char *sequence_pair_probe(void *, const pin_value *, pin_value *results)
+{
+    static int items[] = { 3, 4 };
+    static pin_array values = {
+        .element_type = PIN_I32,
+        .count = 2,
+        .capacity = 2,
+        .data = items,
+        .stride = sizeof *items,
+    };
+    results[0].ptr = &values;
+    results[1].i = 9;
+    return NULL;
+}
+static const native_parameter_definition SEQUENCE_PAIR_OUTPUTS[] = {
+    { .name = "values",
+      .kind = NATIVE_PARAMETER_DATA,
+      .storage = PIN_I32,
+      .container = PIN_CONTAINER_ARRAY,
+      .type_name = "int" },
+    { .name = "stamp", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+};
 static const native_capability_definition CSTRING_DEFINITIONS[] = {
     { .canonical_name = "CString Probe",
       .source_name = "cstring_probe",
@@ -138,18 +162,28 @@ static const native_capability_definition CSTRING_DEFINITIONS[] = {
       .output_count = 1,
       .completion_output = -1,
       .pure = true },
+    { .canonical_name = "Sequence Pair Probe",
+      .source_name = "Multi",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .outputs = SEQUENCE_PAIR_OUTPUTS,
+      .output_count = 2,
+      .completion_output = -1,
+      .pure = true },
 };
 static const node_host_call CSTRING_CALL = { .value = cstring_probe };
+static const node_host_call SEQUENCE_PAIR_CALL = { .invoke = sequence_pair_probe };
 static const node_access CSTRING_ACCESS = { .flags = NODE_EFFECT_PURE };
 static const native_definition_binding CSTRING_BINDINGS[] = {
     { .canonical_name = "CString Probe",
       .implementation = { .call = &CSTRING_CALL, .access = &CSTRING_ACCESS } },
+    { .canonical_name = "Sequence Pair Probe",
+      .implementation = { .call = &SEQUENCE_PAIR_CALL, .access = &CSTRING_ACCESS } },
 };
 static const native_definition_pack CSTRING_PACK = {
     .definitions = CSTRING_DEFINITIONS,
-    .definition_count = 1,
+    .definition_count = 2,
     .bindings = CSTRING_BINDINGS,
-    .binding_count = 1,
+    .binding_count = 2,
 };
 static const sample samples[] = {
     { .name = "typed constant shifts discard bits",
@@ -673,6 +707,156 @@ static const sample samples[] = {
                  { .function = "Small", .arguments = "[3]", .expected = "[4]" },
                  { .function = "Keys", .arguments = "[[5,6,7]]", .expected = "[20]" },
                  { .function = "Back", .arguments = "[[1,2,3]]", .expected = "[322110]" } } },
+    /* Observable sequence semantics use the supported package subset: ordinary
+     * parameters, unnamed results, scalar record fields and inferred optionals.
+     * Multi() below supplies a native result bank; authored named collection
+     * results and nonnumeric state remain outside this fixture's subset. */
+    { .name = "value sequence copies",
+      .group = COLLECTION_SAMPLES,
+      .source =
+          "package facts\n"
+          "Point :: struct { x: int; y: int; }\n"
+          "Change :: (values: int[]) -> int { values[0] = 8; values.append(9); return values.length() * 10 + values[0]; }\n"
+          "Identity :: (values: int[]) -> int[] { return values; }\n"
+          "Assignment :: () -> int { original: int[] = [1, 2]; copied := original; copied[0] = 7; copied.append(3); return original[0] * 1000 + original.length() * 100 + copied[0] * 10 + copied.length(); }\n"
+          "Parameter :: () -> int { original: int[] = [1, 2]; changed := Change(original); return original[0] * 100 + original.length() * 10 + changed; }\n"
+          "Returned :: () -> int { original: int[] = [1, 2]; copied := Identity(original); copied[1] = 9; return original[1] * 10 + copied[1]; }\n"
+          "Nested :: () -> int { original: int[][] = [[1, 2], [3]]; copied := original; copied[0].append(7); copied[1][0] = 8; return original[0].length() * 1000 + original[1][0] * 100 + copied[0].length() * 10 + copied[1][0]; }\n"
+          "Maps :: () -> int { original: [int: int[]] = [1: [2, 3]]; copied := original; copied[1].append(4); copied[2] = [9]; delete copied[1]; return original[1].length() * 100 + original[1][0] * 10 + copied[2][0]; }\n"
+          "Records :: () -> int { original: Point[] = [{x: 2, y: 3}]; copied := original; copied[0].x = 9; return original[0].x * 100 + copied[0].x * 10 + copied[0].y; }\n"
+          "Pointers :: () -> int { value: int = 1; other: int = 9; original: ^int[] = [&value]; copied := original; copied[0]^ = 5; copied[0] = &other; return original[0]^ * 100 + copied[0]^ * 10 + value; }\n"
+          "Cloned :: () -> int { original: int[] = [4, 5]; copied := original.clone(); copied[0] = 8; return original[0] * 10 + copied[0]; }\n"
+          "Empty :: () -> int { original: int[] = []; copied := original; copied.append(7); return original.length() * 100 + copied.length() * 10 + copied[0]; }\n",
+      .calls = {
+          { .function = "Assignment", .arguments = "[]",
+            .expected = "[1273]" },
+          { .function = "Parameter", .arguments = "[]",
+            .expected = "[158]" },
+          { .function = "Returned", .arguments = "[]",
+            .expected = "[29]" },
+          { .function = "Nested", .arguments = "[]",
+            .expected = "[2338]" },
+          { .function = "Maps", .arguments = "[]",
+            .expected = "[229]" },
+          { .function = "Records", .arguments = "[]",
+            .expected = "[293]" },
+          { .function = "Pointers", .arguments = "[]",
+            .expected = "[595]" },
+          { .function = "Cloned", .arguments = "[]",
+            .expected = "[48]" },
+          { .function = "Empty", .arguments = "[]",
+            .expected = "[17]" },
+      } },
+    { .name = "strict sequence ranges",
+      .group = COLLECTION_SAMPLES,
+      .source =
+          "package facts\n"
+          "Bracket :: () -> int { original: int[] = [1, 2, 3, 4]; selected := original[1..<3]; if selected { selected[0] = 9; return original[1] * 100 + selected[0] * 10 + selected.length(); } return -1; }\n"
+          "Method :: () -> int { original: int[] = [1, 2, 3]; selected := original.slice(0..<2); if selected { selected[1] = 8; return original[1] * 10 + selected[1]; } return -1; }\n"
+          "Empty :: () -> int { original: int[] = [1, 2]; selected := original[2..<2]; if selected { return selected.length() + 1; } return -1; }\n"
+          "EmptySource :: () -> int { original: int[] = []; selected := original[0..<0]; if selected { return selected.length() + 1; } return -1; }\n"
+          "Bounds :: (first: int, last: int) -> int { original: int[] = [1, 2]; selected := original.slice(first..<last); if selected { return selected.length() + 1; } return 0; }\n"
+          "Text :: () -> string { original: string = \"abcd\"; selected := original[1..<3]; if selected { copied := selected.clone(); return format_text(\"{}|{}\", selected, copied); } return \"invalid\"; }\n"
+          "Bytes :: () -> int { original: string = \"a\\u03bbz\"; selected := original[1..<2]; if selected { return selected.length(); } return -1; }\n"
+          "EmptyText :: () -> int { original: string = \"abc\"; selected := original[3..<3]; if selected { return selected.length() + 1; } return -1; }\n",
+      .calls = {
+          { .function = "Bracket", .arguments = "[]",
+            .expected = "[292]" },
+          { .function = "Method", .arguments = "[]",
+            .expected = "[28]" },
+          { .function = "Empty", .arguments = "[]",
+            .expected = "[1]" },
+          { .function = "EmptySource", .arguments = "[]",
+            .expected = "[1]" },
+          { .function = "Bounds", .arguments = "[-1,1]",
+            .expected = "[0]" },
+          { .function = "Bounds", .arguments = "[1,0]",
+            .expected = "[0]" },
+          { .function = "Bounds", .arguments = "[0,3]",
+            .expected = "[0]" },
+          { .function = "Bounds", .arguments = "[2,2]",
+            .expected = "[1]" },
+          { .function = "Bounds", .arguments = "[0,2]",
+            .expected = "[3]" },
+          { .function = "Text", .arguments = "[]",
+            .expected = "[\"bc|bc\"]" },
+          { .function = "Bytes", .arguments = "[]",
+            .expected = "[1]" },
+          { .function = "EmptyText", .arguments = "[]",
+            .expected = "[1]" },
+      } },
+    { .name = "pointer sequence views",
+      .group = COLLECTION_SAMPLES,
+      .source =
+          "package facts\n"
+          "Owner :: () -> ^(int[]) { values: int[] = [4, 5]; return &values; }\n"
+          "Touch :: (window: view int[]) { window[0] = 7; }\n"
+          "ReadWindow :: (window: view int[]) -> int { return window.length() * 100 + window[0]; }\n"
+          "Follow :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { selected[0] = 8; previous := values[1]; pointer^ = [4, 5, 6, 7]; selected[1] = 9; return previous * 1000 + values[1] * 100 + values[2] * 10 + selected.length(); } return -1; }\n"
+          "OrdinaryCopy :: () -> int { values: int[] = [1, 2]; copied := values; pointer := &values; selected := pointer.view(0..<2); if selected { selected[1] = 7; return values[1] * 100 + copied[1] * 10 + selected[1]; } return -1; }\n"
+          "Grow :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { pointer.append(4); selected[0] = 8; return values[1] * 100 + selected.length() * 10 + values.length(); } return -1; }\n"
+          "Cloned :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(0..<2); if selected { copied := selected.clone(); copied[0] = 9; return values[0] * 100 + selected[0] * 10 + copied[0]; } return -1; }\n"
+          "Sliced :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(0..<2); if selected { copied := selected[0..<1]; if copied { copied[0] = 7; return values[0] * 100 + selected[0] * 10 + copied[0]; } } return -1; }\n"
+          "Empty :: () -> int { values: int[] = []; pointer := &values; selected := pointer.view(0..<0); if selected { return selected.length() + 1; } return -1; }\n"
+          "Escaped :: () -> int { pointer := Owner(); selected := pointer.view(0..<2); if selected { selected[0] = 8; return pointer^[0] * 10 + selected[1]; } return -1; }\n"
+          "InvalidRange :: () -> int { values: int[] = [1]; pointer := &values; selected := pointer.view(2..<2); if selected { return 1; } return 0; }\n"
+          "Shrunk :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { pointer^ = [9]; return selected.length(); } return -1; }\n"
+          "Parameter :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { Touch(selected); return values[1] * 100 + ReadWindow(selected); } return -1; }\n",
+      .calls = {
+          { .function = "Follow", .arguments = "[]",
+            .expected = "[8592]" },
+          { .function = "OrdinaryCopy", .arguments = "[]",
+            .expected = "[727]" },
+          { .function = "Grow", .arguments = "[]",
+            .expected = "[824]" },
+          { .function = "Cloned", .arguments = "[]",
+            .expected = "[119]" },
+          { .function = "Sliced", .arguments = "[]",
+            .expected = "[117]" },
+          { .function = "Empty", .arguments = "[]",
+            .expected = "[1]" },
+          { .function = "Escaped", .arguments = "[]",
+            .expected = "[85]" },
+          { .function = "InvalidRange", .arguments = "[]",
+            .expected = "[0]" },
+          { .function = "Shrunk", .arguments = "[]",
+            .expected = NULL },
+          { .function = "Parameter", .arguments = "[]",
+            .expected = "[907]" },
+      } },
+    { .name = "value arguments and result banks",
+      .group = COLLECTION_SAMPLES,
+      .c_string_probe = true,
+      .source =
+          "package facts\n"
+          "Change :: (pointer: ^(int[])) -> int { pointer^[0] = 9; pointer.append(3); return 7; }\n"
+          "Observe :: (values: int[], changed: int) -> int { return values[0] * 100 + values.length() * 10 + changed; }\n"
+          "ObservePointer :: (pointer: ^(int[]), changed: int) -> int { return pointer^[0] + pointer^.length() * 10 + changed; }\n"
+          "ChangeRows :: (pointer: ^(int[][])) -> int { pointer^[0].append(7); return 0; }\n"
+          "ObserveRows :: (values: int[][], changed: int) -> int { return values[0][0] * 10 + values[0].length() + changed; }\n"
+          "ChangeMap :: (pointer: ^([int: int])) -> int { pointer^[1] = 8; return 2; }\n"
+          "ObserveMap :: (values: [int: int], changed: int) -> int { return values[1] * 10 + changed; }\n"
+          "EarlierArray :: () -> int { values: int[] = [1, 2]; observed := Observe(values, Change(&values)); return observed * 1000 + values[0] * 10 + values.length(); }\n"
+          "EarlierNested :: () -> int { values: int[][] = [[1]]; observed := ObserveRows(values, ChangeRows(&values)); return observed * 10 + values[0].length(); }\n"
+          "EarlierPointer :: () -> int { values: int[] = [1]; return ObservePointer(&values, Change(&values)); }\n"
+          "EarlierMap :: () -> int { values: [int: int] = [1: 3]; observed := ObserveMap(values, ChangeMap(&values)); return observed * 10 + values[1]; }\n"
+          "TupleLifetime :: () -> int { p := Multi(); total: int = 0; { q := p; extracted := q.values; extracted[0] = 8; total = extracted[0] + q.values[0]; } return total * 100 + p.values[0] * 10 + p.stamp; }\n"
+          "KeepTupleValue :: () -> int[] { p := Multi(); { q := p; return q.values; } }\n"
+          "TupleReturned :: () -> int { values := KeepTupleValue(); values.append(5); return values[0] * 100 + values[2] * 10 + values.length(); }\n",
+      .calls = {
+          { .function = "EarlierArray", .arguments = "[]",
+            .expected = "[127093]" },
+          { .function = "EarlierNested", .arguments = "[]",
+            .expected = "[112]" },
+          { .function = "EarlierPointer", .arguments = "[]",
+            .expected = "[36]" },
+          { .function = "EarlierMap", .arguments = "[]",
+            .expected = "[328]" },
+          { .function = "TupleLifetime", .arguments = "[]",
+            .expected = "[1139]" },
+          { .function = "TupleReturned", .arguments = "[]",
+            .expected = "[353]" },
+      } },
     { .name = "arrays",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
@@ -799,41 +983,158 @@ static const sample samples[] = {
                    .expected = "[\"0=v0;1=v1;2=v2;|0=changed;1=v1;\"]" } } },
     { .name = "references",
       .group = COLLECTION_SAMPLES,
-      .source = "package facts\n"
-                "Point :: struct { x: int; y: int; }\n"
-                "Bump :: (v: ref int) { v += 1; }\n"
-                "Set :: (v: ref int, to: int) { v = to; }\n"
-                "Twice :: (v: ref int) { Bump(v); Bump(v); }\n"
-                "Rename :: (s: ref string) { s = format_text(\"{}!\", s); }\n"
-                "Swap :: (p: ref Point) { p = {x: p.y, y: p.x}; }\n"
-                "Grow :: (xs: ref int[]) { xs = append(xs, int(7)); }\n"
-                "Inc :: (k: int) -> int { Bump(k); return k; }\n"
-                "Nudge :: (p: ref Point) { p.x = 9; p.y += 5; Bump(p.x); }\n"
-                "Count :: () -> int { c: int = 2; c += 3; Bump(c); c = c * 2; "
-                "return c; }\n"
-                "Run :: () -> int {\n"
-                "    n: int = 1;\n    Bump(n);\n    Twice(n);\n    Set(n, n * "
-                "10);\n"
-                "    name: string = \"a\";\n    Rename(name);\n"
-                "    p: Point = {x: 1, y: 2};\n    Swap(p);\n    Bump(p.x);\n"
-                "    xs: int[] = [1];\n    Grow(xs);\n"
-                "    total := n + p.x * 100 + p.y * 1000 + length(xs) * 10000 "
-                "+ Inc(5) * 1000000;\n"
-                "    if (name == \"a!\") { total += 100000; }\n"
-                "    return total;\n}\n"
-                "Moved :: () -> int { p: Point = {x: 1, y: 2}; Nudge(p); "
-                "return p.x * 100 + p.y; }",
+      .source =
+          "package facts\n"
+          "Point :: struct { x: int; y: int; }\n"
+          "Bump :: (v: ref int) { v += 1; }\n"
+          "Set :: (v: ref int, to: int) { v = to; }\n"
+          "Twice :: (v: ref int) { Bump(ref v); Bump(ref v); }\n"
+          "Rename :: (s: ref string) { s = format_text(\"{}!\", s); }\n"
+          "Swap :: (p: ref Point) { p = {x: p.y, y: p.x}; }\n"
+          "Grow :: (xs: ref int[]) { xs = append(xs, int(7)); }\n"
+          "Inc :: (k: int) -> int { Bump(ref k); return k; }\n"
+          "Nudge :: (p: ref Point) { p.x = 9; p.y += 5; Bump(ref p.x); }\n"
+          "Count :: () -> int { c: int = 2; c += 3; Bump(ref c); c = c * 2; "
+          "return c; }\n"
+          "Run :: () -> int {\n"
+          "    n: int = 1;\n    Bump(ref n);\n    Twice(ref n);\n    Set(ref "
+          "n, n * "
+          "10);\n"
+          "    name: string = \"a\";\n    Rename(ref name);\n"
+          "    p: Point = {x: 1, y: 2};\n    Swap(ref p);\n    Bump(ref p.x);\n"
+          "    xs: int[] = [1];\n    Grow(ref xs);\n"
+          "    total := n + p.x * 100 + p.y * 1000 + length(xs) * 10000 "
+          "+ Inc(5) * 1000000;\n"
+          "    if (name == \"a!\") { total += 100000; }\n"
+          "    return total;\n}\n"
+          "Moved :: () -> int { p: Point = {x: 1, y: 2}; Nudge(ref p); "
+          "return p.x * 100 + p.y; }",
       .calls = { { .function = "Run", .arguments = "[]", .expected = "[6121340]" },
                  { .function = "Inc", .arguments = "[1]", .expected = "[2]" },
                  { .function = "Count", .arguments = "[]", .expected = "[12]" },
                  { .function = "Moved", .arguments = "[]", .expected = "[1007]" } } },
+    /* Fixed scalar-result calls exercise aliases, escaping storage,
+     * grouped types, widening, aggregate replacement, and one two-node cycle. */
+    { .name = "managed pointers",
+      .group = COLLECTION_SAMPLES,
+      .source =
+          "package facts\n"
+          "Point :: struct { x: int; y: int; }\n"
+          "Holder :: struct { value: int; alias: ^int; }\n"
+          "Link :: struct { value: int; next: ^Link?; }\n"
+          "Bump :: (value: ref int) { value += 1; }\n"
+          "Make :: () -> ^Point { value: Point = {x: 3, y: 4}; return &value; "
+          "}\n"
+          "Scalar :: () -> ^int { value: int = 2; return &value; }\n"
+          "EscapeCopy :: (n: int) -> ^int { p := &n; p^ += 1; return p; }\n"
+          "Parameter :: () -> int { value: int = 3; p := EscapeCopy(value); "
+          "return value * 10 + p^; }\n"
+          "Alias :: () -> int { value: int = 1; p: ^int = &value; q := p; "
+          "q^ = 7; Bump(ref p^); return value * 100 + p^ * 10 + q^; }\n"
+          "Escaped :: () -> int { p := Make(); p.x = 9; return p^.x * 10 + "
+          "p.y; }\n"
+          "Field :: () -> int { value: Point = {x: 2, y: 4}; p := &value; "
+          "x := &value.x; x^ = 5; return p.x * 10 + p^.y; }\n"
+          "Copies :: () -> int { value: int = 2; original: Holder = "
+          "{value: 3, alias: &value}; copied := original; copied.value = 7; "
+          "copied.alias^ = 9; return original.value * 100 + copied.value * 10 "
+          "+ value; }\n"
+          "Distinct :: () -> int { a := Scalar(); b := Scalar(); a^ = 11; "
+          "return a^ * 100 + b^; }\n"
+          "Nullable :: () -> int { p: ^int? = nil; value: int = 3; p = &value; "
+          "if p != nil { return p^; } return 0; }\n"
+          "ArrayCopies :: () -> int { x: int = 1; y: int = 2; "
+          "original: ^int[] = [&x, &y]; copied := original; copied[0]^ = 5; "
+          "return original[0]^ * 100 + original[1]^ * 10 + "
+          "copied[1]^; }\n"
+          "ReadGrouped :: (values: (^int)[]) -> int { return values[0]^; }\n"
+          "Grouped :: () -> int { value: int = 4; return "
+          "ReadGrouped([&value]); }\n"
+          "Widened :: () -> int64 { small: int = 3; wide: int64 = small; "
+          "p := &wide; p^ += 2; return p^; }\n"
+          "WholeArray :: () -> int { values: int[] = [1, 2]; "
+          "p: ^(int[]) = &values; p^ = [8, 9, 10]; "
+          "return length(values) * 100 + values[0] * 10 + values[2]; }\n"
+          "Cycle :: () -> int { a: Link = {value: 1, next: nil}; "
+          "b: Link = {value: 2, next: nil}; p := &a; q := &b; "
+          "p.next = q; q.next = p; return p.value * 10 + q.value; }",
+      .calls = { { .function = "Alias", .arguments = "[]", .expected = "[888]" },
+                 { .function = "Escaped", .arguments = "[]", .expected = "[94]" },
+                 { .function = "Field", .arguments = "[]", .expected = "[54]" },
+                 { .function = "Copies", .arguments = "[]", .expected = "[379]" },
+                 { .function = "Distinct", .arguments = "[]", .expected = "[1102]" },
+                 { .function = "Nullable", .arguments = "[]", .expected = "[3]" },
+                 { .function = "ArrayCopies", .arguments = "[]", .expected = "[522]" },
+                 { .function = "Parameter", .arguments = "[]", .expected = "[34]" },
+                 { .function = "Cycle", .arguments = "[]", .expected = "[12]" },
+                 { .function = "Grouped", .arguments = "[]", .expected = "[4]" },
+                 { .function = "Widened", .arguments = "[]", .expected = "[5]" },
+                 { .function = "WholeArray", .arguments = "[]", .expected = "[390]" } } },
+    { .name = "imported references",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Forward :: (value: ref int) { lib.Bump(ref value); }\n"
+                "Run :: () -> int { value: int = 4; Forward(ref value); "
+                "lib.Bump(ref value); return value; }",
+      .library = "package lib\npub Bump :: (value: ref int) { value += 3; }",
+      .calls = { { .function = "Run", .arguments = "[]", .expected = "[10]" } } },
+    { .name = "reference marker missing",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () "
+                "{\n    n: int = 1;\n    Bump(n);\n}",
+      .message = "Reference parameter requires an explicit ref argument",
+      .line = 5,
+      .column = 10 },
+    { .name = "reference forwarded marker missing",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nBump :: (v: ref int) { v += 1; }\nForward :: "
+                "(v: ref int) {\n    Bump(v);\n}",
+      .message = "Reference parameter requires an explicit ref argument",
+      .line = 4,
+      .column = 10 },
+    { .name = "reference marker on value parameter",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nRead :: (v: int) -> int { return v; }\nRun :: "
+                "() -> int {\n    n: int = 1;\n    return Read(ref n);\n}",
+      .message = "ref argument requires a reference parameter",
+      .line = 5,
+      .column = 17 },
+    { .name = "reference marker on conversion",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nRun :: () -> int64 {\n    n: int = 1;\n    "
+                "return int64(ref n);\n}",
+      .message = "ref argument requires a reference parameter",
+      .line = 4,
+      .column = 18 },
+    { .name = "reference marker on native",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nRun :: () -> string {\n    n: int = 1;\n    "
+                "return format_text(ref n);\n}",
+      .message = "ref argument requires a reference parameter",
+      .line = 4,
+      .column = 24 },
+    { .name = "reference marker on union constructor",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nU :: union { A(value: int) }\nRun :: () -> U "
+                "{\n    n: int = 1;\n    return U.A(ref n);\n}",
+      .message = "ref argument requires a reference parameter",
+      .line = 5,
+      .column = 16 },
+    { .name = "reference imported marker missing",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\nRun :: () {\n    "
+                "n: int = 1;\n    lib.Bump(n);\n}",
+      .library = "package lib\npub Bump :: (v: ref int) { v += 1; }",
+      .message = "Reference parameter requires an explicit ref argument",
+      .line = 5,
+      .column = 14 },
     { .name = "reference literal",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () { "
-                "Bump(3); }",
+                "Bump(ref 3); }",
       .message = "Reference argument requires a writable value",
       .line = 3,
-      .column = 18 },
+      .column = 22 },
     { .name = "reference default",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ref int = 1) { v += 1; }",
@@ -843,10 +1144,10 @@ static const sample samples[] = {
     { .name = "reference type",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () { "
-                "n: int64 = 1; Bump(n); }",
+                "n: int64 = 1; Bump(ref n); }",
       .message = "reference argument differs from the parameter's type",
       .line = 3,
-      .column = 32 },
+      .column = 36 },
     { .name = "unions",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -2199,6 +2500,15 @@ static bool run(const unsigned char *bytes, size_t length, const sample_call *ca
         fprintf(stderr, "package compiler load: %s\n", error);
     }
     REQUIRE(host);
+    if (getenv("CHIBI_TRACE_PACKAGE_CALLS")) {
+        fprintf(
+            stderr,
+            "package compiler call: backend=%d function=%s arguments=%s\n",
+            backend,
+            call->function,
+            call->arguments
+        );
+    }
     bool valid = compiler_host_invoke(
         host,
         function_id(call->function),
@@ -2269,6 +2579,7 @@ static bool same_point(const behavior_source_point *x, const behavior_source_poi
 static bool same_points(const execution_module *expected, const execution_module *actual)
 {
     REQUIRE(expected->plan.function_count == actual->plan.function_count);
+    bool all_alike = true;
     for (int i = 0; i < expected->plan.function_count; i++) {
         const behavior_function *x = expected->plan.functions[i].body,
                                 *y = actual->plan.functions[i].body;
@@ -2318,10 +2629,10 @@ static bool same_points(const execution_module *expected, const execution_module
         if (!alike || placed_count != 0) {
             print_points("stage zero", x);
             print_points("stage one", y);
-            return false;
+            all_alike = false;
         }
     }
-    return true;
+    return all_alike;
 }
 static bool same_watch(const behavior_source_watch *x, const behavior_source_watch *y)
 {
@@ -3072,7 +3383,22 @@ static bool run_samples(sample_group group, int b)
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
         pin_value out;
-        REQUIRE(compile(b, s->game, s->c_string_probe, inputs, count, COMPILE_BUDGET, &out));
+        bool compiled = compile(b, s->game, s->c_string_probe, inputs, count, COMPILE_BUDGET, &out);
+        if (!compiled) {
+            fprintf(
+                stderr,
+                "package compiler sample failed: name=%s index=%d group=%d "
+                "backend=%s inputs=%d source_bytes=%zu budget=%d\n",
+                s->name,
+                i,
+                group,
+                b ? "compiled" : "bytecode",
+                count,
+                strlen(s->source),
+                COMPILE_BUDGET
+            );
+        }
+        REQUIRE(compiled);
         const pin_union *value = out.ptr;
         REQUIRE(out.type == PIN_UNION && value);
         if (s->message) {
@@ -3447,6 +3773,9 @@ TEST_CASE(package_compiler_compiles_itself)
     arena_free(&detached);
     char error[256];
     host = compiler_host_load(stage_two, length, TEST_COMPILED_BACKEND, error, sizeof error);
+    if (!host) {
+        fprintf(stderr, "package compiler stage two could not load: %s\n", error);
+    }
     REQUIRE(host);
     size_t target_length;
     char *target_json = compiler_host_target_json(host, &target_length);

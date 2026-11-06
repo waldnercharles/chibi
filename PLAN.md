@@ -1,3 +1,10 @@
+> Current sequence decision (2026-10-22): ordinary arrays/maps/builders are
+> independent values with copy-on-write; explicit pointers share mutable access.
+> This supersedes the earlier shared-array draft below. See
+> [the revised sequence plan](docs/value-sequences.md). Mutable views require an
+> explicit array pointer and follow its current pointee at fixed indices. The
+> earlier draft source is preserved and unpublished.
+
 # Chibi toolchain consolidation and self-hosting
 
 ## How to execute this plan
@@ -139,6 +146,11 @@ owns that program's sequence, semantic decisions and implementation status.
 Read it before expanding `core:` or adding public collections. The toolchain
 milestones below retain their existing order and acceptance conditions.
 
+The owner approved managed pointers with automatic lifetime and cycle cleanup
+on 2026-10-22. [Managed pointer implementation](docs/managed-pointers.md) records
+the contract, compiler/runtime work and current validation evidence. It builds
+on explicit call-site `ref` while keeping ordinary value copies independent.
+
 The current prerequisite is the approved byte-preserving string representation:
 one immutable public `string` carrying bytes and length, with explicit UTF-8
 operations. This branch implements descriptors and ownership throughout the
@@ -148,6 +160,14 @@ unknown values before native effects. Existing boolean APIs return failure and
 existing diagnostic APIs fail the invocation. New APIs accepting external data
 must expose recoverable errors. Shared slices follow the descriptor cutover.
 Track language friction and discuss each package's semantics before porting it.
+
+The owner revised the collection decision on 2026-10-22: ordinary arrays, maps
+and builders are independent values with copy-on-write storage. Explicit
+pointers share mutable access. Range slicing copies into a new array, and
+`clone()` allocates independent outer storage. `p.view(range)` requires an array
+pointer and follows its current pointee at fixed indices, including after
+reassignment. [Value sequence plan](docs/value-sequences.md) tracks implementation
+and the managed-pointer dependency. This remains unpublished draft work.
 
 ### Bootstrap terms
 

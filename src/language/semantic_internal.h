@@ -180,10 +180,14 @@ script_type script_analyzer_type_node(analyzer *a, TSNode node);
 script_type script_analyzer_conversion_type(analyzer *a, TSNode node, const char *name);
 /* The type a wrap or clamp conversion reads its operand as. */
 script_type script_analyzer_conversion_operand(const analyzer *, TSNode value);
+script_type script_analyzer_pointer_type(analyzer *, script_type);
+void script_analyzer_invalidate_pointers(analyzer *);
+int script_analyzer_dereference(analyzer *, TSNode, int);
 script_type script_analyzer_collection_type(analyzer *, pin_container, script_type key, script_type value);
 script_type script_analyzer_signature_type(analyzer *, TSNode, char **unit);
 void script_analyzer_signature_unit(analyzer *, TSNode, const char *expected, const char *actual);
 int script_analyzer_expr_add(analyzer *a, script_expression expression);
+int script_analyzer_sequence(analyzer *, TSNode node, TSNode object, TSNode range, script_sequence_operation);
 script_type script_analyzer_expr_type(const analyzer *a, int expression);
 unsigned script_analyzer_expr_effects(const analyzer *a, int expression);
 int script_analyzer_initializer_find(const analyzer *a, int symbol);
@@ -203,6 +207,7 @@ int script_analyzer_authored_parameter_index(
     const char *name
 );
 int script_analyzer_reference_argument(analyzer *a, TSNode node, const script_catalog_parameter *parameter);
+TSNode script_analyzer_call_argument(TSNode argument);
 int script_analyzer_symbol_reference(analyzer *, TSNode, script_type);
 int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expected);
 int script_analyzer_map_operation(analyzer *, TSNode, script_expression_kind, int map, TSNode key);

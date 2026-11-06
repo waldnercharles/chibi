@@ -9,7 +9,7 @@ pub ByteLength :: (value: string) -> int {
 }
 
 // Returns -1 outside the string; valid bytes are unsigned values from 0 to 255.
-// Each call measures the string, so a loop over a long one should read Bytes.
+// Length and byte access read the stored length in constant time.
 pub ByteAt :: (value: string, index: int) -> int {
     return text_byte_at(value, index);
 }

@@ -706,7 +706,8 @@ static void capture(
         r->view.availability = EXECUTION_WATCH_BUDGET;
         return;
     }
-    if (pin_value_snapshot_to_arena(&r->storage, &r->view.value, value)) {
+    /* A watch records this observation even when the live value mutates later. */
+    if (pin_value_capture_to_arena(&r->storage, &r->view.value, value)) {
         arena_free(&r->storage);
         r->view.value = source->initial;
         r->view.availability = EXECUTION_WATCH_UNSUPPORTED;

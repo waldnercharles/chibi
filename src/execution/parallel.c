@@ -65,6 +65,8 @@ static bool same_host(const node_host_call *a, const node_host_call *b)
            a->context == b->context && a->action == b->action &&
            a->optional_service == b->optional_service &&
            a->variadic == b->variadic && a->reusable == b->reusable &&
+           a->language_values == b->language_values &&
+           a->owned_result == b->owned_result &&
            ((!a->service && !b->service) ||
             (a->service && b->service && !strcmp(a->service, b->service)));
 }

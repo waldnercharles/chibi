@@ -13,8 +13,11 @@ bool script_analyzer_record_field(analyzer *a, TSNode node, script_type type, co
     *shape = (type_field){ .name = name,
                            .type = type.storage,
                            .type_name = nominal ? nominal->name : NULL };
+    bool pointer = type.storage == PIN_POINTER &&
+                   type.container == PIN_CONTAINER_SINGLE && !type.collection;
     if (type.container != PIN_CONTAINER_SINGLE || type.collection ||
-        (type.flags & ~(SCRIPT_TYPE_LITERAL | SCRIPT_TYPE_UNTYPED))) {
+        (type.flags & ~(SCRIPT_TYPE_LITERAL | SCRIPT_TYPE_UNTYPED |
+                        (pointer ? SCRIPT_TYPE_OPTIONAL : 0)))) {
         script_analyzer_diagnostic(a, node, "Record fields require concrete nonoptional value layouts; collections and references are not supported");
         return false;
     }
@@ -154,7 +157,18 @@ void script_analyzer_record_fields(analyzer *a, TSNode body)
             }
             TSNode value = script_analyzer_field(member, "value");
             field.has_default = !ts_node_is_null(value);
-            if (field.has_default) {
+            if (field.type.storage == PIN_POINTER &&
+                field.type.container == PIN_CONTAINER_SINGLE &&
+                (field.type.flags & SCRIPT_TYPE_OPTIONAL) &&
+                (ts_node_is_null(value) || script_analyzer_is(value, "nil"))) {
+                field.has_default = true;
+                const script_catalog_type
+                    *pointer = script_catalog_type_by_id(a->catalog, field.type.nominal);
+                field.default_value = (pin_value){ .type = PIN_POINTER,
+                                                   .type_name = pointer
+                                                                  ? pointer->name
+                                                                  : NULL };
+            } else if (field.has_default) {
                 int expression = script_analyzer_expression(a, value, field.type);
                 script_analyzer_require(a, value, field.type, script_analyzer_expr_type(a, expression));
                 const char *error = script_analyzer_scalar_constant(

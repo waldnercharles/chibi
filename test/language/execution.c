@@ -1,8 +1,10 @@
 #include "backend.h"
+#include "compiler_fixture.h"
 #include "execution/definition.h"
 #include "execution/function_builder.h"
 #include "execution/intrinsics.h"
 #include "execution/log.h"
+#include "execution/managed.h"
 #include "execution/module_effects.h"
 #include "execution/prepared_internal.h"
 #include "execution/scalar.h"
@@ -15,6 +17,8 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/pointer.h"
+#include "types/record.h"
 #include "types/text.h"
 #include "types/union.h"
 
@@ -46,7 +50,12 @@ static const type_desc c_text_type = { .name = "fixture.c_text",
                                        .size = sizeof(fixture_c_text),
                                        .fields = &c_text_field,
                                        .field_count = 1 };
-static const type_desc *const types[] = { &box_type, &c_text_type };
+static const type_field narrow_enum_field = { .name = "mode", .type = PIN_ENUM, .size = 1 };
+static const type_desc narrow_enum_type = { .name = "fixture.narrow_enum",
+                                            .size = 1,
+                                            .fields = &narrow_enum_field,
+                                            .field_count = 1 };
+static const type_desc *const types[] = { &box_type, &c_text_type, &narrow_enum_type };
 type_catalog_pack test_program_types();
 type_catalog_pack test_reductions_types();
 type_catalog_pack test_graph_model_types();
@@ -74,7 +83,7 @@ type_catalog_pack type_catalog_pack_at(int index)
                                     .enums = SHADER_PACK.enums,
                                     .enum_count = SHADER_PACK.enum_count };
     }
-    return (type_catalog_pack){ .types = types, .type_count = 2 };
+    return (type_catalog_pack){ .types = types, .type_count = 3 };
 }
 
 static behavior_function_builder *builder;
@@ -82,7 +91,14 @@ static behavior_function *function, *callee;
 static behavior_function_context context;
 static behavior_function_activation activation;
 static arena storage, managed;
+static behavior_managed_heap invocation_heap;
+static behavior_managed_heap comparison_heap;
+static behavior_managed_heap pointer_heap;
+static behavior_managed_heap secondary_pointer_heap;
+static pin_value pointer_root;
+static bool pointer_root_registered;
 static int host_calls;
+static compiler_fixture sequences;
 static service_binding *log_services;
 static execution_module_plan *prepared_plan;
 static execution_module *prepared_module;
@@ -92,13 +108,23 @@ static void release_invocation()
 {
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&invocation_heap);
     arena_free(&storage);
     context = (behavior_function_context){ 0 };
 }
 
 static void cleanup()
 {
+    compiler_fixture_free(&sequences);
     release_invocation();
+    behavior_managed_heap_free(&comparison_heap);
+    if (pointer_root_registered) {
+        behavior_managed_heap_unroot(&pointer_heap, &pointer_root);
+        pointer_root_registered = false;
+    }
+    behavior_managed_heap_free(&pointer_heap);
+    behavior_managed_heap_free(&secondary_pointer_heap);
+    pointer_root = (pin_value){ 0 };
     execution_module_plan_free(prepared_plan);
     execution_module_free(prepared_module);
     free(prepared_bytes);
@@ -145,6 +171,32 @@ static bool finish()
     return function != NULL;
 }
 
+static int invoke(
+    const pin_value *arguments,
+    int count,
+    pin_value *variables,
+    pin_value *results,
+    bool native,
+    unsigned budget,
+    behavior_managed_heap *heap
+)
+{
+    bool resumable = behavior_function_resumable(function);
+    if (resumable) {
+        behavior_function_activation_init(function, &activation);
+    }
+    context = (behavior_function_context){ .activation = resumable ? &activation : NULL,
+                                           .arguments = arguments,
+                                           .argument_count = count,
+                                           .variables = variables,
+                                           .results = results,
+                                           .managed_heap = heap,
+                                           .budget = budget };
+    behavior_function_bind_storage(&context, &storage);
+    assert(behavior_function_bind(function, &context, NULL, 0));
+    return behavior_function_run(function, &context, native);
+}
+
 static int run(
     const pin_value *arguments,
     int count,
@@ -155,19 +207,8 @@ static int run(
 )
 {
     release_invocation();
-    bool resumable = behavior_function_resumable(function);
-    if (resumable) {
-        behavior_function_activation_init(function, &activation);
-    }
-    context = (behavior_function_context){ .activation = resumable ? &activation : NULL,
-                                           .arguments = arguments,
-                                           .argument_count = count,
-                                           .variables = variables,
-                                           .results = results,
-                                           .budget = budget };
-    behavior_function_bind_storage(&context, &storage);
-    assert(behavior_function_bind(function, &context, NULL, 0));
-    return behavior_function_run(function, &context, native);
+    behavior_managed_heap_init(&invocation_heap);
+    return invoke(arguments, count, variables, results, native, budget, &invocation_heap);
 }
 
 static const char *scale(void *, const pin_value *arguments, pin_value *results)
@@ -911,23 +952,41 @@ TEST_CASE(execution_saved_aggregate_roots_keep_only_live_shapes)
         REQUIRE(behavior_function_compile(function));
         for (int i = 0; i < 2; i++) {
             arguments[i].ptr = pin_array_allocate(&managed, shape.type, NULL, 1);
+            ((pin_array *)arguments[i].ptr)->items[0] = (pin_value){
+                .type = shape.type
+            };
         }
         for (int backend = 0; backend < 2; backend++) {
             REQUIRE(run(arguments, 2, NULL, results, backend == 1, 100) == FLOW_SUSPENDED_RESULT);
+            /* Value arguments have independent managed shells. Capture the
+             * actual bank while suspended; completion restores the C bank. */
+            const pin_value *active_arguments = context.arguments;
+            pin_value live = active_arguments[0];
+            REQUIRE(active_arguments != arguments);
+            REQUIRE(
+                live.ptr != arguments[0].ptr && live.ptr != active_arguments[1].ptr
+            );
+            REQUIRE(arena_contains(&invocation_heap.storage, live.ptr));
+            REQUIRE(((pin_array *)live.ptr)->count == 1);
+            REQUIRE(pin_array_get(live.ptr, 0).type == shape.type);
             /* Remove the independent argument roots to exercise only saved
              * slot/local metadata, including rejection of the dead array. */
             context.arguments = NULL;
             context.argument_count = 0;
-            visited_aggregate seen = { .expected = arguments[0] };
+            visited_aggregate seen = { .expected = live };
             behavior_function_visit_values(function, &context, count_aggregate, &seen);
             REQUIRE(seen.matches == 2 && seen.others == 0);
-            context.arguments = arguments;
+            context.arguments = active_arguments;
             context.argument_count = 2;
             REQUIRE(behavior_function_run(function, &context, backend == 1) == FLOW_OK);
-            REQUIRE(
-                results[0].ptr == arguments[0].ptr &&
-                results[1].ptr == arguments[0].ptr
-            );
+            REQUIRE(context.arguments == arguments);
+            /* These result banks deliberately expose raw saved addresses;
+             * they do not publish owning language array values. */
+            REQUIRE(results[0].ptr == live.ptr && results[1].ptr == live.ptr);
+            for (int i = 0; i < 2; i++) {
+                REQUIRE(((pin_array *)arguments[i].ptr)->count == 1);
+                REQUIRE(pin_array_get(arguments[i].ptr, 0).type == shape.type);
+            }
         }
     }
     return true;
@@ -1547,9 +1606,8 @@ TEST_CASE(execution_synchronous_action_owns_outcomes_and_validates_selection)
     return true;
 }
 
-/* The result bit runs an intrinsic in the caller's storage, and only those
- * that may build there; union_keep runs only there. It keeps the payload
- * values its mask names when they are held in storage and copies the rest. */
+/* The result bit runs eligible intrinsics in caller storage. Union payloads
+ * remain independent values, including repeated sources and nested unions. */
 TEST_CASE(execution_intrinsics_build_in_result_storage)
 {
     uint64_t push = execution_intrinsic_id(&EXECUTION_array_push_call),
@@ -1584,9 +1642,9 @@ TEST_CASE(execution_intrinsics_build_in_result_storage)
     REQUIRE(!EXECUTION_union_keep_call.value(&storage, args, 5, &out));
     const pin_union *value = out.ptr;
     REQUIRE(value->tag == 7 && value->count == 3);
-    /* The first is kept; the second is not the storage's, and the mask leaves
-     * out the third. */
-    REQUIRE(value->values[0].ptr == held);
+    REQUIRE(value->values[0].ptr != held);
+    REQUIRE(value->values[0].ptr != value->values[2].ptr);
+    REQUIRE(arena_contains(&storage, value->values[0].ptr));
     REQUIRE(
         value->values[1].ptr != foreign &&
         arena_contains(&storage, value->values[1].ptr)
@@ -1596,57 +1654,74 @@ TEST_CASE(execution_intrinsics_build_in_result_storage)
         arena_contains(&storage, value->values[2].ptr)
     );
     REQUIRE(pin_array_get(value->values[1].ptr, 0).i == 2);
-    /* A value kept once is copied where the mask keeps it again. */
+    pin_value changed = { .type = PIN_I32, .i = 9 };
+    REQUIRE(!pin_array_snapshot_set(&storage, value->values[0].ptr, 0, &changed));
+    REQUIRE(pin_array_get(held, 0).i == 1);
+    REQUIRE(pin_array_get(value->values[2].ptr, 0).i == 1);
+    /* A different mask preserves the same independent VALUE contract. */
     args[1].u64 = 5;
     REQUIRE(!EXECUTION_union_keep_call.value(&storage, args, 5, &out));
     value = out.ptr;
-    REQUIRE(value->values[0].ptr == held && value->values[2].ptr != held);
+    REQUIRE(value->values[0].ptr != held && value->values[2].ptr != held);
+    REQUIRE(value->values[0].ptr != value->values[2].ptr);
     REQUIRE(pin_array_get(value->values[2].ptr, 0).i == 1);
-    /* A union it keeps may hold a value another payload keeps, so it is
-     * copied: here the inner union keeps `held`, as the second payload does. */
+    /* Nested payloads copy their outer values independently as well. */
     pin_value inner = out,
               nested[] = { args[0], { .type = PIN_U64, .u64 = 3 }, inner, args[2] };
     REQUIRE(!EXECUTION_union_keep_call.value(&storage, nested, 4, &out));
     value = out.ptr;
-    REQUIRE(value->values[0].ptr != inner.ptr && value->values[1].ptr == held);
+    REQUIRE(value->values[0].ptr != inner.ptr && value->values[1].ptr != held);
+    const pin_union *nested_value = value->values[0].ptr;
+    const pin_union *original = inner.ptr;
+    REQUIRE(nested_value->values[0].ptr != original->values[0].ptr);
+    REQUIRE(!pin_array_snapshot_set(&storage, nested_value->values[0].ptr, 0, &changed));
+    REQUIRE(pin_array_get(original->values[0].ptr, 0).i == 1);
+    REQUIRE(pin_array_get(value->values[1].ptr, 0).i == 1);
     arena_free(&storage);
     arena_free(&other);
-    /* The cost model reports the copy of each managed payload value the
-     * mask leaves out, and a possible one for a value it keeps. */
-    for (uint64_t mask = 0; mask < 2; mask++) {
-        builder = behavior_function_builder_new();
-        pin_value inputs[] = { { .type = PIN_U64, .u64 = 7 },
-                               { .type = PIN_U64, .u64 = mask },
-                               { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY } },
-                  made = { .type = PIN_UNION };
-        int host = behavior_function_builder_host(
-            builder,
-            &EXECUTION_union_keep_call,
-            &EXECUTION_assignment_access,
-            inputs,
-            3,
-            &made,
-            1
-        );
-        REQUIRE(behavior_function_builder_host_identity(
-            builder,
-            host,
-            keep | EXECUTION_INTRINSIC_IN_RESULT,
-            execution_intrinsic_abi(keep | EXECUTION_INTRINSIC_IN_RESULT)
-        ));
-        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
-                                              .target = host,
-                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
-        emit((behavior_function_instruction){ .op = BF_END });
-        REQUIRE(finish());
-        execution_cost_summary costs = behavior_function_costs(function);
-        REQUIRE(costs.complete);
-        REQUIRE(((costs.proven & EXECUTION_COST_COPY) != 0) == (mask == 0));
-        REQUIRE(((costs.possible & EXECUTION_COST_COPY) != 0) == (mask == 1));
-        behavior_function_free(function);
-        function = NULL;
-        behavior_function_builder_free(builder);
-        builder = NULL;
+    /* Both constructors have the same payload costs, independent of the old
+     * KEEP mask: no payload, plain scalar, collection, and named scalar. */
+    for (int form = 0; form < 3; form++) {
+        for (int payload = -1; payload < 3; payload++) {
+            builder = behavior_function_builder_new();
+            bool keeping = form != 0;
+            pin_value inputs[] = { { .type = PIN_U64, .u64 = 7 },
+                                   { .type = PIN_U64, .u64 = (uint64_t)(form - 1) },
+                                   { .type = PIN_I32,
+                                     .type_name = payload == 2 ? "fixture.Count" : NULL,
+                                     .container = payload == 1
+                                                    ? PIN_CONTAINER_ARRAY
+                                                    : PIN_CONTAINER_SINGLE } },
+                      made = { .type = PIN_UNION };
+            if (!keeping) {
+                inputs[1] = inputs[2];
+            }
+            uint64_t id = keeping ? keep | EXECUTION_INTRINSIC_IN_RESULT : make;
+            int host = behavior_function_builder_host(
+                builder,
+                keeping ? &EXECUTION_union_keep_call : &EXECUTION_union_make_call,
+                keeping ? &EXECUTION_assignment_access : &EXECUTION_value_access,
+                inputs,
+                (keeping ? 2 : 1) + (payload >= 0),
+                &made,
+                1
+            );
+            REQUIRE(
+                behavior_function_builder_host_identity(builder, host, id, execution_intrinsic_abi(id))
+            );
+            emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                                  .target = host,
+                                                  .left = BEHAVIOR_FUNCTION_HOST_DATA });
+            emit((behavior_function_instruction){ .op = BF_END });
+            REQUIRE(finish());
+            execution_cost_summary costs = behavior_function_costs(function);
+            REQUIRE(costs.complete && costs.proven == EXECUTION_COST_ALLOCATE);
+            REQUIRE(costs.possible == (payload >= 1 ? EXECUTION_COST_COPY : 0));
+            behavior_function_free(function);
+            function = NULL;
+            behavior_function_builder_free(builder);
+            builder = NULL;
+        }
     }
     return true;
 }
@@ -2158,10 +2233,738 @@ TEST_CASE(execution_native_string_fields_validate_before_publication)
     return true;
 }
 
+/* Five fixed address pairs on two backends: ten calls, budget 100 each. */
+TEST_CASE(execution_pointer_comparisons_use_location_identity)
+{
+    builder = behavior_function_builder_new();
+    pin_value headers[] = { { .type = PIN_POINTER }, { .type = PIN_POINTER } };
+    pin_value results[] = { { .type = PIN_BOOL }, { .type = PIN_BOOL } };
+    behavior_function_builder_signature(builder, headers, 2, results, 2, NULL, 0);
+    int left = slot(PIN_POINTER), right = slot(PIN_POINTER);
+    int equal = slot(PIN_BOOL), different = slot(PIN_BOOL);
+    emit((behavior_function_instruction){ .op = BF_ARGUMENT,
+                                          .type = PIN_POINTER,
+                                          .left = 0,
+                                          .output = left,
+                                          .value = headers[0] });
+    emit((behavior_function_instruction){ .op = BF_ARGUMENT,
+                                          .type = PIN_POINTER,
+                                          .left = 1,
+                                          .output = right,
+                                          .value = headers[1] });
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_EQ, .type = PIN_POINTER, .left = left, .right = right, .output = equal });
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_NE, .type = PIN_POINTER, .left = left, .right = right, .output = different });
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_RESULT, .type = PIN_BOOL, .target = 0, .left = equal });
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_RESULT, .type = PIN_BOOL, .target = 1, .left = different });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    REQUIRE(behavior_function_compile(function));
+    behavior_managed_heap_init(&comparison_heap);
+    type_field fields[] = {
+        { .name = "first", .type = PIN_I32, .type_name = "int" },
+        { .name = "second", .type = PIN_I32, .type_name = "int" },
+    };
+    const pin_record *record = pin_record_create(
+        &comparison_heap.storage,
+        "fixture.pointer_pair",
+        434,
+        fields,
+        2
+    );
+    REQUIRE(record);
+    int32_t pair[] = { 17, 23 };
+    pin_value base = { .type = PIN_STRUCT, .type_name = record->type.name, .record = record };
+    behavior_function_context owner = { .managed_heap = &comparison_heap };
+    pin_value make[] = { { .type = BF_POINTER_TYPE, .u64 = (uintptr_t)&owner }, base, base };
+    make[2].ptr = pair;
+    pin_value root = { .type = PIN_POINTER, .type_name = "^fixture.pointer_pair" },
+              other = root;
+    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &root));
+    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &other));
+    pin_value field[] = { root,
+                          { .type = PIN_I32 },
+                          { .type = PIN_U64, .u64 = record->type.fields[0].offset },
+                          { .type = PIN_BOOL },
+                          base };
+    pin_value first = { .type = PIN_POINTER, .type_name = "^int" },
+              same = first, next = first, separate = first;
+    REQUIRE(!EXECUTION_pointer_field_call.value(&managed, field, 5, &first));
+    REQUIRE(!EXECUTION_pointer_field_call.value(&managed, field, 5, &same));
+    REQUIRE(first.ptr != same.ptr);
+    field[2].u64 = record->type.fields[1].offset;
+    REQUIRE(!EXECUTION_pointer_field_call.value(&managed, field, 5, &next));
+    field[0] = other;
+    field[2].u64 = record->type.fields[0].offset;
+    REQUIRE(!EXECUTION_pointer_field_call.value(&managed, field, 5, &separate));
+    const struct
+    {
+        pin_pointer *left, *right;
+        bool equal;
+    } cases[] = {
+        { first.ptr, same.ptr, true },      { first.ptr, next.ptr, false },
+        { first.ptr, separate.ptr, false }, { NULL, NULL, true },
+        { first.ptr, NULL, false },
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        pin_value args[] = { { .type = PIN_POINTER, .ptr = cases[i].left },
+                             { .type = PIN_POINTER, .ptr = cases[i].right } };
+        for (int backend = 0; backend < 2; backend++) {
+            release_invocation();
+            REQUIRE(invoke(args, 2, NULL, results, backend != 0, 100, &comparison_heap) == FLOW_OK);
+            REQUIRE(results[0].b == cases[i].equal && results[1].b != cases[i].equal);
+        }
+    }
+    return true;
+}
+static const char *count_native_boundary(void *, const pin_value *, pin_value *)
+{
+    host_calls++;
+    return NULL;
+}
+/* Nine fixed union payloads and two backends, eighteen total invocations. */
+TEST_CASE(execution_native_boundary_rejects_hidden_managed_pointers)
+{
+    for (int variant = 0; variant < 9; variant++) {
+        cleanup();
+        pin_value payload = { .type = variant ? PIN_POINTER : PIN_I32 };
+        pin_array array = { .element_type = PIN_POINTER,
+                            .count = 1,
+                            .capacity = 1,
+                            .items = &payload };
+        pin_value nested = variant == 2
+                             ? (pin_value){ .type = PIN_POINTER,
+                                            .container = PIN_CONTAINER_ARRAY,
+                                            .ptr = &array }
+                             : payload;
+        int32_t plain_rows[] = { 3, 7 };
+        pin_pointer *pointer_rows[] = { NULL, NULL };
+        if (variant >= 3 && variant < 5) {
+            type_field field = { .name = "value",
+                                 .type = variant == 3 ? PIN_I32 : PIN_POINTER,
+                                 .type_name = variant == 3 ? NULL : "^int" };
+            const pin_record *
+                record = pin_record_create(&managed, "fixture.boundary_rows", 431, &field, 1);
+            REQUIRE(record);
+            array = (pin_array){ .element_type = PIN_STRUCT,
+                                 .type_name = record->type.name,
+                                 .record = record,
+                                 .count = 2,
+                                 .capacity = 2,
+                                 .stride = record->type.size,
+                                 .data = variant == 3 ? (void *)plain_rows
+                                                      : (void *)pointer_rows };
+            nested = (pin_value){ .type = PIN_STRUCT,
+                                  .container = PIN_CONTAINER_ARRAY,
+                                  .type_name = record->type.name,
+                                  .record = record,
+                                  .ptr = &array };
+            REQUIRE(pin_array_valid(&array));
+        }
+        pin_value boxed[2];
+        const pin_string text[] = { { "first", 5 }, { "second", 6 } };
+        const pin_string *text_rows[] = { &text[0], &text[1] };
+        if (variant >= 5 && variant < 7) {
+            const type_field field = { .name = "text",
+                                       .type = PIN_STR,
+                                       .text_descriptor = true };
+            const pin_record *
+                record = pin_record_create(&managed, "fixture.boundary_text", 432, &field, 1);
+            REQUIRE(record);
+            for (int i = 0; i < 2; i++) {
+                boxed[i] = (pin_value){ .type = PIN_STRUCT,
+                                        .type_name = record->type.name,
+                                        .record = record,
+                                        .ptr = &text_rows[i] };
+            }
+            array = (pin_array){ .element_type = PIN_STRUCT,
+                                 .type_name = record->type.name,
+                                 .record = record,
+                                 .count = 2,
+                                 .capacity = 2,
+                                 .items = boxed };
+            nested = (pin_value){ .type = PIN_STRUCT,
+                                  .container = PIN_CONTAINER_ARRAY,
+                                  .type_name = record->type.name,
+                                  .record = record,
+                                  .ptr = &array };
+            REQUIRE(pin_array_valid(&array));
+        }
+        uint8_t mode[] = { 1, 2 };
+        if (variant >= 7) {
+            nested = (pin_value){ .type = PIN_STRUCT,
+                                  .type_name = narrow_enum_type.name,
+                                  .ptr = mode };
+            if (variant == 8) {
+                for (int i = 0; i < 2; i++) {
+                    boxed[i] = nested;
+                    boxed[i].ptr = &mode[i];
+                }
+                array = (pin_array){ .element_type = PIN_STRUCT,
+                                     .type_name = narrow_enum_type.name,
+                                     .count = 2,
+                                     .capacity = 2,
+                                     .items = boxed };
+                nested.container = PIN_CONTAINER_ARRAY;
+                nested.ptr = &array;
+            }
+        }
+        bool rejected = variant == 1 || variant == 2 || variant == 4 || variant == 6;
+        pin_value argument;
+        REQUIRE(!pin_union_value(&managed, 1, &nested, 1, &argument));
+        builder = behavior_function_builder_new();
+        const node_host_call call = { .invoke = count_native_boundary };
+        const node_access access = { .flags = NODE_EFFECT_HOST_SINK };
+        int host = behavior_function_builder_host(builder, &call, &access, &argument, 1, NULL, 0);
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = host,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        emit((behavior_function_instruction){ .op = BF_END });
+        REQUIRE(finish());
+        if (variant == 6) {
+            /* A dynamic bank value can disagree with its array's declaration;
+             * the native boundary must inspect that element's actual header. */
+            pin_union *value = function
+                                   ->data_values[function->host_calls[host].first]
+                                   .initial.ptr;
+            pin_array *actual = value->values[0].ptr;
+            REQUIRE(actual && !actual->stride && actual->count == 2);
+            actual->items[1] = (pin_value){ .type = PIN_POINTER, .type_name = "^int" };
+        }
+        REQUIRE(behavior_function_compile(function));
+        for (int backend = 0; backend < 2; backend++) {
+            host_calls = 0;
+            int status = run(NULL, 0, NULL, NULL, backend != 0, 100);
+            REQUIRE(rejected ? status != FLOW_OK : status == FLOW_OK);
+            REQUIRE(host_calls == (rejected ? 0 : 1));
+            if (rejected) {
+                REQUIRE(context.failure == BEHAVIOR_FUNCTION_DATA);
+                REQUIRE(
+                    context.error_message &&
+                    !strcmp(context.error_message, "Native calls cannot retain managed pointer arguments")
+                );
+            }
+        }
+    }
+    return true;
+}
+/* Four malformed dynamic payloads, two instructions and two backends each.
+ * They enter an otherwise valid bank after definition freeze, so the boundary
+ * itself must reject before any callback or invalid memory access. */
+TEST_CASE(execution_native_boundary_rejects_malformed_aggregate_storage)
+{
+    for (int variant = 0; variant < 4; variant++) {
+        cleanup();
+        pin_value payload = { .type = PIN_I32 }, argument;
+        REQUIRE(!pin_union_value(&managed, 1, &payload, 1, &argument));
+        builder = behavior_function_builder_new();
+        const node_host_call call = { .invoke = count_native_boundary };
+        const node_access access = { .flags = NODE_EFFECT_HOST_SINK };
+        int host = behavior_function_builder_host(builder, &call, &access, &argument, 1, NULL, 0);
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = host,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        emit((behavior_function_instruction){ .op = BF_END });
+        REQUIRE(finish());
+        pin_union *actual = function
+                                ->data_values[function->host_calls[host].first]
+                                .initial.ptr;
+        pin_array malformed = { .element_type = variant ? PIN_I32 : PIN_POINTER,
+                                .count = 1,
+                                .capacity = 1,
+                                .stride = variant ? sizeof(int32_t) : sizeof(void *) };
+        type_field field = { .name = "value",
+                             .type = variant == 2 ? PIN_POINTER : PIN_UNION,
+                             .offset = variant == 2 ? SIZE_MAX : 0,
+                             .size = variant == 2 ? sizeof(void *) : 1 };
+        pin_record record = { .type = { .name = "fixture.invalid_boundary",
+                                        .size = sizeof(void *),
+                                        .fields = &field,
+                                        .field_count = 1 },
+                              .id = 433 };
+        void *record_payload = NULL;
+        actual->values[0] = variant < 2
+                              ? (pin_value){ .type = PIN_I32,
+                                             .container = PIN_CONTAINER_ARRAY,
+                                             .ptr = &malformed }
+                              : (pin_value){ .type = PIN_STRUCT,
+                                             .type_name = record.type.name,
+                                             .record = &record,
+                                             .ptr = &record_payload };
+        REQUIRE(behavior_function_compile(function));
+        for (int backend = 0; backend < 2; backend++) {
+            host_calls = 0;
+            REQUIRE(run(NULL, 0, NULL, NULL, backend != 0, 100) != FLOW_OK);
+            REQUIRE(host_calls == 0 && context.failure == BEHAVIOR_FUNCTION_DATA);
+            REQUIRE(
+                context.error_message &&
+                !strcmp(context.error_message, "Cannot retain language value")
+            );
+        }
+    }
+    return true;
+}
+/* Two fixed canonical intrinsic bodies; inspect metadata without executing. */
+TEST_CASE(execution_managed_pointer_access_is_not_query_or_parallel_safe)
+{
+    const node_host_call *calls[] = { &EXECUTION_pointer_read_call,
+                                      &EXECUTION_pointer_write_call };
+    for (int i = 0; i < 2; i++) {
+        cleanup();
+        builder = behavior_function_builder_new();
+        pin_value args[] = { { .type = PIN_POINTER }, { .type = PIN_I32 } };
+        pin_value output = { .type = i ? PIN_BOOL : PIN_I32 };
+        int host = behavior_function_builder_host(
+            builder,
+            calls[i],
+            &EXECUTION_value_access,
+            args,
+            2,
+            &output,
+            1
+        );
+        uint64_t id = execution_intrinsic_id(calls[i]);
+        REQUIRE(
+            behavior_function_builder_host_identity(builder, host, id, execution_intrinsic_abi(id))
+        );
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = host,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        emit((behavior_function_instruction){ .op = BF_END });
+        REQUIRE(finish());
+        REQUIRE(!execution_query_predicate_valid(function, 0));
+        execution_module_function entry = { .id = 1,
+                                            .kind = EXECUTION_FUNCTION_SYSTEM,
+                                            .body = function };
+        execution_module module = { .plan = { .functions = &entry,
+                                              .function_count = 1 } };
+        REQUIRE(execution_module_build_effects(&module));
+        REQUIRE(!execution_module_effects(&module).parallel_safe);
+        free(module.effect_ids);
+        if (i) {
+            execution_prepare_argument_sharing(function);
+            REQUIRE(function->argument_sharing == BEHAVIOR_SHARING_COPY);
+            REQUIRE(!execution_builds_safely(function));
+        }
+    }
+    return true;
+}
+/* Two flat record layouts share their first field's type and offset. Five
+ * direct calls, one refused root and two bounded backend calls check layouts. */
+TEST_CASE(execution_pointer_fields_require_the_full_base_layout)
+{
+    behavior_managed_heap_init(&pointer_heap);
+    const type_field fields[] = { { .name = "x", .type = PIN_I32 },
+                                  { .name = "tail", .type = PIN_I32 } };
+    type_field changed[] = { fields[0], fields[1] };
+    changed[1].type = PIN_F32;
+    const pin_record *record = pin_record_create(&managed, "fixture.projected", 101, fields, 2);
+    const pin_record *stale = pin_record_create(&managed, "fixture.projected", 101, changed, 2);
+    REQUIRE(record && stale && record->layout != stale->layout);
+    REQUIRE(record->type.fields[0].offset == stale->type.fields[0].offset);
+    REQUIRE(record->type.fields[0].type == stale->type.fields[0].type);
+    struct
+    {
+        int32_t x, tail;
+    } value = { 17, 23 };
+    pin_value base = { .type = PIN_STRUCT, .type_name = record->type.name, .record = record };
+    behavior_function_context owner = { .managed_heap = &pointer_heap };
+    pin_value make[] = { { .type = BF_POINTER_TYPE, .u64 = (uintptr_t)&owner }, base, base };
+    make[2].ptr = &value;
+    pointer_root = (pin_value){ .type = PIN_POINTER, .type_name = "^fixture.projected" };
+    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &pointer_root));
+    pin_value field[] = { pointer_root,
+                          { .type = PIN_I32 },
+                          { .type = PIN_U64, .u64 = record->type.fields[0].offset },
+                          { .type = PIN_BOOL },
+                          base };
+    pin_value projected = { .type = PIN_POINTER, .type_name = "^int" };
+    REQUIRE(!EXECUTION_pointer_field_call.value(&managed, field, 5, &projected));
+    pin_value read[] = { projected, { .type = PIN_I32 } },
+              result = { .type = PIN_I32 };
+    REQUIRE(!EXECUTION_pointer_read_call.value(&managed, read, 2, &result) && result.i == 17);
+    field[4].record = stale;
+    size_t before, capacity, after;
+    arena_usage(&pointer_heap.storage, &before, &capacity);
+    void *previous = projected.ptr;
+    const char *error = EXECUTION_pointer_field_call.value(&managed, field, 5, &projected);
+    REQUIRE(error && !strcmp(error, "Managed pointer base differs from its expected record layout"));
+    arena_usage(&pointer_heap.storage, &after, &capacity);
+    REQUIRE(projected.ptr == previous && before == after);
+    builder = behavior_function_builder_new();
+    int host = behavior_function_builder_host(
+        builder,
+        &EXECUTION_pointer_field_call,
+        &EXECUTION_value_access,
+        field,
+        5,
+        &projected,
+        1
+    );
+    uint64_t id = execution_intrinsic_id(&EXECUTION_pointer_field_call);
+    REQUIRE(
+        behavior_function_builder_host_identity(builder, host, id, execution_intrinsic_abi(id))
+    );
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = host,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    REQUIRE(behavior_function_compile(function));
+    for (int backend = 0; backend < 2; backend++) {
+        release_invocation();
+        int status = invoke(NULL, 0, NULL, NULL, backend != 0, 100, &pointer_heap);
+        if (context.failure != BEHAVIOR_FUNCTION_HOST_DATA) {
+            fprintf(
+                stderr,
+                "pointer projection backend=%d status=%d failure=%d "
+                "message=%s\n",
+                backend,
+                status,
+                context.failure,
+                context.error_message ? context.error_message : ""
+            );
+        }
+        REQUIRE(status != FLOW_OK);
+        REQUIRE(context.failure == BEHAVIOR_FUNCTION_HOST_DATA);
+        REQUIRE(
+            context.error_message &&
+            !strcmp(context.error_message, "Managed pointer base differs from its expected record layout")
+        );
+    }
+    pin_value native = { .type = PIN_STRUCT, .type_name = "NativeOnly" };
+    make[1] = make[2] = native;
+    previous = projected.ptr;
+    error = EXECUTION_pointer_make_call.value(&managed, make, 3, &projected);
+    REQUIRE(error && !strcmp(error, "Managed values require authored record layouts"));
+    REQUIRE(projected.ptr == previous);
+    error = behavior_managed_heap_root(&pointer_heap, &native);
+    REQUIRE(error && !strcmp(error, "Managed values require authored record layouts"));
+    REQUIRE(native.type == PIN_STRUCT && !native.ptr && !native.record);
+    REQUIRE(!strcmp(native.type_name, "NativeOnly") && !acount(pointer_heap.roots));
+    return true;
+}
+/* Two heaps, one cell each, five direct intrinsic calls and one refused root. */
+TEST_CASE(execution_pointer_owners_reject_foreign_cells_without_mutation)
+{
+    behavior_managed_heap_init(&pointer_heap);
+    behavior_managed_heap_init(&secondary_pointer_heap);
+    behavior_function_context first = { .managed_heap = &pointer_heap };
+    behavior_function_context second = { .managed_heap = &secondary_pointer_heap };
+    const pin_value header = { .type = PIN_POINTER, .type_name = "fixture.owner" };
+    pin_value make[] = { { .type = BF_POINTER_TYPE, .u64 = (uintptr_t)&first },
+                         header,
+                         header };
+    pin_value local = header, foreign = header, output = header;
+    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &local));
+    make[0].u64 = (uintptr_t)&second;
+    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &foreign));
+    pin_value rooted = foreign;
+    const char *error = behavior_managed_heap_root(&pointer_heap, &rooted);
+    REQUIRE(error && !strcmp(error, "Managed pointers cannot cross heap owners"));
+    REQUIRE(rooted.ptr == foreign.ptr && !acount(pointer_heap.roots));
+    make[0].u64 = (uintptr_t)&first;
+    make[2] = foreign;
+    output.ptr = local.ptr;
+    error = EXECUTION_pointer_make_call.value(&managed, make, 3, &output);
+    REQUIRE(error && !strcmp(error, "Managed pointers cannot cross heap owners"));
+    REQUIRE(output.ptr == local.ptr);
+    pin_value write[] = { local, foreign }, written = { 0 };
+    error = EXECUTION_pointer_write_call.value(&managed, write, 2, &written);
+    REQUIRE(error && !strcmp(error, "Managed pointers cannot cross heap owners"));
+    REQUIRE(written.type == PIN_BOOL && !written.b);
+    pin_value read[] = { local, header };
+    REQUIRE(!EXECUTION_pointer_read_call.value(&managed, read, 2, &output));
+    REQUIRE(output.type == PIN_POINTER && !output.ptr);
+    return true;
+}
+/* Three cyclic cells and one final scalar cell. Four quiescent collections,
+ * one registered-header reassignment, then heap destruction; no unbounded walks. */
+TEST_CASE(execution_managed_heap_preserves_roots_and_reclaims_cycles)
+{
+    behavior_managed_heap_init(&pointer_heap);
+    behavior_function_context owner = { .managed_heap = &pointer_heap };
+    const pin_value link_type = { .type = PIN_POINTER,
+                                  .type_name = "fixture.cyclic_pointer" };
+    pin_value make[] = {
+        { .type = BF_POINTER_TYPE, .u64 = (uintptr_t)&owner },
+        link_type,
+        link_type,
+    };
+    pointer_root = link_type;
+    pin_value other = link_type, self = link_type;
+    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &pointer_root));
+    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &other));
+    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &self));
+    REQUIRE(pointer_root.ptr && other.ptr && self.ptr);
+    REQUIRE(
+        pointer_root.ptr != other.ptr && other.ptr != self.ptr &&
+        pointer_root.ptr != self.ptr
+    );
+    pin_value write[] = { pointer_root, other }, written = { 0 };
+    REQUIRE(
+        !EXECUTION_pointer_write_call.value(&managed, write, 2, &written) &&
+        written.b
+    );
+    write[0] = other;
+    write[1] = pointer_root;
+    REQUIRE(
+        !EXECUTION_pointer_write_call.value(&managed, write, 2, &written) &&
+        written.b
+    );
+    write[0] = self;
+    write[1] = self;
+    REQUIRE(
+        !EXECUTION_pointer_write_call.value(&managed, write, 2, &written) &&
+        written.b
+    );
+    REQUIRE(!behavior_managed_heap_root(&pointer_heap, &pointer_root));
+    pointer_root_registered = true;
+    behavior_managed_heap_collect(&pointer_heap, NULL, NULL);
+    REQUIRE(arena_contains(&pointer_heap.storage, pointer_root.ptr));
+    REQUIRE(arena_contains(&pointer_heap.storage, other.ptr));
+    REQUIRE(!arena_contains(&pointer_heap.storage, self.ptr));
+    pin_value read[] = { pointer_root, link_type }, next = link_type;
+    REQUIRE(!EXECUTION_pointer_read_call.value(&managed, read, 2, &next));
+    REQUIRE(next.ptr == other.ptr);
+    read[0] = next;
+    REQUIRE(!EXECUTION_pointer_read_call.value(&managed, read, 2, &next));
+    REQUIRE(next.ptr == pointer_root.ptr);
+    behavior_managed_heap_collect(&pointer_heap, NULL, NULL);
+    REQUIRE(arena_contains(&pointer_heap.storage, other.ptr));
+    behavior_managed_heap_unroot(&pointer_heap, &pointer_root);
+    pointer_root_registered = false;
+    behavior_managed_heap_collect(&pointer_heap, NULL, NULL);
+    size_t bytes, capacity;
+    arena_usage(&pointer_heap.storage, &bytes, &capacity);
+    REQUIRE(bytes == 0);
+    REQUIRE(!arena_contains(&pointer_heap.storage, pointer_root.ptr));
+    REQUIRE(!arena_contains(&pointer_heap.storage, other.ptr));
+    make[1] = (pin_value){ .type = PIN_I32 };
+    make[2] = (pin_value){ .type = PIN_I32, .i = 17 };
+    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &pointer_root));
+    char first_label[] = "^fixture.first_int";
+    char second_label[] = "^fixture.second_int";
+    pointer_root.type_name = first_label;
+    REQUIRE(!behavior_managed_heap_root(&pointer_heap, &pointer_root));
+    pointer_root_registered = true;
+    void *cell = pointer_root.ptr;
+    pointer_root.type_name = second_label;
+    REQUIRE(!behavior_managed_heap_root(&pointer_heap, &pointer_root));
+    memset(first_label, 'x', sizeof first_label - 1);
+    memset(second_label, 'y', sizeof second_label - 1);
+    REQUIRE(acount(pointer_heap.roots) == 1);
+    REQUIRE(!strcmp(pointer_root.type_name, "^fixture.second_int"));
+    behavior_managed_heap_collect(&pointer_heap, NULL, NULL);
+    REQUIRE(pointer_root.ptr == cell && arena_contains(&pointer_heap.storage, cell));
+    REQUIRE(!strcmp(pointer_root.type_name, "^fixture.second_int"));
+    behavior_managed_heap_unroot(&pointer_heap, &pointer_root);
+    pointer_root_registered = false;
+    REQUIRE(!acount(pointer_heap.roots));
+    REQUIRE(!behavior_managed_heap_root(&pointer_heap, &pointer_root));
+    pointer_root_registered = true;
+    behavior_managed_heap_free(&pointer_heap);
+    pointer_root_registered = false;
+    REQUIRE(pointer_root.type == PIN_FLOW && !pointer_root.ptr);
+    return true;
+}
+typedef struct
+{
+    const char *entry;
+    int expected;
+} sequence_case;
+static bool sequence_results(const char *source, const sequence_case *cases, int count)
+{
+    source_package_input input = { "sequences/Main.chibi", source, strlen(source) };
+    REQUIRE(compiler_fixture_prepare(&sequences, &input, 1));
+    for (int backend = 0; backend < 2; backend++) {
+        for (int i = 0; i < count; i++) {
+            pin_value result = { 0 };
+            REQUIRE(compiler_fixture_call(
+                &sequences,
+                backend,
+                "project:sequences",
+                cases[i].entry,
+                NULL,
+                0,
+                100000,
+                &storage,
+                &result
+            ));
+            if (result.type != PIN_I32 || result.i != cases[i].expected) {
+                fprintf(
+                    stderr,
+                    "sequence %s backend=%d: expected %d, got type=%d "
+                    "value=%d\n",
+                    cases[i].entry,
+                    backend,
+                    cases[i].expected,
+                    result.type,
+                    result.i
+                );
+            }
+            REQUIRE(result.type == PIN_I32 && result.i == cases[i].expected);
+            arena_free(&storage);
+        }
+    }
+    return true;
+}
+TEST_CASE(execution_sequence_values_copy_at_ownership_boundaries)
+{
+    const char *source =
+        "package sequences\n"
+        "Change :: (xs: int[]) -> int[] { xs.append(9); return xs; }\n"
+        "Pair :: () -> (left: int[], right: int[]) { return ([1], [2]); }\n"
+        "R :: struct { x: int; }\n"
+        "pub Assignment :: () -> int { a: int[] = [1]; b := a; b.append(2); "
+        "b[0] = 9; return length(a) * 100 + a[0] * 10 + length(b); }\n"
+        "pub Arguments :: () -> int { a: int[] = [1]; b := Change(a); "
+        "return length(a) * 10 + length(b); }\n"
+        "pub NestedArrays :: () -> int { a: int[][] = [[1], [2]]; b := a; "
+        "b[0].append(3); b[1][0] = 9; "
+        "return length(a[0]) * 100 + a[1][0] * 10 + length(b[0]); }\n"
+        "pub NestedMapArrays :: () -> int { a: [int: int[]] = [1: [4, 5]]; b "
+        ":= a; "
+        "b[1].append(6); b[2] = [7]; "
+        "return length(a[1]) * 100 + length(b[1]) * 10 + length(a[2]); }\n"
+        "pub NestedMaps :: () -> int { a: [int: [int: int]] = [1: [2: 3]]; b "
+        ":= a; "
+        "b[1][2] = 9; return a[1][2] * 10 + b[1][2]; }\n"
+        "pub Records :: () -> int { a: R[] = []; a.append({x: 4}); b := a; "
+        "b[0].x = 9; return a[0].x * 10 + b[0].x; }\n"
+        "pub Clone :: () -> int { a: int[] = [1]; b := a.clone(); b[0] = 9; "
+        "return a[0] * 10 + b[0]; }\n"
+        "pub PointerIdentity :: () -> int { a: int[] = [1]; p := &a; q := p; b "
+        ":= a; "
+        "p.append(2); q.append(3); return length(a) * 100 + length(b) * 10 + "
+        "length(q^); }\n"
+        "pub TupleAlias :: () -> int { p := Pair(); { q := p; seen := "
+        "q.left[0]; } "
+        "return p.left[0] * 10 + p.right[0]; }\n";
+    const sequence_case cases[] = {
+        { "Assignment", 112 },   { "Arguments", 12 },
+        { "NestedArrays", 122 }, { "NestedMapArrays", 230 },
+        { "NestedMaps", 39 },    { "Records", 49 },
+        { "Clone", 19 },         { "PointerIdentity", 313 },
+        { "TupleAlias", 12 },
+    };
+    return sequence_results(source, cases, sizeof cases / sizeof *cases);
+}
+TEST_CASE(execution_strict_sequence_ranges_are_optional_and_copied)
+{
+    const char *source =
+        "package sequences\n"
+        "pub Bounds :: () -> int { a: int[] = [1, 2, 3, 4]; "
+        "negative := a[-1..<2]; if negative { return -1; } "
+        "reversed := a[3..<2]; if reversed { return -2; } "
+        "past := a.slice(0..<5); if past { return -3; } "
+        "outside := a[5..<5]; if outside { return -4; } "
+        "empty := a[0..<0]; if empty { tail := a.slice(4..<4); if tail { "
+        "whole := a[0..<4]; if whole { return length(empty) + length(tail) + "
+        "length(whole); } } } "
+        "return -5; }\n"
+        "pub CopiedRanges :: () -> int { a: int[] = [1, 2, 3]; b := a[0..<2]; "
+        "c := a.slice(1..<3); if b { if c { b[0] = 9; c[0] = 8; "
+        "return a[0] * 100 + a[1] * 10 + b[0] + c[0]; } } return -1; }\n"
+        "pub Clamped :: () -> int { a: int[] = [1, 2, 3]; b := a.slice(2, 99); "
+        "b[0] = 8; c := a.slice(99, 4); "
+        "return a[2] * 100 + length(b) * 10 + length(c) + b[0]; }\n"
+        "pub Bytes :: () -> int { text: string = \"a\\u0000bc\"; "
+        "part := text[1..<3]; if part { copied := part.clone(); "
+        "window := text.view(1..<3); if window { "
+        "return copied.length() * 100 + copied[0] + copied[1] + window[0] + "
+        "window[1]; } } return -1; }\n";
+    const sequence_case cases[] = {
+        { "Bounds", 4 },
+        { "CopiedRanges", 137 },
+        { "Clamped", 318 },
+        { "Bytes", 396 },
+    };
+    return sequence_results(source, cases, sizeof cases / sizeof *cases);
+}
+TEST_CASE(execution_pointer_views_follow_rebinding_and_fixed_positions)
+{
+    const char *source =
+        "package sequences\n"
+        "Pass :: (v: view int[]) -> view int[] { return v; }\n"
+        "pub Rebound :: () -> int { a: int[] = [1, 2, 3, 4]; p := &a; "
+        "held := p.view(1..<3); if held { v := Pass(held); b := a; v[0] = 20; "
+        "p^ = [5, 6, 7, 8]; v[1] = 70; "
+        "return a[1] * 100 + a[2] * 10 + b[1]; } return -1; }\n"
+        "pub Regrown :: () -> int { a: int[] = [1, 2, 3]; p := &a; "
+        "held := p.view(1..<3); if held { p^ = [9]; expired := "
+        "held.slice(0..<0); "
+        "if expired { return -2; } p.append(8); p.append(7); "
+        "return held[0] * 10 + held[1]; } return -1; }\n"
+        "pub EmptyWindow :: () -> int { a: int[] = [1, 2]; p := &a; "
+        "held := p.view(2..<2); if held { p^ = [9]; expired := "
+        "held.slice(0..<0); "
+        "if expired { return -2; } p.append(8); restored := held.slice(0..<0); "
+        "if restored { return length(held) + length(restored); } } return -1; "
+        "}\n";
+    const sequence_case cases[] = {
+        { "Rebound", 1302 },
+        { "Regrown", 87 },
+        { "EmptyWindow", 0 },
+    };
+    return sequence_results(source, cases, sizeof cases / sizeof *cases);
+}
+TEST_CASE(execution_sequence_places_preserve_effectful_evaluation_order)
+{
+    const char *source =
+        "package sequences\n"
+        "Grow :: (p: ^(int[])) -> int { p.append(9); return 0; }\n"
+        "Observe :: (xs: int[], ignored: int) -> int { return length(xs); }\n"
+        "Replace :: (p: ^(int[])) -> int { p^ = [8, 9]; return 7; }\n"
+        "Index :: (p: ^(int[])) -> int { p^ = [8, 9]; return 0; }\n"
+        "Next :: (p: ^int) -> int { n := p^; p^ += 1; return n; }\n"
+        "ReplaceNested :: (p: ^(int[][])) -> int { p^ = [[8, 9]]; return 7; }\n"
+        "pub Arguments :: () -> int { a: int[] = [1]; observed := Observe(a, "
+        "Grow(&a)); "
+        "return observed * 10 + length(a); }\n"
+        "pub ReceiverIndex :: () -> int { a: int[] = [1, 2]; value := "
+        "a[Index(&a)]; "
+        "return value * 10 + a[0]; }\n"
+        "pub Assignment :: () -> int { a: int[] = [1, 2]; a[0] = Replace(&a); "
+        "return a[0] * 10 + a[1]; }\n"
+        "pub MethodReceiver :: () -> int { a: int[] = [1]; "
+        "a.append(Replace(&a)); "
+        "return length(a) * 100 + a[0] * 10 + a[2]; }\n"
+        "pub Compound :: () -> int { a: int[] = [1, 2]; index: int = 0; "
+        "a[Next(&index)] += Replace(&a); return index * 100 + a[0] * 10 + "
+        "a[1]; }\n"
+        "pub NestedPlace :: () -> int { a: int[][] = [[1, 2]]; "
+        "a[0][1] = ReplaceNested(&a); return a[0][0] * 10 + a[0][1]; }\n";
+    const sequence_case cases[] = {
+        { "Arguments", 12 },  { "ReceiverIndex", 18 },
+        { "Assignment", 79 }, { "MethodReceiver", 387 },
+        { "Compound", 189 },  { "NestedPlace", 87 },
+    };
+    return sequence_results(source, cases, sizeof cases / sizeof *cases);
+}
 void test_language_execution()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(execution_sequence_values_copy_at_ownership_boundaries);
+    RUN_TEST_CASE(execution_strict_sequence_ranges_are_optional_and_copied);
+    RUN_TEST_CASE(execution_pointer_views_follow_rebinding_and_fixed_positions);
+    RUN_TEST_CASE(execution_sequence_places_preserve_effectful_evaluation_order);
     RUN_TEST_CASE(execution_prepared_identity_includes_instruction_schema);
+    RUN_TEST_CASE(execution_pointer_owners_reject_foreign_cells_without_mutation);
+    RUN_TEST_CASE(execution_pointer_fields_require_the_full_base_layout);
+    RUN_TEST_CASE(execution_pointer_comparisons_use_location_identity);
+    RUN_TEST_CASE(execution_native_boundary_rejects_hidden_managed_pointers);
+    RUN_TEST_CASE(execution_native_boundary_rejects_malformed_aggregate_storage);
+    RUN_TEST_CASE(execution_managed_pointer_access_is_not_query_or_parallel_safe);
+    RUN_TEST_CASE(execution_managed_heap_preserves_roots_and_reclaims_cycles);
     RUN_TEST_CASE(execution_union_extraction_checks_dynamic_payload_type);
     RUN_TEST_CASE(execution_intrinsics_build_in_result_storage);
     RUN_TEST_CASE(execution_branches_state_and_host_calls);

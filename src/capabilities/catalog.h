@@ -182,7 +182,8 @@ typedef struct
     int completion_outcome;
     unsigned effects;
     uint64_t receiver;
-    bool pure, variadic, variadic_optional, numeric_aggregate, event_sender;
+    bool pure, variadic, variadic_optional, numeric_aggregate, event_sender,
+        language_values, owned_result;
 } script_catalog_capability;
 typedef struct
 {
@@ -299,6 +300,7 @@ const char *script_reference_type_name(script_reference_kind);
 script_type script_catalog_canonical_type(const script_catalog *, script_type);
 bool script_catalog_type_assignable(const script_catalog *, script_type expected, script_type actual);
 bool script_type_equal(script_type a, script_type b);
+script_type script_catalog_pointee_type(const script_catalog *, script_type);
 script_type script_catalog_element_type(const script_catalog *, script_type);
 script_type script_catalog_key_type(const script_catalog *, script_type);
 bool script_type_numeric(script_type type);

@@ -3,6 +3,7 @@
 #include "execution/status.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/array.h"
 #include "types/catalog.h"
 #include "types/record.h"
 
@@ -90,14 +91,24 @@ int program_binding_run(execution_instance *instance, int binding_index, double 
             same = pin_value_equal(&cache->inputs[i], &dependencies->context.results[i]);
         }
         if (same) {
+            /* Replaying the output must not expose the historical cache to
+             * later mutations through the component's retained array objects. */
+            arena replay = { 0 };
+            pin_value output;
+            if (pin_value_capture_to_arena(&replay, &output, &cache->output)) {
+                arena_free(&replay);
+                program_activation_free(dependencies);
+                return FLOW_ERR_ARGUMENT;
+            }
             int written = ecs_component_write_value(
                 p->world,
                 ecs_entity_from_u64(instance->owner),
                 binding->component,
                 binding->offset,
                 binding->target_type,
-                cache->output
+                output
             );
+            arena_free(&replay);
             program_activation_free(dependencies);
             return written == ECS_OK ? FLOW_OK : FLOW_ERR_ARGUMENT;
         }
@@ -151,8 +162,9 @@ int program_binding_run(execution_instance *instance, int binding_index, double 
     if (written == ECS_OK && dependencies) {
         arena next = { 0 };
         pin_value *inputs = xcalloc((size_t)(binding->dependency_count + 1), sizeof *inputs);
+        /* Cache content at this evaluation, including nested mutable arrays. */
         for (int i = 0; i < binding->dependency_count; i++) {
-            int status = pin_value_snapshot_to_arena(
+            int status = pin_value_capture_to_arena(
                 &next,
                 &inputs[i],
                 &dependencies->context.results[i]
@@ -161,7 +173,7 @@ int program_binding_run(execution_instance *instance, int binding_index, double 
             (void)status;
         }
         pin_value output;
-        int status = pin_value_snapshot_to_arena(&next, &output, &value);
+        int status = pin_value_capture_to_arena(&next, &output, &value);
         assert(!status);
         (void)status;
         free(cache->inputs);

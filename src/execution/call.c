@@ -1,5 +1,6 @@
 #include "execution/borrow.h"
 #include "execution/definition.h"
+#include "execution/intrinsics.h"
 #include "execution/runner.h"
 #include "execution/service.h"
 #include "execution/status.h"
@@ -286,6 +287,7 @@ static invocation_frame *frame_new(
     behavior_function_prepare_data(call.function, parent->services, &frame->data);
     frame->context = (behavior_function_context){
         .parent = parent,
+        .managed_heap = parent->managed_heap,
         .call_enter = parent->call_enter,
         .call_leave = parent->call_leave,
         .activation = &frame->activation,
@@ -319,36 +321,23 @@ static invocation_frame *frame_new(
         .bind_instance = parent->bind_instance,
         .commit_instance = parent->commit_instance
     };
-    bool direct = !behavior_function_inspection_required(function, parent) &&
-                  program_call_views_allowed(parent);
-    bool shared = direct && call.function->argument_sharing == BEHAVIOR_SHARING_SAFE;
-    bool views = direct && call.function->readonly_collections;
     pin_value *arguments = arena_alloc(&frame->storage, (size_t)(call.count + 1) * sizeof *arguments);
     for (int p = 0; p < call.count; p++) {
-        /* The callee and its callees leave the caller's storage untouched, and
-         * the caller waits for the call, so the arguments need no copies. */
-        if (shared) {
+        if (call.owned_arguments) {
             arguments[p] = parent->data->values[call.first + p];
+            behavior_function_collection_transfer(parent, &frame->context, &arguments[p]);
             continue;
         }
-        if (views && behavior_function_borrow_argument(
-                         call.function,
-                         &frame->context,
-                         &parent->data->values[call.first + p],
-                         &arguments[p]
-                     )) {
-            continue;
-        }
-        if (pin_value_snapshot_to_arena(
-                &frame->storage,
-                &arguments[p],
-                &parent->data->values[call.first + p]
-            )) {
+        arena *storage = parent->managed_heap ? &parent->managed_heap->storage
+                                              : &frame->storage;
+        if (pin_value_collection_copy(storage, &arguments[p], &parent->data->values[call.first + p])) {
             frame_free(frame, FLOW_ERR_ARGUMENT);
             call_error(function, parent, BEHAVIOR_FUNCTION_ARGUMENT, "function argument cannot be retained");
             return NULL;
         }
+        behavior_function_collection_retain(&frame->context, &arguments[p]);
     }
+    frame->context.arguments_stabilized = true;
     frame->context.arguments = arguments;
     frame->context.argument_count = call.count;
     frame->context.results = arena_alloc(
@@ -427,6 +416,11 @@ static int return_values(invocation_frame *frame, const behavior_function *paren
     /* A function without results may end anywhere, as a void function does;
        one with results must reach Return to produce them. */
     if (!context->returned) {
+        if (!call.result_count && call.owned_arguments) {
+            for (int p = 0; p < call.count; p++) {
+                behavior_function_collection_drop(parent, &parent->data->values[call.first + p]);
+            }
+        }
         return call.result_count
                  ? call_error(parent_function, parent, BEHAVIOR_FUNCTION_NO_RETURN, "function completed without Return")
                  : FLOW_OK;
@@ -454,11 +448,30 @@ static int return_values(invocation_frame *frame, const behavior_function *paren
         if (frame->function->builds_results && pointer && result->ptr &&
             context->value_storage != parent->value_storage &&
             arena_contains(parent->value_storage, result->ptr)) {
+            if (out->ptr != result->ptr) {
+                behavior_function_collection_drop(parent, out);
+            }
             out->ptr = result->ptr;
+            behavior_function_collection_transfer(context, parent, out);
             continue;
         }
-        if (pin_value_snapshot_to_arena(parent->value_storage, out, &context->results[p])) {
+        pin_value retained;
+        if (pin_value_snapshot_to_arena(
+                parent->value_storage,
+                &retained,
+                &context->results[p]
+            )) {
             return call_error(parent_function, parent, BEHAVIOR_FUNCTION_DATA, "function result cannot be retained");
+        }
+        if (out->ptr != retained.ptr) {
+            behavior_function_collection_drop(parent, out);
+        }
+        *out = retained;
+        behavior_function_collection_transfer(context, parent, out);
+    }
+    if (call.owned_arguments) {
+        for (int p = 0; p < call.count; p++) {
+            behavior_function_collection_drop(parent, &parent->data->values[call.first + p]);
         }
     }
     return FLOW_OK;
@@ -497,6 +510,14 @@ int behavior_function_run_calls(
             if (call->task) {
                 result = context->start_task(context, (int)(call - active->calls));
                 if (!result) {
+                    if (call->owned_arguments) {
+                        for (int p = 0; p < call->count; p++) {
+                            behavior_function_collection_drop(
+                                context,
+                                &context->data->values[call->first + p]
+                            );
+                        }
+                    }
                     continue;
                 }
                 root->wake_time = context->wake_time;
@@ -540,7 +561,7 @@ int behavior_function_run_calls(
 
 static void trace_value(const pin_value *value, behavior_value_kind kind, arena_marker mark, void *user)
 {
-    pin_value_trace(value, mark, user);
+    behavior_managed_heap_trace_value(value, mark, user);
     if (kind != BEHAVIOR_VALUE) {
         mark(user, (const void *)(uintptr_t)behavior_scalar_bits(*value));
     }
@@ -576,11 +597,13 @@ static void trace_context(
             behavior_value_kind kind = value < slots ? f->slot_kinds[value]
                                                      : f->locals[value - slots].kind;
             if (kind != BEHAVIOR_VALUE || type == PIN_STR || type == PIN_NAME ||
-                type == PIN_UNION) {
+                type == PIN_UNION || type == PIN_POINTER) {
                 mark(user, (const void *)(uintptr_t)a->values[value]);
             }
         }
     }
+    /* Imported argument banks may themselves live in the managed heap. */
+    mark(user, ctx->arguments);
     trace_values(ctx->arguments, f->argument_kinds, ctx->argument_count, mark, user);
     trace_values(ctx->results, f->result_kinds, f->result_count, mark, user);
     trace_values(ctx->variables, NULL, f->variable_count, mark, user);
@@ -594,7 +617,7 @@ static void trace_context(
         if (f->data_values[i].size) {
             pin_value value = f->data_values[i].initial;
             value.ptr = ctx->data->buffers[i];
-            pin_value_trace(&value, mark, user);
+            behavior_managed_heap_trace_value(&value, mark, user);
         }
     }
 }
@@ -606,11 +629,13 @@ void behavior_function_trace_values(
 )
 {
     trace_context(f, ctx, mark, user);
+    behavior_function_collection_trace(ctx, mark, user);
     const struct behavior_function_calls *calls = ctx->activation
                                                     ? ctx->activation->calls
                                                     : NULL;
     for (int i = 0; calls && i < acount(calls->frames); i++) {
         trace_context(calls->frames[i]->function, &calls->frames[i]->context, mark, user);
+        behavior_function_collection_trace(&calls->frames[i]->context, mark, user);
     }
 }
 static void visit_bank(
@@ -624,6 +649,23 @@ static void visit_bank(
         visit(user, &values[i]);
     }
 }
+static void visit_reference_bank(
+    const pin_value *values,
+    const behavior_value_kind *kinds,
+    int count,
+    void (*visit)(void *, const pin_value *),
+    void *user
+)
+{
+    for (int i = 0; kinds && i < count; i++) {
+        pin_value pointer;
+        if (kinds[i] == BEHAVIOR_REFERENCE &&
+            execution_reference_managed_pointer(values[i], &pointer)) {
+            visit(user, &pointer);
+        }
+    }
+}
+
 static void visit_context(
     const behavior_function *f,
     const behavior_function_context *ctx,
@@ -645,9 +687,19 @@ static void visit_context(
             int index = s->values[i];
             pin_type type = index < slots ? f->slots[index]
                                           : f->locals[index - slots].initial.type;
-            if (type == PIN_TASK || type == PIN_UNION) {
+            behavior_value_kind kind = index < slots ? f->slot_kinds[index]
+                                                     : f->locals[index - slots].kind;
+            if (kind == BEHAVIOR_REFERENCE) {
+                pin_value reference = { .type = BF_POINTER_TYPE,
+                                        .u64 = a->values[index] },
+                          pointer;
+                if (execution_reference_managed_pointer(reference, &pointer)) {
+                    visit(user, &pointer);
+                }
+            }
+            if (type == PIN_TASK || type == PIN_UNION || type == PIN_POINTER) {
                 pin_value value = { .type = type, .u64 = a->values[index] };
-                if (type == PIN_UNION) {
+                if (type == PIN_UNION || type == PIN_POINTER) {
                     value.ptr = (void *)(uintptr_t)a->values[index];
                 }
                 visit(user, &value);
@@ -655,6 +707,17 @@ static void visit_context(
         }
     }
     visit_bank(ctx->arguments, ctx->argument_count, visit, user);
+    visit_reference_bank(ctx->arguments, f->argument_kinds, ctx->argument_count, visit, user);
+    visit_reference_bank(ctx->results, f->result_kinds, f->result_count, visit, user);
+    visit_reference_bank(
+        ctx->command_arguments,
+        f->command_argument_kinds,
+        acount(f->command_arguments),
+        visit,
+        user
+    );
+    visit_reference_bank(ctx->command_results, f->command_result_kinds, acount(f->command_results), visit, user);
+
     visit_bank(ctx->results, f->result_count, visit, user);
     visit_bank(ctx->variables, f->variable_count, visit, user);
     visit_bank(ctx->command_arguments, acount(f->command_arguments), visit, user);
@@ -663,6 +726,14 @@ static void visit_context(
         return;
     }
     visit_bank(ctx->data->values, acount(f->data_values), visit, user);
+    for (int i = 0; i < acount(f->data_values); i++) {
+        pin_value pointer;
+        if (f->data_values[i].kind == BEHAVIOR_REFERENCE &&
+            execution_reference_managed_pointer(ctx->data->values[i], &pointer)) {
+            visit(user, &pointer);
+        }
+    }
+
     for (int i = 0; i < acount(f->data_values); i++) {
         if (f->data_values[i].size) {
             pin_value value = f->data_values[i].initial;

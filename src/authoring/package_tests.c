@@ -1,6 +1,7 @@
 #include "authoring/package_tests.h"
 
 #include "execution/function.h"
+#include "execution/managed.h"
 #include "execution/module.h"
 #include "execution/status.h"
 #include "support/arena.h"
@@ -122,7 +123,10 @@ bool package_test_run(
     if (resumable) {
         behavior_function_activation_init(test->body, &activation);
     }
-    behavior_function_context context = { .activation = resumable ? &activation : NULL,
+    behavior_managed_heap managed;
+    behavior_managed_heap_init(&managed);
+    behavior_function_context context = { .managed_heap = &managed,
+                                          .activation = resumable ? &activation : NULL,
                                           .budget = budget,
                                           .inspection_user = failure,
                                           .failure_observer = observe,
@@ -149,5 +153,6 @@ bool package_test_run(
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
     arena_free(&storage);
+    behavior_managed_heap_free(&managed);
     return passed;
 }

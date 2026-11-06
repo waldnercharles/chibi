@@ -112,6 +112,10 @@ uint64_t compiler_fixture_export(
 }
 void compiler_fixture_free(compiler_fixture *fixture)
 {
+    if (fixture->managed) {
+        behavior_managed_heap_free(fixture->managed);
+        free(fixture->managed);
+    }
     for (int b = 0; b < 2; b++) {
         authoring_packages_free(fixture->owners[b]);
     }
@@ -131,6 +135,8 @@ bool compiler_fixture_prepare_packs(
 )
 {
     REQUIRE(additional_count >= 0 && (!additional_count || additional));
+    fixture->managed = xmalloc(sizeof *fixture->managed);
+    behavior_managed_heap_init(fixture->managed);
     native_definition_pack *packs = xmalloc(((size_t)additional_count + 2) * sizeof *packs);
     packs[0] = NATIVE_TEXT_DEFINITION_PACK;
     packs[1] = NATIVE_ARRAY_DEFINITION_PACK;
@@ -159,9 +165,15 @@ bool compiler_fixture_prepare_packs(
         REQUIRE(snapshot);
         const source_package_snapshot_error *error = source_package_snapshot_error_at(snapshot);
         if (error) {
+            int document = error->diagnostic.range.document;
+            const char *path = document >= 0 && document < count
+                                 ? files[document].path
+                                 : "compiler fixture";
             fprintf(
                 stderr,
-                "compiler fixture:%d:%d: %s\n",
+                "%s[%d]:%d:%d: %s\n",
+                path,
+                document,
                 error->diagnostic.range.line,
                 error->diagnostic.range.column,
                 error->diagnostic.message
@@ -182,10 +194,16 @@ bool compiler_fixture_prepare_packs(
             const authoring_package *package = authoring_packages_at(fixture->owners[b], p);
             for (int d = 0; d < package->diagnostic_count; d++) {
                 const script_diagnostic *diagnostic = &package->diagnostics[d];
+                const script_source_document
+                    *document = package->analysis ? script_analysis_document(
+                                                        package->analysis,
+                                                        diagnostic->range.document
+                                                    )
+                                                  : NULL;
                 fprintf(
                     stderr,
                     "%s:%d:%d: %s\n",
-                    package->identity,
+                    document ? document->path : package->identity,
                     diagnostic->range.line,
                     diagnostic->range.column,
                     diagnostic->message
@@ -228,6 +246,9 @@ typedef struct
     behavior_function_failure category;
     uintptr_t steps;
     char message[192];
+    char source[192];
+    int line;
+    int column;
 } failure_state;
 typedef struct
 {
@@ -237,7 +258,7 @@ typedef struct
     pin_value result;
     failure_state failure;
 } call_state;
-static void observe_failure(const behavior_function *, const behavior_function_context *context, int)
+static void observe_failure(const behavior_function *function, const behavior_function_context *context, int)
 {
     failure_state *failure = context->inspection_user;
     if (failure->observed) {
@@ -247,6 +268,18 @@ static void observe_failure(const behavior_function *, const behavior_function_c
     failure->observed = true;
     failure->category = context->failure;
     failure->steps = context->error_steps;
+    const behavior_function_source
+        *source = behavior_function_source_at(function, context->error_source);
+    if (source) {
+        snprintf(
+            failure->source,
+            sizeof failure->source,
+            "%s",
+            source->asset_name ? source->asset_name : ""
+        );
+        failure->line = source->line;
+        failure->column = source->column;
+    }
     snprintf(
         failure->message,
         sizeof failure->message,
@@ -293,6 +326,7 @@ static bool run(
         .arguments = arguments,
         .argument_count = count,
         .results = &state->result,
+        .managed_heap = fixture->managed,
         .budget = (uintptr_t)budget,
         .inspection_user = fixture->observe_failures ? &state->failure : NULL,
         .failure_observer = fixture->observe_failures ? observe_failure : NULL
@@ -325,7 +359,9 @@ static bool run(
             stderr,
             "compiler fixture failure: backend=%s package=%s entry=%s "
             "status=%d "
-            "returned=%d failure=%s category=%d error_steps=%zu message=%s\n",
+            "returned=%d failure=%s category=%d error_steps=%zu "
+            "context_steps=%zu context_budget=%zu call_budget=%d message=%s "
+            "source=%s:%d:%d\n",
             backend == 0 ? "bytecode" : "compiled",
             identity,
             name,
@@ -334,7 +370,13 @@ static bool run(
             failure,
             category,
             (size_t)steps,
-            message ? message : ""
+            (size_t)context->steps,
+            (size_t)context->budget,
+            budget,
+            message ? message : "",
+            observed->source,
+            observed->line,
+            observed->column
         );
     }
     REQUIRE(status == FLOW_OK && state->context.returned);

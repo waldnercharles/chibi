@@ -183,10 +183,10 @@ ConstantCode :: (item: Literal) -> Instruction {
 Emit :: (output: Emitter, item: Instruction, origin: Range, storage: int, kind: int) -> Emitter {
     switch output {
         case .Emitted(raw_slots, raw_locals, raw_origins, raw_code):
-            slots := raw_slots;
-            locals := raw_locals;
-            origins := raw_origins;
-            code := raw_code;
+            slots := slice(raw_slots, 0, length(raw_slots));
+            locals := slice(raw_locals, 0, length(raw_locals));
+            origins := slice(raw_origins, 0, length(raw_origins));
+            code := slice(raw_code, 0, length(raw_code));
             // The native builder reserves source row zero before any emission.
             item.source = length(origins) + 1;
             if (storage != 0) {
@@ -232,7 +232,7 @@ AddLocal :: (output: Emitter) -> Emitter {
 Patch :: (output: Emitter, pc: int, target: int) -> Emitter {
     switch output {
         case .Emitted(slots, locals, origins, raw_code):
-            code := raw_code;
+            code := slice(raw_code, 0, length(raw_code));
             item := code[pc];
             item.target = target;
             code[pc] = item;
@@ -254,7 +254,7 @@ pub Lower :: (request: Request) -> Plan {
                 !ValidIndex(request_range, length(ranges))) {
                 return Reject(-1, "scalar lowering input exceeds its schema limits");
             }
-            if (abi.schema != 1 || abi.prepared != 20 ||
+            if (abi.schema != 1 || abi.prepared != 21 ||
                 (abi.pointer_storage != 7 && abi.pointer_storage != 9) ||
                 abi.value_size < 1 || abi.value_size > 256 || abi.payload_offset < 0 ||
                 abi.payload_offset > abi.value_size - 4 || abi.results_offset < 0 || abi.results_offset > 4096) {

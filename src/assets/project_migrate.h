@@ -136,4 +136,11 @@ int chibi_migrate_step_globals(const char *source, char **migrated, char *error,
  * declares one of those names or the current grammar rejects the result. */
 int chibi_migrate_array_calls(const char *source, char **migrated, char *error, size_t error_size);
 
+/* Version 33 marks arguments of authored ref parameters. Resolves local
+ * callables by lexical scope and qualified library calls across all sources.
+ * Unknown native calls stay unchanged. Returns owned results (NULL for each
+ * unchanged source), or NULL with error set for invalid/ambiguous source.
+ * Existing markers are retained, so rerunning the step is safe. */
+char **chibi_migrate_ref_calls(const char *const *sources, int count, char *error, size_t error_size);
+
 #endif

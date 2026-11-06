@@ -1,4 +1,5 @@
 #include "authoring/source_package_prepare.h"
+#include "capabilities/catalog.h"
 #include "capabilities/catalog_snapshot.h"
 #include "execution/status.h"
 #include "support/arena.h"
@@ -787,6 +788,37 @@ TEST_CASE(package_imports_exported_defaults_are_constant_values_without_host_exe
     return true;
 }
 
+TEST_CASE(package_exports_keep_private_managed_pointee_metadata)
+{
+    const source_package_input files[] = {
+        { "app/main.chibi", "package app\nimport lib \"../lib\"\nMain :: () -> int { return 0; }\n", 0 },
+        { "lib/main.chibi", "package lib\nPrivateRecord :: struct { value: int; }\npub Holder :: struct { target: ^PrivateRecord?; }\n", 0 },
+    };
+    REQUIRE(prepare(0, files, 2, BEHAVIOR_BYTECODE, -1, "/project"));
+    REQUIRE(valid(0));
+    const authoring_package *lib = package(0, "project:lib");
+    REQUIRE(lib && lib->exports && lib->exports->metadata);
+    const script_catalog *catalog = lib->exports->metadata;
+    const script_catalog_type *holder = NULL;
+    for (int i = 0; i < catalog->type_count; i++) {
+        const char *name = strrchr(catalog->types[i].name, '.');
+        if (!strcmp(name ? name + 1 : catalog->types[i].name, "Holder")) {
+            holder = &catalog->types[i];
+        }
+    }
+    REQUIRE(holder && holder->field_count == 1);
+    const script_catalog_type
+        *pointer = script_catalog_type_by_id(catalog, holder->fields[0].type.nominal);
+    REQUIRE(pointer && pointer->type.storage == PIN_POINTER);
+    const script_catalog_type
+        *pointee = script_catalog_type_by_id(catalog, pointer->element_type.nominal);
+    REQUIRE(pointee && pointee->type.storage == PIN_STRUCT && pointee->field_count == 1);
+    const char *name = strrchr(pointee->name, '.');
+    REQUIRE(!strcmp(name ? name + 1 : pointee->name, "PrivateRecord"));
+    REQUIRE(lib->exports->member_count == 1);
+    REQUIRE(!strcmp(lib->exports->members[0].name, "Holder"));
+    return true;
+}
 TEST_CASE(package_imports_malformed_public_exports_are_rejected_before_lookup)
 {
     static const char *text = "package app\nimport lib \"../lib\"\nMain :: "
@@ -894,6 +926,7 @@ void test_language_package_imports()
     RUN_TEST_CASE(package_imports_see_only_pub_declarations);
     RUN_TEST_CASE(package_imports_exported_defaults_are_constant_values_without_host_execution);
     RUN_TEST_CASE(package_import_catalog_snapshot_owns_union_payload_defaults);
+    RUN_TEST_CASE(package_exports_keep_private_managed_pointee_metadata);
     RUN_TEST_CASE(package_imports_malformed_public_exports_are_rejected_before_lookup);
     pu_clear_setup();
 }

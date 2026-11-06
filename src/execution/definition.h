@@ -46,6 +46,7 @@ typedef struct
     const node_host_call *call;
     const node_access *access;
     int first, result_first, result_count;
+    bool owned_arguments; /* Explicit VALUE_COPY argument bank. */
     const uint64_t *outcomes;
     int outcome_count;
     uint64_t capability_id, capability_abi;
@@ -77,6 +78,7 @@ typedef struct
     const behavior_function *function;
     int first, count, result_first, result_count;
     bool task;
+    bool owned_arguments; /* Released after result adoption, including resumed calls. */
 } behavior_function_invocation;
 enum
 {

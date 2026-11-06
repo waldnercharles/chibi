@@ -14,7 +14,7 @@ enum
 };
 struct prepared_record_cache
 {
-    size_t name_bytes, validation_work;
+    size_t name_bytes, validation_work, hash_work;
     arena *owner;
     const pin_record *owned;
 };
@@ -124,9 +124,19 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
 {
     execution_wire *w = &c->wire;
     struct prepared_record_cache *cache = &c->records[index];
+    if (!w->reading && v->record && v->record->native) {
+        w->error = "native type requirements use linked descriptors";
+        return;
+    }
     bool authored = !w->reading && v->record;
     execution_wire_bool(w, &authored);
     if (w->error) {
+        return;
+    }
+    if (v->storage == PIN_POINTER) {
+        if (authored || v->size != sizeof(void *)) {
+            w->error = "invalid prepared pointer type";
+        }
         return;
     }
     if (!authored) {
@@ -156,6 +166,11 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
         return;
     }
     if (!w->reading) {
+        if (!pin_record_fields_current(v->record)) {
+            w->error = "prepared authored nested layout is retired or "
+                       "incompatible";
+            return;
+        }
         cache->validation_work = validate(c, v->record);
         if (w->error) {
             return;
@@ -204,7 +219,7 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
         }
         size_t bytes = name_bytes(c, name);
         if (!name || !*name || !bytes || bytes > SIZE_MAX - names ||
-            !((kind >= PIN_BOOL && kind <= PIN_ENUM) && kind != PIN_FLOW)) {
+            !((kind >= PIN_BOOL && kind <= PIN_ENUM) || kind == PIN_POINTER)) {
             w->error = "invalid prepared authored field";
             break;
         }
@@ -239,6 +254,20 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
     }
     bytes += names;
     cache->validation_work = validation_work(c, count, names);
+    if (w->error) {
+        return;
+    }
+    /* Flat headers hash only fixed field metadata and names. Duplicate-name
+     * validation is quadratic, but only construction/copy and the final
+     * verifier perform it. Nested native layouts retain the existing charge:
+     * their hash follows catalog descriptors beyond these owned field names. */
+    cache->hash_work = 8 * (names + (size_t)count + 1);
+    for (int i = 0; i < count; i++) {
+        if (fields[i].type == PIN_STRUCT) {
+            cache->hash_work = cache->validation_work;
+            break;
+        }
+    }
     if (!work(c, cache->validation_work)) {
         return;
     }
@@ -292,7 +321,7 @@ void prepared_types(prepared_context *c)
         }
         c->records[i].name_bytes = name_bytes(c, v->name);
         if (!v->id || !v->name || !*v->name || v->storage < PIN_BOOL ||
-            v->storage > PIN_UNION) {
+            v->storage > PIN_POINTER) {
             w->error = "invalid prepared type requirement";
             break;
         }
@@ -359,6 +388,15 @@ static const pin_record *resolve(execution_wire *w, void *user, const pin_value 
         w->error = "prepared authored/native type identity differs";
         return NULL;
     }
+    if (!w->reading && v->record && v->record->native) {
+        if (authored || !pin_record_valid(v->record) ||
+            v->record->layout != type->layout || v->record->type.size != type->size ||
+            strcmp(v->record->type.name, type->name)) {
+            w->error = "prepared native value layout differs";
+            return NULL;
+        }
+        return v->record;
+    }
     if (!w->reading) {
         if (v->record) {
             validate(c, v->record);
@@ -389,7 +427,7 @@ static const pin_record *resolve(execution_wire *w, void *user, const pin_value 
         return NULL;
     }
     struct prepared_record_cache *cache = &c->records[index];
-    if (!work(c, cache->validation_work)) {
+    if (!work(c, cache->hash_work)) {
         return NULL;
     }
     if (w->storage == &c->plan->storage) {
@@ -444,7 +482,7 @@ void prepared_value(prepared_context *c, pin_value *v)
 }
 static bool header_work(prepared_context *c, pin_value value)
 {
-    if (!value.record) {
+    if (!value.record || value.record->native) {
         return true;
     }
     int at = requirement(c, &value);

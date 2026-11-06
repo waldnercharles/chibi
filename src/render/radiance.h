@@ -2,6 +2,7 @@
 #define CHIBI_RENDER_RADIANCE_H
 #include "platform/cute.h"
 #include "render/material_raster.h"
+#include "render/spot_lights.h"
 #include "render/view_2d.h"
 #include "runtime/components.h"
 
@@ -79,6 +80,9 @@ typedef struct
     render_material_textures material;
     /* Optional: the backdrop behind open space. */
     CF_Texture background;
+    /* Borrowed for this draw; at most RENDER_SPOT_LIGHT_LIMIT direct lights. */
+    const render_spot_light *spots;
+    int spot_count;
 } render_radiance_inputs;
 /* Requires a current Cute context and shader directory containing the hrc shader subdirectory. */
 render_radiance *render_radiance_new();

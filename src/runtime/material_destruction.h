@@ -78,6 +78,9 @@ typedef struct
     void (*destroy_source)(void *user, uint64_t source);
     void (*invalidate_geometry)(void *user, uint64_t source);
     void (*result)(void *user, const material_event *event);
+    /* Optional notification for each disk that removed cells, before fragment
+     * callbacks. Copy the disk if needed; do not invalidate source masks here. */
+    void (*cut_surface)(void *user, const material_damage *damage);
 } material_host;
 
 material_destruction *material_destruction_new();

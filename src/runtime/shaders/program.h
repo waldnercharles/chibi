@@ -204,6 +204,13 @@ typedef struct
     float world_position[3];
     float normal[3];
     float view_direction[3];
+    /* Optional caller-owned derivative workspace in float[4] values. Each
+     * derivative evaluation consumes acount(graph->nodes) entries and lends
+     * the remainder to children. A validated graph permits at most two levels
+     * (Bump sampling Triplanar Texture). Smaller capacity uses the allocating
+     * fallback. Borrowed for this call; never aliases primary values. */
+    float (*derivative_scratch)[4];
+    int derivative_capacity;
     float time;
     float beat_phase, beat_pulse;
     shader_image_resolver resolve_image; /* Returns resident pixels; does no file IO. */

@@ -14,6 +14,7 @@ layout(set = 2, binding = 11) uniform sampler2D surface_q3;
 layout(set = 2, binding = 12) uniform sampler2D cover_tex;
 layout(set = 2, binding = 13) uniform sampler2D horizon_cardinal;
 layout(set = 2, binding = 14) uniform sampler2D horizon_diagonal;
+layout(set = 2, binding = 15) uniform sampler2D spot_tex;
 
 layout(set = 3, binding = 1) uniform shd_uniforms
 {
@@ -408,6 +409,9 @@ vec4 shader(vec4 color, ShaderParams params)
     vec3 lit = (incident * depth_shading + sky * fluence.a * occlusion) * albedo + surface_shaded;
     lit += max(albedo * shadow_floor * occlusion, visibility.rgb);
     vec3 out_linear = fluence.rgb * fog + emission * intensity + scene.rgb * ambient * occlusion + lit;
+    // Direct spots are evaluated once with receiver geometry/material. They
+    // never enter the isotropic emission raster or temporal bounce history.
+    out_linear += texture(spot_tex, source_uv).rgb;
     vec2 background_uv = clamp(screen_uv + distortion / (crop_uv.zw - crop_uv.xy), vec2(0), vec2(1));
     out_linear += texture(background_tex, background_uv).rgb * (1.0 - scene.a);
     if (linear_output != 0) return vec4(max(out_linear, vec3(0.0)), 1.0);

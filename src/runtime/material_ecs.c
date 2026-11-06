@@ -76,6 +76,7 @@ static void reset_simulation(materials *materials)
 {
     material_destruction_reset(materials->destruction);
     aclear(materials->damage_requests);
+    aclear(materials->terrain_cuts);
     aclear(materials->regions);
     aclear(materials->debris_tiles);
     aclear(materials->terrain_views);
@@ -111,11 +112,13 @@ void materials_free(materials *materials)
     afree(materials->records);
     material_destruction_free(materials->destruction);
     afree(materials->damage_requests);
+    afree(materials->terrain_cuts);
     material_fields_free(materials->fields);
     afree(materials->regions);
     material_debris_free(materials->debris);
     afree(materials->debris_tiles);
     afree(materials->terrain_views);
+    afree(materials->surface_views);
     afree(materials->host_views);
     afree(materials->debris_blasts);
     task_pool_release(materials->pool);
@@ -779,6 +782,10 @@ void material_ecs_add_component(
 
 static void detach(materials *materials, ecs_entity source, material_mask mask, fluid_vec hit, float kick)
 {
+    /* Moving fragments no longer share their terrain source's neighbors. */
+    if (mask.halo_radius) {
+        material_mask_set_halo(&mask, (material_mask_halo){ 0 });
+    }
     ecs_world *world = materials->world;
     /* Copy before entity growth can relocate component columns. The fragment
      * is a root, so it starts at its source's world placement. */
@@ -797,6 +804,9 @@ static void detach(materials *materials, ecs_entity source, material_mask mask, 
     const Shader *binding = Shader_get_const(world, source);
     Shader shader = binding ? *binding : (Shader){ 0 };
     bool has_shader = binding != NULL;
+    const MaterialSurface3D *mesh_ptr = MaterialSurface3D_get_const(world, source);
+    bool has_mesh = mesh_ptr != NULL;
+    MaterialSurface3D mesh = mesh_ptr ? *mesh_ptr : (MaterialSurface3D){ 0 };
     /* The fragment's local frame is its source's, so it inherits where that
      * frame sat when the material was laid out. */
     const MaterialFrame *laid_out = MaterialFrame_get_const(world, source);
@@ -854,6 +864,9 @@ static void detach(materials *materials, ecs_entity source, material_mask mask, 
     material_ecs_add_component(world, entity, &COMPONENT_Destructible, &destructible);
     material_ecs_add_component(world, entity, &COMPONENT_Appearance, &appearance);
     material_ecs_add_component(world, entity, &COMPONENT_Material, &material);
+    if (has_mesh) {
+        material_ecs_add_component(world, entity, &COMPONENT_MaterialSurface3D, &mesh);
+    }
     if (substance.hardness > 0) {
         material_ecs_add_component(world, entity, &COMPONENT_Substance, &substance);
     }
@@ -862,6 +875,8 @@ static void detach(materials *materials, ecs_entity source, material_mask mask, 
     }
     if (has_shader) {
         material_ecs_add_component(world, entity, &COMPONENT_Shader, &shader);
+    }
+    if (has_shader || has_mesh) {
         material_ecs_add_component(world, entity, &COMPONENT_MaterialFrame, &frame);
     }
     if (glow.duration > 0) {
@@ -980,7 +995,8 @@ static void create_fragment(void *user, uint64_t source, material_fragment fragm
 {
     materials *materials = user;
     material_record *record = &materials->records[ecs_entity_from_u64(source).slot];
-    if (record->mask && !record->mask->width && !record->streamed_mask) {
+    bool terrain = !record->fragment && ecs_entity_to_u64(record->terrain_source);
+    if (record->mask && !record->mask->width && !record->streamed_mask && !terrain) {
         free(record->mask);
         record->mask = NULL;
     }
@@ -997,9 +1013,24 @@ static void destroy_source(void *user, uint64_t target)
 {
     materials *materials = user;
     material_record *record = material_ecs_record(materials, ecs_entity_from_u64(target));
-    if (record->streamed_mask) {
-        material_mask_free(record->mask);
-        *record->mask = (material_mask){ 0 };
+    if (!record->fragment && ecs_entity_to_u64(record->terrain_source)) {
+        /* Empty terrain remains authoritative. Its neighbors need air samples,
+         * and a checkpoint must not regenerate a released chunk as solid. A
+         * release may have transferred the entire mask into a moving fragment. */
+        assert(record->mask);
+        if (!record->mask->width) {
+            const Collider
+                *collider = Collider_get_const(materials->world, record->entity);
+            const Destructible
+                *style = Destructible_get_const(materials->world, record->entity);
+            int width = (int)lroundf(collider->width / style->cell_size);
+            int height = (int)lroundf(collider->height / style->cell_size);
+            unsigned char *cells = xcalloc((size_t)width * height, 1);
+            *record->mask = material_mask_from_cells(width, height, style->cell_size, cells);
+            free(cells);
+        }
+        assert(record->mask->count == 0);
+        return;
     }
     entities_request_destroy(materials->entities, ecs_entity_from_u64(target));
 }
@@ -1133,8 +1164,13 @@ const char *materials_prepare(materials *materials)
         queue_damage(materials, materials->damage_requests[i]);
     }
     aclear(materials->damage_requests);
-    material_host host = { materials,      read_source,         create_fragment,
-                           destroy_source, invalidate_geometry, material_result };
+    material_host host = { .user = materials,
+                           .read_source = read_source,
+                           .create_fragment = create_fragment,
+                           .destroy_source = destroy_source,
+                           .invalidate_geometry = invalidate_geometry,
+                           .result = material_result,
+                           .cut_surface = material_ecs_queue_terrain_cut };
     material_destruction_step(
         materials->destruction,
         &host,
@@ -1142,6 +1178,8 @@ const char *materials_prepare(materials *materials)
             ? materials->fragment_limit - materials->fragments
             : 0
     );
+    material_ecs_apply_terrain_cuts(materials);
+    material_ecs_sync_terrain_surfaces(materials);
     return NULL;
 }
 

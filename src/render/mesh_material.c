@@ -20,6 +20,7 @@ typedef struct
 {
     int primitive;
     uint64_t asset_identity;
+    uint64_t dynamic_identity, dynamic_revision;
     int first_index;
     CF_Mesh mesh;
 } primitive_mesh;
@@ -330,9 +331,32 @@ static const render_mesh_material_actor *order_actors(
     }
     return pass->ordered_actors;
 }
+void render_mesh_material_forget(render_mesh_material *pass, uint64_t identity)
+{
+    for (int i = 0; i < acount(pass->meshes); i++) {
+        if (pass->meshes[i].dynamic_identity == identity && identity) {
+            cf_destroy_mesh(pass->meshes[i].mesh);
+            adel(pass->meshes, i);
+            return;
+        }
+    }
+}
+
 static CF_Mesh mesh(render_mesh_material *pass, const render_mesh_surface_part *part)
 {
     for (int i = 0; i < acount(pass->meshes); i++) {
+        if (part->dynamic_identity) {
+            if (pass->meshes[i].dynamic_identity != part->dynamic_identity) {
+                continue;
+            }
+            if (pass->meshes[i].dynamic_revision == part->dynamic_revision) {
+                return pass->meshes[i].mesh;
+            }
+            break;
+        }
+        if (pass->meshes[i].dynamic_identity) {
+            continue;
+        }
         if (pass->meshes[i].primitive == part->visual.part.primitive &&
             pass->meshes[i].asset_identity == part->asset_identity &&
             pass->meshes[i].first_index == part->first_index) {
@@ -371,12 +395,18 @@ static CF_Mesh mesh(render_mesh_material *pass, const render_mesh_surface_part *
     CF_Mesh result = cf_make_mesh(count * sizeof *corners, attributes, 7, sizeof *corners);
     if (result.id) {
         cf_mesh_update_vertex_data(result, corners, count);
+        pass->work.mesh_uploads++;
+        if (part->dynamic_identity) {
+            render_mesh_material_forget(pass, part->dynamic_identity);
+        }
         apush(
             pass->meshes,
-            ((primitive_mesh){ part->visual.part.primitive,
-                               part->asset_identity,
-                               part->first_index,
-                               result })
+            ((primitive_mesh){ .primitive = part->visual.part.primitive,
+                               .asset_identity = part->asset_identity,
+                               .dynamic_identity = part->dynamic_identity,
+                               .dynamic_revision = part->dynamic_revision,
+                               .first_index = part->first_index,
+                               .mesh = result })
         );
     }
     afree(corners);
@@ -470,6 +500,10 @@ static bool draw_actor(
                                part->part_coordinates ? 2
                                : part->asset_identity ? 1
                                                       : 0 };
+        /* Low two bits select UV/part coordinates; bit 2 consumes Height. */
+        if (part->height_consumed) {
+            properties[3] += 4;
+        }
         CF_V3 dimensions = part->visual.part.dimensions;
         float size[] = { dimensions.x,
                          dimensions.y,
@@ -1170,6 +1204,9 @@ void render_mesh_material_set_hidden_rejection(render_mesh_material *pass, bool 
 render_mesh_material_work render_mesh_material_last_work(const render_mesh_material *pass)
 {
     render_mesh_material_work work = pass->work;
+    for (int i = 0; i < acount(pass->meshes); i++) {
+        work.dynamic_meshes += pass->meshes[i].dynamic_identity != 0;
+    }
     if (pass->sdf_programs) {
         work.sdf_program_count = render_programs_count(pass->sdf_programs);
         work.sdf_program_compilations = render_programs_successful_compilations(

@@ -53,6 +53,8 @@ extern const ecs_component_desc COMPONENT_FragmentGlow;
 extern const FragmentGlow *FragmentGlow_get_const(const ecs_world *, ecs_entity);
 extern const ecs_component_desc COMPONENT_MaterialFrame;
 extern const MaterialFrame *MaterialFrame_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_MaterialSurface3D;
+extern const MaterialSurface3D *MaterialSurface3D_get_const(const ecs_world *, ecs_entity);
 extern int Destructible_has(const ecs_world *, ecs_entity);
 extern const ecs_component_desc COMPONENT_FluidVolume;
 extern const FluidVolume *FluidVolume_get_const(const ecs_world *, ecs_entity);

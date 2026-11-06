@@ -172,6 +172,11 @@ static lod_entry *entry_for(render_material_lod *lod, const material_mask *mask)
 const material_mask *render_material_lod_get(render_material_lod *lod, const material_mask *mask, int level)
 {
     assert(level >= 0 && level < RENDER_MATERIAL_LOD_LEVELS);
+    /* Terrain neighbors share a limit, including partial edge chunks. Never
+     * reduce one side beyond the neighborhood's immutable sampling support. */
+    if (mask->halo_radius && level > mask->lod_limit) {
+        level = mask->lod_limit;
+    }
     int coarsest = 0;
     while (coarsest < level && (mask->width >> coarsest) % 2 == 0 &&
            (mask->height >> coarsest) % 2 == 0) {

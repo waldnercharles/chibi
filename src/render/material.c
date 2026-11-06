@@ -64,18 +64,27 @@ bool material_extract(const Material *material, material_coefficients *out)
     return true;
 }
 
+static bool occupied(material_occupancy_view mask, int x, int y)
+{
+    if (x >= 0 && y >= 0 && x < mask.width && y < mask.height) {
+        return mask.cells[y * mask.width + x] != 0;
+    }
+    bool solid;
+    float distance;
+    return material_occupancy_sample(mask, x, y, &solid, &distance) && solid;
+}
+
 static bool border_cell(material_occupancy_view mask, int reach, int x, int y)
 {
     if (!mask.cells[y * mask.width + x]) {
         return false;
     }
     for (int d = 1; d <= reach; d++) {
-        if (x < d || y < d || x + d >= mask.width || y + d >= mask.height ||
-            !mask.cells[y * mask.width + x - d] ||
-            !mask.cells[y * mask.width + x + d] ||
-            !mask.cells[(y - d) * mask.width + x] ||
-            !mask.cells[(y + d) * mask.width + x]) {
-            return true;
+        const int samples[4][2] = { { x - d, y }, { x + d, y }, { x, y - d }, { x, y + d } };
+        for (int i = 0; i < 4; i++) {
+            if (!occupied(mask, samples[i][0], samples[i][1])) {
+                return true;
+            }
         }
     }
     return false;

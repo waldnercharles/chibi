@@ -116,6 +116,7 @@ enum
 typedef struct
 {
     int draw_calls, sdf_draw_calls, sdf_instances, sdf_uploads;
+    int mesh_uploads, dynamic_meshes;
     int surface_builds, surface_reuses, sdf_program_prepares;
     int sdf_lod_instances, surface_pixels, surface_capacity_pixels;
     size_t sdf_upload_bytes;
@@ -153,6 +154,8 @@ void render_material_raster_set_model_inspection(
  * No commands may still reference its old textures when resizing/freeing. */
 render_material_raster *render_material_raster_new();
 void render_material_raster_free(render_material_raster *raster);
+/* Releases a retired mutable surface's retained GPU vertices. */
+void render_material_raster_forget_mesh(render_material_raster *raster, uint64_t identity);
 const char *render_material_raster_error(const render_material_raster *raster);
 bool render_material_raster_resize(render_material_raster *raster, int width, int height);
 /* Zero uses the default limit; one permits matched unbatched comparisons. */

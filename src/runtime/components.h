@@ -321,6 +321,28 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialFrame)
 }
 MaterialFrame;
 
+/* Optional actual 3D surface derived from a live destructible material mask.
+ * The mask remains authoritative in the gameplay plane. Geometry uses its
+ * contour; elevation and depth are along world Y. Spacing selects in-plane
+ * tessellation and must be at least the mask cell size. Relief is sampled in
+ * the retained MaterialFrame. */
+typedef NODE_COMPONENT_TYPE_DENSE(MaterialSurface3D)
+{
+    bool enabled;
+    /* Consume the bound material's static Surface Height as mesh displacement,
+     * sampled at PartPosition=(source X, 0, source Z). Unsupported dynamic
+     * coordinates fail explicitly. Shared channels should use source X/Z. */
+    bool material_height;
+    float elevation NODE_UNIT("u");
+    float depth NODE_UNIT("u");
+    float bevel_width NODE_UNIT("u");
+    float relief NODE_UNIT("u");
+    float relief_scale NODE_UNIT("u");
+    float spacing NODE_UNIT("u");
+    unsigned seed;
+}
+MaterialSurface3D;
+
 /* Authored, axis-aligned procedural terrain. Appearance and Material on the
  * source style its chunks; collision and destruction use the generated cells. */
 typedef NODE_COMPONENT_TYPE_DENSE(MaterialTerrain)
@@ -1236,6 +1258,11 @@ typedef NODE_COMPONENT_TYPE_DENSE(HRC2D)
     float intensity;
     /* Brightness of light seen in open air: the glow around lights. */
     float fog;
+    /* Extinction/scattering coefficient for direct Spot Light beams, in
+     * inverse world units. Zero disables volume lighting. Eight view-depth
+     * samples integrate a homogeneous medium against visible depth slabs;
+     * this does not add hidden geometry or feed the HRC bounce solver. */
+    float volume_density NODE_RANGE_HINT(0, 1) NODE_UNIT("u^-1");
     /* Fraction of a solid's albedo that stays visible where no light reaches
      * it. Depth thickness hides part of it like ambient. */
     float shadow_floor;

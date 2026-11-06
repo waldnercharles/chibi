@@ -26,9 +26,9 @@ if(NOT Chibi_RESOURCE_DIR)
     message(FATAL_ERROR "The installed SDK must export Chibi_RESOURCE_DIR")
 endif()
 get_filename_component(tool_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
-set(automation_units controller field_preview navigation content_hash ui_inspect
+set(automation_units controller field_preview material_bake navigation content_hash ui_inspect
     execution_policy render_preview scene_preview)
-set(automation_headers controller field_preview navigation content_hash ui_inspect
+set(automation_headers controller field_preview material_bake navigation content_hash ui_inspect
     execution_policy render_preview gpu_capture)
 set(private_headers "${CMAKE_CURRENT_BINARY_DIR}/private")
 foreach(header IN LISTS automation_headers)

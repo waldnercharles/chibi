@@ -750,6 +750,18 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         yyjson_mut_obj_add_int(
             response,
             work,
+            "mesh_uploads",
+            measurement.mesh_work.mesh_uploads
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "dynamic_meshes",
+            measurement.mesh_work.dynamic_meshes
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
             "sdf_draw_calls",
             measurement.mesh_work.sdf_draw_calls
         );

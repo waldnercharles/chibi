@@ -88,6 +88,8 @@ struct render_radiance
     /* Filtered received light, alternating with the previous frame's. */
     CF_Canvas radiance_canvas[2];
     CF_Canvas bounce_canvas;
+    CF_Canvas spot_canvas;
+    CF_Shader spot_shd;
     /* Transport input at the work grid: RGB emission and A optical depth, and
      * reflected light scaled by bounce intensity. */
     CF_Canvas source_canvas;
@@ -1470,6 +1472,7 @@ static void destroy_images(HRC *hrc)
 {
     s_clear_texture_bindings(hrc);
     s_destroy_canvas(&hrc->bounce_canvas);
+    s_destroy_canvas(&hrc->spot_canvas);
     s_destroy_canvas(&hrc->gather_canvas);
     s_destroy_canvas(&hrc->near_canvas);
     s_destroy_canvas(&hrc->radiance_canvas[0]);
@@ -1579,6 +1582,7 @@ void render_radiance_free(render_radiance *hrc)
     s_destroy_surface(hrc);
     s_destroy_horizon(hrc);
     CF_Shader passes[] = { hrc->trace_shd,
+                           hrc->spot_shd,
                            hrc->extend_shd,
                            hrc->merge_shd,
                            hrc->resolve_shd,
@@ -1870,6 +1874,7 @@ static const s_float_range s_float_ranges[] = {
     { offsetof(HRC2D, ambient), 0, 100, "ambient" },
     { offsetof(HRC2D, intensity), 0, 100, "intensity" },
     { offsetof(HRC2D, fog), 0, 100, "fog" },
+    { offsetof(HRC2D, volume_density), 0, 1, "volume_density" },
     { offsetof(HRC2D, shadow_floor), 0, 100, "shadow_floor" },
     { offsetof(HRC2D, falloff), 0, 100, "falloff" },
     { offsetof(HRC2D, lighting_margin), 0, 256, "lighting_margin" },
@@ -2222,6 +2227,57 @@ CF_Texture render_radiance_horizon_dirty_texture(const render_radiance *hrc)
                                    : (CF_Texture){ 0 };
 }
 
+static bool s_dispatch_spots(HRC *hrc, render_radiance_inputs inputs, render_view_2d view)
+{
+    assert(inputs.spot_count >= 0 && inputs.spot_count <= RENDER_SPOT_LIGHT_LIMIT);
+    if (!inputs.spot_count) {
+        return true;
+    }
+    assert(inputs.spots);
+    if (!hrc->spot_shd.id) {
+        hrc->spot_shd = s_make_pass_shader("hrc/spot.frag");
+    }
+    if (!hrc->spot_canvas.id) {
+        hrc->spot_canvas = s_make_level(hrc->canvas_w, hrc->canvas_h, CF_PIXEL_FORMAT_R16G16B16A16_FLOAT);
+    }
+    if (!hrc->spot_shd.id || !hrc->spot_canvas.id) {
+        return false;
+    }
+    CF_V4 positions[RENDER_SPOT_LIGHT_LIMIT] = { 0 },
+          colors[RENDER_SPOT_LIGHT_LIMIT] = { 0 },
+          cones[RENDER_SPOT_LIGHT_LIMIT] = { 0 },
+          options[RENDER_SPOT_LIGHT_LIMIT] = { 0 };
+    for (int i = 0; i < inputs.spot_count; i++) {
+        positions[i] = inputs.spots[i].position_radius;
+        colors[i] = inputs.spots[i].color_intensity;
+        cones[i] = inputs.spots[i].direction_outer;
+        options[i] = (CF_V4){ inputs.spots[i].inner_cos, inputs.spots[i].shadows, 0, 0 };
+    }
+    CF_Material mat = hrc->pass_material;
+    cf_material_set_texture_fs(mat, "u_albedo", inputs.material.albedo);
+    cf_material_set_texture_fs(mat, "u_cover", inputs.material.cover);
+    cf_material_set_texture_fs(mat, "u_normal", inputs.material.normal);
+    cf_material_set_texture_fs(mat, "u_source", inputs.material.source);
+    cf_material_set_uniform_fs(mat, "u_positions", positions, CF_UNIFORM_TYPE_FLOAT4, RENDER_SPOT_LIGHT_LIMIT);
+    cf_material_set_uniform_fs(mat, "u_colors", colors, CF_UNIFORM_TYPE_FLOAT4, RENDER_SPOT_LIGHT_LIMIT);
+    cf_material_set_uniform_fs(mat, "u_cones", cones, CF_UNIFORM_TYPE_FLOAT4, RENDER_SPOT_LIGHT_LIMIT);
+    cf_material_set_uniform_fs(mat, "u_options", options, CF_UNIFORM_TYPE_FLOAT4, RENDER_SPOT_LIGHT_LIMIT);
+    float projection[] = { view.min_x - view.center_x,
+                           view.max_y - view.center_y,
+                           view.focal_distance,
+                           1 };
+    float spacing[] = { view.width / hrc->canvas_w, view.height / hrc->canvas_h };
+    cf_material_set_uniform_fs(mat, "u_projection", projection, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_material_set_uniform_fs(mat, "u_spacing", spacing, CF_UNIFORM_TYPE_FLOAT2, 1);
+    cf_material_set_uniform_fs(mat, "u_count", &inputs.spot_count, CF_UNIFORM_TYPE_INT, 1);
+    HRC2D lighting = hrc->authored_lighting ? hrc->lighting : hrc2d_defaults();
+    cf_material_set_uniform_fs(mat, "u_thickness", &lighting.surface_thickness, CF_UNIFORM_TYPE_FLOAT, 1);
+    cf_material_set_uniform_fs(mat, "u_specular", &lighting.specular, CF_UNIFORM_TYPE_FLOAT, 1);
+    cf_material_set_uniform_fs(mat, "u_density", &lighting.volume_density, CF_UNIFORM_TYPE_FLOAT, 1);
+    s_draw_region(hrc, hrc->spot_shd, hrc->spot_canvas, hrc->canvas_w, hrc->canvas_h);
+    return true;
+}
+
 bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2d view, CF_Canvas output)
 {
     assert(hrc);
@@ -2267,6 +2323,10 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
     }
     cf_pop_gpu_label();
     render_gpu_timing_mark("Surface horizon");
+    if (!s_dispatch_spots(hrc, inputs, view)) {
+        CHIBI_TRACE_ZONE_END(zone);
+        return false;
+    }
     float ambient = lighting.ambient;
     float intensity = lighting.intensity;
     float shadow_floor = lighting.shadow_floor;
@@ -2284,6 +2344,10 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
     cf_draw_set_texture("background_tex", inputs.background.id ? inputs.background : hrc->black);
     cf_draw_set_texture("visibility_tex", inputs.material.visibility);
     cf_draw_set_texture("cover_tex", inputs.material.cover);
+    cf_draw_set_texture(
+        "spot_tex",
+        inputs.spot_count ? cf_canvas_get_target(hrc->spot_canvas) : hrc->black
+    );
     cf_draw_set_texture(
         "horizon_cardinal",
         horizon_directions

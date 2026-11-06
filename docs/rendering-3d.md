@@ -410,6 +410,24 @@ group's surface material, or with the entity's Shader material when the group
 names none; a name that is no surface material fails the frame. Surface graphs
 read the vertex texture coordinates, or with source UV bounds the box
 projection the planar pass uses, and the vertex part positions and frames.
+
+In the planar `MeshSurface2D` pass, meshes and SDF shapes use the entity's
+`Material` for HRC absorption even when a surface graph supplies their visible
+color. Each absorption channel is `Material.scene.a * Material.absorption *
+(1 - Material.filter.rgb)`, scaled by the graph's `Surface.Opacity`. Absorber
+coverage is also scaled by that opacity. Set absorption to zero to keep a
+visible surface from absorbing planar light; set both scene alpha and
+absorption above zero for an absorber. Omitted `Material` fields are zero, and
+surfaces without a `Material` do not absorb. Filter alpha is unused; HRC reduces
+these RGB coefficients to scalar optical depth, so this does not provide colored
+transmission. Mesh groups and model-part graphs share the entity's coefficients;
+use separate entities when parts need different absorption.
+
+This planar surface path draws any positive graph opacity as visually opaque;
+zero opacity cuts the surface out. Zero absorption does not disable geometric
+depth testing or HRC Depth-mode height occlusion. The lit 3D pass has its own
+transparency and lighting contracts.
+
 Meshes cast and receive shadows as shapes do, including from outside the view;
 picking meets their triangles, and bounds hold their extents. A pick tests
 only the triangles in boxes its ray crosses, from a tree of boxes built on a

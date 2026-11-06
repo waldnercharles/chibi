@@ -75,6 +75,16 @@ const char *render_shader_name(int id)
     return shader_catalog_assets[id - 1].name;
 }
 
+const shader_graph *render_shader_material_graph(int index)
+{
+    if (index <= 0 || index > acount(shader_catalog_assets) ||
+        shader_catalog_assets[index - 1].shape ||
+        shader_catalog_assets[index - 1].is_model) {
+        return NULL;
+    }
+    return &shader_catalog_assets[index - 1].graph;
+}
+
 const char *render_shader_parameter_name(int index, int slot)
 {
     return index > 0 && index <= acount(shader_catalog_assets) && slot >= 0 && slot < 32

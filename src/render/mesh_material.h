@@ -9,6 +9,7 @@ typedef struct
 } render_mesh_material_textures;
 render_mesh_material *render_mesh_material_new();
 void render_mesh_material_free(render_mesh_material *pass);
+void render_mesh_material_forget(render_mesh_material *pass, uint64_t identity);
 bool render_mesh_material_resize(render_mesh_material *pass, int width, int height);
 bool render_mesh_material_draw(
     render_mesh_material *pass,

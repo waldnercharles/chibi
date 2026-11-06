@@ -20,7 +20,11 @@ typedef struct
     CF_V3 uv_min, uv_max;
     const char *material_scope; /* Borrowed catalog slot name, empty for entity fallback. */
     uint64_t asset_identity; /* Zero for generated primitive geometry. */
-    bool borrowed; /* Catalog or immutable shared storage when true. */
+    /* Mutable generated geometry has a separate namespace from catalog assets.
+     * A changed revision replaces its GPU buffer; retirement releases it. */
+    uint64_t dynamic_identity, dynamic_revision;
+    bool height_consumed; /* Surface Height already displaced these vertices. */
+    bool borrowed;        /* Catalog or immutable shared storage when true. */
 } render_mesh_surface_part;
 
 typedef struct render_mesh_surface

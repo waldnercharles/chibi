@@ -140,6 +140,13 @@ void render_material_raster_set_sdf_trace_debug(render_material_raster *r, bool 
     }
 }
 
+void render_material_raster_forget_mesh(render_material_raster *r, uint64_t identity)
+{
+    if (r->mesh_pass) {
+        render_mesh_material_forget(r->mesh_pass, identity);
+    }
+}
+
 render_mesh_material_work render_material_raster_mesh_work(const render_material_raster *r)
 {
     render_mesh_material_work work = r->mesh_work;
@@ -147,6 +154,7 @@ render_mesh_material_work render_material_raster_mesh_work(const render_material
         render_mesh_material_work cache = render_mesh_material_last_work(r->mesh_pass);
         work.sdf_program_count = cache.sdf_program_count;
         work.sdf_program_compilations = cache.sdf_program_compilations;
+        work.dynamic_meshes = cache.dynamic_meshes;
     }
     return work;
 }
@@ -881,6 +889,7 @@ static bool draw_mesh_group(render_material_raster *r, ecs_world *world, render_
     r->mesh_work.sdf_draw_calls += work.sdf_draw_calls;
     r->mesh_work.sdf_instances += work.sdf_instances;
     r->mesh_work.sdf_uploads += work.sdf_uploads;
+    r->mesh_work.mesh_uploads += work.mesh_uploads;
     r->mesh_work.sdf_upload_bytes += work.sdf_upload_bytes;
     r->mesh_work.surface_builds += work.surface_builds;
     r->mesh_work.surface_reuses += work.surface_reuses;

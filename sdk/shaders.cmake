@@ -3,6 +3,7 @@ if(TARGET chibi_shader_runtime)
     return()
 endif()
 add_library(chibi_shader_runtime STATIC
+    "${CHIBI_SDK_ROOT}/src/runtime/shaders/bake.c"
     "${CHIBI_SDK_ROOT}/src/runtime/shaders/program.c"
     "${CHIBI_SDK_ROOT}/src/runtime/shaders/prepared.c"
     "${CHIBI_SDK_ROOT}/src/runtime/shaders/detail.c"
@@ -12,7 +13,7 @@ add_library(chibi_shader_runtime STATIC
     "${CHIBI_SDK_ROOT}/src/runtime/shaders/inspection.c")
 add_library(Chibi::shader_runtime ALIAS chibi_shader_runtime)
 set_target_properties(chibi_shader_runtime PROPERTIES EXPORT_NAME shader_runtime)
-chibi_sdk_headers(chibi_shader_runtime PUBLIC runtime/shaders/program.h runtime/shaders/prepared.h runtime/shaders/volume.h
+chibi_sdk_headers(chibi_shader_runtime PUBLIC runtime/shaders/bake.h runtime/shaders/program.h runtime/shaders/prepared.h runtime/shaders/volume.h
     runtime/shaders/detail.h runtime/shaders/effects.h runtime/shaders/image.h runtime/shaders/inspection.h)
 configure_file("${CHIBI_SDK_ROOT}/src/runtime/shaders/prepared_internal.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/shader_runtime/runtime/shaders/prepared_internal.h" COPYONLY)

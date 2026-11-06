@@ -4,6 +4,11 @@ import strings "core:strings"
 import syntax "project:compiler_syntax"
 import format "project:source_format"
 import highlight "project:source_highlight"
+// Older SDK launchers gather only collection-qualified imports. Name the
+// parser's packages here so they include the host's complete source closure.
+import parser "project:source_parser"
+import tokens "project:source_tokenizer"
+import diagnostics "project:syntax_diagnostics"
 
 // The resident formatter behind tools/docs/playground/serve.py, run as
 // `chibi run DIR -- MAILBOX` from a directory that serve.py assembles from this

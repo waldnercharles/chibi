@@ -53,6 +53,76 @@ Code :: struct {
 Literal :: union {
     Number(negative: bool, magnitude: uint64) | Invalid
 }
+Character :: union {
+    Read(scalar: uint64) | Invalid(message: string)
+}
+// Character literals use JSON's escapes, with single quotes as delimiters.
+ReadCharacter :: (spelling: string) -> Character {
+    encoded := "\"";
+    index: int = 1;
+    end := strings.ByteLength(spelling) - 1;
+    while (index < end) {
+        byte := strings.ByteAt(spelling, index);
+        if (byte == 92 && index + 1 < end && strings.ByteAt(spelling, index + 1) == 39) {
+            encoded = format_text("{}'", encoded);
+            index += 2;
+        } else if (byte == 34) {
+            encoded = format_text("{}\\\"", encoded);
+            index += 1;
+        } else {
+            // Preserve an escape as a pair, including an escaped backslash.
+            count: int = 1;
+            if (byte == 92 && index + 1 < end) { count = 2; }
+            encoded = format_text("{}{}", encoded, strings.Slice(spelling, index, count));
+            index += count;
+        }
+    }
+    decoded := compiler_json_string(format_text("{}\"", encoded));
+    if (!decoded.valid) { return Character.Invalid("Invalid character literal"); }
+    if (decoded.byte_length == 1 && strings.ByteLength(decoded.value) == 0) {
+        return Character.Read(0);
+    }
+    bytes := strings.Bytes(decoded.value);
+    if (length(bytes) == 0 || length(bytes) != decoded.byte_length) {
+        return Character.Invalid("A character literal holds exactly one character");
+    }
+    first := bytes[0];
+    width: int = 1;
+    scalar := uint64(first);
+    if (first >= 240) { width = 4; scalar = uint64(first & 7); }
+    else if (first >= 224) { width = 3; scalar = uint64(first & 15); }
+    else if (first >= 192) { width = 2; scalar = uint64(first & 31); }
+    if (length(bytes) != width) {
+        return Character.Invalid("A character literal holds exactly one character");
+    }
+    index = 1;
+    while (index < width) {
+        scalar = (scalar << 6) | uint64(bytes[index] & 63);
+        index += 1;
+    }
+    return Character.Read(scalar);
+}
+// The same two Unicode-scalar guards emitted by stage zero's char_check.
+CharCode :: (ops: Ops, input: int, slot: int, failure: int, node: snapshot.SnapshotNode) -> Code[] {
+    code: Code[] = [CastCode(ops, WordStorage, slot, input, 1, node),
+                    ConstantCode(ops, WordStorage, 0x10FFFF, slot + 1, node),
+                    Instruction(ops.le, WordStorage, slot + 2, slot, slot + 1, 0, node)];
+    valid := Instruction(ops.guard, 0, 0, slot + 2, 0, failure, node);
+    valid.message = "Value does not fit in char";
+    valid.has_message = true;
+    code.append(valid);
+    code.append(ConstantCode(ops, WordStorage, 0xD800, slot + 3, node));
+    code.append(Instruction(ops.sub, WordStorage, slot + 4, slot, slot + 3, 0, node));
+    code.append(ConstantCode(ops, WordStorage, 0x800, slot + 5, node));
+    code.append(Instruction(ops.ge, WordStorage, slot + 6, slot + 4, slot + 5, 0, node));
+    valid.left = slot + 6;
+    code.append(valid);
+    return code;
+}
+CharSlots :: () -> Slot[] {
+    return [ValueLocal(WordStorage), ValueLocal(WordStorage), ValueLocal(BoolStorage),
+            ValueLocal(WordStorage), ValueLocal(WordStorage), ValueLocal(WordStorage), ValueLocal(BoolStorage)];
+}
 // A data cell's header type and kind. Some cells hold a constant payload: the
 // bits `constant`, or the tag of variant types[variant] when that is not -1.
 Cell :: struct {
@@ -383,7 +453,7 @@ Parameter :: (forest: snapshot.SnapshotNode[], binding: Name) -> bool {
 // or a negated number.
 LiteralNode :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
     kind := forest[node].kind;
-    return kind == "number" || kind == "string" || kind == "boolean" ||
+    return kind == "character" || kind == "number" || kind == "string" || kind == "boolean" ||
            (kind == "unary_expression" && Is(forest, Field(forest, node, "operand"), "number"));
 }
 // Whether `node` is a number literal, negated or not.
@@ -433,7 +503,7 @@ TargetPoints :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], o
 // Whether stage zero evaluates a node of `kind` as an expression, with a
 // point. Parentheses only group.
 Expression :: (kind: string) -> bool {
-    return kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
+    return kind == "character" || kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
            kind == "member_expression" || kind == "index_expression" || kind == "struct_expression" ||
            kind == "array_expression" || kind == "map_expression" || kind == "call_expression" ||
            kind == "unary_expression" || kind == "binary_expression" || kind == "is_expression";
@@ -774,6 +844,38 @@ Uint16Storage: int : 5;
 UintStorage: int : 7;
 Int64Storage: int : 8;
 // A value no instruction holds yet: an integer literal its use gives a type.
+// Bare character literals stay contextual while an operator resolves its operands.
+CharacterLiteral :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    if (Is(forest, node, "character")) { return node; }
+    if (Is(forest, node, "parenthesized_expression")) {
+        return CharacterLiteral(forest, Field(forest, node, "expression"));
+    }
+    return -1;
+}
+CharacterTree :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    if (Is(forest, node, "character")) { return true; }
+    if (Is(forest, node, "parenthesized_expression")) {
+        return CharacterTree(forest, Field(forest, node, "expression"));
+    }
+    if (Is(forest, node, "unary_expression")) {
+        return CharacterTree(forest, Field(forest, node, "operand"));
+    }
+    return Is(forest, node, "binary_expression") &&
+           (CharacterTree(forest, Field(forest, node, "left")) ||
+            CharacterTree(forest, Field(forest, node, "right")));
+}
+LiteralIntegerTree :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    if (Is(forest, node, "number") || Is(forest, node, "character")) { return true; }
+    if (Is(forest, node, "parenthesized_expression")) {
+        return LiteralIntegerTree(forest, Field(forest, node, "expression"));
+    }
+    if (Is(forest, node, "unary_expression")) {
+        return LiteralIntegerTree(forest, Field(forest, node, "operand"));
+    }
+    return Is(forest, node, "binary_expression") &&
+           LiteralIntegerTree(forest, Field(forest, node, "left")) &&
+           LiteralIntegerTree(forest, Field(forest, node, "right"));
+}
 NumberStorage: int : -3;
 // The several results of a native call: the value's slot is the cell of the
 // first result and its record the native; `.name` reads one result.
@@ -783,10 +885,10 @@ ResultsStorage: int : -4;
 FunctionResultsStorage: int : -5;
 // The integer types this compiler emits.
 Integer :: (storage: int) -> bool {
-    return storage >= Int8Storage && storage <= WordStorage;
+    return storage == CharStorage || (storage >= Int8Storage && storage <= WordStorage);
 }
 Signed :: (storage: int) -> bool {
-    return storage == Int8Storage || storage == Int16Storage || storage == IntStorage || storage == Int64Storage;
+    return storage == CharStorage || storage == Int8Storage || storage == Int16Storage || storage == IntStorage || storage == Int64Storage;
 }
 // An integer type's width in bits.
 Width :: (storage: int) -> int {
@@ -796,12 +898,13 @@ Width :: (storage: int) -> int {
     if (storage == Int16Storage || storage == Uint16Storage) {
         return 16;
     }
-    if (storage == IntStorage || storage == UintStorage) {
+    if (storage == CharStorage || storage == IntStorage || storage == UintStorage) {
         return 32;
     }
     return 64;
 }
 TypeName :: (storage: int) -> string {
+    if (storage == CharStorage) { return "char"; }
     if (!Integer(storage)) {
         return "";
     }
@@ -810,6 +913,9 @@ TypeName :: (storage: int) -> string {
 }
 // Whether a literal's value fits an integer type.
 Fits :: (negative: bool, magnitude: uint64, storage: int) -> bool {
+    if (storage == CharStorage) {
+        return !negative && magnitude <= 0x10FFFF && (magnitude < 0xD800 || magnitude > 0xDFFF);
+    }
     // Stage zero rejects any signed literal of an unsigned type, -0 included.
     if (negative && !Signed(storage)) {
         return false;
@@ -835,6 +941,7 @@ Bits :: (negative: bool, magnitude: uint64) -> uint64 {
 // int64 for a signed and unsigned pair; -1 when there is none, as for int64
 // with uint64.
 CommonInteger :: (left: int, right: int) -> int {
+    if (left == CharStorage && right == CharStorage) { return CharStorage; }
     if (IntegerWidens(left, right)) {
         return right;
     }
@@ -851,6 +958,10 @@ CommonInteger :: (left: int, right: int) -> int {
 }
 // Whether every value of the integer type `from` fits `to`.
 IntegerWidens :: (from: int, to: int) -> bool {
+    if (to == CharStorage) { return from == CharStorage; }
+    if (from == CharStorage) {
+        return to == IntStorage || to == Int64Storage || to == UintStorage || to == WordStorage;
+    }
     if (Signed(from) && !Signed(to)) {
         return false;
     }
@@ -2029,7 +2140,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 produced = Typed(length(slots) - 1, BoolStorage, 0, -1);
             }
         } else if (item.phase == CombinePhase) {
-            step = OperatorStep(forest, text, document, values, value_top, item, ops, at);
+            step = OperatorStep(forest, text, document, values, value_top, item, ops, target, at);
         } else if (item.phase == ReferencePhase) {
             step = ReferenceArgumentStep(forest, text, document, types, members, names, item, ops, target, at);
         } else if (item.phase == AggregatePhase) {
@@ -2040,7 +2151,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             step = StatementStep(forest, text, document, callables, params, types, members, natives, ports, identities, names,
                                  scopes[length(scopes) - 1], callable.package, values, value_top, function, named,
                                  referenced, mutated, item, ops, target, at);
-        } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
+        } else if (kind == "character" || kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
             step = ValueStep(forest, text, document, callables, params, types, members, constants, natives, ports,
                              names, callable.package, values, value_top, item, ops, target, at);
@@ -2053,10 +2164,10 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     (item.c == MapHasMark || (item.phase == 0 && MapMethod(forest, text, names, item.node, "has"))))) {
             step = MapHasStep(forest, text, document, types, values, value_top, item, ops, target, at);
         } else if (kind == "call_expression") {
-            step = CallStep(forest, text, document, callables, params, types, members, natives, ports, makes,
+            step = CallStep(forest, text, document, callables, params, types, members, constants, natives, ports, makes,
                             make_fields, names, callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "unary_expression" || kind == "binary_expression") {
-            step = OperatorStep(forest, text, document, values, value_top, item, ops, at);
+            step = OperatorStep(forest, text, document, values, value_top, item, ops, target, at);
         } else if (kind == "function_declaration") {
             step = ParameterStep(params, callable, item, ops, target, at, node);
         } else if (kind == "is_expression" && item.phase == 0) {

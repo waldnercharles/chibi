@@ -248,6 +248,10 @@ PlaceAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: int
         code.append(ScalarWatch(ops, current, binding.storage, 0, true, destination));
         slots.append(ValueLocal(binding.storage));
         code.append(Instruction(op, binding.storage, current + 1, current, stored.slot, -1, node));
+        if (binding.storage == CharStorage) {
+            code.extend(CharCode(ops, current + 1, at.slot + length(slots), target.assert_failure, node));
+            slots.extend(CharSlots());
+        }
         // A local's target is watched again as the value it stores; stage zero
         // reads a ref parameter's target once.
         if (!reference) {
@@ -441,6 +445,10 @@ ReferenceFieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
         code.append(ScalarWatch(ops, read + 2, field.storage, 0, true, forest[Field(forest, item.node, "target")]));
         slots.append(ValueLocal(field.storage));
         code.append(Instruction(op, field.storage, read + 3, read + 2, stored.slot, -1, node));
+        if (field.storage == CharStorage) {
+            code.extend(CharCode(ops, read + 3, at.slot + length(slots), target.assert_failure, node));
+            slots.extend(CharSlots());
+        }
         stored = Typed(read + 3, field.storage, 0, -1);
     }
     if (!SameType(field.storage, 0, -1, stored)) {

@@ -82,6 +82,13 @@ instead of one value.
 
 Suggestion: record fields of every value type, as Odin's structs.
 
+The approved [reusable string builder](package-builders.md) is another concrete
+consumer (2026-10-21). Safe array fields require reflected container metadata,
+copying, garbage collection and persistence support. Efficient appends also need
+owned nested-array mutation: the current in-place optimization handles ordinary
+local arrays, while reference-path writes copy their root. A one-variant union
+can hold the bytes correctly, but does not remove those append-copy costs.
+
 ## Ordinary writes make calls copy their arguments
 
 Runtime. Stage zero passes a function's arguments without copying them only
@@ -188,8 +195,8 @@ later without breaking code that relied on it.
 Stage one. Stage zero has character literals and `char` since #530: `'a'`
 takes an integer type from context, as in `c: byte = 'a'` or
 `ByteAt(s, i) == '/'`, and is otherwise a `char`, a 32-bit Unicode scalar with
-integer arithmetic. Stage one rejects them, and it compiles
-the compiler, `core:strings` and the tokenizer, so those still compare bytes
+integer arithmetic. Stage one originally rejected them, and it compiles
+the compiler, `core:strings` and the tokenizer, so those sources compare bytes
 by code: `48` for `'0'`, `46` for `'.'`, `101` for `'e'`; `core:strings` writes
 `ByteAt(path, index) == 47` for `'/'` and tests `c >= 65 && c <= 90` (#503);
 the tokenizer writes `c == 34` for `'"'` (#518).
@@ -199,6 +206,23 @@ the tokenizer writes `c == 34` for `'"'` (#518).
 
 Suggestion: stage one types character literals from context as stage zero
 does, then those sources replace their codes.
+
+The approved [UTF-8 result model](package-utf8.md) adds a concrete consumer:
+`Decoded(character: char, byteWidth: int)`. The 2026-10-21 audit of main
+`73a6e2b7f` found that imported union payloads already work in both stages, but
+stage one could not represent this payload's `char` type. The local change on
+`codex/utf8-foundations-20261021` adds character literals and checked `char`
+types through declarations, conversions and pattern bindings, retaining native
+I32 emission. It also guards compound writes through locals, records and
+references. This compiler change is not a completed UTF-8 package or merged work.
+
+Remaining contextual friction: stage one resolves nested untyped arithmetic
+before it knows a typed peer's context. For example, `b + ('A' + 1)` with a
+`byte` variable `b` needs the peer's byte context in the nested expression to
+match stage zero. Stage one diagnoses this form; explicitly convert the
+character to the intended integer type. Indexed compound assignment also still
+supports only `int[]`, so a `char[]` element can be read or assigned but cannot
+use `+=`. These general compiler limits remain tracked for a later step.
 
 ## Strings have no indexing or slicing syntax
 

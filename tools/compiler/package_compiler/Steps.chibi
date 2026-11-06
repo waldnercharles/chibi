@@ -509,9 +509,13 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 slots.append(current);
                 code.append(Instruction(op, binding.storage, at.slot + length(slots) - 1,
                                         at.slot + length(slots) - 2, result.slot, -1, node));
-                code.append(ScalarWatch(ops, at.slot + length(slots) - 1, binding.storage, 0, true,
-                                        forest[destination]));
-                stored = Typed(at.slot + length(slots) - 1, binding.storage, 0, -1);
+                output := at.slot + length(slots) - 1;
+                if (binding.storage == CharStorage) {
+                    code.extend(CharCode(ops, output, at.slot + length(slots), target.assert_failure, node));
+                    slots.extend(CharSlots());
+                }
+                code.append(ScalarWatch(ops, output, binding.storage, 0, true, forest[destination]));
+                stored = Typed(output, binding.storage, 0, -1);
             }
             if (!SameType(binding.storage, binding.container, binding.record, stored)) {
                 return Fail(forest, item.node, document, "assigned value differs from its local");
@@ -765,6 +769,25 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
 }
 
 // Literals, names, parentheses, field reads and element reads.
+CharacterStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, at_node: int, expected: int,
+                  ops: Ops, at: Bases) -> Step {
+    storage := CharStorage;
+    if (Integer(expected)) { storage = expected; }
+    if (Floating(expected)) {
+        return Fail(forest, at_node, document, "A character literal needs an integer or char type");
+    }
+    switch ReadCharacter(Text(forest, text, at_node)) {
+        case .Invalid(message): return Fail(forest, at_node, document, message);
+        case .Read(scalar):
+            if (!Fits(false, scalar, storage)) {
+                return Fail(forest, at_node, document,
+                            format_text("Character literal is outside the range of {}", TypeName(storage)));
+            }
+            code := [ConstantCode(ops, storage, scalar, at.slot, forest[at_node])];
+            return Step.Emitted(code, [ValueLocal(storage)], [], [], [], [], [], [], [], 0,
+                                Typed(at.slot, storage, 0, -1), NoValue(), []);
+    }
+}
 ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
               params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], natives: Native[],
               ports: Port[], names: Name[], package: int, values: Value[], top: int, item: Work, ops: Ops,
@@ -788,6 +811,13 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         // A literal where a floating value is expected is one.
         return FloatConstantStep(forest, text, document, Typed(-1, NumberStorage, 0, item.node), item.storage, ops, at,
                                  node);
+    }
+    if (kind == "character" && item.storage == NumberStorage) {
+        return Step.Emitted([], [], [], [], [], [], [], [], [], 0,
+                            Typed(-1, NumberStorage, 0, item.node), NoValue(), []);
+    }
+    if (kind == "character") {
+        return CharacterStep(forest, text, document, item.node, item.storage, ops, at);
     }
     if (kind == "number" && !Integer(item.storage)) {
         // An untyped literal: its use gives it a type.
@@ -1250,7 +1280,7 @@ Unparenthesized :: (forest: snapshot.SnapshotNode[], node: int) -> int {
 // cells and the result comes back in one. A native's inferred ports all take
 // the one type its arguments give them.
 CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
-             params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], ports: Port[],
+             params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: Port[],
              makes: NativeMake[], make_fields: int[], names: Name[], package: int, values: Value[], top: int,
              item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
@@ -1378,8 +1408,51 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 }
                 value = Field(forest, argument, "value");
             }
+            if (conversion == CharStorage) {
+                if (mode != 0) { return Fail(forest, item.node, document, "char converts only with char(value)"); }
+                if (Is(forest, value, "number") || Is(forest, value, "unary_expression")) {
+                    switch ParseNumber(forest, text, value) {
+                        case .Number(negative, magnitude):
+                            if (!Fits(negative, magnitude, CharStorage)) {
+                                return Fail(forest, item.node, document, "Constant does not fit in char");
+                            }
+                        case .Invalid:
+                            if (Is(forest, value, "number")) {
+                                return Fail(forest, item.node, document, "char converts from an integer");
+                            }
+                    }
+                }
+            }
+            if (conversion == CharStorage) {
+                constant_node := value;
+                while (Is(forest, constant_node, "parenthesized_expression")) {
+                    constant_node = Field(forest, constant_node, "expression");
+                }
+                named_constant := ConstantOf(forest, text, constants, names, package, constant_node);
+                if (named_constant >= 0 && constants[named_constant].folded) {
+                    constant := constants[named_constant];
+                    negative := Signed(constant.storage) && int64(wrap: constant.bits) < 0;
+                    if (!Fits(negative, constant.bits, CharStorage)) {
+                        return Fail(forest, item.node, document, "Constant does not fit in char");
+                    }
+                }
+                switch FoldConstant(forest, text, document, constants, names, package, value, Int64Storage) {
+                    case .Folded(bits):
+                        if (!Fits(int64(wrap: bits) < 0, bits, CharStorage)) {
+                            return Fail(forest, item.node, document, "Constant does not fit in char");
+                        }
+                    case .Failed(diagnostic):
+                        if (LiteralIntegerTree(forest, value)) { return Step.Failed(diagnostic); }
+                    case .Waiting:
+                        if (LiteralIntegerTree(forest, value)) {
+                            return Fail(forest, value, document, "constant value is not available");
+                        }
+                }
+            }
             if (mode == 0) {
-                next.append(Expect(value, conversion, 0, -1));
+                operand_type := conversion;
+                if (conversion == CharStorage) { operand_type = Int64Storage; }
+                next.append(Expect(value, operand_type, 0, -1));
             } else {
                 next.append(Visit(value));
             }
@@ -1578,6 +1651,13 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         if (value.container != 0 || (!Integer(value.storage) && !Floating(value.storage))) {
             return Fail(forest, item.node, document, "conversion needs a number");
         }
+        if (item.a == CharStorage && !Integer(value.storage)) {
+            return Fail(forest, item.node, document, "char converts from an integer");
+        }
+        if (item.a == CharStorage && value.storage != CharStorage) {
+            code.extend(CharCode(ops, value.slot, at.slot + length(slots), target.assert_failure, node));
+            slots.extend(CharSlots());
+        }
         if (value.storage == item.a) {
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1, value, NoValue(), marks);
         }
@@ -1620,17 +1700,24 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         while (index < count) {
             argument := values[first + index];
             field := members[variant.first + index];
+            if (Single(argument, CharStorage) && field.container == 0 && Widens(CharStorage, field.storage)) {
+                converted := at.slot + length(slots);
+                slots.append(ValueLocal(field.storage));
+                code.append(CastCode(ops, field.storage, converted, argument.slot, 0, node));
+                argument = Typed(converted, field.storage, 0, -1);
+            }
             if (!SameType(field.storage, field.container, field.record, argument)) {
                 return Fail(forest, item.node, document, "payload value differs from its field type");
             }
             cell: Cell = {storage: argument.storage, container: argument.container, record: argument.record,
                           constant: 0, variant: -1, kind: ValueKind};
             cells.append(cell);
+            address_slot := at.slot + length(slots);
             slots.append(address);
-            code.append(Instruction(ops.host_slot, target.pointer_storage, at.slot + index, at.cell + 1 + index,
+            code.append(Instruction(ops.host_slot, target.pointer_storage, address_slot, at.cell + 1 + index,
                                     0, 0, node));
             write := Instruction(ops.write, SlotStorage(argument.storage, argument.container, target), 0, argument.slot,
-                                 at.slot + index, 0, node);
+                                 address_slot, 0, node);
             write.offset = target.payload_offset;
             code.append(write);
             index += 1;
@@ -1647,16 +1734,17 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                       result_count: 1, written: false};
         hosts.append(host);
         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+        result_slot := at.slot + length(slots);
         slots.append(address);
-        code.append(Instruction(ops.host_slot, target.pointer_storage, at.slot + count, at.cell + 1 + count,
+        code.append(Instruction(ops.host_slot, target.pointer_storage, result_slot, at.cell + 1 + count,
                                 0, 0, node));
         value: Slot = {storage: UnionStorage, kind: ValueKind};
         slots.append(value);
-        load := Instruction(ops.load, UnionStorage, at.slot + count + 1, at.slot + count, 0, 0, node);
+        load := Instruction(ops.load, UnionStorage, result_slot + 1, result_slot, 0, 0, node);
         load.offset = target.payload_offset;
         code.append(load);
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, count,
-                            Typed(at.slot + count + 1, UnionStorage, 0, variant.parent), NoValue(), marks);
+                            Typed(result_slot + 1, UnionStorage, 0, variant.parent), NoValue(), marks);
     }
     chosen := item.a;
     if (item.c == 4) {
@@ -1730,6 +1818,14 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 expected = Typed(-1, ReferenceStorage, 0, -1);
             }
         }
+        if (Single(argument, CharStorage) && expected.container == 0 &&
+            Widens(CharStorage, expected.storage)) {
+            converted := at.slot + length(slots);
+            slots.append(ValueLocal(expected.storage));
+            code.append(CastCode(ops, expected.storage, converted, argument.slot, 0, node));
+            argument = Typed(converted, expected.storage, 0, -1);
+            arguments[index] = argument;
+        }
         if (!SameType(expected.storage, expected.container, expected.record, argument)) {
             return Fail(forest, item.node, document, "argument differs from its parameter type");
         }
@@ -1741,6 +1837,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         cells.append(cell);
         index += 1;
     }
+    b = at.slot + length(slots);
     result := Typed(-1, -1, 0, -1);
     result_count: int = 0;
     if (linked && natives[chosen].results > 1) {
@@ -1846,7 +1943,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
 
 // Unary operators and the binary operators other than logic.
 OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, values: Value[], top: int,
-                 item: Work, ops: Ops, at: Bases) -> Step {
+                 item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
     unary := node.kind == "unary_expression";
     code: Code[] = [];
@@ -1861,10 +1958,27 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, v
     marks: int[] = [];
     if (item.phase == 0) {
         if (unary) {
-            next.append(Visit(Field(forest, item.node, "operand")));
+            operand := Field(forest, item.node, "operand");
+            expected := Visit(operand);
+            if ((Integer(item.storage) || Floating(item.storage)) && LiteralIntegerTree(forest, operand) &&
+                CharacterTree(forest, operand)) {
+                expected = Expect(operand, item.storage, 0, -1);
+            }
+            next.append(expected);
         } else {
-            next.append(Visit(Field(forest, item.node, "left")));
-            next.append(Visit(Field(forest, item.node, "right")));
+            left_node := Field(forest, item.node, "left");
+            right_node := Field(forest, item.node, "right");
+            wanted := item.storage;
+            if (!Integer(wanted) && !Floating(wanted)) { wanted = NumberStorage; }
+            for (operand in [left_node, right_node]) {
+                expected := Visit(operand);
+                if (CharacterLiteral(forest, operand) >= 0) {
+                    expected = Expect(operand, NumberStorage, 0, -1);
+                } else if (CharacterTree(forest, operand) && LiteralIntegerTree(forest, operand) && Integer(wanted)) {
+                    expected = Expect(operand, wanted, 0, -1);
+                }
+                next.append(expected);
+            }
         }
         // The expected type stays with the node, for untyped literals.
         finish := Expect(item.node, item.storage, item.container, item.record);
@@ -1947,6 +2061,10 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, v
             operation.target = 0;
         }
         code.append(operation);
+        if (operand.storage == CharStorage && op != ops.eq) {
+            code.extend(CharCode(ops, output, at.slot + length(slots), target.assert_failure, node));
+            slots.extend(CharSlots());
+        }
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
                             Typed(output, operand.storage, 0, -1), NoValue(), marks);
     }
@@ -1959,6 +2077,23 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, v
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(),
                             marks);
     }
+    // Stage one cannot defer a whole character expression until its peer
+    // supplies a different type. Require an explicit conversion rather than
+    // compute that expression in the wrong width.
+    operand_nodes := [Field(forest, item.node, "left"), Field(forest, item.node, "right")];
+    operand_values := [left, right];
+    contextual: int = 0;
+    while (contextual < 2) {
+        expression := operand_nodes[contextual];
+        peer := operand_values[1 - contextual];
+        if (CharacterLiteral(forest, expression) < 0 && CharacterTree(forest, expression) &&
+            LiteralIntegerTree(forest, expression) && Numeric(peer.storage) &&
+            operand_values[contextual].storage != peer.storage) {
+            return Fail(forest, expression, document,
+                        "nested contextual character arithmetic needs an explicit conversion");
+        }
+        contextual += 1;
+    }
     // Untyped literals take the other operand's type, or the expected one
     // when both are untyped; differing integers widen to their common type.
     wanted := item.storage;
@@ -1967,6 +2102,11 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, v
     }
     if (right.storage != NumberStorage && left.storage == NumberStorage) {
         wanted = right.storage;
+    }
+    if (left.storage == NumberStorage && right.storage == NumberStorage &&
+        !Integer(wanted) && !Floating(wanted) &&
+        (CharacterLiteral(forest, left.record) >= 0 || CharacterLiteral(forest, right.record) >= 0)) {
+        wanted = CharStorage;
     }
     operands: Value[] = [left, right];
     side: int = 0;
@@ -2074,6 +2214,10 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, v
     slots.append(slot);
     output := at.slot + length(slots) - 1;
     code.append(Instruction(op, operand_storage, output, left_slot, right_slot, -1, node));
+    if (storage == CharStorage) {
+        code.extend(CharCode(ops, output, at.slot + length(slots), target.assert_failure, node));
+        slots.extend(CharSlots());
+    }
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 2,
                         Typed(output, storage, 0, -1), NoValue(), marks);
 }
@@ -2091,6 +2235,16 @@ ConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, l
     bound: Name[] = [];
     next: Work[] = [];
     marks: int[] = [];
+    character := CharacterLiteral(forest, literal.record);
+    if (character >= 0) {
+        switch CharacterStep(forest, text, document, character, storage, ops, at) {
+            case .Failed(diagnostic): return Step.Failed(diagnostic);
+            case .Emitted(char_code, char_slots, char_locals, char_cells, char_hosts, char_roots, char_calls,
+                          char_bound, char_next, char_popped, char_value, char_retain, char_marks):
+                watched := extend(char_code, LiteralWatch(forest, ops, char_value.slot, storage, literal.record));
+                return Step.Emitted(watched, char_slots, [], [], [], [], [], [], [], 0, char_value, NoValue(), []);
+        }
+    }
     bits: uint64 = 0;
     switch ParseNumber(forest, text, literal.record) {
         case .Invalid:
@@ -2257,6 +2411,10 @@ FieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, bind
         code.append(read);
         slots.append(current);
         code.append(Instruction(op, field.storage, base + 3, base + 2, stored.slot, -1, node));
+        if (field.storage == CharStorage) {
+            code.extend(CharCode(ops, base + 3, at.slot + length(slots), target.assert_failure, node));
+            slots.extend(CharSlots());
+        }
         code.append(ScalarWatch(ops, base + 3, field.storage, 0, true,
                                 forest[Field(forest, item.node, "target")]));
         stored = Typed(base + 3, field.storage, 0, -1);
@@ -2720,7 +2878,7 @@ FloatConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
 // widens or becomes a floating value, and the floating types convert to one
 // another.
 Converts :: (from: int, to: int) -> bool {
-    return Widens(from, to) || ((Integer(from) || Floating(from)) && Floating(to) && from != to);
+    return Widens(from, to) || (from != CharStorage && (Integer(from) || Floating(from)) && Floating(to) && from != to);
 }
 // The conversion of the number in slot `input` from `from` to `to`, through
 // the NumberSlots from `slot`, as stage zero converts: an integer becomes a

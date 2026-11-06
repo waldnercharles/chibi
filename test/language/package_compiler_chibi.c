@@ -103,6 +103,193 @@ typedef struct
     int line, column;
 } sample;
 static const sample samples[] = {
+    { .name = "contextual char literals and widening arguments",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Take :: (n: int) -> int { return n; }\n"
+                "Negative :: () -> int { return -'A'; }\n"
+                "Complement :: () -> byte { return ~'A'; }\n"
+                "FloatMixed :: (n: double) -> double { c: char = 'A'; return c "
+                "+ n; }\n"
+                "Result :: union { Value(n: int) }\n"
+                "Byte :: () -> byte { return 'A' + 1; }\n"
+                "Compare :: (n: byte) -> bool { return n == ('é'); }\n"
+                "Reverse :: (n: byte) -> bool { return ('é') == n; }\n"
+                "Converted :: () -> char { return char(0xD800 - 1); }\n"
+                "Argument :: () -> int { c: char = 'A'; return Take(c); }\n"
+                "Payload :: () -> int { c: char = 'A'; value := "
+                "Result.Value(c); switch value { case .Value(n): return n; } "
+                "return 0; }\n",
+      .calls = { { "Byte", "[]", "[66]" },
+                 { "Compare", "[233]", "[true]" },
+                 { "Reverse", "[233]", "[true]" },
+                 { "Converted", "[]", "[55295]" },
+                 { "Argument", "[]", "[65]" },
+                 { "Payload", "[]", "[65]" },
+                 { "Negative", "[]", "[-65]" },
+                 { "Complement", "[]", "[190]" },
+                 { "FloatMixed", "[0.5]", "[65.5]" } } },
+    { .name = "result width preserves contextual operation width",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Numeric :: (n: byte) -> int { return n + 1; }\n"
+                "Character :: (n: byte) -> int { return n + '\\u0001'; }\n",
+      .calls = { { "Numeric", "[1]", "[2]" },
+                 { "Numeric", "[255]", "[0]" },
+                 { "Character", "[1]", "[2]" },
+                 { "Character", "[255]", "[0]" } } },
+    { .name = "nested char context requires explicit conversion",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nF :: (n: byte) -> int { return n + ('A' + 1); "
+                "}",
+      .message = "nested contextual character arithmetic needs an explicit "
+                 "conversion",
+      .line = 2,
+      .column = 36 },
+    { .name = "char compound writes validate before publication",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Letter :: struct { c: char; }\n"
+                "Bump :: (c: ref char) { c += 1; }\n"
+                "BumpField :: (letter: ref Letter) { letter.c += 1; }\n"
+                "Local :: (n: int) -> char { c := char(n); c += 1; return c; "
+                "}\n"
+                "Reference :: (n: int) -> char { c := char(n); Bump(c); return "
+                "c; }\n"
+                "Field :: (n: int) -> char { value: Letter = {c: char(n)}; "
+                "value.c += 1; return value.c; }\n"
+                "ReferenceField :: (n: int) -> char { value: Letter = {c: "
+                "char(n)}; BumpField(value); return value.c; }\n",
+      .calls = { { "Local", "[65]", "[66]" },
+                 { "Local", "[55295]", NULL },
+                 { "Reference", "[65]", "[66]" },
+                 { "Reference", "[55295]", NULL },
+                 { "Field", "[65]", "[66]" },
+                 { "Field", "[55295]", NULL },
+                 { "ReferenceField", "[65]", "[66]" },
+                 { "ReferenceField", "[55295]", NULL } } },
+    { .name = "character literal comparison byte range",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nF :: (n: byte) -> bool { return n == '€'; }",
+      .message = "Character literal is outside the range of byte",
+      .line = 2,
+      .column = 38 },
+    { .name = "char conversion constant expression surrogate",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nF :: () -> char { return char(0xD7FF + 1); }",
+      .message = "Constant does not fit in char",
+      .line = 2,
+      .column = 26 },
+    { .name = "char conversion known constant surrogate",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nInvalid: int : 0xD800;\nF :: () -> char { "
+                "return char(Invalid); }",
+      .message = "Constant does not fit in char",
+      .line = 3,
+      .column = 26 },
+    { .name = "char conversion known unsigned constant surrogate",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nInvalid: uint64 : 0xFFFFFFFFFFFFFFFF;\nF :: () "
+                "-> char { return char((Invalid)); }",
+      .message = "Constant does not fit in char",
+      .line = 3,
+      .column = 26 },
+    { .name = "char does not implicitly convert to a floating field",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nR :: struct { x: double; }\nF :: () { c: char "
+                "= 'A'; r: R = {x: 0.0}; r.x = c; }",
+      .message = "field value differs from its type",
+      .line = 3,
+      .column = 43 },
+    { .name = "char arithmetic arrays defaults and references",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nLetter :: 'A';\nDefault :: (c: char = "
+                "'é') -> char { return c; }\nReadDefault :: () -> int { return "
+                "Default(); }\nNext :: (n: int) -> char { c := char(n); return "
+                "c + 1; }\nNegate :: (n: int) -> char { c := char(n); return "
+                "-c; }\nMixed :: (n: int) -> int { c: char = 'A'; return c + "
+                "n; }\nBump :: (c: ref char) { c += 1; }\nArray :: () -> int { "
+                "values: char[] = [Letter, 'é']; values.append('B'); c := "
+                "values[0]; Bump(c); return c + values[1] + values[2]; }\n",
+      .calls = { { "ReadDefault", "[]", "[233]" },
+                 { "Next", "[65]", "[66]" },
+                 { "Next", "[55295]", NULL },
+                 { "Next", "[1114111]", NULL },
+                 { "Negate", "[0]", "[0]" },
+                 { "Negate", "[1]", NULL },
+                 { "Mixed", "[-66]", "[-1]" },
+                 { "Array", "[]", "[365]" } } },
+    { .name = "implicit int cannot become char",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nF :: (n: int) -> char { return n; }",
+      .message = "returned value differs from the result type",
+      .line = 2,
+      .column = 25 },
+    { .name = "character literal byte range",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nF :: () -> byte { return '€'; }",
+      .message = "Character literal is outside the range of byte",
+      .line = 2,
+      .column = 26 },
+    { .name = "invalid character escape",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nF :: () -> char { return '\\q'; }",
+      .message = "Invalid character literal",
+      .line = 2,
+      .column = 26 },
+    { .name = "invalid character surrogate",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nF :: () -> char { return '\\uD800'; }",
+      .message = "Invalid character literal",
+      .line = 2,
+      .column = 26 },
+    { .name = "char conversion surrogate",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nF :: () -> char { return char(0xD800); }",
+      .message = "Constant does not fit in char",
+      .line = 2,
+      .column = 26 },
+    { .name = "char conversion cannot wrap",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nF :: (n: int) -> char { return char(wrap: n); "
+                "}",
+      .message = "char converts only with char(value)",
+      .line = 2,
+      .column = 32 },
+    { .name = "character literal cannot float",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nF :: () -> double { return 'A'; }",
+      .message = "A character literal needs an integer or char type",
+      .line = 2,
+      .column = 28 },
+    { .name = "char identity and typed union payloads",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Read :: (n: int) -> int { value := "
+                "lib.Result.Decoded(char(n), 2); "
+                "switch value { case .Decoded(character, byteWidth): return "
+                "int(character) + byteWidth; "
+                "case .End: return 0; case .Error(byteOffset, reason): return "
+                "byteOffset; } return -1; }\n"
+                "Literal :: () -> char { return '🐈'; }\n"
+                "Zero :: () -> char { return '\\u0000'; }\n"
+                "Field :: () -> char { value: lib.Letter = {character: 'é'}; "
+                "return value.character; }\n"
+                "Identity :: (value: char) -> char { return value; }\n"
+                "Widen :: () -> int { return lib.Echo(Identity('A')); }",
+      .library = "package lib\npub Reason :: union { Invalid | Truncated }\n"
+                 "pub Letter :: struct { character: char; }\n"
+                 "pub Echo :: (value: char) -> char { return value; }\n"
+                 "pub Result :: union { Decoded(character: char, byteWidth: "
+                 "int) | End | Error(byteOffset: int, reason: Reason) }",
+      .calls = { { "Read", "[65]", "[67]" },
+                 { "Read", "[55296]", NULL },
+                 { "Read", "[-1]", NULL },
+                 { "Read", "[1114112]", NULL },
+                 { "Literal", "[]", "[128008]" },
+                 { "Zero", "[]", "[0]" },
+                 { "Field", "[]", "[233]" },
+                 { "Widen", "[]", "[65]" } } },
     { .name = "constant",
       .source = "package facts\nAnswer :: () -> int { return 42; }",
       .calls = { { "Answer", "[]", "[42]" } } },

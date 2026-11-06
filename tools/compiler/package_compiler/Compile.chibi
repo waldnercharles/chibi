@@ -215,6 +215,12 @@ Declarations :: union {
                 constants: ConstDecl[])
 }
 
+// Semantic char identity; emitted slots and headers use native int32 storage.
+CharStorage: int : 100;
+PhysicalStorage :: (storage: int) -> int {
+    if (storage == CharStorage) { return IntStorage; }
+    return storage;
+}
 BoolStorage: int : 1;
 IntStorage: int : 6;
 WordStorage: int : 9;
@@ -297,6 +303,7 @@ Complete :: (ops: Ops) -> bool {
 // The storage of a scalar type, any of which a record field may hold: an
 // integer, bool or string; 0 for any other.
 ScalarStorage :: (text: string) -> int {
+    if (text == "char") { return CharStorage; }
     integer: int = Int8Storage;
     while (integer <= WordStorage) {
         if (text == TypeName(integer)) {
@@ -477,10 +484,12 @@ FindMap :: (types: TypeDecl[], key: ValueType, value: ValueType) -> int {
 // ID of the record, union or native type it names.
 TypeTag :: (types: TypeDecl[], storage: int, record: int) -> uint64 {
     nominal: uint64 = 0;
+    physical := PhysicalStorage(storage);
+    if (storage == CharStorage) { nominal = binding.ID("type", "char"); }
     if (record >= 0) {
         nominal = types[record].id;
     }
-    return binding.ID("union-type", format_text("{}:0:{}:0:0", storage, nominal));
+    return binding.ID("union-type", format_text("{}:0:{}:0:0", physical, nominal));
 }
 // Declares each map type that file `root` spells, inner ones first, when its
 // key is a number, bool or string and its value a single value of a type
@@ -772,6 +781,10 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                 // An untyped constant is an int, as its integer literals are;
                 // its value folds once every constant of the package is known.
                 storage := IntStorage;
+                if (CharacterTree(forest, Field(forest, member, "value")) &&
+                    LiteralIntegerTree(forest, Field(forest, member, "value"))) {
+                    storage = CharStorage;
+                }
                 declared := Field(forest, member, "type");
                 if (declared >= 0) {
                     constant_type := ReadType(forest, text, types, aliases, package, declared);
@@ -842,6 +855,17 @@ Folding :: union {
 // constant it names is not folded yet. A uint64 constant is a literal.
 FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants: ConstDecl[], aliases: Name[],
                  package: int, node: int, storage: int) -> Folding {
+    if (Is(forest, node, "character")) {
+        switch ReadCharacter(Text(forest, text, node)) {
+            case .Invalid(message): return Folding.Failed(Diagnose(forest, node, file, message));
+            case .Read(scalar):
+                if (!Fits(false, scalar, storage)) {
+                    return Folding.Failed(Diagnose(forest, node, file,
+                        format_text("Character literal is outside the range of {}", TypeName(storage))));
+                }
+                return Folding.Folded(scalar);
+        }
+    }
     // A literal, `-` on one included, so the most negative value is one.
     signed_literal := Is(forest, node, "unary_expression") &&
                       Text(forest, text, Field(forest, node, "operator")) == "-" &&
@@ -974,6 +998,17 @@ LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, nod
     if (declared.container != 0) {
         return Default.Failed(Diagnose(forest, node, file, "a parameter default needs a literal yet"));
     }
+    if (Integer(declared.storage) && Is(forest, node, "character")) {
+        switch ReadCharacter(Text(forest, text, node)) {
+            case .Invalid(message): return Default.Failed(Diagnose(forest, node, file, message));
+            case .Read(scalar):
+                if (!Fits(false, scalar, declared.storage)) {
+                    return Default.Failed(Diagnose(forest, node, file,
+                        format_text("Character literal is outside the range of {}", TypeName(declared.storage))));
+                }
+                return Default.Read(scalar, "");
+        }
+    }
     if (Integer(declared.storage)) {
         switch ParseNumber(forest, text, node) {
             case .Invalid:
@@ -1079,7 +1114,7 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
     return Signature.Read(callable, added);
 }
 ScalarValue :: (storage: int, wide: int) -> writer.Value {
-    return {tag: storage, container: 0, type_name: "", has_type_name: false, authored: false,
+    return {tag: PhysicalStorage(storage), container: 0, type_name: "", has_type_name: false, authored: false,
             wide: wide, text: "", has_text: false, present: false, first: 0, count: 0};
 }
 // The header of an absent value of a type. A record names its layout; an
@@ -1165,7 +1200,7 @@ LayoutHash :: (record: TypeDecl, fields: TypeMember[], target: Target) -> uint64
         hash = HashText(hash, field.name);
         hash = HashBytes(hash, uint64(field.offset), target.pointer_size);
         hash = HashBytes(hash, uint64(FieldSize(field.storage, target)), target.pointer_size);
-        hash = HashBytes(hash, uint64(field.storage), 4);
+        hash = HashBytes(hash, uint64(PhysicalStorage(field.storage)), 4);
         hash = HashText(hash, "");
         at += 1;
     }
@@ -1381,7 +1416,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             at := declared.first;
             while (at < declared.first + declared.count) {
                 // Record fields are integers, bools or strings, so none names a type or unit.
-                field: writer.Field = {name: members[at].name, kind: members[at].storage, type_name: "",
+                field: writer.Field = {name: members[at].name, kind: PhysicalStorage(members[at].storage), type_name: "",
                                        has_type_name: false, unit: "", has_unit: false};
                 fields.append(field);
                 at += 1;
@@ -1503,7 +1538,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 }
                 spans.append(Range(length(ints), length(body_slots)));
                 for (slot in body_slots) {
-                    ints.append(slot.storage);
+                    ints.append(PhysicalStorage(slot.storage));
                 }
                 spans.append(Range(length(ints), length(body_slots)));
                 for (slot in body_slots) {
@@ -1530,7 +1565,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                         wide.append(code.payload);
                     }
                     values.append(value);
-                    row: writer.Instruction = {op: code.op, type: code.type, output: code.output,
+                    row: writer.Instruction = {op: code.op, type: PhysicalStorage(code.type), output: code.output,
                                                left: code.left, right: code.right, target: code.target, frame: 0, source: pc + 1,
                                                stack: -1, pin: 0, offset: code.offset, indirect: false, component_index: 0, node: 0,
                                                value: length(values) - 1, layout: 0, message: code.message, has_message: code.has_message};
